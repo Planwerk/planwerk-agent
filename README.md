@@ -3,7 +3,7 @@
 [![CI](https://github.com/planwerk/planwerk-review/actions/workflows/ci.yml/badge.svg)](https://github.com/planwerk/planwerk-review/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/planwerk/planwerk-review/branch/main/graph/badge.svg)](https://codecov.io/gh/planwerk/planwerk-review)
 
-AI-powered code review and codebase analysis tool for GitHub repositories. Uses Claude Code to automatically analyze PR changes and produce structured review results, to analyze entire repositories and generate actionable feature proposals, or to audit an entire codebase against all known review patterns.
+AI-powered code review and codebase analysis tool for GitHub repositories. Uses Claude Code to automatically analyze PR changes and produce structured review results, to analyze entire repositories and generate actionable feature proposals, to audit an entire codebase against all known review patterns, to elaborate high-level issues into detailed engineering plans, or to generate copy-paste-ready prompts that fix or implement an issue.
 
 ## Concept
 
@@ -46,6 +46,30 @@ Audit:
                      │ (local + repo)   │     │ BLOCKING/…/   │
                      │                  │     │ INFO findings │
                      └──────────────────┘     └───────────────┘
+
+Elaborate:
+┌──────────────┐     ┌──────────────────┐     ┌───────────────┐     ┌──────────────┐
+│  GitHub      │────▶│  planwerk-review │────▶│  Claude Code  │────▶│  Detailed    │
+│  Issue       │     │  elaborate       │     │  (repo walk)  │     │  Issue Body  │
+└──────────────┘     └──────────────────┘     └───────────────┘     └──────────────┘
+                            │                        │                      │
+                            ▼                        ▼                      ▼
+                     ┌──────────────────┐     ┌───────────────┐     ┌──────────────┐
+                     │ Cache (SHA+body) │     │  Structure    │     │ --update-    │
+                     │                  │     │  into JSON    │     │ issue (gh)   │
+                     └──────────────────┘     └───────────────┘     └──────────────┘
+
+Prompt:
+┌──────────────┐     ┌──────────────────┐     ┌──────────────────┐
+│  GitHub      │────▶│  planwerk-review │────▶│  Claude Code     │
+│  Issue       │     │  prompt          │     │  prompt (stdout) │
+└──────────────┘     └──────────────────┘     └──────────────────┘
+                            │
+                            ▼
+                     ┌──────────────────┐
+                     │ Auto-mode by     │
+                     │ severity prefix  │
+                     └──────────────────┘
 ```
 
 ### Review Workflow
@@ -141,6 +165,25 @@ Each finding is classified by actionability:
 6. **Claude Audit**: Claude is instructed to apply EVERY loaded pattern to the ENTIRE current state of the codebase (not a diff) and emit concrete violations with file paths, line numbers, code snippets, and suggested fixes. Beyond patterns, it also flags BLOCKING/CRITICAL issues it encounters (security, data loss, broken error handling) and missing tests/docs matching the project's own conventions.
 7. **Structuring**: A second Claude call converts the raw findings into the same structured JSON format used by the review command (`BLOCKING`/`CRITICAL`/`WARNING`/`INFO` with fix class, confidence, related findings).
 8. **Output**: Findings are rendered as Markdown (default) or JSON, with an audit-specific verdict line (`Action required` / `Improvements suggested` / `Codebase healthy`) instead of the PR merge verdict.
+
+### Elaborate Workflow
+
+1. **Issue Input**: The tool receives a GitHub issue reference (URL or `owner/repo#number`).
+2. **Fetch Issue**: Title, body, URL, and state are fetched via `gh issue view`.
+3. **Cache Check**: The default-branch HEAD SHA is resolved via `gh api graphql`. The cache key combines repo + HEAD + issue number + a fingerprint of the issue body, so the cache invalidates automatically when either the repo or the issue is edited.
+4. **Clone**: On a cache miss, the repository is cloned locally.
+5. **Pattern Load**: The same pattern catalog used by `review` / `audit` / `propose` is loaded, filtered by detected technologies.
+6. **Claude Elaboration**: Claude is instructed to walk the repo first, identify what already exists vs. what the issue adds, and emit a detailed plan in six sections (Description with concrete "already exists / this story adds" boundaries, Motivation, Affected Areas, Acceptance Criteria, Non-Goals, References).
+7. **Structuring**: A second Claude call converts the elaboration into a strict JSON schema so the final body renders consistently.
+8. **Output**: The elaborated body is rendered as Markdown (default) or JSON. With `--update-issue`, the issue body is overwritten; with `--post-comment`, the elaboration is posted as a new comment.
+
+### Prompt Workflow
+
+1. **Issue Input**: A GitHub issue reference (URL or `owner/repo#number`).
+2. **Fetch Issue**: Title, body, URL, and state are fetched via `gh issue view`.
+3. **Mode Selection**: `auto` (default) inspects the issue title — audit findings carry an `[BLOCKING]` / `[CRITICAL]` / `[WARNING]` / `[INFO]` prefix and get the "fix" prompt; everything else gets the "implement" prompt. Override with `--mode fix` or `--mode implement`.
+4. **Prompt Assembly**: The runner deterministically assembles a prompt containing the agent workflow, rules (no scope creep, no `--no-verify`, run tests, update docs), and the issue metadata + body. No Claude call is made — the output is reproducible so it can be piped into other tools or diffed over time.
+5. **Output**: The prompt is written to stdout, ready to paste into Claude Code or any other AI coding agent.
 
 ### CLI Interface
 
@@ -281,9 +324,85 @@ planwerk-review audit owner/repo > audit.md
 | `--issue-min-severity` | Minimum severity for issue creation | `warning` |
 | `--no-issue-dedupe` | Do not filter findings whose title matches an existing GitHub issue | `false` |
 
+#### Elaborate (subcommand)
+
+Take a high-level GitHub issue (typically the output of `propose` or
+`audit`) and expand it into a deeply detailed engineering plan grounded in
+the actual repository state — the kind of issue body a senior engineer can
+pick up and execute without further clarification (mirrors the structure
+shown in [plexsphere/plexsphere#10](https://github.com/plexsphere/plexsphere/issues/10):
+Description with concrete "already exists / this story adds" boundaries,
+Motivation, Affected Areas, Acceptance Criteria, Non-Goals, References).
+
+```bash
+# Render the elaborated body to stdout
+planwerk-review elaborate https://github.com/owner/repo/issues/123
+
+# Short form
+planwerk-review elaborate owner/repo#123
+
+# JSON for automation
+planwerk-review elaborate --format json owner/repo#123
+
+# Replace the issue body with the elaborated body
+planwerk-review elaborate --update-issue owner/repo#123
+
+# Or post the elaboration as a new comment instead
+planwerk-review elaborate --post-comment owner/repo#123
+```
+
+##### Flags
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--patterns` | Additional pattern directory | - |
+| `--no-repo-patterns` | Ignore repo-specific patterns | `false` |
+| `--no-local-patterns` | Ignore local patterns from the tool | `false` |
+| `--no-cache` | Ignore cache, force a fresh elaboration | `false` |
+| `--cache-max-age` | Reject cached entries older than this duration (`0` disables the TTL) | `720h` |
+| `--format` | Output format (`markdown`, `json`) | `markdown` |
+| `--max-patterns` | Max review patterns injected into the prompt (`<=0` disables truncation) | `50` |
+| `--update-issue` | Replace the issue body with the elaborated body via `gh issue edit` | `false` |
+| `--post-comment` | Post the elaborated body as a new issue comment via `gh issue comment` | `false` |
+
+`--update-issue` and `--post-comment` are mutually exclusive — pick the one
+that matches your team's workflow (overwrite the source issue vs. preserve
+history and append a follow-up comment).
+
+#### Prompt (subcommand)
+
+Generate a copy-paste-ready Claude Code prompt for an existing GitHub issue
+— either to fix an audit finding or to implement a proposal/elaborated
+issue. No Claude call is involved; the prompt is a deterministic assembly
+so the output is stable and safe to pipe into other tools.
+
+```bash
+# Auto-detected mode (audit titles get the fix prompt, others the implement prompt)
+planwerk-review prompt https://github.com/owner/repo/issues/42
+
+# Force the fix variant
+planwerk-review prompt --mode fix owner/repo#42
+
+# Force the implement variant
+planwerk-review prompt --mode implement owner/repo#42
+
+# Pipe straight into the clipboard (macOS)
+planwerk-review prompt owner/repo#42 | pbcopy
+```
+
+Mode auto-detection looks at the issue title: titles starting with an audit
+severity prefix (`[BLOCKING]`, `[CRITICAL]`, `[WARNING]`, `[INFO]`) get the
+"fix" prompt, everything else gets the "implement" prompt.
+
+##### Flags
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--mode` | Prompt variant (`auto`, `fix`, `implement`) | `auto` |
+
 #### Cache (subcommand)
 
-Inspect the on-disk cache shared by `review`, `propose`, and `audit`:
+Inspect the on-disk cache shared by `review`, `propose`, `audit`, and `elaborate`:
 
 ```bash
 # Show total entries, size, age distribution, and per-command breakdown
@@ -685,8 +804,19 @@ planwerk-review/
 │   │   ├── audit.go            # Full-codebase audit against review patterns
 │   │   ├── audit_test.go
 │   │   ├── coverage.go         # Test coverage map generation (--coverage-map)
+│   │   ├── elaborate.go        # Issue → detailed engineering plan
 │   │   ├── propose.go          # Codebase analysis for proposals
 │   │   └── propose_test.go
+│   ├── elaborate/
+│   │   ├── elaborate.go        # Pipeline: Issue → Repo → Claude → Detailed body
+│   │   ├── elaborate_test.go
+│   │   ├── interfaces.go
+│   │   ├── renderer.go         # Markdown body assembly
+│   │   └── result.go           # Structured elaboration result
+│   ├── prompt/
+│   │   ├── interfaces.go
+│   │   ├── prompt.go           # Deterministic Claude Code prompt assembler
+│   │   └── prompt_test.go
 │   ├── doccheck/
 │   │   ├── doccheck.go         # Detect stale documentation files
 │   │   └── doccheck_test.go

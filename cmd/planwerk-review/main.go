@@ -21,8 +21,10 @@ import (
 	"github.com/planwerk/planwerk-review/internal/cache"
 	"github.com/planwerk/planwerk-review/internal/claude"
 	"github.com/planwerk/planwerk-review/internal/cli"
+	"github.com/planwerk/planwerk-review/internal/elaborate"
 	"github.com/planwerk/planwerk-review/internal/logging"
 	"github.com/planwerk/planwerk-review/internal/patterns"
+	"github.com/planwerk/planwerk-review/internal/prompt"
 	"github.com/planwerk/planwerk-review/internal/propose"
 	"github.com/planwerk/planwerk-review/internal/report"
 	"github.com/planwerk/planwerk-review/internal/review"
@@ -130,10 +132,10 @@ func writeVersion(w io.Writer, bi buildInfo, verbose bool) {
 // An empty scope means "all commands" and is always valid.
 func validateCacheScope(scope string) error {
 	switch scope {
-	case "", cache.CommandReview, cache.CommandPropose, cache.CommandAudit:
+	case "", cache.CommandReview, cache.CommandPropose, cache.CommandAudit, elaborate.CommandElaborate:
 		return nil
 	default:
-		return fmt.Errorf("unknown cache scope %q, supported: review, propose, audit", scope)
+		return fmt.Errorf("unknown cache scope %q, supported: review, propose, audit, elaborate", scope)
 	}
 }
 
@@ -336,7 +338,7 @@ or short form (owner/repo#123).`,
 	flags.BoolVar(&cfg.NoLocalPatterns, "no-local-patterns", false, "Ignore local patterns from the tool")
 	flags.BoolVar(&cfg.NoCache, "no-cache", false, "Ignore cache, force a fresh review")
 	flags.BoolVar(&cfg.ClearCache, "clear-cache", false, "Clear cached reviews and exit (honors --clear-cache-scope)")
-	flags.StringVar(&cfg.ClearCacheScope, "clear-cache-scope", "", "Restrict --clear-cache to a single command (review, propose, audit)")
+	flags.StringVar(&cfg.ClearCacheScope, "clear-cache-scope", "", "Restrict --clear-cache to a single command (review, propose, audit, elaborate)")
 	flags.BoolVar(&cfg.CacheStats, "cache-stats", false, "Show cache size, age distribution, and per-command breakdown, then exit")
 	flags.StringVar(&cfg.CacheInspect, "cache-inspect", "", "Print the metadata and payload for the given cache key, then exit")
 	flags.DurationVar(&cfg.CacheMaxAge, "cache-max-age", cache.DefaultMaxAge, "Reject cached entries older than this duration (0 disables the TTL)")
@@ -474,6 +476,92 @@ or short form (owner/repo).`,
 	auditFlags.BoolVar(&auditCfg.NoIssueDedupe, "no-issue-dedupe", false, "Do not filter findings whose title matches an existing GitHub issue")
 
 	rootCmd.AddCommand(auditCmd)
+
+	// elaborate subcommand: turn a high-level issue (typically the output of
+	// propose or audit) into a deeply detailed engineering plan grounded in
+	// the actual repository state.
+	var elaborateCfg cli.ElaborateConfig
+
+	elaborateCmd := &cobra.Command{
+		Use:   "elaborate <issue-ref>",
+		Short: "Expand an existing GitHub issue into a detailed engineering plan",
+		Long: `Fetch a GitHub issue, clone the repository, and ask Claude to expand
+the issue into a deeply detailed engineering plan with Description,
+Motivation, Affected Areas, Acceptance Criteria, Non-Goals, and References
+sections — grounded in concrete files and symbols from the repo.
+
+Issue reference can be a URL (https://github.com/owner/repo/issues/123)
+or short form (owner/repo#123).`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			elaborateCfg.IssueRef = args[0]
+
+			maxPatterns, err := resolveMaxPatterns(elaborateCfg.MaxPatterns, cmd.Flags().Changed("max-patterns"), nil)
+			if err != nil {
+				return err
+			}
+			elaborateCfg.MaxPatterns = maxPatterns
+
+			switch elaborateCfg.Format {
+			case formatMarkdown, formatJSON:
+			default:
+				return fmt.Errorf("unknown format %q, supported: markdown, json", elaborateCfg.Format)
+			}
+
+			if elaborateCfg.UpdateIssue && elaborateCfg.PostComment {
+				return fmt.Errorf("--update-issue and --post-comment are mutually exclusive")
+			}
+
+			opts := elaborateCfg.ToElaborateOptions(version)
+			return elaborate.Run(os.Stdout, opts, claude.Elaborate)
+		},
+	}
+
+	elaborateFlags := elaborateCmd.Flags()
+	elaborateFlags.StringSliceVar(&elaborateCfg.PatternDirs, "patterns", nil, "Additional pattern directories")
+	elaborateFlags.BoolVar(&elaborateCfg.NoRepoPatterns, "no-repo-patterns", false, "Ignore repo-specific patterns")
+	elaborateFlags.BoolVar(&elaborateCfg.NoLocalPatterns, "no-local-patterns", false, "Ignore local patterns from the tool")
+	elaborateFlags.BoolVar(&elaborateCfg.NoCache, "no-cache", false, "Ignore cache, force a fresh elaboration")
+	elaborateFlags.DurationVar(&elaborateCfg.CacheMaxAge, "cache-max-age", cache.DefaultMaxAge, "Reject cached entries older than this duration (0 disables the TTL)")
+	elaborateFlags.StringVar(&elaborateCfg.Format, "format", "markdown", "Output format (markdown, json)")
+	elaborateFlags.IntVar(&elaborateCfg.MaxPatterns, "max-patterns", patterns.DefaultMaxPatternsInPrompt, "Max review patterns injected into the prompt (<=0 disables truncation, env: "+envMaxPatterns+")")
+	elaborateFlags.BoolVar(&elaborateCfg.UpdateIssue, "update-issue", false, "Replace the issue body with the elaborated body via gh issue edit")
+	elaborateFlags.BoolVar(&elaborateCfg.PostComment, "post-comment", false, "Post the elaborated body as a new issue comment via gh issue comment")
+
+	rootCmd.AddCommand(elaborateCmd)
+
+	// prompt subcommand: deterministically render a copy-paste-ready Claude
+	// Code prompt from an existing GitHub issue (typically an audit finding
+	// or an elaborated proposal). No Claude call — pure prompt assembly.
+	var promptCfg cli.PromptConfig
+
+	promptCmd := &cobra.Command{
+		Use:   "prompt <issue-ref>",
+		Short: "Generate a Claude Code prompt that fixes or implements an issue",
+		Long: `Fetch a GitHub issue and emit a copy-paste-ready prompt for Claude
+Code (or another AI agent) to fix or implement it.
+
+Mode is auto-detected from the issue title: titles starting with an audit
+severity prefix ([BLOCKING], [CRITICAL], [WARNING], [INFO]) get the "fix"
+prompt; everything else gets the "implement" prompt. Override with --mode.
+
+Issue reference can be a URL (https://github.com/owner/repo/issues/123)
+or short form (owner/repo#123).`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			promptCfg.IssueRef = args[0]
+			switch promptCfg.Mode {
+			case "auto", "fix", "implement":
+			default:
+				return fmt.Errorf("unknown mode %q, supported: auto, fix, implement", promptCfg.Mode)
+			}
+			opts := promptCfg.ToPromptOptions(version)
+			return prompt.Run(os.Stdout, opts)
+		},
+	}
+	promptCmd.Flags().StringVar(&promptCfg.Mode, "mode", "auto", "Prompt variant (auto, fix, implement)")
+
+	rootCmd.AddCommand(promptCmd)
 
 	// cache subcommand group: visibility into the on-disk cache. The existing
 	// top-level --cache-stats / --cache-inspect flags remain for compatibility;
