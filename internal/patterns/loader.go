@@ -23,18 +23,42 @@ var severityOrder = map[string]int{
 	"INFO":     3,
 }
 
-// Load reads all .md files recursively from the given directories and parses them as patterns.
-// Directories are processed in order; later directories have higher priority
-// (repo-specific patterns override general patterns with the same name).
-// All patterns are returned regardless of technology tags.
-func Load(dirs ...string) ([]Pattern, error) {
-	return LoadFiltered(nil, dirs...)
+// Load reads all .md files recursively from the given sources and parses them
+// as patterns. Sources are processed in order; later sources have higher
+// priority (repo-specific patterns override general patterns with the same
+// name). All patterns are returned regardless of technology tags. Each source
+// may be a local directory path or a remote URI accepted by IsRemote.
+func Load(sources ...string) ([]Pattern, error) {
+	return LoadFiltered(nil, sources...)
 }
 
-// LoadFiltered reads patterns from the given directories recursively and
+// LoadFiltered reads patterns from the given sources recursively and
 // returns only those that apply to the detected technology tags.
 // If tags is nil or empty, all patterns are returned (backward compatible).
-func LoadFiltered(tags []string, dirs ...string) ([]Pattern, error) {
+// Remote sources are resolved using the package-level remote options
+// configured by SetRemoteOptions; for explicit per-call options use
+// LoadFilteredWithOptions.
+func LoadFiltered(tags []string, sources ...string) ([]Pattern, error) {
+	return LoadFilteredWithOptions(LoadOptions{Remote: remoteOpts}, tags, sources...)
+}
+
+// LoadOptions bundles tunables that influence pattern loading.
+type LoadOptions struct {
+	// Remote controls how remote pattern URIs (see IsRemote) are resolved
+	// into local directories. The zero value uses sensible defaults.
+	Remote RemoteOptions
+}
+
+// LoadFilteredWithOptions is the explicit-options variant of LoadFiltered.
+// It resolves remote sources via opts.Remote (instead of the package-level
+// configuration) so callers — chiefly tests — can isolate themselves from
+// any global state.
+func LoadFilteredWithOptions(opts LoadOptions, tags []string, sources ...string) ([]Pattern, error) {
+	dirs, err := resolveSources(opts.Remote, sources)
+	if err != nil {
+		return nil, err
+	}
+
 	seen := make(map[string]int) // pattern name -> index in result
 	var result []Pattern
 
@@ -66,6 +90,25 @@ func LoadFiltered(tags []string, dirs ...string) ([]Pattern, error) {
 	}
 
 	return result, nil
+}
+
+// resolveSources turns each entry into a local directory path: remote URIs
+// are materialized into the cache via ResolveRemote, local paths pass
+// through unchanged.
+func resolveSources(opts RemoteOptions, sources []string) ([]string, error) {
+	dirs := make([]string, 0, len(sources))
+	for _, src := range sources {
+		if IsRemote(src) {
+			d, err := ResolveRemote(src, opts)
+			if err != nil {
+				return nil, fmt.Errorf("resolving remote pattern source %q: %w", src, err)
+			}
+			dirs = append(dirs, d)
+			continue
+		}
+		dirs = append(dirs, src)
+	}
+	return dirs, nil
 }
 
 // loadDir recursively reads all .md files from a directory and parses them as patterns.

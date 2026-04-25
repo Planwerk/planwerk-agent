@@ -35,6 +35,27 @@ import (
 // maximum number of review patterns injected into the prompt.
 const envMaxPatterns = "PLANWERK_MAX_PATTERNS"
 
+// envRemotePatternsTTL is the environment variable used to override the
+// default refresh TTL for remotely-fetched pattern sources.
+const envRemotePatternsTTL = "PLANWERK_REMOTE_PATTERNS_TTL"
+
+// resolveRemotePatternsTTL returns the effective remote-patterns TTL.
+// Precedence: explicit CLI flag, then PLANWERK_REMOTE_PATTERNS_TTL, then the
+// compiled-in default. A value of 0 or negative disables refresh.
+func resolveRemotePatternsTTL(flagValue time.Duration, flagSet bool) (time.Duration, error) {
+	if flagSet {
+		return flagValue, nil
+	}
+	if raw, ok := os.LookupEnv(envRemotePatternsTTL); ok && raw != "" {
+		v, err := time.ParseDuration(raw)
+		if err != nil {
+			return 0, fmt.Errorf("invalid %s=%q: %w", envRemotePatternsTTL, raw, err)
+		}
+		return v, nil
+	}
+	return patterns.DefaultRemoteTTL, nil
+}
+
 // Output format identifiers accepted by the --format flag.
 const (
 	formatMarkdown = "markdown"
@@ -229,6 +250,7 @@ func main() {
 	var minSeverity string
 	var showVersion, verbose bool
 	var logFormat string
+	var remotePatternsTTL time.Duration
 	var fileCfg cli.FileConfig
 
 	rootCmd := &cobra.Command{
@@ -261,6 +283,12 @@ or short form (owner/repo#123).`,
 				return err
 			}
 			fileCfg = loaded
+
+			ttl, err := resolveRemotePatternsTTL(remotePatternsTTL, cmd.Flags().Changed("remote-patterns-ttl"))
+			if err != nil {
+				return err
+			}
+			patterns.SetRemoteOptions(patterns.RemoteOptions{TTL: ttl})
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -331,9 +359,10 @@ or short form (owner/repo#123).`,
 	persistent := rootCmd.PersistentFlags()
 	persistent.BoolVarP(&verbose, "verbose", "v", false, "Enable debug-level logging (and verbose build info with --version)")
 	persistent.StringVar(&logFormat, "log-format", "text", "Log output format (text, json)")
+	persistent.DurationVar(&remotePatternsTTL, "remote-patterns-ttl", patterns.DefaultRemoteTTL, "Refresh interval for remote pattern sources (env: "+envRemotePatternsTTL+"; <=0 disables refresh once cached)")
 
 	flags := rootCmd.Flags()
-	flags.StringSliceVar(&cfg.PatternDirs, "patterns", nil, "Additional pattern directories")
+	flags.StringSliceVar(&cfg.PatternDirs, "patterns", nil, "Additional pattern sources: local dirs, github:owner/repo[/sub][@ref], or git+https://...[#ref[:sub]]")
 	flags.StringVar(&minSeverity, "min-severity", "", "Minimum severity level (info, warning, critical, blocking)")
 	flags.BoolVar(&cfg.NoRepoPatterns, "no-repo-patterns", false, "Ignore repo-specific patterns")
 	flags.BoolVar(&cfg.NoLocalPatterns, "no-local-patterns", false, "Ignore local patterns from the tool")
@@ -387,7 +416,7 @@ or short form (owner/repo).`,
 	}
 
 	proposeFlags := proposeCmd.Flags()
-	proposeFlags.StringSliceVar(&proposeCfg.PatternDirs, "patterns", nil, "Additional pattern directories")
+	proposeFlags.StringSliceVar(&proposeCfg.PatternDirs, "patterns", nil, "Additional pattern sources: local dirs, github:owner/repo[/sub][@ref], or git+https://...[#ref[:sub]]")
 	proposeFlags.BoolVar(&proposeCfg.NoRepoPatterns, "no-repo-patterns", false, "Ignore repo-specific patterns")
 	proposeFlags.BoolVar(&proposeCfg.NoLocalPatterns, "no-local-patterns", false, "Ignore local patterns from the tool")
 	proposeFlags.BoolVar(&proposeCfg.NoCache, "no-cache", false, "Ignore cache, force a fresh analysis")
@@ -463,7 +492,7 @@ or short form (owner/repo).`,
 	}
 
 	auditFlags := auditCmd.Flags()
-	auditFlags.StringSliceVar(&auditCfg.PatternDirs, "patterns", nil, "Additional pattern directories")
+	auditFlags.StringSliceVar(&auditCfg.PatternDirs, "patterns", nil, "Additional pattern sources: local dirs, github:owner/repo[/sub][@ref], or git+https://...[#ref[:sub]]")
 	auditFlags.StringVar(&auditMinSeverity, "min-severity", "", "Minimum severity level (info, warning, critical, blocking)")
 	auditFlags.BoolVar(&auditCfg.NoRepoPatterns, "no-repo-patterns", false, "Ignore repo-specific patterns")
 	auditFlags.BoolVar(&auditCfg.NoLocalPatterns, "no-local-patterns", false, "Ignore local patterns from the tool")
@@ -519,7 +548,7 @@ or short form (owner/repo#123).`,
 	}
 
 	elaborateFlags := elaborateCmd.Flags()
-	elaborateFlags.StringSliceVar(&elaborateCfg.PatternDirs, "patterns", nil, "Additional pattern directories")
+	elaborateFlags.StringSliceVar(&elaborateCfg.PatternDirs, "patterns", nil, "Additional pattern sources: local dirs, github:owner/repo[/sub][@ref], or git+https://...[#ref[:sub]]")
 	elaborateFlags.BoolVar(&elaborateCfg.NoRepoPatterns, "no-repo-patterns", false, "Ignore repo-specific patterns")
 	elaborateFlags.BoolVar(&elaborateCfg.NoLocalPatterns, "no-local-patterns", false, "Ignore local patterns from the tool")
 	elaborateFlags.BoolVar(&elaborateCfg.NoCache, "no-cache", false, "Ignore cache, force a fresh elaboration")

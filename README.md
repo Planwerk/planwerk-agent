@@ -213,7 +213,7 @@ planwerk-review owner/repo#123 > review.md
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--patterns` | Additional pattern directory | - |
+| `--patterns` | Additional pattern source: local directory, `github:owner/repo[/sub][@ref]`, or `git+https://…[#ref[:sub]]` (see [Remote Pattern Sources](#remote-pattern-sources)) | - |
 | `--min-severity` | Minimum severity level for output (`info`, `warning`, `critical`, `blocking`) | `info` |
 | `--no-repo-patterns` | Ignore repo-specific patterns | `false` |
 | `--no-local-patterns` | Ignore local patterns from the tool | `false` |
@@ -235,6 +235,7 @@ These flags apply to every `planwerk-review` command (`review`, `propose`, `audi
 |------|-------------|---------|
 | `--verbose`, `-v` | Enable debug-level logging (also shows verbose build info with `--version`) | `false` |
 | `--log-format` | Log output format: `text` (human-friendly, default) or `json` (one JSON object per record, CI-friendly) | `text` |
+| `--remote-patterns-ttl` | Refresh interval for remote pattern sources (env: `PLANWERK_REMOTE_PATTERNS_TTL`; `<=0` disables refresh once cached). See [Remote Pattern Sources](#remote-pattern-sources). | `24h` |
 
 Logs are written to stderr; when stderr is not a terminal, Claude-invocation heartbeats are still emitted at INFO level so long-running runs are visible in CI log streams.
 
@@ -267,7 +268,7 @@ planwerk-review propose owner/repo > proposals.md
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--patterns` | Additional pattern directory | - |
+| `--patterns` | Additional pattern source: local directory, `github:owner/repo[/sub][@ref]`, or `git+https://…[#ref[:sub]]` (see [Remote Pattern Sources](#remote-pattern-sources)) | - |
 | `--no-repo-patterns` | Ignore repo-specific patterns | `false` |
 | `--no-local-patterns` | Ignore local patterns from the tool | `false` |
 | `--no-cache` | Ignore cache, force a fresh analysis | `false` |
@@ -312,7 +313,7 @@ planwerk-review audit owner/repo > audit.md
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--patterns` | Additional pattern directory | - |
+| `--patterns` | Additional pattern source: local directory, `github:owner/repo[/sub][@ref]`, or `git+https://…[#ref[:sub]]` (see [Remote Pattern Sources](#remote-pattern-sources)) | - |
 | `--min-severity` | Minimum severity level for output (`info`, `warning`, `critical`, `blocking`) | `info` |
 | `--no-repo-patterns` | Ignore repo-specific patterns | `false` |
 | `--no-local-patterns` | Ignore local patterns from the tool | `false` |
@@ -355,7 +356,7 @@ planwerk-review elaborate --post-comment owner/repo#123
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--patterns` | Additional pattern directory | - |
+| `--patterns` | Additional pattern source: local directory, `github:owner/repo[/sub][@ref]`, or `git+https://…[#ref[:sub]]` (see [Remote Pattern Sources](#remote-pattern-sources)) | - |
 | `--no-repo-patterns` | Ignore repo-specific patterns | `false` |
 | `--no-local-patterns` | Ignore local patterns from the tool | `false` |
 | `--no-cache` | Ignore cache, force a fresh elaboration | `false` |
@@ -717,6 +718,49 @@ Review Patterns are structured rules that systematically improve the review. The
    - Created by planwerk-review and recommended for adoption
    - Contain universally applicable review knowledge (e.g., "Hardcoded values in matrix workflows")
    - Grow over time through insights from conducted reviews
+
+3. **Remote Patterns** (passed via `--patterns <URI>` or the config file)
+   - Lets a team maintain a single, shared pattern catalog in a separate repository instead of vendoring it into every consuming repo
+   - Cloned into a per-user cache on first use and refreshed by TTL
+   - See [Remote Pattern Sources](#remote-pattern-sources) below for URI forms, caching, and authentication
+
+#### Remote Pattern Sources
+
+Any value passed to `--patterns` (or the `patterns:` array in `.planwerk/config.yaml`) may be either a local directory or a remote URI. Two URI forms are accepted:
+
+```text
+github:owner/repo[/subpath][@ref]              # GitHub shorthand
+git+https://host.example/group/repo.git[#ref[:subpath]]   # any git host
+```
+
+Examples:
+
+```bash
+# Default branch of a GitHub repo
+planwerk-review --patterns github:planwerk/patterns owner/repo#123
+
+# Pinned tag, sub-directory inside the repo
+planwerk-review --patterns github:planwerk/patterns/security@v1.2.3 owner/repo#123
+
+# Generic git URL with ref + subpath (separator: ":" inside the fragment)
+planwerk-review --patterns git+https://gitlab.example.com/team/p.git#main:patterns/web owner/repo#123
+
+# Mix local + remote, in priority order
+planwerk-review --patterns ./local-overrides --patterns github:planwerk/patterns owner/repo#123
+```
+
+Anything that doesn't match `github:` or `git+http(s)://` is treated as a local path, so existing usage is unchanged.
+
+**Caching.** Remote sources are cloned into `<UserCacheDir>/planwerk-review/patterns/<hash>/repo/` (typically `~/.cache/planwerk-review/patterns/…` on Linux, `~/Library/Caches/planwerk-review/patterns/…` on macOS). A neighbouring `meta.json` records when the clone was last refreshed. The cache is keyed by the URI (excluding the subpath), so two URIs that differ only in their subpath share the same checkout.
+
+**Refresh TTL.** Cached clones are refreshed when older than `--remote-patterns-ttl` (default `24h`, env: `PLANWERK_REMOTE_PATTERNS_TTL`). Setting `--remote-patterns-ttl 0` disables refresh entirely — once cached, the clone is reused indefinitely (useful for offline / air-gapped environments). On refresh the existing checkout is removed and re-cloned; this keeps the cache logic simple and is cheap because pattern repos are small.
+
+**Authentication.**
+
+| Form | How auth works |
+|------|----------------|
+| `github:owner/repo` | Cloned via `gh repo clone`, which uses your `gh auth login` credentials or the `GH_TOKEN` env var. Private GitHub repos work transparently if you can already access them with `gh`. |
+| `git+https://…` | Cloned via plain `git clone`. Standard git credential helpers (`~/.git-credentials`, `git config credential.helper`) apply. For env-var-based auth, embed the token directly in the URI using shell-style `${VAR}` expansion: `git+https://oauth2:${MY_TOKEN}@gitlab.example.com/team/p.git`. The expansion runs before `git clone` is invoked. |
 
 #### Prompt Budget
 

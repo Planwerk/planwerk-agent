@@ -320,3 +320,52 @@ func TestTruncatePatterns_BelowLimit(t *testing.T) {
 		t.Errorf("expected 3 patterns (unchanged), got %d", len(result))
 	}
 }
+
+func TestLoadFiltered_MixesLocalAndRemote(t *testing.T) {
+	// Local source: a real directory on disk.
+	local := t.TempDir()
+	writePattern(t, local, "go-errors.md", goPattern)
+
+	// Remote source: simulated via the fetchRemote stub. The "clone" just
+	// materializes a directory containing one pattern file.
+	remoteCache := t.TempDir()
+	restore := stubFetch(func(p parsedURI, dest string) error {
+		if err := os.MkdirAll(dest, 0o700); err != nil {
+			return err
+		}
+		return os.WriteFile(filepath.Join(dest, "yagni.md"), []byte(yagniPattern), 0o600)
+	})
+	defer restore()
+
+	opts := LoadOptions{Remote: RemoteOptions{CacheDir: remoteCache}}
+	pats, err := LoadFilteredWithOptions(opts, nil, local, "github:org/patterns")
+	if err != nil {
+		t.Fatalf("LoadFilteredWithOptions: %v", err)
+	}
+	names := map[string]bool{}
+	for _, p := range pats {
+		names[p.Name] = true
+	}
+	if !names["Go Errors"] {
+		t.Error("missing Go Errors (from local source)")
+	}
+	if !names["YAGNI"] {
+		t.Error("missing YAGNI (from remote source)")
+	}
+}
+
+func TestLoadFiltered_RemoteFailureSurfacesError(t *testing.T) {
+	restore := stubFetch(func(p parsedURI, dest string) error {
+		return os.ErrPermission
+	})
+	defer restore()
+
+	opts := LoadOptions{Remote: RemoteOptions{CacheDir: t.TempDir()}}
+	_, err := LoadFilteredWithOptions(opts, nil, "github:broken/repo")
+	if err == nil {
+		t.Fatal("expected error when remote fetch fails")
+	}
+	if !strings.Contains(err.Error(), "github:broken/repo") {
+		t.Errorf("error should name the failing source: %v", err)
+	}
+}
