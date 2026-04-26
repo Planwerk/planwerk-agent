@@ -622,8 +622,11 @@ or short form (owner/repo#123).`,
 			if fixCfg.MaxIterations <= 0 {
 				return fmt.Errorf("--max-iterations must be > 0, got %d", fixCfg.MaxIterations)
 			}
+			if fixCfg.DryRun && fixCfg.PrintPrompt {
+				return fmt.Errorf("--dry-run and --print-prompt are mutually exclusive")
+			}
 			opts := fixCfg.ToFixOptions(version)
-			return fix.Run(cmd.OutOrStdout(), opts, claude.Fix)
+			return fix.Run(cmd.OutOrStdout(), opts, claude.Fix, claude.BuildFixPrompt)
 		},
 	}
 
@@ -632,6 +635,7 @@ or short form (owner/repo#123).`,
 	fixFlags.IntVar(&fixCfg.MaxIterations, "max-iterations", fix.DefaultMaxIterations, "Maximum number of fix attempts before giving up")
 	fixFlags.BoolVar(&fixCfg.Interactive, "interactive", false, "Ask before starting each new fix iteration (after the first)")
 	fixFlags.BoolVar(&fixCfg.DryRun, "dry-run", false, "Report failing checks but do not invoke Claude or commit")
+	fixFlags.BoolVar(&fixCfg.PrintPrompt, "print-prompt", false, "Render the fix prompt for the current failing checks to stdout and exit; do not invoke Claude or commit")
 
 	rootCmd.AddCommand(fixCmd)
 

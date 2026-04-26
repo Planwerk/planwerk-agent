@@ -32,38 +32,43 @@ type Options struct {
 	MaxIterations int           // safety cap on fix attempts; defaults to DefaultMaxIterations
 	Interactive   bool          // ask before each new fix iteration
 	DryRun        bool          // skip the Claude invocation; report status only
+	PrintPrompt   bool          // render the fix prompt to stdout and exit; never invoke Claude
 	Version       string
 }
 
 // Runner glues together the GitHub status query, the Claude fixer, and the
-// interactive prompt. Tests inject fakes via the four exported fields.
+// interactive prompt. Tests inject fakes via the exported fields.
 type Runner struct {
 	Claude   ClaudeFixer
 	GitHub   GitHubClient
 	Prompter Prompter
+	// BuildPrompt renders the fix prompt without invoking Claude. Required
+	// when Options.PrintPrompt is set; nil otherwise is fine.
+	BuildPrompt PromptBuildFn
 	// Sleep is overridable so tests don't actually sleep between polls.
 	Sleep func(time.Duration)
 	// Now is overridable so iteration banners are deterministic in tests.
 	Now func() time.Time
 }
 
-// NewRunner builds a Runner with the production GitHub backend and the given
-// Claude fix function wired in. The CLI is expected to call this with
-// claude.Fix as the function argument so the import direction stays
-// claude -> fix.
-func NewRunner(fn FixFn) *Runner {
+// NewRunner builds a Runner with the production GitHub backend, the given
+// Claude fix function, and the prompt builder wired in. The CLI is expected
+// to call this with claude.Fix and claude.BuildFixPrompt so the import
+// direction stays claude -> fix.
+func NewRunner(fn FixFn, build PromptBuildFn) *Runner {
 	return &Runner{
-		Claude:   fixFnAdapter{fn: fn},
-		GitHub:   defaultGitHubClient{},
-		Prompter: stdinPrompter{In: os.Stdin, Out: os.Stderr},
-		Sleep:    time.Sleep,
-		Now:      time.Now,
+		Claude:      fixFnAdapter{fn: fn},
+		GitHub:      defaultGitHubClient{},
+		Prompter:    stdinPrompter{In: os.Stdin, Out: os.Stderr},
+		BuildPrompt: build,
+		Sleep:       time.Sleep,
+		Now:         time.Now,
 	}
 }
 
-// Run is a package-level convenience that delegates to NewRunner(fn).Run.
-func Run(w io.Writer, opts Options, fn FixFn) error {
-	return NewRunner(fn).Run(w, opts)
+// Run is a package-level convenience that delegates to NewRunner(fn, build).Run.
+func Run(w io.Writer, opts Options, fn FixFn, build PromptBuildFn) error {
+	return NewRunner(fn, build).Run(w, opts)
 }
 
 // ErrMaxIterations is returned when the loop exhausts its iteration budget
@@ -86,6 +91,10 @@ var ErrUserStopped = errors.New("stopped by user")
 func (r *Runner) Run(w io.Writer, opts Options) error {
 	r.applyDefaults(&opts)
 
+	if opts.PrintPrompt && r.BuildPrompt == nil {
+		return errors.New("--print-prompt requires a prompt builder; wire claude.BuildFixPrompt via NewRunner")
+	}
+
 	owner, repo, number, err := github.ParseRef(opts.PRRef)
 	if err != nil {
 		return fmt.Errorf("parsing PR ref: %w", err)
@@ -97,7 +106,16 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		"max_iterations", opts.MaxIterations,
 		"interactive", opts.Interactive,
 		"dry_run", opts.DryRun,
+		"print_prompt", opts.PrintPrompt,
 	)
+
+	// In --print-prompt mode the only stdout payload is the prompt itself;
+	// status chatter (iteration banner, polling progress, failure banner) is
+	// silenced so the output is safe to pipe into another tool.
+	statusW := w
+	if opts.PrintPrompt {
+		statusW = io.Discard
+	}
 
 	// Initial PR fetch — we need head branch + title for context, plus the
 	// initial head SHA to query checks against.
@@ -110,10 +128,10 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	currentSHA := pr.HeadSHA
 
 	for iteration := 1; iteration <= opts.MaxIterations; iteration++ {
-		_, _ = fmt.Fprintf(w, "\n=== Iteration %d/%d for %s#%d (head %s) ===\n",
+		_, _ = fmt.Fprintf(statusW, "\n=== Iteration %d/%d for %s#%d (head %s) ===\n",
 			iteration, opts.MaxIterations, fullName, number, shortSHA(currentSHA))
 
-		summary, err := r.waitForChecks(w, owner, repo, currentSHA, opts.PollInterval)
+		summary, err := r.waitForChecks(statusW, owner, repo, currentSHA, opts.PollInterval)
 		if err != nil {
 			return err
 		}
@@ -124,7 +142,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 			return nil
 		}
 
-		printFailureBanner(w, summary)
+		printFailureBanner(statusW, summary)
 
 		if opts.Interactive && iteration > 1 {
 			ok, err := r.Prompter.Confirm(fmt.Sprintf(
@@ -143,6 +161,26 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		}
 
 		failed := r.collectFailedChecks(owner, repo, summary.Failed)
+
+		if opts.PrintPrompt {
+			prompt := r.BuildPrompt(Context{
+				RepoFullName:  fullName,
+				PRNumber:      number,
+				PRTitle:       pr.Title,
+				HeadBranch:    pr.HeadBranch,
+				HeadSHA:       currentSHA,
+				Iteration:     iteration,
+				MaxIterations: opts.MaxIterations,
+				FailedChecks:  failed,
+			})
+			if _, err := io.WriteString(w, prompt); err != nil {
+				return fmt.Errorf("writing prompt: %w", err)
+			}
+			if !strings.HasSuffix(prompt, "\n") {
+				_, _ = fmt.Fprintln(w)
+			}
+			return nil
+		}
 
 		// Fresh checkout per iteration ensures the Claude session sees the
 		// latest head — which now includes any follow-up commits the previous

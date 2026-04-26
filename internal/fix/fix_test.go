@@ -243,6 +243,83 @@ func TestRun_InteractiveStopsOnUserNo(t *testing.T) {
 	}
 }
 
+func TestRun_PrintPromptWritesPromptAndSkipsClaude(t *testing.T) {
+	gh := &fakeGitHub{
+		prTitle:        "demo",
+		prBranch:       "feat/x",
+		prHeadSHA:      "abc1234",
+		checkResponses: [][]github.CheckRun{{failing(1, "test"), passing("lint")}},
+		headSequence:   []string{"abc1234"},
+		logs:           "FAIL: TestX\n",
+	}
+	cl := &fakeClaude{}
+	r := newRunner(gh, cl, &fakePrompter{})
+	r.BuildPrompt = func(ctx Context) string {
+		return fmt.Sprintf("PROMPT pr=%s#%d head=%s iter=%d failed=%d",
+			ctx.RepoFullName, ctx.PRNumber, ctx.HeadSHA, ctx.Iteration, len(ctx.FailedChecks))
+	}
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{PRRef: "owner/repo#7", PrintPrompt: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if cl.called.Load() != 0 {
+		t.Errorf("Claude.Fix called %d times in print-prompt mode, want 0", cl.called.Load())
+	}
+	if gh.cloneCalls.Load() != 1 {
+		t.Errorf("FetchAndCheckout called %d times, want 1 (no fresh checkout for Claude)", gh.cloneCalls.Load())
+	}
+	out := buf.String()
+	if !strings.Contains(out, "PROMPT pr=owner/repo#7 head=abc1234 iter=1 failed=1") {
+		t.Errorf("expected rendered prompt on stdout, got: %q", out)
+	}
+	if strings.Contains(out, "Iteration") || strings.Contains(out, "failed check(s)") {
+		t.Errorf("status banners leaked to stdout in print-prompt mode: %q", out)
+	}
+	if !strings.HasSuffix(out, "\n") {
+		t.Errorf("prompt output should end with a newline, got: %q", out)
+	}
+}
+
+func TestRun_PrintPromptWithoutBuilderErrors(t *testing.T) {
+	gh := &fakeGitHub{
+		prTitle:        "demo",
+		prBranch:       "b",
+		prHeadSHA:      "sha0",
+		checkResponses: [][]github.CheckRun{{failing(1, "test")}},
+		headSequence:   []string{"sha0"},
+	}
+	cl := &fakeClaude{}
+	r := newRunner(gh, cl, &fakePrompter{})
+	// BuildPrompt left nil intentionally.
+
+	err := r.Run(io.Discard, Options{PRRef: "o/r#1", PrintPrompt: true})
+	if err == nil || !strings.Contains(err.Error(), "prompt builder") {
+		t.Fatalf("expected prompt-builder error, got %v", err)
+	}
+}
+
+func TestRun_PrintPromptAllGreenStillExits(t *testing.T) {
+	gh := &fakeGitHub{
+		prTitle:        "demo",
+		prBranch:       "b",
+		prHeadSHA:      "sha0",
+		checkResponses: [][]github.CheckRun{{passing("test")}},
+		headSequence:   []string{"sha0"},
+	}
+	cl := &fakeClaude{}
+	r := newRunner(gh, cl, &fakePrompter{})
+	r.BuildPrompt = func(Context) string { return "should not run" }
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{PRRef: "o/r#1", PrintPrompt: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if strings.Contains(buf.String(), "should not run") {
+		t.Errorf("prompt rendered despite all checks passing: %q", buf.String())
+	}
+}
+
 func TestRun_DryRunSkipsClaude(t *testing.T) {
 	gh := &fakeGitHub{
 		prTitle:        "demo",

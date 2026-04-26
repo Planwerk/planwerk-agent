@@ -34,6 +34,11 @@ type Context struct {
 // (already trimmed) — the orchestrator logs/prints this verbatim.
 type FixFn func(dir string, ctx Context) (string, error)
 
+// PromptBuildFn renders the fix prompt for a single iteration without invoking
+// Claude. Wired in by the CLI so the fix subcommand can support --print-prompt
+// mode while keeping the import direction claude -> fix.
+type PromptBuildFn func(ctx Context) string
+
 // ClaudeFixer is the injected dependency the orchestrator uses to run a
 // single fix iteration. The production implementation is claude.Fix; tests
 // substitute a fake that returns scripted summaries without invoking the

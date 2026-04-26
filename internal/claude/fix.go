@@ -16,17 +16,19 @@ import (
 // runClaude already creates a fresh `claude -p` invocation per call, so each
 // iteration of the fix loop runs in a brand-new Claude session by construction.
 func Fix(dir string, ctx fix.Context) (string, error) {
-	out, err := runClaude(dir, buildFixPrompt(ctx), "fix")
+	out, err := runClaude(dir, BuildFixPrompt(ctx), "fix")
 	if err != nil {
 		return "", fmt.Errorf("running fix: %w", err)
 	}
 	return strings.TrimSpace(out), nil
 }
 
-// buildFixPrompt assembles the prompt for a single fix iteration. It includes
+// BuildFixPrompt assembles the prompt for a single fix iteration. It includes
 // the failing check names, summaries, and truncated logs so Claude can
 // diagnose and patch the root cause without needing to re-fetch them.
-func buildFixPrompt(ctx fix.Context) string {
+// Exported so the fix subcommand can render the prompt without invoking
+// Claude (--print-prompt mode).
+func BuildFixPrompt(ctx fix.Context) string {
 	var sb strings.Builder
 
 	sb.WriteString(`You are a Staff Engineer fixing failing CI checks on a GitHub pull request.

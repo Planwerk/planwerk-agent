@@ -144,6 +144,7 @@ type FixConfig struct {
 	MaxIterations int
 	Interactive   bool
 	DryRun        bool
+	PrintPrompt   bool
 }
 
 func (c FixConfig) ToFixOptions(version string) fix.Options {
@@ -153,6 +154,7 @@ func (c FixConfig) ToFixOptions(version string) fix.Options {
 		MaxIterations: c.MaxIterations,
 		Interactive:   c.Interactive,
 		DryRun:        c.DryRun,
+		PrintPrompt:   c.PrintPrompt,
 		Version:       version,
 	}
 }
