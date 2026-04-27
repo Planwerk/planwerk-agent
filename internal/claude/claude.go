@@ -63,8 +63,9 @@ func runClaude(dir, prompt, label string) (string, error) {
 // ReviewContext holds all context needed to build the review prompt.
 type ReviewContext struct {
 	Patterns    []patterns.Pattern
-	MaxPatterns int                       // max patterns to inject; <= 0 disables truncation
-	MaxFindings int                       // cap on findings Claude returns; <= 0 disables cap
+	MaxPatterns int    // max patterns to inject; <= 0 disables truncation
+	MaxFindings int    // cap on findings Claude returns; <= 0 disables cap
+	BaseBranch  string // PR base branch; empty falls back to DefaultBaseBranch
 	PRTitle     string
 	PRBody      string
 	Checklist   string                    // external checklist content (empty = use built-in)
@@ -103,6 +104,24 @@ func runReview(dir string, rctx ReviewContext) (string, error) {
 // buildReviewPrompt constructs a prompt that includes patterns and triggers /review.
 func buildReviewPrompt(ctx ReviewContext) string {
 	var sb strings.Builder
+
+	baseBranch := ctx.BaseBranch
+	if baseBranch == "" {
+		baseBranch = DefaultBaseBranch
+	}
+
+	// Review scope: pin /review to the cumulative PR diff so multi-commit PRs
+	// are reviewed as a whole instead of just the latest (or first) commit.
+	fmt.Fprintf(&sb, `## Review Scope (MANDATORY)
+
+Review the FULL pull request diff — every commit between origin/%s and HEAD must be considered together as one cumulative change set.
+
+- Run `+"`"+`git diff origin/%s...HEAD`+"`"+` to see the cumulative diff and `+"`"+`git log origin/%s..HEAD --oneline`+"`"+` to enumerate every commit on the branch.
+- Every added/modified line in any commit on this branch is in scope, regardless of which commit introduced it.
+- Do NOT restrict the review to HEAD alone, to the most recent commit, to the first commit, or to the working-tree diff. All commits on the branch are part of this PR.
+- When a later commit fixes or supersedes something an earlier commit introduced, judge the final state — do not flag the intermediate state.
+
+`, baseBranch, baseBranch, baseBranch)
 
 	// Staff Engineer persona
 	sb.WriteString(`You are a Staff Engineer performing a thorough code review. Apply these thinking patterns:

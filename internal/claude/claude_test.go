@@ -47,6 +47,30 @@ func TestStripMarkdownFences(t *testing.T) {
 	}
 }
 
+func TestBuildReviewPrompt_ScopeCoversAllCommits(t *testing.T) {
+	prompt := buildReviewPrompt(ReviewContext{BaseBranch: "develop"})
+	checks := []string{
+		"Review Scope (MANDATORY)",
+		"every commit between origin/develop and HEAD",
+		"git diff origin/develop...HEAD",
+		"git log origin/develop..HEAD --oneline",
+		"Do NOT restrict the review to HEAD alone",
+	}
+	for _, check := range checks {
+		if !strings.Contains(prompt, check) {
+			t.Errorf("review prompt should pin /review to the full multi-commit PR diff; missing %q", check)
+		}
+	}
+}
+
+func TestBuildReviewPrompt_ScopeFallsBackToDefaultBranch(t *testing.T) {
+	prompt := buildReviewPrompt(ReviewContext{})
+	wanted := "every commit between origin/" + DefaultBaseBranch + " and HEAD"
+	if !strings.Contains(prompt, wanted) {
+		t.Errorf("review prompt should fall back to the default base branch when none is set; missing %q", wanted)
+	}
+}
+
 func TestBuildReviewPrompt_PersonaIncludesTestPattern(t *testing.T) {
 	prompt := buildReviewPrompt(ReviewContext{})
 	if !strings.Contains(prompt, "Where are the tests?") {

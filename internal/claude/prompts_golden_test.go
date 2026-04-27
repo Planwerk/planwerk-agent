@@ -68,6 +68,7 @@ func goldenReviewContext() ReviewContext {
 	return ReviewContext{
 		Patterns:    goldenPatterns(),
 		MaxPatterns: 0,
+		BaseBranch:  "develop",
 		PRTitle:     "feat: add snapshot tests for prompt builders",
 		PRBody:      "Adds golden-file tests for every prompt builder.\n\nFixes #3",
 		Checklist:   "## Review Checklist\n- Verify prompt coverage\n- Verify golden files exist",

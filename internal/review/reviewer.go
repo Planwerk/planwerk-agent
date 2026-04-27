@@ -190,6 +190,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		Patterns:    pats,
 		MaxPatterns: opts.MaxPatterns,
 		MaxFindings: opts.MaxFindings,
+		BaseBranch:  pr.BaseBranch,
 		PRTitle:     redactedTitle.Text,
 		PRBody:      redactedBody.Text,
 		Checklist:   checklistContent,
