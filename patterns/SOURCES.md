@@ -219,6 +219,91 @@ Lower-tier sources retained where no S/A-tier replacement covers the specific an
 |------|--------|-----|-------------|
 | A | Learning Helm | https://www.oreilly.com/library/view/learning-helm/9781492083641/ | Butcher/Farina/Dolitsky (Helm maintainers), O'Reilly 2021, ISBN 9781492083658 |
 
+### Container & Docker
+| Tier | Source | URL | Description |
+|------|--------|-----|-------------|
+| S | Dockerfile Reference | https://docs.docker.com/reference/dockerfile/ | Normative Dockerfile syntax and instruction semantics |
+| S | Docker Build — Best Practices | https://docs.docker.com/build/building/best-practices/ | Multi-stage builds, layer cache, `.dockerignore`, base image selection, digest pinning |
+| S | Docker Build Concepts | https://docs.docker.com/build/concepts/ | BuildKit, build context, secret/SSH mounts, frontend |
+| S | Docker Engine Security | https://docs.docker.com/engine/security/ | Daemon attack surface, capabilities, AppArmor/SELinux, seccomp, rootless mode |
+| S | Trusted Content (Docker Hub) | https://docs.docker.com/docker-hub/image-library/trusted-content/ | Docker Official Images, Verified Publisher, Sponsored OSS programs |
+| S | OCI Image Format Specification | https://github.com/opencontainers/image-spec | Vendor-neutral image format (manifest, config, layer media types) |
+| S | OCI Runtime Specification | https://github.com/opencontainers/runtime-spec | Container runtime contract (`config.json`, lifecycle hooks) |
+| S | OCI Distribution Specification | https://github.com/opencontainers/distribution-spec | Registry HTTP API for pulling, pushing, and discovering content |
+| S | OCI Image Layout Specification | https://github.com/opencontainers/image-spec/blob/main/image-layout.md | Filesystem layout for OCI image distribution |
+| S | CIS Docker Benchmark | https://www.cisecurity.org/benchmark/docker | CIS hardening controls for image, daemon, host, runtime |
+| A | docker/docker-bench-security | https://github.com/docker/docker-bench-security | Automated CIS-based audit script for production Docker |
+
+### Cloud-Native Foundations
+| Tier | Source | URL | Description |
+|------|--------|-----|-------------|
+| S | The Twelve-Factor App | https://12factor.net/ | Methodology for SaaS apps: declarative setup, config via env, statelessness, dev/prod parity — refreshed under open-source governance |
+| S | Twelve-Factor — Open-Source Announcement | https://12factor.net/blog/open-source-announcement | Refresh under community governance; signals living-document status |
+| S | CNCF Cloud Native Definition v1.1 | https://github.com/cncf/toc/blob/main/DEFINITION.md | Foundation definition: containers, service meshes, microservices, immutable infrastructure, declarative APIs |
+| A | CNCF Landscape | https://landscape.cncf.io/ | Curated map of cloud-native projects (graduated/incubating/sandbox) |
+| A | OpenGitOps Principles | https://opengitops.dev/ | CNCF working-group principles: declarative, versioned, pulled, continuously reconciled |
+
+### APIs (REST/HTTP)
+| Tier | Source | URL | Description |
+|------|--------|-----|-------------|
+| S | OpenAPI Specification 3.2.0 | https://spec.openapis.org/oas/v3.2.0.html | Latest OAS (Sep 2025): tag hierarchies, streaming media, `query` HTTP method, OAuth Device Flow |
+| S | OpenAPI Specification 3.1.0 | https://spec.openapis.org/oas/v3.1.0.html | Widely deployed prior version with full JSON Schema 2020-12 alignment |
+| S | OpenAPI Initiative | https://www.openapis.org/ | Project home, governance, versioning |
+| S | RFC 9110 — HTTP Semantics | https://www.rfc-editor.org/rfc/rfc9110.html | Canonical HTTP semantics across all versions; obsoletes RFC 7230–7235 |
+| S | RFC 9111 — HTTP Caching | https://www.rfc-editor.org/rfc/rfc9111.html | `Cache-Control`, `Expires`, conditional requests; obsoletes RFC 7234 |
+| S | RFC 9112 — HTTP/1.1 | https://www.rfc-editor.org/rfc/rfc9112.html | Wire format for HTTP/1.1 |
+| S | RFC 9113 — HTTP/2 | https://www.rfc-editor.org/rfc/rfc9113.html | Wire format for HTTP/2 |
+| S | RFC 9114 — HTTP/3 | https://www.rfc-editor.org/rfc/rfc9114.html | HTTP-over-QUIC |
+| S | RFC 9457 — Problem Details for HTTP APIs | https://www.rfc-editor.org/rfc/rfc9457.html | `application/problem+json` standard error format (obsoletes RFC 7807) |
+| S | RFC 6749 — OAuth 2.0 Authorization Framework | https://www.rfc-editor.org/rfc/rfc6749.html | Core OAuth 2.0 flows |
+| S | RFC 9068 — JWT Profile for OAuth 2.0 Access Tokens | https://www.rfc-editor.org/rfc/rfc9068.html | JWT-formatted access tokens with required claims |
+| S | RFC 8259 — JSON | https://www.rfc-editor.org/rfc/rfc8259.html | Canonical JSON format |
+| S | HTTPWG Specifications Index | https://httpwg.org/specs/ | IETF HTTP Working Group specs hub |
+| A | Zalando RESTful API Guidelines | https://opensource.zalando.com/restful-api-guidelines/ | Production-grade REST style guide; recommends OAS 3.1+ |
+| A | Microsoft REST API Guidelines | https://github.com/microsoft/api-guidelines | Microsoft's public REST/Azure API conventions |
+| A | Google API Design Guide | https://cloud.google.com/apis/design | Resource-oriented design, AIPs precursor |
+| A | Google AIP — API Improvement Proposals | https://google.aip.dev/ | Living catalog of Google API design conventions |
+
+### Observability
+| Tier | Source | URL | Description |
+|------|--------|-----|-------------|
+| S | OpenTelemetry Documentation | https://opentelemetry.io/docs/ | Concepts, instrumentation, language SDKs |
+| S | OpenTelemetry Specification | https://github.com/open-telemetry/opentelemetry-specification | Canonical spec: traces, metrics, logs, baggage, propagation |
+| S | OpenTelemetry Semantic Conventions | https://opentelemetry.io/docs/specs/semconv/ | Standard attribute names for HTTP, DB, RPC, messaging, GenAI, system |
+| S | OTLP — OpenTelemetry Protocol | https://github.com/open-telemetry/opentelemetry-proto | Wire-protocol definitions for OTel data |
+| S | Prometheus Documentation | https://prometheus.io/docs/ | Metrics exposition, PromQL, instrumentation |
+| S | Prometheus Naming Best Practices | https://prometheus.io/docs/practices/naming/ | Metric and label naming conventions |
+| S | Prometheus Instrumentation Best Practices | https://prometheus.io/docs/practices/instrumentation/ | Counter/gauge/histogram selection, label cardinality |
+| S | Google SRE Book — Monitoring Distributed Systems | https://sre.google/sre-book/monitoring-distributed-systems/ | Four golden signals: latency, traffic, errors, saturation |
+| A | RED Method (Tom Wilkie) | https://www.weave.works/blog/the-red-method-key-metrics-for-microservices-architecture/ | Rate, Errors, Duration — service-level signal model |
+| A | USE Method (Brendan Gregg) | https://www.brendangregg.com/usemethod.html | Utilization, Saturation, Errors — resource-level signal model |
+| A | Grafana Loki Documentation | https://grafana.com/docs/loki/latest/ | Log aggregation, labels-first model paired with Prometheus |
+
+## Security
+
+Cross-cutting application-security sources. Language- and platform-specific entries (Go, Kubernetes, Helm) live in their respective sections.
+
+| Tier | Source | URL | Description |
+|------|--------|-----|-------------|
+| S | OWASP Top 10:2025 | https://owasp.org/Top10/2025/ | Canonical web-app risk list; A01 Broken Access Control remains #1, new A10 Mishandling of Exceptional Conditions |
+| S | OWASP Top 10 — Cheat Sheet Index | https://cheatsheetseries.owasp.org/IndexTopTen.html | Mapping of cheat sheets to each Top 10 category |
+| S | OWASP Cheat Sheet Series | https://cheatsheetseries.owasp.org/ | Per-topic application-security cheat sheets |
+| S | OWASP API Security Top 10 (2023) | https://owasp.org/API-Security/editions/2023/en/0x00-header/ | Top 10 risks for REST/GraphQL APIs |
+| S | OWASP ASVS | https://owasp.org/www-project-application-security-verification-standard/ | Application Security Verification Standard (L1/L2/L3 controls) |
+| S | OWASP SAMM | https://owaspsamm.org/ | Software Assurance Maturity Model |
+| S | NIST SSDF v1.1 (SP 800-218) | https://csrc.nist.gov/pubs/sp/800/218/final | Secure Software Development Framework — Prepare/Protect/Produce/Respond |
+| S | NIST SSDF Project Home | https://csrc.nist.gov/projects/ssdf | SSDF project hub: all editions and references |
+| S | NIST SP 800-218 Rev. 1 (Draft, Dec 2025) | https://csrc.nist.gov/pubs/sp/800/218/r1/ipd | Draft revision aligning with executive orders, agile/DevOps |
+| S | NIST SP 800-218A — SSDF for GenAI | https://csrc.nist.gov/pubs/sp/800/218/a/final | Secure-dev practices for generative AI / dual-use foundation models |
+| S | SLSA — Supply-chain Levels for Software Artifacts | https://slsa.dev/ | Levels 1–4 framework for supply-chain integrity |
+| S | SLSA Specification v1.2 | https://slsa.dev/spec/v1.2/about | Latest spec — Build Track L1–L3 plus emerging tracks |
+| S | CWE — Common Weakness Enumeration | https://cwe.mitre.org/ | Canonical weakness taxonomy (cross-references CVEs) |
+| S | CWE Top 25 Most Dangerous Software Weaknesses | https://cwe.mitre.org/top25/ | MITRE-maintained ranked list, updated annually |
+| S | CISA Secure by Design | https://www.cisa.gov/securebydesign | CISA secure-by-default principles for software producers |
+| A | OpenSSF Scorecard | https://scorecard.dev/ | Automated supply-chain security scoring for OSS repos |
+| A | OpenSSF Best Practices Badge | https://www.bestpractices.dev/ | Self-assessment criteria for FOSS projects |
+| A | OpenSSF Secure Software Development Fundamentals | https://openssf.org/training/courses/ | Free course (Linux Foundation Training) |
+
 ## Documentation
 
 | Tier | Source | URL | Description |
@@ -232,6 +317,16 @@ Lower-tier sources retained where no S/A-tier replacement covers the specific an
 | S | PEP 287 — reStructuredText Docstring Format | https://peps.python.org/pep-0287/ | reST as the default Python docstring markup |
 | A | ISO/IEC/IEEE 26515:2018 | https://www.iso.org/standard/72088.html | Developing user documentation in agile environments |
 | A | Docs for Developers | https://www.apress.com/gp/book/9781484272169 | Bhatti et al., Apress 2021 — practical doc engineering |
+
+### Markdown
+| Tier | Source | URL | Description |
+|------|--------|-----|-------------|
+| S | CommonMark Spec — current | https://spec.commonmark.org/current/ | Always-points-to-latest CommonMark spec |
+| S | CommonMark Spec 0.31.2 | https://spec.commonmark.org/0.31.2/ | Pinned current version (Jan 2024) |
+| S | CommonMark Project Home | https://commonmark.org/ | Canonical Markdown spec project, dingus, implementations |
+| S | GitHub Flavored Markdown Spec | https://github.github.com/gfm/ | Strict superset of CommonMark used on github.com |
+| A | markdownlint Rules | https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md | De-facto Markdown linter rule catalog |
+| A | Vale | https://vale.sh/docs/ | Prose linter often paired with Markdown for doc reviews |
 
 
 
