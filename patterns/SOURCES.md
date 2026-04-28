@@ -90,6 +90,8 @@ Central catalog of all best-practice guides referenced by review patterns.
 | S | NIST SP 800-190 | https://csrc.nist.gov/publications/detail/sp/800-190/final | NIST Application Container Security Guide |
 | S | NSA/CISA Kubernetes Hardening Guide v1.2 | https://www.cisa.gov/news-events/alerts/2022/03/15/updated-kubernetes-hardening-guide | U.S. government Kubernetes hardening guide |
 | S | NSA/CISA Hardening Guide PDF | https://media.defense.gov/2022/Aug/29/2003066362/-1/-1/0/CTR_KUBERNETES_HARDENING_GUIDANCE_1.2_20220829.PDF | Direct PDF of v1.2 |
+| S | BSI IT-Grundschutz APP.4.4 Kubernetes (Edition 2023) | https://www.bsi.bund.de/SharedDocs/Downloads/DE/BSI/Grundschutz/IT-GS-Kompendium_Einzel_PDFs_2023/06_APP_Anwendungen/APP_4_4_Kubernetes_Edition_2023.pdf?__blob=publicationFile&v=4 | DE-/EU-regulatorische Kubernetes-Anforderungen: Trennung von Anwendungen, Pod-Härtung, Netz-Separierung, RBAC, Secrets, Image-Quellen |
+| S | BSI IT-Grundschutz SYS.1.6 Containerisierung (Edition 2023) | https://www.bsi.bund.de/SharedDocs/Downloads/DE/BSI/Grundschutz/IT-GS-Kompendium_Einzel_PDFs_2023/07_SYS_IT_Systeme/SYS_1_6_Containerisierung_Edition_2023.pdf?__blob=publicationFile&v=4 | Container-Härtung als Voraussetzung für APP.4.4 (Image-Bezug, Laufzeit-Isolation, Persistenz) |
 | A | OWASP Kubernetes Top 10 (2025) | https://owasp.org/www-project-kubernetes-top-ten/ | K01 insecure workload config through K10 inadequate logging |
 
 ### Kubernetes — Operators
