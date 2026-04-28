@@ -204,6 +204,14 @@ For every NEW public API, CLI flag, configuration option, or user-facing behavio
 
 `)
 
+	sb.WriteString("### Documentation Structure & Quality\n")
+	sb.WriteString("When the diff touches any documentation-like path (`*.md`, `*.rst`, `*.adoc`, `docs/**`, `README*`, `CHANGELOG*`) OR consists of comment-only changes (godoc, docstrings, JSDoc, rustdoc), apply the `Documentation Structure (Diátaxis)` review pattern in addition to the completeness checks above:\n\n")
+	sb.WriteString("1. Identify each changed page's intended Diátaxis mode (Tutorial / How-To / Reference / Explanation) from its location (`docs/tutorials/`, `docs/how-to/`, `docs/reference/`, `docs/explanation/`), title, or content. Flag any section that drifts into a different mode as WARNING with title \"Diátaxis Drift: <page> mixes <claimed-mode> with <actual-mode>\".\n")
+	sb.WriteString("2. Comment-only diffs are in scope. A doc-comment that paraphrases the code (WHAT instead of WHY) is a finding even when no code line moved — flag as INFO with title \"Comment Restates Code: <file>:<line>\".\n")
+	sb.WriteString("3. For fenced code blocks in docs, verify they still match the current API/CLI/config. Flag mismatches as CRITICAL with title \"Stale Doc Example: <file>:<approx line>\".\n")
+	sb.WriteString("4. Removed or renamed public APIs, CLI flags, or config keys MUST carry an explicit deprecation block with a migration path. Flag missing deprecation as WARNING with title \"Missing Deprecation Notice: <name>\".\n")
+	sb.WriteString("5. Flag terminology drift (one concept named two ways across the docs touched in this PR) as INFO with title \"Terminology Drift: <term-A>/<term-B>\".\n\n")
+
 	// Dependency Freshness & Maintenance Verification
 	sb.WriteString(`## Dependency Freshness & Maintenance Verification
 

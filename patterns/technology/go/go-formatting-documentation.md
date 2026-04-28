@@ -19,3 +19,5 @@
 ## Why it matters
 
 `gofmt` eliminates all formatting debates and ensures consistent code across the Go ecosystem. Doc comments become the official package documentation via `go doc` and pkg.go.dev. Missing or malformed doc comments degrade API discoverability.
+
+For cross-cutting documentation review (Diátaxis mode coherence, code-and-doc sync, comment WHY-vs-WHAT, deprecation, terminology, links), see the design pattern `Documentation Structure (Diátaxis)`.

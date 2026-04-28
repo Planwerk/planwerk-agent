@@ -161,9 +161,14 @@ Lower-tier sources retained where no S/A-tier replacement covers the specific an
 ### Python
 | Tier | Source | URL | Description |
 |------|--------|-----|-------------|
+| S | PEP 8 — Style Guide for Python Code | https://peps.python.org/pep-0008/ | Canonical Python code style |
+| S | PEP 257 — Docstring Conventions | https://peps.python.org/pep-0257/ | Triple-quote, one-line summary, blank line, body |
+| S | PEP 287 — reStructuredText Docstring Format | https://peps.python.org/pep-0287/ | reST as the default docstring markup |
 | S | PEP 484 — Type Hints | https://peps.python.org/pep-0484/ | Specification for type annotations |
 | S | PEP 3134 — Exception Chaining | https://peps.python.org/pep-3134/ | Exception chain preservation with `from` |
 | S | mypy Documentation | https://mypy.readthedocs.io/ | Static type checker reference |
+| A | Google Python Style Guide — Docstrings | https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings | Google-style docstring sections (Args, Returns, Raises) |
+| A | NumPy Docstring Standard | https://numpydoc.readthedocs.io/en/latest/format.html | NumPy-style docstring sections, widely used in the scientific stack |
 
 ### Helm — Official Documentation
 | Tier | Source | URL | Description |
@@ -212,7 +217,21 @@ Lower-tier sources retained where no S/A-tier replacement covers the specific an
 |------|--------|-----|-------------|
 | A | Learning Helm | https://www.oreilly.com/library/view/learning-helm/9781492083641/ | Butcher/Farina/Dolitsky (Helm maintainers), O'Reilly 2021, ISBN 9781492083658 |
 
-## Design Principles
+## Documentation
+
+| Tier | Source | URL | Description |
+|------|--------|-----|-------------|
+| S | Diátaxis Framework | https://diataxis.fr | Four-mode documentation framework (Tutorial, How-To, Reference, Explanation) |
+| S | Google Developer Documentation Style Guide | https://developers.google.com/style | Google's normative developer-doc style guide |
+| S | Microsoft Writing Style Guide | https://learn.microsoft.com/style-guide/welcome/ | Microsoft's developer-and-product writing style guide |
+| S | Write the Docs — Documentation Guide | https://www.writethedocs.org/guide/ | Community guide on documenting software |
+| S | Go Doc Comments | https://go.dev/doc/comment | Official Go doc-comment reference (replaces older godoc rules) |
+| S | PEP 257 — Docstring Conventions | https://peps.python.org/pep-0257/ | Canonical Python docstring conventions |
+| S | PEP 287 — reStructuredText Docstring Format | https://peps.python.org/pep-0287/ | reST as the default Python docstring markup |
+| A | ISO/IEC/IEEE 26515:2018 | https://www.iso.org/standard/72088.html | Developing user documentation in agile environments |
+| A | Docs for Developers | https://www.apress.com/gp/book/9781484272169 | Bhatti et al., Apress 2021 — practical doc engineering |
+
+
 
 | Tier | Source | URL | Description |
 |------|--------|-----|-------------|

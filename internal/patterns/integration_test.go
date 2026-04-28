@@ -3,6 +3,7 @@ package patterns_test
 import (
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/planwerk/planwerk-review/internal/patterns"
@@ -76,5 +77,73 @@ func TestLoadFilteredShippedPatterns_GoProject(t *testing.T) {
 	}
 	if names["Terraform State Safety"] {
 		t.Error("Terraform State Safety should not appear for Go project")
+	}
+}
+
+// TestLoadShippedPatterns_DocumentationDiataxis pins the cross-cutting
+// Diátaxis pattern's identity so renames or accidental Applies-When tags
+// (which would scope it away from non-doc projects) surface immediately.
+func TestLoadShippedPatterns_DocumentationDiataxis(t *testing.T) {
+	root := projectRoot()
+	patsDir := filepath.Join(root, "patterns")
+
+	all, err := patterns.Load(patsDir)
+	if err != nil {
+		t.Fatalf("loading shipped patterns: %v", err)
+	}
+
+	var doc *patterns.Pattern
+	for i := range all {
+		if all[i].Name == "Documentation Structure (Diátaxis)" {
+			doc = &all[i]
+			break
+		}
+	}
+	if doc == nil {
+		t.Fatal("missing pattern: Documentation Structure (Diátaxis)")
+	}
+	if doc.Category != "design-principle" {
+		t.Errorf("category = %q, want design-principle (cross-cutting)", doc.Category)
+	}
+	if len(doc.AppliesWhen) != 0 {
+		t.Errorf("AppliesWhen = %v, want empty (must apply to every project)", doc.AppliesWhen)
+	}
+	if doc.Severity == "" {
+		t.Error("Severity must be set")
+	}
+	// Sanity: the body must mention every Diátaxis mode so the prompt-injected
+	// pattern actually covers all four reader needs, not just one.
+	for _, mode := range []string{"Tutorial", "How-To", "Reference", "Explanation"} {
+		if !strings.Contains(doc.Body, mode) {
+			t.Errorf("pattern body missing Diátaxis mode %q", mode)
+		}
+	}
+}
+
+// TestLoadShippedPatterns_PythonDocstrings pins the per-language docstring
+// pattern as Python-scoped so it does not pollute non-Python reviews.
+func TestLoadShippedPatterns_PythonDocstrings(t *testing.T) {
+	root := projectRoot()
+	patsDir := filepath.Join(root, "patterns")
+
+	pats, err := patterns.LoadFiltered([]string{"python"}, patsDir)
+	if err != nil {
+		t.Fatalf("loading python-filtered patterns: %v", err)
+	}
+
+	var found bool
+	for _, p := range pats {
+		if p.Name == "Python Docstrings" {
+			found = true
+			if !p.AppliesTo([]string{"python"}) {
+				t.Errorf("Python Docstrings should apply to python projects")
+			}
+			if p.AppliesTo([]string{"go"}) {
+				t.Errorf("Python Docstrings must NOT apply to non-python projects")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("missing pattern: Python Docstrings")
 	}
 }

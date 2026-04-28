@@ -58,6 +58,17 @@ Audit the project's existing test and documentation coverage:
 4. For every public API, CLI flag, configuration option, or user-facing feature, check whether it is documented (README, CHANGELOG, doc comments). Flag undocumented items as WARNING titled "Missing Documentation: <item>" or "Undocumented Flag/Config: <name>".
 5. Do NOT flag missing tests for trivial getters/setters or missing docs for private/internal functions.
 
+## Documentation Structure & Quality
+
+Apply the `Documentation Structure (Diátaxis)` review pattern to every documentation-like file (`*.md`, `*.rst`, `*.adoc`, anything under `docs/`, `README*`, `CHANGELOG*`) AND every in-code documentation comment (godoc, docstrings, JSDoc, rustdoc):
+
+1. For each page with a clear intended Diátaxis mode (Tutorial / How-To / Reference / Explanation), flag drift between claimed mode and actual content as WARNING titled "Diátaxis Drift: <page> mixes <claimed-mode> with <actual-mode>".
+2. Flag doc-comments that paraphrase the code instead of explaining intent (WHY) as INFO titled "Comment Restates Code: <file>:<line>".
+3. Flag stale code examples in documentation (signatures, flags, defaults that no longer match the source) as CRITICAL titled "Stale Doc Example: <file>:<approx line>".
+4. Flag removed or renamed public APIs, CLI flags, or config keys without an explicit deprecation block as WARNING titled "Missing Deprecation Notice: <name>".
+5. Flag terminology drift (one concept named two different ways across the docs) as INFO titled "Terminology Drift: <term-A>/<term-B>".
+6. Flag broken internal anchors and obviously dead external links as INFO titled "Broken Doc Link: <file>".
+
 ## Dependency Freshness
 
 Scan declared dependencies (go.mod, package.json, requirements.txt, pyproject.toml, Cargo.toml, pom.xml, GitHub Actions workflow files, Dockerfiles, Helm Chart.yaml):
