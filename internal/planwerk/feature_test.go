@@ -79,6 +79,31 @@ func TestDetectFeature_CompletedDir(t *testing.T) {
 	}
 }
 
+// TestDetectFeature_ProgressDir reproduces the real PR plexsphere#117 scenario:
+// the PR implements a feature whose canonical file has been renamed from
+// .planwerk/features/ to .planwerk/progress/ as part of the lifecycle. The
+// branch and title both carry the feature ID, so detection must follow the
+// file into progress/ instead of returning nil.
+func TestDetectFeature_ProgressDir(t *testing.T) {
+	t.Parallel()
+
+	dir := setupFeatureDir(t, "progress", "PX-0019-test.json", `{
+		"feature_id": "PX-0019",
+		"title": "Implement heartbeat handler"
+	}`)
+
+	f, err := DetectFeature(dir, "feat(PX-0019): heartbeat", "", "feature/PX-0019", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if f == nil {
+		t.Fatal("expected feature to be detected in progress dir")
+	}
+	if f.FeatureID != "PX-0019" {
+		t.Errorf("feature_id = %q, want %q", f.FeatureID, "PX-0019")
+	}
+}
+
 func TestDetectFeature_NoMatch(t *testing.T) {
 	t.Parallel()
 

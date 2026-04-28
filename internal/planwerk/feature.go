@@ -73,8 +73,9 @@ type Feature struct {
 }
 
 // DetectFeature looks for a Planwerk feature file that matches the given PR.
-// It searches .planwerk/features/ and .planwerk/completed/ for feature files
-// and selects one by signal strength, in order:
+// It searches .planwerk/features/, .planwerk/progress/, and .planwerk/completed/
+// for feature files (the three lifecycle stages: planned, in-progress, done) and
+// selects one by signal strength, in order:
 //
 //  1. branch name (e.g. "feature/CC-0042") — authoritative: if the branch
 //     carries an explicit feature ID, that ID is the user's intent; either
@@ -89,7 +90,7 @@ func DetectFeature(repoDir, prTitle, prBody, branchName string, changedFiles []s
 	planwerkDir := filepath.Join(repoDir, ".planwerk")
 
 	var candidates []*Feature
-	for _, subdir := range []string{"features", "completed"} {
+	for _, subdir := range []string{"features", "progress", "completed"} {
 		dir := filepath.Join(planwerkDir, subdir)
 		entries, err := os.ReadDir(dir)
 		if err != nil {
