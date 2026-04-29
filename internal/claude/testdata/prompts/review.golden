@@ -211,6 +211,11 @@ For EVERY finding you report, you MUST include:
 
 5. **Related Findings**: If two or more findings are connected (e.g., a missing nil check and a missing test for that nil check), note the relationship by referencing the other finding's title.
 
+6. **Fix Options** (REQUIRED for needs-discussion and architectural findings; OMIT for auto-fix):
+   Provide 2-3 alternative approaches (label them A, B, C). For each option supply: `approach` (one sentence), `pros`, `cons`, `effort` (LOW | MED | HIGH), and `risk_if_skipped` (what happens if this option is NOT chosen).
+   Then pick exactly ONE option as the recommendation in `recommended_option` (matching the chosen option's id) and justify it in `recommendation_reasoning` (1-2 sentences referencing codebase patterns, the relevant review-pattern source, or project constraints).
+   For `auto-fix` findings DO NOT emit options — the single `suggested_fix` from rule 2 is the entire output.
+
 ## Review Summary
 
 At the end of your review, write a brief overall summary (2-4 sentences) that:

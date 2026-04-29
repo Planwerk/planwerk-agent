@@ -37,7 +37,7 @@ func RenderCoverageMap(w io.Writer, result CoverageResult) {
 	tested := 0
 	var e2eGaps []CoverageEntry
 	for _, e := range result.Entries {
-		testRef := "—"
+		testRef := emDashPlaceholder
 		if e.TestFile != "" {
 			if e.TestFunc != "" {
 				testRef = fmt.Sprintf("%s:%s", e.TestFile, e.TestFunc)
@@ -46,7 +46,7 @@ func RenderCoverageMap(w io.Writer, result CoverageResult) {
 			}
 		}
 
-		gaps := "—"
+		gaps := emDashPlaceholder
 		if len(e.UncoveredPaths) > 0 {
 			gaps = strings.Join(e.UncoveredPaths, "; ")
 		}

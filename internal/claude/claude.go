@@ -337,6 +337,11 @@ For EVERY finding you report, you MUST include:
 
 5. **Related Findings**: If two or more findings are connected (e.g., a missing nil check and a missing test for that nil check), note the relationship by referencing the other finding's title.
 
+6. **Fix Options** (REQUIRED for needs-discussion and architectural findings; OMIT for auto-fix):
+   Provide 2-3 alternative approaches (label them A, B, C). For each option supply: ` + "`approach`" + ` (one sentence), ` + "`pros`" + `, ` + "`cons`" + `, ` + "`effort`" + ` (LOW | MED | HIGH), and ` + "`risk_if_skipped`" + ` (what happens if this option is NOT chosen).
+   Then pick exactly ONE option as the recommendation in ` + "`recommended_option`" + ` (matching the chosen option's id) and justify it in ` + "`recommendation_reasoning`" + ` (1-2 sentences referencing codebase patterns, the relevant review-pattern source, or project constraints).
+   For ` + "`auto-fix`" + ` findings DO NOT emit options — the single ` + "`suggested_fix`" + ` from rule 2 is the entire output.
+
 `)
 
 	// Finding limit
@@ -422,6 +427,18 @@ Output ONLY valid JSON matching this exact schema (no markdown fences, no surrou
       "action": "What should be done to fix it",
       "code_snippet": "The exact problematic lines from the diff, preserving indentation",
       "suggested_fix": "The exact replacement code for auto-fix findings (no markdown fences, no comments, correct indentation), or a concrete description for others",
+      "fix_options": [
+        {
+          "id": "A",
+          "approach": "One-sentence summary of the fix approach",
+          "pros": "Short list of benefits",
+          "cons": "Short list of drawbacks",
+          "effort": "LOW|MED|HIGH",
+          "risk_if_skipped": "What goes wrong if this option is NOT chosen"
+        }
+      ],
+      "recommended_option": "A",
+      "recommendation_reasoning": "1-2 sentences citing codebase pattern, review-pattern source, or project constraint",
       "related_to": ["titles of related findings from this review"]
     }
   ],
@@ -451,6 +468,9 @@ Field rules:
 - "suggested_fix": REQUIRED for auto-fix findings. Must contain ONLY the replacement code — no markdown fences, no inline comments explaining the fix, correct indentation from the original file. For other findings, provide a concrete description of what to change.
 - "line_end": Include when the finding spans multiple lines. Omit if it is a single-line issue.
 - "confidence": REQUIRED for every finding.
+- "fix_options": REQUIRED (2-3 entries) for findings with actionability "needs-discussion" or "architectural". MUST be omitted (or an empty array) for "auto-fix" findings. Each entry: id ("A","B","C",…), approach, pros, cons, effort (LOW|MED|HIGH), risk_if_skipped.
+- "recommended_option": REQUIRED when fix_options is set. Must equal one of the fix_options ids. Omit when fix_options is empty.
+- "recommendation_reasoning": REQUIRED when recommended_option is set; 1-2 sentences. Omit otherwise.
 - "related_to": Include titles of other findings in this review that are related. Use an empty array if none.
 - If there are no findings, return an empty findings array.
 
@@ -511,6 +531,29 @@ func assignIDs(result *report.ReviewResult) {
 		result.Findings[i].Actionability = report.NormalizeActionability(string(result.Findings[i].Actionability))
 		result.Findings[i].FixClass = report.DeriveFixClass(result.Findings[i].Actionability)
 		result.Findings[i].Confidence = report.NormalizeConfidence(string(result.Findings[i].Confidence))
+		// Auto-fix findings carry a single SuggestedFix, never an option set.
+		// Strip stray options so consumers don't render a confusing table next
+		// to a copy-paste-ready replacement.
+		if result.Findings[i].Actionability == report.ActionabilityAutoFix {
+			result.Findings[i].FixOptions = nil
+			result.Findings[i].RecommendedOption = ""
+			result.Findings[i].RecommendationReasoning = ""
+		} else if result.Findings[i].RecommendedOption != "" {
+			// Drop a recommended_option that doesn't match any option ID —
+			// otherwise the renderer would point at a non-existent row.
+			rec := strings.TrimSpace(result.Findings[i].RecommendedOption)
+			match := false
+			for _, opt := range result.Findings[i].FixOptions {
+				if strings.EqualFold(strings.TrimSpace(opt.ID), rec) {
+					match = true
+					break
+				}
+			}
+			if !match {
+				result.Findings[i].RecommendedOption = ""
+				result.Findings[i].RecommendationReasoning = ""
+			}
+		}
 		counters[sev]++
 		prefix := prefixes[sev]
 		if prefix == "" {

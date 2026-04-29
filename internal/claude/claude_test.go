@@ -208,6 +208,9 @@ func TestBuildStructurePrompt_ContainsNewFields(t *testing.T) {
 		`"line_end"`,
 		`"confidence"`,
 		`"related_to"`,
+		`"fix_options"`,
+		`"recommended_option"`,
+		`"recommendation_reasoning"`,
 		"Confidence levels:",
 		"Field rules:",
 	}
@@ -292,6 +295,66 @@ func TestAssignIDs_ResolvesRelatedTo(t *testing.T) {
 	// Second finding should reference the ID of the first
 	if result.Findings[1].RelatedTo[0] != "C-001" {
 		t.Errorf("finding[1].RelatedTo[0] = %q, want %q", result.Findings[1].RelatedTo[0], "C-001")
+	}
+}
+
+func TestAssignIDs_StripsFixOptionsFromAutoFix(t *testing.T) {
+	result := &report.ReviewResult{
+		Findings: []report.Finding{
+			{
+				Severity:                "warning",
+				Title:                   "auto-fix carrying stray options",
+				Actionability:           "auto-fix",
+				FixOptions:              []report.FixOption{{ID: "A", Approach: "x"}},
+				RecommendedOption:       "A",
+				RecommendationReasoning: "stale",
+			},
+		},
+	}
+	assignIDs(result)
+	f := result.Findings[0]
+	if f.FixOptions != nil {
+		t.Errorf("auto-fix finding should drop FixOptions, got %+v", f.FixOptions)
+	}
+	if f.RecommendedOption != "" || f.RecommendationReasoning != "" {
+		t.Errorf("auto-fix finding should clear RecommendedOption/Reasoning, got %q / %q",
+			f.RecommendedOption, f.RecommendationReasoning)
+	}
+}
+
+func TestAssignIDs_DropsRecommendedOptionWhenIDMissing(t *testing.T) {
+	result := &report.ReviewResult{
+		Findings: []report.Finding{
+			{
+				Severity:                "warning",
+				Title:                   "broad catch",
+				Actionability:           "needs-discussion",
+				FixOptions:              []report.FixOption{{ID: "A"}, {ID: "B"}},
+				RecommendedOption:       "C", // not in the option set
+				RecommendationReasoning: "should be dropped",
+			},
+			{
+				Severity:                "warning",
+				Title:                   "broad catch (valid)",
+				Actionability:           "needs-discussion",
+				FixOptions:              []report.FixOption{{ID: "A"}, {ID: "B"}},
+				RecommendedOption:       "b", // case-insensitive match
+				RecommendationReasoning: "kept",
+			},
+		},
+	}
+	assignIDs(result)
+	if result.Findings[0].RecommendedOption != "" {
+		t.Errorf("invalid recommended_option should be cleared, got %q", result.Findings[0].RecommendedOption)
+	}
+	if result.Findings[0].RecommendationReasoning != "" {
+		t.Errorf("reasoning should be cleared when recommended_option is dropped")
+	}
+	if result.Findings[1].RecommendedOption != "b" {
+		t.Errorf("valid case-insensitive recommended_option should be kept, got %q", result.Findings[1].RecommendedOption)
+	}
+	if result.Findings[1].RecommendationReasoning != "kept" {
+		t.Errorf("reasoning should be kept alongside valid recommended_option")
 	}
 }
 

@@ -195,6 +195,40 @@ func TestFindingUnmarshalBackwardCompat(t *testing.T) {
 	}
 }
 
+func TestFindingUnmarshalFixOptions(t *testing.T) {
+	input := `{
+		"severity": "warning",
+		"title": "Broad catch swallows specific failures",
+		"file": "internal/foo/bar.go",
+		"line": 12,
+		"actionability": "needs-discussion",
+		"problem": "catch-all hides distinct error classes",
+		"action": "narrow or re-raise",
+		"fix_options": [
+			{"id": "A", "approach": "Catch specific types", "pros": "precise", "cons": "more code", "effort": "MED", "risk_if_skipped": "real bugs stay hidden"},
+			{"id": "B", "approach": "Re-raise after logging", "pros": "loud failures", "cons": "caller must handle", "effort": "LOW", "risk_if_skipped": "silent state corruption"}
+		],
+		"recommended_option": "A",
+		"recommendation_reasoning": "matches existing handlers in pkg/io"
+	}`
+	var f Finding
+	if err := json.Unmarshal([]byte(input), &f); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := len(f.FixOptions); got != 2 {
+		t.Fatalf("FixOptions length = %d, want 2", got)
+	}
+	if f.FixOptions[0].ID != "A" || f.FixOptions[0].Effort != "MED" {
+		t.Errorf("FixOptions[0] = %+v, want id=A effort=MED", f.FixOptions[0])
+	}
+	if f.RecommendedOption != "A" {
+		t.Errorf("RecommendedOption = %q, want A", f.RecommendedOption)
+	}
+	if f.RecommendationReasoning == "" {
+		t.Error("RecommendationReasoning should not be empty")
+	}
+}
+
 func TestMeetsMinimum(t *testing.T) {
 	tests := []struct {
 		sev  Severity

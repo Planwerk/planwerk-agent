@@ -62,6 +62,42 @@ func TestFormatInlineComment_AutoFix(t *testing.T) {
 	}
 }
 
+func TestFormatInlineComment_FixOptions(t *testing.T) {
+	f := Finding{
+		ID:                      "W-003",
+		Severity:                SeverityWarning,
+		Title:                   "Broad catch swallows specific failures",
+		Actionability:           ActionabilityNeedsDiscussion,
+		FixClass:                FixClassAsk,
+		Problem:                 "catch-all hides distinct error classes",
+		Action:                  "narrow or re-raise",
+		FixOptions: []FixOption{
+			{ID: "A", Approach: "Catch specific types", Pros: "precise", Cons: "more code", Effort: "MED", RiskIfSkipped: "real bugs hidden"},
+			{ID: "B", Approach: "Re-raise after logging", Pros: "loud", Cons: "caller handles", Effort: "LOW", RiskIfSkipped: "silent corruption"},
+		},
+		RecommendedOption:       "A",
+		RecommendationReasoning: "matches existing handlers",
+	}
+
+	got := FormatInlineComment(f)
+
+	if !strings.Contains(got, "**Recommended fix**: A") {
+		t.Error("should surface recommended option in body")
+	}
+	if !strings.Contains(got, "matches existing handlers") {
+		t.Error("should include recommendation reasoning")
+	}
+	if !strings.Contains(got, "<details><summary>Fix options</summary>") {
+		t.Error("should fold full option matrix into a <details> block")
+	}
+	if !strings.Contains(got, "| A | Catch specific types") {
+		t.Error("should render option A row")
+	}
+	if !strings.Contains(got, "| B | Re-raise after logging") {
+		t.Error("should render option B row")
+	}
+}
+
 func TestFormatInlineComment_AutoFixNoSuggestedFix(t *testing.T) {
 	f := Finding{
 		ID:            "W-002",

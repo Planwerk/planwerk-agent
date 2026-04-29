@@ -7,6 +7,9 @@ import (
 	"strings"
 )
 
+// emDashPlaceholder is rendered in cells/fields that have no value.
+const emDashPlaceholder = "—"
+
 type Renderer struct {
 	w io.Writer
 }
@@ -95,6 +98,7 @@ func (r *Renderer) renderSection(label string, findings []Finding) {
 		if f.SuggestedFix != "" {
 			_, _ = fmt.Fprintf(r.w, "**Suggested Fix**:\n```\n%s\n```\n\n", f.SuggestedFix)
 		}
+		renderFixOptions(r.w, f)
 		if len(f.RelatedTo) > 0 {
 			_, _ = fmt.Fprintf(r.w, "**Related**: %s\n\n", strings.Join(f.RelatedTo, ", "))
 		}
@@ -104,6 +108,50 @@ func (r *Renderer) renderSection(label string, findings []Finding) {
 		}
 	}
 	_, _ = fmt.Fprint(r.w, "---\n\n")
+}
+
+// renderFixOptions writes a Markdown table of alternative fix approaches plus
+// the recommended option. It emits nothing when the finding carries no options
+// (e.g. auto-fix findings) so the report stays clean.
+func renderFixOptions(w io.Writer, f Finding) {
+	if len(f.FixOptions) == 0 {
+		return
+	}
+	_, _ = fmt.Fprintln(w, "**Fix Options**:")
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "| Option | Approach | Pros | Cons | Effort | Risk if skipped |")
+	_, _ = fmt.Fprintln(w, "|--------|----------|------|------|--------|-----------------|")
+	for _, opt := range f.FixOptions {
+		_, _ = fmt.Fprintf(w, "| %s | %s | %s | %s | %s | %s |\n",
+			cellEscape(opt.ID),
+			cellEscape(opt.Approach),
+			cellEscape(opt.Pros),
+			cellEscape(opt.Cons),
+			cellEscape(opt.Effort),
+			cellEscape(opt.RiskIfSkipped),
+		)
+	}
+	_, _ = fmt.Fprintln(w)
+	if f.RecommendedOption != "" {
+		if f.RecommendationReasoning != "" {
+			_, _ = fmt.Fprintf(w, "**Recommended**: %s — %s\n\n", f.RecommendedOption, f.RecommendationReasoning)
+		} else {
+			_, _ = fmt.Fprintf(w, "**Recommended**: %s\n\n", f.RecommendedOption)
+		}
+	}
+}
+
+// cellEscape sanitizes a value for use inside a Markdown table cell:
+// pipes are escaped and newlines are replaced with `<br>` so the row stays on
+// one line.
+func cellEscape(s string) string {
+	if s == "" {
+		return emDashPlaceholder
+	}
+	s = strings.ReplaceAll(s, "|", `\|`)
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\n", "<br>")
+	return s
 }
 
 // fileRef returns "file:line" when a line number is known, otherwise just "file".
