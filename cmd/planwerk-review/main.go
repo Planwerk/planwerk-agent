@@ -23,6 +23,7 @@ import (
 	"github.com/planwerk/planwerk-review/internal/cli"
 	"github.com/planwerk/planwerk-review/internal/elaborate"
 	"github.com/planwerk/planwerk-review/internal/fix"
+	"github.com/planwerk/planwerk-review/internal/gapanalysis"
 	"github.com/planwerk/planwerk-review/internal/logging"
 	"github.com/planwerk/planwerk-review/internal/patterns"
 	"github.com/planwerk/planwerk-review/internal/prompt"
@@ -175,10 +176,15 @@ func writeVersion(w io.Writer, bi buildInfo, verbose bool) {
 // An empty scope means "all commands" and is always valid.
 func validateCacheScope(scope string) error {
 	switch scope {
-	case "", cache.CommandReview, cache.CommandPropose, cache.CommandAudit, elaborate.CommandElaborate:
+	case "",
+		cache.CommandReview,
+		cache.CommandPropose,
+		cache.CommandAudit,
+		elaborate.CommandElaborate,
+		gapanalysis.CommandGapAnalysis:
 		return nil
 	default:
-		return fmt.Errorf("unknown cache scope %q, supported: review, propose, audit, elaborate", scope)
+		return fmt.Errorf("unknown cache scope %q, supported: review, propose, audit, elaborate, gap-analysis", scope)
 	}
 }
 
@@ -393,7 +399,7 @@ or short form (owner/repo#123).`,
 	flags.BoolVar(&cfg.NoLocalPatterns, "no-local-patterns", false, "Ignore local patterns from the tool")
 	flags.BoolVar(&cfg.NoCache, "no-cache", false, "Ignore cache, force a fresh review")
 	flags.BoolVar(&cfg.ClearCache, "clear-cache", false, "Clear cached reviews and exit (honors --clear-cache-scope)")
-	flags.StringVar(&cfg.ClearCacheScope, "clear-cache-scope", "", "Restrict --clear-cache to a single command (review, propose, audit, elaborate)")
+	flags.StringVar(&cfg.ClearCacheScope, "clear-cache-scope", "", "Restrict --clear-cache to a single command (review, propose, audit, elaborate, gap-analysis)")
 	flags.BoolVar(&cfg.CacheStats, "cache-stats", false, "Show cache size, age distribution, and per-command breakdown, then exit")
 	flags.StringVar(&cfg.CacheInspect, "cache-inspect", "", "Print the metadata and payload for the given cache key, then exit")
 	flags.DurationVar(&cfg.CacheMaxAge, "cache-max-age", cache.DefaultMaxAge, "Reject cached entries older than this duration (0 disables the TTL)")
@@ -531,6 +537,66 @@ or short form (owner/repo).`,
 	auditFlags.BoolVar(&auditCfg.NoIssueDedupe, "no-issue-dedupe", false, "Do not filter findings whose title matches an existing GitHub issue")
 
 	rootCmd.AddCommand(auditCmd)
+
+	// gap-analysis subcommand: compare completed Planwerk feature specs in
+	// the target repo against the actual codebase and report incomplete
+	// implementations as structured gaps. Reuses the audit cache, dedupe,
+	// and interactive issue-creation infrastructure.
+	var gapCfg cli.GapAnalysisConfig
+
+	gapCmd := &cobra.Command{
+		Use:   "gap-analysis <repo-ref>",
+		Short: "Detect incomplete implementation of completed Planwerk features",
+		Long: `Clone a GitHub repository and compare every Planwerk feature file under
+.planwerk/completed/ against the actual codebase. Reports gaps where the spec's
+acceptance criteria, scenarios, planned tests, or completed tasks are not
+visibly implemented in the code.
+
+Use --feature CC-NNNN to limit the analysis to one feature by ID, or --file
+<path> to limit it to a single completed feature file. Both filters can also
+be combined as a sanity check.
+
+Repository reference can be a URL (https://github.com/owner/repo)
+or short form (owner/repo).`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			gapCfg.RepoRef = args[0]
+
+			maxPatterns, err := resolveMaxPatterns(gapCfg.MaxPatterns, cmd.Flags().Changed("max-patterns"), nil)
+			if err != nil {
+				return err
+			}
+			gapCfg.MaxPatterns = maxPatterns
+
+			switch gapCfg.Format {
+			case formatMarkdown, formatJSON:
+			default:
+				return fmt.Errorf("unknown format %q, supported: markdown, json", gapCfg.Format)
+			}
+
+			if gapCfg.CreateIssues && gapCfg.Format == formatJSON {
+				return fmt.Errorf("--create-issues cannot be used with --format json")
+			}
+
+			opts := gapCfg.ToGapAnalysisOptions(version)
+			return gapanalysis.Run(os.Stdout, opts, claude.GapAnalysis)
+		},
+	}
+
+	gapFlags := gapCmd.Flags()
+	gapFlags.StringSliceVar(&gapCfg.PatternDirs, "patterns", nil, "Additional pattern sources: local dirs, github:owner/repo[/sub][@ref], or git+https://...[#ref[:sub]]")
+	gapFlags.BoolVar(&gapCfg.NoRepoPatterns, "no-repo-patterns", false, "Ignore repo-specific patterns")
+	gapFlags.BoolVar(&gapCfg.NoLocalPatterns, "no-local-patterns", false, "Ignore local patterns from the tool")
+	gapFlags.BoolVar(&gapCfg.NoCache, "no-cache", false, "Ignore cache, force a fresh gap analysis")
+	gapFlags.DurationVar(&gapCfg.CacheMaxAge, "cache-max-age", cache.DefaultMaxAge, "Reject cached entries older than this duration (0 disables the TTL)")
+	gapFlags.StringVar(&gapCfg.Format, "format", "markdown", "Output format (markdown, json)")
+	gapFlags.IntVar(&gapCfg.MaxPatterns, "max-patterns", patterns.DefaultMaxPatternsInPrompt, "Max review patterns injected into the prompt (<=0 disables truncation, env: "+envMaxPatterns+")")
+	gapFlags.StringVar(&gapCfg.FeatureID, "feature", "", "Limit analysis to a single feature by feature_id (e.g. CC-0042)")
+	gapFlags.StringVar(&gapCfg.FilePath, "file", "", "Limit analysis to a single feature file under .planwerk/completed/ (path or basename)")
+	gapFlags.BoolVar(&gapCfg.CreateIssues, "create-issues", false, "Interactively create GitHub issues from gaps")
+	gapFlags.BoolVar(&gapCfg.NoIssueDedupe, "no-issue-dedupe", false, "Do not filter gaps whose suggested-issue title matches an existing GitHub issue")
+
+	rootCmd.AddCommand(gapCmd)
 
 	// elaborate subcommand: turn a high-level issue (typically the output of
 	// propose or audit) into a deeply detailed engineering plan grounded in

@@ -6,6 +6,7 @@ import (
 	"github.com/planwerk/planwerk-review/internal/audit"
 	"github.com/planwerk/planwerk-review/internal/elaborate"
 	"github.com/planwerk/planwerk-review/internal/fix"
+	"github.com/planwerk/planwerk-review/internal/gapanalysis"
 	"github.com/planwerk/planwerk-review/internal/prompt"
 	"github.com/planwerk/planwerk-review/internal/propose"
 	"github.com/planwerk/planwerk-review/internal/report"
@@ -178,6 +179,42 @@ func (c PromptConfig) ToPromptOptions(version string) prompt.Options {
 		IssueRef: c.IssueRef,
 		Mode:     mode,
 		Version:  version,
+	}
+}
+
+// GapAnalysisConfig holds configuration for the gap-analysis command.
+type GapAnalysisConfig struct {
+	RepoRef         string
+	PatternDirs     []string
+	NoRepoPatterns  bool
+	NoLocalPatterns bool
+	NoCache         bool
+	Format          string // "markdown" or "json"
+	MaxPatterns     int
+
+	FeatureID string
+	FilePath  string
+
+	CreateIssues  bool
+	NoIssueDedupe bool
+	CacheMaxAge   time.Duration
+}
+
+func (c GapAnalysisConfig) ToGapAnalysisOptions(version string) gapanalysis.Options {
+	return gapanalysis.Options{
+		RepoRef:         c.RepoRef,
+		PatternDirs:     c.PatternDirs,
+		NoRepoPatterns:  c.NoRepoPatterns,
+		NoLocalPatterns: c.NoLocalPatterns,
+		NoCache:         c.NoCache,
+		Format:          c.Format,
+		Version:         version,
+		MaxPatterns:     c.MaxPatterns,
+		FeatureID:       c.FeatureID,
+		FilePath:        c.FilePath,
+		CreateIssues:    c.CreateIssues,
+		NoIssueDedupe:   c.NoIssueDedupe,
+		CacheMaxAge:     c.CacheMaxAge,
 	}
 }
 
