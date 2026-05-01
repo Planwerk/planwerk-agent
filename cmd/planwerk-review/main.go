@@ -39,6 +39,27 @@ const envMaxPatterns = "PLANWERK_MAX_PATTERNS"
 // default refresh TTL for remotely-fetched pattern sources.
 const envRemotePatternsTTL = "PLANWERK_REMOTE_PATTERNS_TTL"
 
+// envShowClaudeOutput toggles live streaming of Claude Code output. Any
+// truthy value (1, true, yes, on; case-insensitive) enables it; the CLI
+// flag --show-claude-output takes precedence when explicitly set.
+const envShowClaudeOutput = "PLANWERK_SHOW_CLAUDE_OUTPUT"
+
+// resolveShowClaudeOutput returns the effective streaming toggle.
+// Precedence: explicit CLI flag, then PLANWERK_SHOW_CLAUDE_OUTPUT, then
+// off by default.
+func resolveShowClaudeOutput(flagValue, flagSet bool) bool {
+	if flagSet {
+		return flagValue
+	}
+	if raw, ok := os.LookupEnv(envShowClaudeOutput); ok && raw != "" {
+		switch strings.ToLower(strings.TrimSpace(raw)) {
+		case "1", "true", "yes", "on":
+			return true
+		}
+	}
+	return false
+}
+
 // resolveRemotePatternsTTL returns the effective remote-patterns TTL.
 // Precedence: explicit CLI flag, then PLANWERK_REMOTE_PATTERNS_TTL, then the
 // compiled-in default. A value of 0 or negative disables refresh.
@@ -249,6 +270,7 @@ func main() {
 	var cfg cli.Config
 	var minSeverity string
 	var showVersion, verbose bool
+	var showClaudeOutput bool
 	var logFormat string
 	var remotePatternsTTL time.Duration
 	var fileCfg cli.FileConfig
@@ -289,6 +311,8 @@ or short form (owner/repo#123).`,
 				return err
 			}
 			patterns.SetRemoteOptions(patterns.RemoteOptions{TTL: ttl})
+
+			claude.SetShowOutput(resolveShowClaudeOutput(showClaudeOutput, cmd.Flags().Changed("show-claude-output")))
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -360,6 +384,7 @@ or short form (owner/repo#123).`,
 	persistent.BoolVarP(&verbose, "verbose", "v", false, "Enable debug-level logging (and verbose build info with --version)")
 	persistent.StringVar(&logFormat, "log-format", "text", "Log output format (text, json)")
 	persistent.DurationVar(&remotePatternsTTL, "remote-patterns-ttl", patterns.DefaultRemoteTTL, "Refresh interval for remote pattern sources (env: "+envRemotePatternsTTL+"; <=0 disables refresh once cached)")
+	persistent.BoolVar(&showClaudeOutput, "show-claude-output", false, "Stream Claude Code's live output to stderr while running (env: "+envShowClaudeOutput+")")
 
 	flags := rootCmd.Flags()
 	flags.StringSliceVar(&cfg.PatternDirs, "patterns", nil, "Additional pattern sources: local dirs, github:owner/repo[/sub][@ref], or git+https://...[#ref[:sub]]")

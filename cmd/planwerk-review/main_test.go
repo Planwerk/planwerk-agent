@@ -134,6 +134,35 @@ func TestResolveMaxPatternsInvalidEnv(t *testing.T) {
 	}
 }
 
+func TestResolveShowClaudeOutputFlagWins(t *testing.T) {
+	t.Setenv(envShowClaudeOutput, "1")
+	if resolveShowClaudeOutput(false, true) != false {
+		t.Fatalf("explicit --show-claude-output=false must beat env var")
+	}
+	if resolveShowClaudeOutput(true, true) != true {
+		t.Fatalf("explicit --show-claude-output=true must take effect")
+	}
+}
+
+func TestResolveShowClaudeOutputEnvVariants(t *testing.T) {
+	for _, raw := range []string{"1", "true", "TRUE", "yes", "On", " 1 "} {
+		t.Run("enabled-"+raw, func(t *testing.T) {
+			t.Setenv(envShowClaudeOutput, raw)
+			if !resolveShowClaudeOutput(false, false) {
+				t.Errorf("env=%q should enable streaming", raw)
+			}
+		})
+	}
+	for _, raw := range []string{"0", "false", "no", "off", "", "garbage"} {
+		t.Run("disabled-"+raw, func(t *testing.T) {
+			t.Setenv(envShowClaudeOutput, raw)
+			if resolveShowClaudeOutput(false, false) {
+				t.Errorf("env=%q should leave streaming off", raw)
+			}
+		})
+	}
+}
+
 func TestRunCacheStatsEmpty(t *testing.T) {
 	dir := t.TempDir()
 	t.Cleanup(cache.SetDir(dir))

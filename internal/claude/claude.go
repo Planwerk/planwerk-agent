@@ -30,10 +30,42 @@ const (
 // DefaultBaseBranch is the fallback base branch name when none is specified.
 const DefaultBaseBranch = "main"
 
-// runClaude invokes `claude -p <prompt> --output-format json` in the given
-// directory and returns the extracted text response. The label is used to
-// tag elapsed-time progress updates printed to stderr while Claude runs.
+// showOutput toggles live streaming of Claude Code output. When false
+// (the default), runClaude buffers the result via --output-format json.
+// When true, runClaude delegates to runClaudeStream which uses
+// --output-format stream-json --verbose and surfaces assistant text and
+// tool activity to a streamSink as it arrives.
+var showOutput bool
+
+// SetShowOutput installs b as the package-level streaming toggle used by
+// every runClaude invocation. The CLI sets this once at startup; tests
+// use the returned restore function to revert to the previous value.
+func SetShowOutput(b bool) (restore func()) {
+	old := showOutput
+	showOutput = b
+	return func() { showOutput = old }
+}
+
+// ShowOutput reports whether live streaming of Claude Code output is
+// currently enabled. Exposed primarily for the CLI test suite to verify
+// that PLANWERK_SHOW_CLAUDE_OUTPUT and --show-claude-output route into
+// the package-level toggle.
+func ShowOutput() bool { return showOutput }
+
+// runClaude invokes claude in the given directory and returns the
+// extracted text response. The label tags elapsed-time progress updates
+// (or per-line stream prefixes when streaming is enabled).
+//
+// When showOutput is false runClaude uses --output-format json and
+// captures the full result via cmd.Output(). When showOutput is true it
+// delegates to runClaudeStream, which uses --output-format stream-json
+// --verbose and surfaces output incrementally; the periodic heartbeat
+// is skipped in that mode because the stream itself is the heartbeat.
 func runClaude(dir, prompt, label string) (string, error) {
+	if showOutput {
+		return runClaudeStream(dir, prompt, label)
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), claudeTimeout)
 	defer cancel()
 

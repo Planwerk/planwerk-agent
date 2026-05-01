@@ -358,6 +358,20 @@ func TestAssignIDs_DropsRecommendedOptionWhenIDMissing(t *testing.T) {
 	}
 }
 
+func TestSetShowOutput_TogglesAndRestores(t *testing.T) {
+	if ShowOutput() {
+		t.Fatalf("precondition: ShowOutput() should default to false")
+	}
+	restore := SetShowOutput(true)
+	if !ShowOutput() {
+		t.Errorf("ShowOutput() should be true after SetShowOutput(true)")
+	}
+	restore()
+	if ShowOutput() {
+		t.Errorf("ShowOutput() should be false after restore")
+	}
+}
+
 func TestBuildRepairPrompt_ContainsErrorAndJSON(t *testing.T) {
 	malformed := `{"findings":[{"id":""},"id":""]}`
 	err := fmt.Errorf("invalid character ':' after array element")

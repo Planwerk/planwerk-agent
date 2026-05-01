@@ -236,6 +236,7 @@ These flags apply to every `planwerk-review` command (`review`, `propose`, `audi
 | `--verbose`, `-v` | Enable debug-level logging (also shows verbose build info with `--version`) | `false` |
 | `--log-format` | Log output format: `text` (human-friendly, default) or `json` (one JSON object per record, CI-friendly) | `text` |
 | `--remote-patterns-ttl` | Refresh interval for remote pattern sources (env: `PLANWERK_REMOTE_PATTERNS_TTL`; `<=0` disables refresh once cached). See [Remote Pattern Sources](#remote-pattern-sources). | `24h` |
+| `--show-claude-output` | Stream Claude Code's live output (assistant messages and tool activity) to stderr while a run is in flight, instead of only the periodic heartbeat. Each line is prefixed with the call label (`[review]`, `[structure]`, `[adversarial]`, …). When stderr is not a terminal, the same events are emitted as `slog.Info` records so they integrate with `--log-format json`. Env: `PLANWERK_SHOW_CLAUDE_OUTPUT` (truthy: `1`, `true`, `yes`, `on`). | `false` |
 
 Logs are written to stderr; when stderr is not a terminal, Claude-invocation heartbeats are still emitted at INFO level so long-running runs are visible in CI log streams.
 
