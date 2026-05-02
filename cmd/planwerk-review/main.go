@@ -30,6 +30,7 @@ import (
 	"github.com/planwerk/planwerk-review/internal/propose"
 	"github.com/planwerk/planwerk-review/internal/report"
 	"github.com/planwerk/planwerk-review/internal/review"
+	"github.com/planwerk/planwerk-review/internal/reviewprepared"
 )
 
 // envMaxPatterns is the environment variable used to override the default
@@ -181,10 +182,11 @@ func validateCacheScope(scope string) error {
 		cache.CommandPropose,
 		cache.CommandAudit,
 		elaborate.CommandElaborate,
-		gapanalysis.CommandGapAnalysis:
+		gapanalysis.CommandGapAnalysis,
+		reviewprepared.CommandReviewPrepared:
 		return nil
 	default:
-		return fmt.Errorf("unknown cache scope %q, supported: review, propose, audit, elaborate, gap-analysis", scope)
+		return fmt.Errorf("unknown cache scope %q, supported: review, propose, audit, elaborate, gap-analysis, review-prepared", scope)
 	}
 }
 
@@ -399,7 +401,7 @@ or short form (owner/repo#123).`,
 	flags.BoolVar(&cfg.NoLocalPatterns, "no-local-patterns", false, "Ignore local patterns from the tool")
 	flags.BoolVar(&cfg.NoCache, "no-cache", false, "Ignore cache, force a fresh review")
 	flags.BoolVar(&cfg.ClearCache, "clear-cache", false, "Clear cached reviews and exit (honors --clear-cache-scope)")
-	flags.StringVar(&cfg.ClearCacheScope, "clear-cache-scope", "", "Restrict --clear-cache to a single command (review, propose, audit, elaborate, gap-analysis)")
+	flags.StringVar(&cfg.ClearCacheScope, "clear-cache-scope", "", "Restrict --clear-cache to a single command (review, propose, audit, elaborate, gap-analysis, review-prepared)")
 	flags.BoolVar(&cfg.CacheStats, "cache-stats", false, "Show cache size, age distribution, and per-command breakdown, then exit")
 	flags.StringVar(&cfg.CacheInspect, "cache-inspect", "", "Print the metadata and payload for the given cache key, then exit")
 	flags.DurationVar(&cfg.CacheMaxAge, "cache-max-age", cache.DefaultMaxAge, "Reject cached entries older than this duration (0 disables the TTL)")
@@ -597,6 +599,85 @@ or short form (owner/repo).`,
 	gapFlags.BoolVar(&gapCfg.NoIssueDedupe, "no-issue-dedupe", false, "Do not filter gaps whose suggested-issue title matches an existing GitHub issue")
 
 	rootCmd.AddCommand(gapCmd)
+
+	// review-prepared subcommand: review every Planwerk feature spec under
+	// .planwerk/features/ whose status is "prepared" — surface weaknesses in
+	// the spec itself and (with --create-pr) open a pull request that
+	// rewrites the JSON to address every WARNING-or-higher finding.
+	var preparedCfg cli.ReviewPreparedConfig
+	var preparedMinSeverity string
+
+	preparedCmd := &cobra.Command{
+		Use:   "review-prepared <repo-ref>",
+		Short: "Improve prepared Planwerk feature specs (spec-only, no codebase comparison)",
+		Long: `Clone a GitHub repository and review every Planwerk feature file under
+.planwerk/features/ whose status is "prepared". The command produces a structured
+report of weaknesses in the SPEC TEXT (vague acceptance criteria, missing test
+specifications, hand-wavy implementation notes, broken internal cross-references)
+and — when run with --create-pr — opens a pull request that rewrites each
+affected feature JSON to address every WARNING-or-higher finding.
+
+Scope: this command reviews the SPEC ONLY. It does NOT compare the spec to the
+codebase, does NOT check whether the described behaviour is implemented, and
+does NOT report code-quality issues. For spec-vs-code comparisons on completed
+features, use the gap-analysis subcommand instead.
+
+Use --feature PX-NNNN to limit the review to one feature by ID, or --file <path>
+to limit it to a single file. The report and PR scope is identical otherwise.
+
+Repository reference can be a URL (https://github.com/owner/repo)
+or short form (owner/repo).`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			preparedCfg.RepoRef = args[0]
+
+			maxPatterns, err := resolveMaxPatterns(preparedCfg.MaxPatterns, cmd.Flags().Changed("max-patterns"), nil)
+			if err != nil {
+				return err
+			}
+			preparedCfg.MaxPatterns = maxPatterns
+
+			switch preparedCfg.Format {
+			case formatMarkdown, formatJSON:
+			default:
+				return fmt.Errorf("unknown format %q, supported: markdown, json", preparedCfg.Format)
+			}
+
+			if preparedMinSeverity != "" {
+				sev, err := report.ParseSeverity(preparedMinSeverity)
+				if err != nil {
+					return err
+				}
+				preparedCfg.MinSeverity = sev
+			} else {
+				preparedCfg.MinSeverity = report.SeverityInfo
+			}
+
+			if preparedCfg.CreatePR && preparedCfg.Format == formatJSON {
+				return fmt.Errorf("--create-pr cannot be used with --format json")
+			}
+
+			opts := preparedCfg.ToReviewPreparedOptions(version)
+			return reviewprepared.Run(os.Stdout, opts, claude.ReviewPrepared)
+		},
+	}
+
+	preparedFlags := preparedCmd.Flags()
+	preparedFlags.StringSliceVar(&preparedCfg.PatternDirs, "patterns", nil, "Additional pattern sources: local dirs, github:owner/repo[/sub][@ref], or git+https://...[#ref[:sub]]")
+	preparedFlags.BoolVar(&preparedCfg.NoRepoPatterns, "no-repo-patterns", false, "Ignore repo-specific patterns")
+	preparedFlags.BoolVar(&preparedCfg.NoLocalPatterns, "no-local-patterns", false, "Ignore local patterns from the tool")
+	preparedFlags.BoolVar(&preparedCfg.NoCache, "no-cache", false, "Ignore cache, force a fresh review")
+	preparedFlags.DurationVar(&preparedCfg.CacheMaxAge, "cache-max-age", cache.DefaultMaxAge, "Reject cached entries older than this duration (0 disables the TTL)")
+	preparedFlags.StringVar(&preparedCfg.Format, "format", "markdown", "Output format (markdown, json)")
+	preparedFlags.IntVar(&preparedCfg.MaxPatterns, "max-patterns", patterns.DefaultMaxPatternsInPrompt, "Max review patterns injected into the prompt (<=0 disables truncation, env: "+envMaxPatterns+")")
+	preparedFlags.StringVar(&preparedMinSeverity, "min-severity", "", "Minimum severity to render (info, warning, critical)")
+	preparedFlags.StringVar(&preparedCfg.FeatureID, "feature", "", "Limit review to a single feature by feature_id (e.g. PX-0028)")
+	preparedFlags.StringVar(&preparedCfg.FilePath, "file", "", "Limit review to a single feature file under .planwerk/features/ (path or basename)")
+	preparedFlags.BoolVar(&preparedCfg.CreatePR, "create-pr", false, "After the review, commit improved feature JSON files on a fresh branch and open a pull request")
+	preparedFlags.StringVar(&preparedCfg.PRBranch, "pr-branch", "", "Branch name for --create-pr (default: planwerk-review/improve-prepared-features)")
+	preparedFlags.StringVar(&preparedCfg.PRBase, "pr-base", "", "Base branch for --create-pr (default: repo default branch)")
+
+	rootCmd.AddCommand(preparedCmd)
 
 	// elaborate subcommand: turn a high-level issue (typically the output of
 	// propose or audit) into a deeply detailed engineering plan grounded in

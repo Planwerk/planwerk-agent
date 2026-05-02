@@ -11,6 +11,7 @@ import (
 	"github.com/planwerk/planwerk-review/internal/propose"
 	"github.com/planwerk/planwerk-review/internal/report"
 	"github.com/planwerk/planwerk-review/internal/review"
+	"github.com/planwerk/planwerk-review/internal/reviewprepared"
 )
 
 // Config holds configuration for the review command.
@@ -214,6 +215,47 @@ func (c GapAnalysisConfig) ToGapAnalysisOptions(version string) gapanalysis.Opti
 		FilePath:        c.FilePath,
 		CreateIssues:    c.CreateIssues,
 		NoIssueDedupe:   c.NoIssueDedupe,
+		CacheMaxAge:     c.CacheMaxAge,
+	}
+}
+
+// ReviewPreparedConfig holds configuration for the review-prepared command.
+type ReviewPreparedConfig struct {
+	RepoRef         string
+	PatternDirs     []string
+	NoRepoPatterns  bool
+	NoLocalPatterns bool
+	NoCache         bool
+	Format          string // "markdown" or "json"
+	MaxPatterns     int
+	MinSeverity     report.Severity
+
+	FeatureID string
+	FilePath  string
+
+	CreatePR bool
+	PRBranch string
+	PRBase   string
+
+	CacheMaxAge time.Duration
+}
+
+func (c ReviewPreparedConfig) ToReviewPreparedOptions(version string) reviewprepared.Options {
+	return reviewprepared.Options{
+		RepoRef:         c.RepoRef,
+		PatternDirs:     c.PatternDirs,
+		NoRepoPatterns:  c.NoRepoPatterns,
+		NoLocalPatterns: c.NoLocalPatterns,
+		NoCache:         c.NoCache,
+		Format:          c.Format,
+		Version:         version,
+		MaxPatterns:     c.MaxPatterns,
+		MinSeverity:     c.MinSeverity,
+		FeatureID:       c.FeatureID,
+		FilePath:        c.FilePath,
+		CreatePR:        c.CreatePR,
+		PRBranch:        c.PRBranch,
+		PRBase:          c.PRBase,
 		CacheMaxAge:     c.CacheMaxAge,
 	}
 }
