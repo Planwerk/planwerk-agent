@@ -18,8 +18,26 @@ permissions:
   pull-requests: write
 
 jobs:
-  smoke:
+  preflight:
     if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    outputs:
+      has-key: ${{ steps.check.outputs.has-key }}
+    steps:
+      - id: check
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+            echo "has-key=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-key=false" >> "$GITHUB_OUTPUT"
+            echo "ANTHROPIC_API_KEY secret is not set; skipping smoke test." >&2
+          fi
+
+  smoke:
+    needs: preflight
+    if: needs.preflight.outputs.has-key == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

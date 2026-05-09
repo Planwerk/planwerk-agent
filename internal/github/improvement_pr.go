@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -117,10 +118,10 @@ func writeFiles(repoDir string, files []ImprovementFile) error {
 			return fmt.Errorf("refusing to write outside repo: %s", f.RelativePath)
 		}
 		full := filepath.Join(repoDir, clean)
-		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(full), 0o750); err != nil {
 			return fmt.Errorf("mkdir %s: %w", filepath.Dir(full), err)
 		}
-		if err := os.WriteFile(full, f.Content, 0o644); err != nil {
+		if err := os.WriteFile(full, f.Content, 0o600); err != nil {
 			return fmt.Errorf("writing %s: %w", clean, err)
 		}
 	}
@@ -155,22 +156,8 @@ func hasStagedChanges(dir string) (bool, error) {
 		return false, nil // exit 0 = no diff
 	}
 	var exitErr *exec.ExitError
-	if asExit(err, &exitErr) && exitErr.ExitCode() == 1 {
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
 		return true, nil // exit 1 = diff present
 	}
 	return false, fmt.Errorf("git diff --cached: %w", err)
-}
-
-// asExit unwraps an *exec.ExitError without pulling errors.As into every
-// caller; lives here so the helper is usable without an extra import in
-// upstream packages.
-func asExit(err error, target **exec.ExitError) bool {
-	if err == nil {
-		return false
-	}
-	if e, ok := err.(*exec.ExitError); ok {
-		*target = e
-		return true
-	}
-	return false
 }

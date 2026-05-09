@@ -162,11 +162,17 @@ var (
 	urlRe = regexp.MustCompile(`github\.com/([^/]+)/([^/]+)/pull/(\d+)`)
 	// owner/repo#123
 	shortRe = regexp.MustCompile(`^([^/]+)/([^#]+)#(\d+)$`)
+	// Bare PR number, resolved against GITHUB_REPOSITORY
+	numberRe = regexp.MustCompile(`^(\d+)$`)
 	// Valid GitHub owner/repo name characters
 	validNameRe = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
 )
 
-// ParseRef parses a PR reference in URL or short form.
+// ParseRef parses a PR reference. Accepted forms:
+//   - https://github.com/owner/repo/pull/N
+//   - owner/repo#N
+//   - N (bare number; owner/repo is taken from $GITHUB_REPOSITORY, e.g. inside
+//     a GitHub Actions workflow)
 func ParseRef(ref string) (owner, repo string, number int, err error) {
 	if m := urlRe.FindStringSubmatch(ref); m != nil {
 		number, _ = strconv.Atoi(m[3])
@@ -185,7 +191,23 @@ func ParseRef(ref string) (owner, repo string, number int, err error) {
 		}
 		return owner, repo, number, nil
 	}
-	return "", "", 0, fmt.Errorf("invalid PR reference %q: expected URL or owner/repo#number", ref)
+	if m := numberRe.FindStringSubmatch(ref); m != nil {
+		repoEnv := os.Getenv("GITHUB_REPOSITORY")
+		if repoEnv == "" {
+			return "", "", 0, fmt.Errorf("invalid PR reference %q: bare PR number requires GITHUB_REPOSITORY (use URL or owner/repo#number outside GitHub Actions)", ref)
+		}
+		parts := strings.SplitN(repoEnv, "/", 2)
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+			return "", "", 0, fmt.Errorf("invalid GITHUB_REPOSITORY %q: expected owner/repo", repoEnv)
+		}
+		owner, repo = parts[0], parts[1]
+		if err := validateOwnerRepo(owner, repo); err != nil {
+			return "", "", 0, err
+		}
+		number, _ = strconv.Atoi(m[1])
+		return owner, repo, number, nil
+	}
+	return "", "", 0, fmt.Errorf("invalid PR reference %q: expected URL, owner/repo#number, or bare PR number with GITHUB_REPOSITORY set", ref)
 }
 
 func validateOwnerRepo(owner, repo string) error {

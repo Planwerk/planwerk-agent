@@ -3,6 +3,7 @@ package github
 import "testing"
 
 func TestParseRef(t *testing.T) {
+	t.Setenv("GITHUB_REPOSITORY", "")
 	tests := []struct {
 		name    string
 		ref     string
@@ -59,6 +60,11 @@ func TestParseRef(t *testing.T) {
 			ref:     "owner/re po#1",
 			wantErr: true,
 		},
+		{
+			name:    "bare number without GITHUB_REPOSITORY",
+			ref:     "21",
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -81,6 +87,57 @@ func TestParseRef(t *testing.T) {
 			}
 			if number != tt.number {
 				t.Errorf("number = %d, want %d", number, tt.number)
+			}
+		})
+	}
+}
+
+func TestParseRefBareNumberWithGitHubRepository(t *testing.T) {
+	tests := []struct {
+		name        string
+		envRepo     string
+		ref         string
+		wantOwner   string
+		wantRepo    string
+		wantNumber  int
+		wantErr     bool
+	}{
+		{
+			name:       "bare number resolves via GITHUB_REPOSITORY",
+			envRepo:    "planwerk/planwerk-review",
+			ref:        "21",
+			wantOwner:  "planwerk",
+			wantRepo:   "planwerk-review",
+			wantNumber: 21,
+		},
+		{
+			name:    "malformed GITHUB_REPOSITORY rejected",
+			envRepo: "no-slash",
+			ref:     "21",
+			wantErr: true,
+		},
+		{
+			name:    "GITHUB_REPOSITORY with invalid characters rejected",
+			envRepo: "bad owner/repo",
+			ref:     "21",
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("GITHUB_REPOSITORY", tt.envRepo)
+			owner, repo, number, err := ParseRef(tt.ref)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got owner=%q repo=%q number=%d", owner, repo, number)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if owner != tt.wantOwner || repo != tt.wantRepo || number != tt.wantNumber {
+				t.Errorf("got %s/%s#%d, want %s/%s#%d", owner, repo, number, tt.wantOwner, tt.wantRepo, tt.wantNumber)
 			}
 		})
 	}

@@ -121,7 +121,7 @@ func runClaudeStream(dir, prompt, label string) (string, error) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "claude",
-		"-p", prompt,
+		"-p",
 		"--model", claudeModel,
 		"--effort", claudeEffort,
 		"--output-format", "stream-json",
@@ -130,6 +130,7 @@ func runClaudeStream(dir, prompt, label string) (string, error) {
 	if dir != "" {
 		cmd.Dir = dir
 	}
+	cmd.Stdin = strings.NewReader(prompt)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {

@@ -73,7 +73,7 @@ func runClaude(dir, prompt, label string) (string, error) {
 	defer stopProgress()
 
 	cmd := exec.CommandContext(ctx, "claude",
-		"-p", prompt,
+		"-p",
 		"--model", claudeModel,
 		"--effort", claudeEffort,
 		"--output-format", "json",
@@ -81,6 +81,7 @@ func runClaude(dir, prompt, label string) (string, error) {
 	if dir != "" {
 		cmd.Dir = dir
 	}
+	cmd.Stdin = strings.NewReader(prompt)
 	out, err := cmd.Output()
 	if err != nil {
 		var exitErr *exec.ExitError

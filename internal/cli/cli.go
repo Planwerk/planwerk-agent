@@ -7,6 +7,7 @@ import (
 	"github.com/planwerk/planwerk-review/internal/elaborate"
 	"github.com/planwerk/planwerk-review/internal/fix"
 	"github.com/planwerk/planwerk-review/internal/gapanalysis"
+	"github.com/planwerk/planwerk-review/internal/implement"
 	"github.com/planwerk/planwerk-review/internal/prompt"
 	"github.com/planwerk/planwerk-review/internal/propose"
 	"github.com/planwerk/planwerk-review/internal/report"
@@ -159,6 +160,24 @@ func (c FixConfig) ToFixOptions(version string) fix.Options {
 		DryRun:        c.DryRun,
 		PrintPrompt:   c.PrintPrompt,
 		Version:       version,
+	}
+}
+
+// ImplementConfig holds configuration for the implement command.
+type ImplementConfig struct {
+	IssueRef        string
+	DryRun          bool
+	PrintPrompt     bool
+	PrintBarePrompt bool
+}
+
+func (c ImplementConfig) ToImplementOptions(version string) implement.Options {
+	return implement.Options{
+		IssueRef:        c.IssueRef,
+		DryRun:          c.DryRun,
+		PrintPrompt:     c.PrintPrompt,
+		PrintBarePrompt: c.PrintBarePrompt,
+		Version:         version,
 	}
 }
 

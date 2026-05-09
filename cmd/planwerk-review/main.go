@@ -24,6 +24,7 @@ import (
 	"github.com/planwerk/planwerk-review/internal/elaborate"
 	"github.com/planwerk/planwerk-review/internal/fix"
 	"github.com/planwerk/planwerk-review/internal/gapanalysis"
+	"github.com/planwerk/planwerk-review/internal/implement"
 	"github.com/planwerk/planwerk-review/internal/logging"
 	"github.com/planwerk/planwerk-review/internal/patterns"
 	"github.com/planwerk/planwerk-review/internal/prompt"
@@ -824,6 +825,59 @@ or short form (owner/repo#123).`,
 	fixFlags.BoolVar(&fixCfg.PrintBarePrompt, "print-bare-prompt", false, "Render a self-contained fix prompt (no check analysis) to stdout and exit; meant to be pasted into a manual Claude session already running inside a checkout of the PR")
 
 	rootCmd.AddCommand(fixCmd)
+
+	// implement subcommand: take an elaborated GitHub issue and run a fresh
+	// Claude Code session inside a clone of the target repo to implement the
+	// feature end-to-end (code + tests + docs) and open a draft pull request.
+	// --print-prompt / --print-bare-prompt mirror the fix subcommand for
+	// users who want to drive the session manually.
+	var implementCfg cli.ImplementConfig
+
+	implementCmd := &cobra.Command{
+		Use:   "implement <issue-ref>",
+		Short: "Implement an elaborated GitHub issue end-to-end with Claude Code",
+		Long: `Fetch a GitHub issue (typically already elaborated via the elaborate
+subcommand), clone the repository, and run a fresh Claude Code session to
+implement the feature end-to-end: code, tests, documentation, fresh feature
+branch, draft pull request linked to the issue.
+
+Use --print-prompt to render the implement prompt (with the issue body
+embedded) to stdout without invoking Claude. Use --print-bare-prompt to
+render a portable, self-contained prompt that you can paste into a manual
+Claude Code session already running inside your own checkout.
+
+Issue reference can be a URL (https://github.com/owner/repo/issues/123)
+or short form (owner/repo#123).`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			implementCfg.IssueRef = args[0]
+			modes := 0
+			if implementCfg.DryRun {
+				modes++
+			}
+			if implementCfg.PrintPrompt {
+				modes++
+			}
+			if implementCfg.PrintBarePrompt {
+				modes++
+			}
+			if modes > 1 {
+				return fmt.Errorf("--dry-run, --print-prompt, and --print-bare-prompt are mutually exclusive")
+			}
+			if implementCfg.PrintBarePrompt {
+				return implement.PrintBarePrompt(cmd.OutOrStdout(), implementCfg.IssueRef, claude.BuildBareImplementPrompt)
+			}
+			opts := implementCfg.ToImplementOptions(version)
+			return implement.Run(cmd.OutOrStdout(), opts, claude.Implement, claude.BuildImplementPrompt)
+		},
+	}
+
+	implementFlags := implementCmd.Flags()
+	implementFlags.BoolVar(&implementCfg.DryRun, "dry-run", false, "Report what would happen but do not clone, invoke Claude, or push anything")
+	implementFlags.BoolVar(&implementCfg.PrintPrompt, "print-prompt", false, "Render the implement prompt (with the issue body embedded) to stdout and exit; do not clone or invoke Claude")
+	implementFlags.BoolVar(&implementCfg.PrintBarePrompt, "print-bare-prompt", false, "Render a self-contained implement prompt (no issue body) to stdout and exit; meant to be pasted into a manual Claude session already running inside a checkout of the repository")
+
+	rootCmd.AddCommand(implementCmd)
 
 	// cache subcommand group: visibility into the on-disk cache. The existing
 	// top-level --cache-stats / --cache-inspect flags remain for compatibility;

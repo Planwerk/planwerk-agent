@@ -207,10 +207,10 @@ func assignIDs(result *Result) {
 	}
 }
 
-// filterBySeverity drops findings below the configured threshold. Empty min
-// keeps everything.
-func filterBySeverity(result *Result, min report.Severity) {
-	if result == nil || min == "" {
+// filterBySeverity drops findings below the configured threshold. Empty
+// minSeverity keeps everything.
+func filterBySeverity(result *Result, minSeverity report.Severity) {
+	if result == nil || minSeverity == "" {
 		return
 	}
 	rank := map[report.Severity]int{
@@ -219,7 +219,7 @@ func filterBySeverity(result *Result, min report.Severity) {
 		report.SeverityCritical: 2,
 		report.SeverityBlocking: 3,
 	}
-	threshold, ok := rank[min]
+	threshold, ok := rank[minSeverity]
 	if !ok {
 		return
 	}
