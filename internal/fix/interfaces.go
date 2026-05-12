@@ -2,6 +2,7 @@ package fix
 
 import (
 	"github.com/planwerk/planwerk-review/internal/github"
+	"github.com/planwerk/planwerk-review/internal/patterns"
 )
 
 // FailedCheck is a flattened, prompt-friendly view of a single failing check
@@ -18,6 +19,11 @@ type FailedCheck struct {
 }
 
 // Context is the input for the Claude fix prompt for a single iteration.
+//
+// Patterns + MaxPatterns are injected so the fix is grounded in the same
+// review/audit/elaborate pattern catalog used by the rest of the tool, and
+// honors any project-specific patterns under .planwerk/review_patterns/ in
+// the target repo.
 type Context struct {
 	RepoFullName  string
 	PRNumber      int
@@ -27,6 +33,8 @@ type Context struct {
 	Iteration     int
 	MaxIterations int
 	FailedChecks  []FailedCheck
+	Patterns      []patterns.Pattern
+	MaxPatterns   int
 }
 
 // FixFn is the bare-function shape the CLI passes in to wire Claude into the
@@ -39,11 +47,34 @@ type FixFn func(dir string, ctx Context) (string, error)
 // mode while keeping the import direction claude -> fix.
 type PromptBuildFn func(ctx Context) string
 
-// BarePromptBuildFn renders a self-contained fix prompt from the PR
-// reference alone — no failing-check analysis, no log retrieval. Wired in
-// by the CLI for --print-bare-prompt mode while keeping the import
-// direction claude -> fix.
-type BarePromptBuildFn func(repoFullName string, prNumber int) string
+// BareContext is the input for the self-contained ("bare") fix prompt
+// rendered by --print-bare-prompt. The orchestrator clones the target repo
+// at prompt-build time so it can run technology detection and prepare a
+// reference catalog of the relevant review patterns — the resulting prompt
+// is then portable: it is pasted into a manual Claude session that
+// operates on its own checkout, with no further coordination required.
+//
+// The pattern catalog is shipped as a list of remote URLs (for patterns
+// from the bundled planwerk-review catalog) plus relative checkout paths
+// (for project-specific patterns under .planwerk/review_patterns/). The
+// pasted-into Claude session fetches each URL itself, so the prompt stays
+// short and the patterns Claude sees are always the same as those
+// displayed on github.com/planwerk/planwerk-review.
+type BareContext struct {
+	RepoFullName       string
+	PRNumber           int
+	TechTags           []string
+	PatternCatalog     []patterns.CatalogReference
+	BundledURLBase     string // for the prompt to mention canonical source
+	HasRepoLocalRefs   bool   // signals that LocalPath entries exist
+}
+
+// BarePromptBuildFn renders a self-contained fix prompt — no failing-check
+// analysis, no log retrieval. Wired in by the CLI for --print-bare-prompt
+// mode while keeping the import direction claude -> fix. The context is
+// populated by the orchestrator from a fresh checkout of the target repo
+// so the resulting prompt can embed the filtered pattern catalog inline.
+type BarePromptBuildFn func(ctx BareContext) string
 
 // ClaudeFixer is the injected dependency the orchestrator uses to run a
 // single fix iteration. The production implementation is claude.Fix; tests

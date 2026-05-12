@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -208,12 +209,23 @@ func TestRun_PropagatesClaudeError(t *testing.T) {
 	}
 }
 
+// barePromptRunner returns an implement.Runner whose GitHub fake clones
+// into a throwaway dir so PrintBarePrompt can run detect.Technologies +
+// patterns.LoadFiltered without hitting the network.
+func barePromptRunner(t *testing.T) (*Runner, *fakeGitHub) {
+	t.Helper()
+	gh := &fakeGitHub{cloneDir: t.TempDir()}
+	r := newRunner(gh, &fakeClaude{})
+	return r, gh
+}
+
 func TestPrintBarePrompt_WritesPromptForRef(t *testing.T) {
-	build := func(repo string, n int) string {
-		return fmt.Sprintf("BARE repo=%s issue=%d", repo, n)
+	r, _ := barePromptRunner(t)
+	build := func(ctx BareContext) string {
+		return fmt.Sprintf("BARE repo=%s issue=%d", ctx.RepoFullName, ctx.IssueNumber)
 	}
 	var buf bytes.Buffer
-	if err := PrintBarePrompt(&buf, "https://github.com/owner/repo/issues/42", build); err != nil {
+	if err := r.PrintBarePrompt(&buf, Options{IssueRef: "https://github.com/owner/repo/issues/42"}, build); err != nil {
 		t.Fatalf("PrintBarePrompt returned %v, want nil", err)
 	}
 	out := buf.String()
@@ -226,32 +238,154 @@ func TestPrintBarePrompt_WritesPromptForRef(t *testing.T) {
 }
 
 func TestPrintBarePrompt_AcceptsShortForm(t *testing.T) {
-	var got struct {
-		repo string
-		num  int
-	}
-	build := func(repo string, n int) string {
-		got.repo, got.num = repo, n
+	r, _ := barePromptRunner(t)
+	var got BareContext
+	build := func(ctx BareContext) string {
+		got = ctx
 		return "ok"
 	}
-	if err := PrintBarePrompt(io.Discard, "owner/repo#7", build); err != nil {
+	if err := r.PrintBarePrompt(io.Discard, Options{IssueRef: "owner/repo#7"}, build); err != nil {
 		t.Fatalf("PrintBarePrompt returned %v, want nil", err)
 	}
-	if got.repo != "owner/repo" || got.num != 7 {
-		t.Errorf("builder got repo=%q issue=%d, want owner/repo / 7", got.repo, got.num)
+	if got.RepoFullName != "owner/repo" || got.IssueNumber != 7 {
+		t.Errorf("builder got repo=%q issue=%d, want owner/repo / 7", got.RepoFullName, got.IssueNumber)
 	}
 }
 
 func TestPrintBarePrompt_RejectsBadRef(t *testing.T) {
-	err := PrintBarePrompt(io.Discard, "not-a-ref", func(string, int) string { return "" })
+	r, _ := barePromptRunner(t)
+	err := r.PrintBarePrompt(io.Discard, Options{IssueRef: "not-a-ref"}, func(BareContext) string { return "" })
 	if err == nil || !strings.Contains(err.Error(), "parsing issue ref") {
 		t.Fatalf("expected parsing error, got %v", err)
 	}
 }
 
 func TestPrintBarePrompt_RequiresBuilder(t *testing.T) {
-	err := PrintBarePrompt(io.Discard, "owner/repo#1", nil)
+	r, _ := barePromptRunner(t)
+	err := r.PrintBarePrompt(io.Discard, Options{IssueRef: "owner/repo#1"}, nil)
 	if err == nil || !strings.Contains(err.Error(), "prompt builder") {
 		t.Fatalf("expected builder-required error, got %v", err)
+	}
+}
+
+// TestPrintBarePrompt_LoadsAndPassesPatterns proves that the bare-prompt
+// path also runs collectPatternDirs + patterns.LoadFiltered and surfaces
+// the result through BareContext, just like the orchestrator-driven Run.
+func TestPrintBarePrompt_LoadsAndPassesPatterns(t *testing.T) {
+	patternsDir := t.TempDir()
+	const patternBody = `# Review Pattern: Bare wiring check
+**Review-Area**: meta
+**Detection-Hint**: anything
+**Severity**: WARNING
+
+## Rule
+Bare prompts must surface patterns through BareContext.
+`
+	if err := os.WriteFile(patternsDir+"/sample.md", []byte(patternBody), 0o644); err != nil {
+		t.Fatalf("seeding pattern file: %v", err)
+	}
+
+	r, _ := barePromptRunner(t)
+	var got BareContext
+	build := func(ctx BareContext) string {
+		got = ctx
+		return "ok"
+	}
+	opts := Options{
+		IssueRef:        "owner/repo#7",
+		PatternDirs:     []string{patternsDir},
+		NoLocalPatterns: true,
+		NoRepoPatterns:  true,
+	}
+	if err := r.PrintBarePrompt(io.Discard, opts, build); err != nil {
+		t.Fatalf("PrintBarePrompt returned %v, want nil", err)
+	}
+	if len(got.PatternCatalog) != 1 || got.PatternCatalog[0].Name != "Bare wiring check" {
+		t.Errorf("BareContext catalog = %+v, want one entry named %q", got.PatternCatalog, "Bare wiring check")
+	}
+	entry := got.PatternCatalog[0]
+	if entry.URL != "" || entry.LocalPath != "" {
+		t.Errorf("expected no URL/LocalPath for --patterns entry, got URL=%q LocalPath=%q", entry.URL, entry.LocalPath)
+	}
+	if entry.OriginNote == "" {
+		t.Errorf("expected OriginNote for --patterns entry, got empty")
+	}
+}
+
+func TestCollectPatternDirs_IncludesExplicitDirs(t *testing.T) {
+	opts := Options{
+		PatternDirs:     []string{"/explicit/patterns"},
+		NoLocalPatterns: true,
+		NoRepoPatterns:  true,
+	}
+	dirs := collectPatternDirs(opts, "/tmp/repo")
+
+	if len(dirs) != 1 || dirs[0] != "/explicit/patterns" {
+		t.Errorf("dirs = %v, want only /explicit/patterns", dirs)
+	}
+}
+
+func TestCollectPatternDirs_HonorsNoRepoPatterns(t *testing.T) {
+	opts := Options{
+		NoLocalPatterns: true,
+		NoRepoPatterns:  true,
+	}
+	dirs := collectPatternDirs(opts, "/tmp/repo-that-does-not-exist")
+
+	for _, d := range dirs {
+		if d == "/tmp/repo-that-does-not-exist/.planwerk/review_patterns" {
+			t.Error("repo patterns should be skipped when NoRepoPatterns is true")
+		}
+	}
+}
+
+func TestCollectPatternDirs_EmptyWhenEverythingDisabled(t *testing.T) {
+	opts := Options{
+		NoLocalPatterns: true,
+		NoRepoPatterns:  true,
+	}
+	dirs := collectPatternDirs(opts, "/tmp/does-not-exist")
+
+	if len(dirs) != 0 {
+		t.Errorf("expected no pattern dirs with both flags disabled and no explicit dirs, got %v", dirs)
+	}
+}
+
+func TestRun_PassesPatternsToClaude(t *testing.T) {
+	// Use an in-process patterns dir so LoadFiltered returns at least one
+	// pattern, proving the wiring from Options through to Claude.Implement
+	// actually carries patterns into the prompt context.
+	patternsDir := t.TempDir()
+	patternFile := patternsDir + "/sample.md"
+	const patternBody = `# Review Pattern: Sample wiring check
+**Review-Area**: meta
+**Detection-Hint**: anything
+**Severity**: WARNING
+
+## Rule
+Wired patterns must reach the implement Context.
+`
+	if err := os.WriteFile(patternFile, []byte(patternBody), 0o644); err != nil {
+		t.Fatalf("seeding pattern file: %v", err)
+	}
+
+	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+	cl := &fakeClaude{report: "ok"}
+	r := newRunner(gh, cl)
+
+	opts := Options{
+		IssueRef:        "owner/repo#42",
+		PatternDirs:     []string{patternsDir},
+		NoLocalPatterns: true,
+		NoRepoPatterns:  true,
+	}
+	if err := r.Run(io.Discard, opts); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if got := len(cl.ctx.Patterns); got != 1 {
+		t.Fatalf("Claude got %d patterns, want 1 (wiring broken)", got)
+	}
+	if cl.ctx.Patterns[0].Name != "Sample wiring check" {
+		t.Errorf("Claude got pattern name %q, want %q", cl.ctx.Patterns[0].Name, "Sample wiring check")
 	}
 }

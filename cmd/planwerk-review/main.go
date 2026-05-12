@@ -795,6 +795,11 @@ or short form (owner/repo#123).`,
 			if fixCfg.MaxIterations <= 0 {
 				return fmt.Errorf("--max-iterations must be > 0, got %d", fixCfg.MaxIterations)
 			}
+			maxPatterns, err := resolveMaxPatterns(fixCfg.MaxPatterns, cmd.Flags().Changed("max-patterns"), nil)
+			if err != nil {
+				return err
+			}
+			fixCfg.MaxPatterns = maxPatterns
 			modes := 0
 			if fixCfg.DryRun {
 				modes++
@@ -808,10 +813,10 @@ or short form (owner/repo#123).`,
 			if modes > 1 {
 				return fmt.Errorf("--dry-run, --print-prompt, and --print-bare-prompt are mutually exclusive")
 			}
-			if fixCfg.PrintBarePrompt {
-				return fix.PrintBarePrompt(cmd.OutOrStdout(), fixCfg.PRRef, claude.BuildBareFixPrompt)
-			}
 			opts := fixCfg.ToFixOptions(version)
+			if fixCfg.PrintBarePrompt {
+				return fix.PrintBarePrompt(cmd.OutOrStdout(), opts, claude.BuildBareFixPrompt)
+			}
 			return fix.Run(cmd.OutOrStdout(), opts, claude.Fix, claude.BuildFixPrompt)
 		},
 	}
@@ -823,6 +828,10 @@ or short form (owner/repo#123).`,
 	fixFlags.BoolVar(&fixCfg.DryRun, "dry-run", false, "Report failing checks but do not invoke Claude or commit")
 	fixFlags.BoolVar(&fixCfg.PrintPrompt, "print-prompt", false, "Render the fix prompt for the current failing checks to stdout and exit; do not invoke Claude or commit")
 	fixFlags.BoolVar(&fixCfg.PrintBarePrompt, "print-bare-prompt", false, "Render a self-contained fix prompt (no check analysis) to stdout and exit; meant to be pasted into a manual Claude session already running inside a checkout of the PR")
+	fixFlags.StringSliceVar(&fixCfg.PatternDirs, "patterns", nil, "Additional pattern sources: local dirs, github:owner/repo[/sub][@ref], or git+https://...[#ref[:sub]]")
+	fixFlags.BoolVar(&fixCfg.NoRepoPatterns, "no-repo-patterns", false, "Ignore repo-specific patterns under .planwerk/review_patterns/ in the target repo")
+	fixFlags.BoolVar(&fixCfg.NoLocalPatterns, "no-local-patterns", false, "Ignore local patterns from the tool")
+	fixFlags.IntVar(&fixCfg.MaxPatterns, "max-patterns", patterns.DefaultMaxPatternsInPrompt, "Max review patterns injected into the prompt (<=0 disables truncation, env: "+envMaxPatterns+")")
 
 	rootCmd.AddCommand(fixCmd)
 
@@ -851,6 +860,11 @@ or short form (owner/repo#123).`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			implementCfg.IssueRef = args[0]
+			maxPatterns, err := resolveMaxPatterns(implementCfg.MaxPatterns, cmd.Flags().Changed("max-patterns"), nil)
+			if err != nil {
+				return err
+			}
+			implementCfg.MaxPatterns = maxPatterns
 			modes := 0
 			if implementCfg.DryRun {
 				modes++
@@ -864,10 +878,10 @@ or short form (owner/repo#123).`,
 			if modes > 1 {
 				return fmt.Errorf("--dry-run, --print-prompt, and --print-bare-prompt are mutually exclusive")
 			}
-			if implementCfg.PrintBarePrompt {
-				return implement.PrintBarePrompt(cmd.OutOrStdout(), implementCfg.IssueRef, claude.BuildBareImplementPrompt)
-			}
 			opts := implementCfg.ToImplementOptions(version)
+			if implementCfg.PrintBarePrompt {
+				return implement.PrintBarePrompt(cmd.OutOrStdout(), opts, claude.BuildBareImplementPrompt)
+			}
 			return implement.Run(cmd.OutOrStdout(), opts, claude.Implement, claude.BuildImplementPrompt)
 		},
 	}
@@ -876,6 +890,10 @@ or short form (owner/repo#123).`,
 	implementFlags.BoolVar(&implementCfg.DryRun, "dry-run", false, "Report what would happen but do not clone, invoke Claude, or push anything")
 	implementFlags.BoolVar(&implementCfg.PrintPrompt, "print-prompt", false, "Render the implement prompt (with the issue body embedded) to stdout and exit; do not clone or invoke Claude")
 	implementFlags.BoolVar(&implementCfg.PrintBarePrompt, "print-bare-prompt", false, "Render a self-contained implement prompt (no issue body) to stdout and exit; meant to be pasted into a manual Claude session already running inside a checkout of the repository")
+	implementFlags.StringSliceVar(&implementCfg.PatternDirs, "patterns", nil, "Additional pattern sources: local dirs, github:owner/repo[/sub][@ref], or git+https://...[#ref[:sub]]")
+	implementFlags.BoolVar(&implementCfg.NoRepoPatterns, "no-repo-patterns", false, "Ignore repo-specific patterns under .planwerk/review_patterns/ in the target repo")
+	implementFlags.BoolVar(&implementCfg.NoLocalPatterns, "no-local-patterns", false, "Ignore local patterns from the tool")
+	implementFlags.IntVar(&implementCfg.MaxPatterns, "max-patterns", patterns.DefaultMaxPatternsInPrompt, "Max review patterns injected into the prompt (<=0 disables truncation, env: "+envMaxPatterns+")")
 
 	rootCmd.AddCommand(implementCmd)
 

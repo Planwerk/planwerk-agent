@@ -22,6 +22,12 @@ type Pattern struct {
 	AppliesWhen   []string // technology tags; empty = always applies
 	Sources       []Source
 	Body          string
+	// FilePath is the absolute path the loader read this pattern from, when
+	// known. Empty for patterns parsed from in-memory strings (tests, etc.).
+	// Consumers like the bare-prompt URL builder use this to map a loaded
+	// pattern back to its source directory and emit a remote URL instead of
+	// inlining the body.
+	FilePath string
 }
 
 // Parse parses a pattern from its markdown content.

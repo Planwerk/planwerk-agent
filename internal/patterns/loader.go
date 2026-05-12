@@ -153,6 +153,16 @@ func loadDir(dir string) ([]Pattern, error) {
 			return nil
 		}
 
+		// Record the absolute on-disk path so downstream consumers can
+		// classify the pattern by source dir (bundled / repo / explicit).
+		// Falling back to the as-walked path keeps the field non-empty even
+		// if Abs fails, which is good enough for prefix-based matching.
+		if abs, err := filepath.Abs(path); err == nil {
+			p.FilePath = abs
+		} else {
+			p.FilePath = path
+		}
+
 		result = append(result, p)
 		return nil
 	})
@@ -270,4 +280,158 @@ func truncatePatterns(pats []Pattern, maxPatterns int) []Pattern {
 
 	slog.Warn("patterns truncated for prompt budget", "loaded", len(pats), "kept", maxPatterns)
 	return result
+}
+
+// CatalogReference is a single entry in a bare-prompt pattern catalog. It
+// pairs the pattern's identity (name, severity, area, technology hints)
+// with a way for a remote Claude session to acquire its body — either a
+// public URL (for patterns shipped in this repo) or a path inside the
+// session's own checkout (for project-specific patterns).
+type CatalogReference struct {
+	Name          string
+	Severity      string
+	Category      string
+	ReviewArea    string
+	AppliesWhen   []string
+	URL           string // public URL (raw markdown); empty when LocalPath is set
+	LocalPath     string // path within the session's checkout; empty when URL is set
+	OriginNote    string // free-form note shown next to the entry (e.g. "user-supplied via --patterns")
+}
+
+// CatalogRefOptions configures BuildCatalogReferences. The orchestrator
+// passes in the directory roots it knows about (bundled local catalog,
+// target-repo overrides) so the helper can map each pattern's FilePath
+// back to either a remote URL or an in-checkout path. Both root paths
+// should be absolute (BuildCatalogReferences will Abs them defensively).
+type CatalogRefOptions struct {
+	// BundledRoot is the on-disk directory the planwerk-review-shipped
+	// pattern catalog was loaded from. Patterns whose FilePath sits under
+	// this directory are emitted as URLs against BundledURLBase.
+	BundledRoot string
+	// BundledURLBase is the URL prefix patterns under BundledRoot map to.
+	// E.g. https://raw.githubusercontent.com/planwerk/planwerk-review/main/patterns
+	// (no trailing slash). Required iff BundledRoot is non-empty.
+	BundledURLBase string
+	// RepoRoot is the target repository's .planwerk/review_patterns/
+	// directory. Patterns under this dir are emitted as relative paths the
+	// pasted-into Claude session can read directly from its own checkout.
+	RepoRoot string
+	// RepoRelBase is the path prefix to print for RepoRoot patterns
+	// (typically ".planwerk/review_patterns"). Required iff RepoRoot is
+	// non-empty.
+	RepoRelBase string
+}
+
+// BuildCatalogReferences classifies each pattern by file-path prefix
+// against the source roots in opts and returns a catalog suitable for
+// embedding in a bare prompt. Patterns whose FilePath does not match any
+// known root land in the slice with both URL and LocalPath empty and an
+// OriginNote describing the situation — the prompt builder can then
+// either skip them or list them by name as a "you'll have to load this
+// yourself" footnote.
+func BuildCatalogReferences(pats []Pattern, opts CatalogRefOptions) []CatalogReference {
+	bundled := absOrEmpty(opts.BundledRoot)
+	repo := absOrEmpty(opts.RepoRoot)
+
+	refs := make([]CatalogReference, 0, len(pats))
+	for _, p := range pats {
+		ref := CatalogReference{
+			Name:        p.Name,
+			Severity:    p.Severity,
+			Category:    p.Category,
+			ReviewArea:  p.ReviewArea,
+			AppliesWhen: append([]string(nil), p.AppliesWhen...),
+		}
+		path := p.FilePath
+		if abs, err := filepath.Abs(path); err == nil {
+			path = abs
+		}
+
+		switch {
+		case bundled != "" && opts.BundledURLBase != "" && hasDirPrefix(path, bundled):
+			rel, err := filepath.Rel(bundled, path)
+			if err == nil {
+				ref.URL = strings.TrimRight(opts.BundledURLBase, "/") + "/" + filepath.ToSlash(rel)
+			}
+		case repo != "" && opts.RepoRelBase != "" && hasDirPrefix(path, repo):
+			rel, err := filepath.Rel(repo, path)
+			if err == nil {
+				ref.LocalPath = strings.TrimRight(opts.RepoRelBase, "/") + "/" + filepath.ToSlash(rel)
+			}
+		default:
+			ref.OriginNote = "user-supplied via --patterns; load it yourself if needed"
+		}
+		refs = append(refs, ref)
+	}
+	return refs
+}
+
+// FormatCatalogReferences renders the catalog produced by
+// BuildCatalogReferences as a markdown bullet list suitable for embedding
+// in a bare prompt. The result is empty (zero-length string) when refs is
+// empty so the caller can branch on `if block != ""`.
+func FormatCatalogReferences(refs []CatalogReference) string {
+	if len(refs) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	for _, r := range refs {
+		sb.WriteString("- **")
+		sb.WriteString(r.Name)
+		sb.WriteString("**")
+		if r.Severity != "" {
+			sb.WriteString(" (")
+			sb.WriteString(r.Severity)
+			sb.WriteString(")")
+		}
+		switch {
+		case r.URL != "":
+			sb.WriteString(" — fetch ")
+			sb.WriteString(r.URL)
+		case r.LocalPath != "":
+			sb.WriteString(" — read `")
+			sb.WriteString(r.LocalPath)
+			sb.WriteString("` from your checkout")
+		case r.OriginNote != "":
+			sb.WriteString(" — ")
+			sb.WriteString(r.OriginNote)
+		}
+		if r.Category != "" || len(r.AppliesWhen) > 0 || r.ReviewArea != "" {
+			sb.WriteString("  \n  ")
+			var meta []string
+			if r.Category != "" {
+				meta = append(meta, "category="+r.Category)
+			}
+			if r.ReviewArea != "" {
+				meta = append(meta, "area="+r.ReviewArea)
+			}
+			if len(r.AppliesWhen) > 0 {
+				meta = append(meta, "applies-when="+strings.Join(r.AppliesWhen, ","))
+			}
+			sb.WriteString(strings.Join(meta, "; "))
+		}
+		sb.WriteString("\n")
+	}
+	return sb.String()
+}
+
+func absOrEmpty(p string) string {
+	if p == "" {
+		return ""
+	}
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return p
+	}
+	return abs
+}
+
+// hasDirPrefix reports whether path lives under dir, treating both as
+// directory paths so a sibling like "/dir2/x" does not match "/dir".
+func hasDirPrefix(path, dir string) bool {
+	if dir == "" {
+		return false
+	}
+	dir = strings.TrimRight(dir, string(filepath.Separator))
+	return path == dir || strings.HasPrefix(path, dir+string(filepath.Separator))
 }

@@ -354,6 +354,106 @@ func TestLoadFiltered_MixesLocalAndRemote(t *testing.T) {
 	}
 }
 
+func TestBuildCatalogReferences_ClassifiesByFilePath(t *testing.T) {
+	bundled := t.TempDir()
+	repo := t.TempDir()
+
+	pats := []Pattern{
+		{Name: "Bundled rule", Severity: "WARNING", Category: "design-principle",
+			FilePath: filepath.Join(bundled, "design", "rule.md")},
+		{Name: "Repo override", Severity: "CRITICAL", Category: "technology",
+			AppliesWhen: []string{"go"},
+			FilePath:    filepath.Join(repo, "go", "extra.md")},
+		{Name: "User-supplied", Severity: "INFO",
+			FilePath: filepath.Join(t.TempDir(), "other.md")},
+	}
+
+	refs := BuildCatalogReferences(pats, CatalogRefOptions{
+		BundledRoot:    bundled,
+		BundledURLBase: "https://raw.example/patterns",
+		RepoRoot:       repo,
+		RepoRelBase:    ".planwerk/review_patterns",
+	})
+
+	if len(refs) != 3 {
+		t.Fatalf("got %d refs, want 3", len(refs))
+	}
+	if refs[0].URL != "https://raw.example/patterns/design/rule.md" {
+		t.Errorf("bundled URL = %q, want https://raw.example/patterns/design/rule.md", refs[0].URL)
+	}
+	if refs[0].LocalPath != "" {
+		t.Errorf("bundled LocalPath should be empty, got %q", refs[0].LocalPath)
+	}
+	if refs[1].LocalPath != ".planwerk/review_patterns/go/extra.md" {
+		t.Errorf("repo LocalPath = %q, want .planwerk/review_patterns/go/extra.md", refs[1].LocalPath)
+	}
+	if refs[1].URL != "" {
+		t.Errorf("repo URL should be empty, got %q", refs[1].URL)
+	}
+	if refs[2].URL != "" || refs[2].LocalPath != "" {
+		t.Errorf("user-supplied ref should have neither URL nor LocalPath, got %+v", refs[2])
+	}
+	if refs[2].OriginNote == "" {
+		t.Errorf("user-supplied ref should carry an OriginNote, got empty")
+	}
+}
+
+func TestFormatCatalogReferences_RendersBullets(t *testing.T) {
+	refs := []CatalogReference{
+		{Name: "Bundled rule", Severity: "WARNING", URL: "https://raw.example/p/r.md", Category: "design-principle"},
+		{Name: "Repo override", Severity: "CRITICAL", LocalPath: ".planwerk/review_patterns/extra.md", AppliesWhen: []string{"go"}},
+		{Name: "User", Severity: "INFO", OriginNote: "user-supplied via --patterns; load it yourself if needed"},
+	}
+	out := FormatCatalogReferences(refs)
+	for _, want := range []string{
+		"Bundled rule",
+		"fetch https://raw.example/p/r.md",
+		"Repo override",
+		"read `.planwerk/review_patterns/extra.md`",
+		"applies-when=go",
+		"user-supplied via --patterns",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("rendered catalog missing %q\nFull output:\n%s", want, out)
+		}
+	}
+}
+
+func TestBuildCatalogReferences_LoaderSetsFilePath(t *testing.T) {
+	// End-to-end check: LoadFiltered must populate Pattern.FilePath so
+	// BuildCatalogReferences can route entries to the right bucket.
+	bundled := t.TempDir()
+	const body = `# Review Pattern: FilePath wiring
+**Review-Area**: meta
+**Detection-Hint**: any
+**Severity**: WARNING
+
+## Rule
+The loader must record FilePath.
+`
+	if err := os.WriteFile(filepath.Join(bundled, "rule.md"), []byte(body), 0o644); err != nil {
+		t.Fatalf("seeding pattern: %v", err)
+	}
+	pats, err := LoadFiltered(nil, bundled)
+	if err != nil {
+		t.Fatalf("LoadFiltered: %v", err)
+	}
+	if len(pats) != 1 {
+		t.Fatalf("loaded %d patterns, want 1", len(pats))
+	}
+	if pats[0].FilePath == "" {
+		t.Error("loader did not set FilePath")
+	}
+
+	refs := BuildCatalogReferences(pats, CatalogRefOptions{
+		BundledRoot:    bundled,
+		BundledURLBase: "https://example.test/x",
+	})
+	if got := refs[0].URL; !strings.Contains(got, "/rule.md") {
+		t.Errorf("URL = %q, want it to end with /rule.md", got)
+	}
+}
+
 func TestLoadFiltered_RemoteFailureSurfacesError(t *testing.T) {
 	restore := stubFetch(func(p parsedURI, dest string) error {
 		return os.ErrPermission

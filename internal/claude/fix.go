@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/planwerk/planwerk-review/internal/fix"
+	"github.com/planwerk/planwerk-review/internal/patterns"
 )
 
 // Fix runs a fresh Claude Code session inside the given checkout directory
@@ -51,6 +52,14 @@ func BuildFixPrompt(ctx fix.Context) string {
 
 	fmt.Fprintf(&sb, "## Pull Request\n\n- Repository: %s\n- PR #%d: %s\n- Head branch: %s (committed to and pushed by you)\n- Head SHA at start of this iteration: %s\n- Iteration: %d of %d (max)\n\n",
 		ctx.RepoFullName, ctx.PRNumber, ctx.PRTitle, ctx.HeadBranch, ctx.HeadSHA, ctx.Iteration, ctx.MaxIterations)
+
+	if len(ctx.Patterns) > 0 {
+		sb.WriteString("## Project Review Patterns to Honor\n\n")
+		sb.WriteString("These patterns are the catalog the project's review/audit/elaborate tools share — including any project-specific patterns shipped under `.planwerk/review_patterns/` in this repository. The fix you push MUST stay consistent with them: do not introduce code or test changes that would itself be flagged by a pattern below. When the fix touches an area covered by a pattern, prefer the resolution the pattern endorses.\n\n")
+		sb.WriteString("<review-patterns>\n")
+		sb.WriteString(patterns.FormatGroupedForPrompt(ctx.Patterns, ctx.MaxPatterns))
+		sb.WriteString("</review-patterns>\n\n")
+	}
 
 	if ctx.Iteration > 1 {
 		fmt.Fprintf(&sb, "NOTE: This is iteration %d. A previous iteration already attempted a fix and pushed a commit, but checks are still failing. Before patching again, inspect the most recent commit on %s (e.g. `git log -1 -p`) and the failing logs below: if the SAME check is failing for the SAME reason, your previous approach did not work — change strategy or STOP and report instead of repeating it.\n\n", ctx.Iteration, ctx.HeadBranch)
@@ -162,7 +171,12 @@ Run these steps for EACH failing check above before editing any code:
 // tool is driving the loop, because it can hand Claude the failing logs
 // directly. The bare variant trades that convenience for portability:
 // the manual session works from the PR reference plus its own checkout.
-func BuildBareFixPrompt(repoFullName string, prNumber int) string {
+//
+// The orchestrator clones the target repo at prompt-build time so this
+// prompt can ship with the detected technology tags AND the tech-filtered
+// review-pattern catalog inlined — the manual Claude session does not need
+// access to planwerk-review or its pattern dirs.
+func BuildBareFixPrompt(ctx fix.BareContext) string {
 	var sb strings.Builder
 
 	sb.WriteString(`You are a Staff Engineer fixing failing CI checks on a GitHub pull request.
@@ -184,9 +198,16 @@ func BuildBareFixPrompt(repoFullName string, prNumber int) string {
 `)
 
 	fmt.Fprintf(&sb, "## Pull Request\n\n- Repository: %s\n- PR #%d\n\n",
-		repoFullName, prNumber)
+		ctx.RepoFullName, ctx.PRNumber)
+
+	if len(ctx.TechTags) > 0 {
+		fmt.Fprintf(&sb, "Detected technologies in the target repo (used to filter the pattern catalog below): %s\n\n",
+			strings.Join(ctx.TechTags, ", "))
+	}
 
 	sb.WriteString("You are already running inside a checkout of this PR's head branch. Do NOT re-checkout, do NOT clone. Operate on the working tree you have. You run as a one-shot session: discover the failing checks yourself, fix them, push a single follow-up commit, and report.\n\n")
+
+	sb.WriteString(renderBareCatalog(ctx.PatternCatalog, ctx.HasRepoLocalRefs))
 
 	fmt.Fprintf(&sb, `## Discover failing checks
 
@@ -210,7 +231,7 @@ gh run view <run-id> --repo %s --log-failed
 
 4. For third-party checks (no Actions run id), you cannot pull logs from the CLI. Open the check URL to investigate. If the cause cannot be diagnosed from the visible signal, STOP and report — do not invent a fix.
 
-`, prNumber, repoFullName, repoFullName)
+`, ctx.PRNumber, ctx.RepoFullName, ctx.RepoFullName)
 
 	sb.WriteString(`## Diagnosis Workflow
 

@@ -149,17 +149,26 @@ type FixConfig struct {
 	DryRun          bool
 	PrintPrompt     bool
 	PrintBarePrompt bool
+
+	PatternDirs     []string
+	NoRepoPatterns  bool
+	NoLocalPatterns bool
+	MaxPatterns     int
 }
 
 func (c FixConfig) ToFixOptions(version string) fix.Options {
 	return fix.Options{
-		PRRef:         c.PRRef,
-		PollInterval:  c.PollInterval,
-		MaxIterations: c.MaxIterations,
-		Interactive:   c.Interactive,
-		DryRun:        c.DryRun,
-		PrintPrompt:   c.PrintPrompt,
-		Version:       version,
+		PRRef:           c.PRRef,
+		PollInterval:    c.PollInterval,
+		MaxIterations:   c.MaxIterations,
+		Interactive:     c.Interactive,
+		DryRun:          c.DryRun,
+		PrintPrompt:     c.PrintPrompt,
+		Version:         version,
+		PatternDirs:     c.PatternDirs,
+		NoRepoPatterns:  c.NoRepoPatterns,
+		NoLocalPatterns: c.NoLocalPatterns,
+		MaxPatterns:     c.MaxPatterns,
 	}
 }
 
@@ -169,6 +178,11 @@ type ImplementConfig struct {
 	DryRun          bool
 	PrintPrompt     bool
 	PrintBarePrompt bool
+
+	PatternDirs     []string
+	NoRepoPatterns  bool
+	NoLocalPatterns bool
+	MaxPatterns     int
 }
 
 func (c ImplementConfig) ToImplementOptions(version string) implement.Options {
@@ -178,6 +192,10 @@ func (c ImplementConfig) ToImplementOptions(version string) implement.Options {
 		PrintPrompt:     c.PrintPrompt,
 		PrintBarePrompt: c.PrintBarePrompt,
 		Version:         version,
+		PatternDirs:     c.PatternDirs,
+		NoRepoPatterns:  c.NoRepoPatterns,
+		NoLocalPatterns: c.NoLocalPatterns,
+		MaxPatterns:     c.MaxPatterns,
 	}
 }
 

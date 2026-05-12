@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/planwerk/planwerk-review/internal/implement"
+	"github.com/planwerk/planwerk-review/internal/patterns"
 )
 
 // Implement runs a fresh Claude Code session inside the given checkout
@@ -61,6 +62,14 @@ func BuildImplementPrompt(ctx implement.Context) string {
 	sb.WriteString("\n<issue-body>\n")
 	sb.WriteString(strings.TrimSpace(ctx.IssueBody))
 	sb.WriteString("\n</issue-body>\n\n")
+
+	if len(ctx.Patterns) > 0 {
+		sb.WriteString("## Project Review Patterns to Honor\n\n")
+		sb.WriteString("These patterns are the catalog the project's review/audit/elaborate tools share — including any project-specific patterns shipped under `.planwerk/review_patterns/` in this repository. Treat them as binding constraints on the implementation: every commit you push MUST stay consistent with them. When the change touches an area covered by a pattern, prefer the resolution the pattern endorses.\n\n")
+		sb.WriteString("<review-patterns>\n")
+		sb.WriteString(patterns.FormatGroupedForPrompt(ctx.Patterns, ctx.MaxPatterns))
+		sb.WriteString("</review-patterns>\n\n")
+	}
 
 	sb.WriteString(`## Implementation Workflow
 
@@ -137,7 +146,14 @@ After pushing the branch and opening the draft PR, output a report in this exact
 // this tool is driving the session, because it can hand Claude the issue
 // body inline. The bare variant trades that convenience for portability:
 // the manual session works from the issue reference plus its own checkout.
-func BuildBareImplementPrompt(repoFullName string, issueNumber int) string {
+//
+// The orchestrator clones the target repo at prompt-build time so this
+// prompt can ship with the detected technology tags AND the tech-filtered
+// review-pattern catalog inlined — the manual Claude session does not need
+// access to planwerk-review or its pattern dirs.
+func BuildBareImplementPrompt(ctx implement.BareContext) string {
+	repoFullName := ctx.RepoFullName
+	issueNumber := ctx.IssueNumber
 	var sb strings.Builder
 
 	sb.WriteString(`You are a Staff Engineer implementing an elaborated GitHub issue end-to-end inside a checkout of the target repository. The issue is the definition of done — treat its Acceptance Criteria as a contract.
@@ -159,7 +175,14 @@ func BuildBareImplementPrompt(repoFullName string, issueNumber int) string {
 
 	fmt.Fprintf(&sb, "## Source Issue\n\n- Repository: %s\n- Issue #%d\n\n", repoFullName, issueNumber)
 
+	if len(ctx.TechTags) > 0 {
+		fmt.Fprintf(&sb, "Detected technologies in the target repo (used to filter the pattern catalog below): %s\n\n",
+			strings.Join(ctx.TechTags, ", "))
+	}
+
 	sb.WriteString("You are already running inside a checkout of this repository's default branch. Do NOT re-clone. Operate on the working tree you have. You run as a one-shot session: fetch the issue yourself, implement it, push a fresh feature branch, open a draft PR, and report.\n\n")
+
+	sb.WriteString(renderBareCatalog(ctx.PatternCatalog, ctx.HasRepoLocalRefs))
 
 	fmt.Fprintf(&sb, `## Fetch the issue
 

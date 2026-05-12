@@ -7,11 +7,14 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/planwerk/planwerk-review/internal/detect"
 	"github.com/planwerk/planwerk-review/internal/github"
+	"github.com/planwerk/planwerk-review/internal/patterns"
 )
 
 // Default loop parameters. Each can be overridden via Options / CLI flags.
@@ -22,6 +25,13 @@ const (
 	// per-iteration prompt, before tail-trimming to the last lines. The
 	// claude package then keeps only the last 200 lines of what we pass.
 	MaxLogChars = 64 * 1024
+
+	// BundledPatternsURLBase is the public raw-markdown URL prefix the
+	// bare-prompt catalog uses to point Claude at planwerk-review's bundled
+	// pattern files. We pin to "main" so manual sessions always pick up the
+	// latest patterns without us baking the binary's version into URLs that
+	// then drift on dev builds.
+	BundledPatternsURLBase = "https://raw.githubusercontent.com/planwerk/planwerk-review/main/patterns"
 )
 
 // Options configures the fix subcommand. Mirrors the Options style used by
@@ -34,6 +44,14 @@ type Options struct {
 	DryRun        bool          // skip the Claude invocation; report status only
 	PrintPrompt   bool          // render the fix prompt to stdout and exit; never invoke Claude
 	Version       string
+
+	// Pattern loading mirrors review/audit/elaborate so the fix is grounded
+	// in the same review catalog and any project-specific patterns under
+	// .planwerk/review_patterns/ in the target repo.
+	PatternDirs     []string
+	NoRepoPatterns  bool
+	NoLocalPatterns bool
+	MaxPatterns     int
 }
 
 // Runner glues together the GitHub status query, the Claude fixer, and the
@@ -71,23 +89,79 @@ func Run(w io.Writer, opts Options, fn FixFn, build PromptBuildFn) error {
 	return NewRunner(fn, build).Run(w, opts)
 }
 
-// PrintBarePrompt parses prRef and writes a self-contained fix prompt to w
-// — no PR fetch, no check polling, no log retrieval. The rendered prompt
-// instructs a manual Claude Code session (already running inside a checkout
-// of the PR) to discover and fix the failing checks itself.
+// PrintBarePrompt is a package-level convenience that delegates to
+// NewRunner(nil, nil).PrintBarePrompt. The prompt itself is built without
+// invoking Claude, so the FixFn / PromptBuildFn passed to NewRunner are
+// not used here.
+func PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuildFn) error {
+	return NewRunner(nil, nil).PrintBarePrompt(w, opts, build)
+}
+
+// PrintBarePrompt builds a self-contained ("bare") fix prompt from the PR
+// reference. Even though no Claude call is made, we still clone the target
+// repo so the prompt can carry concrete context: detected technologies and
+// the filtered review-pattern catalog (local + .planwerk/review_patterns/
+// + --patterns sources), inlined so the manual Claude session that pastes
+// this prompt does not need access to planwerk-review or its pattern dirs.
 //
-// Lives in this package so the github.ParseRef call stays out of the CLI
-// entry point; the actual prompt body is supplied by the claude package via
-// the build callback to preserve the claude -> fix import direction.
-func PrintBarePrompt(w io.Writer, prRef string, build BarePromptBuildFn) error {
+// The pasted-into Claude session is still expected to operate on its own
+// checkout of the PR head; the rendered prompt instructs it to discover and
+// fix the failing checks itself.
+func (r *Runner) PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuildFn) error {
 	if build == nil {
 		return errors.New("--print-bare-prompt requires a prompt builder; wire claude.BuildBareFixPrompt")
 	}
-	owner, repo, number, err := github.ParseRef(prRef)
+	owner, repo, number, err := github.ParseRef(opts.PRRef)
 	if err != nil {
 		return fmt.Errorf("parsing PR ref: %w", err)
 	}
-	prompt := build(fmt.Sprintf("%s/%s", owner, repo), number)
+
+	// Clone the PR head so we can run tech detection and pick the right
+	// pattern subset. The clone is throw-away — the prompt is the only
+	// artifact that escapes this call.
+	pr, err := r.GitHub.FetchAndCheckout(opts.PRRef)
+	if err != nil {
+		return fmt.Errorf("fetching PR for bare prompt build: %w", err)
+	}
+	defer pr.Cleanup()
+
+	tags := detect.Technologies(pr.Dir)
+	if len(tags) > 0 {
+		slog.Info("detected technologies for bare prompt", "technologies", strings.Join(tags, ", "))
+	}
+	dirs := collectPatternDirs(opts, pr.Dir)
+	pats, err := patterns.LoadFiltered(tags, dirs...)
+	if err != nil {
+		slog.Warn("loading review patterns failed; bare prompt will omit them", "err", err)
+		pats = nil
+	}
+	if len(pats) > 0 {
+		slog.Info("loaded review patterns for bare prompt", "count", len(pats))
+	}
+
+	catalog := patterns.BuildCatalogReferences(pats, patterns.CatalogRefOptions{
+		BundledRoot:    bundledPatternsRoot(opts),
+		BundledURLBase: BundledPatternsURLBase,
+		RepoRoot:       repoPatternsRoot(opts, pr.Dir),
+		RepoRelBase:    ".planwerk/review_patterns",
+	})
+
+	hasRepoLocal := false
+	for _, c := range catalog {
+		if c.LocalPath != "" {
+			hasRepoLocal = true
+			break
+		}
+	}
+
+	prompt := build(BareContext{
+		RepoFullName:     fmt.Sprintf("%s/%s", owner, repo),
+		PRNumber:         number,
+		TechTags:         tags,
+		PatternCatalog:   catalog,
+		BundledURLBase:   BundledPatternsURLBase,
+		HasRepoLocalRefs: hasRepoLocal,
+	})
 	if _, err := io.WriteString(w, prompt); err != nil {
 		return fmt.Errorf("writing prompt: %w", err)
 	}
@@ -188,6 +262,10 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 
 		failed := r.collectFailedChecks(owner, repo, summary.Failed)
 
+		// In --print-prompt mode there is no fresh checkout, so we cannot
+		// detect technologies or load .planwerk/review_patterns from the
+		// target repo. The bare prompt instead instructs Claude to inspect
+		// those locations itself if they exist.
 		if opts.PrintPrompt {
 			prompt := r.BuildPrompt(Context{
 				RepoFullName:  fullName,
@@ -198,6 +276,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 				Iteration:     iteration,
 				MaxIterations: opts.MaxIterations,
 				FailedChecks:  failed,
+				MaxPatterns:   opts.MaxPatterns,
 			})
 			if _, err := io.WriteString(w, prompt); err != nil {
 				return fmt.Errorf("writing prompt: %w", err)
@@ -216,6 +295,8 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 			return fmt.Errorf("re-checking out PR for iteration %d: %w", iteration, err)
 		}
 
+		pats := loadPatterns(opts, fresh.Dir)
+
 		report, fixErr := r.Claude.Fix(fresh.Dir, Context{
 			RepoFullName:  fullName,
 			PRNumber:      number,
@@ -225,6 +306,8 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 			Iteration:     iteration,
 			MaxIterations: opts.MaxIterations,
 			FailedChecks:  failed,
+			Patterns:      pats,
+			MaxPatterns:   opts.MaxPatterns,
 		})
 		fresh.Cleanup()
 		if fixErr != nil {
@@ -382,6 +465,87 @@ func shortSHA(sha string) string {
 type stdinPrompter struct {
 	In  io.Reader
 	Out io.Writer
+}
+
+// loadPatterns runs technology detection on the fresh checkout and loads
+// the review-pattern catalog filtered by those tags. Mirrors the
+// audit/elaborate/propose helpers so the fix prompt is grounded in the same
+// pattern set the rest of the tool uses, plus any project-specific patterns
+// under .planwerk/review_patterns/ in the target repo.
+//
+// Failures are non-fatal: the loop falls back to running without patterns
+// rather than blocking a CI fix on a corrupt pattern source.
+func loadPatterns(opts Options, repoDir string) []patterns.Pattern {
+	tags := detect.Technologies(repoDir)
+	if len(tags) > 0 {
+		slog.Info("detected technologies", "technologies", strings.Join(tags, ", "))
+	}
+	dirs := collectPatternDirs(opts, repoDir)
+	pats, err := patterns.LoadFiltered(tags, dirs...)
+	if err != nil {
+		slog.Warn("loading review patterns failed; continuing without them", "err", err)
+		return nil
+	}
+	if len(pats) > 0 {
+		slog.Info("loaded review patterns", "count", len(pats))
+	}
+	return pats
+}
+
+// collectPatternDirs assembles the pattern source list:
+//   - the local catalog shipped with planwerk-review (./patterns next to the
+//     binary, plus ./patterns relative to cwd for development)
+//   - the target repo's .planwerk/review_patterns/ directory if present
+//   - any explicit --patterns directories from the user
+//
+// The same toggles --no-local-patterns / --no-repo-patterns the other
+// subcommands expose are honored here too.
+func collectPatternDirs(opts Options, repoDir string) []string {
+	var dirs []string
+	if r := bundledPatternsRoot(opts); r != "" {
+		dirs = append(dirs, r)
+	}
+	if r := repoPatternsRoot(opts, repoDir); r != "" {
+		dirs = append(dirs, r)
+	}
+	dirs = append(dirs, opts.PatternDirs...)
+	return dirs
+}
+
+// bundledPatternsRoot resolves the planwerk-review-bundled local pattern
+// catalog (next to the binary, or ./patterns relative to cwd). Returns ""
+// when --no-local-patterns is set or no candidate exists. Exported intent:
+// the bare-prompt builder needs the same root to map a pattern's FilePath
+// back to the canonical github.com/planwerk/planwerk-review URL.
+func bundledPatternsRoot(opts Options) string {
+	if opts.NoLocalPatterns {
+		return ""
+	}
+	if exe, err := os.Executable(); err == nil {
+		candidate := filepath.Join(filepath.Dir(exe), "..", "patterns")
+		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+			return candidate
+		}
+	}
+	if info, err := os.Stat("patterns"); err == nil && info.IsDir() {
+		return "patterns"
+	}
+	return ""
+}
+
+// repoPatternsRoot resolves the target repo's project-specific pattern
+// directory. Returns "" when --no-repo-patterns is set or the directory
+// does not exist. The bare-prompt builder uses this to emit "read this
+// from your checkout" entries instead of remote URLs.
+func repoPatternsRoot(opts Options, repoDir string) string {
+	if opts.NoRepoPatterns {
+		return ""
+	}
+	candidate := filepath.Join(repoDir, ".planwerk", "review_patterns")
+	if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+		return candidate
+	}
+	return ""
 }
 
 func (p stdinPrompter) Confirm(message string) (bool, error) {
