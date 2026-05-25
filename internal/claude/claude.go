@@ -15,8 +15,12 @@ import (
 )
 
 const (
-	// claudeTimeout is the maximum time allowed for a Claude Code invocation.
-	claudeTimeout = 15 * time.Minute
+	// DefaultClaudeTimeout is the compiled-in default for the maximum time
+	// allowed for a single Claude Code invocation. Override with
+	// SetTimeout (driven by the --claude-timeout flag / PLANWERK_CLAUDE_TIMEOUT
+	// env var) when long-running prompts such as audit/elaborate/implement
+	// need more headroom.
+	DefaultClaudeTimeout = 15 * time.Minute
 	// claudeModel pins every Claude Code invocation to Opus 4.7. Opus 4.7
 	// follows instructions more literally than earlier models, which matches
 	// the strict MUST/NEVER style used throughout the review prompts.
@@ -26,6 +30,10 @@ const (
 	// from the extra reasoning on tricky findings.
 	claudeEffort = "max"
 )
+
+// claudeTimeout is the effective per-invocation timeout. It defaults to
+// DefaultClaudeTimeout and is overridable at startup via SetTimeout.
+var claudeTimeout = DefaultClaudeTimeout
 
 // DefaultBaseBranch is the fallback base branch name when none is specified.
 const DefaultBaseBranch = "main"
@@ -51,6 +59,26 @@ func SetShowOutput(b bool) (restore func()) {
 // that PLANWERK_SHOW_CLAUDE_OUTPUT and --show-claude-output route into
 // the package-level toggle.
 func ShowOutput() bool { return showOutput }
+
+// SetTimeout installs d as the per-invocation Claude Code timeout used by
+// every subsequent runClaude / runClaudeStream call. A non-positive d is
+// ignored and the previous value is preserved — that keeps a misconfigured
+// flag from silently disabling the timeout. The returned restore function
+// reverts to the previous value; the CLI test suite uses it to scope
+// changes to a single test.
+func SetTimeout(d time.Duration) (restore func()) {
+	old := claudeTimeout
+	if d > 0 {
+		claudeTimeout = d
+	}
+	return func() { claudeTimeout = old }
+}
+
+// Timeout reports the currently effective per-invocation Claude Code
+// timeout. Exposed primarily for the CLI test suite to verify that
+// --claude-timeout / PLANWERK_CLAUDE_TIMEOUT route into the package-level
+// value.
+func Timeout() time.Duration { return claudeTimeout }
 
 // runClaude invokes claude in the given directory and returns the
 // extracted text response. The label tags elapsed-time progress updates

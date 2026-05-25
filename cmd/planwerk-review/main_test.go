@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/planwerk/planwerk-review/internal/cache"
+	"github.com/planwerk/planwerk-review/internal/claude"
 	"github.com/planwerk/planwerk-review/internal/patterns"
 )
 
@@ -160,6 +162,61 @@ func TestResolveShowClaudeOutputEnvVariants(t *testing.T) {
 				t.Errorf("env=%q should leave streaming off", raw)
 			}
 		})
+	}
+}
+
+func TestResolveClaudeTimeoutFlagWins(t *testing.T) {
+	t.Setenv(envClaudeTimeout, "30m")
+	got, err := resolveClaudeTimeout(20*time.Minute, true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != 20*time.Minute {
+		t.Fatalf("got %s, want 20m0s (flag value)", got)
+	}
+}
+
+func TestResolveClaudeTimeoutEnvBeatsDefault(t *testing.T) {
+	t.Setenv(envClaudeTimeout, "45m")
+	got, err := resolveClaudeTimeout(0, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != 45*time.Minute {
+		t.Fatalf("got %s, want 45m0s (env value)", got)
+	}
+}
+
+func TestResolveClaudeTimeoutDefault(t *testing.T) {
+	t.Setenv(envClaudeTimeout, "")
+	got, err := resolveClaudeTimeout(0, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != claude.DefaultClaudeTimeout {
+		t.Fatalf("got %s, want default %s", got, claude.DefaultClaudeTimeout)
+	}
+}
+
+func TestResolveClaudeTimeoutInvalidEnv(t *testing.T) {
+	t.Setenv(envClaudeTimeout, "not-a-duration")
+	if _, err := resolveClaudeTimeout(0, false); err == nil {
+		t.Fatalf("expected error for invalid env, got nil")
+	}
+}
+
+func TestResolveClaudeTimeoutRejectsNonPositive(t *testing.T) {
+	t.Setenv(envClaudeTimeout, "")
+	if _, err := resolveClaudeTimeout(0, true); err == nil {
+		t.Fatalf("expected error for --claude-timeout=0, got nil")
+	}
+	if _, err := resolveClaudeTimeout(-1*time.Minute, true); err == nil {
+		t.Fatalf("expected error for negative --claude-timeout, got nil")
+	}
+
+	t.Setenv(envClaudeTimeout, "0s")
+	if _, err := resolveClaudeTimeout(0, false); err == nil {
+		t.Fatalf("expected error for PLANWERK_CLAUDE_TIMEOUT=0s, got nil")
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/planwerk/planwerk-review/internal/doccheck"
 	"github.com/planwerk/planwerk-review/internal/report"
@@ -355,6 +356,35 @@ func TestAssignIDs_DropsRecommendedOptionWhenIDMissing(t *testing.T) {
 	}
 	if result.Findings[1].RecommendationReasoning != "kept" {
 		t.Errorf("reasoning should be kept alongside valid recommended_option")
+	}
+}
+
+func TestSetTimeout_TogglesAndRestores(t *testing.T) {
+	if Timeout() != DefaultClaudeTimeout {
+		t.Fatalf("precondition: Timeout() = %s, want default %s", Timeout(), DefaultClaudeTimeout)
+	}
+
+	restore := SetTimeout(42 * time.Minute)
+	if Timeout() != 42*time.Minute {
+		t.Errorf("Timeout() = %s after SetTimeout(42m), want 42m0s", Timeout())
+	}
+	restore()
+	if Timeout() != DefaultClaudeTimeout {
+		t.Errorf("Timeout() = %s after restore, want default %s", Timeout(), DefaultClaudeTimeout)
+	}
+}
+
+func TestSetTimeout_IgnoresNonPositive(t *testing.T) {
+	prev := Timeout()
+	t.Cleanup(SetTimeout(prev))
+
+	SetTimeout(0)
+	if Timeout() != prev {
+		t.Errorf("SetTimeout(0) must be ignored; Timeout() = %s, want %s", Timeout(), prev)
+	}
+	SetTimeout(-5 * time.Minute)
+	if Timeout() != prev {
+		t.Errorf("SetTimeout(-5m) must be ignored; Timeout() = %s, want %s", Timeout(), prev)
 	}
 }
 

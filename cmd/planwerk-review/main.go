@@ -47,6 +47,12 @@ const envRemotePatternsTTL = "PLANWERK_REMOTE_PATTERNS_TTL"
 // flag --show-claude-output takes precedence when explicitly set.
 const envShowClaudeOutput = "PLANWERK_SHOW_CLAUDE_OUTPUT"
 
+// envClaudeTimeout overrides the per-invocation Claude Code timeout used by
+// every subcommand. Value is parsed with time.ParseDuration (e.g. "20m",
+// "1h30m"); a non-positive value is rejected. The --claude-timeout CLI
+// flag takes precedence when explicitly set.
+const envClaudeTimeout = "PLANWERK_CLAUDE_TIMEOUT"
+
 // resolveShowClaudeOutput returns the effective streaming toggle.
 // Precedence: explicit CLI flag, then PLANWERK_SHOW_CLAUDE_OUTPUT, then
 // off by default.
@@ -61,6 +67,32 @@ func resolveShowClaudeOutput(flagValue, flagSet bool) bool {
 		}
 	}
 	return false
+}
+
+// resolveClaudeTimeout returns the effective per-invocation Claude Code
+// timeout. Precedence: explicit CLI flag, then PLANWERK_CLAUDE_TIMEOUT,
+// then the compiled-in default. A non-positive value is rejected because
+// disabling the timeout would let a stuck claude process hang the CLI
+// indefinitely; users who want longer runs should pass an explicit
+// large duration.
+func resolveClaudeTimeout(flagValue time.Duration, flagSet bool) (time.Duration, error) {
+	if flagSet {
+		if flagValue <= 0 {
+			return 0, fmt.Errorf("--claude-timeout must be > 0, got %s", flagValue)
+		}
+		return flagValue, nil
+	}
+	if raw, ok := os.LookupEnv(envClaudeTimeout); ok && raw != "" {
+		v, err := time.ParseDuration(raw)
+		if err != nil {
+			return 0, fmt.Errorf("invalid %s=%q: %w", envClaudeTimeout, raw, err)
+		}
+		if v <= 0 {
+			return 0, fmt.Errorf("%s must be > 0, got %s", envClaudeTimeout, v)
+		}
+		return v, nil
+	}
+	return claude.DefaultClaudeTimeout, nil
 }
 
 // resolveRemotePatternsTTL returns the effective remote-patterns TTL.
@@ -282,6 +314,7 @@ func main() {
 	var showClaudeOutput bool
 	var logFormat string
 	var remotePatternsTTL time.Duration
+	var claudeTimeout time.Duration
 	var fileCfg cli.FileConfig
 
 	rootCmd := &cobra.Command{
@@ -320,6 +353,12 @@ or short form (owner/repo#123).`,
 				return err
 			}
 			patterns.SetRemoteOptions(patterns.RemoteOptions{TTL: ttl})
+
+			timeout, err := resolveClaudeTimeout(claudeTimeout, cmd.Flags().Changed("claude-timeout"))
+			if err != nil {
+				return err
+			}
+			claude.SetTimeout(timeout)
 
 			claude.SetShowOutput(resolveShowClaudeOutput(showClaudeOutput, cmd.Flags().Changed("show-claude-output")))
 			return nil
@@ -393,6 +432,7 @@ or short form (owner/repo#123).`,
 	persistent.BoolVarP(&verbose, "verbose", "v", false, "Enable debug-level logging (and verbose build info with --version)")
 	persistent.StringVar(&logFormat, "log-format", "text", "Log output format (text, json)")
 	persistent.DurationVar(&remotePatternsTTL, "remote-patterns-ttl", patterns.DefaultRemoteTTL, "Refresh interval for remote pattern sources (env: "+envRemotePatternsTTL+"; <=0 disables refresh once cached)")
+	persistent.DurationVar(&claudeTimeout, "claude-timeout", claude.DefaultClaudeTimeout, "Maximum duration for a single Claude Code invocation (env: "+envClaudeTimeout+"; must be > 0)")
 	persistent.BoolVar(&showClaudeOutput, "show-claude-output", false, "Stream Claude Code's live output to stderr while running (env: "+envShowClaudeOutput+")")
 
 	flags := rootCmd.Flags()
