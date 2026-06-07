@@ -338,6 +338,7 @@ When the diff introduces ANY new dependency, you MUST verify its freshness and m
 
 These rules are MANDATORY. Violating them produces a misleading review.
 
+- QUOTE-OR-DEMOTE: every finding MUST quote the exact triggering line(s) verbatim from the diff in its code snippet. If you cannot quote the line, set confidence to "uncertain" — NEVER invent, paraphrase, or reconstruct a snippet to make a finding look verified. Unverifiable findings are downgraded automatically; fabricating a snippet defeats the gate.
 - NEVER say "this is probably tested" — name the specific test file and test function, or flag as "test coverage unknown"
 - NEVER say "this is handled elsewhere" — cite the exact file and line that handles it, or say "not verified"
 - NEVER say "the caller validates this" — name the caller and the validation, or say "unverified assumption"
