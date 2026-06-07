@@ -11,7 +11,74 @@ import (
 	"testing"
 
 	"github.com/planwerk/planwerk-review/internal/github"
+	"github.com/planwerk/planwerk-review/internal/report"
 )
+
+type fakeVerifier struct {
+	called atomic.Int32
+	result *report.ReviewResult
+	err    error
+}
+
+func (f *fakeVerifier) VerifyImplementation(dir, issueTitle, issueBody string) (*report.ReviewResult, error) {
+	f.called.Add(1)
+	return f.result, f.err
+}
+
+func TestRun_VerifyReportsUnmetCriteria(t *testing.T) {
+	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+	cl := &fakeClaude{report: "PR opened"}
+	fv := &fakeVerifier{result: &report.ReviewResult{
+		Findings: []report.Finding{
+			{Severity: report.SeverityCritical, Title: "foo() not implemented", File: "foo.go", Problem: "no foo() in diff"},
+		},
+	}}
+	r := newRunner(gh, cl)
+	r.Verifier = fv
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", Verify: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if fv.called.Load() != 1 {
+		t.Errorf("verifier called %d times, want 1", fv.called.Load())
+	}
+	out := buf.String()
+	if !strings.Contains(out, "unmet criterion finding") || !strings.Contains(out, "foo() not implemented") {
+		t.Errorf("missing verification findings in output:\n%s", out)
+	}
+}
+
+func TestRun_VerifyCleanPass(t *testing.T) {
+	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+	cl := &fakeClaude{report: "PR opened"}
+	fv := &fakeVerifier{result: &report.ReviewResult{}}
+	r := newRunner(gh, cl)
+	r.Verifier = fv
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", Verify: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if !strings.Contains(buf.String(), "all Acceptance Criteria satisfied") {
+		t.Errorf("expected clean-pass message, got:\n%s", buf.String())
+	}
+}
+
+func TestRun_VerifyDisabledByDefault(t *testing.T) {
+	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+	cl := &fakeClaude{report: "PR opened"}
+	fv := &fakeVerifier{}
+	r := newRunner(gh, cl)
+	r.Verifier = fv
+
+	if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42"}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if fv.called.Load() != 0 {
+		t.Errorf("verifier called %d times, want 0 when --verify is off", fv.called.Load())
+	}
+}
 
 // fakeGitHub is a scripted GitHubClient. The test sets the canned issue and
 // optional clone error; both calls record their invocation count so each

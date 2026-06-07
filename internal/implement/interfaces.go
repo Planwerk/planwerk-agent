@@ -3,6 +3,7 @@ package implement
 import (
 	"github.com/planwerk/planwerk-review/internal/github"
 	"github.com/planwerk/planwerk-review/internal/patterns"
+	"github.com/planwerk/planwerk-review/internal/report"
 )
 
 // Context is the input for the Claude implement prompt. It carries the
@@ -79,6 +80,24 @@ type implementFnAdapter struct {
 
 func (a implementFnAdapter) Implement(dir string, ctx Context) (string, error) {
 	return a.fn(dir, ctx)
+}
+
+// ImplementationVerifier independently checks a produced change set against
+// the issue's Acceptance Criteria, deliberately ignoring the implementation's
+// own report. Optional: wired only when --verify is set.
+type ImplementationVerifier interface {
+	VerifyImplementation(dir, issueTitle, issueBody string) (*report.ReviewResult, error)
+}
+
+// VerifyFn is the bare-function form of ImplementationVerifier.
+type VerifyFn func(dir, issueTitle, issueBody string) (*report.ReviewResult, error)
+
+type verifyFnAdapter struct {
+	fn VerifyFn
+}
+
+func (a verifyFnAdapter) VerifyImplementation(dir, issueTitle, issueBody string) (*report.ReviewResult, error) {
+	return a.fn(dir, issueTitle, issueBody)
 }
 
 // GitHubClient is the subset of github operations the implement command

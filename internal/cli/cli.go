@@ -185,6 +185,7 @@ type ImplementConfig struct {
 	DryRun          bool
 	PrintPrompt     bool
 	PrintBarePrompt bool
+	Verify          bool
 
 	PatternDirs     []string
 	NoRepoPatterns  bool
@@ -198,6 +199,7 @@ func (c ImplementConfig) ToImplementOptions(version string) implement.Options {
 		DryRun:          c.DryRun,
 		PrintPrompt:     c.PrintPrompt,
 		PrintBarePrompt: c.PrintBarePrompt,
+		Verify:          c.Verify,
 		Version:         version,
 		PatternDirs:     c.PatternDirs,
 		NoRepoPatterns:  c.NoRepoPatterns,
