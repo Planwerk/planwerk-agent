@@ -256,6 +256,13 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		slog.Warn("coverage map failed", "err", covErr)
 	}
 
+	// 11b. Quote-or-demote gate: downgrade findings whose code snippet cannot
+	// be located in the changed files so unverifiable claims land in the
+	// Unverified section instead of next to confirmed bugs.
+	if n := verifyFindingSnippets(result, pr.Dir, pr.ChangedFiles); n > 0 {
+		slog.Info("demoted findings failing snippet verification", "count", n)
+	}
+
 	// 12. Cache result
 	if !opts.NoCache {
 		if err := cache.Put(cacheKey, cache.CommandReview, result); err != nil {
