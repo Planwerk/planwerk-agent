@@ -111,6 +111,9 @@ func (r *Renderer) renderFinding(f Finding, last bool) {
 	if f.Confidence != "" {
 		meta += fmt.Sprintf(" — **Confidence**: %s", f.Confidence)
 	}
+	if len(f.ConfirmedBy) >= 2 {
+		meta += fmt.Sprintf(" — **Confirmed by**: %s", strings.Join(f.ConfirmedBy, " + "))
+	}
 	if f.Pattern != "" {
 		meta += fmt.Sprintf(" — **Pattern**: %s", f.Pattern)
 	}

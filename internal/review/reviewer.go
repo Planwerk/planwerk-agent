@@ -245,11 +245,15 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	if advErr != nil {
 		slog.Warn("adversarial review failed", "err", advErr)
 	} else if advResult != nil {
+		tagPass(result, passReview)
+		tagPass(advResult, passAdversarial)
 		result = mergeResults(result, advResult)
 	}
 	if complianceErr != nil {
 		slog.Warn("feature compliance check failed", "err", complianceErr)
 	} else if complianceResult != nil {
+		tagPass(result, passReview)
+		tagPass(complianceResult, passCompliance)
 		result = mergeResults(result, complianceResult)
 	}
 	if covErr != nil {

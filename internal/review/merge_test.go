@@ -118,12 +118,12 @@ func TestMergeResults_PreservesEnrichment(t *testing.T) {
 	primary := &report.ReviewResult{
 		Findings: []report.Finding{
 			{
-				ID:          "W-001",
-				Severity:    report.SeverityWarning,
-				File:        "auth.go",
-				Line:        42,
-				Title:       "Weak check",
-				CodeSnippet: "if user != nil {",
+				ID:           "W-001",
+				Severity:     report.SeverityWarning,
+				File:         "auth.go",
+				Line:         42,
+				Title:        "Weak check",
+				CodeSnippet:  "if user != nil {",
 				SuggestedFix: "if user != nil && user.IsActive() {",
 			},
 		},
@@ -196,6 +196,70 @@ func TestMergeResults_MergesRelatedTo(t *testing.T) {
 	}
 	if !has["C-002"] || !has["C-003"] {
 		t.Errorf("expected C-002 and C-003, got %v", related)
+	}
+}
+
+func TestMergeResults_CrossPassBoostsConfidence(t *testing.T) {
+	primary := &report.ReviewResult{
+		Findings: []report.Finding{
+			{ID: "C-001", Severity: report.SeverityCritical, File: "db.go", Line: 10, Title: "SQL injection", Confidence: report.ConfidenceLikely, ConfirmedBy: []string{passReview}},
+		},
+	}
+	adv := &report.ReviewResult{
+		Findings: []report.Finding{
+			{Severity: report.SeverityCritical, File: "db.go", Line: 10, Title: "SQL injection", ConfirmedBy: []string{passAdversarial}},
+		},
+	}
+
+	result := mergeResults(primary, adv)
+	if len(result.Findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(result.Findings))
+	}
+	f := result.Findings[0]
+	if f.Confidence != report.ConfidenceVerified {
+		t.Errorf("expected confidence boosted likely->verified, got %q", f.Confidence)
+	}
+	if len(f.ConfirmedBy) != 2 {
+		t.Errorf("expected 2 confirming passes, got %v", f.ConfirmedBy)
+	}
+}
+
+func TestMergeResults_NoSecondBoostBeyondTwoPasses(t *testing.T) {
+	// Already confirmed by two passes; a third confirming pass adds provenance
+	// but must NOT boost confidence a second time.
+	primary := &report.ReviewResult{
+		Findings: []report.Finding{
+			{ID: "C-001", Severity: report.SeverityCritical, File: "db.go", Line: 10, Title: "X", Confidence: report.ConfidenceLikely, ConfirmedBy: []string{passReview, passAdversarial}},
+		},
+	}
+	comp := &report.ReviewResult{
+		Findings: []report.Finding{
+			{Severity: report.SeverityCritical, File: "db.go", Line: 10, Title: "X", ConfirmedBy: []string{passCompliance}},
+		},
+	}
+
+	f := mergeResults(primary, comp).Findings[0]
+	if f.Confidence != report.ConfidenceLikely {
+		t.Errorf("confidence must stay likely (no second boost), got %q", f.Confidence)
+	}
+	if len(f.ConfirmedBy) != 3 {
+		t.Errorf("expected 3 confirming passes, got %v", f.ConfirmedBy)
+	}
+}
+
+func TestTagPass_OnlyFillsEmpty(t *testing.T) {
+	r := &report.ReviewResult{
+		Findings: []report.Finding{
+			{Title: "fresh"},
+			{Title: "already", ConfirmedBy: []string{passAdversarial}},
+		},
+	}
+	tagPass(r, passReview)
+	if got := r.Findings[0].ConfirmedBy; len(got) != 1 || got[0] != passReview {
+		t.Errorf("fresh finding = %v, want [review]", got)
+	}
+	if got := r.Findings[1].ConfirmedBy; len(got) != 1 || got[0] != passAdversarial {
+		t.Errorf("tagged finding must be untouched, got %v", got)
 	}
 }
 

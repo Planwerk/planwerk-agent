@@ -192,6 +192,12 @@ type Finding struct {
 	RecommendedOption       string        `json:"recommended_option,omitempty"`
 	RecommendationReasoning string        `json:"recommendation_reasoning,omitempty"`
 	RelatedTo               []string      `json:"related_to,omitempty"`
+	// ConfirmedBy lists the review passes that independently flagged this
+	// finding (e.g. "review", "adversarial", "compliance"). When two or more
+	// passes agree the finding's confidence is boosted one step and the
+	// renderer marks it as cross-pass confirmed. It is provenance the model
+	// never sets — the merge step assigns it.
+	ConfirmedBy []string `json:"confirmed_by,omitempty"`
 }
 
 type ReviewResult struct {

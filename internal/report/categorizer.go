@@ -57,11 +57,16 @@ func Categorize(findings []Finding, minSeverity Severity, minConfidence Confiden
 	return cf
 }
 
-// sortByConfidence stably orders findings strongest-confidence-first, leaving
-// equal-confidence findings in their original (severity-assigned) order.
+// sortByConfidence stably orders findings strongest-confidence-first; within
+// equal confidence, findings confirmed by more passes sort ahead. Otherwise
+// the original (severity-assigned) order is preserved.
 func sortByConfidence(findings []Finding) {
 	sort.SliceStable(findings, func(i, j int) bool {
-		return findings[i].Confidence.Rank() < findings[j].Confidence.Rank()
+		ri, rj := findings[i].Confidence.Rank(), findings[j].Confidence.Rank()
+		if ri != rj {
+			return ri < rj
+		}
+		return len(findings[i].ConfirmedBy) > len(findings[j].ConfirmedBy)
 	})
 }
 
