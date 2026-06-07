@@ -17,6 +17,7 @@ type ClaudeRunner interface {
 	AdversarialReview(dir, baseBranch string) (*report.ReviewResult, error)
 	CoverageMap(dir, baseBranch string) (*report.CoverageResult, error)
 	FeatureCompliance(dir, baseBranch string, feature *planwerk.Feature) (*report.ReviewResult, error)
+	SpecialistReview(dir, baseBranch, key, focus string) (*report.ReviewResult, error)
 }
 
 // GitHubClient wraps the GitHub operations the review pipeline needs:
@@ -43,6 +44,10 @@ func (defaultClaudeRunner) AdversarialReview(dir, baseBranch string) (*report.Re
 
 func (defaultClaudeRunner) CoverageMap(dir, baseBranch string) (*report.CoverageResult, error) {
 	return claude.CoverageMap(dir, baseBranch)
+}
+
+func (defaultClaudeRunner) SpecialistReview(dir, baseBranch, key, focus string) (*report.ReviewResult, error) {
+	return claude.SpecialistReview(dir, baseBranch, key, focus)
 }
 
 func (defaultClaudeRunner) FeatureCompliance(dir, baseBranch string, feature *planwerk.Feature) (*report.ReviewResult, error) {

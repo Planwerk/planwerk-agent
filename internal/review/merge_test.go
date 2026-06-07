@@ -263,7 +263,7 @@ func TestTagPass_OnlyFillsEmpty(t *testing.T) {
 	}
 }
 
-func TestMergeResults_SummaryUpdated(t *testing.T) {
+func TestMergeResults_DoesNotMutateSummary(t *testing.T) {
 	primary := &report.ReviewResult{
 		Summary: "Clean review",
 	}
@@ -273,8 +273,24 @@ func TestMergeResults_SummaryUpdated(t *testing.T) {
 		},
 	}
 
+	// The summary note is now the caller's responsibility (appendSummaryNote),
+	// so a single fold must leave the summary untouched.
 	result := mergeResults(primary, adv)
-	if result.Summary != "Clean review (includes adversarial review pass)" {
-		t.Errorf("expected updated summary, got %q", result.Summary)
+	if result.Summary != "Clean review" {
+		t.Errorf("mergeResults must not mutate summary, got %q", result.Summary)
+	}
+}
+
+func TestAppendSummaryNote(t *testing.T) {
+	r := &report.ReviewResult{Summary: "Clean review"}
+	appendSummaryNote(r, "includes adversarial review pass")
+	if r.Summary != "Clean review (includes adversarial review pass)" {
+		t.Errorf("got %q", r.Summary)
+	}
+	// Empty summary stays empty.
+	empty := &report.ReviewResult{}
+	appendSummaryNote(empty, "note")
+	if empty.Summary != "" {
+		t.Errorf("empty summary must stay empty, got %q", empty.Summary)
 	}
 }

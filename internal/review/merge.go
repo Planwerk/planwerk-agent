@@ -1,8 +1,10 @@
 package review
 
 import (
+	"fmt"
 	"strings"
 
+	"github.com/planwerk/planwerk-review/internal/claude"
 	"github.com/planwerk/planwerk-review/internal/report"
 )
 
@@ -100,11 +102,36 @@ func mergeResults(primary, secondary *report.ReviewResult) *report.ReviewResult 
 		}
 	}
 
-	// Update summary to mention adversarial pass
-	if primary.Summary != "" {
-		primary.Summary += " (includes adversarial review pass)"
-	}
+	return primary
+}
 
+// appendSummaryNote appends a parenthetical note to a non-empty summary so the
+// reader knows which extra passes contributed. Each caller adds its own note
+// once, instead of mergeResults stamping the same suffix on every fold.
+func appendSummaryNote(result *report.ReviewResult, note string) {
+	if result != nil && result.Summary != "" {
+		result.Summary += " (" + note + ")"
+	}
+}
+
+// mergeSpecialists folds each specialist's findings into the primary review,
+// tagging them with the specialist's pass label so cross-specialist agreement
+// boosts confidence (via mergeResults). nil entries (failed specialists) are
+// skipped. specialistResults is index-aligned with claude.Specialists.
+func mergeSpecialists(primary *report.ReviewResult, specialistResults []*report.ReviewResult) *report.ReviewResult {
+	merged := 0
+	for i, sr := range specialistResults {
+		if sr == nil || i >= len(claude.Specialists) {
+			continue
+		}
+		tagPass(primary, passReview)
+		tagPass(sr, "specialist:"+claude.Specialists[i].Key)
+		primary = mergeResults(primary, sr)
+		merged++
+	}
+	if merged > 0 {
+		appendSummaryNote(primary, fmt.Sprintf("includes %d specialist pass(es)", merged))
+	}
 	return primary
 }
 

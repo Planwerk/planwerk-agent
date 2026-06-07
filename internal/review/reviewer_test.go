@@ -59,6 +59,10 @@ func (mockClaude) FeatureCompliance(dir, baseBranch string, feature *planwerk.Fe
 	panic("mockClaude.FeatureCompliance called unexpectedly")
 }
 
+func (mockClaude) SpecialistReview(dir, baseBranch, key, focus string) (*report.ReviewResult, error) {
+	panic("mockClaude.SpecialistReview called unexpectedly")
+}
+
 func newTestRunner(gh *mockGitHub) *Runner {
 	return &Runner{
 		Claude: mockClaude{},

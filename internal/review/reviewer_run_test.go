@@ -23,11 +23,13 @@ type configurableClaude struct {
 	adversarial       func(dir, baseBranch string) (*report.ReviewResult, error)
 	coverage          func(dir, baseBranch string) (*report.CoverageResult, error)
 	featureCompliance func(dir, baseBranch string, feature *planwerk.Feature) (*report.ReviewResult, error)
+	specialist        func(dir, baseBranch, key, focus string) (*report.ReviewResult, error)
 
 	reviewCalls            int32
 	adversarialCalls       int32
 	coverageCalls          int32
 	featureComplianceCalls int32
+	specialistCalls        int32
 }
 
 func (c *configurableClaude) Review(dir string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
@@ -60,6 +62,14 @@ func (c *configurableClaude) FeatureCompliance(dir, baseBranch string, feature *
 		return nil, nil
 	}
 	return c.featureCompliance(dir, baseBranch, feature)
+}
+
+func (c *configurableClaude) SpecialistReview(dir, baseBranch, key, focus string) (*report.ReviewResult, error) {
+	atomic.AddInt32(&c.specialistCalls, 1)
+	if c.specialist == nil {
+		return &report.ReviewResult{}, nil
+	}
+	return c.specialist(dir, baseBranch, key, focus)
 }
 
 // fakePR builds a *github.PR whose Dir is a fresh temp directory the caller
@@ -243,6 +253,74 @@ func TestRun_ThoroughMergesAdversarialFindings(t *testing.T) {
 	}
 	if !strings.Contains(body, "adversarial review pass") {
 		t.Error("merged summary should mention adversarial pass")
+	}
+}
+
+func TestRun_SpecialistsFanOutAndMerge(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	pr := fakePR(t, "acme", "widgets", 31, "sha-spec")
+	claudeMock := &configurableClaude{
+		review: func(dir string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
+			return &report.ReviewResult{
+				Summary: "Base summary",
+				Findings: []report.Finding{
+					{ID: "W-001", Severity: report.SeverityWarning, Title: "Shared finding", File: "main.go", Line: 10, Confidence: report.ConfidenceLikely, Problem: "p", Action: "a"},
+				},
+			}, nil
+		},
+		specialist: func(dir, baseBranch, key, focus string) (*report.ReviewResult, error) {
+			if key == "security" {
+				return &report.ReviewResult{Findings: []report.Finding{
+					// Same file+line+title as the main finding → cross-pass boost.
+					{Severity: report.SeverityWarning, Title: "Shared finding", File: "main.go", Line: 10, Problem: "p", Action: "a"},
+					// Specialist-only finding → appended.
+					{Severity: report.SeverityCritical, Title: "SQL injection", File: "db.go", Line: 3, Problem: "x", Action: "y"},
+				}}, nil
+			}
+			return &report.ReviewResult{}, nil
+		},
+	}
+	gh := &mockGitHub{fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil }}
+	runner := &Runner{Claude: claudeMock, GitHub: gh}
+
+	opts := baseOpts()
+	opts.Specialists = true
+
+	var out bytes.Buffer
+	if err := runner.Run(&out, opts); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if int(claudeMock.specialistCalls) != len(claude.Specialists) {
+		t.Fatalf("specialist calls = %d, want %d (one per registered specialist)", claudeMock.specialistCalls, len(claude.Specialists))
+	}
+	body := out.String()
+	if !strings.Contains(body, "SQL injection") {
+		t.Error("merged output missing specialist-only finding")
+	}
+	if !strings.Contains(body, "specialist pass") {
+		t.Error("merged summary should mention specialist passes")
+	}
+	if !strings.Contains(body, "Confirmed by") {
+		t.Error("a finding flagged by review + a specialist should be cross-pass confirmed")
+	}
+}
+
+func TestRun_SpecialistsDisabledByDefault(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	pr := fakePR(t, "acme", "widgets", 32, "sha-nospec")
+	claudeMock := &configurableClaude{}
+	gh := &mockGitHub{fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil }}
+	runner := &Runner{Claude: claudeMock, GitHub: gh}
+
+	if err := runner.Run(&bytes.Buffer{}, baseOpts()); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if claudeMock.specialistCalls != 0 {
+		t.Errorf("specialist calls = %d, want 0 without --specialists", claudeMock.specialistCalls)
 	}
 }
 

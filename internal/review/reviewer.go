@@ -40,6 +40,7 @@ type Options struct {
 	PostReview      bool
 	InlineReview    bool
 	Thorough        bool
+	Specialists     bool // run the domain-specialist fan-out and merge its findings
 	CoverageMap     bool
 	MaxPatterns     int           // max patterns to inject into prompt; <= 0 disables truncation
 	MaxFindings     int           // cap on findings Claude returns; <= 0 disables cap
@@ -87,6 +88,9 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	var cacheFlags []string
 	if opts.Thorough {
 		cacheFlags = append(cacheFlags, "thorough")
+	}
+	if opts.Specialists {
+		cacheFlags = append(cacheFlags, "specialists")
 	}
 	if opts.CoverageMap {
 		cacheFlags = append(cacheFlags, "coverage-map")
@@ -210,6 +214,13 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		complianceErr    error
 		covErr           error
 	)
+	// specialistResults[i] holds the findings from claude.Specialists[i]; a nil
+	// entry means that specialist failed (non-fatal) and is skipped at merge.
+	var specialistResults []*report.ReviewResult
+	if opts.Specialists {
+		specialistResults = make([]*report.ReviewResult, len(claude.Specialists))
+		slog.Info("running specialist review fan-out", "specialists", len(claude.Specialists))
+	}
 
 	var g errgroup.Group
 	g.Go(func() error {
@@ -238,6 +249,20 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 			return nil
 		})
 	}
+	if opts.Specialists {
+		for i, sp := range claude.Specialists {
+			g.Go(func() error {
+				res, err := r.Claude.SpecialistReview(pr.Dir, pr.BaseBranch, sp.Key, sp.Focus)
+				if err != nil {
+					// A failed specialist must not sink the whole review.
+					slog.Warn("specialist review failed", "specialist", sp.Key, "err", err)
+					return nil
+				}
+				specialistResults[i] = res
+				return nil
+			})
+		}
+	}
 	if err := g.Wait(); err != nil {
 		return err
 	}
@@ -248,6 +273,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		tagPass(result, passReview)
 		tagPass(advResult, passAdversarial)
 		result = mergeResults(result, advResult)
+		appendSummaryNote(result, "includes adversarial review pass")
 	}
 	if complianceErr != nil {
 		slog.Warn("feature compliance check failed", "err", complianceErr)
@@ -255,6 +281,10 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		tagPass(result, passReview)
 		tagPass(complianceResult, passCompliance)
 		result = mergeResults(result, complianceResult)
+		appendSummaryNote(result, "includes feature-compliance pass")
+	}
+	if opts.Specialists {
+		result = mergeSpecialists(result, specialistResults)
 	}
 	if covErr != nil {
 		slog.Warn("coverage map failed", "err", covErr)

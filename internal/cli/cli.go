@@ -33,6 +33,7 @@ type Config struct {
 	PostReview      bool
 	InlineReview    bool
 	Thorough        bool
+	Specialists     bool
 	CoverageMap     bool
 	MaxPatterns     int
 	MaxFindings     int
@@ -52,6 +53,7 @@ func (c Config) ToReviewOptions(version string) review.Options {
 		PostReview:      c.PostReview,
 		InlineReview:    c.InlineReview,
 		Thorough:        c.Thorough,
+		Specialists:     c.Specialists,
 		CoverageMap:     c.CoverageMap,
 		MaxPatterns:     c.MaxPatterns,
 		MaxFindings:     c.MaxFindings,
