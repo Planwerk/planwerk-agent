@@ -73,5 +73,9 @@ jobs:
       # G204/G304/G122 are inherent to this tool: it orchestrates git/gh/claude
       # subprocesses and reads files from user-specified repositories.
       - uses: securego/gosec@v2.25.0
+        # The gosec image pins GOTOOLCHAIN=local with a Go that can lag behind
+        # our go.mod toolchain; allow it to fetch the version go.mod requires.
+        env:
+          GOTOOLCHAIN: auto
         with:
           args: -exclude=G204,G304,G122 ./...
