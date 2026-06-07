@@ -18,8 +18,8 @@ func NewRenderer(w io.Writer) *Renderer {
 	return &Renderer{w: w}
 }
 
-func (r *Renderer) RenderJSON(result ReviewResult, minSeverity Severity) error {
-	cf := Categorize(result.Findings, minSeverity)
+func (r *Renderer) RenderJSON(result ReviewResult, minSeverity Severity, minConfidence Confidence) error {
+	cf := Categorize(result.Findings, minSeverity, minConfidence)
 	filtered := ReviewResult{
 		Summary:        result.Summary,
 		Recommendation: result.Recommendation,
@@ -28,28 +28,30 @@ func (r *Renderer) RenderJSON(result ReviewResult, minSeverity Severity) error {
 	filtered.Findings = append(filtered.Findings, cf.Critical...)
 	filtered.Findings = append(filtered.Findings, cf.Warning...)
 	filtered.Findings = append(filtered.Findings, cf.Info...)
+	filtered.Findings = append(filtered.Findings, cf.Unverified...)
 
 	enc := json.NewEncoder(r.w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(filtered)
 }
 
-func (r *Renderer) RenderMarkdown(result ReviewResult, pr PRInfo, minSeverity Severity, version string) {
-	cf := Categorize(result.Findings, minSeverity)
+func (r *Renderer) RenderMarkdown(result ReviewResult, pr PRInfo, minSeverity Severity, minConfidence Confidence, version string) {
+	cf := Categorize(result.Findings, minSeverity, minConfidence)
 
 	_, _ = fmt.Fprintf(r.w, "# Review: %s/%s#%d\n\n", pr.Owner, pr.Repo, pr.Number)
 	_, _ = fmt.Fprintf(r.w, "> *%s*  \n", pr.Title)
 	_, _ = fmt.Fprintf(r.w, "> Reviewed by planwerk-review %s with Claude Code\n\n", version)
 
 	// Machine-readable summary for tooling (Claude Code, CI scripts, etc.)
-	_, _ = fmt.Fprintf(r.w, "<!-- planwerk-review: blocking=%d critical=%d warning=%d info=%d recommendation=%s -->\n\n",
-		len(cf.Blocking), len(cf.Critical), len(cf.Warning), len(cf.Info),
+	_, _ = fmt.Fprintf(r.w, "<!-- planwerk-review: blocking=%d critical=%d warning=%d info=%d unverified=%d recommendation=%s -->\n\n",
+		len(cf.Blocking), len(cf.Critical), len(cf.Warning), len(cf.Info), len(cf.Unverified),
 		r.recommendationKey(cf, result.Recommendation))
 
 	r.renderSection("BLOCKING", cf.Blocking)
 	r.renderSection("CRITICAL", cf.Critical)
 	r.renderSection("WARNING", cf.Warning)
 	r.renderSection("INFO", cf.Info)
+	r.renderUnverifiedSection(cf.Unverified)
 
 	r.renderSummary(cf, result.Summary)
 	r.renderRecommendation(cf, result.Recommendation)
@@ -75,39 +77,61 @@ func (r *Renderer) renderSection(label string, findings []Finding) {
 	}
 	_, _ = fmt.Fprintf(r.w, "## %s (%d)\n\n", label, len(findings))
 	for i, f := range findings {
-		_, _ = fmt.Fprintf(r.w, "### %s: %s\n", f.ID, f.Title)
-
-		// Compact single-line metadata: File — Fix — Confidence — Pattern
-		meta := fmt.Sprintf("**File**: `%s`", fileRef(f))
-		if f.FixClass != "" {
-			meta += fmt.Sprintf(" — **Fix**: %s", f.FixClass)
-		}
-		if f.Confidence != "" {
-			meta += fmt.Sprintf(" — **Confidence**: %s", f.Confidence)
-		}
-		if f.Pattern != "" {
-			meta += fmt.Sprintf(" — **Pattern**: %s", f.Pattern)
-		}
-		_, _ = fmt.Fprintln(r.w, meta)
-		_, _ = fmt.Fprintln(r.w)
-		_, _ = fmt.Fprintf(r.w, "**Problem**: %s\n\n", f.Problem)
-		if f.CodeSnippet != "" {
-			_, _ = fmt.Fprintf(r.w, "**Code**:\n```\n%s\n```\n\n", f.CodeSnippet)
-		}
-		_, _ = fmt.Fprintf(r.w, "**Action Required**: %s\n\n", f.Action)
-		if f.SuggestedFix != "" {
-			_, _ = fmt.Fprintf(r.w, "**Suggested Fix**:\n```\n%s\n```\n\n", f.SuggestedFix)
-		}
-		renderFixOptions(r.w, f)
-		if len(f.RelatedTo) > 0 {
-			_, _ = fmt.Fprintf(r.w, "**Related**: %s\n\n", strings.Join(f.RelatedTo, ", "))
-		}
-
-		if i < len(findings)-1 {
-			_, _ = fmt.Fprint(r.w, "---\n\n")
-		}
+		r.renderFinding(f, i == len(findings)-1)
 	}
 	_, _ = fmt.Fprint(r.w, "---\n\n")
+}
+
+// renderUnverifiedSection renders findings that were pulled out of their
+// severity bucket because they are low-confidence (uncertain WARNING/INFO) or
+// were demoted by the snippet-verification gate. A short note explains why
+// they are separated so readers do not mistake them for fully verified issues.
+func (r *Renderer) renderUnverifiedSection(findings []Finding) {
+	if len(findings) == 0 {
+		return
+	}
+	_, _ = fmt.Fprintf(r.w, "## Unverified / Low-Confidence (%d)\n\n", len(findings))
+	_, _ = fmt.Fprint(r.w, "These findings could not be verified with high confidence — treat them as leads to check, not confirmed issues.\n\n")
+	for i, f := range findings {
+		r.renderFinding(f, i == len(findings)-1)
+	}
+	_, _ = fmt.Fprint(r.w, "---\n\n")
+}
+
+// renderFinding writes a single finding block. last suppresses the trailing
+// horizontal rule between findings (the section adds its own closing rule).
+func (r *Renderer) renderFinding(f Finding, last bool) {
+	_, _ = fmt.Fprintf(r.w, "### %s: %s\n", f.ID, f.Title)
+
+	// Compact single-line metadata: File — Fix — Confidence — Pattern
+	meta := fmt.Sprintf("**File**: `%s`", fileRef(f))
+	if f.FixClass != "" {
+		meta += fmt.Sprintf(" — **Fix**: %s", f.FixClass)
+	}
+	if f.Confidence != "" {
+		meta += fmt.Sprintf(" — **Confidence**: %s", f.Confidence)
+	}
+	if f.Pattern != "" {
+		meta += fmt.Sprintf(" — **Pattern**: %s", f.Pattern)
+	}
+	_, _ = fmt.Fprintln(r.w, meta)
+	_, _ = fmt.Fprintln(r.w)
+	_, _ = fmt.Fprintf(r.w, "**Problem**: %s\n\n", f.Problem)
+	if f.CodeSnippet != "" {
+		_, _ = fmt.Fprintf(r.w, "**Code**:\n```\n%s\n```\n\n", f.CodeSnippet)
+	}
+	_, _ = fmt.Fprintf(r.w, "**Action Required**: %s\n\n", f.Action)
+	if f.SuggestedFix != "" {
+		_, _ = fmt.Fprintf(r.w, "**Suggested Fix**:\n```\n%s\n```\n\n", f.SuggestedFix)
+	}
+	renderFixOptions(r.w, f)
+	if len(f.RelatedTo) > 0 {
+		_, _ = fmt.Fprintf(r.w, "**Related**: %s\n\n", strings.Join(f.RelatedTo, ", "))
+	}
+
+	if !last {
+		_, _ = fmt.Fprint(r.w, "---\n\n")
+	}
 }
 
 // renderFixOptions writes a Markdown table of alternative fix approaches plus
@@ -175,7 +199,11 @@ func (r *Renderer) renderSummary(cf CategorizedFindings, summary string) {
 	_, _ = fmt.Fprintf(r.w, "| BLOCKING | %d |\n", len(cf.Blocking))
 	_, _ = fmt.Fprintf(r.w, "| CRITICAL | %d |\n", len(cf.Critical))
 	_, _ = fmt.Fprintf(r.w, "| WARNING  | %d |\n", len(cf.Warning))
-	_, _ = fmt.Fprintf(r.w, "| INFO     | %d |\n\n", len(cf.Info))
+	_, _ = fmt.Fprintf(r.w, "| INFO     | %d |\n", len(cf.Info))
+	if len(cf.Unverified) > 0 {
+		_, _ = fmt.Fprintf(r.w, "| UNVERIFIED | %d |\n", len(cf.Unverified))
+	}
+	_, _ = fmt.Fprintln(r.w)
 }
 
 func (r *Renderer) renderRecommendation(cf CategorizedFindings, custom string) {
@@ -217,20 +245,21 @@ type RepoInfo struct {
 // RenderAuditMarkdown writes a full-codebase audit result as Markdown.
 // The format mirrors RenderMarkdown but uses an "Audit" header and an
 // audit-specific verdict line (no merge decision).
-func (r *Renderer) RenderAuditMarkdown(result ReviewResult, repo RepoInfo, minSeverity Severity, version string) {
-	cf := Categorize(result.Findings, minSeverity)
+func (r *Renderer) RenderAuditMarkdown(result ReviewResult, repo RepoInfo, minSeverity Severity, minConfidence Confidence, version string) {
+	cf := Categorize(result.Findings, minSeverity, minConfidence)
 
 	_, _ = fmt.Fprintf(r.w, "# Audit: %s/%s\n\n", repo.Owner, repo.Name)
 	_, _ = fmt.Fprintf(r.w, "> Audited by planwerk-review %s with Claude Code\n\n", version)
 
-	_, _ = fmt.Fprintf(r.w, "<!-- planwerk-audit: blocking=%d critical=%d warning=%d info=%d verdict=%s -->\n\n",
-		len(cf.Blocking), len(cf.Critical), len(cf.Warning), len(cf.Info),
+	_, _ = fmt.Fprintf(r.w, "<!-- planwerk-audit: blocking=%d critical=%d warning=%d info=%d unverified=%d verdict=%s -->\n\n",
+		len(cf.Blocking), len(cf.Critical), len(cf.Warning), len(cf.Info), len(cf.Unverified),
 		r.auditVerdictKey(cf))
 
 	r.renderSection("BLOCKING", cf.Blocking)
 	r.renderSection("CRITICAL", cf.Critical)
 	r.renderSection("WARNING", cf.Warning)
 	r.renderSection("INFO", cf.Info)
+	r.renderUnverifiedSection(cf.Unverified)
 
 	r.renderSummary(cf, result.Summary)
 	r.renderAuditVerdict(cf)

@@ -20,6 +20,7 @@ type Config struct {
 	PRRef           string
 	PatternDirs     []string
 	MinSeverity     report.Severity
+	MinConfidence   report.Confidence
 	NoRepoPatterns  bool
 	NoLocalPatterns bool
 	NoCache         bool
@@ -45,6 +46,7 @@ func (c Config) ToReviewOptions(version string) review.Options {
 		NoLocalPatterns: c.NoLocalPatterns,
 		NoCache:         c.NoCache,
 		MinSeverity:     c.MinSeverity,
+		MinConfidence:   c.MinConfidence,
 		Format:          c.Format,
 		Version:         version,
 		PostReview:      c.PostReview,
@@ -95,6 +97,7 @@ type AuditConfig struct {
 	NoLocalPatterns  bool
 	NoCache          bool
 	MinSeverity      report.Severity
+	MinConfidence    report.Confidence
 	Format           string // "markdown" or "json"
 	MaxPatterns      int
 	MaxFindings      int
@@ -113,8 +116,8 @@ type ElaborateConfig struct {
 	NoCache         bool
 	Format          string // "markdown" or "json"
 	MaxPatterns     int
-	UpdateIssue     bool          // overwrite the issue body with the elaboration
-	PostComment     bool          // post the elaboration as a new issue comment
+	UpdateIssue     bool // overwrite the issue body with the elaboration
+	PostComment     bool // post the elaboration as a new issue comment
 	CacheMaxAge     time.Duration
 }
 
@@ -305,6 +308,7 @@ func (c AuditConfig) ToAuditOptions(version string) audit.Options {
 		NoLocalPatterns:  c.NoLocalPatterns,
 		NoCache:          c.NoCache,
 		MinSeverity:      c.MinSeverity,
+		MinConfidence:    c.MinConfidence,
 		Format:           c.Format,
 		Version:          version,
 		MaxPatterns:      c.MaxPatterns,

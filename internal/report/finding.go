@@ -93,6 +93,46 @@ func NormalizeConfidence(s string) Confidence {
 	return ConfidenceUncertain
 }
 
+// ParseConfidence parses a user-supplied confidence threshold (e.g. the
+// --min-confidence flag). Unlike NormalizeConfidence it rejects unknown
+// values so a typo surfaces as an error instead of silently widening the
+// filter.
+func ParseConfidence(s string) (Confidence, error) {
+	if c, ok := validConfidence[strings.ToLower(strings.TrimSpace(s))]; ok {
+		return c, nil
+	}
+	return "", fmt.Errorf("unknown confidence: %q", s)
+}
+
+// confidenceRank orders confidence from strongest (0) to weakest. It drives
+// both display ordering (verified findings first within a severity) and the
+// --min-confidence filter. An unset/unknown confidence ranks with "likely":
+// neither the best nor the worst, so an unannotated finding is never buried
+// in the low-confidence section by default.
+var confidenceRank = map[Confidence]int{
+	ConfidenceVerified:  0,
+	ConfidenceLikely:    1,
+	ConfidenceUncertain: 2,
+}
+
+// Rank returns the ordering weight of c (0 = strongest). Unknown/empty values
+// rank with "likely".
+func (c Confidence) Rank() int {
+	if r, ok := confidenceRank[c]; ok {
+		return r
+	}
+	return 1
+}
+
+// MeetsMinimum reports whether c is at least as strong as minConfidence.
+// An empty minConfidence imposes no threshold (every finding passes).
+func (c Confidence) MeetsMinimum(minConfidence Confidence) bool {
+	if minConfidence == "" {
+		return true
+	}
+	return c.Rank() <= minConfidence.Rank()
+}
+
 // DeriveFixClass maps an Actionability value to a FixClass.
 // auto-fix → AUTO-FIX, everything else → ASK.
 func DeriveFixClass(a Actionability) FixClass {

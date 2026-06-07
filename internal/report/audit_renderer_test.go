@@ -11,7 +11,7 @@ func TestRenderAuditMarkdown_HeaderAndVersion(t *testing.T) {
 
 	var buf bytes.Buffer
 	r := NewRenderer(&buf)
-	r.RenderAuditMarkdown(result, RepoInfo{Owner: "acme", Name: "widget"}, SeverityInfo, "v1.2.3")
+	r.RenderAuditMarkdown(result, RepoInfo{Owner: "acme", Name: "widget"}, SeverityInfo, "", "v1.2.3")
 
 	out := buf.String()
 	if !strings.Contains(out, "# Audit: acme/widget") {
@@ -30,7 +30,7 @@ func TestRenderAuditMarkdown_VerdictHealthy(t *testing.T) {
 
 	var buf bytes.Buffer
 	r := NewRenderer(&buf)
-	r.RenderAuditMarkdown(result, RepoInfo{Owner: "a", Name: "b"}, SeverityInfo, "v0.0.1")
+	r.RenderAuditMarkdown(result, RepoInfo{Owner: "a", Name: "b"}, SeverityInfo, "", "v0.0.1")
 
 	out := buf.String()
 	if !strings.Contains(out, "Codebase healthy") {
@@ -51,7 +51,7 @@ func TestRenderAuditMarkdown_VerdictActionRequired(t *testing.T) {
 
 	var buf bytes.Buffer
 	r := NewRenderer(&buf)
-	r.RenderAuditMarkdown(result, RepoInfo{Owner: "a", Name: "b"}, SeverityInfo, "v0.0.1")
+	r.RenderAuditMarkdown(result, RepoInfo{Owner: "a", Name: "b"}, SeverityInfo, "", "v0.0.1")
 
 	out := buf.String()
 	if !strings.Contains(out, "Action required") {
@@ -80,7 +80,7 @@ func TestRenderAuditMarkdown_VerdictImprovementsSuggested(t *testing.T) {
 
 	var buf bytes.Buffer
 	r := NewRenderer(&buf)
-	r.RenderAuditMarkdown(result, RepoInfo{Owner: "a", Name: "b"}, SeverityInfo, "v0.0.1")
+	r.RenderAuditMarkdown(result, RepoInfo{Owner: "a", Name: "b"}, SeverityInfo, "", "v0.0.1")
 
 	out := buf.String()
 	if !strings.Contains(out, "Improvements suggested") {
@@ -101,7 +101,7 @@ func TestRenderAuditMarkdown_RespectsMinSeverity(t *testing.T) {
 
 	var buf bytes.Buffer
 	r := NewRenderer(&buf)
-	r.RenderAuditMarkdown(result, RepoInfo{Owner: "a", Name: "b"}, SeverityCritical, "v0")
+	r.RenderAuditMarkdown(result, RepoInfo{Owner: "a", Name: "b"}, SeverityCritical, "", "v0")
 
 	out := buf.String()
 	if !strings.Contains(out, "C-001: Crit") {

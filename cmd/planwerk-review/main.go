@@ -310,6 +310,7 @@ func humanBytes(n int64) string {
 func main() {
 	var cfg cli.Config
 	var minSeverity string
+	var minConfidence string
 	var showVersion, verbose bool
 	var showClaudeOutput bool
 	var logFormat string
@@ -405,6 +406,14 @@ or short form (owner/repo#123).`,
 				cfg.MinSeverity = report.SeverityInfo
 			}
 
+			if minConfidence != "" {
+				conf, err := report.ParseConfidence(minConfidence)
+				if err != nil {
+					return err
+				}
+				cfg.MinConfidence = conf
+			}
+
 			switch cfg.Format {
 			case formatMarkdown, formatJSON:
 			default:
@@ -438,6 +447,7 @@ or short form (owner/repo#123).`,
 	flags := rootCmd.Flags()
 	flags.StringSliceVar(&cfg.PatternDirs, "patterns", nil, "Additional pattern sources: local dirs, github:owner/repo[/sub][@ref], or git+https://...[#ref[:sub]]")
 	flags.StringVar(&minSeverity, "min-severity", "", "Minimum severity level (info, warning, critical, blocking)")
+	flags.StringVar(&minConfidence, "min-confidence", "", "Minimum confidence shown in the main report (verified, likely, uncertain); findings below the threshold are filtered out, and uncertain low-severity findings otherwise move to an Unverified section")
 	flags.BoolVar(&cfg.NoRepoPatterns, "no-repo-patterns", false, "Ignore repo-specific patterns")
 	flags.BoolVar(&cfg.NoLocalPatterns, "no-local-patterns", false, "Ignore local patterns from the tool")
 	flags.BoolVar(&cfg.NoCache, "no-cache", false, "Ignore cache, force a fresh review")
@@ -505,6 +515,7 @@ or short form (owner/repo).`,
 	// audit subcommand
 	var auditCfg cli.AuditConfig
 	var auditMinSeverity string
+	var auditMinConfidence string
 	var auditIssueMinSeverity string
 
 	auditCmd := &cobra.Command{
@@ -540,6 +551,14 @@ or short form (owner/repo).`,
 				auditCfg.MinSeverity = report.SeverityInfo
 			}
 
+			if auditMinConfidence != "" {
+				conf, err := report.ParseConfidence(auditMinConfidence)
+				if err != nil {
+					return err
+				}
+				auditCfg.MinConfidence = conf
+			}
+
 			switch auditCfg.Format {
 			case formatMarkdown, formatJSON:
 			default:
@@ -568,6 +587,7 @@ or short form (owner/repo).`,
 	auditFlags := auditCmd.Flags()
 	auditFlags.StringSliceVar(&auditCfg.PatternDirs, "patterns", nil, "Additional pattern sources: local dirs, github:owner/repo[/sub][@ref], or git+https://...[#ref[:sub]]")
 	auditFlags.StringVar(&auditMinSeverity, "min-severity", "", "Minimum severity level (info, warning, critical, blocking)")
+	auditFlags.StringVar(&auditMinConfidence, "min-confidence", "", "Minimum confidence shown in the main report (verified, likely, uncertain); findings below the threshold are filtered out, and uncertain low-severity findings otherwise move to an Unverified section")
 	auditFlags.BoolVar(&auditCfg.NoRepoPatterns, "no-repo-patterns", false, "Ignore repo-specific patterns")
 	auditFlags.BoolVar(&auditCfg.NoLocalPatterns, "no-local-patterns", false, "Ignore local patterns from the tool")
 	auditFlags.BoolVar(&auditCfg.NoCache, "no-cache", false, "Ignore cache, force a fresh audit")

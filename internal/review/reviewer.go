@@ -34,6 +34,7 @@ type Options struct {
 	NoLocalPatterns bool
 	NoCache         bool
 	MinSeverity     report.Severity
+	MinConfidence   report.Confidence
 	Format          string
 	Version         string
 	PostReview      bool
@@ -286,11 +287,11 @@ func (r *Runner) renderResult(w io.Writer, result *report.ReviewResult, pr *gith
 
 	switch opts.Format {
 	case "json":
-		if err := renderer.RenderJSON(*result, opts.MinSeverity); err != nil {
+		if err := renderer.RenderJSON(*result, opts.MinSeverity, opts.MinConfidence); err != nil {
 			return err
 		}
 	default:
-		renderer.RenderMarkdown(*result, prInfo, opts.MinSeverity, opts.Version)
+		renderer.RenderMarkdown(*result, prInfo, opts.MinSeverity, opts.MinConfidence, opts.Version)
 	}
 
 	// Append coverage map if available

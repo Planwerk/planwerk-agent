@@ -25,6 +25,7 @@ type Options struct {
 	NoLocalPatterns  bool
 	NoCache          bool
 	MinSeverity      report.Severity
+	MinConfidence    report.Confidence
 	Format           string // "markdown" or "json"
 	Version          string
 	MaxPatterns      int             // max patterns to inject into prompt; <= 0 disables truncation
@@ -255,9 +256,9 @@ func renderAudit(w io.Writer, result *report.ReviewResult, repo *github.Repo, op
 
 	switch opts.Format {
 	case "json":
-		return renderer.RenderJSON(*result, opts.MinSeverity)
+		return renderer.RenderJSON(*result, opts.MinSeverity, opts.MinConfidence)
 	default:
-		renderer.RenderAuditMarkdown(*result, repoInfo, opts.MinSeverity, opts.Version)
+		renderer.RenderAuditMarkdown(*result, repoInfo, opts.MinSeverity, opts.MinConfidence, opts.Version)
 	}
 
 	if opts.CreateIssues {
