@@ -142,6 +142,9 @@ Run these steps for EACH failing check above before editing any code:
    ### Diff summary
    - Files: <comma-separated list>
    - Approx lines added/removed: <+N/-M>
+   ### Status
+   STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT>
+   (DONE = all checks fixed and verified; DONE_WITH_CONCERNS = pushed but with reservations a human should see; BLOCKED = could not make progress; NEEDS_CONTEXT = missing information only a human can supply. The orchestrator reads this line and stops the loop on BLOCKED or NEEDS_CONTEXT.)
 
 ## Hard rules
 
@@ -154,6 +157,7 @@ Run these steps for EACH failing check above before editing any code:
 - NEVER claim "fixed" without either local verification (step 6) or an explicit "not reproducible locally" note in the report.
 - If you cannot diagnose a failure from the logs (truncation, infra flake, expired secret, third-party check without logs), STOP and explain — do not invent a fix.
 - If there is nothing to commit after the fix attempt, do NOT create an empty commit; output the report and stop.
+- It is OK to stop and report BLOCKED or NEEDS_CONTEXT. Bad work is worse than no work; escalating is not penalized. Emit the matching STATUS and do not push a placebo fix.
 - If the same check is failing for the same root cause as the previous iteration, STOP and report — repeating the failed approach will not help.
 `)
 
@@ -285,6 +289,9 @@ Run these steps for EACH failing check before editing any code:
    ### Diff summary
    - Files: <comma-separated list>
    - Approx lines added/removed: <+N/-M>
+   ### Status
+   STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT>
+   (DONE = all checks fixed and verified; DONE_WITH_CONCERNS = pushed but with reservations a human should see; BLOCKED = could not make progress; NEEDS_CONTEXT = missing information only a human can supply. The orchestrator reads this line and stops the loop on BLOCKED or NEEDS_CONTEXT.)
 
 ## Hard rules
 
@@ -297,6 +304,7 @@ Run these steps for EACH failing check before editing any code:
 - NEVER claim "fixed" without either local verification (step 6) or an explicit "not reproducible locally" note in the report.
 - If you cannot diagnose a failure from the logs (truncation, infra flake, expired secret, third-party check without logs), STOP and explain — do not invent a fix.
 - If there is nothing to commit after the fix attempt, do NOT create an empty commit; output the report and stop.
+- It is OK to stop and report BLOCKED or NEEDS_CONTEXT. Bad work is worse than no work; escalating is not penalized. Emit the matching STATUS and do not push a placebo fix.
 `)
 
 	return sb.String()

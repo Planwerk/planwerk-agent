@@ -118,6 +118,9 @@ After pushing the branch and opening the draft PR, output a report in this exact
    - Branch: <branch name>
    ### Deviations from the issue
    - <one bullet per deviation, with rationale; "none" if there are no deviations>
+   ### Status
+   STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT>
+   (DONE = implemented, tested, and PR opened; DONE_WITH_CONCERNS = opened but with reservations a reviewer should see; BLOCKED = could not implement; NEEDS_CONTEXT = the issue is underspecified and a human must clarify.)
 
 ## Hard rules
 
@@ -131,6 +134,7 @@ After pushing the branch and opening the draft PR, output a report in this exact
 - NEVER force-push.
 - If the issue is wrong (a cited file does not exist; an Acceptance Criterion is unreachable; the Non-Goals contradict the Description), STOP and post a clarifying comment on the issue instead of inventing scope. Output the report explaining what you did NOT do and why.
 - If there is nothing to commit (the issue turns out to already be implemented), do NOT open an empty PR; output the report explaining what you found.
+- It is OK to stop and report BLOCKED or NEEDS_CONTEXT. Bad work is worse than no work; escalating is not penalized. Emit the matching STATUS instead of inventing scope or shipping a half-built change.
 `)
 
 	return sb.String()
@@ -243,6 +247,9 @@ After pushing the branch and opening the draft PR, output a report in this exact
    - Branch: <branch name>
    ### Deviations from the issue
    - <one bullet per deviation, with rationale; "none" if there are no deviations>
+   ### Status
+   STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT>
+   (DONE = implemented, tested, and PR opened; DONE_WITH_CONCERNS = opened but with reservations a reviewer should see; BLOCKED = could not implement; NEEDS_CONTEXT = the issue is underspecified and a human must clarify.)
 
 ## Hard rules
 
@@ -256,6 +263,7 @@ After pushing the branch and opening the draft PR, output a report in this exact
 - NEVER force-push.
 - If the issue is wrong (a cited file does not exist; an Acceptance Criterion is unreachable; the Non-Goals contradict the Description), STOP and post a clarifying comment on the issue instead of inventing scope. Output the report explaining what you did NOT do and why.
 - If there is nothing to commit (the issue turns out to already be implemented), do NOT open an empty PR; output the report explaining what you found.
+- It is OK to stop and report BLOCKED or NEEDS_CONTEXT. Bad work is worse than no work; escalating is not penalized. Emit the matching STATUS instead of inventing scope or shipping a half-built change.
 `)
 
 	return sb.String()

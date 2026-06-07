@@ -317,6 +317,17 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 			_, _ = fmt.Fprintf(w, "\nClaude fix report:\n%s\n", report)
 		}
 
+		// React to the session's terminal status: an escalation means stop and
+		// hand off rather than burn another iteration on a fix that signaled it
+		// cannot proceed.
+		switch status := parseStatus(report); {
+		case status.ShouldEscalate():
+			_, _ = fmt.Fprintf(w, "\nClaude reported %s — stopping the fix loop and escalating instead of retrying.\n", status)
+			return fmt.Errorf("fix escalated with status %s on iteration %d", status, iteration)
+		case status == StatusDoneWithConcerns:
+			slog.Warn("fix iteration reported DONE_WITH_CONCERNS", "iteration", iteration)
+		}
+
 		// After the push, give the remote a moment, then re-resolve the head
 		// SHA so the next iteration polls against the new commit's checks.
 		newSHA, err := r.waitForNewHead(owner, repo, pr.HeadBranch, currentSHA, opts.PollInterval)
