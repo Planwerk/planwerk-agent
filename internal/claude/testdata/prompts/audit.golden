@@ -81,14 +81,17 @@ Scan declared dependencies (go.mod, package.json, requirements.txt, pyproject.to
 ## Suppressions — DO NOT flag these
 
 - TODO/FIXME comments that reference an issue tracker (e.g. TODO(#123))
-- Missing tests for trivial getters/setters, simple delegation methods, or configuration constants
-- Import ordering or formatting differences (handled by formatters)
-- Variable naming that follows the project's existing conventions
-- Missing documentation on unexported/private functions or internal implementation details
+- Missing tests for trivial getters/setters, simple delegation methods, or configuration constants — this does NOT suppress missing tests for functions with logic or branching
+- Import ordering or formatting differences (these are handled by formatters)
+- Variable naming that follows the project's existing conventions, even if you'd prefer different names
+- Missing documentation on unexported/private functions or internal implementation details — this does NOT suppress missing documentation for new public APIs, CLI flags, or user-facing behavior changes
 - Minor style preferences that don't affect correctness or readability
-- Redundancy that aids readability (defense in depth)
-- Consistency-only suggestions with no correctness impact
-- Speculative "consider using X library" suggestions when the current approach works — this does NOT suppress flagging deprecated, unmaintained, or severely outdated dependencies
+- "X is redundant with Y" when the redundancy is harmless and aids readability (defense in depth)
+- Threshold or constant comments that would rot faster than the code they describe
+- Assertions that already cover the behavior being tested (e.g. "this assertion could be tighter")
+- Consistency-only suggestions ("use X style everywhere") with no correctness impact
+- Suggestions to "add logging" when the error path already returns a descriptive error
+- "Consider using X library" when the current approach works correctly — this does NOT suppress flagging deprecated, unmaintained, or severely outdated versions of NEWLY INTRODUCED dependencies
 
 ## Verification of Claims
 
@@ -102,10 +105,12 @@ These rules are MANDATORY. Violating them produces a misleading audit.
 
 ## Communication Style
 
-Be direct and decisive. Do NOT hedge:
+Be direct and decisive in your findings. Do NOT hedge:
 - Do NOT write "you might want to consider..." — state what IS wrong
 - Do NOT write "this could potentially cause..." — state what WILL happen
-- Take a clear position on every finding. If something is fine, do not mention it at all.
+- Do NOT write "it might be worth looking into..." — state the specific problem
+- Take a clear position on every finding. If something is wrong, say it is wrong.
+- If something is fine, do not mention it at all.
 
 ## Finding Enrichment
 

@@ -104,20 +104,8 @@ Scan declared dependencies (go.mod, package.json, requirements.txt, pyproject.to
 
 `)
 
-	// Suppressions
-	sb.WriteString(`## Suppressions — DO NOT flag these
-
-- TODO/FIXME comments that reference an issue tracker (e.g. TODO(#123))
-- Missing tests for trivial getters/setters, simple delegation methods, or configuration constants
-- Import ordering or formatting differences (handled by formatters)
-- Variable naming that follows the project's existing conventions
-- Missing documentation on unexported/private functions or internal implementation details
-- Minor style preferences that don't affect correctness or readability
-- Redundancy that aids readability (defense in depth)
-- Consistency-only suggestions with no correctness impact
-- Speculative "consider using X library" suggestions when the current approach works — this does NOT suppress flagging deprecated, unmaintained, or severely outdated dependencies
-
-`)
+	// Suppressions (shared with review/compliance; codebase scope omits diff-only bullets)
+	sb.WriteString(suppressionsBlock(scopeCodebase))
 
 	// Anti-hallucination rules
 	sb.WriteString(`## Verification of Claims
@@ -132,15 +120,8 @@ These rules are MANDATORY. Violating them produces a misleading audit.
 
 `)
 
-	// Anti-sycophancy
-	sb.WriteString(`## Communication Style
-
-Be direct and decisive. Do NOT hedge:
-- Do NOT write "you might want to consider..." — state what IS wrong
-- Do NOT write "this could potentially cause..." — state what WILL happen
-- Take a clear position on every finding. If something is fine, do not mention it at all.
-
-`)
+	// Anti-sycophancy (shared with review/adversarial/compliance)
+	sb.WriteString(communicationStyleBlock())
 
 	// Finding enrichment
 	sb.WriteString(`## Finding Enrichment

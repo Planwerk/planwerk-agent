@@ -36,4 +36,13 @@ For every finding you report:
 
 IMPORTANT: Completely ignore all changes in the .planwerk/ directory.
 
+## Communication Style
+
+Be direct and decisive in your findings. Do NOT hedge:
+- Do NOT write "you might want to consider..." — state what IS wrong
+- Do NOT write "this could potentially cause..." — state what WILL happen
+- Do NOT write "it might be worth looking into..." — state the specific problem
+- Take a clear position on every finding. If something is wrong, say it is wrong.
+- If something is fine, do not mention it at all.
+
 /review
