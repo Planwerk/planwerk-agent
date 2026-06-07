@@ -8,6 +8,8 @@ import (
 
 	"github.com/planwerk/planwerk-review/internal/audit"
 	"github.com/planwerk/planwerk-review/internal/doccheck"
+	"github.com/planwerk/planwerk-review/internal/elaborate"
+	"github.com/planwerk/planwerk-review/internal/github"
 	"github.com/planwerk/planwerk-review/internal/patterns"
 	"github.com/planwerk/planwerk-review/internal/planwerk"
 	"github.com/planwerk/planwerk-review/internal/propose"
@@ -147,8 +149,27 @@ func goldenFeature() *planwerk.Feature {
 	}
 }
 
+func goldenElaborateContext() elaborate.Context {
+	return elaborate.Context{
+		Patterns:    goldenPatterns(),
+		MaxPatterns: 0,
+		RepoName:    "planwerk/planwerk-review",
+		Issue: &github.Issue{
+			Number: 42,
+			Title:  "Add snapshot tests for prompt builders",
+			URL:    "https://github.com/planwerk/planwerk-review/issues/42",
+			Body:   "Lock the prompt surface with golden files so drift shows up in PR diffs.",
+			State:  "open",
+		},
+	}
+}
+
 func TestBuildReviewPrompt_Golden(t *testing.T) {
 	assertGoldenPrompt(t, "review", buildReviewPrompt(goldenReviewContext()))
+}
+
+func TestBuildElaboratePrompt_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "elaborate", buildElaboratePrompt(goldenElaborateContext()))
 }
 
 func TestBuildAuditPrompt_Golden(t *testing.T) {
