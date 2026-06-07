@@ -2,6 +2,7 @@ package claude
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/planwerk/planwerk-review/internal/planwerk"
 	"github.com/planwerk/planwerk-review/internal/report"
@@ -39,7 +40,7 @@ func buildCompliancePrompt(baseBranch string, feature *planwerk.Feature) string 
 
 	featureContent := feature.FormatForPrompt()
 
-	return fmt.Sprintf(`You are a Requirements Engineer verifying that a PR implementation fully satisfies a Planwerk feature specification.
+	body := fmt.Sprintf(`You are a Requirements Engineer verifying that a PR implementation fully satisfies a Planwerk feature specification.
 
 SCOPE: Only review files changed in the current branch compared to origin/%s.
 First run: git diff origin/%s --name-only
@@ -105,7 +106,12 @@ For EVERY finding:
 3. **Confidence**: "verified" if you can confirm from the code, "likely" if evidence is indirect, "uncertain" if you need more context
 4. **Related Findings**: Reference other findings from this review that are connected
 
-IMPORTANT: Completely ignore all changes in the .planwerk/ directory itself. Focus only on the actual code, test, and documentation changes.
+`, baseBranch, baseBranch, featureContent)
 
-/review`, baseBranch, baseBranch, featureContent)
+	var sb strings.Builder
+	sb.WriteString(body)
+	sb.WriteString(communicationStyleBlock())
+	sb.WriteString(suppressionsBlock(scopeDiff))
+	sb.WriteString("IMPORTANT: Completely ignore all changes in the .planwerk/ directory itself. Focus only on the actual code, test, and documentation changes.\n\n/review")
+	return sb.String()
 }

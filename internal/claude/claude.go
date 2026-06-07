@@ -330,25 +330,8 @@ When the diff introduces ANY new dependency, you MUST verify its freshness and m
 		sb.WriteString("\nConsider flagging as INFO with title \"Stale Documentation: <file>\" if the docs are actually outdated.\n\n")
 	}
 
-	// False-positive suppressions
-	sb.WriteString(`## Suppressions — DO NOT flag these
-
-- TODO/FIXME comments that reference an issue tracker (e.g. TODO(#123))
-- Missing tests for trivial getters/setters, simple delegation methods, or configuration constants — this does NOT suppress missing tests for functions with logic or branching
-- Import ordering or formatting differences (these are handled by formatters)
-- Variable naming that follows the project's existing conventions, even if you'd prefer different names
-- Missing documentation on unexported/private functions or internal implementation details — this does NOT suppress missing documentation for new public APIs, CLI flags, or user-facing behavior changes
-- Minor style preferences that don't affect correctness or readability
-- "X is redundant with Y" when the redundancy is harmless and aids readability (defense in depth)
-- Threshold or constant comments that would rot faster than the code they describe
-- Assertions that already cover the behavior being tested (e.g. "this assertion could be tighter")
-- Consistency-only suggestions ("use X style everywhere") with no correctness impact
-- Issues that are already addressed elsewhere in the same diff — read the FULL diff before commenting
-- Suggestions to "add logging" when the error path already returns a descriptive error
-- "Consider using X library" when the current approach works correctly — this does NOT suppress flagging deprecated, unmaintained, or severely outdated versions of NEWLY INTRODUCED dependencies
-- Code that was not changed in this diff — only review and comment on added or modified lines, never on unchanged surrounding context
-
-`)
+	// False-positive suppressions (shared with audit/compliance via suppressionsBlock)
+	sb.WriteString(suppressionsBlock(scopeDiff))
 
 	// Verification of claims — anti-hallucination rules
 	sb.WriteString(`## Verification of Claims
@@ -364,17 +347,8 @@ These rules are MANDATORY. Violating them produces a misleading review.
 
 `)
 
-	// Anti-sycophancy rules
-	sb.WriteString(`## Communication Style
-
-Be direct and decisive in your findings. Do NOT hedge:
-- Do NOT write "you might want to consider..." — state what IS wrong
-- Do NOT write "this could potentially cause..." — state what WILL happen
-- Do NOT write "it might be worth looking into..." — state the specific problem
-- Take a clear position on every finding. If something is wrong, say it is wrong.
-- If something is fine, do not mention it at all.
-
-`)
+	// Anti-sycophancy rules (shared with audit/adversarial/compliance)
+	sb.WriteString(communicationStyleBlock())
 
 	// Finding enrichment for machine processing
 	sb.WriteString(`## Finding Enrichment
