@@ -1,7 +1,6 @@
 package claude
 
 import (
-	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -132,23 +131,10 @@ func structureGapResult(rawAnalysis string, ctx gapanalysis.AnalysisContext) (*g
 	if err != nil {
 		return nil, err
 	}
-	text = stripMarkdownFences(text)
-
 	var result gapanalysis.Result
-	if err := json.Unmarshal([]byte(text), &result); err != nil {
-		// Retry once with the parse error fed back to Claude — same pattern
-		// structureReview uses, since LLMs frequently produce one-character
-		// JSON errors that are trivial to repair.
-		repair, repairErr := runClaude("", buildRepairPrompt(text, err), "gap-repair")
-		if repairErr != nil {
-			return nil, fmt.Errorf("parsing structured gap-analysis as JSON: %w\nraw output:\n%s", err, text)
-		}
-		repair = stripMarkdownFences(repair)
-		if err := json.Unmarshal([]byte(repair), &result); err != nil {
-			return nil, fmt.Errorf("parsing structured gap-analysis after repair: %w\nraw output:\n%s", err, repair)
-		}
+	if err := decodeJSONWithRepair(text, "structured gap-analysis", &result); err != nil {
+		return nil, err
 	}
-
 	reconcileFeatures(&result, ctx.Features)
 	return &result, nil
 }

@@ -146,20 +146,9 @@ func structureElaboration(rawElaboration string, ctx elaborate.Context) (*elabor
 	if err != nil {
 		return nil, err
 	}
-	text = stripMarkdownFences(text)
-
 	var result elaborate.Result
-	if err := json.Unmarshal([]byte(text), &result); err != nil {
-		// Retry once with the parse error fed back to Claude, mirroring the
-		// review structurer's recovery path.
-		retry, retryErr := runClaude("", buildRepairPrompt(text, err), "elaborate-repair")
-		if retryErr != nil {
-			return nil, fmt.Errorf("parsing structured elaboration as JSON: %w\nraw output:\n%s", err, text)
-		}
-		retry = stripMarkdownFences(retry)
-		if err2 := json.Unmarshal([]byte(retry), &result); err2 != nil {
-			return nil, fmt.Errorf("parsing structured elaboration as JSON (after retry): %w\nraw output:\n%s", err2, retry)
-		}
+	if err := decodeJSONWithRepair(text, "structured elaboration", &result); err != nil {
+		return nil, err
 	}
 	return &result, nil
 }
@@ -204,18 +193,9 @@ func ReviewElaboration(dir string, ctx elaborate.Context, draftBody string) (*el
 	if err != nil {
 		return nil, fmt.Errorf("running elaboration review: %w", err)
 	}
-	text = stripMarkdownFences(text)
-
 	var rr elaborate.ReviewResult
-	if err := json.Unmarshal([]byte(text), &rr); err != nil {
-		retry, retryErr := runClaude("", buildRepairPrompt(text, err), "elaborate-review-repair")
-		if retryErr != nil {
-			return nil, fmt.Errorf("parsing elaboration review as JSON: %w\nraw output:\n%s", err, text)
-		}
-		retry = stripMarkdownFences(retry)
-		if err2 := json.Unmarshal([]byte(retry), &rr); err2 != nil {
-			return nil, fmt.Errorf("parsing elaboration review as JSON (after retry): %w\nraw output:\n%s", err2, retry)
-		}
+	if err := decodeJSONWithRepair(text, "elaboration review", &rr); err != nil {
+		return nil, err
 	}
 	// A non-empty gap list always means "not approved", regardless of what the
 	// model put in the boolean.

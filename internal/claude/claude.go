@@ -408,30 +408,48 @@ The reason MUST name a specific finding and what it breaks. Generic justificatio
 	return sb.String()
 }
 
+// repairJSON asks Claude to fix malformed JSON, feeding the parse error back so
+// the model can correct it. It is a package variable so tests can substitute a
+// deterministic repair without invoking the claude CLI.
+var repairJSON = func(malformed string, parseErr error, label string) (string, error) {
+	return runClaude("", buildRepairPrompt(malformed, parseErr), label+"-repair")
+}
+
+// decodeJSONWithRepair strips markdown fences from text and unmarshals it into
+// v. On a parse error it asks Claude once to repair the JSON, then retries.
+// Every structuring step shares this so the repair behavior — and the one-shot
+// fallback that keeps a one-character JSON glitch from failing the whole run —
+// stays identical across review, audit, elaborate, propose, gap-analysis, and
+// review-prepared. The common case (valid JSON) never triggers a repair call.
+func decodeJSONWithRepair(text, label string, v any) error {
+	text = stripMarkdownFences(text)
+	err := json.Unmarshal([]byte(text), v)
+	if err == nil {
+		return nil
+	}
+	retry, retryErr := repairJSON(text, err, label)
+	if retryErr != nil {
+		return fmt.Errorf("parsing %s as JSON: %w\nraw output:\n%s", label, err, text)
+	}
+	retry = stripMarkdownFences(retry)
+	if err2 := json.Unmarshal([]byte(retry), v); err2 != nil {
+		return fmt.Errorf("parsing %s as JSON (after retry): %w\nraw output:\n%s", label, err2, retry)
+	}
+	return nil
+}
+
 // structureReview calls Claude to convert unstructured review text into JSON.
-// If the first attempt produces invalid JSON, it retries once with the parse
-// error included so Claude can correct the output.
+// If the first attempt produces invalid JSON, decodeJSONWithRepair retries once
+// with the parse error included so Claude can correct the output.
 func structureReview(rawReview string) (*report.ReviewResult, error) {
 	text, err := runClaude("", buildStructurePrompt(rawReview), "structure")
 	if err != nil {
 		return nil, err
 	}
-
-	text = stripMarkdownFences(text)
-
 	var result report.ReviewResult
-	if err := json.Unmarshal([]byte(text), &result); err != nil {
-		// Retry once with the error fed back to Claude for correction.
-		text, retryErr := runClaude("", buildRepairPrompt(text, err), "repair")
-		if retryErr != nil {
-			return nil, fmt.Errorf("parsing structured review as JSON: %w\nraw output:\n%s", err, text)
-		}
-		text = stripMarkdownFences(text)
-		if retryErr := json.Unmarshal([]byte(text), &result); retryErr != nil {
-			return nil, fmt.Errorf("parsing structured review as JSON (after retry): %w\nraw output:\n%s", retryErr, text)
-		}
+	if err := decodeJSONWithRepair(text, "structured review", &result); err != nil {
+		return nil, err
 	}
-
 	return &result, nil
 }
 
@@ -514,6 +532,7 @@ Field rules:
 - "recommended_option": REQUIRED when fix_options is set. Must equal one of the fix_options ids. Omit when fix_options is empty.
 - "recommendation_reasoning": REQUIRED when recommended_option is set; 1-2 sentences. Omit otherwise.
 - "related_to": Include titles of other findings in this review that are related. Use an empty array if none.
+- Extract ONLY findings actually present in the review output below. Do NOT invent new findings, and do NOT re-introduce any issue the review text explicitly suppressed or chose not to flag.
 - If there are no findings, return an empty findings array.
 
 <review-output>

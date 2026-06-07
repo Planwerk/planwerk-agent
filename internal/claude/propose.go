@@ -1,7 +1,6 @@
 package claude
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -92,14 +91,10 @@ func structureProposals(rawAnalysis string) (*propose.ProposalResult, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	text = stripMarkdownFences(text)
-
 	var result propose.ProposalResult
-	if err := json.Unmarshal([]byte(text), &result); err != nil {
-		return nil, fmt.Errorf("parsing structured proposals as JSON: %w\nraw output:\n%s", err, text)
+	if err := decodeJSONWithRepair(text, "structured proposals", &result); err != nil {
+		return nil, err
 	}
-
 	return &result, nil
 }
 

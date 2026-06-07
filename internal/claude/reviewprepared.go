@@ -1,7 +1,6 @@
 package claude
 
 import (
-	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -159,20 +158,10 @@ func structureReviewPreparedResult(rawAnalysis string, ctx reviewprepared.Analys
 	if err != nil {
 		return nil, err
 	}
-	text = stripMarkdownFences(text)
-
 	var result reviewprepared.Result
-	if err := json.Unmarshal([]byte(text), &result); err != nil {
-		repair, repairErr := runClaude("", buildRepairPrompt(text, err), "review-prepared-repair")
-		if repairErr != nil {
-			return nil, fmt.Errorf("parsing structured review-prepared as JSON: %w\nraw output:\n%s", err, text)
-		}
-		repair = stripMarkdownFences(repair)
-		if err := json.Unmarshal([]byte(repair), &result); err != nil {
-			return nil, fmt.Errorf("parsing structured review-prepared after repair: %w\nraw output:\n%s", err, repair)
-		}
+	if err := decodeJSONWithRepair(text, "structured review-prepared", &result); err != nil {
+		return nil, err
 	}
-
 	reconcileReviewFeatures(&result, ctx.Features)
 	return &result, nil
 }
