@@ -6,7 +6,86 @@ import (
 
 	"github.com/planwerk/planwerk-review/internal/implement"
 	"github.com/planwerk/planwerk-review/internal/patterns"
+	"github.com/planwerk/planwerk-review/internal/report"
 )
+
+// VerifyImplementation runs an independent verification pass over the change
+// set an implement session just produced, checking it against the issue's
+// Acceptance Criteria. It deliberately does NOT trust any implementation
+// report: it diffs the feature branch and reads the actual committed code.
+// Findings are returned for every criterion that is not fully satisfied.
+func VerifyImplementation(dir, issueTitle, issueBody string) (*report.ReviewResult, error) {
+	raw, err := runClaude(dir, buildVerifyImplementationPrompt(issueTitle, issueBody), "verify-implementation")
+	if err != nil {
+		return nil, fmt.Errorf("running implementation verification: %w", err)
+	}
+	result, err := structureReview(raw)
+	if err != nil {
+		return nil, fmt.Errorf("structuring implementation verification: %w", err)
+	}
+	for i := range result.Findings {
+		if result.Findings[i].Pattern == "" {
+			result.Findings[i].Pattern = "implementation-verification"
+		}
+	}
+	assignIDs(result)
+	return result, nil
+}
+
+func buildVerifyImplementationPrompt(issueTitle, issueBody string) string {
+	var sb strings.Builder
+
+	sb.WriteString(`You are a Senior Engineer independently verifying that a just-completed implementation satisfies its issue's Acceptance Criteria.
+
+## CRITICAL: Do NOT trust the implementation
+The session that wrote this code may have finished suspiciously quickly and its self-report may be optimistic, incomplete, or wrong. Ignore any claims of completion. Verify everything against the ACTUAL committed code.
+
+## Determine the change set
+You are inside a checkout currently on the implementation's feature branch.
+- Find the base branch: run ` + "`git symbolic-ref refs/remotes/origin/HEAD`" + ` (fall back to origin/main, then origin/master).
+- Run ` + "`git diff <base>...HEAD --stat`" + ` and ` + "`git log <base>..HEAD --oneline`" + ` to see what changed.
+- Read the actual changed files. Do NOT judge from commit messages alone.
+
+`)
+
+	fmt.Fprintf(&sb, "## Source Issue: %s\n\n<issue-body>\n%s\n</issue-body>\n\n", issueTitle, strings.TrimSpace(issueBody))
+
+	sb.WriteString(`## Your task
+
+Extract EVERY Acceptance Criterion from the issue body. For each one:
+1. Search the diff for the concrete code, test, or doc that satisfies it. Cite file:line.
+2. Classify it: satisfied (evidence found), partial (some but not all), or missing (no evidence in the diff).
+3. Report a finding for every criterion that is NOT fully satisfied. A criterion the implementer would claim is "done" but that you cannot verify in the actual diff is exactly the kind of finding this pass exists to catch.
+
+## Severity
+
+- BLOCKING: a core Acceptance Criterion is missing or contradicted by the implementation.
+- CRITICAL: a criterion is only partially met in a way that breaks its stated goal.
+- WARNING: a minor criterion gap, or missing tests/docs for an otherwise-implemented criterion.
+- INFO: a positive deviation, or a cosmetic mismatch with the spec.
+
+If EVERY criterion is fully satisfied with cited evidence, report an empty findings array.
+
+`)
+
+	sb.WriteString(communicationStyleBlock())
+
+	sb.WriteString(`## Verification of Claims (mandatory)
+
+- Cite the exact file:line for every "satisfied" judgment, or downgrade it to partial/missing.
+- NEVER say "probably handled" or "likely tested" — find the code/test or call the criterion missing.
+- Quote the relevant code (or state "No implementation found") as evidence for every finding.
+
+## Finding Enrichment
+
+For EVERY finding, include: the Acceptance Criterion it concerns (quote it in the problem), a code snippet (the satisfying/contradicting lines, or "No implementation found"), a concrete suggested fix, and a confidence level (verified | likely | uncertain).
+
+IMPORTANT: Completely ignore changes in the .planwerk/ directory.
+
+/review`)
+
+	return sb.String()
+}
 
 // Implement runs a fresh Claude Code session inside the given checkout
 // directory to implement the elaborated GitHub issue described in ctx. The

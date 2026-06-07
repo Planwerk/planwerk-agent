@@ -21,6 +21,7 @@ import (
 	"github.com/planwerk/planwerk-review/internal/detect"
 	"github.com/planwerk/planwerk-review/internal/github"
 	"github.com/planwerk/planwerk-review/internal/patterns"
+	"github.com/planwerk/planwerk-review/internal/report"
 )
 
 // BundledPatternsURLBase is the public raw-markdown URL prefix the bare
@@ -37,6 +38,7 @@ type Options struct {
 	DryRun          bool // skip the Claude invocation; report what would happen
 	PrintPrompt     bool // render the implement prompt to stdout and exit; never invoke Claude
 	PrintBarePrompt bool // render a self-contained prompt to stdout and exit; never fetch issue or clone
+	Verify          bool // after implementing, run an independent verification pass against the diff
 	Version         string
 
 	// Pattern loading mirrors review/audit/elaborate so the implementation
@@ -57,31 +59,38 @@ type Runner struct {
 	// BuildPrompt renders the implement prompt without invoking Claude.
 	// Required when Options.PrintPrompt is set; nil otherwise is fine.
 	BuildPrompt PromptBuildFn
+	// Verifier runs the optional independent verification pass. When nil (or
+	// opts.Verify is false) the pass is skipped.
+	Verifier ImplementationVerifier
 }
 
 // NewRunner builds a Runner with the production GitHub backend, the given
-// Claude implement function, and the prompt builder wired in. The CLI is
-// expected to call this with claude.Implement and claude.BuildImplementPrompt
-// so the import direction stays claude -> implement.
-func NewRunner(fn ImplementFn, build PromptBuildFn) *Runner {
-	return &Runner{
+// Claude implement function, the prompt builder, and an optional verifier. The
+// CLI wires claude.Implement / claude.BuildImplementPrompt /
+// claude.VerifyImplementation so the import direction stays claude -> implement.
+// A nil verifyFn leaves the verification pass disabled.
+func NewRunner(fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn) *Runner {
+	r := &Runner{
 		Claude:      implementFnAdapter{fn: fn},
 		GitHub:      defaultGitHubClient{},
 		BuildPrompt: build,
 	}
+	if verifyFn != nil {
+		r.Verifier = verifyFnAdapter{fn: verifyFn}
+	}
+	return r
 }
 
-// Run is a package-level convenience that delegates to NewRunner(fn, build).Run.
-func Run(w io.Writer, opts Options, fn ImplementFn, build PromptBuildFn) error {
-	return NewRunner(fn, build).Run(w, opts)
+// Run is a package-level convenience that delegates to NewRunner(...).Run.
+func Run(w io.Writer, opts Options, fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn) error {
+	return NewRunner(fn, build, verifyFn).Run(w, opts)
 }
 
 // PrintBarePrompt is a package-level convenience that delegates to
-// NewRunner(nil, nil).PrintBarePrompt. The prompt itself is built without
-// invoking Claude, so the ImplementFn / PromptBuildFn passed to NewRunner
-// are not used here.
+// NewRunner(nil, nil, nil).PrintBarePrompt. The prompt itself is built without
+// invoking Claude, so the functions passed to NewRunner are not used here.
 func PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuildFn) error {
-	return NewRunner(nil, nil).PrintBarePrompt(w, opts, build)
+	return NewRunner(nil, nil, nil).PrintBarePrompt(w, opts, build)
 }
 
 // PrintBarePrompt builds a self-contained ("bare") implement prompt from
@@ -228,15 +237,54 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 
 	ctx.Patterns = loadPatterns(opts, repo.Dir)
 
-	report, err := r.Claude.Implement(repo.Dir, ctx)
+	implReport, err := r.Claude.Implement(repo.Dir, ctx)
 	if err != nil {
 		return fmt.Errorf("claude implement: %w", err)
 	}
-	if report != "" {
-		_, _ = fmt.Fprintf(w, "\nClaude implementation report:\n%s\n", report)
+	if implReport != "" {
+		_, _ = fmt.Fprintf(w, "\nClaude implementation report:\n%s\n", implReport)
 	}
 	slog.Info("implementation complete", "issue", number)
+
+	if opts.Verify && r.Verifier != nil {
+		r.runVerification(w, repo.Dir, ctx)
+	}
 	return nil
+}
+
+// runVerification runs the independent verification pass against the change set
+// the implement session produced and prints its verdict. Verification failures
+// are non-fatal — the implementation still happened, and the operator gets the
+// implementer's own report regardless.
+func (r *Runner) runVerification(w io.Writer, dir string, ctx Context) {
+	slog.Info("running independent implementation verification")
+	result, err := r.Verifier.VerifyImplementation(dir, ctx.IssueTitle, ctx.IssueBody)
+	if err != nil {
+		slog.Warn("implementation verification failed", "err", err)
+		_, _ = fmt.Fprintf(w, "\nIndependent verification could not run: %v\n", err)
+		return
+	}
+	renderVerification(w, result)
+}
+
+// renderVerification prints the verification verdict: a clean pass when no
+// criterion gaps were found, otherwise one block per unmet criterion.
+func renderVerification(w io.Writer, result *report.ReviewResult) {
+	if result == nil || len(result.Findings) == 0 {
+		_, _ = fmt.Fprint(w, "\nIndependent verification: all Acceptance Criteria satisfied against the actual diff.\n")
+		return
+	}
+	_, _ = fmt.Fprintf(w, "\nIndependent verification: %d unmet criterion finding(s) — the implementer's report was not trusted.\n\n", len(result.Findings))
+	for _, f := range result.Findings {
+		_, _ = fmt.Fprintf(w, "- [%s] %s", f.Severity, f.Title)
+		if f.File != "" {
+			_, _ = fmt.Fprintf(w, " (%s)", f.File)
+		}
+		_, _ = fmt.Fprintln(w)
+		if f.Problem != "" {
+			_, _ = fmt.Fprintf(w, "  %s\n", f.Problem)
+		}
+	}
 }
 
 // loadPatterns runs technology detection on the cloned repo and loads the
