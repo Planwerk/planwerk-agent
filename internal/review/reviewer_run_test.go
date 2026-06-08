@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -359,6 +360,46 @@ func TestRun_SpecialistsDisabledByDefault(t *testing.T) {
 	}
 	if claudeMock.specialistCalls != 0 {
 		t.Errorf("specialist calls = %d, want 0 without --specialists", claudeMock.specialistCalls)
+	}
+}
+
+func TestRun_SpecialistsAdaptiveGating(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	pr := fakePR(t, "acme", "widgets", 33, "sha-gate")
+	// A markdown-only PR: only the NeverGate specialists (security,
+	// data-migration) have relevant paths the diff touches, so the four
+	// gateable specialists are skipped.
+	pr.ChangedFiles = []string{"README.md"}
+
+	var (
+		mu  sync.Mutex
+		ran = map[string]bool{}
+	)
+	claudeMock := &configurableClaude{
+		specialist: func(dir, baseBranch, key, focus string) (*report.ReviewResult, error) {
+			mu.Lock()
+			ran[key] = true
+			mu.Unlock()
+			return &report.ReviewResult{}, nil
+		},
+	}
+	gh := &mockGitHub{fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil }}
+	runner := &Runner{Claude: claudeMock, GitHub: gh}
+
+	opts := baseOpts()
+	opts.Specialists = true
+
+	if err := runner.Run(&bytes.Buffer{}, opts); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	if int(claudeMock.specialistCalls) != 2 {
+		t.Fatalf("specialist calls = %d, want 2 for a markdown-only PR", claudeMock.specialistCalls)
+	}
+	if !ran["security"] || !ran["data-migration"] || len(ran) != 2 {
+		t.Errorf("ran specialists = %v, want exactly security and data-migration", ran)
 	}
 }
 

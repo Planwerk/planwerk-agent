@@ -210,11 +210,24 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		covErr           error
 	)
 	// specialistResults[i] holds the findings from claude.Specialists[i]; a nil
-	// entry means that specialist failed (non-fatal) and is skipped at merge.
-	var specialistResults []*report.ReviewResult
+	// entry means that specialist was gated out or failed (both non-fatal) and
+	// is skipped at merge. runSpecialist[i] records the adaptive-gating decision
+	// so it is evaluated once and reused by the dispatch loop below.
+	var (
+		specialistResults []*report.ReviewResult
+		runSpecialist     []bool
+	)
 	if opts.Specialists {
 		specialistResults = make([]*report.ReviewResult, len(claude.Specialists))
-		slog.Info("running specialist review fan-out", "specialists", len(claude.Specialists))
+		runSpecialist = make([]bool, len(claude.Specialists))
+		running := 0
+		for i, sp := range claude.Specialists {
+			runSpecialist[i] = sp.ShouldRun(pr.ChangedFiles)
+			if runSpecialist[i] {
+				running++
+			}
+		}
+		slog.Info("running specialist review fan-out", "running", running, "registered", len(claude.Specialists))
 	}
 
 	var g errgroup.Group
@@ -246,6 +259,12 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	}
 	if opts.Specialists {
 		for i, sp := range claude.Specialists {
+			if !runSpecialist[i] {
+				// Adaptive gating: the diff does not touch this specialist's
+				// relevant paths, so running it would only add cost.
+				slog.Info("skipping specialist; diff does not touch its relevant paths", "specialist", sp.Key)
+				continue
+			}
 			g.Go(func() error {
 				res, err := r.Claude.SpecialistReview(pr.Dir, pr.BaseBranch, sp.Key, sp.Focus)
 				if err != nil {
