@@ -133,6 +133,16 @@ func humanBytes(n int64) string {
 	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTPE"[exp])
 }
 
+// runtimeDeps carries the process-wide values every subcommand constructor
+// needs: the resolved build version and the parsed .planwerk/config.yaml.
+// fileCfg is populated by the root command's PersistentPreRunE before any
+// subcommand RunE runs, so the review, propose, and audit commands read it
+// back through this shared pointer.
+type runtimeDeps struct {
+	version string
+	fileCfg cli.FileConfig
+}
+
 func main() {
 	var cfg cli.Config
 	var minSeverity string
@@ -142,7 +152,8 @@ func main() {
 	var logFormat string
 	var remotePatternsTTL time.Duration
 	var claudeTimeout time.Duration
-	var fileCfg cli.FileConfig
+
+	deps := &runtimeDeps{version: version}
 
 	rootCmd := &cobra.Command{
 		Use:   "planwerk-review <pr-ref>",
@@ -173,7 +184,7 @@ or short form (owner/repo#123).`,
 			if err != nil {
 				return err
 			}
-			fileCfg = loaded
+			deps.fileCfg = loaded
 
 			ttl, err := resolveRemotePatternsTTL(remotePatternsTTL, cmd.Flags().Changed("remote-patterns-ttl"))
 			if err != nil {
@@ -192,7 +203,7 @@ or short form (owner/repo#123).`,
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if showVersion {
-				writeVersion(cmd.OutOrStdout(), resolveBuildInfo(version), verbose)
+				writeVersion(cmd.OutOrStdout(), resolveBuildInfo(deps.version), verbose)
 				return nil
 			}
 			if cfg.CacheStats {
@@ -215,9 +226,9 @@ or short form (owner/repo#123).`,
 				return fmt.Errorf("requires a PR reference argument (or use --local)")
 			}
 
-			fileCfg.ApplyReview(&cfg, &minSeverity, cmd.Flags().Changed)
+			deps.fileCfg.ApplyReview(&cfg, &minSeverity, cmd.Flags().Changed)
 
-			maxPatterns, err := resolveMaxPatterns(cfg.MaxPatterns, cmd.Flags().Changed("max-patterns"), fileCfg.Review.MaxPatterns)
+			maxPatterns, err := resolveMaxPatterns(cfg.MaxPatterns, cmd.Flags().Changed("max-patterns"), deps.fileCfg.Review.MaxPatterns)
 			if err != nil {
 				return err
 			}
@@ -259,7 +270,7 @@ or short form (owner/repo#123).`,
 				return fmt.Errorf("--inline cannot be used with --format json")
 			}
 
-			opts := cfg.ToReviewOptions(version)
+			opts := cfg.ToReviewOptions(deps.version)
 			return review.Run(os.Stdout, opts)
 		},
 	}
@@ -314,9 +325,9 @@ or short form (owner/repo).`,
 				return fmt.Errorf("requires a repository reference argument (or use --local)")
 			}
 
-			fileCfg.ApplyPropose(&proposeCfg, cmd.Flags().Changed)
+			deps.fileCfg.ApplyPropose(&proposeCfg, cmd.Flags().Changed)
 
-			maxPatterns, err := resolveMaxPatterns(proposeCfg.MaxPatterns, cmd.Flags().Changed("max-patterns"), fileCfg.Propose.MaxPatterns)
+			maxPatterns, err := resolveMaxPatterns(proposeCfg.MaxPatterns, cmd.Flags().Changed("max-patterns"), deps.fileCfg.Propose.MaxPatterns)
 			if err != nil {
 				return err
 			}
@@ -328,7 +339,7 @@ or short form (owner/repo).`,
 				return fmt.Errorf("unknown format %q, supported: markdown, json, issues", proposeCfg.Format)
 			}
 
-			opts := proposeCfg.ToProposeOptions(version)
+			opts := proposeCfg.ToProposeOptions(deps.version)
 			return propose.Run(os.Stdout, opts, claude.Propose)
 		},
 	}
@@ -373,9 +384,9 @@ or short form (owner/repo).`,
 				return fmt.Errorf("requires a repository reference argument (or use --local)")
 			}
 
-			fileCfg.ApplyAudit(&auditCfg, &auditMinSeverity, &auditIssueMinSeverity, cmd.Flags().Changed)
+			deps.fileCfg.ApplyAudit(&auditCfg, &auditMinSeverity, &auditIssueMinSeverity, cmd.Flags().Changed)
 
-			maxPatterns, err := resolveMaxPatterns(auditCfg.MaxPatterns, cmd.Flags().Changed("max-patterns"), fileCfg.Audit.MaxPatterns)
+			maxPatterns, err := resolveMaxPatterns(auditCfg.MaxPatterns, cmd.Flags().Changed("max-patterns"), deps.fileCfg.Audit.MaxPatterns)
 			if err != nil {
 				return err
 			}
@@ -419,7 +430,7 @@ or short form (owner/repo).`,
 				return fmt.Errorf("--create-issues cannot be used with --format json")
 			}
 
-			opts := auditCfg.ToAuditOptions(version)
+			opts := auditCfg.ToAuditOptions(deps.version)
 			return audit.Run(os.Stdout, opts, claude.Audit)
 		},
 	}
@@ -487,7 +498,7 @@ or short form (owner/repo).`,
 				return fmt.Errorf("--create-issues cannot be used with --format json")
 			}
 
-			opts := gapCfg.ToGapAnalysisOptions(version)
+			opts := gapCfg.ToGapAnalysisOptions(deps.version)
 			return gapanalysis.Run(os.Stdout, opts, claude.GapAnalysis)
 		},
 	}
@@ -570,7 +581,7 @@ or short form (owner/repo).`,
 				return fmt.Errorf("--create-pr cannot be used with --format json")
 			}
 
-			opts := preparedCfg.ToReviewPreparedOptions(version)
+			opts := preparedCfg.ToReviewPreparedOptions(deps.version)
 			return reviewprepared.Run(os.Stdout, opts, claude.ReviewPrepared)
 		},
 	}
@@ -629,7 +640,7 @@ or short form (owner/repo#123).`,
 				return fmt.Errorf("--update-issue and --post-comment are mutually exclusive")
 			}
 
-			opts := elaborateCfg.ToElaborateOptions(version)
+			opts := elaborateCfg.ToElaborateOptions(deps.version)
 			return elaborate.Run(os.Stdout, opts, claude.Elaborate, claude.ReviewElaboration)
 		},
 	}
@@ -676,7 +687,7 @@ or short form (owner/repo#123).`,
 			default:
 				return fmt.Errorf("unknown mode %q, supported: auto, fix, implement", promptCfg.Mode)
 			}
-			opts := promptCfg.ToPromptOptions(version)
+			opts := promptCfg.ToPromptOptions(deps.version)
 			return prompt.Run(os.Stdout, opts)
 		},
 	}
@@ -735,7 +746,7 @@ or short form (owner/repo#123).`,
 			if modes > 1 {
 				return fmt.Errorf("--dry-run, --print-prompt, and --print-bare-prompt are mutually exclusive")
 			}
-			opts := fixCfg.ToFixOptions(version)
+			opts := fixCfg.ToFixOptions(deps.version)
 			if fixCfg.PrintBarePrompt {
 				return fix.PrintBarePrompt(cmd.OutOrStdout(), opts, claude.BuildBareFixPrompt)
 			}
@@ -808,7 +819,7 @@ or short form (owner/repo#123).`,
 			if modes > 1 {
 				return fmt.Errorf("--dry-run, --print-prompt, and --print-bare-prompt are mutually exclusive")
 			}
-			opts := implementCfg.ToImplementOptions(version)
+			opts := implementCfg.ToImplementOptions(deps.version)
 			if implementCfg.PrintBarePrompt {
 				return implement.PrintBarePrompt(cmd.OutOrStdout(), opts, claude.BuildBareImplementPrompt)
 			}
@@ -880,7 +891,7 @@ payload for a single cache entry. Keys are listed by "cache stats".`,
 			header := &doc.GenManHeader{
 				Title:   "PLANWERK-REVIEW",
 				Section: "1",
-				Source:  "planwerk-review " + version,
+				Source:  "planwerk-review " + deps.version,
 			}
 			return doc.GenManTree(rootCmd, header, dir)
 		},
