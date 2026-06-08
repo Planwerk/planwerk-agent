@@ -145,6 +145,28 @@ Each finding is classified by actionability:
 | **needs-discussion** | Requires team input before fixing | Security decisions, API changes, behavioral changes |
 | **architectural** | Needs a broader design conversation | Wrong abstraction, missing layer, significant refactor |
 
+#### Adaptive Specialist Gating
+
+With `--specialists`, the review fans out into six domain reviewers that run
+concurrently and merge their findings. To avoid spending a full fan-out on a
+small change, each specialist is *gated*: it runs only when the PR diff touches
+files relevant to its domain.
+
+| Specialist | Runs when the diff touches |
+|------------|----------------------------|
+| `security` | always (a missed vulnerability is too costly to gate) |
+| `data-migration` | always (a destructive migration is too costly to gate) |
+| `testing` | any source-code file |
+| `performance` | any source-code file |
+| `maintainability` | any source-code file |
+| `api-contract` | a routing / request-handler file (`api/`, `routes/`, `handlers/`, `controllers/`, or a `*handler*` / `*route*` / `*controller*` file) |
+
+A file counts as source code unless it is documentation, configuration, data,
+or media (`.md`, `.yaml`, `.json`, `.png`, …). Gated-out specialists are
+skipped with a log line, so a 5-line docs-only PR runs only the two always-on
+specialists instead of all six. When the changed-file set cannot be determined,
+the gate fails open and every specialist runs.
+
 ### Propose Workflow
 
 1. **Repo Input**: The tool receives a GitHub repository reference (URL or `owner/repo`).
@@ -293,6 +315,7 @@ planwerk-review owner/repo#123 > review.md
 | `--inline` | Post review with inline comments using GitHub Review API (implies `--post-review`) | `false` |
 | `--thorough` | Run additional adversarial review pass for security and failure modes | `false` |
 | `--coverage-map` | Generate test coverage map for changed functions | `false` |
+| `--specialists` | Run the domain-specialist review fan-out (security, data-migration, testing, performance, api-contract, maintainability) concurrently and merge their findings. Specialists are adaptively gated: one whose relevant paths the diff never touches is skipped with a log line, while `security` and `data-migration` always run (see [Adaptive Specialist Gating](#adaptive-specialist-gating)). | `false` |
 | `--max-patterns` | Max review patterns injected into the prompt (`<=0` disables truncation; see [Configuration File](#configuration-file) for precedence with `PLANWERK_MAX_PATTERNS`) | `0` (unlimited) |
 | `--max-findings` | Cap on findings returned (`<=0` disables cap) | `0` |
 | `--local` | Operate on the current working directory instead of cloning into a temp dir (see [Local Mode](#local-mode)). The PR reference may be omitted — it is inferred from the current branch. | `false` |
@@ -1163,6 +1186,7 @@ planwerk-review/
 | 21 | **Audit: reuse finding schema** | Same `ReviewResult`/`Finding` types as review | Audit findings drop straight into existing tooling, filters, and renderers — no parallel schema to maintain |
 | 22 | **Audit: verdict phrasing** | `Action required` / `Improvements suggested` / `Codebase healthy` | PR merge verdicts (`Do not merge` / `Ready to merge`) do not apply to a full-codebase audit; audit-specific phrasing avoids misleading readers |
 | 23 | **Audit: no patterns = error** | `audit` fails fast when no patterns load | An audit with zero patterns would produce an unfocused, generic review; surfacing the misconfiguration is better than silently running it |
+| 24 | **Adaptive specialist gating** | Skip specialists whose relevant paths the diff does not touch | A small or docs-only PR should not spin up all six specialists; gating cuts wall-clock and cost. `security` and `data-migration` always run because a missed vulnerability or destructive migration is too costly to gate; an unknown diff fails open so nothing is silently skipped |
 
 ### Future Extensions
 
