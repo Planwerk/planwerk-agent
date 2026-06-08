@@ -545,3 +545,48 @@ func TestRun_CoverageMapRunsConcurrentlyAndRenders(t *testing.T) {
 		t.Errorf("coverage map not rendered, got:\n%s", out.String())
 	}
 }
+
+func TestRun_LocalUsesCwdAndKeepsTree(t *testing.T) {
+	// Not t.Parallel(): cache.SetDir mutates a package-level variable.
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	dir := t.TempDir()
+	pr := &github.PR{
+		Owner: "acme", Repo: "widgets", Number: 42, Title: "PR", Body: "b",
+		BaseBranch: "main", HeadBranch: "feature", HeadSHA: "sha-local", Dir: dir, Local: true,
+	}
+	var localCalls int32
+	claudeMock := &configurableClaude{
+		review: func(string, claude.ReviewContext) (*report.ReviewResult, error) {
+			return &report.ReviewResult{Summary: "Local review summary"}, nil
+		},
+	}
+	gh := &mockGitHub{
+		fetchAndCheckoutLocal: func(ref string, _ github.LocalOptions) (*github.PR, error) {
+			atomic.AddInt32(&localCalls, 1)
+			return pr, nil
+		},
+		// fetchAndCheckout is intentionally left nil so a non-local clone panics.
+	}
+	runner := &Runner{Claude: claudeMock, GitHub: gh}
+
+	opts := baseOpts()
+	opts.Local = true
+	opts.NoCache = true
+
+	var out bytes.Buffer
+	if err := runner.Run(&out, opts); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if localCalls != 1 {
+		t.Errorf("FetchAndCheckoutLocal calls = %d, want 1", localCalls)
+	}
+	if !strings.Contains(out.String(), "Local review summary") {
+		t.Errorf("output missing summary, got:\n%s", out.String())
+	}
+	// Cleanup is a no-op for a Local PR — the working tree must survive.
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatalf("local checkout must survive the run: %v", err)
+	}
+}

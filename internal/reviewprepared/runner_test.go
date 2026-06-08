@@ -3,12 +3,29 @@ package reviewprepared
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/planwerk/planwerk-review/internal/github"
+	"github.com/planwerk/planwerk-review/internal/planwerk"
 	"github.com/planwerk/planwerk-review/internal/report"
 )
+
+// fakeClaude is a scripted ClaudeReviewer for full Run tests.
+type fakeClaude struct {
+	calls atomic.Int32
+	fn    func(dir string, ctx AnalysisContext) (*Result, error)
+}
+
+func (f *fakeClaude) ReviewPrepared(dir string, ctx AnalysisContext) (*Result, error) {
+	f.calls.Add(1)
+	if f.fn == nil {
+		return &Result{}, nil
+	}
+	return f.fn(dir, ctx)
+}
 
 func TestAssignIDs_SeverityPrefixesAndCounters(t *testing.T) {
 	r := &Result{
@@ -103,10 +120,26 @@ func TestIndentJSON_PrettyPrintsCompactInput(t *testing.T) {
 // ImprovedJSON payload.
 type fakeGitHub struct {
 	prOpts *PROptions
+
+	// repoDir, when set, is returned as the working tree from CloneRepo /
+	// CloneRepoLocal so a full Run test can load prepared features from it.
+	repoDir         string
+	cloneCalls      atomic.Int32
+	cloneLocalCalls atomic.Int32
 }
 
-func (f *fakeGitHub) CloneRepo(string) (*github.Repo, error)              { return &github.Repo{}, nil }
-func (f *fakeGitHub) DefaultBranchHEAD(string, string) (string, error)    { return "", nil }
+func (f *fakeGitHub) CloneRepo(string) (*github.Repo, error) {
+	f.cloneCalls.Add(1)
+	return &github.Repo{Owner: "o", Name: "n", Dir: f.repoDir}, nil
+}
+
+// CloneRepoLocal mirrors github.UseLocalRepo: it returns a Local repo so
+// Cleanup is a no-op.
+func (f *fakeGitHub) CloneRepoLocal(string, github.LocalOptions) (*github.Repo, error) {
+	f.cloneLocalCalls.Add(1)
+	return &github.Repo{Owner: "o", Name: "n", Dir: f.repoDir, Local: true}, nil
+}
+func (f *fakeGitHub) DefaultBranchHEAD(string, string) (string, error) { return "", nil }
 func (f *fakeGitHub) OpenImprovementPR(_ *github.Repo, opts PROptions) (string, error) {
 	f.prOpts = &opts
 	return "https://example.test/pr/1", nil
@@ -157,5 +190,51 @@ func TestOpenPR_PassesFormattedFiles(t *testing.T) {
 	}
 	if got.Content[len(got.Content)-1] != '\n' {
 		t.Errorf("expected trailing newline in file content")
+	}
+}
+
+func TestRun_LocalWithCreatePR(t *testing.T) {
+	dir := t.TempDir()
+	writeFeature(t, dir, "PX-0001-prepared.json", planwerk.Feature{FeatureID: "PX-0001", Status: "prepared", Title: "Foo"})
+
+	gh := &fakeGitHub{repoDir: dir}
+	cl := &fakeClaude{fn: func(_ string, ctx AnalysisContext) (*Result, error) {
+		if !ctx.IncludeImproved {
+			t.Error("IncludeImproved must be set when --create-pr is on")
+		}
+		return &Result{Features: []FeatureReview{{
+			FeatureID:    "PX-0001",
+			FeatureFile:  "PX-0001-prepared.json",
+			Title:        "Foo",
+			ImprovedJSON: json.RawMessage(`{"feature_id":"PX-0001","status":"prepared"}`),
+		}}}, nil
+	}}
+	r := &Runner{Claude: cl, GitHub: gh}
+
+	opts := Options{
+		RepoRef:         "o/n",
+		NoLocalPatterns: true,
+		NoRepoPatterns:  true,
+		Format:          "markdown",
+		Version:         "test",
+		Local:           true,
+		CreatePR:        true,
+	}
+	var out bytes.Buffer
+	if err := r.Run(&out, opts); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if gh.cloneLocalCalls.Load() != 1 {
+		t.Errorf("CloneRepoLocal calls = %d, want 1", gh.cloneLocalCalls.Load())
+	}
+	if gh.cloneCalls.Load() != 0 {
+		t.Errorf("CloneRepo calls = %d, want 0 in local mode", gh.cloneCalls.Load())
+	}
+	if gh.prOpts == nil {
+		t.Error("expected a PR to be opened when an improved feature is present")
+	}
+	// The local working tree must survive: every Cleanup is a no-op when Local.
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatalf("local checkout must survive --local --create-pr: %v", err)
 	}
 }

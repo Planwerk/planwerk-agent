@@ -41,6 +41,7 @@ func (a analyzeFnAdapter) ReviewPrepared(dir string, ctx AnalysisContext) (*Resu
 // pull the push/PR code paths into its dependency graph.
 type GitHubClient interface {
 	CloneRepo(ref string) (*github.Repo, error)
+	CloneRepoLocal(ref string, opts github.LocalOptions) (*github.Repo, error)
 	DefaultBranchHEAD(owner, name string) (string, error)
 	OpenImprovementPR(repo *github.Repo, opts PROptions) (string, error)
 }
@@ -68,6 +69,10 @@ type defaultGitHubClient struct{}
 
 func (defaultGitHubClient) CloneRepo(ref string) (*github.Repo, error) {
 	return github.CloneRepo(ref)
+}
+
+func (defaultGitHubClient) CloneRepoLocal(ref string, opts github.LocalOptions) (*github.Repo, error) {
+	return github.UseLocalRepo(ref, opts)
 }
 
 func (defaultGitHubClient) DefaultBranchHEAD(owner, name string) (string, error) {

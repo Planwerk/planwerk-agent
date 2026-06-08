@@ -383,10 +383,11 @@ or short form (owner/repo#123).`,
 				return cache.Clear(scope)
 			}
 
-			if len(args) == 0 {
-				return fmt.Errorf("requires a PR reference argument")
+			if len(args) == 1 {
+				cfg.PRRef = args[0]
+			} else if !cfg.Local {
+				return fmt.Errorf("requires a PR reference argument (or use --local)")
 			}
-			cfg.PRRef = args[0]
 
 			fileCfg.ApplyReview(&cfg, &minSeverity, cmd.Flags().Changed)
 
@@ -464,6 +465,8 @@ or short form (owner/repo#123).`,
 	flags.BoolVar(&cfg.CoverageMap, "coverage-map", false, "Generate test coverage map for changed functions")
 	flags.IntVar(&cfg.MaxPatterns, "max-patterns", patterns.DefaultMaxPatternsInPrompt, "Max review patterns injected into the prompt (<=0 disables truncation, env: "+envMaxPatterns+")")
 	flags.IntVar(&cfg.MaxFindings, "max-findings", 0, "Cap on findings returned (<=0 disables cap)")
+	flags.BoolVar(&cfg.Local, "local", false, "Operate on the current working directory instead of cloning into a temp dir")
+	flags.BoolVar(&cfg.Force, "force", false, "With --local, skip the confirmation prompt when the working tree is dirty")
 	flags.BoolVar(&showVersion, "version", false, "Show version information and exit")
 
 	// propose subcommand
@@ -477,9 +480,13 @@ feature proposals as structured Markdown suitable for GitHub issues.
 
 Repository reference can be a URL (https://github.com/owner/repo)
 or short form (owner/repo).`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			proposeCfg.RepoRef = args[0]
+			if len(args) == 1 {
+				proposeCfg.RepoRef = args[0]
+			} else if !proposeCfg.Local {
+				return fmt.Errorf("requires a repository reference argument (or use --local)")
+			}
 
 			fileCfg.ApplyPropose(&proposeCfg, cmd.Flags().Changed)
 
@@ -510,6 +517,8 @@ or short form (owner/repo).`,
 	proposeFlags.IntVar(&proposeCfg.MaxPatterns, "max-patterns", patterns.DefaultMaxPatternsInPrompt, "Max review patterns injected into the prompt (<=0 disables truncation, env: "+envMaxPatterns+")")
 	proposeFlags.BoolVar(&proposeCfg.CreateIssues, "create-issues", false, "Interactively create GitHub issues from proposals")
 	proposeFlags.BoolVar(&proposeCfg.NoIssueDedupe, "no-issue-dedupe", false, "Do not filter proposals whose title matches an existing GitHub issue")
+	proposeFlags.BoolVar(&proposeCfg.Local, "local", false, "Operate on the current working directory instead of cloning into a temp dir")
+	proposeFlags.BoolVar(&proposeCfg.Force, "force", false, "With --local, skip the confirmation prompt when the working tree is dirty")
 
 	rootCmd.AddCommand(proposeCmd)
 
@@ -530,9 +539,13 @@ review command, but analyzing the whole repo instead of a PR diff.
 
 Repository reference can be a URL (https://github.com/owner/repo)
 or short form (owner/repo).`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			auditCfg.RepoRef = args[0]
+			if len(args) == 1 {
+				auditCfg.RepoRef = args[0]
+			} else if !auditCfg.Local {
+				return fmt.Errorf("requires a repository reference argument (or use --local)")
+			}
 
 			fileCfg.ApplyAudit(&auditCfg, &auditMinSeverity, &auditIssueMinSeverity, cmd.Flags().Changed)
 
@@ -599,6 +612,8 @@ or short form (owner/repo).`,
 	auditFlags.BoolVar(&auditCfg.CreateIssues, "create-issues", false, "Interactively create GitHub issues from audit findings")
 	auditFlags.StringVar(&auditIssueMinSeverity, "issue-min-severity", "", "Minimum severity for issue creation (default WARNING)")
 	auditFlags.BoolVar(&auditCfg.NoIssueDedupe, "no-issue-dedupe", false, "Do not filter findings whose title matches an existing GitHub issue")
+	auditFlags.BoolVar(&auditCfg.Local, "local", false, "Operate on the current working directory instead of cloning into a temp dir")
+	auditFlags.BoolVar(&auditCfg.Force, "force", false, "With --local, skip the confirmation prompt when the working tree is dirty")
 
 	rootCmd.AddCommand(auditCmd)
 
@@ -622,9 +637,13 @@ be combined as a sanity check.
 
 Repository reference can be a URL (https://github.com/owner/repo)
 or short form (owner/repo).`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			gapCfg.RepoRef = args[0]
+			if len(args) == 1 {
+				gapCfg.RepoRef = args[0]
+			} else if !gapCfg.Local {
+				return fmt.Errorf("requires a repository reference argument (or use --local)")
+			}
 
 			maxPatterns, err := resolveMaxPatterns(gapCfg.MaxPatterns, cmd.Flags().Changed("max-patterns"), nil)
 			if err != nil {
@@ -659,6 +678,8 @@ or short form (owner/repo).`,
 	gapFlags.StringVar(&gapCfg.FilePath, "file", "", "Limit analysis to a single feature file under .planwerk/completed/ (path or basename)")
 	gapFlags.BoolVar(&gapCfg.CreateIssues, "create-issues", false, "Interactively create GitHub issues from gaps")
 	gapFlags.BoolVar(&gapCfg.NoIssueDedupe, "no-issue-dedupe", false, "Do not filter gaps whose suggested-issue title matches an existing GitHub issue")
+	gapFlags.BoolVar(&gapCfg.Local, "local", false, "Operate on the current working directory instead of cloning into a temp dir")
+	gapFlags.BoolVar(&gapCfg.Force, "force", false, "With --local, skip the confirmation prompt when the working tree is dirty")
 
 	rootCmd.AddCommand(gapCmd)
 
@@ -689,9 +710,13 @@ to limit it to a single file. The report and PR scope is identical otherwise.
 
 Repository reference can be a URL (https://github.com/owner/repo)
 or short form (owner/repo).`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			preparedCfg.RepoRef = args[0]
+			if len(args) == 1 {
+				preparedCfg.RepoRef = args[0]
+			} else if !preparedCfg.Local {
+				return fmt.Errorf("requires a repository reference argument (or use --local)")
+			}
 
 			maxPatterns, err := resolveMaxPatterns(preparedCfg.MaxPatterns, cmd.Flags().Changed("max-patterns"), nil)
 			if err != nil {
@@ -738,6 +763,8 @@ or short form (owner/repo).`,
 	preparedFlags.BoolVar(&preparedCfg.CreatePR, "create-pr", false, "After the review, commit improved feature JSON files on a fresh branch and open a pull request")
 	preparedFlags.StringVar(&preparedCfg.PRBranch, "pr-branch", "", "Branch name for --create-pr (default: planwerk-review/improve-prepared-features)")
 	preparedFlags.StringVar(&preparedCfg.PRBase, "pr-base", "", "Base branch for --create-pr (default: repo default branch)")
+	preparedFlags.BoolVar(&preparedCfg.Local, "local", false, "Operate on the current working directory instead of cloning into a temp dir")
+	preparedFlags.BoolVar(&preparedCfg.Force, "force", false, "With --local, skip the confirmation prompt when the working tree is dirty")
 
 	rootCmd.AddCommand(preparedCmd)
 
@@ -793,6 +820,8 @@ or short form (owner/repo#123).`,
 	elaborateFlags.BoolVar(&elaborateCfg.PostComment, "post-comment", false, "Post the elaborated body as a new issue comment via gh issue comment")
 	elaborateFlags.BoolVar(&elaborateCfg.Review, "review", false, "Run a reviewer pass that checks the draft for executability and refines it to close gaps before output")
 	elaborateFlags.IntVar(&elaborateCfg.MaxReviewIterations, "max-review-iterations", 0, "Cap on reviewer refine iterations when --review is set (<=0 uses the default of 3)")
+	elaborateFlags.BoolVar(&elaborateCfg.Local, "local", false, "Operate on the current working directory instead of cloning into a temp dir")
+	elaborateFlags.BoolVar(&elaborateCfg.Force, "force", false, "With --local, skip the confirmation prompt when the working tree is dirty")
 
 	rootCmd.AddCommand(elaborateCmd)
 
@@ -849,9 +878,13 @@ only invoked when an actual fix is needed.
 
 PR reference can be a URL (https://github.com/owner/repo/pull/123)
 or short form (owner/repo#123).`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fixCfg.PRRef = args[0]
+			if len(args) == 1 {
+				fixCfg.PRRef = args[0]
+			} else if !fixCfg.Local {
+				return fmt.Errorf("requires a PR reference argument (or use --local)")
+			}
 			if fixCfg.PollInterval <= 0 {
 				return fmt.Errorf("--interval must be > 0, got %s", fixCfg.PollInterval)
 			}
@@ -895,6 +928,8 @@ or short form (owner/repo#123).`,
 	fixFlags.BoolVar(&fixCfg.NoRepoPatterns, "no-repo-patterns", false, "Ignore repo-specific patterns under .planwerk/review_patterns/ in the target repo")
 	fixFlags.BoolVar(&fixCfg.NoLocalPatterns, "no-local-patterns", false, "Ignore local patterns from the tool")
 	fixFlags.IntVar(&fixCfg.MaxPatterns, "max-patterns", patterns.DefaultMaxPatternsInPrompt, "Max review patterns injected into the prompt (<=0 disables truncation, env: "+envMaxPatterns+")")
+	fixFlags.BoolVar(&fixCfg.Local, "local", false, "Operate on the current working directory instead of cloning into a temp dir")
+	fixFlags.BoolVar(&fixCfg.Force, "force", false, "With --local, skip the confirmation prompt when the working tree is dirty")
 
 	rootCmd.AddCommand(fixCmd)
 
@@ -958,6 +993,8 @@ or short form (owner/repo#123).`,
 	implementFlags.BoolVar(&implementCfg.NoRepoPatterns, "no-repo-patterns", false, "Ignore repo-specific patterns under .planwerk/review_patterns/ in the target repo")
 	implementFlags.BoolVar(&implementCfg.NoLocalPatterns, "no-local-patterns", false, "Ignore local patterns from the tool")
 	implementFlags.IntVar(&implementCfg.MaxPatterns, "max-patterns", patterns.DefaultMaxPatternsInPrompt, "Max review patterns injected into the prompt (<=0 disables truncation, env: "+envMaxPatterns+")")
+	implementFlags.BoolVar(&implementCfg.Local, "local", false, "Operate on the current working directory instead of cloning into a temp dir")
+	implementFlags.BoolVar(&implementCfg.Force, "force", false, "With --local, skip the confirmation prompt when the working tree is dirty")
 
 	rootCmd.AddCommand(implementCmd)
 

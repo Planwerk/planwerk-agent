@@ -1,6 +1,25 @@
 package github
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
+
+func TestRepoCleanupNoOpWhenLocal(t *testing.T) {
+	dir := t.TempDir()
+	r := &Repo{Dir: dir, Local: true}
+	r.Cleanup()
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatalf("Local Repo.Cleanup must not remove the working tree: %v", err)
+	}
+
+	tmp := t.TempDir()
+	nr := &Repo{Dir: tmp}
+	nr.Cleanup()
+	if _, err := os.Stat(tmp); !os.IsNotExist(err) {
+		t.Fatalf("non-local Repo.Cleanup must remove the temp dir, stat err = %v", err)
+	}
+}
 
 func TestParseRepoRef_URL(t *testing.T) {
 	tests := []struct {

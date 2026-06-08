@@ -23,10 +23,26 @@ type fakeGitHub struct {
 	cloneRepo          func(ref string) (*github.Repo, error)
 	defaultBranchHEAD  func(owner, name string) (string, error)
 	listExistingIssues func(owner, name string) ([]github.ExistingIssue, error)
+
+	cloneCalls      atomic.Int32
+	cloneLocalCalls atomic.Int32
 }
 
 func (f *fakeGitHub) CloneRepo(ref string) (*github.Repo, error) {
+	f.cloneCalls.Add(1)
 	return f.cloneRepo(ref)
+}
+
+// CloneRepoLocal mirrors github.UseLocalRepo: it returns a Local repo so
+// Cleanup is a no-op.
+func (f *fakeGitHub) CloneRepoLocal(ref string, _ github.LocalOptions) (*github.Repo, error) {
+	f.cloneLocalCalls.Add(1)
+	repo, err := f.cloneRepo(ref)
+	if err != nil {
+		return nil, err
+	}
+	repo.Local = true
+	return repo, nil
 }
 func (f *fakeGitHub) DefaultBranchHEAD(owner, name string) (string, error) {
 	return f.defaultBranchHEAD(owner, name)
@@ -359,5 +375,37 @@ func TestAssignIDs_SeverityPrefixes(t *testing.T) {
 				t.Errorf("gap %q ID = %q, want %q", g.Title, g.ID, got)
 			}
 		}
+	}
+}
+
+func TestGapRun_LocalUsesCwd(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	makeRepo := repoFactory(t, "acme", "widgets", map[string]planwerk.Feature{
+		"CC-0001-x.json": {FeatureID: testFeatureID, Title: "X"},
+	})
+	repo := makeRepo()
+	gh := &fakeGitHub{
+		cloneRepo:         func(string) (*github.Repo, error) { return repo, nil },
+		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-local-gap", nil },
+	}
+	runner := &Runner{Claude: &fakeClaude{}, GitHub: gh}
+
+	opts := baseGapOpts()
+	opts.Local = true
+	opts.NoCache = true
+
+	if err := runner.Run(&bytes.Buffer{}, opts); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if gh.cloneLocalCalls.Load() != 1 {
+		t.Errorf("CloneRepoLocal calls = %d, want 1", gh.cloneLocalCalls.Load())
+	}
+	if gh.cloneCalls.Load() != 0 {
+		t.Errorf("CloneRepo calls = %d, want 0 in local mode", gh.cloneCalls.Load())
+	}
+	if _, err := os.Stat(repo.Dir); err != nil {
+		t.Fatalf("local checkout must survive the run: %v", err)
 	}
 }

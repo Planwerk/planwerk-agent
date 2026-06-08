@@ -14,6 +14,9 @@ type Repo struct {
 	Owner string
 	Name  string
 	Dir   string // local clone directory (temp dir, caller must clean up)
+	// Local marks a repo whose Dir is the user's working tree (via --local).
+	// When set, Cleanup is a no-op so the user's checkout is never deleted.
+	Local bool
 }
 
 // CloneRepo clones the given repository into a temp directory and returns a Repo.
@@ -35,8 +38,12 @@ func CloneRepo(ref string) (*Repo, error) {
 	}, nil
 }
 
-// Cleanup removes the temporary clone directory.
+// Cleanup removes the temporary clone directory. It is a no-op for a Local
+// repo: the Dir is the user's own working tree and must never be deleted.
 func (r *Repo) Cleanup() {
+	if r.Local {
+		return
+	}
 	if r.Dir != "" {
 		_ = os.RemoveAll(r.Dir)
 	}

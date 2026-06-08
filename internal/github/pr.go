@@ -32,6 +32,9 @@ type PR struct {
 	HeadBranch   string   // head branch name (e.g. "feature/CC-0042")
 	Dir          string   // local checkout directory (temp dir, caller must clean up)
 	ChangedFiles []string // repo-relative paths of files changed between base and head
+	// Local marks a PR whose Dir is the user's working tree (via --local). When
+	// set, Cleanup is a no-op so the user's checkout is never deleted.
+	Local bool
 }
 
 // FetchAndCheckout retrieves PR metadata and checks out the PR locally into a temp directory.
@@ -95,8 +98,12 @@ func diffNames(dir, baseBranch string) []string {
 	return files
 }
 
-// Cleanup removes the temporary checkout directory.
+// Cleanup removes the temporary checkout directory. It is a no-op for a
+// Local PR: the Dir is the user's own working tree and must never be deleted.
 func (pr *PR) Cleanup() {
+	if pr.Local {
+		return
+	}
 	if pr.Dir != "" {
 		_ = os.RemoveAll(pr.Dir)
 	}

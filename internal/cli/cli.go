@@ -37,6 +37,8 @@ type Config struct {
 	CoverageMap     bool
 	MaxPatterns     int
 	MaxFindings     int
+	Local           bool
+	Force           bool
 }
 
 func (c Config) ToReviewOptions(version string) review.Options {
@@ -58,6 +60,8 @@ func (c Config) ToReviewOptions(version string) review.Options {
 		MaxPatterns:     c.MaxPatterns,
 		MaxFindings:     c.MaxFindings,
 		CacheMaxAge:     c.CacheMaxAge,
+		Local:           c.Local,
+		Force:           c.Force,
 	}
 }
 
@@ -73,6 +77,8 @@ type ProposeConfig struct {
 	CreateIssues    bool
 	NoIssueDedupe   bool
 	CacheMaxAge     time.Duration
+	Local           bool
+	Force           bool
 }
 
 func (c ProposeConfig) ToProposeOptions(version string) propose.Options {
@@ -88,6 +94,8 @@ func (c ProposeConfig) ToProposeOptions(version string) propose.Options {
 		CreateIssues:    c.CreateIssues,
 		NoIssueDedupe:   c.NoIssueDedupe,
 		CacheMaxAge:     c.CacheMaxAge,
+		Local:           c.Local,
+		Force:           c.Force,
 	}
 }
 
@@ -107,6 +115,8 @@ type AuditConfig struct {
 	IssueMinSeverity report.Severity
 	NoIssueDedupe    bool
 	CacheMaxAge      time.Duration
+	Local            bool
+	Force            bool
 }
 
 // ElaborateConfig holds configuration for the elaborate command.
@@ -123,6 +133,8 @@ type ElaborateConfig struct {
 	Review              bool // run the reviewer gate + refine loop before output
 	MaxReviewIterations int  // cap on refine iterations (<=0 uses the package default)
 	CacheMaxAge         time.Duration
+	Local               bool
+	Force               bool
 }
 
 func (c ElaborateConfig) ToElaborateOptions(version string) elaborate.Options {
@@ -146,6 +158,8 @@ func (c ElaborateConfig) ToElaborateOptions(version string) elaborate.Options {
 		Review:              c.Review,
 		MaxReviewIterations: c.MaxReviewIterations,
 		CacheMaxAge:         c.CacheMaxAge,
+		Local:               c.Local,
+		Force:               c.Force,
 	}
 }
 
@@ -163,6 +177,8 @@ type FixConfig struct {
 	NoRepoPatterns  bool
 	NoLocalPatterns bool
 	MaxPatterns     int
+	Local           bool
+	Force           bool
 }
 
 func (c FixConfig) ToFixOptions(version string) fix.Options {
@@ -178,6 +194,8 @@ func (c FixConfig) ToFixOptions(version string) fix.Options {
 		NoRepoPatterns:  c.NoRepoPatterns,
 		NoLocalPatterns: c.NoLocalPatterns,
 		MaxPatterns:     c.MaxPatterns,
+		Local:           c.Local,
+		Force:           c.Force,
 	}
 }
 
@@ -193,6 +211,8 @@ type ImplementConfig struct {
 	NoRepoPatterns  bool
 	NoLocalPatterns bool
 	MaxPatterns     int
+	Local           bool
+	Force           bool
 }
 
 func (c ImplementConfig) ToImplementOptions(version string) implement.Options {
@@ -207,6 +227,8 @@ func (c ImplementConfig) ToImplementOptions(version string) implement.Options {
 		NoRepoPatterns:  c.NoRepoPatterns,
 		NoLocalPatterns: c.NoLocalPatterns,
 		MaxPatterns:     c.MaxPatterns,
+		Local:           c.Local,
+		Force:           c.Force,
 	}
 }
 
@@ -247,6 +269,8 @@ type GapAnalysisConfig struct {
 	CreateIssues  bool
 	NoIssueDedupe bool
 	CacheMaxAge   time.Duration
+	Local         bool
+	Force         bool
 }
 
 func (c GapAnalysisConfig) ToGapAnalysisOptions(version string) gapanalysis.Options {
@@ -264,6 +288,8 @@ func (c GapAnalysisConfig) ToGapAnalysisOptions(version string) gapanalysis.Opti
 		CreateIssues:    c.CreateIssues,
 		NoIssueDedupe:   c.NoIssueDedupe,
 		CacheMaxAge:     c.CacheMaxAge,
+		Local:           c.Local,
+		Force:           c.Force,
 	}
 }
 
@@ -286,6 +312,8 @@ type ReviewPreparedConfig struct {
 	PRBase   string
 
 	CacheMaxAge time.Duration
+	Local       bool
+	Force       bool
 }
 
 func (c ReviewPreparedConfig) ToReviewPreparedOptions(version string) reviewprepared.Options {
@@ -305,6 +333,8 @@ func (c ReviewPreparedConfig) ToReviewPreparedOptions(version string) reviewprep
 		PRBranch:        c.PRBranch,
 		PRBase:          c.PRBase,
 		CacheMaxAge:     c.CacheMaxAge,
+		Local:           c.Local,
+		Force:           c.Force,
 	}
 }
 
@@ -325,5 +355,7 @@ func (c AuditConfig) ToAuditOptions(version string) audit.Options {
 		IssueMinSeverity: c.IssueMinSeverity,
 		NoIssueDedupe:    c.NoIssueDedupe,
 		CacheMaxAge:      c.CacheMaxAge,
+		Local:            c.Local,
+		Force:            c.Force,
 	}
 }

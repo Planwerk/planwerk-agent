@@ -96,9 +96,14 @@ func (a fixFnAdapter) Fix(dir string, ctx Context) (string, error) {
 // method maps to a single gh CLI invocation.
 type GitHubClient interface {
 	FetchAndCheckout(ref string) (*github.PR, error)
+	FetchAndCheckoutLocal(ref string, opts github.LocalOptions) (*github.PR, error)
 	ListChecks(owner, name, sha string) ([]github.CheckRun, error)
 	FailedRunLogs(owner, name string, runID int64) (string, error)
 	HeadSHA(owner, name string, branch string) (string, error)
+	// PullOnBranch fast-forwards the local checkout in dir to the latest
+	// commits on branch. Used in --local mode to pick up the previous
+	// iteration's follow-up commit without re-cloning.
+	PullOnBranch(dir, branch string) error
 }
 
 // defaultGitHubClient is the production GitHubClient backed by the github
@@ -107,6 +112,14 @@ type defaultGitHubClient struct{}
 
 func (defaultGitHubClient) FetchAndCheckout(ref string) (*github.PR, error) {
 	return github.FetchAndCheckout(ref)
+}
+
+func (defaultGitHubClient) FetchAndCheckoutLocal(ref string, opts github.LocalOptions) (*github.PR, error) {
+	return github.OpenLocalPR(ref, opts)
+}
+
+func (defaultGitHubClient) PullOnBranch(dir, branch string) error {
+	return github.PullFFOnly(dir, branch)
 }
 
 func (defaultGitHubClient) ListChecks(owner, name, sha string) ([]github.CheckRun, error) {

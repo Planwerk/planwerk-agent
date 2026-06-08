@@ -92,6 +92,8 @@ type Options struct {
 	CreateIssues  bool
 	NoIssueDedupe bool
 	CacheMaxAge   time.Duration
+	Local         bool // operate on the current working directory instead of cloning
+	Force         bool // with Local, skip the dirty-working-tree confirmation prompt
 }
 
 // AllGaps flattens the per-feature buckets back into a single slice in the

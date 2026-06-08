@@ -33,10 +33,29 @@ type fakeGitHub struct {
 	prHeadSHA  string
 	cloneDir   string // optional: directory used as PR.Dir; "" → no-op cleanup
 	cloneCalls atomic.Int32
+	localCalls atomic.Int32
+	pullCalls  atomic.Int32
 }
 
 func (f *fakeGitHub) FetchAndCheckout(ref string) (*github.PR, error) {
 	f.cloneCalls.Add(1)
+	return f.makePR(ref, false)
+}
+
+// FetchAndCheckoutLocal mirrors github.OpenLocalPR: it returns a Local PR so
+// Cleanup is a no-op and the working tree survives across iterations.
+func (f *fakeGitHub) FetchAndCheckoutLocal(ref string, _ github.LocalOptions) (*github.PR, error) {
+	f.localCalls.Add(1)
+	return f.makePR(ref, true)
+}
+
+// PullOnBranch records a fast-forward refresh of the local checkout.
+func (f *fakeGitHub) PullOnBranch(_, _ string) error {
+	f.pullCalls.Add(1)
+	return nil
+}
+
+func (f *fakeGitHub) makePR(ref string, local bool) (*github.PR, error) {
 	owner, repo, number, err := github.ParseRef(ref)
 	if err != nil {
 		return nil, err
@@ -49,6 +68,7 @@ func (f *fakeGitHub) FetchAndCheckout(ref string) (*github.PR, error) {
 		HeadBranch: f.prBranch,
 		HeadSHA:    f.prHeadSHA,
 		Dir:        f.cloneDir,
+		Local:      local,
 	}, nil
 }
 
@@ -633,5 +653,71 @@ func TestStdinPrompter_YesNo(t *testing.T) {
 		if got != c.want {
 			t.Errorf("Confirm(%q) = %v, want %v", c.input, got, c.want)
 		}
+	}
+}
+
+func TestRunLocalSkipsReclone(t *testing.T) {
+	failures := []github.CheckRun{failing(1, "test")}
+	gh := &fakeGitHub{
+		prTitle:        "demo",
+		prBranch:       "feat/x",
+		prHeadSHA:      "sha0",
+		cloneDir:       t.TempDir(),
+		checkResponses: [][]github.CheckRun{failures, failures, failures},
+		// Each iteration advances HEAD so the loop reaches the iteration cap
+		// instead of bailing on "no new commit".
+		headSequence: []string{"s1", "s2", "s3"},
+	}
+	cl := &fakeClaude{report: "tried"}
+	r := newRunner(gh, cl, &fakePrompter{})
+
+	err := r.Run(io.Discard, Options{
+		PRRef:           "o/r#1",
+		MaxIterations:   3,
+		Local:           true,
+		NoLocalPatterns: true,
+		NoRepoPatterns:  true,
+	})
+	if !errors.Is(err, ErrMaxIterations) {
+		t.Fatalf("Run err = %v, want ErrMaxIterations", err)
+	}
+	if gh.localCalls.Load() != 1 {
+		t.Errorf("FetchAndCheckoutLocal calls = %d, want 1 (initial metadata fetch)", gh.localCalls.Load())
+	}
+	if gh.cloneCalls.Load() != 0 {
+		t.Errorf("FetchAndCheckout (temp-dir re-clone) calls = %d, want 0 in local mode", gh.cloneCalls.Load())
+	}
+	if gh.pullCalls.Load() != 2 {
+		t.Errorf("PullOnBranch calls = %d, want 2 (one per iteration after the first)", gh.pullCalls.Load())
+	}
+	// The local working tree must survive: Cleanup is a no-op when Local.
+	if _, err := os.Stat(gh.cloneDir); err != nil {
+		t.Fatalf("local checkout must survive the fix loop: %v", err)
+	}
+}
+
+func TestRunLocalAllChecksPassingNoPull(t *testing.T) {
+	gh := &fakeGitHub{
+		prTitle:        "demo",
+		prBranch:       "feat/x",
+		prHeadSHA:      "abc1234",
+		cloneDir:       t.TempDir(),
+		checkResponses: [][]github.CheckRun{{passing("lint"), passing("test")}},
+		headSequence:   []string{"abc1234"},
+	}
+	cl := &fakeClaude{}
+	r := newRunner(gh, cl, &fakePrompter{})
+
+	if err := r.Run(io.Discard, Options{PRRef: "o/r#1", Local: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if gh.localCalls.Load() != 1 {
+		t.Errorf("FetchAndCheckoutLocal calls = %d, want 1", gh.localCalls.Load())
+	}
+	if gh.cloneCalls.Load() != 0 {
+		t.Errorf("FetchAndCheckout calls = %d, want 0", gh.cloneCalls.Load())
+	}
+	if gh.pullCalls.Load() != 0 {
+		t.Errorf("PullOnBranch calls = %d, want 0 when checks already pass", gh.pullCalls.Load())
 	}
 }

@@ -74,6 +74,7 @@ type GitHubClient interface {
 	DefaultBranchHEAD(owner, name string) (string, error)
 	GetIssue(owner, name string, number int) (*github.Issue, error)
 	CloneRepo(ref string) (*github.Repo, error)
+	CloneRepoLocal(ref string, opts github.LocalOptions) (*github.Repo, error)
 	EditIssueBody(owner, name string, number int, body string) error
 	AddIssueComment(owner, name string, number int, body string) (string, error)
 }
@@ -91,6 +92,10 @@ func (defaultGitHubClient) GetIssue(owner, name string, number int) (*github.Iss
 
 func (defaultGitHubClient) CloneRepo(ref string) (*github.Repo, error) {
 	return github.CloneRepo(ref)
+}
+
+func (defaultGitHubClient) CloneRepoLocal(ref string, opts github.LocalOptions) (*github.Repo, error) {
+	return github.UseLocalRepo(ref, opts)
 }
 
 func (defaultGitHubClient) EditIssueBody(owner, name string, number int, body string) error {

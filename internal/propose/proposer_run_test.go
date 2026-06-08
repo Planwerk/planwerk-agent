@@ -3,6 +3,7 @@ package propose
 import (
 	"bytes"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,10 +21,26 @@ type fakeGitHub struct {
 	cloneRepo          func(ref string) (*github.Repo, error)
 	defaultBranchHEAD  func(owner, name string) (string, error)
 	listExistingIssues func(owner, name string) ([]github.ExistingIssue, error)
+
+	cloneCalls      atomic.Int32
+	cloneLocalCalls atomic.Int32
 }
 
 func (f *fakeGitHub) CloneRepo(ref string) (*github.Repo, error) {
+	f.cloneCalls.Add(1)
 	return f.cloneRepo(ref)
+}
+
+// CloneRepoLocal mirrors github.UseLocalRepo: it returns a Local repo rooted
+// at the same dir the temp-clone factory would, so Cleanup is a no-op.
+func (f *fakeGitHub) CloneRepoLocal(ref string, _ github.LocalOptions) (*github.Repo, error) {
+	f.cloneLocalCalls.Add(1)
+	repo, err := f.cloneRepo(ref)
+	if err != nil {
+		return nil, err
+	}
+	repo.Local = true
+	return repo, nil
 }
 
 func (f *fakeGitHub) DefaultBranchHEAD(owner, name string) (string, error) {
@@ -520,5 +537,37 @@ func TestProposeRun_CorruptedCacheFallsBackToFreshAnalysis(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "Recovered overview") {
 		t.Errorf("output missing fresh overview after cache corruption, got:\n%s", out.String())
+	}
+}
+
+func TestProposeRun_LocalUsesCwdAndKeepsTree(t *testing.T) {
+	// Not t.Parallel(): cache.SetDir mutates a package-level variable.
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	dir := t.TempDir()
+	gh := &fakeGitHub{
+		cloneRepo: func(ref string) (*github.Repo, error) {
+			return &github.Repo{Owner: "acme", Name: "widgets", Dir: dir}, nil
+		},
+		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-local", nil },
+	}
+	runner := &Runner{Claude: &fakeClaude{}, GitHub: gh}
+
+	opts := baseProposeOpts()
+	opts.Local = true
+	opts.NoCache = true
+
+	if err := runner.Run(io.Discard, opts); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if gh.cloneLocalCalls.Load() != 1 {
+		t.Errorf("CloneRepoLocal calls = %d, want 1", gh.cloneLocalCalls.Load())
+	}
+	if gh.cloneCalls.Load() != 0 {
+		t.Errorf("CloneRepo (temp-dir clone) calls = %d, want 0 in local mode", gh.cloneCalls.Load())
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatalf("local checkout must survive the run (Cleanup is a no-op): %v", err)
 	}
 }

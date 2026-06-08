@@ -15,6 +15,7 @@ import (
 	"github.com/planwerk/planwerk-review/internal/github"
 	"github.com/planwerk/planwerk-review/internal/patterns"
 	"github.com/planwerk/planwerk-review/internal/report"
+	"github.com/planwerk/planwerk-review/internal/workspace"
 )
 
 // Options configures the audit pipeline.
@@ -34,6 +35,8 @@ type Options struct {
 	IssueMinSeverity report.Severity // minimum severity for a finding group to become an issue candidate
 	NoIssueDedupe    bool            // skip filtering findings against existing GitHub issues
 	CacheMaxAge      time.Duration   // reject cache entries older than this; <= 0 disables the TTL
+	Local            bool            // operate on the current working directory instead of cloning
+	Force            bool            // with Local, skip the dirty-working-tree confirmation prompt
 }
 
 // AuditFn performs the Claude-backed codebase audit for a cloned repo.
@@ -111,8 +114,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		}
 	}
 
-	slog.Info("cloning repository", "repo", opts.RepoRef)
-	repo, err := r.GitHub.CloneRepo(opts.RepoRef)
+	repo, err := r.openRepo(opts)
 	if err != nil {
 		return fmt.Errorf("cloning repo: %w", err)
 	}
@@ -157,6 +159,21 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	slog.Info("audit complete")
 	r.applyIssueDedupe(result, repo.Owner, repo.Name, opts)
 	return renderAudit(w, result, repo, opts)
+}
+
+// openRepo returns the working tree to audit: the user's cwd when --local is
+// set (no clone, Cleanup is a no-op), otherwise a fresh temp-dir clone.
+func (r *Runner) openRepo(opts Options) (*github.Repo, error) {
+	if opts.Local {
+		repo, err := r.GitHub.CloneRepoLocal(opts.RepoRef, github.LocalOptions{Force: opts.Force, Prompter: workspace.NewStdinPrompter()})
+		if err != nil {
+			return nil, err
+		}
+		slog.Info("operating on local checkout", "dir", repo.Dir)
+		return repo, nil
+	}
+	slog.Info("cloning repository", "repo", opts.RepoRef)
+	return r.GitHub.CloneRepo(opts.RepoRef)
 }
 
 // applyIssueDedupe filters out findings whose grouped issue-candidate title

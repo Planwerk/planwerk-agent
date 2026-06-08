@@ -34,6 +34,10 @@ inputs:
     description: 'Run the additional adversarial review pass.'
     required: false
     default: 'false'
+  local:
+    description: 'Operate on the repository already checked out by actions/checkout (passes --local) instead of cloning it a second time into a temp dir. Skips the redundant clone — the runner workspace already holds the repo. Requires an authenticated gh and a clean working tree.'
+    required: false
+    default: 'false'
   version:
     description: 'planwerk-review release tag to install (e.g. v0.3.0). Use "latest" to resolve to the most recent release. Ignored when binary-path is set.'
     required: false
@@ -139,6 +143,7 @@ runs:
         POST_INLINE: ${{ inputs.post-inline }}
         THOROUGH: ${{ inputs.thorough }}
         PATTERNS: ${{ inputs.patterns }}
+        LOCAL: ${{ inputs.local }}
       run: |
         set -euo pipefail
         if [ -z "${PR_REF:-}" ]; then
@@ -147,6 +152,14 @@ runs:
         fi
 
         args=(--format "$FORMAT" --min-severity "$MIN_SEVERITY")
+
+        # With local=true, operate on the repo actions/checkout already placed
+        # in the runner workspace instead of cloning it a second time. The PR
+        # reference is still passed explicitly so origin is validated and the
+        # working tree is switched to the PR head.
+        if [ "$LOCAL" = "true" ]; then
+          args+=(--local)
+        fi
 
         if [ "$POST_INLINE" = "true" ]; then
           if [ "$FORMAT" = "json" ]; then

@@ -22,6 +22,7 @@ import (
 	"github.com/planwerk/planwerk-review/internal/github"
 	"github.com/planwerk/planwerk-review/internal/patterns"
 	"github.com/planwerk/planwerk-review/internal/report"
+	"github.com/planwerk/planwerk-review/internal/workspace"
 )
 
 // BundledPatternsURLBase is the public raw-markdown URL prefix the bare
@@ -39,6 +40,8 @@ type Options struct {
 	PrintPrompt     bool // render the implement prompt to stdout and exit; never invoke Claude
 	PrintBarePrompt bool // render a self-contained prompt to stdout and exit; never fetch issue or clone
 	Verify          bool // after implementing, run an independent verification pass against the diff
+	Local           bool // operate on the current working directory instead of cloning
+	Force           bool // with Local, skip the dirty-working-tree confirmation prompt
 	Version         string
 
 	// Pattern loading mirrors review/audit/elaborate so the implementation
@@ -114,7 +117,7 @@ func (r *Runner) PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuil
 	}
 	fullName := fmt.Sprintf("%s/%s", owner, name)
 
-	repo, err := r.GitHub.CloneRepo(fullName)
+	repo, err := r.openRepo(opts, fullName)
 	if err != nil {
 		return fmt.Errorf("cloning repo for bare prompt build: %w", err)
 	}
@@ -227,8 +230,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		return nil
 	}
 
-	slog.Info("cloning repository for implementation", "repo", fullName)
-	repo, err := r.GitHub.CloneRepo(fullName)
+	repo, err := r.openRepo(opts, fullName)
 	if err != nil {
 		return fmt.Errorf("cloning repo: %w", err)
 	}
@@ -246,10 +248,34 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	}
 	slog.Info("implementation complete", "issue", number)
 
+	if opts.Local {
+		// The feature branch the implement session created lives in the user's
+		// working tree — tell them where to find it (stdout, since users want
+		// the branch name there).
+		_, _ = fmt.Fprintf(w, "\nWorking tree left on the feature branch in %s\n", repo.Dir)
+		slog.Info("operating on local checkout", "dir", repo.Dir)
+	}
+
 	if opts.Verify && r.Verifier != nil {
 		r.runVerification(w, repo.Dir, ctx)
 	}
 	return nil
+}
+
+// openRepo returns the working tree for the implementation: the user's cwd
+// when --local is set (no clone, Cleanup is a no-op), otherwise a fresh
+// temp-dir clone of fullName.
+func (r *Runner) openRepo(opts Options, fullName string) (*github.Repo, error) {
+	if opts.Local {
+		repo, err := r.GitHub.CloneRepoLocal(fullName, github.LocalOptions{Force: opts.Force, Prompter: workspace.NewStdinPrompter()})
+		if err != nil {
+			return nil, err
+		}
+		slog.Info("operating on local checkout", "dir", repo.Dir)
+		return repo, nil
+	}
+	slog.Info("cloning repository for implementation", "repo", fullName)
+	return r.GitHub.CloneRepo(fullName)
 }
 
 // runVerification runs the independent verification pass against the change set

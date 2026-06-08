@@ -26,6 +26,7 @@ type ClaudeRunner interface {
 // to avoid touching the real GitHub API or gh CLI.
 type GitHubClient interface {
 	FetchAndCheckout(ref string) (*github.PR, error)
+	FetchAndCheckoutLocal(ref string, opts github.LocalOptions) (*github.PR, error)
 	PostPRComment(owner, repo string, number int, body string) (string, error)
 	SubmitPRReview(owner, repo string, number int, commitSHA, body string, comments []github.ReviewComment) (string, error)
 	FetchDiff(owner, repo string, number int) (string, error)
@@ -60,6 +61,10 @@ type defaultGitHubClient struct{}
 
 func (defaultGitHubClient) FetchAndCheckout(ref string) (*github.PR, error) {
 	return github.FetchAndCheckout(ref)
+}
+
+func (defaultGitHubClient) FetchAndCheckoutLocal(ref string, opts github.LocalOptions) (*github.PR, error) {
+	return github.OpenLocalPR(ref, opts)
 }
 
 func (defaultGitHubClient) PostPRComment(owner, repo string, number int, body string) (string, error) {

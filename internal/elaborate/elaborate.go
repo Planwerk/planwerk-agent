@@ -14,6 +14,7 @@ import (
 	"github.com/planwerk/planwerk-review/internal/detect"
 	"github.com/planwerk/planwerk-review/internal/github"
 	"github.com/planwerk/planwerk-review/internal/patterns"
+	"github.com/planwerk/planwerk-review/internal/workspace"
 )
 
 // CommandElaborate is the cache scope identifier for elaboration entries.
@@ -48,6 +49,8 @@ type Options struct {
 	// closes any gaps before the elaboration is rendered or published.
 	Review              bool
 	MaxReviewIterations int
+	Local               bool // operate on the current working directory instead of cloning
+	Force               bool // with Local, skip the dirty-working-tree confirmation prompt
 }
 
 // defaultMaxReviewIterations bounds the reviewer refine loop so a reviewer and
@@ -120,8 +123,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		}
 	}
 
-	slog.Info("cloning repository for elaboration", "repo", fmt.Sprintf("%s/%s", owner, name))
-	repo, err := r.GitHub.CloneRepo(fmt.Sprintf("%s/%s", owner, name))
+	repo, err := r.openRepo(opts, fmt.Sprintf("%s/%s", owner, name))
 	if err != nil {
 		return fmt.Errorf("cloning repo: %w", err)
 	}
@@ -174,6 +176,22 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 
 	slog.Info("elaboration complete")
 	return r.finish(w, result, owner, name, number, opts)
+}
+
+// openRepo returns the working tree to ground the elaboration in: the user's
+// cwd when --local is set (no clone, Cleanup is a no-op), otherwise a fresh
+// temp-dir clone of fullName.
+func (r *Runner) openRepo(opts Options, fullName string) (*github.Repo, error) {
+	if opts.Local {
+		repo, err := r.GitHub.CloneRepoLocal(fullName, github.LocalOptions{Force: opts.Force, Prompter: workspace.NewStdinPrompter()})
+		if err != nil {
+			return nil, err
+		}
+		slog.Info("operating on local checkout", "dir", repo.Dir)
+		return repo, nil
+	}
+	slog.Info("cloning repository for elaboration", "repo", fullName)
+	return r.GitHub.CloneRepo(fullName)
 }
 
 // finish renders the elaborated result and applies the configured update

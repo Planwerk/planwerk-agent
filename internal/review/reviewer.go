@@ -25,6 +25,7 @@ import (
 	"github.com/planwerk/planwerk-review/internal/redact"
 	"github.com/planwerk/planwerk-review/internal/report"
 	"github.com/planwerk/planwerk-review/internal/todocheck"
+	"github.com/planwerk/planwerk-review/internal/workspace"
 )
 
 type Options struct {
@@ -45,6 +46,8 @@ type Options struct {
 	MaxPatterns     int           // max patterns to inject into prompt; <= 0 disables truncation
 	MaxFindings     int           // cap on findings Claude returns; <= 0 disables cap
 	CacheMaxAge     time.Duration // reject cache entries older than this; <= 0 disables the TTL
+	Local           bool          // operate on the current working directory instead of cloning
+	Force           bool          // with Local, skip the dirty-working-tree confirmation prompt
 }
 
 // Runner executes the review pipeline using injected Claude and GitHub
@@ -76,13 +79,24 @@ func Run(w io.Writer, opts Options) error {
 func (r *Runner) Run(w io.Writer, opts Options) error {
 	// 1. Fetch and checkout PR
 	slog.Info("fetching and checking out PR", "pr", opts.PRRef)
-	pr, err := r.GitHub.FetchAndCheckout(opts.PRRef)
+	var (
+		pr  *github.PR
+		err error
+	)
+	if opts.Local {
+		pr, err = r.GitHub.FetchAndCheckoutLocal(opts.PRRef, github.LocalOptions{Force: opts.Force, Prompter: workspace.NewStdinPrompter()})
+	} else {
+		pr, err = r.GitHub.FetchAndCheckout(opts.PRRef)
+	}
 	if err != nil {
 		return fmt.Errorf("fetching PR: %w", err)
 	}
 	defer pr.Cleanup()
 
 	slog.Info("checked out PR", "dir", pr.Dir)
+	if opts.Local {
+		slog.Info("working tree left on PR branch", "branch", pr.HeadBranch, "dir", pr.Dir)
+	}
 
 	// 2. Check cache (include flags that affect output in the cache key)
 	var cacheFlags []string

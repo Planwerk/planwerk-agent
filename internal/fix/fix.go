@@ -1,7 +1,6 @@
 package fix
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -15,6 +14,7 @@ import (
 	"github.com/planwerk/planwerk-review/internal/detect"
 	"github.com/planwerk/planwerk-review/internal/github"
 	"github.com/planwerk/planwerk-review/internal/patterns"
+	"github.com/planwerk/planwerk-review/internal/workspace"
 )
 
 // Default loop parameters. Each can be overridden via Options / CLI flags.
@@ -43,6 +43,8 @@ type Options struct {
 	Interactive   bool          // ask before each new fix iteration
 	DryRun        bool          // skip the Claude invocation; report status only
 	PrintPrompt   bool          // render the fix prompt to stdout and exit; never invoke Claude
+	Local         bool          // operate on the current working directory instead of cloning
+	Force         bool          // with Local, skip the dirty-working-tree confirmation prompt
 	Version       string
 
 	// Pattern loading mirrors review/audit/elaborate so the fix is grounded
@@ -89,6 +91,22 @@ func Run(w io.Writer, opts Options, fn FixFn, build PromptBuildFn) error {
 	return NewRunner(fn, build).Run(w, opts)
 }
 
+// localOptions builds the github.LocalOptions for a --local run from the fix
+// Options, wiring the stdin prompter that backs the dirty-tree confirmation.
+func localOptions(opts Options) github.LocalOptions {
+	return github.LocalOptions{Force: opts.Force, Prompter: workspace.NewStdinPrompter()}
+}
+
+// fetchPR resolves the PR for opts: a no-clone local checkout when opts.Local
+// is set, otherwise the temp-dir clone+checkout. Used for the initial metadata
+// fetch and the bare-prompt build.
+func (r *Runner) fetchPR(opts Options) (*github.PR, error) {
+	if opts.Local {
+		return r.GitHub.FetchAndCheckoutLocal(opts.PRRef, localOptions(opts))
+	}
+	return r.GitHub.FetchAndCheckout(opts.PRRef)
+}
+
 // PrintBarePrompt is a package-level convenience that delegates to
 // NewRunner(nil, nil).PrintBarePrompt. The prompt itself is built without
 // invoking Claude, so the FixFn / PromptBuildFn passed to NewRunner are
@@ -111,19 +129,26 @@ func (r *Runner) PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuil
 	if build == nil {
 		return errors.New("--print-bare-prompt requires a prompt builder; wire claude.BuildBareFixPrompt")
 	}
-	owner, repo, number, err := github.ParseRef(opts.PRRef)
-	if err != nil {
-		return fmt.Errorf("parsing PR ref: %w", err)
+	// In non-local mode validate the ref up front so a bad ref fails fast
+	// before any clone. In local mode the ref may be empty (inferred from the
+	// current branch), so identity is read from the resolved PR instead.
+	if !opts.Local {
+		if _, _, _, err := github.ParseRef(opts.PRRef); err != nil {
+			return fmt.Errorf("parsing PR ref: %w", err)
+		}
 	}
 
 	// Clone the PR head so we can run tech detection and pick the right
-	// pattern subset. The clone is throw-away — the prompt is the only
-	// artifact that escapes this call.
-	pr, err := r.GitHub.FetchAndCheckout(opts.PRRef)
+	// pattern subset. In --local mode this is the user's working tree; the
+	// prompt is the only artifact that escapes this call.
+	pr, err := r.fetchPR(opts)
 	if err != nil {
 		return fmt.Errorf("fetching PR for bare prompt build: %w", err)
 	}
 	defer pr.Cleanup()
+	// Identity comes from the resolved PR so it works whether the ref was
+	// explicit or inferred from the local branch.
+	owner, repo, number := pr.Owner, pr.Repo, pr.Number
 
 	tags := detect.Technologies(pr.Dir)
 	if len(tags) > 0 {
@@ -194,11 +219,19 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	if opts.PrintPrompt && r.BuildPrompt == nil {
 		return errors.New("--print-prompt requires a prompt builder; wire claude.BuildFixPrompt via NewRunner")
 	}
-
-	owner, repo, number, err := github.ParseRef(opts.PRRef)
-	if err != nil {
-		return fmt.Errorf("parsing PR ref: %w", err)
+	if !opts.Local && opts.PRRef == "" {
+		return errors.New("a PR reference is required (or use --local)")
 	}
+
+	// Initial PR fetch — we need head branch + title for context, plus the
+	// initial head SHA to query checks against, plus the repo identity. In
+	// --local mode this also performs gh pr checkout + base fetch on the user's
+	// working tree; in temp-dir mode the checkout is throw-away metadata.
+	pr, err := r.fetchPR(opts)
+	if err != nil {
+		return fmt.Errorf("fetching PR: %w", err)
+	}
+	owner, repo, number := pr.Owner, pr.Repo, pr.Number
 	fullName := fmt.Sprintf("%s/%s", owner, repo)
 	slog.Info("fix loop starting",
 		"pr", fmt.Sprintf("%s#%d", fullName, number),
@@ -207,7 +240,13 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		"interactive", opts.Interactive,
 		"dry_run", opts.DryRun,
 		"print_prompt", opts.PrintPrompt,
+		"local", opts.Local,
 	)
+	if opts.Local {
+		slog.Info("working tree left on PR branch", "branch", pr.HeadBranch, "dir", pr.Dir)
+	} else {
+		pr.Cleanup() // we only needed the metadata; subsequent iterations re-clone
+	}
 
 	// In --print-prompt mode the only stdout payload is the prompt itself;
 	// status chatter (iteration banner, polling progress, failure banner) is
@@ -216,14 +255,6 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	if opts.PrintPrompt {
 		statusW = io.Discard
 	}
-
-	// Initial PR fetch — we need head branch + title for context, plus the
-	// initial head SHA to query checks against.
-	pr, err := r.GitHub.FetchAndCheckout(opts.PRRef)
-	if err != nil {
-		return fmt.Errorf("fetching PR: %w", err)
-	}
-	pr.Cleanup() // we only needed the metadata; subsequent iterations re-clone
 
 	currentSHA := pr.HeadSHA
 
@@ -287,12 +318,24 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 			return nil
 		}
 
-		// Fresh checkout per iteration ensures the Claude session sees the
-		// latest head — which now includes any follow-up commits the previous
-		// iteration pushed.
-		fresh, err := r.GitHub.FetchAndCheckout(opts.PRRef)
-		if err != nil {
-			return fmt.Errorf("re-checking out PR for iteration %d: %w", iteration, err)
+		// Ensure the Claude session sees the latest head — which now includes
+		// any follow-up commits the previous iteration pushed. In --local mode
+		// we keep the user's working tree and fast-forward it (Safety #6);
+		// otherwise we take a fresh throw-away checkout.
+		var fresh *github.PR
+		if opts.Local {
+			if iteration > 1 {
+				if err := r.GitHub.PullOnBranch(pr.Dir, pr.HeadBranch); err != nil {
+					return fmt.Errorf("refreshing local checkout for iteration %d: %w", iteration, err)
+				}
+			}
+			pr.HeadSHA = currentSHA
+			fresh = pr // same working tree; Cleanup is a no-op because Local
+		} else {
+			fresh, err = r.GitHub.FetchAndCheckout(opts.PRRef)
+			if err != nil {
+				return fmt.Errorf("re-checking out PR for iteration %d: %w", iteration, err)
+			}
 		}
 
 		pats := loadPatterns(opts, fresh.Dir)
@@ -472,11 +515,10 @@ func shortSHA(sha string) string {
 
 // stdinPrompter is the production Prompter: reads a single y/n line from
 // stdin and writes the question to the given Writer (typically stderr so it
-// stays visible when the caller is redirecting stdout).
-type stdinPrompter struct {
-	In  io.Reader
-	Out io.Writer
-}
+// stays visible when the caller is redirecting stdout). It is a thin alias
+// over workspace.StdinPrompter so the dirty-tree gate and the interactive
+// fix-iteration prompt share one implementation.
+type stdinPrompter = workspace.StdinPrompter
 
 // loadPatterns runs technology detection on the fresh checkout and loads
 // the review-pattern catalog filtered by those tags. Mirrors the
@@ -557,17 +599,4 @@ func repoPatternsRoot(opts Options, repoDir string) string {
 		return candidate
 	}
 	return ""
-}
-
-func (p stdinPrompter) Confirm(message string) (bool, error) {
-	if _, err := fmt.Fprint(p.Out, message); err != nil {
-		return false, err
-	}
-	r := bufio.NewReader(p.In)
-	line, err := r.ReadString('\n')
-	if err != nil && err != io.EOF {
-		return false, err
-	}
-	answer := strings.ToLower(strings.TrimSpace(line))
-	return answer == "y" || answer == "yes", nil
 }

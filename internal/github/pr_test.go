@@ -1,6 +1,9 @@
 package github
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
 func TestParseRef(t *testing.T) {
 	t.Setenv("GITHUB_REPOSITORY", "")
@@ -140,5 +143,22 @@ func TestParseRefBareNumberWithGitHubRepository(t *testing.T) {
 				t.Errorf("got %s/%s#%d, want %s/%s#%d", owner, repo, number, tt.wantOwner, tt.wantRepo, tt.wantNumber)
 			}
 		})
+	}
+}
+
+func TestPRCleanupNoOpWhenLocal(t *testing.T) {
+	dir := t.TempDir()
+	pr := &PR{Dir: dir, Local: true}
+	pr.Cleanup()
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatalf("Local PR.Cleanup must not remove the working tree: %v", err)
+	}
+
+	// A non-local PR must still clean up.
+	tmp := t.TempDir()
+	np := &PR{Dir: tmp}
+	np.Cleanup()
+	if _, err := os.Stat(tmp); !os.IsNotExist(err) {
+		t.Fatalf("non-local PR.Cleanup must remove the temp dir, stat err = %v", err)
 	}
 }

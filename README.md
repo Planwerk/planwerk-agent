@@ -196,6 +196,64 @@ Each finding is classified by actionability:
 4. **Prompt Assembly**: The runner deterministically assembles a prompt containing the agent workflow, rules (no scope creep, no `--no-verify`, run tests, update docs), and the issue metadata + body. No Claude call is made — the output is reproducible so it can be piped into other tools or diffed over time.
 5. **Output**: The prompt is written to stdout, ready to paste into Claude Code or any other AI coding agent.
 
+### Local Mode
+
+By default every repo-facing subcommand (`review`, `fix`, `implement`,
+`propose`, `audit`, `gap-analysis`, `review-prepared`, `elaborate`) performs a
+fresh `gh repo clone` into a temp directory and deletes it on exit. The
+`--local` flag makes the command operate on the **current working directory**
+instead — no clone, and the checkout is left in place when the command exits.
+
+This unlocks three workflows the temp-dir clone blocks:
+
+- **CI**: `actions/checkout` already populates the runner workspace, so a
+  second clone of the same repo doubles the cold-start time and network cost.
+  `--local` reuses the existing checkout. See [Local mode in CI](#local-mode-in-ci).
+- **Local-first iteration**: review or fix unpushed commits and experimental
+  branches without pushing them first.
+- **Post-run inspection**: after `fix` or `implement` finishes, the working
+  tree it operated on is still there to `cd` into and inspect — it is never
+  `rm`-ed.
+
+Semantics:
+
+- **Reference inference.** The PR/repo reference may be omitted for the
+  repo-facing commands: `review`/`fix` infer the PR from the current branch
+  (via `gh pr view`); `propose`/`audit`/`gap-analysis`/`review-prepared` infer
+  owner/repo from the `origin` remote. `elaborate` and `implement` still
+  require their issue reference (you must name the issue) — only the repository
+  checkout is taken locally. When a reference **is** given explicitly, its
+  owner/repo must match the cwd's `origin`, otherwise the run aborts.
+- **Branch left on.** For `review`/`fix` the working tree is switched to the
+  PR head via `gh pr checkout` (no restore afterwards). The runner logs
+  `working tree left on PR branch` so you know where you landed.
+- **Dirty-tree gate.** If the working tree has uncommitted changes, `--local`
+  asks for confirmation before doing anything. With `--force` it proceeds and
+  logs a warning instead. In a non-interactive context (stdin is not a TTY,
+  e.g. CI) a dirty tree aborts with an actionable error suggesting `--force` —
+  the tool never silently stashes or discards your changes.
+- **Never deletes your tree.** The cleanup step that removes a temp-dir clone
+  is a no-op in local mode, so there is no code path that can `rm -rf` your
+  working directory.
+- **`fix` loop.** Each fix iteration fast-forwards the existing checkout with
+  `git pull --ff-only` instead of re-cloning, which is materially cheaper and
+  produces the same state for the next Claude session.
+
+```bash
+# Review the PR for the current branch, using this checkout
+planwerk-review --local
+
+# Audit the repo whose origin is this checkout (no clone)
+planwerk-review audit --local
+
+# Fix the current branch's PR, proceeding even if the tree is dirty
+planwerk-review fix --local --force
+```
+
+`--local` does not change cache behavior, `gh` authentication, or the
+`--patterns` flag. It also does not (yet) accept an arbitrary directory other
+than the current one.
+
 ### CLI Interface
 
 #### Review (default command)
@@ -237,6 +295,8 @@ planwerk-review owner/repo#123 > review.md
 | `--coverage-map` | Generate test coverage map for changed functions | `false` |
 | `--max-patterns` | Max review patterns injected into the prompt (`<=0` disables truncation; see [Configuration File](#configuration-file) for precedence with `PLANWERK_MAX_PATTERNS`) | `0` (unlimited) |
 | `--max-findings` | Cap on findings returned (`<=0` disables cap) | `0` |
+| `--local` | Operate on the current working directory instead of cloning into a temp dir (see [Local Mode](#local-mode)). The PR reference may be omitted — it is inferred from the current branch. | `false` |
+| `--force` | With `--local`, skip the confirmation prompt when the working tree is dirty | `false` |
 
 ##### Global Flags
 
@@ -289,6 +349,8 @@ planwerk-review propose owner/repo > proposals.md
 | `--max-patterns` | Max review patterns injected into the prompt (`<=0` disables truncation; see [Configuration File](#configuration-file) for precedence with `PLANWERK_MAX_PATTERNS`) | `0` (unlimited) |
 | `--create-issues` | Interactively create GitHub issues from proposals | `false` |
 | `--no-issue-dedupe` | Do not filter proposals whose title matches an existing GitHub issue | `false` |
+| `--local` | Operate on the current working directory instead of cloning into a temp dir (see [Local Mode](#local-mode)). The repository reference may be omitted — it is inferred from the `origin` remote. | `false` |
+| `--force` | With `--local`, skip the confirmation prompt when the working tree is dirty | `false` |
 
 Proposals are grounded in the same review-pattern catalog used by `review` and
 `audit`. Patterns load from the tool's bundled `patterns/` directory, any
@@ -337,6 +399,8 @@ planwerk-review audit owner/repo > audit.md
 | `--create-issues` | Interactively create GitHub issues from findings | `false` |
 | `--issue-min-severity` | Minimum severity for issue creation | `warning` |
 | `--no-issue-dedupe` | Do not filter findings whose title matches an existing GitHub issue | `false` |
+| `--local` | Operate on the current working directory instead of cloning into a temp dir (see [Local Mode](#local-mode)). The repository reference may be omitted — it is inferred from the `origin` remote. | `false` |
+| `--force` | With `--local`, skip the confirmation prompt when the working tree is dirty | `false` |
 
 #### Gap Analysis (subcommand)
 
@@ -379,6 +443,8 @@ planwerk-review gap-analysis --create-issues owner/repo
 | `--file` | Limit analysis to a single feature file under `.planwerk/completed/` (path or basename) | - |
 | `--create-issues` | Interactively create GitHub issues from gaps | `false` |
 | `--no-issue-dedupe` | Do not filter gaps whose suggested-issue title matches an existing GitHub issue | `false` |
+| `--local` | Operate on the current working directory instead of cloning into a temp dir (see [Local Mode](#local-mode)). The repository reference may be omitted — it is inferred from the `origin` remote. | `false` |
+| `--force` | With `--local`, skip the confirmation prompt when the working tree is dirty | `false` |
 
 `--feature` and `--file` may be combined as a sanity check; if the file's
 `feature_id` does not match `--feature`, the run aborts before invoking
@@ -424,6 +490,8 @@ planwerk-review elaborate --post-comment owner/repo#123
 | `--max-patterns` | Max review patterns injected into the prompt (`<=0` disables truncation) | `0` (unlimited) |
 | `--update-issue` | Replace the issue body with the elaborated body via `gh issue edit` | `false` |
 | `--post-comment` | Post the elaborated body as a new issue comment via `gh issue comment` | `false` |
+| `--local` | Ground the elaboration in the current working directory instead of cloning into a temp dir (see [Local Mode](#local-mode)). The issue reference is still required — only the repository checkout is local. | `false` |
+| `--force` | With `--local`, skip the confirmation prompt when the working tree is dirty | `false` |
 
 `--update-issue` and `--post-comment` are mutually exclusive — pick the one
 that matches your team's workflow (overwrite the source issue vs. preserve
@@ -618,6 +686,7 @@ the `version` input or a full tag (`Planwerk/planwerk-review@v1.2.3`).
 | `max-findings` | Cap on findings returned (`0` disables cap) | `0` |
 | `post-inline` | Post inline review comments and a summary via the GitHub Review API | `true` |
 | `thorough` | Run the additional adversarial review pass | `false` |
+| `local` | Review the repository `actions/checkout` already placed in the runner workspace (passes `--local`) instead of cloning it a second time. See [Local mode in CI](#local-mode-in-ci). | `false` |
 | `version` | planwerk-review release tag to install (`latest` resolves to the most recent release) | `latest` |
 | `binary-path` | Path to a pre-built binary; skips the download step (used by the in-repo smoke test) | `""` |
 | `github-token` | Token used to fetch PR data and post review comments (`pull-requests: write`) | `${{ github.token }}` |
@@ -642,6 +711,31 @@ The action is exercised end-to-end on every relevant PR via
 runs the action with `binary-path` pointing at the dev build. The smoke job is
 gated on `pull_request.head.repo.full_name == github.repository` so forked PRs
 (which cannot read `secrets.ANTHROPIC_API_KEY`) skip cleanly.
+
+#### Local mode in CI
+
+`actions/checkout` already places the repository in the runner workspace before
+the action runs, so the default behavior clones the same repo a second time
+into a temp dir — on a moderate repo this doubles the cold-start time and the
+dominant network cost. Set `local: true` to point planwerk-review at the
+existing checkout instead (it passes `--local`), skipping the redundant clone:
+
+```yaml
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Planwerk/planwerk-review@v1
+        with:
+          local: true
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+The action still passes the PR reference explicitly, so `--local` validates it
+against the checkout's `origin` and switches the working tree to the PR head
+via `gh pr checkout`. The default stays `false` so existing workflows are
+unaffected. See [Local Mode](#local-mode) for the full semantics.
 
 ### Output Format
 

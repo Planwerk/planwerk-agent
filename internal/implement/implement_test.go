@@ -87,10 +87,11 @@ type fakeGitHub struct {
 	issue    *github.Issue
 	issueErr error
 
-	cloneDir   string
-	cloneErr   error
-	getCalls   atomic.Int32
-	cloneCalls atomic.Int32
+	cloneDir        string
+	cloneErr        error
+	getCalls        atomic.Int32
+	cloneCalls      atomic.Int32
+	cloneLocalCalls atomic.Int32
 }
 
 func (f *fakeGitHub) GetIssue(owner, name string, number int) (*github.Issue, error) {
@@ -115,6 +116,20 @@ func (f *fakeGitHub) CloneRepo(ref string) (*github.Repo, error) {
 		return nil, err
 	}
 	return &github.Repo{Owner: owner, Name: name, Dir: f.cloneDir}, nil
+}
+
+// CloneRepoLocal mirrors github.UseLocalRepo: it returns a Local repo so
+// Cleanup is a no-op.
+func (f *fakeGitHub) CloneRepoLocal(ref string, _ github.LocalOptions) (*github.Repo, error) {
+	f.cloneLocalCalls.Add(1)
+	if f.cloneErr != nil {
+		return nil, f.cloneErr
+	}
+	owner, name, err := github.ParseRepoRef(ref)
+	if err != nil {
+		return nil, err
+	}
+	return &github.Repo{Owner: owner, Name: name, Dir: f.cloneDir, Local: true}, nil
 }
 
 type fakeClaude struct {
@@ -454,5 +469,56 @@ Wired patterns must reach the implement Context.
 	}
 	if cl.ctx.Patterns[0].Name != "Sample wiring check" {
 		t.Errorf("Claude got pattern name %q, want %q", cl.ctx.Patterns[0].Name, "Sample wiring check")
+	}
+}
+
+func TestRun_LocalNoClone(t *testing.T) {
+	dir := t.TempDir()
+	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: dir}
+	cl := &fakeClaude{report: "PR opened"}
+	r := newRunner(gh, cl)
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", Local: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if gh.cloneCalls.Load() != 0 {
+		t.Errorf("CloneRepo (temp-dir clone) calls = %d, want 0 in local mode", gh.cloneCalls.Load())
+	}
+	if gh.cloneLocalCalls.Load() != 1 {
+		t.Errorf("CloneRepoLocal calls = %d, want 1", gh.cloneLocalCalls.Load())
+	}
+	if cl.called.Load() != 1 {
+		t.Errorf("Claude.Implement called %d times, want 1", cl.called.Load())
+	}
+	if cl.dir != dir {
+		t.Errorf("Claude got dir %q, want the local checkout %q", cl.dir, dir)
+	}
+	if !strings.Contains(buf.String(), "feature branch") {
+		t.Errorf("expected the branch-left-on note on stdout, got:\n%s", buf.String())
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatalf("local checkout must survive the run: %v", err)
+	}
+}
+
+func TestPrintBarePrompt_LocalNoClone(t *testing.T) {
+	gh := &fakeGitHub{cloneDir: t.TempDir()}
+	r := newRunner(gh, &fakeClaude{})
+	build := func(ctx BareContext) string {
+		return fmt.Sprintf("BARE repo=%s issue=%d", ctx.RepoFullName, ctx.IssueNumber)
+	}
+	var buf bytes.Buffer
+	if err := r.PrintBarePrompt(&buf, Options{IssueRef: "owner/repo#7", Local: true}, build); err != nil {
+		t.Fatalf("PrintBarePrompt returned %v, want nil", err)
+	}
+	if gh.cloneCalls.Load() != 0 {
+		t.Errorf("CloneRepo calls = %d, want 0 in local mode", gh.cloneCalls.Load())
+	}
+	if gh.cloneLocalCalls.Load() != 1 {
+		t.Errorf("CloneRepoLocal calls = %d, want 1", gh.cloneLocalCalls.Load())
+	}
+	if !strings.HasPrefix(buf.String(), "BARE repo=owner/repo issue=7") {
+		t.Errorf("unexpected bare prompt output: %q", buf.String())
 	}
 }

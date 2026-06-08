@@ -38,6 +38,7 @@ func (a analyzeFnAdapter) GapAnalysis(dir string, ctx AnalysisContext) (*Result,
 // Tests inject mock clients to avoid touching the real git or gh CLI.
 type GitHubClient interface {
 	CloneRepo(ref string) (*github.Repo, error)
+	CloneRepoLocal(ref string, opts github.LocalOptions) (*github.Repo, error)
 	DefaultBranchHEAD(owner, name string) (string, error)
 	ListExistingIssues(owner, name string) ([]github.ExistingIssue, error)
 }
@@ -46,6 +47,10 @@ type defaultGitHubClient struct{}
 
 func (defaultGitHubClient) CloneRepo(ref string) (*github.Repo, error) {
 	return github.CloneRepo(ref)
+}
+
+func (defaultGitHubClient) CloneRepoLocal(ref string, opts github.LocalOptions) (*github.Repo, error) {
+	return github.UseLocalRepo(ref, opts)
 }
 
 func (defaultGitHubClient) DefaultBranchHEAD(owner, name string) (string, error) {

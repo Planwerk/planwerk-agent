@@ -22,6 +22,9 @@ type fakeGitHub struct {
 
 	editCalls    int32
 	commentCalls int32
+
+	cloneCalls      atomic.Int32
+	cloneLocalCalls atomic.Int32
 }
 
 func (f *fakeGitHub) GetIssue(owner, name string, number int) (*github.Issue, error) {
@@ -36,7 +39,20 @@ func (f *fakeGitHub) DefaultBranchHEAD(owner, name string) (string, error) {
 }
 
 func (f *fakeGitHub) CloneRepo(ref string) (*github.Repo, error) {
+	f.cloneCalls.Add(1)
 	return f.cloneRepo(ref)
+}
+
+// CloneRepoLocal mirrors github.UseLocalRepo: it returns a Local repo so
+// Cleanup is a no-op.
+func (f *fakeGitHub) CloneRepoLocal(ref string, _ github.LocalOptions) (*github.Repo, error) {
+	f.cloneLocalCalls.Add(1)
+	repo, err := f.cloneRepo(ref)
+	if err != nil {
+		return nil, err
+	}
+	repo.Local = true
+	return repo, nil
 }
 
 func (f *fakeGitHub) EditIssueBody(owner, name string, number int, body string) error {
@@ -443,5 +459,37 @@ func TestRun_FillsTitleFromIssueWhenClaudeOmitsIt(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "Original Title") {
 		t.Errorf("output missing original title, got:\n%s", out.String())
+	}
+}
+
+func TestRun_LocalUsesCwd(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	patternDir := seedPatternDir(t)
+	repo := fakeRepo(t, "acme", "widgets")
+	gh := &fakeGitHub{
+		getIssue: func(owner, name string, number int) (*github.Issue, error) {
+			return &github.Issue{Owner: owner, Name: name, Number: number, Title: "Title", Body: "Body", URL: "u"}, nil
+		},
+		cloneRepo: func(ref string) (*github.Repo, error) { return repo, nil },
+	}
+	r := &Runner{Claude: &fakeClaude{}, GitHub: gh}
+
+	opts := baseOpts(patternDir)
+	opts.Local = true
+	opts.NoCache = true
+
+	if err := r.Run(&bytes.Buffer{}, opts); err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+	if gh.cloneLocalCalls.Load() != 1 {
+		t.Errorf("CloneRepoLocal calls = %d, want 1", gh.cloneLocalCalls.Load())
+	}
+	if gh.cloneCalls.Load() != 0 {
+		t.Errorf("CloneRepo calls = %d, want 0 in local mode", gh.cloneCalls.Load())
+	}
+	if _, err := os.Stat(repo.Dir); err != nil {
+		t.Fatalf("local checkout must survive the run: %v", err)
 	}
 }

@@ -141,6 +141,8 @@ type Options struct {
 	PRBase string
 
 	CacheMaxAge time.Duration
+	Local       bool // operate on the current working directory instead of cloning
+	Force       bool // with Local, skip the dirty-working-tree confirmation prompt
 }
 
 // AllFindings flattens the per-feature buckets into a single slice in emit

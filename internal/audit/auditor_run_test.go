@@ -23,10 +23,26 @@ type fakeGitHub struct {
 	cloneRepo          func(ref string) (*github.Repo, error)
 	defaultBranchHEAD  func(owner, name string) (string, error)
 	listExistingIssues func(owner, name string) ([]github.ExistingIssue, error)
+
+	cloneCalls      atomic.Int32
+	cloneLocalCalls atomic.Int32
 }
 
 func (f *fakeGitHub) CloneRepo(ref string) (*github.Repo, error) {
+	f.cloneCalls.Add(1)
 	return f.cloneRepo(ref)
+}
+
+// CloneRepoLocal mirrors github.UseLocalRepo: it returns a Local repo so
+// Cleanup is a no-op.
+func (f *fakeGitHub) CloneRepoLocal(ref string, _ github.LocalOptions) (*github.Repo, error) {
+	f.cloneLocalCalls.Add(1)
+	repo, err := f.cloneRepo(ref)
+	if err != nil {
+		return nil, err
+	}
+	repo.Local = true
+	return repo, nil
 }
 
 func (f *fakeGitHub) DefaultBranchHEAD(owner, name string) (string, error) {
@@ -476,5 +492,39 @@ func TestAuditRun_EmptyPatternsIsError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "no review patterns") {
 		t.Errorf("error should mention missing patterns, got: %v", err)
+	}
+}
+
+func TestAuditRun_LocalUsesCwd(t *testing.T) {
+	// Not t.Parallel(): cache.SetDir mutates a package-level variable.
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	patternDir := seedPatternDir(t)
+	dir := t.TempDir()
+	gh := &fakeGitHub{
+		cloneRepo: func(ref string) (*github.Repo, error) {
+			return &github.Repo{Owner: "acme", Name: "widgets", Dir: dir}, nil
+		},
+		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-local-audit", nil },
+	}
+	runner := &Runner{Claude: &fakeClaude{}, GitHub: gh}
+
+	opts := baseAuditOpts(patternDir)
+	opts.Local = true
+	opts.NoCache = true
+
+	var out bytes.Buffer
+	if err := runner.Run(&out, opts); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if gh.cloneLocalCalls.Load() != 1 {
+		t.Errorf("CloneRepoLocal calls = %d, want 1", gh.cloneLocalCalls.Load())
+	}
+	if gh.cloneCalls.Load() != 0 {
+		t.Errorf("CloneRepo calls = %d, want 0 in local mode", gh.cloneCalls.Load())
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatalf("local checkout must survive the run: %v", err)
 	}
 }

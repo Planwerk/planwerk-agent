@@ -107,6 +107,7 @@ func (a verifyFnAdapter) VerifyImplementation(dir, issueTitle, issueBody string)
 type GitHubClient interface {
 	GetIssue(owner, name string, number int) (*github.Issue, error)
 	CloneRepo(ref string) (*github.Repo, error)
+	CloneRepoLocal(ref string, opts github.LocalOptions) (*github.Repo, error)
 }
 
 // defaultGitHubClient is the production GitHubClient backed by the github
@@ -119,4 +120,8 @@ func (defaultGitHubClient) GetIssue(owner, name string, number int) (*github.Iss
 
 func (defaultGitHubClient) CloneRepo(ref string) (*github.Repo, error) {
 	return github.CloneRepo(ref)
+}
+
+func (defaultGitHubClient) CloneRepoLocal(ref string, opts github.LocalOptions) (*github.Repo, error) {
+	return github.UseLocalRepo(ref, opts)
 }
