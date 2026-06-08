@@ -167,9 +167,9 @@ func TestRun_AllChecksAlreadyPassing(t *testing.T) {
 
 func TestRun_FixesFailureInOneIteration(t *testing.T) {
 	gh := &fakeGitHub{
-		prTitle:    "demo",
-		prBranch:   "feat/x",
-		prHeadSHA:  "old",
+		prTitle:   "demo",
+		prBranch:  "feat/x",
+		prHeadSHA: "old",
 		// Iteration 1 sees a failure; iteration 2 (post-push) sees green.
 		checkResponses: [][]github.CheckRun{
 			{failing(1, "test"), passing("lint")},
@@ -350,10 +350,10 @@ func TestRun_PrintPromptAllGreenStillExits(t *testing.T) {
 func barePromptRunner(t *testing.T) (*Runner, *fakeGitHub) {
 	t.Helper()
 	gh := &fakeGitHub{
-		prTitle:    "demo",
-		prBranch:   "feat/x",
-		prHeadSHA:  "abc1234",
-		cloneDir:   t.TempDir(),
+		prTitle:   "demo",
+		prBranch:  "feat/x",
+		prHeadSHA: "abc1234",
+		cloneDir:  t.TempDir(),
 	}
 	r := newRunner(gh, &fakeClaude{}, &fakePrompter{})
 	return r, gh
@@ -409,7 +409,7 @@ func TestPrintBarePrompt_RequiresBuilder(t *testing.T) {
 }
 
 // TestPrintBarePrompt_LoadsAndPassesPatterns proves that the bare-prompt
-// path also runs collectPatternDirs + patterns.LoadFiltered and surfaces
+// path also runs patterns.Resolve + patterns.LoadFiltered and surfaces
 // the result through BareContext, just like the orchestrator-driven Run.
 func TestPrintBarePrompt_LoadsAndPassesPatterns(t *testing.T) {
 	patternsDir := t.TempDir()
@@ -558,9 +558,9 @@ Wired patterns must reach the fix Context.
 	}
 
 	gh := &fakeGitHub{
-		prTitle:    "demo",
-		prBranch:   "feat/x",
-		prHeadSHA:  "old",
+		prTitle:   "demo",
+		prBranch:  "feat/x",
+		prHeadSHA: "old",
 		checkResponses: [][]github.CheckRun{
 			{failing(1, "test")},
 			{passing("test")},
@@ -588,45 +588,6 @@ Wired patterns must reach the fix Context.
 	}
 	if cl.ctx.Patterns[0].Name != "Sample wiring check" {
 		t.Errorf("Claude got pattern name %q, want %q", cl.ctx.Patterns[0].Name, "Sample wiring check")
-	}
-}
-
-func TestCollectPatternDirs_IncludesExplicitDirs(t *testing.T) {
-	opts := Options{
-		PatternDirs:     []string{"/explicit/patterns"},
-		NoLocalPatterns: true,
-		NoRepoPatterns:  true,
-	}
-	dirs := collectPatternDirs(opts, "/tmp/repo")
-
-	if len(dirs) != 1 || dirs[0] != "/explicit/patterns" {
-		t.Errorf("dirs = %v, want only /explicit/patterns", dirs)
-	}
-}
-
-func TestCollectPatternDirs_HonorsNoRepoPatterns(t *testing.T) {
-	opts := Options{
-		NoLocalPatterns: true,
-		NoRepoPatterns:  true,
-	}
-	dirs := collectPatternDirs(opts, "/tmp/repo-that-does-not-exist")
-
-	for _, d := range dirs {
-		if d == "/tmp/repo-that-does-not-exist/.planwerk/review_patterns" {
-			t.Error("repo patterns should be skipped when NoRepoPatterns is true")
-		}
-	}
-}
-
-func TestCollectPatternDirs_EmptyWhenEverythingDisabled(t *testing.T) {
-	opts := Options{
-		NoLocalPatterns: true,
-		NoRepoPatterns:  true,
-	}
-	dirs := collectPatternDirs(opts, "/tmp/does-not-exist")
-
-	if len(dirs) != 0 {
-		t.Errorf("expected no pattern dirs with both flags disabled and no explicit dirs, got %v", dirs)
 	}
 }
 
