@@ -15,7 +15,7 @@ import (
 // report: it diffs the feature branch and reads the actual committed code.
 // Findings are returned for every criterion that is not fully satisfied.
 func VerifyImplementation(dir, issueTitle, issueBody string) (*report.ReviewResult, error) {
-	raw, err := runClaude(dir, buildVerifyImplementationPrompt(issueTitle, issueBody), "verify-implementation")
+	raw, err := runClaudeAuto(dir, buildVerifyImplementationPrompt(issueTitle, issueBody), "verify-implementation")
 	if err != nil {
 		return nil, fmt.Errorf("running implementation verification: %w", err)
 	}
@@ -94,10 +94,14 @@ IMPORTANT: Completely ignore changes in the .planwerk/ directory.
 // tests and documentation, committing on a fresh branch, and opening a
 // draft pull request linked to the issue.
 //
-// runClaude already creates a fresh `claude -p` invocation per call, so
+// runClaudeAuto already creates a fresh `claude -p` invocation per call, so
 // every implement call runs in a brand-new Claude session by construction.
+// It runs in auto mode (--permission-mode auto) so the session can edit
+// files, run tests, commit, push the branch, and open the draft PR without
+// an interactive confirmation, while the auto-mode classifier still vets
+// each action.
 func Implement(dir string, ctx implement.Context) (string, error) {
-	out, err := runClaude(dir, BuildImplementPrompt(ctx), "implement")
+	out, err := runClaudeAuto(dir, BuildImplementPrompt(ctx), "implement")
 	if err != nil {
 		return "", fmt.Errorf("running implement: %w", err)
 	}

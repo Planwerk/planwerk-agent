@@ -948,6 +948,12 @@ subcommand), clone the repository, and run a fresh Claude Code session to
 implement the feature end-to-end: code, tests, documentation, fresh feature
 branch, draft pull request linked to the issue.
 
+The session runs in Claude Code's auto mode (--permission-mode auto) so it can
+edit files, run the test suite, commit, push the branch, and open the draft PR
+without an interactive confirmation. A background classifier still vets each
+action and blocks anything irreversible or aimed outside the repository (force
+push, pushing to main, data exfiltration). Requires Claude Code v2.1.83+.
+
 Use --print-prompt to render the implement prompt (with the issue body
 embedded) to stdout without invoking Claude. Use --print-bare-prompt to
 render a portable, self-contained prompt that you can paste into a manual

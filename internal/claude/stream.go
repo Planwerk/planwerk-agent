@@ -114,19 +114,24 @@ func (slogStreamSink) toolResult(label string) {
 // runClaudeStream invokes claude with --output-format stream-json --verbose
 // and surfaces assistant text and tool activity through a streamSink as
 // it arrives. The final assistant text is returned. The function is the
-// streaming counterpart of runClaude and shares its timeout, model, and
-// effort settings.
-func runClaudeStream(dir, prompt, label string) (string, error) {
+// streaming counterpart of runClaudeWithPermission and shares its timeout,
+// model, effort, and permission-mode handling: permissionMode, when
+// non-empty, is passed to claude as --permission-mode.
+func runClaudeStream(dir, prompt, label, permissionMode string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), claudeTimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "claude",
+	args := []string{
 		"-p",
 		"--model", claudeModel,
 		"--effort", claudeEffort,
 		"--output-format", "stream-json",
 		"--verbose",
-	)
+	}
+	if permissionMode != "" {
+		args = append(args, "--permission-mode", permissionMode)
+	}
+	cmd := exec.CommandContext(ctx, "claude", args...)
 	if dir != "" {
 		cmd.Dir = dir
 	}

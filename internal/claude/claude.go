@@ -29,6 +29,21 @@ const (
 	// largest thinking budget — reviews are latency-tolerant and benefit
 	// from the extra reasoning on tricky findings.
 	claudeEffort = "max"
+	// claudeAutoPermissionMode is the --permission-mode value the implement
+	// command passes to its orchestrated `claude -p` session so tool calls
+	// run without an interactive confirmation. "auto" is Claude Code's auto
+	// mode: a background classifier vets each action and blocks anything
+	// irreversible, destructive, or aimed outside the repository (force
+	// push, pushing to main, data exfiltration) while letting the routine
+	// work of an implementation — edits, tests, commits, pushing a fresh
+	// feature branch, opening a draft PR — proceed unattended. The implement
+	// session is one-shot and non-interactive (no human to approve each
+	// step), so auto mode is preferred over bypassPermissions precisely
+	// because it keeps those safety checks. Read-only commands (review,
+	// audit, …) keep the default mode by passing an empty permission mode
+	// to runClaude. Requires Claude Code v2.1.83+; see
+	// https://code.claude.com/docs/en/auto-mode-config.
+	claudeAutoPermissionMode = "auto"
 )
 
 // claudeTimeout is the effective per-invocation timeout. It defaults to
@@ -80,18 +95,38 @@ func SetTimeout(d time.Duration) (restore func()) {
 // value.
 func Timeout() time.Duration { return claudeTimeout }
 
-// runClaude invokes claude in the given directory and returns the
-// extracted text response. The label tags elapsed-time progress updates
-// (or per-line stream prefixes when streaming is enabled).
-//
-// When showOutput is false runClaude uses --output-format json and
-// captures the full result via cmd.Output(). When showOutput is true it
-// delegates to runClaudeStream, which uses --output-format stream-json
-// --verbose and surfaces output incrementally; the periodic heartbeat
-// is skipped in that mode because the stream itself is the heartbeat.
+// runClaude invokes claude in the given directory on its default permission
+// mode and returns the extracted text response. Use it for the read-only
+// analysis steps (review, audit, structure, repair, …) that do not mutate
+// the checkout.
 func runClaude(dir, prompt, label string) (string, error) {
+	return runClaudeWithPermission(dir, prompt, label, "")
+}
+
+// runClaudeAuto is runClaude with claudeAutoPermissionMode, letting the
+// session edit files and run git/gh/test commands without an interactive
+// approval. The implement command uses it: its orchestrated, one-shot
+// `claude -p` session runs unattended inside a checkout and must commit,
+// push a feature branch, and open a PR without a human confirming each
+// step. The auto-mode classifier still vets every action.
+func runClaudeAuto(dir, prompt, label string) (string, error) {
+	return runClaudeWithPermission(dir, prompt, label, claudeAutoPermissionMode)
+}
+
+// runClaudeWithPermission is the shared implementation behind runClaude and
+// runClaudeAuto. permissionMode, when non-empty, is passed to claude as
+// --permission-mode; an empty value leaves claude on its default mode. The
+// label tags elapsed-time progress updates (or per-line stream prefixes
+// when streaming is enabled).
+//
+// When showOutput is false it uses --output-format json and captures the
+// full result via cmd.Output(). When showOutput is true it delegates to
+// runClaudeStream, which uses --output-format stream-json --verbose and
+// surfaces output incrementally; the periodic heartbeat is skipped in that
+// mode because the stream itself is the heartbeat.
+func runClaudeWithPermission(dir, prompt, label, permissionMode string) (string, error) {
 	if showOutput {
-		return runClaudeStream(dir, prompt, label)
+		return runClaudeStream(dir, prompt, label, permissionMode)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), claudeTimeout)
@@ -100,12 +135,16 @@ func runClaude(dir, prompt, label string) (string, error) {
 	stopProgress := startProgress(label)
 	defer stopProgress()
 
-	cmd := exec.CommandContext(ctx, "claude",
+	args := []string{
 		"-p",
 		"--model", claudeModel,
 		"--effort", claudeEffort,
 		"--output-format", "json",
-	)
+	}
+	if permissionMode != "" {
+		args = append(args, "--permission-mode", permissionMode)
+	}
+	cmd := exec.CommandContext(ctx, "claude", args...)
 	if dir != "" {
 		cmd.Dir = dir
 	}
