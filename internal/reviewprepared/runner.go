@@ -104,7 +104,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		}
 
 		patternDirs := collectPatternDirs(opts, repo.Dir)
-		pats, err := patterns.LoadFiltered(techTags, patternDirs...)
+		pats, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{Remote: patterns.RemoteOpts(), NoEmbedded: opts.NoLocalPatterns}, techTags, patternDirs...)
 		if err != nil {
 			repo.Cleanup()
 			return fmt.Errorf("loading patterns: %w", err)

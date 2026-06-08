@@ -151,7 +151,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 
 	patternDirs = append(patternDirs, opts.PatternDirs...)
 
-	pats, err := patterns.LoadFiltered(techTags, patternDirs...)
+	pats, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{Remote: patterns.RemoteOpts(), NoEmbedded: opts.NoLocalPatterns}, techTags, patternDirs...)
 	if err != nil {
 		return fmt.Errorf("loading patterns: %w", err)
 	}

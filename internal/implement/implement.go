@@ -30,7 +30,7 @@ import (
 // bundled pattern files. We pin to "main" so manual sessions always pick
 // up the latest patterns without us baking the binary's version into URLs
 // that then drift on dev builds.
-const BundledPatternsURLBase = "https://raw.githubusercontent.com/planwerk/planwerk-review/main/patterns"
+const BundledPatternsURLBase = "https://raw.githubusercontent.com/planwerk/planwerk-review/main/internal/patterns/patterns"
 
 // Options configures the implement subcommand. Mirrors the Options style
 // used by the review/audit/elaborate/fix packages.
@@ -128,7 +128,7 @@ func (r *Runner) PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuil
 		slog.Info("detected technologies for bare prompt", "technologies", strings.Join(tags, ", "))
 	}
 	dirs := collectPatternDirs(opts, repo.Dir)
-	pats, err := patterns.LoadFiltered(tags, dirs...)
+	pats, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{Remote: patterns.RemoteOpts(), NoEmbedded: opts.NoLocalPatterns}, tags, dirs...)
 	if err != nil {
 		slog.Warn("loading review patterns failed; bare prompt will omit them", "err", err)
 		pats = nil
@@ -327,7 +327,7 @@ func loadPatterns(opts Options, repoDir string) []patterns.Pattern {
 		slog.Info("detected technologies", "technologies", strings.Join(tags, ", "))
 	}
 	dirs := collectPatternDirs(opts, repoDir)
-	pats, err := patterns.LoadFiltered(tags, dirs...)
+	pats, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{Remote: patterns.RemoteOpts(), NoEmbedded: opts.NoLocalPatterns}, tags, dirs...)
 	if err != nil {
 		slog.Warn("loading review patterns failed; continuing without them", "err", err)
 		return nil
