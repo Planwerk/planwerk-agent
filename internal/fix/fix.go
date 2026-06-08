@@ -6,7 +6,6 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -154,7 +153,15 @@ func (r *Runner) PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuil
 	if len(tags) > 0 {
 		slog.Info("detected technologies for bare prompt", "technologies", strings.Join(tags, ", "))
 	}
-	dirs := collectPatternDirs(opts, pr.Dir)
+	dirs, err := patterns.Resolve(patterns.ResolveOptions{
+		NoLocal: opts.NoLocalPatterns,
+		NoRepo:  opts.NoRepoPatterns,
+		RepoDir: pr.Dir,
+		Extra:   opts.PatternDirs,
+	})
+	if err != nil {
+		slog.Warn("resolving pattern sources failed; bare prompt will omit them", "err", err)
+	}
 	pats, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{Remote: patterns.RemoteOpts(), NoEmbedded: opts.NoLocalPatterns}, tags, dirs...)
 	if err != nil {
 		slog.Warn("loading review patterns failed; bare prompt will omit them", "err", err)
@@ -165,9 +172,9 @@ func (r *Runner) PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuil
 	}
 
 	catalog := patterns.BuildCatalogReferences(pats, patterns.CatalogRefOptions{
-		BundledRoot:    bundledPatternsRoot(opts),
+		BundledRoot:    patterns.LocalPatternDir(opts.NoLocalPatterns),
 		BundledURLBase: BundledPatternsURLBase,
-		RepoRoot:       repoPatternsRoot(opts, pr.Dir),
+		RepoRoot:       patterns.RepoPatternDir(opts.NoRepoPatterns, pr.Dir),
 		RepoRelBase:    ".planwerk/review_patterns",
 	})
 
@@ -533,7 +540,15 @@ func loadPatterns(opts Options, repoDir string) []patterns.Pattern {
 	if len(tags) > 0 {
 		slog.Info("detected technologies", "technologies", strings.Join(tags, ", "))
 	}
-	dirs := collectPatternDirs(opts, repoDir)
+	dirs, err := patterns.Resolve(patterns.ResolveOptions{
+		NoLocal: opts.NoLocalPatterns,
+		NoRepo:  opts.NoRepoPatterns,
+		RepoDir: repoDir,
+		Extra:   opts.PatternDirs,
+	})
+	if err != nil {
+		slog.Warn("resolving pattern sources failed; continuing without them", "err", err)
+	}
 	pats, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{Remote: patterns.RemoteOpts(), NoEmbedded: opts.NoLocalPatterns}, tags, dirs...)
 	if err != nil {
 		slog.Warn("loading review patterns failed; continuing without them", "err", err)
@@ -543,60 +558,4 @@ func loadPatterns(opts Options, repoDir string) []patterns.Pattern {
 		slog.Info("loaded review patterns", "count", len(pats))
 	}
 	return pats
-}
-
-// collectPatternDirs assembles the pattern source list:
-//   - the local catalog shipped with planwerk-review (./patterns next to the
-//     binary, plus ./patterns relative to cwd for development)
-//   - the target repo's .planwerk/review_patterns/ directory if present
-//   - any explicit --patterns directories from the user
-//
-// The same toggles --no-local-patterns / --no-repo-patterns the other
-// subcommands expose are honored here too.
-func collectPatternDirs(opts Options, repoDir string) []string {
-	var dirs []string
-	if r := bundledPatternsRoot(opts); r != "" {
-		dirs = append(dirs, r)
-	}
-	if r := repoPatternsRoot(opts, repoDir); r != "" {
-		dirs = append(dirs, r)
-	}
-	dirs = append(dirs, opts.PatternDirs...)
-	return dirs
-}
-
-// bundledPatternsRoot resolves the planwerk-review-bundled local pattern
-// catalog (next to the binary, or ./patterns relative to cwd). Returns ""
-// when --no-local-patterns is set or no candidate exists. Exported intent:
-// the bare-prompt builder needs the same root to map a pattern's FilePath
-// back to the canonical github.com/planwerk/planwerk-review URL.
-func bundledPatternsRoot(opts Options) string {
-	if opts.NoLocalPatterns {
-		return ""
-	}
-	if exe, err := os.Executable(); err == nil {
-		candidate := filepath.Join(filepath.Dir(exe), "..", "patterns")
-		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
-			return candidate
-		}
-	}
-	if info, err := os.Stat("patterns"); err == nil && info.IsDir() {
-		return "patterns"
-	}
-	return ""
-}
-
-// repoPatternsRoot resolves the target repo's project-specific pattern
-// directory. Returns "" when --no-repo-patterns is set or the directory
-// does not exist. The bare-prompt builder uses this to emit "read this
-// from your checkout" entries instead of remote URLs.
-func repoPatternsRoot(opts Options, repoDir string) string {
-	if opts.NoRepoPatterns {
-		return ""
-	}
-	candidate := filepath.Join(repoDir, ".planwerk", "review_patterns")
-	if info, err := os.Stat(candidate); err == nil && info.IsDir() {
-		return candidate
-	}
-	return ""
 }
