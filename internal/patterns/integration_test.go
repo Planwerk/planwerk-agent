@@ -16,7 +16,7 @@ func projectRoot() string {
 
 func TestLoadShippedPatterns(t *testing.T) {
 	root := projectRoot()
-	patsDir := filepath.Join(root, "patterns")
+	patsDir := filepath.Join(root, "internal", "patterns", "patterns")
 
 	all, err := patterns.Load(patsDir)
 	if err != nil {
@@ -47,7 +47,7 @@ func TestLoadShippedPatterns(t *testing.T) {
 
 func TestLoadFilteredShippedPatterns_GoProject(t *testing.T) {
 	root := projectRoot()
-	patsDir := filepath.Join(root, "patterns")
+	patsDir := filepath.Join(root, "internal", "patterns", "patterns")
 
 	pats, err := patterns.LoadFiltered([]string{"go"}, patsDir)
 	if err != nil {
@@ -85,7 +85,7 @@ func TestLoadFilteredShippedPatterns_GoProject(t *testing.T) {
 // (which would scope it away from non-doc projects) surface immediately.
 func TestLoadShippedPatterns_DocumentationDiataxis(t *testing.T) {
 	root := projectRoot()
-	patsDir := filepath.Join(root, "patterns")
+	patsDir := filepath.Join(root, "internal", "patterns", "patterns")
 
 	all, err := patterns.Load(patsDir)
 	if err != nil {
@@ -124,7 +124,7 @@ func TestLoadShippedPatterns_DocumentationDiataxis(t *testing.T) {
 // pattern as Python-scoped so it does not pollute non-Python reviews.
 func TestLoadShippedPatterns_PythonDocstrings(t *testing.T) {
 	root := projectRoot()
-	patsDir := filepath.Join(root, "patterns")
+	patsDir := filepath.Join(root, "internal", "patterns", "patterns")
 
 	pats, err := patterns.LoadFiltered([]string{"python"}, patsDir)
 	if err != nil {
