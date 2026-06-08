@@ -128,7 +128,7 @@ func BuildImplementPrompt(ctx implement.Context) string {
 - "Mirror existing conventions." — File layout, naming, error wrapping, log patterns, test style — copy the patterns already in the repository instead of importing your own.
 - "Tests are part of the change." — Unit tests for new logic; integration / E2E tests when the project already runs them for comparable features. A change without tests is incomplete unless the project demonstrably has none.
 - "Documentation is part of the change." — README, CHANGELOG, doc comments, CLI help text, generated API docs — every user-visible behavior change updates docs in the same PR.
-- "Commits tell the story." — Stage the work as a sequence of small, reviewable commits; do not produce a single monolithic diff.
+- "Commits tell the story." — Stage the work as a sequence of small, reviewable commits; do not produce a single monolithic diff. Write each commit message cleanly: a concise, imperative subject line and, when the change needs it, a body that explains the why. Wrap EVERY line — subject and body alike — at 72 characters or fewer.
 - "Self-review before opening the PR." — Walk the diff once more as a reviewer. Reject anything you would push back on.
 - "Stay inside the agreed scope." — If the issue's Non-Goals exclude something, do NOT do it.
 
@@ -254,7 +254,7 @@ func BuildBareImplementPrompt(ctx implement.BareContext) string {
 - "Mirror existing conventions." — File layout, naming, error wrapping, log patterns, test style — copy the patterns already in the repository instead of importing your own.
 - "Tests are part of the change." — Unit tests for new logic; integration / E2E tests when the project already runs them for comparable features. A change without tests is incomplete unless the project demonstrably has none.
 - "Documentation is part of the change." — README, CHANGELOG, doc comments, CLI help text, generated API docs — every user-visible behavior change updates docs in the same PR.
-- "Commits tell the story." — Stage the work as a sequence of small, reviewable commits; do not produce a single monolithic diff.
+- "Commits tell the story." — Stage the work as a sequence of small, reviewable commits; do not produce a single monolithic diff. Write each commit message cleanly: a concise, imperative subject line and, when the change needs it, a body that explains the why. Wrap EVERY line — subject and body alike — at 72 characters or fewer.
 - "Self-review before opening the PR." — Walk the diff once more as a reviewer. Reject anything you would push back on.
 - "Stay inside the agreed scope." — If the issue's Non-Goals exclude something, do NOT do it.
 
