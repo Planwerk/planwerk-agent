@@ -62,6 +62,14 @@ func SetRemoteOptions(opts RemoteOptions) (restore func()) {
 	return func() { remoteOpts = old }
 }
 
+// RemoteOpts returns the package-level remote options configured via
+// SetRemoteOptions. Subcommands pass it to LoadFilteredWithOptions so a remote
+// --patterns source still honors the configured --remote-patterns-ttl even
+// though that call form also sets NoEmbedded.
+func RemoteOpts() RemoteOptions {
+	return remoteOpts
+}
+
 // IsRemote reports whether src looks like a remote pattern URI rather than a
 // local directory path. The check is purely syntactic.
 func IsRemote(src string) bool {

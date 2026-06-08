@@ -39,8 +39,14 @@ func Load(sources ...string) ([]Pattern, error) {
 // Remote sources are resolved using the package-level remote options
 // configured by SetRemoteOptions; for explicit per-call options use
 // LoadFilteredWithOptions.
+//
+// LoadFiltered loads ONLY the given sources — it does not include the
+// binary's embedded catalog, preserving its historical "load what I gave you"
+// semantics so existing callers and tests keep their exact behavior. Callers
+// that want the embedded fallback (the production subcommands) call
+// LoadFilteredWithOptions with NoEmbedded set from --no-local-patterns.
 func LoadFiltered(tags []string, sources ...string) ([]Pattern, error) {
-	return LoadFilteredWithOptions(LoadOptions{Remote: remoteOpts}, tags, sources...)
+	return LoadFilteredWithOptions(LoadOptions{Remote: remoteOpts, NoEmbedded: true}, tags, sources...)
 }
 
 // LoadOptions bundles tunables that influence pattern loading.
@@ -48,14 +54,22 @@ type LoadOptions struct {
 	// Remote controls how remote pattern URIs (see IsRemote) are resolved
 	// into local directories. The zero value uses sensible defaults.
 	Remote RemoteOptions
+	// NoEmbedded suppresses the binary's embedded pattern catalog. The zero
+	// value (false) keeps the embedded source active as the lowest-priority
+	// source, so any on-disk or remote source overrides an embedded pattern of
+	// the same name. Callers honoring --no-local-patterns set this to
+	// opts.NoLocalPatterns so the flag suppresses the embedded fallback too.
+	NoEmbedded bool
 }
 
 // LoadFilteredWithOptions is the explicit-options variant of LoadFiltered.
 // It resolves remote sources via opts.Remote (instead of the package-level
 // configuration) so callers — chiefly tests — can isolate themselves from
-// any global state.
+// any global state. Unless opts.NoEmbedded is set, the binary's embedded
+// catalog is loaded first as the lowest-priority source; every explicit
+// source overrides an embedded pattern of the same name.
 func LoadFilteredWithOptions(opts LoadOptions, tags []string, sources ...string) ([]Pattern, error) {
-	dirs, err := resolveSources(opts.Remote, sources)
+	groups, err := loadOrderedSources(opts, sources)
 	if err != nil {
 		return nil, err
 	}
@@ -63,13 +77,8 @@ func LoadFilteredWithOptions(opts LoadOptions, tags []string, sources ...string)
 	seen := make(map[string]int) // pattern name -> index in result
 	var result []Pattern
 
-	for _, dir := range dirs {
-		patterns, err := loadDir(dir)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, p := range patterns {
+	for _, group := range groups {
+		for _, p := range group {
 			if idx, ok := seen[p.Name]; ok {
 				result[idx] = p // override with higher-priority pattern
 			} else {
@@ -91,25 +100,6 @@ func LoadFilteredWithOptions(opts LoadOptions, tags []string, sources ...string)
 	}
 
 	return result, nil
-}
-
-// resolveSources turns each entry into a local directory path: remote URIs
-// are materialized into the cache via ResolveRemote, local paths pass
-// through unchanged.
-func resolveSources(opts RemoteOptions, sources []string) ([]string, error) {
-	dirs := make([]string, 0, len(sources))
-	for _, src := range sources {
-		if IsRemote(src) {
-			d, err := ResolveRemote(src, opts)
-			if err != nil {
-				return nil, fmt.Errorf("resolving remote pattern source %q: %w", src, err)
-			}
-			dirs = append(dirs, d)
-			continue
-		}
-		dirs = append(dirs, src)
-	}
-	return dirs, nil
 }
 
 // loadDir recursively reads all .md files from a directory and parses them as patterns.
@@ -309,8 +299,9 @@ type CatalogRefOptions struct {
 	// this directory are emitted as URLs against BundledURLBase.
 	BundledRoot string
 	// BundledURLBase is the URL prefix patterns under BundledRoot map to.
-	// E.g. https://raw.githubusercontent.com/planwerk/planwerk-review/main/patterns
-	// (no trailing slash). Required iff BundledRoot is non-empty.
+	// E.g. https://raw.githubusercontent.com/planwerk/planwerk-review/main/internal/patterns/patterns
+	// (no trailing slash). Required iff BundledRoot is non-empty. Embedded
+	// patterns (FilePath prefixed "embedded:patterns/") also map to this base.
 	BundledURLBase string
 	// RepoRoot is the target repository's .planwerk/review_patterns/
 	// directory. Patterns under this dir are emitted as relative paths the
@@ -342,6 +333,22 @@ func BuildCatalogReferences(pats []Pattern, opts CatalogRefOptions) []CatalogRef
 			ReviewArea:  p.ReviewArea,
 			AppliesWhen: append([]string(nil), p.AppliesWhen...),
 		}
+
+		// Embedded patterns carry a synthetic "embedded:patterns/<relPath>"
+		// FilePath (slash-separated, see loadEmbedded). Map them to the
+		// bundled URL base when one is configured, else mark them as bundled
+		// in the binary. Checked before the on-disk classification because the
+		// synthetic path is not a real filesystem path.
+		if rel, ok := strings.CutPrefix(p.FilePath, "embedded:patterns/"); ok {
+			if opts.BundledURLBase != "" {
+				ref.URL = strings.TrimRight(opts.BundledURLBase, "/") + "/" + rel
+			} else {
+				ref.OriginNote = "bundled (embedded in binary)"
+			}
+			refs = append(refs, ref)
+			continue
+		}
+
 		path := p.FilePath
 		if abs, err := filepath.Abs(path); err == nil {
 			path = abs

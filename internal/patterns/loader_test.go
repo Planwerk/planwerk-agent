@@ -469,3 +469,114 @@ func TestLoadFiltered_RemoteFailureSurfacesError(t *testing.T) {
 		t.Errorf("error should name the failing source: %v", err)
 	}
 }
+
+// TestLoadFilteredWithOptions_Embedded verifies the embedded catalog is the
+// default lowest-priority source (NoEmbedded=false) and is fully suppressed
+// when NoEmbedded=true (the --no-local-patterns path).
+func TestLoadFilteredWithOptions_Embedded(t *testing.T) {
+	withEmbedded, err := LoadFilteredWithOptions(LoadOptions{NoEmbedded: false}, nil)
+	if err != nil {
+		t.Fatalf("loading with embedded: %v", err)
+	}
+	if len(withEmbedded) < 80 {
+		t.Errorf("embedded catalog returned %d patterns, want >= 80", len(withEmbedded))
+	}
+
+	noEmbedded, err := LoadFilteredWithOptions(LoadOptions{NoEmbedded: true}, nil)
+	if err != nil {
+		t.Fatalf("loading without embedded: %v", err)
+	}
+	if len(noEmbedded) != 0 {
+		t.Errorf("NoEmbedded with no explicit sources returned %d patterns, want 0", len(noEmbedded))
+	}
+}
+
+// TestLoadEmbedded_OverriddenByDisk pins the override mechanism: an on-disk
+// design/yagni.md (simulating <binDir>/../patterns) overrides the embedded
+// copy. The embedded YAGNI ships as INFO; the on-disk fixture sets a higher
+// severity, and the on-disk value must win over the embedded default.
+func TestLoadEmbedded_OverriddenByDisk(t *testing.T) {
+	const yagniName = "YAGNI - You Aren't Gonna Need It"
+
+	// Embedded-only baseline severity.
+	base, err := LoadFilteredWithOptions(LoadOptions{NoEmbedded: false}, nil)
+	if err != nil {
+		t.Fatalf("loading embedded baseline: %v", err)
+	}
+	baseSev := severityOf(base, yagniName)
+	if baseSev == "" {
+		t.Fatalf("embedded catalog missing %q", yagniName)
+	}
+
+	// On-disk override with a different (higher) severity.
+	override := t.TempDir()
+	writePattern(t, filepath.Join(override, "design"), "yagni.md", `# Review Pattern: YAGNI - You Aren't Gonna Need It
+
+**Review-Area**: architecture
+**Detection-Hint**: premature abstractions
+**Severity**: CRITICAL
+**Category**: design-principle
+
+## What to check
+
+Overridden on-disk version.
+`)
+	// The authoritative on-disk severity, derived from the fixture itself.
+	overrideOnly, err := LoadFilteredWithOptions(LoadOptions{NoEmbedded: true}, nil, override)
+	if err != nil {
+		t.Fatalf("loading override dir: %v", err)
+	}
+	wantSev := severityOf(overrideOnly, yagniName)
+	if wantSev == baseSev {
+		t.Fatalf("test fixture must use a severity different from the embedded default %q", baseSev)
+	}
+
+	// Embedded + override: the on-disk severity must win over the embedded one.
+	got, err := LoadFilteredWithOptions(LoadOptions{NoEmbedded: false}, nil, override)
+	if err != nil {
+		t.Fatalf("loading embedded + override: %v", err)
+	}
+	gotSev := severityOf(got, yagniName)
+	if gotSev != wantSev {
+		t.Errorf("on-disk override should win: severity = %q, want on-disk value %q (embedded default was %q)", gotSev, wantSev, baseSev)
+	}
+}
+
+// severityOf returns the Severity of the pattern named name, or "" if absent.
+func severityOf(pats []Pattern, name string) string {
+	for _, p := range pats {
+		if p.Name == name {
+			return p.Severity
+		}
+	}
+	return ""
+}
+
+// TestBuildCatalogReferences_Embedded covers the embedded: FilePath branch:
+// with a BundledURLBase the pattern maps to a public URL (no embedded: prefix
+// in the URL); without one it carries the bundled-in-binary OriginNote.
+func TestBuildCatalogReferences_Embedded(t *testing.T) {
+	const base = "https://raw.githubusercontent.com/planwerk/planwerk-review/main/internal/patterns/patterns"
+
+	refs := BuildCatalogReferences(
+		[]Pattern{{Name: "YAGNI", FilePath: "embedded:patterns/design/yagni.md"}},
+		CatalogRefOptions{BundledURLBase: base},
+	)
+	if got, want := refs[0].URL, base+"/design/yagni.md"; got != want {
+		t.Errorf("embedded URL = %q, want %q", got, want)
+	}
+	if refs[0].OriginNote != "" {
+		t.Errorf("embedded ref with URL base should have no OriginNote, got %q", refs[0].OriginNote)
+	}
+
+	noBase := BuildCatalogReferences(
+		[]Pattern{{Name: "YAGNI", FilePath: "embedded:patterns/design/yagni.md"}},
+		CatalogRefOptions{},
+	)
+	if noBase[0].URL != "" {
+		t.Errorf("embedded ref without URL base should have empty URL, got %q", noBase[0].URL)
+	}
+	if noBase[0].OriginNote != "bundled (embedded in binary)" {
+		t.Errorf("OriginNote = %q, want \"bundled (embedded in binary)\"", noBase[0].OriginNote)
+	}
+}
