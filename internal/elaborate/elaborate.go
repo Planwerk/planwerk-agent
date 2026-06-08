@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -135,7 +133,15 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		slog.Info("detected technologies", "technologies", strings.Join(techTags, ", "))
 	}
 
-	patternDirs := collectPatternDirs(opts, repo.Dir)
+	patternDirs, err := patterns.Resolve(patterns.ResolveOptions{
+		NoLocal: opts.NoLocalPatterns,
+		NoRepo:  opts.NoRepoPatterns,
+		RepoDir: repo.Dir,
+		Extra:   opts.PatternDirs,
+	})
+	if err != nil {
+		return fmt.Errorf("resolving pattern sources: %w", err)
+	}
 	pats, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{Remote: patterns.RemoteOpts(), NoEmbedded: opts.NoLocalPatterns}, techTags, patternDirs...)
 	if err != nil {
 		return fmt.Errorf("loading patterns: %w", err)
@@ -293,30 +299,4 @@ func issueFingerprint(issue *github.Issue) string {
 		return ""
 	}
 	return shortHash(issue.Title + "\n" + issue.Body)
-}
-
-// collectPatternDirs mirrors the audit/propose helper of the same name: it
-// folds in local + repo + explicit pattern directories per the
-// --no-local-patterns / --no-repo-patterns toggles.
-func collectPatternDirs(opts Options, repoDir string) []string {
-	var dirs []string
-	if !opts.NoLocalPatterns {
-		if exe, err := os.Executable(); err == nil {
-			localPatterns := filepath.Join(filepath.Dir(exe), "..", "patterns")
-			if info, err := os.Stat(localPatterns); err == nil && info.IsDir() {
-				dirs = append(dirs, localPatterns)
-			}
-		}
-		if info, err := os.Stat("patterns"); err == nil && info.IsDir() {
-			dirs = append(dirs, "patterns")
-		}
-	}
-	if !opts.NoRepoPatterns {
-		repoPatterns := filepath.Join(repoDir, ".planwerk", "review_patterns")
-		if info, err := os.Stat(repoPatterns); err == nil && info.IsDir() {
-			dirs = append(dirs, repoPatterns)
-		}
-	}
-	dirs = append(dirs, opts.PatternDirs...)
-	return dirs
 }

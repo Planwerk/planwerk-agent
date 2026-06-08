@@ -6,9 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -124,32 +122,15 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	}
 
 	// 4. Load patterns (filtered by detected technologies)
-	var patternDirs []string
-
-	if !opts.NoLocalPatterns {
-		// General patterns shipped with planwerk-review
-		exe, err := os.Executable()
-		if err == nil {
-			localPatterns := filepath.Join(filepath.Dir(exe), "..", "patterns")
-			if info, err := os.Stat(localPatterns); err == nil && info.IsDir() {
-				patternDirs = append(patternDirs, localPatterns)
-			}
-		}
-		// Also check relative to working directory (for development)
-		if info, err := os.Stat("patterns"); err == nil && info.IsDir() {
-			patternDirs = append(patternDirs, "patterns")
-		}
+	patternDirs, err := patterns.Resolve(patterns.ResolveOptions{
+		NoLocal: opts.NoLocalPatterns,
+		NoRepo:  opts.NoRepoPatterns,
+		RepoDir: pr.Dir,
+		Extra:   opts.PatternDirs,
+	})
+	if err != nil {
+		return fmt.Errorf("resolving pattern sources: %w", err)
 	}
-
-	if !opts.NoRepoPatterns {
-		// Repo-specific patterns from the checked-out PR repo
-		repoPatterns := filepath.Join(pr.Dir, ".planwerk", "review_patterns")
-		if info, err := os.Stat(repoPatterns); err == nil && info.IsDir() {
-			patternDirs = append(patternDirs, repoPatterns)
-		}
-	}
-
-	patternDirs = append(patternDirs, opts.PatternDirs...)
 
 	pats, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{Remote: patterns.RemoteOpts(), NoEmbedded: opts.NoLocalPatterns}, techTags, patternDirs...)
 	if err != nil {

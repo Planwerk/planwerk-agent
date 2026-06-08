@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -88,7 +87,15 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		slog.Info("detected technologies", "technologies", strings.Join(techTags, ", "))
 	}
 
-	patternDirs := collectPatternDirs(opts, repo.Dir)
+	patternDirs, err := patterns.Resolve(patterns.ResolveOptions{
+		NoLocal: opts.NoLocalPatterns,
+		NoRepo:  opts.NoRepoPatterns,
+		RepoDir: repo.Dir,
+		Extra:   opts.PatternDirs,
+	})
+	if err != nil {
+		return fmt.Errorf("resolving pattern sources: %w", err)
+	}
 	pats, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{Remote: patterns.RemoteOpts(), NoEmbedded: opts.NoLocalPatterns}, techTags, patternDirs...)
 	if err != nil {
 		return fmt.Errorf("loading patterns: %w", err)
@@ -229,33 +236,4 @@ func assignIDs(result *Result) {
 			g.ID = fmt.Sprintf("%s-%03d", prefixes[sev], counters[sev])
 		}
 	}
-}
-
-// collectPatternDirs assembles the list of pattern directories to load from,
-// honoring --no-local-patterns and --no-repo-patterns and appending any
-// explicit --patterns sources. Mirrors the helper in audit and propose.
-func collectPatternDirs(opts Options, repoDir string) []string {
-	var patternDirs []string
-
-	if !opts.NoLocalPatterns {
-		if exe, err := os.Executable(); err == nil {
-			localPatterns := filepath.Join(filepath.Dir(exe), "..", "patterns")
-			if info, err := os.Stat(localPatterns); err == nil && info.IsDir() {
-				patternDirs = append(patternDirs, localPatterns)
-			}
-		}
-		if info, err := os.Stat("patterns"); err == nil && info.IsDir() {
-			patternDirs = append(patternDirs, "patterns")
-		}
-	}
-
-	if !opts.NoRepoPatterns {
-		repoPatterns := filepath.Join(repoDir, ".planwerk", "review_patterns")
-		if info, err := os.Stat(repoPatterns); err == nil && info.IsDir() {
-			patternDirs = append(patternDirs, repoPatterns)
-		}
-	}
-
-	patternDirs = append(patternDirs, opts.PatternDirs...)
-	return patternDirs
 }
