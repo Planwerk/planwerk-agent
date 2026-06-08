@@ -21,10 +21,12 @@ const (
 	// env var) when long-running prompts such as audit/elaborate/implement
 	// need more headroom.
 	DefaultClaudeTimeout = 15 * time.Minute
-	// claudeModel pins every Claude Code invocation to Opus 4.7. Opus 4.7
-	// follows instructions more literally than earlier models, which matches
-	// the strict MUST/NEVER style used throughout the review prompts.
-	claudeModel = "claude-opus-4-7"
+	// claudeModel uses the "opus" alias so every Claude Code invocation runs
+	// the latest Opus release automatically, without re-pinning on each model
+	// bump. Opus follows instructions more literally than smaller models,
+	// which matches the strict MUST/NEVER style used throughout the review
+	// prompts.
+	claudeModel = "opus"
 	// claudeEffort sets the reasoning effort. "max" gives the model the
 	// largest thinking budget — reviews are latency-tolerant and benefit
 	// from the extra reasoning on tricky findings.
