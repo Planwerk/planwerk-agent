@@ -30,6 +30,8 @@ func newRootCmd(deps *runtimeDeps) *cobra.Command {
 	var logFormat string
 	var remotePatternsTTL time.Duration
 	var claudeTimeout time.Duration
+	var claudeModel string
+	var claudeEffort string
 
 	rootCmd := &cobra.Command{
 		Use:   "planwerk-review <pr-ref>",
@@ -75,6 +77,9 @@ or short form (owner/repo#123).`,
 			claude.SetTimeout(timeout)
 
 			claude.SetShowOutput(resolveShowClaudeOutput(showClaudeOutput, cmd.Flags().Changed("show-claude-output")))
+
+			claude.SetModel(resolveClaudeModel(claudeModel, cmd.Flags().Changed("claude-model")))
+			claude.SetEffort(resolveClaudeEffort(claudeEffort, cmd.Flags().Changed("claude-effort")))
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -157,6 +162,8 @@ or short form (owner/repo#123).`,
 	persistent.DurationVar(&remotePatternsTTL, "remote-patterns-ttl", patterns.DefaultRemoteTTL, "Refresh interval for remote pattern sources (env: "+envRemotePatternsTTL+"; <=0 disables refresh once cached)")
 	persistent.DurationVar(&claudeTimeout, "claude-timeout", claude.DefaultClaudeTimeout, "Maximum duration for a single Claude Code invocation (env: "+envClaudeTimeout+"; must be > 0)")
 	persistent.BoolVar(&showClaudeOutput, "show-claude-output", false, "Stream Claude Code's live output to stderr while running (env: "+envShowClaudeOutput+")")
+	persistent.StringVar(&claudeModel, "claude-model", claude.DefaultClaudeModel, "Model passed to Claude Code via --model (e.g. opus, fable, sonnet; env: "+envClaudeModel+")")
+	persistent.StringVar(&claudeEffort, "claude-effort", claude.DefaultClaudeEffort, "Reasoning effort passed to Claude Code via --effort (low, medium, high, xhigh, max; env: "+envClaudeEffort+")")
 
 	flags := rootCmd.Flags()
 	flags.StringSliceVar(&cfg.PatternDirs, "patterns", nil, "Additional pattern sources: local dirs, github:owner/repo[/sub][@ref], or git+https://...[#ref[:sub]]")

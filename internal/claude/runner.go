@@ -17,16 +17,20 @@ const (
 	// env var) when long-running prompts such as audit/elaborate/implement
 	// need more headroom.
 	DefaultClaudeTimeout = 15 * time.Minute
-	// claudeModel uses the "opus" alias so every Claude Code invocation runs
-	// the latest Opus release automatically, without re-pinning on each model
-	// bump. Opus follows instructions more literally than smaller models,
-	// which matches the strict MUST/NEVER style used throughout the review
-	// prompts.
-	claudeModel = "opus"
-	// claudeEffort sets the reasoning effort. "max" gives the model the
-	// largest thinking budget — reviews are latency-tolerant and benefit
-	// from the extra reasoning on tricky findings.
-	claudeEffort = "max"
+	// DefaultClaudeModel is the compiled-in default model passed to Claude
+	// Code via --model. The "opus" alias runs the latest Opus release
+	// automatically, without re-pinning on each model bump; Opus follows
+	// instructions more literally than smaller models, which matches the
+	// strict MUST/NEVER style used throughout the review prompts. Override
+	// with SetModel (driven by the --claude-model flag / PLANWERK_CLAUDE_MODEL
+	// env var) to run reviews on a different model, e.g. "fable".
+	DefaultClaudeModel = "opus"
+	// DefaultClaudeEffort is the compiled-in default reasoning effort. "max"
+	// gives the model the largest thinking budget — reviews are
+	// latency-tolerant and benefit from the extra reasoning on tricky
+	// findings. Override with SetEffort (driven by the --claude-effort flag /
+	// PLANWERK_CLAUDE_EFFORT env var).
+	DefaultClaudeEffort = "max"
 	// claudeAutoPermissionMode is the --permission-mode value the implement
 	// command passes to its orchestrated `claude -p` session so tool calls
 	// run without an interactive confirmation. "auto" is Claude Code's auto
@@ -47,6 +51,15 @@ const (
 // claudeTimeout is the effective per-invocation timeout. It defaults to
 // DefaultClaudeTimeout and is overridable at startup via SetTimeout.
 var claudeTimeout = DefaultClaudeTimeout
+
+// claudeModel is the effective model passed to Claude Code via --model. It
+// defaults to DefaultClaudeModel and is overridable at startup via SetModel.
+var claudeModel = DefaultClaudeModel
+
+// claudeEffort is the effective reasoning effort passed to Claude Code via
+// --effort. It defaults to DefaultClaudeEffort and is overridable at startup
+// via SetEffort.
+var claudeEffort = DefaultClaudeEffort
 
 // showOutput toggles live streaming of Claude Code output. When false
 // (the default), runClaude buffers the result via --output-format json.
@@ -89,6 +102,44 @@ func SetTimeout(d time.Duration) (restore func()) {
 // --claude-timeout / PLANWERK_CLAUDE_TIMEOUT route into the package-level
 // value.
 func Timeout() time.Duration { return claudeTimeout }
+
+// SetModel installs m as the model passed to Claude Code via --model by every
+// subsequent runClaude / runClaudeStream call. An empty m is ignored and the
+// previous value is preserved — that keeps a misconfigured flag from silently
+// selecting an empty model. The returned restore function reverts to the
+// previous value; the CLI test suite uses it to scope changes to a single
+// test.
+func SetModel(m string) (restore func()) {
+	old := claudeModel
+	if m != "" {
+		claudeModel = m
+	}
+	return func() { claudeModel = old }
+}
+
+// Model reports the currently effective model passed to Claude Code. Exposed
+// primarily for the CLI test suite to verify that --claude-model /
+// PLANWERK_CLAUDE_MODEL route into the package-level value.
+func Model() string { return claudeModel }
+
+// SetEffort installs e as the reasoning effort passed to Claude Code via
+// --effort by every subsequent runClaude / runClaudeStream call. An empty e
+// is ignored and the previous value is preserved — that keeps a misconfigured
+// flag from silently selecting an empty effort. The returned restore function
+// reverts to the previous value; the CLI test suite uses it to scope changes
+// to a single test.
+func SetEffort(e string) (restore func()) {
+	old := claudeEffort
+	if e != "" {
+		claudeEffort = e
+	}
+	return func() { claudeEffort = old }
+}
+
+// Effort reports the currently effective reasoning effort passed to Claude
+// Code. Exposed primarily for the CLI test suite to verify that
+// --claude-effort / PLANWERK_CLAUDE_EFFORT route into the package-level value.
+func Effort() string { return claudeEffort }
 
 // runClaude invokes claude in the given directory on its default permission
 // mode and returns the extracted text response. Use it for the read-only

@@ -220,6 +220,52 @@ func TestResolveClaudeTimeoutRejectsNonPositive(t *testing.T) {
 	}
 }
 
+func TestResolveClaudeModelFlagWins(t *testing.T) {
+	t.Setenv(envClaudeModel, "sonnet")
+	if got := resolveClaudeModel("fable", true); got != "fable" {
+		t.Fatalf("got %q, want flag value %q", got, "fable")
+	}
+}
+
+func TestResolveClaudeModelEnvBeatsDefault(t *testing.T) {
+	t.Setenv(envClaudeModel, "  fable  ")
+	if got := resolveClaudeModel("", false); got != "fable" {
+		t.Fatalf("got %q, want trimmed env value %q", got, "fable")
+	}
+}
+
+func TestResolveClaudeModelDefault(t *testing.T) {
+	t.Setenv(envClaudeModel, "")
+	if got := resolveClaudeModel("", false); got != claude.DefaultClaudeModel {
+		t.Fatalf("got %q, want default %q", got, claude.DefaultClaudeModel)
+	}
+	// An explicitly-set-but-empty flag falls through to the default too.
+	if got := resolveClaudeModel("", true); got != claude.DefaultClaudeModel {
+		t.Fatalf("got %q for empty flag, want default %q", got, claude.DefaultClaudeModel)
+	}
+}
+
+func TestResolveClaudeEffortFlagWins(t *testing.T) {
+	t.Setenv(envClaudeEffort, "high")
+	if got := resolveClaudeEffort("xhigh", true); got != "xhigh" {
+		t.Fatalf("got %q, want flag value %q", got, "xhigh")
+	}
+}
+
+func TestResolveClaudeEffortEnvBeatsDefault(t *testing.T) {
+	t.Setenv(envClaudeEffort, "  high  ")
+	if got := resolveClaudeEffort("", false); got != "high" {
+		t.Fatalf("got %q, want trimmed env value %q", got, "high")
+	}
+}
+
+func TestResolveClaudeEffortDefault(t *testing.T) {
+	t.Setenv(envClaudeEffort, "")
+	if got := resolveClaudeEffort("", false); got != claude.DefaultClaudeEffort {
+		t.Fatalf("got %q, want default %q", got, claude.DefaultClaudeEffort)
+	}
+}
+
 func TestRunCacheStatsEmpty(t *testing.T) {
 	dir := t.TempDir()
 	t.Cleanup(cache.SetDir(dir))
