@@ -30,6 +30,16 @@ const envShowClaudeOutput = "PLANWERK_SHOW_CLAUDE_OUTPUT"
 // flag takes precedence when explicitly set.
 const envClaudeTimeout = "PLANWERK_CLAUDE_TIMEOUT"
 
+// envClaudeModel overrides the model passed to Claude Code via --model for
+// every subcommand (e.g. "fable", "claude-fable-5", "sonnet"). The
+// --claude-model CLI flag takes precedence when explicitly set.
+const envClaudeModel = "PLANWERK_CLAUDE_MODEL"
+
+// envClaudeEffort overrides the reasoning effort passed to Claude Code via
+// --effort for every subcommand (low, medium, high, xhigh, max). The
+// --claude-effort CLI flag takes precedence when explicitly set.
+const envClaudeEffort = "PLANWERK_CLAUDE_EFFORT"
+
 // Output format identifiers accepted by the --format flag.
 const (
 	formatMarkdown = "markdown"
@@ -77,6 +87,40 @@ func resolveClaudeTimeout(flagValue time.Duration, flagSet bool) (time.Duration,
 		return v, nil
 	}
 	return claude.DefaultClaudeTimeout, nil
+}
+
+// resolveClaudeModel returns the effective model passed to Claude Code via
+// --model. Precedence: explicit CLI flag, then PLANWERK_CLAUDE_MODEL, then the
+// compiled-in default. The value is passed through verbatim — model names are
+// validated by Claude Code itself, so an unknown name surfaces as a claude
+// error rather than being rejected here.
+func resolveClaudeModel(flagValue string, flagSet bool) string {
+	if flagSet && flagValue != "" {
+		return flagValue
+	}
+	if raw, ok := os.LookupEnv(envClaudeModel); ok {
+		if v := strings.TrimSpace(raw); v != "" {
+			return v
+		}
+	}
+	return claude.DefaultClaudeModel
+}
+
+// resolveClaudeEffort returns the effective reasoning effort passed to Claude
+// Code via --effort. Precedence: explicit CLI flag, then PLANWERK_CLAUDE_EFFORT,
+// then the compiled-in default. The value is passed through verbatim — the
+// accepted effort levels are validated by Claude Code itself, so an unknown
+// level surfaces as a claude error rather than being rejected here.
+func resolveClaudeEffort(flagValue string, flagSet bool) string {
+	if flagSet && flagValue != "" {
+		return flagValue
+	}
+	if raw, ok := os.LookupEnv(envClaudeEffort); ok {
+		if v := strings.TrimSpace(raw); v != "" {
+			return v
+		}
+	}
+	return claude.DefaultClaudeEffort
 }
 
 // resolveRemotePatternsTTL returns the effective remote-patterns TTL.

@@ -402,6 +402,56 @@ func TestSetShowOutput_TogglesAndRestores(t *testing.T) {
 	}
 }
 
+func TestSetModel_TogglesAndRestores(t *testing.T) {
+	if Model() != DefaultClaudeModel {
+		t.Fatalf("precondition: Model() = %q, want default %q", Model(), DefaultClaudeModel)
+	}
+
+	restore := SetModel("fable")
+	if Model() != "fable" {
+		t.Errorf("Model() = %q after SetModel(\"fable\"), want \"fable\"", Model())
+	}
+	restore()
+	if Model() != DefaultClaudeModel {
+		t.Errorf("Model() = %q after restore, want default %q", Model(), DefaultClaudeModel)
+	}
+}
+
+func TestSetModel_IgnoresEmpty(t *testing.T) {
+	prev := Model()
+	t.Cleanup(SetModel(prev))
+
+	SetModel("")
+	if Model() != prev {
+		t.Errorf("SetModel(\"\") must be ignored; Model() = %q, want %q", Model(), prev)
+	}
+}
+
+func TestSetEffort_TogglesAndRestores(t *testing.T) {
+	if Effort() != DefaultClaudeEffort {
+		t.Fatalf("precondition: Effort() = %q, want default %q", Effort(), DefaultClaudeEffort)
+	}
+
+	restore := SetEffort("xhigh")
+	if Effort() != "xhigh" {
+		t.Errorf("Effort() = %q after SetEffort(\"xhigh\"), want \"xhigh\"", Effort())
+	}
+	restore()
+	if Effort() != DefaultClaudeEffort {
+		t.Errorf("Effort() = %q after restore, want default %q", Effort(), DefaultClaudeEffort)
+	}
+}
+
+func TestSetEffort_IgnoresEmpty(t *testing.T) {
+	prev := Effort()
+	t.Cleanup(SetEffort(prev))
+
+	SetEffort("")
+	if Effort() != prev {
+		t.Errorf("SetEffort(\"\") must be ignored; Effort() = %q, want %q", Effort(), prev)
+	}
+}
+
 func TestBuildRepairPrompt_ContainsErrorAndJSON(t *testing.T) {
 	malformed := `{"findings":[{"id":""},"id":""]}`
 	err := fmt.Errorf("invalid character ':' after array element")
