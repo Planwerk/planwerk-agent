@@ -40,6 +40,11 @@ const envClaudeModel = "PLANWERK_CLAUDE_MODEL"
 // --claude-effort CLI flag takes precedence when explicitly set.
 const envClaudeEffort = "PLANWERK_CLAUDE_EFFORT"
 
+// envPlanModel overrides the model used by the implement command's
+// planning session (e.g. "fable", "opus"). The --plan-model CLI flag takes
+// precedence when explicitly set.
+const envPlanModel = "PLANWERK_PLAN_MODEL"
+
 // Output format identifiers accepted by the --format flag.
 const (
 	formatMarkdown = "markdown"
@@ -121,6 +126,23 @@ func resolveClaudeEffort(flagValue string, flagSet bool) string {
 		}
 	}
 	return claude.DefaultClaudeEffort
+}
+
+// resolvePlanModel returns the effective model for the implement command's
+// planning session. Precedence: explicit CLI flag, then PLANWERK_PLAN_MODEL,
+// then the compiled-in default. The value is passed through verbatim — model
+// names are validated by Claude Code itself, so an unknown name surfaces as
+// a claude error rather than being rejected here.
+func resolvePlanModel(flagValue string, flagSet bool) string {
+	if flagSet && flagValue != "" {
+		return flagValue
+	}
+	if raw, ok := os.LookupEnv(envPlanModel); ok {
+		if v := strings.TrimSpace(raw); v != "" {
+			return v
+		}
+	}
+	return claude.DefaultPlanModel
 }
 
 // resolveRemotePatternsTTL returns the effective remote-patterns TTL.

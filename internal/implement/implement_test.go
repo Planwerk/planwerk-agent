@@ -25,6 +25,153 @@ func (f *fakeVerifier) VerifyImplementation(dir, issueTitle, issueBody string) (
 	return f.result, f.err
 }
 
+type fakePlanner struct {
+	called atomic.Int32
+	dir    string
+	plan   string
+	err    error
+}
+
+func (f *fakePlanner) Plan(dir string, ctx Context) (string, error) {
+	f.called.Add(1)
+	f.dir = dir
+	return f.plan, f.err
+}
+
+func TestRun_PlanFeedsImplement(t *testing.T) {
+	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+	cl := &fakeClaude{report: "PR opened"}
+	fp := &fakePlanner{plan: "## Implementation Plan (issue #42)\n\nSTATUS: PLAN_READY"}
+	r := newRunner(gh, cl)
+	r.Planner = fp
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if fp.called.Load() != 1 {
+		t.Errorf("planner called %d times, want 1", fp.called.Load())
+	}
+	if fp.dir != gh.cloneDir {
+		t.Errorf("planner ran in %q, want clone dir %q", fp.dir, gh.cloneDir)
+	}
+	if cl.ctx.Plan != fp.plan {
+		t.Errorf("implement received Plan %q, want the planner's plan %q", cl.ctx.Plan, fp.plan)
+	}
+	if !strings.Contains(buf.String(), "Implementation plan:") || !strings.Contains(buf.String(), "PLAN_READY") {
+		t.Errorf("plan not printed to output:\n%s", buf.String())
+	}
+}
+
+func TestRun_NoPlanSkipsPlanner(t *testing.T) {
+	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+	cl := &fakeClaude{report: "PR opened"}
+	fp := &fakePlanner{plan: "unused"}
+	r := newRunner(gh, cl)
+	r.Planner = fp
+
+	if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42", NoPlan: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if fp.called.Load() != 0 {
+		t.Errorf("planner called %d times, want 0 when --no-plan is set", fp.called.Load())
+	}
+	if cl.ctx.Plan != "" {
+		t.Errorf("implement received Plan %q, want empty", cl.ctx.Plan)
+	}
+}
+
+func TestRun_NilPlannerImplementsDirectly(t *testing.T) {
+	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+	cl := &fakeClaude{report: "PR opened"}
+	r := newRunner(gh, cl)
+
+	if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42"}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if cl.called.Load() != 1 {
+		t.Errorf("implement called %d times, want 1", cl.called.Load())
+	}
+	if cl.ctx.Plan != "" {
+		t.Errorf("implement received Plan %q, want empty", cl.ctx.Plan)
+	}
+}
+
+func TestRun_PlanErrorAbortsBeforeImplement(t *testing.T) {
+	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+	cl := &fakeClaude{report: "unused"}
+	fp := &fakePlanner{err: errors.New("claude exploded")}
+	r := newRunner(gh, cl)
+	r.Planner = fp
+
+	err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42"})
+	if err == nil || !strings.Contains(err.Error(), "claude plan") {
+		t.Fatalf("Run returned %v, want claude plan error", err)
+	}
+	if cl.called.Load() != 0 {
+		t.Errorf("implement called %d times, want 0 after plan failure", cl.called.Load())
+	}
+}
+
+func TestRun_PlanEscalationAbortsBeforeImplement(t *testing.T) {
+	for _, status := range []string{"BLOCKED", "NEEDS_CONTEXT"} {
+		t.Run(status, func(t *testing.T) {
+			gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+			cl := &fakeClaude{report: "unused"}
+			fp := &fakePlanner{plan: "## Implementation Plan (issue #42)\n\nSTATUS: " + status}
+			r := newRunner(gh, cl)
+			r.Planner = fp
+
+			var buf bytes.Buffer
+			err := r.Run(&buf, Options{IssueRef: "owner/repo#42"})
+			if err == nil || !strings.Contains(err.Error(), status) {
+				t.Fatalf("Run returned %v, want %s escalation error", err, status)
+			}
+			if cl.called.Load() != 0 {
+				t.Errorf("implement called %d times, want 0 after %s plan", cl.called.Load(), status)
+			}
+			if !strings.Contains(buf.String(), "STATUS: "+status) {
+				t.Errorf("escalating plan not printed for review:\n%s", buf.String())
+			}
+		})
+	}
+}
+
+func TestRun_PrintPlanPrompt(t *testing.T) {
+	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+	cl := &fakeClaude{report: "unused"}
+	fp := &fakePlanner{plan: "unused"}
+	r := newRunner(gh, cl)
+	r.Planner = fp
+	r.BuildPlanPrompt = func(ctx Context) string {
+		return fmt.Sprintf("PLAN PROMPT for #%d: %s", ctx.IssueNumber, ctx.IssueTitle)
+	}
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", PrintPlanPrompt: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if !strings.Contains(buf.String(), "PLAN PROMPT for #42") {
+		t.Errorf("plan prompt not rendered:\n%s", buf.String())
+	}
+	if gh.cloneCalls.Load() != 0 {
+		t.Errorf("clone called %d times, want 0 in --print-plan-prompt mode", gh.cloneCalls.Load())
+	}
+	if fp.called.Load() != 0 || cl.called.Load() != 0 {
+		t.Errorf("planner/implement called (%d/%d), want 0/0 in --print-plan-prompt mode",
+			fp.called.Load(), cl.called.Load())
+	}
+}
+
+func TestRun_PrintPlanPromptRequiresBuilder(t *testing.T) {
+	r := newRunner(&fakeGitHub{issue: sampleIssue()}, &fakeClaude{})
+
+	err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42", PrintPlanPrompt: true})
+	if err == nil || !strings.Contains(err.Error(), "--print-plan-prompt requires a plan prompt builder") {
+		t.Fatalf("Run returned %v, want missing plan prompt builder error", err)
+	}
+}
+
 func TestRun_VerifyReportsUnmetCriteria(t *testing.T) {
 	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
 	cl := &fakeClaude{report: "PR opened"}

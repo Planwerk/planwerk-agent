@@ -266,6 +266,31 @@ func TestResolveClaudeEffortDefault(t *testing.T) {
 	}
 }
 
+func TestResolvePlanModelFlagWins(t *testing.T) {
+	t.Setenv(envPlanModel, "sonnet")
+	if got := resolvePlanModel("opus", true); got != "opus" {
+		t.Fatalf("got %q, want flag value %q", got, "opus")
+	}
+}
+
+func TestResolvePlanModelEnvBeatsDefault(t *testing.T) {
+	t.Setenv(envPlanModel, "  opus  ")
+	if got := resolvePlanModel("", false); got != "opus" {
+		t.Fatalf("got %q, want trimmed env value %q", got, "opus")
+	}
+}
+
+func TestResolvePlanModelDefault(t *testing.T) {
+	t.Setenv(envPlanModel, "")
+	if got := resolvePlanModel("", false); got != claude.DefaultPlanModel {
+		t.Fatalf("got %q, want default %q", got, claude.DefaultPlanModel)
+	}
+	// An explicitly-set-but-empty flag falls through to the default too.
+	if got := resolvePlanModel("", true); got != claude.DefaultPlanModel {
+		t.Fatalf("got %q for empty flag, want default %q", got, claude.DefaultPlanModel)
+	}
+}
+
 func TestRunCacheStatsEmpty(t *testing.T) {
 	dir := t.TempDir()
 	t.Cleanup(cache.SetDir(dir))

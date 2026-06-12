@@ -37,6 +37,8 @@ type Options struct {
 	DryRun          bool // skip the Claude invocation; report what would happen
 	PrintPrompt     bool // render the implement prompt to stdout and exit; never invoke Claude
 	PrintBarePrompt bool // render a self-contained prompt to stdout and exit; never fetch issue or clone
+	PrintPlanPrompt bool // render the planning prompt to stdout and exit; never invoke Claude
+	NoPlan          bool // skip the planning session; the implement session plans for itself
 	Verify          bool // after implementing, run an independent verification pass against the diff
 	Local           bool // operate on the current working directory instead of cloning
 	Force           bool // with Local, skip the dirty-working-tree confirmation prompt
@@ -51,30 +53,43 @@ type Options struct {
 	MaxPatterns     int
 }
 
-// Runner glues together the GitHub issue/clone calls, the Claude
-// implementer, and the prompt builder. Tests inject fakes via the
-// exported fields.
+// Runner glues together the GitHub issue/clone calls, the Claude planner,
+// the Claude implementer, and the prompt builders. Tests inject fakes via
+// the exported fields.
 type Runner struct {
 	Claude ClaudeImplementer
 	GitHub GitHubClient
+	// Planner runs the read-only planning session whose output is embedded
+	// into the implement prompt. When nil (or opts.NoPlan is set) the
+	// implement session plans for itself, as before the planning phase
+	// existed.
+	Planner ClaudePlanner
 	// BuildPrompt renders the implement prompt without invoking Claude.
 	// Required when Options.PrintPrompt is set; nil otherwise is fine.
 	BuildPrompt PromptBuildFn
+	// BuildPlanPrompt renders the planning prompt without invoking Claude.
+	// Required when Options.PrintPlanPrompt is set; nil otherwise is fine.
+	BuildPlanPrompt PromptBuildFn
 	// Verifier runs the optional independent verification pass. When nil (or
 	// opts.Verify is false) the pass is skipped.
 	Verifier ImplementationVerifier
 }
 
 // NewRunner builds a Runner with the production GitHub backend, the given
-// Claude implement function, the prompt builder, and an optional verifier. The
-// CLI wires claude.Implement / claude.BuildImplementPrompt /
-// claude.VerifyImplementation so the import direction stays claude -> implement.
-// A nil verifyFn leaves the verification pass disabled.
-func NewRunner(fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn) *Runner {
+// Claude plan/implement functions, their prompt builders, and an optional
+// verifier. The CLI wires claude.Plan / claude.BuildPlanPrompt /
+// claude.Implement / claude.BuildImplementPrompt / claude.VerifyImplementation
+// so the import direction stays claude -> implement. A nil planFn disables
+// the planning phase; a nil verifyFn leaves the verification pass disabled.
+func NewRunner(planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn) *Runner {
 	r := &Runner{
-		Claude:      implementFnAdapter{fn: fn},
-		GitHub:      defaultGitHubClient{},
-		BuildPrompt: build,
+		Claude:          implementFnAdapter{fn: fn},
+		GitHub:          defaultGitHubClient{},
+		BuildPrompt:     build,
+		BuildPlanPrompt: buildPlan,
+	}
+	if planFn != nil {
+		r.Planner = planFnAdapter{fn: planFn}
 	}
 	if verifyFn != nil {
 		r.Verifier = verifyFnAdapter{fn: verifyFn}
@@ -83,15 +98,15 @@ func NewRunner(fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn) *Runner {
 }
 
 // Run is a package-level convenience that delegates to NewRunner(...).Run.
-func Run(w io.Writer, opts Options, fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn) error {
-	return NewRunner(fn, build, verifyFn).Run(w, opts)
+func Run(w io.Writer, opts Options, planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn) error {
+	return NewRunner(planFn, buildPlan, fn, build, verifyFn).Run(w, opts)
 }
 
 // PrintBarePrompt is a package-level convenience that delegates to
-// NewRunner(nil, nil, nil).PrintBarePrompt. The prompt itself is built without
+// NewRunner(nil, ...).PrintBarePrompt. The prompt itself is built without
 // invoking Claude, so the functions passed to NewRunner are not used here.
 func PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuildFn) error {
-	return NewRunner(nil, nil, nil).PrintBarePrompt(w, opts, build)
+	return NewRunner(nil, nil, nil, nil, nil).PrintBarePrompt(w, opts, build)
 }
 
 // PrintBarePrompt builds a self-contained ("bare") implement prompt from
@@ -177,15 +192,21 @@ func (r *Runner) PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuil
 
 // Run executes the implement workflow:
 //  1. Resolve the issue (gh CLI).
-//  2. In --print-prompt mode: render the prompt with the issue body
-//     embedded and exit.
+//  2. In --print-prompt / --print-plan-prompt mode: render the requested
+//     prompt with the issue body embedded and exit.
 //  3. Otherwise clone the repo into a fresh temp directory.
 //  4. In --dry-run mode: report what would happen and exit.
-//  5. Run a Claude session inside the clone to implement the issue
+//  5. Unless --no-plan: run a read-only Claude planning session inside the
+//     clone (on the dedicated planning model) and embed its plan into the
+//     implement context.
+//  6. Run a Claude session inside the clone to implement the issue
 //     end-to-end (code + tests + docs) and open a draft PR.
 func (r *Runner) Run(w io.Writer, opts Options) error {
 	if opts.PrintPrompt && r.BuildPrompt == nil {
 		return errors.New("--print-prompt requires a prompt builder; wire claude.BuildImplementPrompt via NewRunner")
+	}
+	if opts.PrintPlanPrompt && r.BuildPlanPrompt == nil {
+		return errors.New("--print-plan-prompt requires a plan prompt builder; wire claude.BuildPlanPrompt via NewRunner")
 	}
 
 	owner, name, number, err := github.ParseIssueRef(opts.IssueRef)
@@ -215,12 +236,17 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		MaxPatterns:  opts.MaxPatterns,
 	}
 
-	// In --print-prompt mode the only stdout payload is the prompt itself;
-	// status chatter is silenced via slog (the prompt goes to w). No clone,
-	// so no tech-detection/pattern-loading either — the bare prompt asks
-	// Claude to inspect .planwerk/review_patterns/ itself if present.
-	if opts.PrintPrompt {
-		prompt := r.BuildPrompt(ctx)
+	// In --print-prompt / --print-plan-prompt mode the only stdout payload
+	// is the prompt itself; status chatter is silenced via slog (the prompt
+	// goes to w). No clone, so no tech-detection/pattern-loading either —
+	// the bare prompt asks Claude to inspect .planwerk/review_patterns/
+	// itself if present.
+	if opts.PrintPrompt || opts.PrintPlanPrompt {
+		build := r.BuildPrompt
+		if opts.PrintPlanPrompt {
+			build = r.BuildPlanPrompt
+		}
+		prompt := build(ctx)
 		if _, err := io.WriteString(w, prompt); err != nil {
 			return fmt.Errorf("writing prompt: %w", err)
 		}
@@ -230,9 +256,16 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		return nil
 	}
 
+	planEnabled := r.Planner != nil && !opts.NoPlan
+
 	if opts.DryRun {
-		_, _ = fmt.Fprintf(w, "[dry-run] would clone %s and run Claude to implement #%d (%s)\n",
-			fullName, number, issue.Title)
+		if planEnabled {
+			_, _ = fmt.Fprintf(w, "[dry-run] would clone %s, run a Claude planning session, and run Claude to implement #%d (%s)\n",
+				fullName, number, issue.Title)
+		} else {
+			_, _ = fmt.Fprintf(w, "[dry-run] would clone %s and run Claude to implement #%d (%s)\n",
+				fullName, number, issue.Title)
+		}
 		return nil
 	}
 
@@ -244,6 +277,12 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	slog.Info("cloned repository", "dir", repo.Dir)
 
 	ctx.Patterns = loadPatterns(opts, repo.Dir)
+
+	if planEnabled {
+		if err := r.runPlanning(w, repo.Dir, &ctx); err != nil {
+			return err
+		}
+	}
 
 	implReport, err := r.Claude.Implement(repo.Dir, ctx)
 	if err != nil {
@@ -282,6 +321,44 @@ func (r *Runner) openRepo(opts Options, fullName string) (*github.Repo, error) {
 	}
 	slog.Info("cloning repository for implementation", "repo", fullName)
 	return r.GitHub.CloneRepo(fullName)
+}
+
+// runPlanning runs the read-only planning session inside the checkout and
+// stores its plan in ctx.Plan for the implement prompt. Unlike verification,
+// planning failures are fatal: the operator explicitly asked for a
+// plan-first run, and silently proceeding without a plan would burn an
+// unattended implement session on an unvetted route. A plan that reports
+// STATUS: BLOCKED or NEEDS_CONTEXT also aborts — the planner found the
+// issue unimplementable as specified, so a human must look at the plan
+// before any code is written.
+func (r *Runner) runPlanning(w io.Writer, dir string, ctx *Context) error {
+	slog.Info("running planning session", "issue", ctx.IssueNumber)
+	plan, err := r.Planner.Plan(dir, *ctx)
+	if err != nil {
+		return fmt.Errorf("claude plan: %w (use --no-plan to skip the planning phase)", err)
+	}
+	plan = strings.TrimSpace(plan)
+	if plan != "" {
+		_, _ = fmt.Fprintf(w, "\nImplementation plan:\n%s\n", plan)
+	}
+	if status := planEscalation(plan); status != "" {
+		return fmt.Errorf("planning session reported %s; review the plan above and clarify the issue, or rerun with --no-plan", status)
+	}
+	ctx.Plan = plan
+	slog.Info("planning complete", "issue", ctx.IssueNumber)
+	return nil
+}
+
+// planEscalation extracts a non-executable STATUS marker (BLOCKED or
+// NEEDS_CONTEXT) from the plan text. It returns the marker, or "" when the
+// plan is executable (PLAN_READY, or a free-form plan without the marker).
+func planEscalation(plan string) string {
+	for _, status := range []string{"BLOCKED", "NEEDS_CONTEXT"} {
+		if strings.Contains(plan, "STATUS: "+status) {
+			return status
+		}
+	}
+	return ""
 }
 
 // runVerification runs the independent verification pass against the change set
