@@ -218,6 +218,18 @@ the gate fails open and every specialist runs.
 4. **Prompt Assembly**: The runner deterministically assembles a prompt containing the agent workflow, rules (no scope creep, no `--no-verify`, run tests, update docs), and the issue metadata + body. No Claude call is made — the output is reproducible so it can be piped into other tools or diffed over time.
 5. **Output**: The prompt is written to stdout, ready to paste into Claude Code or any other AI coding agent.
 
+### Implement Workflow
+
+1. **Issue Input**: A GitHub issue reference (URL or `owner/repo#number`), typically already elaborated via `elaborate`.
+2. **Fetch Issue**: Title, body, URL, and state are fetched via `gh issue view`.
+3. **Clone**: The repository is cloned into a temp directory (or the current checkout is used with `--local`).
+4. **Pattern Load**: The same pattern catalog used by `review` / `audit` / `elaborate` is loaded, filtered by detected technologies.
+5. **Planning Session**: A read-only Claude Code session on the dedicated planning model (`--plan-model`, default `fable`, env: `PLANWERK_PLAN_MODEL`) grounds the issue in the actual code — verifying every cited file and symbol — and emits a structured implementation plan: change set, commit sequence, test plan, documentation plan, verification commands, risks. A plan that reports `STATUS: BLOCKED` or `NEEDS_CONTEXT` aborts the run before any code is written. Skip the phase entirely with `--no-plan`.
+6. **Implement Session**: A fresh Claude Code session in auto mode (`--permission-mode auto`) receives the plan embedded in its prompt and executes it end-to-end: code, tests, documentation, small reviewable commits on a fresh feature branch, draft pull request linked to the issue. Both sessions run at the global `--claude-effort` (default `xhigh`); the implement session uses the global `--claude-model` (default `opus`).
+7. **Verification (optional)**: With `--verify`, an independent session diffs the feature branch against the issue's Acceptance Criteria without trusting the implementer's report.
+
+Prompt escape hatches mirror the fix subcommand: `--print-plan-prompt` renders the planning prompt, `--print-prompt` the implement prompt (without a plan), and `--print-bare-prompt` a portable, self-contained variant for manual sessions.
+
 ### Local Mode
 
 By default every repo-facing subcommand (`review`, `fix`, `implement`,
@@ -333,7 +345,7 @@ These flags apply to every `planwerk-review` command (`review`, `propose`, `audi
 | `--claude-timeout` | Maximum duration for a single Claude Code invocation. Applies to every Claude call across all subcommands (`review`, `propose`, `audit`, `elaborate`, `implement`, `fix`, `gap-analysis`, `review-prepared`, and their `*-structure` / `*-repair` follow-ups). Accepts any `time.ParseDuration` value (e.g. `20m`, `1h30m`). Must be `> 0` — disabling the timeout would let a stuck `claude` process hang the CLI indefinitely. Env: `PLANWERK_CLAUDE_TIMEOUT`. | `15m` |
 | `--show-claude-output` | Stream Claude Code's live output (assistant messages and tool activity) to stderr while a run is in flight, instead of only the periodic heartbeat. Each line is prefixed with the call label (`[review]`, `[structure]`, `[adversarial]`, …). When stderr is not a terminal, the same events are emitted as `slog.Info` records so they integrate with `--log-format json`. Env: `PLANWERK_SHOW_CLAUDE_OUTPUT` (truthy: `1`, `true`, `yes`, `on`). | `false` |
 | `--claude-model` | Model passed to Claude Code via `--model` for every Claude call across all subcommands. Accepts any value Claude Code understands — a short alias (`opus`, `fable`, `sonnet`) or a full model ID (`claude-fable-5`). The default `opus` alias tracks the latest Opus release; set `fable` to run reviews on Fable. Unknown names are rejected by Claude Code, not by this flag. Env: `PLANWERK_CLAUDE_MODEL`. | `opus` |
-| `--claude-effort` | Reasoning effort passed to Claude Code via `--effort` for every Claude call across all subcommands. One of `low`, `medium`, `high`, `xhigh`, `max`. Reviews are latency-tolerant, so the default `max` maximizes reasoning on tricky findings; lower it to trade thoroughness for speed/cost. Env: `PLANWERK_CLAUDE_EFFORT`. | `max` |
+| `--claude-effort` | Reasoning effort passed to Claude Code via `--effort` for every Claude call across all subcommands. One of `low`, `medium`, `high`, `xhigh`, `max`. The default `xhigh` is Claude Code's own default and the recommended setting for coding and agentic workloads (`max` buys little on top and tends toward overthinking); lower it to trade thoroughness for speed/cost. Env: `PLANWERK_CLAUDE_EFFORT`. | `xhigh` |
 
 Logs are written to stderr; when stderr is not a terminal, Claude-invocation heartbeats are still emitted at INFO level so long-running runs are visible in CI log streams.
 
