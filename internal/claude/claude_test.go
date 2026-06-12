@@ -427,14 +427,39 @@ func TestSetModel_IgnoresEmpty(t *testing.T) {
 	}
 }
 
+func TestSetPlanModel_TogglesAndRestores(t *testing.T) {
+	if PlanModel() != DefaultPlanModel {
+		t.Fatalf("precondition: PlanModel() = %q, want default %q", PlanModel(), DefaultPlanModel)
+	}
+
+	restore := SetPlanModel("opus")
+	if PlanModel() != "opus" {
+		t.Errorf("PlanModel() = %q after SetPlanModel(\"opus\"), want \"opus\"", PlanModel())
+	}
+	restore()
+	if PlanModel() != DefaultPlanModel {
+		t.Errorf("PlanModel() = %q after restore, want default %q", PlanModel(), DefaultPlanModel)
+	}
+}
+
+func TestSetPlanModel_IgnoresEmpty(t *testing.T) {
+	prev := PlanModel()
+	t.Cleanup(SetPlanModel(prev))
+
+	SetPlanModel("")
+	if PlanModel() != prev {
+		t.Errorf("SetPlanModel(\"\") must be ignored; PlanModel() = %q, want %q", PlanModel(), prev)
+	}
+}
+
 func TestSetEffort_TogglesAndRestores(t *testing.T) {
 	if Effort() != DefaultClaudeEffort {
 		t.Fatalf("precondition: Effort() = %q, want default %q", Effort(), DefaultClaudeEffort)
 	}
 
-	restore := SetEffort("xhigh")
-	if Effort() != "xhigh" {
-		t.Errorf("Effort() = %q after SetEffort(\"xhigh\"), want \"xhigh\"", Effort())
+	restore := SetEffort("max")
+	if Effort() != "max" {
+		t.Errorf("Effort() = %q after SetEffort(\"max\"), want \"max\"", Effort())
 	}
 	restore()
 	if Effort() != DefaultClaudeEffort {

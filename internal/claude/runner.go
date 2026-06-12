@@ -25,12 +25,22 @@ const (
 	// with SetModel (driven by the --claude-model flag / PLANWERK_CLAUDE_MODEL
 	// env var) to run reviews on a different model, e.g. "fable".
 	DefaultClaudeModel = "opus"
-	// DefaultClaudeEffort is the compiled-in default reasoning effort. "max"
-	// gives the model the largest thinking budget — reviews are
-	// latency-tolerant and benefit from the extra reasoning on tricky
-	// findings. Override with SetEffort (driven by the --claude-effort flag /
-	// PLANWERK_CLAUDE_EFFORT env var).
-	DefaultClaudeEffort = "max"
+	// DefaultPlanModel is the compiled-in default model for the implement
+	// command's planning session. The "fable" alias runs the latest Claude
+	// Fable release — Anthropic's most capable model. Planning is a single
+	// read-only session whose output steers the entire implementation, so
+	// the strongest reasoning pays off most there, while the implement
+	// session itself stays on the cheaper DefaultClaudeModel. Override with
+	// SetPlanModel (driven by the implement command's --plan-model flag /
+	// PLANWERK_PLAN_MODEL env var).
+	DefaultPlanModel = "fable"
+	// DefaultClaudeEffort is the compiled-in default reasoning effort.
+	// "xhigh" is Claude Code's own default and the recommended setting for
+	// coding and agentic workloads; "max" buys little on top of it and
+	// tends toward overthinking. Override with SetEffort (driven by the
+	// --claude-effort flag / PLANWERK_CLAUDE_EFFORT env var), e.g. "max"
+	// for the largest thinking budget on latency-tolerant one-off runs.
+	DefaultClaudeEffort = "xhigh"
 	// claudeAutoPermissionMode is the --permission-mode value the implement
 	// command passes to its orchestrated `claude -p` session so tool calls
 	// run without an interactive confirmation. "auto" is Claude Code's auto
@@ -55,6 +65,11 @@ var claudeTimeout = DefaultClaudeTimeout
 // claudeModel is the effective model passed to Claude Code via --model. It
 // defaults to DefaultClaudeModel and is overridable at startup via SetModel.
 var claudeModel = DefaultClaudeModel
+
+// planModel is the effective model for the implement command's planning
+// session. It defaults to DefaultPlanModel and is overridable at startup
+// via SetPlanModel.
+var planModel = DefaultPlanModel
 
 // claudeEffort is the effective reasoning effort passed to Claude Code via
 // --effort. It defaults to DefaultClaudeEffort and is overridable at startup
@@ -122,6 +137,24 @@ func SetModel(m string) (restore func()) {
 // PLANWERK_CLAUDE_MODEL route into the package-level value.
 func Model() string { return claudeModel }
 
+// SetPlanModel installs m as the model used by Plan sessions (the implement
+// command's planning phase). An empty m is ignored and the previous value is
+// preserved — that keeps a misconfigured flag from silently selecting an
+// empty model. The returned restore function reverts to the previous value;
+// the CLI test suite uses it to scope changes to a single test.
+func SetPlanModel(m string) (restore func()) {
+	old := planModel
+	if m != "" {
+		planModel = m
+	}
+	return func() { planModel = old }
+}
+
+// PlanModel reports the currently effective planning model. Exposed
+// primarily for the CLI test suite to verify that --plan-model /
+// PLANWERK_PLAN_MODEL route into the package-level value.
+func PlanModel() string { return planModel }
+
 // SetEffort installs e as the reasoning effort passed to Claude Code via
 // --effort by every subsequent runClaude / runClaudeStream call. An empty e
 // is ignored and the previous value is preserved — that keeps a misconfigured
@@ -146,7 +179,16 @@ func Effort() string { return claudeEffort }
 // analysis steps (review, audit, structure, repair, …) that do not mutate
 // the checkout.
 func runClaude(dir, prompt, label string) (string, error) {
-	return runClaudeWithPermission(dir, prompt, label, "")
+	return runClaudeWithPermission(dir, prompt, label, "", claudeModel)
+}
+
+// runClaudePlan is runClaude on the dedicated planning model (PlanModel,
+// default "fable"). The implement command's planning session uses it: the
+// session only reads the checkout and emits the implementation plan as
+// text, so it keeps the default (read-only) permission mode while the
+// strongest-reasoning model does the thinking.
+func runClaudePlan(dir, prompt, label string) (string, error) {
+	return runClaudeWithPermission(dir, prompt, label, "", planModel)
 }
 
 // runClaudeAuto is runClaude with claudeAutoPermissionMode, letting the
@@ -156,23 +198,25 @@ func runClaude(dir, prompt, label string) (string, error) {
 // push a feature branch, and open a PR without a human confirming each
 // step. The auto-mode classifier still vets every action.
 func runClaudeAuto(dir, prompt, label string) (string, error) {
-	return runClaudeWithPermission(dir, prompt, label, claudeAutoPermissionMode)
+	return runClaudeWithPermission(dir, prompt, label, claudeAutoPermissionMode, claudeModel)
 }
 
-// runClaudeWithPermission is the shared implementation behind runClaude and
-// runClaudeAuto. permissionMode, when non-empty, is passed to claude as
-// --permission-mode; an empty value leaves claude on its default mode. The
-// label tags elapsed-time progress updates (or per-line stream prefixes
-// when streaming is enabled).
+// runClaudeWithPermission is the shared implementation behind runClaude,
+// runClaudePlan, and runClaudeAuto. permissionMode, when non-empty, is
+// passed to claude as --permission-mode; an empty value leaves claude on
+// its default mode. model is the --model value (callers pass claudeModel
+// or planModel); the reasoning effort always comes from the package-level
+// claudeEffort. The label tags elapsed-time progress updates (or per-line
+// stream prefixes when streaming is enabled).
 //
 // When showOutput is false it uses --output-format json and captures the
 // full result via cmd.Output(). When showOutput is true it delegates to
 // runClaudeStream, which uses --output-format stream-json --verbose and
 // surfaces output incrementally; the periodic heartbeat is skipped in that
 // mode because the stream itself is the heartbeat.
-func runClaudeWithPermission(dir, prompt, label, permissionMode string) (string, error) {
+func runClaudeWithPermission(dir, prompt, label, permissionMode, model string) (string, error) {
 	if showOutput {
-		return runClaudeStream(dir, prompt, label, permissionMode)
+		return runClaudeStream(dir, prompt, label, permissionMode, model)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), claudeTimeout)
@@ -183,7 +227,7 @@ func runClaudeWithPermission(dir, prompt, label, permissionMode string) (string,
 
 	args := []string{
 		"-p",
-		"--model", claudeModel,
+		"--model", model,
 		"--effort", claudeEffort,
 		"--output-format", "json",
 	}

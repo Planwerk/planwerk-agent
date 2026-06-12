@@ -10,6 +10,7 @@ import (
 	"github.com/planwerk/planwerk-review/internal/doccheck"
 	"github.com/planwerk/planwerk-review/internal/elaborate"
 	"github.com/planwerk/planwerk-review/internal/github"
+	"github.com/planwerk/planwerk-review/internal/implement"
 	"github.com/planwerk/planwerk-review/internal/patterns"
 	"github.com/planwerk/planwerk-review/internal/planwerk"
 	"github.com/planwerk/planwerk-review/internal/propose"
@@ -197,4 +198,34 @@ func TestBuildCompliancePrompt_Golden(t *testing.T) {
 
 func TestBuildCoveragePrompt_Golden(t *testing.T) {
 	assertGoldenPrompt(t, "coverage", buildCoveragePrompt("develop"))
+}
+
+func goldenImplementContext() implement.Context {
+	return implement.Context{
+		Patterns:     goldenPatterns(),
+		MaxPatterns:  0,
+		RepoFullName: "planwerk/planwerk-review",
+		IssueNumber:  42,
+		IssueTitle:   "Add snapshot tests for prompt builders",
+		IssueBody:    "## Description\n\nLock the prompt surface with golden files so drift shows up in PR diffs.\n\n## Acceptance Criteria\n- Golden file exists for every builder\n",
+		IssueURL:     "https://github.com/planwerk/planwerk-review/issues/42",
+		IssueState:   "open",
+	}
+}
+
+func TestBuildImplementPrompt_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "implement", BuildImplementPrompt(goldenImplementContext()))
+}
+
+// TestBuildImplementPromptWithPlan_Golden locks the shape used when a
+// planning session preceded the implement session: the plan is embedded
+// verbatim and workflow step 3 switches from PLAN to VALIDATE.
+func TestBuildImplementPromptWithPlan_Golden(t *testing.T) {
+	ctx := goldenImplementContext()
+	ctx.Plan = "## Implementation Plan (issue #42)\n\n### Summary\n- Add a golden file per prompt builder and a -update helper.\n\n### Status\nSTATUS: PLAN_READY"
+	assertGoldenPrompt(t, "implement_with_plan", BuildImplementPrompt(ctx))
+}
+
+func TestBuildPlanPrompt_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "plan", BuildPlanPrompt(goldenImplementContext()))
 }

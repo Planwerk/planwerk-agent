@@ -154,6 +154,15 @@ func BuildImplementPrompt(ctx implement.Context) string {
 		sb.WriteString("</review-patterns>\n\n")
 	}
 
+	hasPlan := strings.TrimSpace(ctx.Plan) != ""
+	if hasPlan {
+		sb.WriteString("## Implementation Plan (from the planning session)\n\n")
+		sb.WriteString("A dedicated read-only planning session already grounded this issue in the repository and produced the plan below. Treat it as the default route: adopt its change set, commit sequence, test plan, and documentation plan. Re-verify its Ground-Truth Notes as you work — when the repository contradicts the plan, deviate as narrowly as possible and record the deviation (with rationale) under \"Deviations from the issue\" in your report.\n\n")
+		sb.WriteString("<implementation-plan>\n")
+		sb.WriteString(strings.TrimSpace(ctx.Plan))
+		sb.WriteString("\n</implementation-plan>\n\n")
+	}
+
 	sb.WriteString(`## Implementation Workflow
 
 Run these steps in order. Do not skip ahead.
@@ -164,8 +173,15 @@ Run these steps in order. Do not skip ahead.
    - For every file the issue cites, open it and confirm it still exists at (or near) the cited path.
    - Identify the project's test conventions (unit, integration, E2E) and where tests live.
    - Identify the project's documentation conventions (README, docs/, CHANGELOG, generated API docs).
-3. PLAN the smallest change set that satisfies every Acceptance Criterion. Sketch the commit sequence before editing — keep each commit small and reviewable.
-4. CREATE a fresh feature branch off the current default branch. Use a short, descriptive branch name derived from the issue (e.g. "implement/issue-` + fmt.Sprintf("%d", ctx.IssueNumber) + `-<slug>").
+`)
+	if hasPlan {
+		sb.WriteString(`3. VALIDATE the provided implementation plan against what you found in steps 1-2. Adopt its change set and commit sequence; refine them only where the repository contradicts the plan, and note every deviation for the final report.
+`)
+	} else {
+		sb.WriteString(`3. PLAN the smallest change set that satisfies every Acceptance Criterion. Sketch the commit sequence before editing — keep each commit small and reviewable.
+`)
+	}
+	sb.WriteString(`4. CREATE a fresh feature branch off the current default branch. Use a short, descriptive branch name derived from the issue (e.g. "implement/issue-` + fmt.Sprintf("%d", ctx.IssueNumber) + `-<slug>").
 5. IMPLEMENT the change set:
    - Match existing layout, naming, error handling, and logging conventions.
    - Add unit tests for new logic. Add integration / E2E tests when the project has them for comparable features.

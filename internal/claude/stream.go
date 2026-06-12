@@ -115,15 +115,16 @@ func (slogStreamSink) toolResult(label string) {
 // and surfaces assistant text and tool activity through a streamSink as
 // it arrives. The final assistant text is returned. The function is the
 // streaming counterpart of runClaudeWithPermission and shares its timeout,
-// model, effort, and permission-mode handling: permissionMode, when
-// non-empty, is passed to claude as --permission-mode.
-func runClaudeStream(dir, prompt, label, permissionMode string) (string, error) {
+// effort, and permission-mode handling: permissionMode, when non-empty, is
+// passed to claude as --permission-mode; model is the --model value the
+// caller selected (claudeModel or planModel).
+func runClaudeStream(dir, prompt, label, permissionMode, model string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), claudeTimeout)
 	defer cancel()
 
 	args := []string{
 		"-p",
-		"--model", claudeModel,
+		"--model", model,
 		"--effort", claudeEffort,
 		"--output-format", "stream-json",
 		"--verbose",
