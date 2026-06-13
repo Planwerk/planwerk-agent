@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"strconv"
@@ -97,7 +98,11 @@ func OpenLocalPR(ref string, opts LocalOptions) (*PR, error) {
 		return nil, err
 	}
 
-	pr.ChangedFiles = diffNames(dir, pr.BaseBranch)
+	changed, err := diffNames(dir, pr.BaseBranch)
+	if err != nil {
+		slog.Warn("listing changed files failed; feature detection and specialist gating may be degraded", "err", err, "dir", dir, "base", pr.BaseBranch)
+	}
+	pr.ChangedFiles = changed
 	return pr, nil
 }
 

@@ -1,9 +1,11 @@
 package github
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"regexp"
@@ -69,25 +71,32 @@ func FetchAndCheckout(ref string) (*PR, error) {
 		return nil, fmt.Errorf("checking out PR: %w", err)
 	}
 	pr.Dir = dir
-	pr.ChangedFiles = diffNames(dir, pr.BaseBranch)
+	changed, err := diffNames(dir, pr.BaseBranch)
+	if err != nil {
+		slog.Warn("listing changed files failed; feature detection and specialist gating may be degraded", "err", err, "dir", dir, "base", pr.BaseBranch)
+	}
+	pr.ChangedFiles = changed
 
 	return pr, nil
 }
 
 // diffNames returns repo-relative paths of files changed between the base
-// branch and HEAD. Best-effort: on any error, returns nil so callers can
-// degrade gracefully.
-func diffNames(dir, baseBranch string) []string {
+// branch and HEAD. An empty dir or baseBranch yields a nil slice and no error.
+// On subprocess failure it returns a nil slice and an error wrapping git's
+// stderr, so callers can log the cause before degrading gracefully.
+func diffNames(dir, baseBranch string) ([]string, error) {
 	if dir == "" || baseBranch == "" {
-		return nil
+		return nil, nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), gitRemoteTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", "diff", "--name-only", "origin/"+baseBranch+"...HEAD")
 	cmd.Dir = dir
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("git diff --name-only origin/%s...HEAD: %w: %s", baseBranch, err, strings.TrimSpace(stderr.String()))
 	}
 	var files []string
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
@@ -95,7 +104,7 @@ func diffNames(dir, baseBranch string) []string {
 			files = append(files, line)
 		}
 	}
-	return files
+	return files, nil
 }
 
 // Cleanup removes the temporary checkout directory. It is a no-op for a
