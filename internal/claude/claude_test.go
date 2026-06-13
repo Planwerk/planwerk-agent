@@ -427,6 +427,68 @@ func TestSetModel_IgnoresEmpty(t *testing.T) {
 	}
 }
 
+func TestSanitizePlan(t *testing.T) {
+	const plan = "## Implementation Plan (issue #7)\n\n### Summary\n- Do the thing.\n### Status\nSTATUS: PLAN_READY"
+
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "already clean is unchanged",
+			input: plan,
+			want:  plan,
+		},
+		{
+			name:  "single-line preamble is dropped",
+			input: "I have confirmed all ground truth. Writing the plan.\n\n" + plan,
+			want:  plan,
+		},
+		{
+			name:  "multi-line preamble is dropped",
+			input: "Let me work through this.\nI have confirmed all ground truth.\nWriting the plan now:\n\n" + plan,
+			want:  plan,
+		},
+		{
+			name:  "wrapping markdown fence is stripped",
+			input: "```markdown\n" + plan + "\n```",
+			want:  plan,
+		},
+		{
+			name:  "blocked status survives preamble stripping",
+			input: "Here is what I found.\n\n## Implementation Plan (issue #7)\n\n### Status\nSTATUS: BLOCKED",
+			want:  "## Implementation Plan (issue #7)\n\n### Status\nSTATUS: BLOCKED",
+		},
+		{
+			name:  "no heading is returned trimmed but otherwise intact",
+			input: "\n  STATUS: NEEDS_CONTEXT — the issue is underspecified.  \n",
+			want:  "STATUS: NEEDS_CONTEXT — the issue is underspecified.",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := sanitizePlan(tt.input); got != tt.want {
+				t.Errorf("sanitizePlan() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSanitizePlan_PreservesEscalationMarker(t *testing.T) {
+	// The preamble strip must not break planEscalation: a BLOCKED/NEEDS_CONTEXT
+	// marker buried after a preamble must still be detectable downstream.
+	input := "Writing the plan.\n\n## Implementation Plan (issue #1)\n### Status\nSTATUS: BLOCKED"
+	got := sanitizePlan(input)
+	if !strings.Contains(got, "STATUS: BLOCKED") {
+		t.Errorf("sanitizePlan() dropped the escalation marker: %q", got)
+	}
+	if strings.Contains(got, "Writing the plan.") {
+		t.Errorf("sanitizePlan() left preamble in: %q", got)
+	}
+}
+
 func TestSetPlanModel_TogglesAndRestores(t *testing.T) {
 	if PlanModel() != DefaultPlanModel {
 		t.Fatalf("precondition: PlanModel() = %q, want default %q", PlanModel(), DefaultPlanModel)

@@ -26,7 +26,32 @@ func Plan(dir string, ctx implement.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("running plan: %w", err)
 	}
-	return strings.TrimSpace(out), nil
+	return sanitizePlan(out), nil
+}
+
+// planHeading is the heading the planning prompt mandates as the first line
+// of every plan ("## Implementation Plan (issue #N)"). sanitizePlan anchors
+// on it to drop any conversational preamble the model emits before the plan.
+const planHeading = "## Implementation Plan"
+
+// sanitizePlan normalizes the planning session's raw output into the plan
+// artifact that is embedded in the implement prompt and posted onto the source
+// issue as a comment. The prompt instructs the planner to output ONLY the
+// plan, but models sometimes wrap it in a markdown fence or prepend a line of
+// commentary ("I have confirmed all ground truth. Writing the plan."). That
+// preamble must never reach the issue comment, so we strip a wrapping fence
+// and then drop everything before the first "## Implementation Plan" heading.
+// When the heading is absent (unexpected output) the de-fenced text is
+// returned unchanged rather than risk discarding a legitimate plan.
+func sanitizePlan(out string) string {
+	out = stripMarkdownFences(out)
+	lines := strings.Split(out, "\n")
+	for i, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), planHeading) {
+			return strings.TrimSpace(strings.Join(lines[i:], "\n"))
+		}
+	}
+	return strings.TrimSpace(out)
 }
 
 // BuildPlanPrompt assembles the prompt for the read-only planning session
