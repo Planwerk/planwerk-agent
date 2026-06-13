@@ -10,6 +10,7 @@ import (
 	"github.com/planwerk/planwerk-review/internal/implement"
 	"github.com/planwerk/planwerk-review/internal/prompt"
 	"github.com/planwerk/planwerk-review/internal/propose"
+	"github.com/planwerk/planwerk-review/internal/rebase"
 	"github.com/planwerk/planwerk-review/internal/report"
 	"github.com/planwerk/planwerk-review/internal/review"
 	"github.com/planwerk/planwerk-review/internal/reviewprepared"
@@ -198,6 +199,51 @@ func (c FixConfig) ToFixOptions(version string) fix.Options {
 		MaxPatterns:     c.MaxPatterns,
 		Local:           c.Local,
 		Force:           c.Force,
+	}
+}
+
+// RebaseConfig holds configuration for the rebase command.
+type RebaseConfig struct {
+	PRRef             string
+	Onto              string
+	Push              bool
+	ApplyAdjustments  bool
+	MaxIterations     int
+	NoAnalysis        bool
+	NoAnalysisComment bool
+	DryRun            bool
+	PrintPrompt       bool
+	PrintBarePrompt   bool
+
+	PatternDirs     []string
+	NoRepoPatterns  bool
+	NoLocalPatterns bool
+	MaxPatterns     int
+	Local           bool
+	Force           bool
+}
+
+// ToRebaseOptions maps the CLI config to rebase.Options. PrintBarePrompt is
+// handled at the cmd layer (it selects a different entry point), so it is not
+// carried into Options — mirroring FixConfig.
+func (c RebaseConfig) ToRebaseOptions(version string) rebase.Options {
+	return rebase.Options{
+		PRRef:             c.PRRef,
+		Onto:              c.Onto,
+		Push:              c.Push,
+		ApplyAdjustments:  c.ApplyAdjustments,
+		MaxIterations:     c.MaxIterations,
+		NoAnalysis:        c.NoAnalysis,
+		NoAnalysisComment: c.NoAnalysisComment,
+		DryRun:            c.DryRun,
+		PrintPrompt:       c.PrintPrompt,
+		Version:           version,
+		PatternDirs:       c.PatternDirs,
+		NoRepoPatterns:    c.NoRepoPatterns,
+		NoLocalPatterns:   c.NoLocalPatterns,
+		MaxPatterns:       c.MaxPatterns,
+		Local:             c.Local,
+		Force:             c.Force,
 	}
 }
 

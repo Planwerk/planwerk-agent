@@ -29,6 +29,7 @@ func main() {
 		newElaborateCmd(deps),
 		newPromptCmd(deps),
 		newFixCmd(deps),
+		newRebaseCmd(deps),
 		newImplementCmd(deps),
 		newCacheCmd(deps),
 		newSchemaCmd(deps),
