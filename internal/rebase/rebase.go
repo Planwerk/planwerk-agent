@@ -275,7 +275,7 @@ func (r *Runner) analyzeAndReport(w io.Writer, opts Options, pr *github.PR, onto
 	r.postAnalysisComment(w, opts, owner, repo, number, rendered.String())
 
 	if opts.ApplyAdjustments {
-		report, err := r.Claude.ApplyAdjustments(pr.Dir, ApplyContext{
+		applyReport, err := r.Claude.ApplyAdjustments(pr.Dir, ApplyContext{
 			RepoFullName: fullName,
 			PRNumber:     number,
 			Onto:         onto,
@@ -287,8 +287,8 @@ func (r *Runner) analyzeAndReport(w io.Writer, opts Options, pr *github.PR, onto
 		if err != nil {
 			return fmt.Errorf("applying rebase adjustments: %w", err)
 		}
-		if report != "" {
-			_, _ = fmt.Fprintf(w, "\nClaude apply report:\n%s\n", report)
+		if applyReport != "" {
+			_, _ = fmt.Fprintf(w, "\nClaude apply report:\n%s\n", applyReport)
 		}
 	}
 	return nil
