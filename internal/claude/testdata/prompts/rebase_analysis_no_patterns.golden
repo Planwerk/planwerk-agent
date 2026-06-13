@@ -1,0 +1,61 @@
+You are a Staff Engineer analyzing a freshly rebased pull request branch.
+
+The PR's commits (below) were replayed onto origin/main. Even where git produced
+no textual conflict, an upstream change that entered the base since the PR
+forked can silently invalidate a rebased commit: a renamed symbol it still
+references, a changed function signature it still calls the old way, a helper it
+relies on that was removed, a new lint/format rule it now violates, or a
+semantic behavior change it assumed away.
+
+## Repository
+
+- Repository: planwerk/planwerk-review
+- PR #42
+- Rebased onto: origin/main
+
+## Rebased commits (analyze each one, in order)
+
+- 1111111aaaa Add the snapshot helper
+- 2222222bbbb Wire the helper into the runner
+
+## Upstream commits that entered the base since the PR forked
+
+- 9999999zzzz Rename runClaude to runSession
+
+## What to do
+
+For EACH rebased commit above:
+1. Read what the commit changed (`git show <sha>`) and which symbols, signatures, helpers, and files it depends on.
+2. Compare against the upstream commits. Decide whether any upstream change invalidates an assumption in this commit — even with no textual conflict.
+3. Report each concrete adjustment the commit needs. If the commit's assumptions still hold, return an empty adjustments array for it.
+
+Open the actual files; do not guess. Report only adjustments you can ground in the diff.
+
+Output ONLY valid JSON matching this exact schema (no markdown fences, no surrounding text):
+
+{
+  "commits": [
+    {
+      "sha": "full SHA of the rebased commit",
+      "subject": "the commit subject",
+      "adjustments": [
+        {
+          "kind": "renamed-symbol|changed-signature|removed-helper|lint-rule|semantic-change",
+          "file": "path/to/file.go",
+          "detail": "what upstream changed and why it affects this commit",
+          "action": "the concrete adjustment to make in this commit",
+          "upstream_ref": "the upstream commit responsible (sha + subject), or omit",
+          "confidence": "verified|likely|uncertain"
+        }
+      ]
+    }
+  ],
+  "summary": "Overall: how cleanly the rebase landed and the key adjustments needed (2-4 sentences)",
+  "recommendation": "Whether the rebased branch is safe to push as-is or needs the adjustments first"
+}
+
+Field rules:
+- "kind": one of renamed-symbol, changed-signature, removed-helper, lint-rule, semantic-change.
+- "upstream_ref" and "confidence" are optional; omit "upstream_ref" when no single upstream commit is responsible.
+- Include one "commits" entry for EVERY rebased commit, in order, even when its adjustments array is empty.
+- Do NOT invent adjustments. If the upstream range does not affect a commit, its adjustments array is empty.
