@@ -10,6 +10,7 @@ solves one specific problem.
 - [Elaborate an issue](/how-to/elaborate-an-issue)
 - [Generate a fix/implement prompt](/how-to/generate-a-prompt)
 - [Implement an issue](/how-to/implement-an-issue)
+- [Rebase a PR](/how-to/rebase-a-pr)
 - [Use local mode](/how-to/use-local-mode)
 - [Wire it up as a GitHub Action](/how-to/use-the-github-action)
 - [Install shell completions & man pages](/how-to/install-completions-and-man-pages)

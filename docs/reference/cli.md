@@ -12,8 +12,8 @@ omitted. Shell completions and man pages are produced by the built-in
 ## Global flags
 
 These persistent flags apply to every command (`review`, `propose`, `audit`,
-`gap-analysis`, `review-prepared`, `elaborate`, `prompt`, `fix`, `implement`,
-`cache`, `schema`).
+`gap-analysis`, `review-prepared`, `elaborate`, `prompt`, `fix`, `rebase`,
+`implement`, `cache`, `schema`).
 
 | Flag | Description | Default |
 |------|-------------|---------|
@@ -260,6 +260,43 @@ planwerk-review fix --local --force
 
 `--dry-run`, `--print-prompt`, and `--print-bare-prompt` are mutually exclusive.
 
+## `rebase`
+
+Rebase a pull request's branch onto a base branch (`--onto`, default `main`),
+resolving conflicts semantically with Claude rather than a naive `ours`/`theirs`
+pick, preserving the individual commits. After a clean rebase, analyze each
+rebased commit against the upstream commits that entered the base since the PR
+forked and report concrete per-commit adjustments — even where git produced no
+textual conflict. History is force-pushed only with `--push`.
+
+```bash
+planwerk-review rebase owner/repo#123
+planwerk-review rebase --onto develop owner/repo#123
+planwerk-review rebase --dry-run owner/repo#123
+planwerk-review rebase --local --push
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--onto` | Base branch to rebase onto | `main` |
+| `--push` | Force-push the rebased branch with `--force-with-lease` (never done implicitly) | `false` |
+| `--apply-adjustments` | Apply the post-rebase analysis as fixup commits instead of only reporting | `false` |
+| `--max-iterations` | Maximum number of conflict-resolution iterations before aborting | `10` |
+| `--no-analysis` | Skip the post-rebase commit analysis | `false` |
+| `--no-analysis-comment` | Do not post the post-rebase analysis as a comment on the pull request | `false` |
+| `--dry-run` | Show the rebase plan and conflicting commit without resolving, committing, or pushing | `false` |
+| `--print-prompt` | Render the post-rebase analysis prompt to stdout and exit; do not rebase or invoke Claude | `false` |
+| `--print-bare-prompt` | Render a self-contained rebase prompt (rebase + conflict resolution + analysis) to stdout and exit | `false` |
+| `--patterns` | Additional pattern source: local directory, `github:owner/repo[/sub][@ref]`, or `git+https://…[#ref[:sub]]` | - |
+| `--no-repo-patterns` | Ignore repo-specific patterns under `.planwerk/review_patterns/` in the target repo | `false` |
+| `--no-local-patterns` | Ignore local patterns from the tool | `false` |
+| `--max-patterns` | Max review patterns injected into the prompt (`<=0` disables truncation; env: `PLANWERK_MAX_PATTERNS`) | `0` (unlimited) |
+| `--local` | Operate on the current working directory instead of cloning into a temp dir | `false` |
+| `--force` | With `--local`, skip the confirmation prompt when the working tree is dirty | `false` |
+
+`--dry-run`, `--print-prompt`, and `--print-bare-prompt` are mutually exclusive.
+The conflict resolution and the apply step run in Claude Code's auto mode.
+
 ## `implement`
 
 Take an elaborated GitHub issue, run a read-only Claude Code planning session,
@@ -334,6 +371,7 @@ check-jsonschema --schemafile proposal.schema.json proposals.json
 | `review` | Schema for `review --format json` output (`report-result.schema.json`) |
 | `audit` | Schema for `audit --format json` output — identical to `review`, because audit reuses the review result shape |
 | `propose` | Schema for `propose --format json` output (`proposal.schema.json`, the proposal-result envelope) |
+| `rebase` | Schema for the `rebase` post-rebase analysis output (`rebase-analysis.schema.json`) |
 
 ## Built-in commands
 
