@@ -330,12 +330,12 @@ func formatAnalysisCommits(commits []github.Commit) string {
 // apply session works through.
 func formatApplyAdjustments(a report.RebaseAnalysis) string {
 	var sb strings.Builder
-	any := false
+	wrote := false
 	for _, c := range a.Commits {
 		if len(c.Adjustments) == 0 {
 			continue
 		}
-		any = true
+		wrote = true
 		fmt.Fprintf(&sb, "### %s %s\n\n", shortCommit(c.SHA), c.Subject)
 		for _, adj := range c.Adjustments {
 			fmt.Fprintf(&sb, "- **%s** in `%s` — %s\n  - Action: %s\n", adj.Kind, adj.File, adj.Detail, adj.Action)
@@ -345,7 +345,7 @@ func formatApplyAdjustments(a report.RebaseAnalysis) string {
 		}
 		sb.WriteString("\n")
 	}
-	if !any {
+	if !wrote {
 		return "(The analysis reported no adjustments.)\n"
 	}
 	return sb.String()
