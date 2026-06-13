@@ -13,7 +13,7 @@ omitted. Shell completions and man pages are produced by the built-in
 
 These persistent flags apply to every command (`review`, `propose`, `audit`,
 `gap-analysis`, `review-prepared`, `elaborate`, `prompt`, `fix`, `implement`,
-`cache`).
+`cache`, `schema`).
 
 | Flag | Description | Default |
 |------|-------------|---------|
@@ -311,6 +311,29 @@ planwerk-review cache inspect <key>
 |------------|-----------|-------------|
 | `cache stats` | none | Show cache size, age distribution, and per-command breakdown |
 | `cache inspect` | `<key>` | Print metadata and the pretty-printed payload for a single cache key (keys come from `cache stats`) |
+
+## `schema`
+
+Print the JSON Schema (draft 2020-12) that describes a command's `--format json`
+output to stdout. Downstream tooling can validate piped JSON against the same
+contract the renderers follow. See [Output format](/reference/output-format#json-schema)
+for the field-level contract.
+
+```bash
+# Print the schema for review/audit JSON output
+planwerk-review schema review
+
+# Validate piped JSON against the schema (example with check-jsonschema)
+planwerk-review propose --format json owner/repo > proposals.json
+planwerk-review schema propose > proposal.schema.json
+check-jsonschema --schemafile proposal.schema.json proposals.json
+```
+
+| Argument | Description |
+|----------|-------------|
+| `review` | Schema for `review --format json` output (`report-result.schema.json`) |
+| `audit` | Schema for `audit --format json` output — identical to `review`, because audit reuses the review result shape |
+| `propose` | Schema for `propose --format json` output (`proposal.schema.json`, the proposal-result envelope) |
 
 ## Built-in commands
 

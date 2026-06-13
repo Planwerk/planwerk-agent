@@ -110,6 +110,33 @@ Verdict values: `HOLD` (blockers/criticals present), `REVIEW` (warnings only),
 Recommendations use GitHub Alert syntax (`[!CAUTION]`, `[!WARNING]`, `[!TIP]`,
 `[!IMPORTANT]`) for native rendering.
 
+## JSON Schema
+
+The `--format json` output of every command is described by a JSON Schema
+(draft 2020-12) checked into the repository under `internal/report/schema/`:
+
+| Schema file | Describes | Commands |
+|-------------|-----------|----------|
+| `report-result.schema.json` | `ReviewResult` (findings, summary, recommendation) | `review`, `audit` |
+| `proposal.schema.json` | `ProposalResult` envelope (repository overview + proposals) | `propose` |
+
+`review` and `audit` share `report-result.schema.json` because the audit path
+reuses the review result shape. The schemas pin the severity, confidence,
+actionability, fix-class, priority, category, and scope enums, and allow `null`
+for the slice fields the renderer leaves empty (`findings`, `proposals`,
+`affected_areas`, `acceptance_criteria`).
+
+The schemas are the source of truth: contract tests validate the renderers'
+output against them, so a struct change that is not reflected in the schema
+fails CI. The [`schema` subcommand](/reference/cli#schema) prints the same files
+to stdout so consumers can validate piped JSON:
+
+```bash
+planwerk-review review --format json owner/repo#123 > review.json
+planwerk-review schema review > report-result.schema.json
+check-jsonschema --schemafile report-result.schema.json review.json
+```
+
 ## Inline Review Mode (`--inline`)
 
 With `--inline`, findings are posted as inline comments on the PR using the
