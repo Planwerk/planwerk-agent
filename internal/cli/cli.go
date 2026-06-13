@@ -172,6 +172,7 @@ type FixConfig struct {
 	DryRun          bool
 	PrintPrompt     bool
 	PrintBarePrompt bool
+	NoFixComment    bool
 
 	PatternDirs     []string
 	NoRepoPatterns  bool
@@ -189,6 +190,7 @@ func (c FixConfig) ToFixOptions(version string) fix.Options {
 		Interactive:     c.Interactive,
 		DryRun:          c.DryRun,
 		PrintPrompt:     c.PrintPrompt,
+		NoFixComment:    c.NoFixComment,
 		Version:         version,
 		PatternDirs:     c.PatternDirs,
 		NoRepoPatterns:  c.NoRepoPatterns,

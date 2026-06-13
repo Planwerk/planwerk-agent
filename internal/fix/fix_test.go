@@ -36,6 +36,10 @@ type fakeGitHub struct {
 	cloneCalls   atomic.Int32
 	localCalls   atomic.Int32
 	pullCalls    atomic.Int32
+
+	commentErr    error // when set, AddPRComment fails
+	commentCalls  atomic.Int32
+	commentBodies []string // every body passed to AddPRComment, in order
 }
 
 func (f *fakeGitHub) FetchAndCheckout(ref string) (*github.PR, error) {
@@ -95,6 +99,17 @@ func (f *fakeGitHub) HeadSHA(_, _, _ string) (string, error) {
 		i = len(f.headSequence) - 1
 	}
 	return f.headSequence[i], nil
+}
+
+// AddPRComment records each posted fix-report body and returns a canned URL,
+// unless commentErr is set to simulate a GitHub failure.
+func (f *fakeGitHub) AddPRComment(owner, name string, number int, body string) (string, error) {
+	f.commentCalls.Add(1)
+	if f.commentErr != nil {
+		return "", f.commentErr
+	}
+	f.commentBodies = append(f.commentBodies, body)
+	return fmt.Sprintf("https://github.com/%s/%s/pull/%d#issuecomment-1", owner, name, number), nil
 }
 
 type fakeClaude struct {
@@ -199,6 +214,169 @@ func TestRun_FixesFailureInOneIteration(t *testing.T) {
 	}
 	if !strings.Contains(out, "All 2 checks passed") {
 		t.Errorf("missing final success banner: %s", out)
+	}
+}
+
+// fixReport is a realistic orchestrator-driven report, carrying the mandated
+// "## Fix Report (iteration N)" heading the PR comment must strip.
+const fixReport = `## Fix Report (iteration 1)
+
+### Per check
+- test
+  - Category: test
+  - Root cause: off-by-one in the loop bound
+  - Fix: foo.go — corrected the slice bound
+### Status
+STATUS: DONE`
+
+func TestRun_PostsFixComment(t *testing.T) {
+	gh := &fakeGitHub{
+		prTitle:   "demo",
+		prBranch:  "feat/x",
+		prHeadSHA: "old",
+		checkResponses: [][]github.CheckRun{
+			{failing(1, "test")},
+			{passing("test")},
+		},
+		headSequence: []string{"new"},
+		logs:         "FAIL: TestX\n",
+	}
+	cl := &fakeClaude{report: fixReport}
+	r := newRunner(gh, cl, &fakePrompter{})
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{PRRef: "o/r#7"}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if gh.commentCalls.Load() != 1 {
+		t.Fatalf("AddPRComment called %d times, want 1", gh.commentCalls.Load())
+	}
+	body := gh.commentBodies[0]
+	if strings.Contains(body, fixReportHeading) {
+		t.Errorf("posted comment must not carry the %q heading:\n%s", fixReportHeading, body)
+	}
+	if !strings.Contains(body, "corrected the slice bound") || !strings.Contains(body, "### Per check") {
+		t.Errorf("posted comment dropped the fix details:\n%s", body)
+	}
+	if !strings.Contains(body, fixCommentFooter) {
+		t.Errorf("posted comment is missing the attribution footer:\n%s", body)
+	}
+	if !strings.Contains(buf.String(), "Posted the fix report as a comment on PR #7") {
+		t.Errorf("missing fix-comment confirmation in output:\n%s", buf.String())
+	}
+}
+
+func TestRun_NoFixCommentSkipsComment(t *testing.T) {
+	gh := &fakeGitHub{
+		prTitle:   "demo",
+		prBranch:  "feat/x",
+		prHeadSHA: "old",
+		checkResponses: [][]github.CheckRun{
+			{failing(1, "test")},
+			{passing("test")},
+		},
+		headSequence: []string{"new"},
+		logs:         "FAIL: TestX\n",
+	}
+	cl := &fakeClaude{report: fixReport}
+	r := newRunner(gh, cl, &fakePrompter{})
+
+	if err := r.Run(io.Discard, Options{PRRef: "o/r#7", NoFixComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if gh.commentCalls.Load() != 0 {
+		t.Errorf("AddPRComment called %d times, want 0 with --no-fix-comment", gh.commentCalls.Load())
+	}
+}
+
+func TestRun_FixCommentFailureIsNonFatal(t *testing.T) {
+	gh := &fakeGitHub{
+		prTitle:   "demo",
+		prBranch:  "feat/x",
+		prHeadSHA: "old",
+		checkResponses: [][]github.CheckRun{
+			{failing(1, "test")},
+			{passing("test")},
+		},
+		headSequence: []string{"new"},
+		logs:         "FAIL: TestX\n",
+		commentErr:   errors.New("github down"),
+	}
+	cl := &fakeClaude{report: fixReport}
+	r := newRunner(gh, cl, &fakePrompter{})
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{PRRef: "o/r#7"}); err != nil {
+		t.Fatalf("Run returned %v, want nil despite the comment-post failure", err)
+	}
+	if !strings.Contains(buf.String(), "Could not post the fix report") {
+		t.Errorf("expected a non-fatal warning about the failed comment post, got:\n%s", buf.String())
+	}
+	if !strings.Contains(buf.String(), "All 1 checks passed") {
+		t.Errorf("loop must still complete after a non-fatal comment failure:\n%s", buf.String())
+	}
+}
+
+func TestRun_PostsEscalatedFixComment(t *testing.T) {
+	const blocked = "## Fix Report (iteration 1)\n\n### Status\nSTATUS: BLOCKED"
+	gh := &fakeGitHub{
+		prTitle:        "demo",
+		prBranch:       "feat/x",
+		prHeadSHA:      "old",
+		checkResponses: [][]github.CheckRun{{failing(1, "test")}},
+		headSequence:   []string{"new"},
+		logs:           "FAIL: TestX\n",
+	}
+	cl := &fakeClaude{report: blocked}
+	r := newRunner(gh, cl, &fakePrompter{})
+
+	err := r.Run(io.Discard, Options{PRRef: "o/r#7"})
+	if err == nil || !strings.Contains(err.Error(), "escalated") {
+		t.Fatalf("Run err = %v, want an escalation error", err)
+	}
+	// An escalated report must still reach the PR so the human who has to
+	// intervene sees why the loop stopped.
+	if gh.commentCalls.Load() != 1 {
+		t.Errorf("AddPRComment called %d times, want 1 — an escalated report must still be posted", gh.commentCalls.Load())
+	}
+}
+
+func TestStripFixReportHeading(t *testing.T) {
+	const body = "### Per check\n- test\n### Status\nSTATUS: DONE"
+
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "iteration heading is dropped",
+			input: "## Fix Report (iteration 1)\n\n" + body,
+			want:  body,
+		},
+		{
+			name:  "bare heading is dropped",
+			input: "## Fix Report\n\n" + body,
+			want:  body,
+		},
+		{
+			name:  "no heading is returned trimmed but intact",
+			input: "\n  " + body + "  \n",
+			want:  body,
+		},
+		{
+			name:  "preamble before the heading is dropped too",
+			input: "Pushed the fix.\n\n## Fix Report (iteration 2)\n\n" + body,
+			want:  body,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := stripFixReportHeading(tt.input); got != tt.want {
+				t.Errorf("stripFixReportHeading() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 

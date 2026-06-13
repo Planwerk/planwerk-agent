@@ -57,6 +57,28 @@ func PostPRComment(owner, repo string, number int, body string) (string, error) 
 	return strings.TrimSpace(string(out)), nil
 }
 
+// AddPRComment posts a NEW comment on a pull request via the gh CLI, passing
+// the body on stdin so it is not subject to argv length limits or shell
+// quoting. Unlike PostPRComment it carries no planwerk-review signature and
+// never replaces a prior comment: each call appends a fresh comment. The fix
+// loop uses it to record one comment per pushed fix iteration, so the history
+// of what each follow-up commit changed survives on the PR. (`gh issue
+// comment` rejects PR numbers, so the fix path cannot reuse AddIssueComment.)
+func AddPRComment(owner, repo string, number int, body string) (string, error) {
+	fullName := fmt.Sprintf("%s/%s", owner, repo)
+	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "gh", "pr", "comment", strconv.Itoa(number),
+		"--repo", fullName,
+		"--body-file", "-")
+	cmd.Stdin = strings.NewReader(body)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("gh pr comment: %s: %w", strings.TrimSpace(string(out)), err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 // truncateComment ensures body does not exceed GitHub's comment size limit.
 // It avoids splitting multi-byte UTF-8 characters at the cut point.
 func truncateComment(body string) string {

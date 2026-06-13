@@ -30,6 +30,10 @@ check is green or --max-iterations is hit.
 Status checks are queried directly via the GitHub API (gh CLI) — Claude is
 only invoked when an actual fix is needed.
 
+After each iteration the report of what was fixed is also posted back onto the
+pull request as a comment (use --no-fix-comment to skip that), so the record of
+what each follow-up commit changed lives on the PR itself.
+
 PR reference can be a URL (https://github.com/owner/repo/pull/123)
 or short form (owner/repo#123).`,
 		Args: cobra.RangeArgs(0, 1),
@@ -78,6 +82,7 @@ or short form (owner/repo#123).`,
 	fixFlags.BoolVar(&fixCfg.DryRun, "dry-run", false, "Report failing checks but do not invoke Claude or commit")
 	fixFlags.BoolVar(&fixCfg.PrintPrompt, "print-prompt", false, "Render the fix prompt for the current failing checks to stdout and exit; do not invoke Claude or commit")
 	fixFlags.BoolVar(&fixCfg.PrintBarePrompt, "print-bare-prompt", false, "Render a self-contained fix prompt (no check analysis) to stdout and exit; meant to be pasted into a manual Claude session already running inside a checkout of the PR")
+	fixFlags.BoolVar(&fixCfg.NoFixComment, "no-fix-comment", false, "Do not post each iteration's fix report as a comment on the pull request")
 	fixFlags.StringSliceVar(&fixCfg.PatternDirs, "patterns", nil, "Additional pattern sources: local dirs, github:owner/repo[/sub][@ref], or git+https://...[#ref[:sub]]")
 	fixFlags.BoolVar(&fixCfg.NoRepoPatterns, "no-repo-patterns", false, "Ignore repo-specific patterns under .planwerk/review_patterns/ in the target repo")
 	fixFlags.BoolVar(&fixCfg.NoLocalPatterns, "no-local-patterns", false, "Ignore local patterns from the tool")

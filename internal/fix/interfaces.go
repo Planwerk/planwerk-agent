@@ -114,6 +114,9 @@ type GitHubClient interface {
 	// commits on branch. Used in --local mode to pick up the previous
 	// iteration's follow-up commit without re-cloning.
 	PullOnBranch(dir, branch string) error
+	// AddPRComment posts a fresh comment on the PR — one per fix iteration —
+	// recording what the pushed follow-up commit changed.
+	AddPRComment(owner, name string, number int, body string) (string, error)
 }
 
 // defaultGitHubClient is the production GitHubClient backed by the github
@@ -142,6 +145,10 @@ func (defaultGitHubClient) FailedRunLogs(owner, name string, runID int64) (strin
 
 func (defaultGitHubClient) HeadSHA(owner, name string, branch string) (string, error) {
 	return github.BranchHeadSHA(owner, name, branch)
+}
+
+func (defaultGitHubClient) AddPRComment(owner, name string, number int, body string) (string, error) {
+	return github.AddPRComment(owner, name, number, body)
 }
 
 // Prompter abstracts the "should we continue?" question asked between
