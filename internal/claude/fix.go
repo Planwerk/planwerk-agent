@@ -17,10 +17,14 @@ import (
 // (git commit --fixup + git rebase --autosquash) and force-pushes with
 // --force-with-lease.
 //
-// runClaude already creates a fresh `claude -p` invocation per call, so each
+// runClaudeAuto already creates a fresh `claude -p` invocation per call, so each
 // iteration of the fix loop runs in a brand-new Claude session by construction.
+// It runs in auto mode (--permission-mode auto) so the session can edit files,
+// run tests, commit, and push the repaired branch without an interactive
+// confirmation — the same requirement the implement command has — while the
+// auto-mode classifier still vets each action.
 func Fix(dir string, ctx fix.Context) (string, error) {
-	out, err := runClaude(dir, BuildFixPrompt(ctx), "fix")
+	out, err := runClaudeAuto(dir, BuildFixPrompt(ctx), "fix")
 	if err != nil {
 		return "", fmt.Errorf("running fix: %w", err)
 	}
