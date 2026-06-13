@@ -21,6 +21,7 @@ import (
 func newImplementCmd(deps *runtimeDeps) *cobra.Command {
 	var implementCfg cli.ImplementConfig
 	var planModel string
+	var planEffort string
 
 	implementCmd := &cobra.Command{
 		Use:   "implement <issue-ref>",
@@ -33,12 +34,13 @@ executes the plan end-to-end: code, tests, documentation, fresh feature
 branch, draft pull request linked to the issue.
 
 The planning session runs on the dedicated planning model (--plan-model,
-default "` + claude.DefaultPlanModel + `") on the default read-only permission mode; its only
-artifact is the plan, which is embedded into the implement prompt. The
-finished plan is also posted back onto the source issue as a comment (use
---no-plan-comment to skip that). A plan that reports STATUS: BLOCKED or
-NEEDS_CONTEXT aborts before any code is written. Use --no-plan to skip the
-planning session and implement directly in a single session.
+default "` + claude.DefaultPlanModel + `") at the dedicated planning effort (--plan-effort, default
+"` + claude.DefaultPlanEffort + `") on the default read-only permission mode; its only artifact is the
+plan, which is embedded into the implement prompt. The finished plan is also
+posted back onto the source issue as a comment (use --no-plan-comment to skip
+that). A plan that reports STATUS: BLOCKED or NEEDS_CONTEXT aborts before any
+code is written. Use --no-plan to skip the planning session and implement
+directly in a single session.
 
 The implement session runs in Claude Code's auto mode (--permission-mode
 auto) so it can edit files, run the test suite, commit, push the branch, and
@@ -81,6 +83,7 @@ or short form (owner/repo#123).`,
 				return fmt.Errorf("--dry-run, --print-prompt, --print-bare-prompt, and --print-plan-prompt are mutually exclusive")
 			}
 			claude.SetPlanModel(resolvePlanModel(planModel, cmd.Flags().Changed("plan-model")))
+			claude.SetPlanEffort(resolvePlanEffort(planEffort, cmd.Flags().Changed("plan-effort")))
 			opts := implementCfg.ToImplementOptions(deps.version)
 			if implementCfg.PrintBarePrompt {
 				return implement.PrintBarePrompt(cmd.OutOrStdout(), opts, claude.BuildBareImplementPrompt)
@@ -97,6 +100,7 @@ or short form (owner/repo#123).`,
 	implementFlags.BoolVar(&implementCfg.NoPlan, "no-plan", false, "Skip the planning session and implement directly in a single session")
 	implementFlags.BoolVar(&implementCfg.NoPlanComment, "no-plan-comment", false, "Do not post the generated implementation plan as a comment on the source issue")
 	implementFlags.StringVar(&planModel, "plan-model", claude.DefaultPlanModel, "Model for the planning session passed to Claude Code via --model (e.g. fable, opus; env: "+envPlanModel+")")
+	implementFlags.StringVar(&planEffort, "plan-effort", claude.DefaultPlanEffort, "Reasoning effort for the planning session passed to Claude Code via --effort (low, medium, high, xhigh, max; env: "+envPlanEffort+")")
 	implementFlags.BoolVar(&implementCfg.Verify, "verify", false, "After implementing, run an independent pass that checks the actual diff against the issue's Acceptance Criteria without trusting the implementer's report")
 	implementFlags.StringSliceVar(&implementCfg.PatternDirs, "patterns", nil, "Additional pattern sources: local dirs, github:owner/repo[/sub][@ref], or git+https://...[#ref[:sub]]")
 	implementFlags.BoolVar(&implementCfg.NoRepoPatterns, "no-repo-patterns", false, "Ignore repo-specific patterns under .planwerk/review_patterns/ in the target repo")

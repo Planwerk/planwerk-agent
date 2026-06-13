@@ -45,6 +45,11 @@ const envClaudeEffort = "PLANWERK_CLAUDE_EFFORT"
 // precedence when explicitly set.
 const envPlanModel = "PLANWERK_PLAN_MODEL"
 
+// envPlanEffort overrides the reasoning effort used by the implement
+// command's planning session (low, medium, high, xhigh, max). The
+// --plan-effort CLI flag takes precedence when explicitly set.
+const envPlanEffort = "PLANWERK_PLAN_EFFORT"
+
 // Output format identifiers accepted by the --format flag.
 const (
 	formatMarkdown = "markdown"
@@ -143,6 +148,24 @@ func resolvePlanModel(flagValue string, flagSet bool) string {
 		}
 	}
 	return claude.DefaultPlanModel
+}
+
+// resolvePlanEffort returns the effective reasoning effort for the implement
+// command's planning session. Precedence: explicit CLI flag, then
+// PLANWERK_PLAN_EFFORT, then the compiled-in default. The value is passed
+// through verbatim — the accepted effort levels are validated by Claude Code
+// itself, so an unknown level surfaces as a claude error rather than being
+// rejected here.
+func resolvePlanEffort(flagValue string, flagSet bool) string {
+	if flagSet && flagValue != "" {
+		return flagValue
+	}
+	if raw, ok := os.LookupEnv(envPlanEffort); ok {
+		if v := strings.TrimSpace(raw); v != "" {
+			return v
+		}
+	}
+	return claude.DefaultPlanEffort
 }
 
 // resolveRemotePatternsTTL returns the effective remote-patterns TTL.

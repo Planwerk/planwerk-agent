@@ -452,6 +452,31 @@ func TestSetPlanModel_IgnoresEmpty(t *testing.T) {
 	}
 }
 
+func TestSetPlanEffort_TogglesAndRestores(t *testing.T) {
+	if PlanEffort() != DefaultPlanEffort {
+		t.Fatalf("precondition: PlanEffort() = %q, want default %q", PlanEffort(), DefaultPlanEffort)
+	}
+
+	restore := SetPlanEffort("high")
+	if PlanEffort() != "high" {
+		t.Errorf("PlanEffort() = %q after SetPlanEffort(\"high\"), want \"high\"", PlanEffort())
+	}
+	restore()
+	if PlanEffort() != DefaultPlanEffort {
+		t.Errorf("PlanEffort() = %q after restore, want default %q", PlanEffort(), DefaultPlanEffort)
+	}
+}
+
+func TestSetPlanEffort_IgnoresEmpty(t *testing.T) {
+	prev := PlanEffort()
+	t.Cleanup(SetPlanEffort(prev))
+
+	SetPlanEffort("")
+	if PlanEffort() != prev {
+		t.Errorf("SetPlanEffort(\"\") must be ignored; PlanEffort() = %q, want %q", PlanEffort(), prev)
+	}
+}
+
 func TestSetEffort_TogglesAndRestores(t *testing.T) {
 	if Effort() != DefaultClaudeEffort {
 		t.Fatalf("precondition: Effort() = %q, want default %q", Effort(), DefaultClaudeEffort)
