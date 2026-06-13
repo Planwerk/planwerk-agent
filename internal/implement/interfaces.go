@@ -128,13 +128,15 @@ func (a verifyFnAdapter) VerifyImplementation(dir, issueTitle, issueBody string)
 }
 
 // GitHubClient is the subset of github operations the implement command
-// needs: fetching the source issue and cloning the repository so Claude has
-// a working tree to operate on. Each method maps to a single gh CLI
-// invocation under the hood.
+// needs: fetching the source issue, cloning the repository so Claude has a
+// working tree to operate on, and posting the finished plan back onto the
+// issue as a comment. Each method maps to a single gh CLI invocation under
+// the hood.
 type GitHubClient interface {
 	GetIssue(owner, name string, number int) (*github.Issue, error)
 	CloneRepo(ref string) (*github.Repo, error)
 	CloneRepoLocal(ref string, opts github.LocalOptions) (*github.Repo, error)
+	AddIssueComment(owner, name string, number int, body string) (string, error)
 }
 
 // defaultGitHubClient is the production GitHubClient backed by the github
@@ -151,4 +153,8 @@ func (defaultGitHubClient) CloneRepo(ref string) (*github.Repo, error) {
 
 func (defaultGitHubClient) CloneRepoLocal(ref string, opts github.LocalOptions) (*github.Repo, error) {
 	return github.UseLocalRepo(ref, opts)
+}
+
+func (defaultGitHubClient) AddIssueComment(owner, name string, number int, body string) (string, error) {
+	return github.AddIssueComment(owner, name, number, body)
 }

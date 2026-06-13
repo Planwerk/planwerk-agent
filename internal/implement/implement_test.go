@@ -61,6 +61,55 @@ func TestRun_PlanFeedsImplement(t *testing.T) {
 	if !strings.Contains(buf.String(), "Implementation plan:") || !strings.Contains(buf.String(), "PLAN_READY") {
 		t.Errorf("plan not printed to output:\n%s", buf.String())
 	}
+	if gh.commentCalls.Load() != 1 {
+		t.Fatalf("AddIssueComment called %d times, want 1", gh.commentCalls.Load())
+	}
+	if !strings.Contains(gh.commentBody, fp.plan) {
+		t.Errorf("posted comment %q does not contain the plan %q", gh.commentBody, fp.plan)
+	}
+	if !strings.Contains(gh.commentBody, planCommentFooter) {
+		t.Errorf("posted comment is missing the attribution footer:\n%s", gh.commentBody)
+	}
+	if !strings.Contains(buf.String(), "Posted the implementation plan as a comment on issue #42") {
+		t.Errorf("missing plan-comment confirmation in output:\n%s", buf.String())
+	}
+}
+
+func TestRun_NoPlanCommentSkipsComment(t *testing.T) {
+	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+	cl := &fakeClaude{report: "PR opened"}
+	fp := &fakePlanner{plan: "## Implementation Plan (issue #42)\n\nSTATUS: PLAN_READY"}
+	r := newRunner(gh, cl)
+	r.Planner = fp
+
+	if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42", NoPlanComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if gh.commentCalls.Load() != 0 {
+		t.Errorf("AddIssueComment called %d times, want 0 with --no-plan-comment", gh.commentCalls.Load())
+	}
+	if cl.ctx.Plan != fp.plan {
+		t.Errorf("implement received Plan %q, want the planner's plan even when the comment is skipped", cl.ctx.Plan)
+	}
+}
+
+func TestRun_PlanCommentFailureIsNonFatal(t *testing.T) {
+	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir(), commentErr: errors.New("github down")}
+	cl := &fakeClaude{report: "PR opened"}
+	fp := &fakePlanner{plan: "## Implementation Plan (issue #42)\n\nSTATUS: PLAN_READY"}
+	r := newRunner(gh, cl)
+	r.Planner = fp
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
+		t.Fatalf("Run returned %v, want nil despite the comment-post failure", err)
+	}
+	if cl.called.Load() != 1 {
+		t.Errorf("implement called %d times, want 1 — a failed plan comment must not abort the run", cl.called.Load())
+	}
+	if !strings.Contains(buf.String(), "Could not post the implementation plan") {
+		t.Errorf("expected a non-fatal warning about the failed comment post, got:\n%s", buf.String())
+	}
 }
 
 func TestRun_NoPlanSkipsPlanner(t *testing.T) {
@@ -132,6 +181,9 @@ func TestRun_PlanEscalationAbortsBeforeImplement(t *testing.T) {
 			}
 			if !strings.Contains(buf.String(), "STATUS: "+status) {
 				t.Errorf("escalating plan not printed for review:\n%s", buf.String())
+			}
+			if gh.commentCalls.Load() != 1 {
+				t.Errorf("AddIssueComment called %d times, want 1 — an escalated plan must still land on the issue", gh.commentCalls.Load())
 			}
 		})
 	}
@@ -239,6 +291,10 @@ type fakeGitHub struct {
 	getCalls        atomic.Int32
 	cloneCalls      atomic.Int32
 	cloneLocalCalls atomic.Int32
+
+	commentErr   error
+	commentCalls atomic.Int32
+	commentBody  string
 }
 
 func (f *fakeGitHub) GetIssue(owner, name string, number int) (*github.Issue, error) {
@@ -263,6 +319,17 @@ func (f *fakeGitHub) CloneRepo(ref string) (*github.Repo, error) {
 		return nil, err
 	}
 	return &github.Repo{Owner: owner, Name: name, Dir: f.cloneDir}, nil
+}
+
+// AddIssueComment records the posted plan comment and returns a canned URL,
+// unless commentErr is set to simulate a GitHub failure.
+func (f *fakeGitHub) AddIssueComment(owner, name string, number int, body string) (string, error) {
+	f.commentCalls.Add(1)
+	if f.commentErr != nil {
+		return "", f.commentErr
+	}
+	f.commentBody = body
+	return fmt.Sprintf("https://github.com/%s/%s/issues/%d#issuecomment-1", owner, name, number), nil
 }
 
 // CloneRepoLocal mirrors github.UseLocalRepo: it returns a Local repo so
