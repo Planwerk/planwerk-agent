@@ -21,3 +21,11 @@ var ReportResult []byte
 //
 //go:embed proposal.schema.json
 var Proposal []byte
+
+// RebaseAnalysis is the JSON Schema (draft 2020-12) for the `rebase`
+// post-rebase analysis --format json output, i.e. report.RebaseAnalysis. A
+// single commit analysis is defined under $defs/commitAnalysis and a single
+// adjustment under $defs/adjustment.
+//
+//go:embed rebase-analysis.schema.json
+var RebaseAnalysis []byte

@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RebaseAnalysis",
+  "description": "Contract for the `rebase` post-rebase analysis --format json output (report.RebaseAnalysis): per rebased commit, the adjustments the upstream range implies.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["commits", "summary", "recommendation"],
+  "properties": {
+    "commits": {
+      "description": "Per-commit analysis, in rebase order. Encoded as null (not []) when there are none.",
+      "type": ["array", "null"],
+      "items": { "$ref": "#/$defs/commitAnalysis" }
+    },
+    "summary": { "type": "string" },
+    "recommendation": { "type": "string" }
+  },
+  "$defs": {
+    "commitAnalysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha", "subject", "adjustments"],
+      "properties": {
+        "sha": { "type": "string" },
+        "subject": { "type": "string" },
+        "adjustments": {
+          "description": "Adjustments the upstream range implies for this commit. Encoded as null (not []) when there are none.",
+          "type": ["array", "null"],
+          "items": { "$ref": "#/$defs/adjustment" }
+        }
+      }
+    },
+    "adjustment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "file", "detail", "action"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "renamed-symbol",
+            "changed-signature",
+            "removed-helper",
+            "lint-rule",
+            "semantic-change"
+          ]
+        },
+        "file": { "type": "string" },
+        "detail": { "type": "string" },
+        "action": { "type": "string" },
+        "upstream_ref": { "type": "string" },
+        "confidence": { "type": "string" }
+      }
+    }
+  }
+}

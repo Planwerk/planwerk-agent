@@ -48,6 +48,7 @@ func validate(t *testing.T, sch *jsonschema.Schema, doc []byte) error {
 func TestSchemasCompile(t *testing.T) {
 	compileSchema(t, "report-result.schema.json", schema.ReportResult)
 	compileSchema(t, "proposal.schema.json", schema.Proposal)
+	compileSchema(t, "rebase-analysis.schema.json", schema.RebaseAnalysis)
 }
 
 // TestFixturesValidateAgainstSchema validates every JSON fixture under
@@ -61,6 +62,7 @@ func TestFixturesValidateAgainstSchema(t *testing.T) {
 	}{
 		{dir: "report-result", doc: schema.ReportResult},
 		{dir: "proposal", doc: schema.Proposal},
+		{dir: "rebase-analysis", doc: schema.RebaseAnalysis},
 	} {
 		t.Run(tc.dir, func(t *testing.T) {
 			sch := compileSchema(t, tc.dir, tc.doc)
@@ -122,6 +124,34 @@ func TestRendererOutputMatchesSchema(t *testing.T) {
 			t.Fatalf("rendered propose output does not match schema: %v\n%s", err, buf.String())
 		}
 	})
+
+	t.Run("rebase", func(t *testing.T) {
+		sch := compileSchema(t, "rebase-analysis.schema.json", schema.RebaseAnalysis)
+		var buf bytes.Buffer
+		if err := report.NewRenderer(&buf).RenderRebaseAnalysisJSON(populatedRebaseAnalysis()); err != nil {
+			t.Fatalf("RenderRebaseAnalysisJSON: %v", err)
+		}
+		if err := validate(t, sch, buf.Bytes()); err != nil {
+			t.Fatalf("rendered rebase output does not match schema: %v\n%s", err, buf.String())
+		}
+	})
+}
+
+// TestInvalidRebaseAnalysisRejected feeds inline documents that violate the
+// rebase-analysis contract and asserts the validator rejects each.
+func TestInvalidRebaseAnalysisRejected(t *testing.T) {
+	sch := compileSchema(t, "rebase-analysis.schema.json", schema.RebaseAnalysis)
+	for name, doc := range map[string]string{
+		"bad kind enum":           `{"commits":[{"sha":"a","subject":"s","adjustments":[{"kind":"reworded","file":"f","detail":"d","action":"a"}]}],"summary":"","recommendation":""}`,
+		"missing required action": `{"commits":[{"sha":"a","subject":"s","adjustments":[{"kind":"lint-rule","file":"f","detail":"d"}]}],"summary":"","recommendation":""}`,
+		"unknown property":        `{"commits":null,"summary":"","recommendation":"","extra":true}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := validate(t, sch, []byte(doc)); err == nil {
+				t.Fatalf("expected a validation error for %q, got nil", name)
+			}
+		})
+	}
 }
 
 // TestInvalidDocumentRejected feeds inline (not testdata) documents that
@@ -175,6 +205,37 @@ func populatedFinding() report.Finding {
 		RecommendationReasoning: "Prepared statements are the standard fix.",
 		RelatedTo:               []string{"B-001"},
 		ConfirmedBy:             []string{"review", "adversarial"},
+	}
+}
+
+// populatedRebaseAnalysis returns a RebaseAnalysis with every field set so the
+// drift guard exercises the full rebase-analysis schema surface: a commit with
+// a fully-populated adjustment and a commit with none.
+func populatedRebaseAnalysis() report.RebaseAnalysis {
+	return report.RebaseAnalysis{
+		Commits: []report.CommitAnalysis{
+			{
+				SHA:     "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+				Subject: "Add the parser entry point",
+				Adjustments: []report.Adjustment{
+					{
+						Kind:        "changed-signature",
+						File:        "internal/parse/parser.go",
+						Detail:      "Upstream changed the Parse signature; this commit calls the old one.",
+						Action:      "Thread ctx through and pass it to Parse.",
+						UpstreamRef: "9f8e7d6 Thread context through the parser",
+						Confidence:  "verified",
+					},
+				},
+			},
+			{
+				SHA:         "b2c3d4e5f60718293a4b5c6d7e8f901234567890",
+				Subject:     "Wire the parser into the CLI",
+				Adjustments: nil,
+			},
+		},
+		Summary:        "Two commits replayed cleanly; the first needs a signature adjustment.",
+		Recommendation: "Apply the adjustment before pushing.",
 	}
 }
 
