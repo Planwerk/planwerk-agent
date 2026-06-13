@@ -1,0 +1,195 @@
+package report_test
+
+import (
+	"bytes"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/santhosh-tekuri/jsonschema/v6"
+
+	"github.com/planwerk/planwerk-review/internal/propose"
+	"github.com/planwerk/planwerk-review/internal/report"
+	"github.com/planwerk/planwerk-review/internal/report/schema"
+)
+
+// compileSchema compiles a draft 2020-12 schema document from raw bytes.
+func compileSchema(t *testing.T, name string, doc []byte) *jsonschema.Schema {
+	t.Helper()
+	parsed, err := jsonschema.UnmarshalJSON(bytes.NewReader(doc))
+	if err != nil {
+		t.Fatalf("unmarshal schema %s: %v", name, err)
+	}
+	c := jsonschema.NewCompiler()
+	if err := c.AddResource(name, parsed); err != nil {
+		t.Fatalf("add schema %s: %v", name, err)
+	}
+	sch, err := c.Compile(name)
+	if err != nil {
+		t.Fatalf("compile schema %s: %v", name, err)
+	}
+	return sch
+}
+
+// validate parses doc as JSON and validates it against sch. A doc that is not
+// valid JSON fails the test outright; the returned error is the schema-level
+// validation result for the caller to assert on.
+func validate(t *testing.T, sch *jsonschema.Schema, doc []byte) error {
+	t.Helper()
+	inst, err := jsonschema.UnmarshalJSON(bytes.NewReader(doc))
+	if err != nil {
+		t.Fatalf("instance is not valid JSON: %v", err)
+	}
+	return sch.Validate(inst)
+}
+
+// TestSchemasCompile guards against malformed schema JSON: both embedded
+// documents must compile as valid draft 2020-12 schemas.
+func TestSchemasCompile(t *testing.T) {
+	compileSchema(t, "report-result.schema.json", schema.ReportResult)
+	compileSchema(t, "proposal.schema.json", schema.Proposal)
+}
+
+// TestFixturesValidateAgainstSchema validates every JSON fixture under
+// testdata/schema/<dir> against its schema (acceptance criterion: every
+// fixture validates). Keep all fixtures valid — TestInvalidDocumentRejected
+// covers the negative cases with inline documents.
+func TestFixturesValidateAgainstSchema(t *testing.T) {
+	for _, tc := range []struct {
+		dir string
+		doc []byte
+	}{
+		{dir: "report-result", doc: schema.ReportResult},
+		{dir: "proposal", doc: schema.Proposal},
+	} {
+		t.Run(tc.dir, func(t *testing.T) {
+			sch := compileSchema(t, tc.dir, tc.doc)
+			glob := filepath.Join("testdata", "schema", tc.dir, "*.json")
+			files, err := filepath.Glob(glob)
+			if err != nil {
+				t.Fatalf("glob %s: %v", glob, err)
+			}
+			if len(files) == 0 {
+				t.Fatalf("no fixtures found under %s", glob)
+			}
+			for _, f := range files {
+				t.Run(filepath.Base(f), func(t *testing.T) {
+					data, err := os.ReadFile(f)
+					if err != nil {
+						t.Fatalf("read %s: %v", f, err)
+					}
+					if err := validate(t, sch, data); err != nil {
+						t.Fatalf("fixture %s failed schema validation: %v", f, err)
+					}
+				})
+			}
+		})
+	}
+}
+
+// TestRendererOutputMatchesSchema is the drift guard the issue motivates: it
+// renders populated results through the real renderers and validates the bytes
+// against the schema. Because the schemas forbid additional properties, a new
+// struct field without a matching schema entry fails this test.
+func TestRendererOutputMatchesSchema(t *testing.T) {
+	t.Run("review", func(t *testing.T) {
+		sch := compileSchema(t, "report-result.schema.json", schema.ReportResult)
+		rr := report.ReviewResult{
+			Findings:       []report.Finding{populatedFinding()},
+			Summary:        "a populated summary",
+			Recommendation: "a populated recommendation",
+		}
+		var buf bytes.Buffer
+		if err := report.NewRenderer(&buf).RenderJSON(rr, report.SeverityInfo, ""); err != nil {
+			t.Fatalf("RenderJSON: %v", err)
+		}
+		if err := validate(t, sch, buf.Bytes()); err != nil {
+			t.Fatalf("rendered review output does not match schema: %v\n%s", err, buf.String())
+		}
+	})
+
+	t.Run("propose", func(t *testing.T) {
+		sch := compileSchema(t, "proposal.schema.json", schema.Proposal)
+		pr := propose.ProposalResult{
+			RepositoryOverview: "a populated overview",
+			Proposals:          []propose.Proposal{populatedProposal()},
+		}
+		var buf bytes.Buffer
+		if err := propose.NewRenderer(&buf).RenderJSON(pr); err != nil {
+			t.Fatalf("RenderJSON: %v", err)
+		}
+		if err := validate(t, sch, buf.Bytes()); err != nil {
+			t.Fatalf("rendered propose output does not match schema: %v\n%s", err, buf.String())
+		}
+	})
+}
+
+// TestInvalidDocumentRejected feeds inline (not testdata) documents that
+// violate the contract and asserts the validator rejects each, so the negative
+// path is exercised without weakening "every fixture validates".
+func TestInvalidDocumentRejected(t *testing.T) {
+	sch := compileSchema(t, "report-result.schema.json", schema.ReportResult)
+	for name, doc := range map[string]string{
+		"bad severity enum":       `{"findings":[{"id":"X-1","severity":"FATAL","title":"t","file":"f","problem":"p","action":"a"}],"summary":"","recommendation":""}`,
+		"missing required action": `{"findings":[{"id":"X-1","severity":"INFO","title":"t","file":"f","problem":"p"}],"summary":"","recommendation":""}`,
+		"unknown property":        `{"findings":null,"summary":"","recommendation":"","extra":true}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := validate(t, sch, []byte(doc)); err == nil {
+				t.Fatalf("expected a validation error for %q, got nil", name)
+			}
+		})
+	}
+}
+
+// populatedFinding returns a Finding with every field set so the drift guard
+// exercises the full schema surface. Confidence is verified so the renderer
+// keeps it in its severity bucket rather than the unverified section.
+func populatedFinding() report.Finding {
+	return report.Finding{
+		ID:            "C-001",
+		Severity:      report.SeverityCritical,
+		Title:         "SQL injection in user query",
+		File:          "db/users.go",
+		Line:          87,
+		LineEnd:       92,
+		Pattern:       "Injection",
+		Actionability: report.ActionabilityNeedsDiscussion,
+		FixClass:      report.FixClassAsk,
+		Confidence:    report.ConfidenceVerified,
+		Problem:       "User input is concatenated into a SQL query.",
+		Action:        "Use a parameterized query.",
+		CodeSnippet:   "db.Query(\"... \" + id)",
+		SuggestedFix:  "db.Query(\"... WHERE id = ?\", id)",
+		FixOptions: []report.FixOption{
+			{
+				ID:            "A",
+				Approach:      "Use prepared statements.",
+				Pros:          "Eliminates the injection.",
+				Cons:          "Touches every query.",
+				Effort:        "MED",
+				RiskIfSkipped: "Database compromise.",
+			},
+		},
+		RecommendedOption:       "A",
+		RecommendationReasoning: "Prepared statements are the standard fix.",
+		RelatedTo:               []string{"B-001"},
+		ConfirmedBy:             []string{"review", "adversarial"},
+	}
+}
+
+// populatedProposal returns a Proposal with every field set so the drift guard
+// exercises the full proposal schema surface.
+func populatedProposal() propose.Proposal {
+	return propose.Proposal{
+		ID:                 "P-001",
+		Priority:           "HIGH",
+		Category:           "testing",
+		Title:              "Add JSON schema contract tests",
+		Description:        "Validate JSON output against a declared schema.",
+		Motivation:         "Catch silent output regressions.",
+		Scope:              "Medium",
+		AffectedAreas:      []string{"internal/report/schema"},
+		AcceptanceCriteria: []string{"Schema files exist.", "Fixtures validate."},
+	}
+}

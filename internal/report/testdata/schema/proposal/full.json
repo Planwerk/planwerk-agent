@@ -1,0 +1,30 @@
+{
+  "repository_overview": "A small Go CLI that reviews GitHub pull requests with Claude Code.",
+  "proposals": [
+    {
+      "id": "P-001",
+      "priority": "HIGH",
+      "category": "testing",
+      "title": "Add JSON schema contract tests",
+      "description": "Validate the renderer's JSON output against a declared schema.",
+      "motivation": "Catch silent regressions as the output structs evolve.",
+      "scope": "Medium",
+      "affected_areas": ["internal/report/schema", "cmd/planwerk-review"],
+      "acceptance_criteria": [
+        "Schema files exist for ReviewResult and Proposal.",
+        "Every fixture validates against the schema."
+      ]
+    },
+    {
+      "id": "P-002",
+      "priority": "LOW",
+      "category": "documentation",
+      "title": "Document the JSON output contract",
+      "description": "Explain the --format json schema for downstream consumers.",
+      "motivation": "Downstream tools need a stable contract to parse.",
+      "scope": "Small",
+      "affected_areas": null,
+      "acceptance_criteria": null
+    }
+  ]
+}

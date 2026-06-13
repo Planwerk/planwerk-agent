@@ -1,0 +1,76 @@
+{
+  "findings": [
+    {
+      "id": "B-001",
+      "severity": "BLOCKING",
+      "title": "Hardcoded secret in configuration",
+      "file": "config/auth.go",
+      "line": 42,
+      "pattern": "Hardcoded values",
+      "actionability": "needs-discussion",
+      "fix_class": "ASK",
+      "confidence": "verified",
+      "problem": "API secret is hardcoded directly in the source code.",
+      "action": "Move the secret to an environment variable or secret manager.",
+      "code_snippet": "const apiSecret = \"sk-live-1234\"",
+      "confirmed_by": ["review", "adversarial"]
+    },
+    {
+      "id": "C-001",
+      "severity": "CRITICAL",
+      "title": "SQL injection in user query",
+      "file": "db/users.go",
+      "line": 87,
+      "line_end": 92,
+      "actionability": "auto-fix",
+      "fix_class": "AUTO-FIX",
+      "confidence": "verified",
+      "problem": "User input is concatenated into a SQL query without sanitization.",
+      "action": "Use a parameterized query.",
+      "suggested_fix": "db.Query(\"SELECT * FROM users WHERE id = ?\", id)",
+      "related_to": ["B-001"]
+    },
+    {
+      "id": "W-001",
+      "severity": "WARNING",
+      "title": "Error from ValidateToken is ignored",
+      "file": "handlers/login.go",
+      "line": 23,
+      "actionability": "needs-discussion",
+      "fix_class": "ASK",
+      "confidence": "likely",
+      "problem": "The error returned by ValidateToken() is discarded.",
+      "action": "Check the error and return HTTP 401 on failure.",
+      "fix_options": [
+        {
+          "id": "A",
+          "approach": "Return 401 immediately on any validation error.",
+          "pros": "Simple, fail-closed.",
+          "cons": "No distinction between expired and malformed tokens.",
+          "effort": "LOW",
+          "risk_if_skipped": "Invalid tokens are treated as valid."
+        },
+        {
+          "id": "B",
+          "approach": "Branch on the error type to return 401 or 400.",
+          "pros": "Clearer client feedback.",
+          "cons": "More code paths to test.",
+          "effort": "MED"
+        }
+      ],
+      "recommended_option": "A",
+      "recommendation_reasoning": "Fail-closed is the safer default for auth."
+    },
+    {
+      "id": "I-001",
+      "severity": "INFO",
+      "title": "Consider a table-driven test",
+      "file": "handlers/login_test.go",
+      "confidence": "uncertain",
+      "problem": "The three near-identical test functions could be table-driven.",
+      "action": "Collapse the cases into a single table-driven test."
+    }
+  ],
+  "summary": "The change introduces authentication but ships a hardcoded secret and an SQL injection that must be fixed before merge.",
+  "recommendation": "Do not merge until the BLOCKING and CRITICAL findings are resolved."
+}
