@@ -92,7 +92,14 @@ planwerk-review/
 │   │   ├── inline_test.go
 │   │   ├── renderer.go         # Markdown/JSON output (compact format, GitHub Alerts, audit verdicts)
 │   │   ├── renderer_test.go
-│   │   └── audit_renderer_test.go
+│   │   ├── audit_renderer_test.go
+│   │   ├── schema_test.go      # JSON Schema contract tests (fixtures + renderer drift guard)
+│   │   ├── schema/             # Embedded JSON Schemas for --format json output
+│   │   │   ├── schema.go       # //go:embed of the two schema files
+│   │   │   ├── report-result.schema.json  # ReviewResult (review + audit)
+│   │   │   └── proposal.schema.json       # ProposalResult envelope (propose)
+│   │   └── testdata/
+│   │       └── schema/         # JSON fixtures validated against the schemas
 │   ├── review/
 │   │   ├── reviewer.go         # Orchestration: PR → Claude → Report
 │   │   ├── reviewer_test.go
