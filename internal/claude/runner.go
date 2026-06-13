@@ -41,6 +41,17 @@ const (
 	// --claude-effort flag / PLANWERK_CLAUDE_EFFORT env var), e.g. "max"
 	// for the largest thinking budget on latency-tolerant one-off runs.
 	DefaultClaudeEffort = "xhigh"
+	// DefaultPlanEffort is the compiled-in default reasoning effort for the
+	// implement command's planning session. "max" buys the largest thinking
+	// budget: planning is a single read-only session whose output steers the
+	// entire implementation, so the deepest reasoning pays off most there —
+	// the same reasoning behind running it on the stronger DefaultPlanModel
+	// while the implement session stays on the cheaper DefaultClaudeEffort.
+	// The latency "max" adds is also tolerable here because planning is
+	// one-shot and not on the implement session's critical loop. Override
+	// with SetPlanEffort (driven by the implement command's --plan-effort
+	// flag / PLANWERK_PLAN_EFFORT env var).
+	DefaultPlanEffort = "max"
 	// claudeAutoPermissionMode is the --permission-mode value the implement
 	// command passes to its orchestrated `claude -p` session so tool calls
 	// run without an interactive confirmation. "auto" is Claude Code's auto
@@ -75,6 +86,11 @@ var planModel = DefaultPlanModel
 // --effort. It defaults to DefaultClaudeEffort and is overridable at startup
 // via SetEffort.
 var claudeEffort = DefaultClaudeEffort
+
+// planEffort is the effective reasoning effort for the implement command's
+// planning session. It defaults to DefaultPlanEffort and is overridable at
+// startup via SetPlanEffort.
+var planEffort = DefaultPlanEffort
 
 // showOutput toggles live streaming of Claude Code output. When false
 // (the default), runClaude buffers the result via --output-format json.
@@ -174,21 +190,41 @@ func SetEffort(e string) (restore func()) {
 // --claude-effort / PLANWERK_CLAUDE_EFFORT route into the package-level value.
 func Effort() string { return claudeEffort }
 
+// SetPlanEffort installs e as the reasoning effort used by Plan sessions (the
+// implement command's planning phase). An empty e is ignored and the previous
+// value is preserved — that keeps a misconfigured flag from silently selecting
+// an empty effort. The returned restore function reverts to the previous
+// value; the CLI test suite uses it to scope changes to a single test.
+func SetPlanEffort(e string) (restore func()) {
+	old := planEffort
+	if e != "" {
+		planEffort = e
+	}
+	return func() { planEffort = old }
+}
+
+// PlanEffort reports the currently effective planning reasoning effort.
+// Exposed primarily for the CLI test suite to verify that --plan-effort /
+// PLANWERK_PLAN_EFFORT route into the package-level value.
+func PlanEffort() string { return planEffort }
+
 // runClaude invokes claude in the given directory on its default permission
 // mode and returns the extracted text response. Use it for the read-only
 // analysis steps (review, audit, structure, repair, …) that do not mutate
 // the checkout.
 func runClaude(dir, prompt, label string) (string, error) {
-	return runClaudeWithPermission(dir, prompt, label, "", claudeModel)
+	return runClaudeWithPermission(dir, prompt, label, "", claudeModel, claudeEffort)
 }
 
 // runClaudePlan is runClaude on the dedicated planning model (PlanModel,
-// default "fable"). The implement command's planning session uses it: the
-// session only reads the checkout and emits the implementation plan as
-// text, so it keeps the default (read-only) permission mode while the
-// strongest-reasoning model does the thinking.
+// default "fable") at the dedicated planning effort (PlanEffort, default
+// "max"). The implement command's planning session uses it: the session only
+// reads the checkout and emits the implementation plan as text, so it keeps
+// the default (read-only) permission mode while the strongest-reasoning model
+// thinks at the largest budget — the one session where that depth steers the
+// whole implementation.
 func runClaudePlan(dir, prompt, label string) (string, error) {
-	return runClaudeWithPermission(dir, prompt, label, "", planModel)
+	return runClaudeWithPermission(dir, prompt, label, "", planModel, planEffort)
 }
 
 // runClaudeAuto is runClaude with claudeAutoPermissionMode, letting the
@@ -198,25 +234,25 @@ func runClaudePlan(dir, prompt, label string) (string, error) {
 // push a feature branch, and open a PR without a human confirming each
 // step. The auto-mode classifier still vets every action.
 func runClaudeAuto(dir, prompt, label string) (string, error) {
-	return runClaudeWithPermission(dir, prompt, label, claudeAutoPermissionMode, claudeModel)
+	return runClaudeWithPermission(dir, prompt, label, claudeAutoPermissionMode, claudeModel, claudeEffort)
 }
 
 // runClaudeWithPermission is the shared implementation behind runClaude,
 // runClaudePlan, and runClaudeAuto. permissionMode, when non-empty, is
 // passed to claude as --permission-mode; an empty value leaves claude on
-// its default mode. model is the --model value (callers pass claudeModel
-// or planModel); the reasoning effort always comes from the package-level
-// claudeEffort. The label tags elapsed-time progress updates (or per-line
-// stream prefixes when streaming is enabled).
+// its default mode. model is the --model value and effort the --effort value
+// (callers pass claudeModel/claudeEffort, or planModel/planEffort for the
+// planning session). The label tags elapsed-time progress updates (or
+// per-line stream prefixes when streaming is enabled).
 //
 // When showOutput is false it uses --output-format json and captures the
 // full result via cmd.Output(). When showOutput is true it delegates to
 // runClaudeStream, which uses --output-format stream-json --verbose and
 // surfaces output incrementally; the periodic heartbeat is skipped in that
 // mode because the stream itself is the heartbeat.
-func runClaudeWithPermission(dir, prompt, label, permissionMode, model string) (string, error) {
+func runClaudeWithPermission(dir, prompt, label, permissionMode, model, effort string) (string, error) {
 	if showOutput {
-		return runClaudeStream(dir, prompt, label, permissionMode, model)
+		return runClaudeStream(dir, prompt, label, permissionMode, model, effort)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), claudeTimeout)
@@ -228,7 +264,7 @@ func runClaudeWithPermission(dir, prompt, label, permissionMode, model string) (
 	args := []string{
 		"-p",
 		"--model", model,
-		"--effort", claudeEffort,
+		"--effort", effort,
 		"--output-format", "json",
 	}
 	if permissionMode != "" {
