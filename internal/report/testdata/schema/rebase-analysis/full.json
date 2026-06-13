@@ -1,0 +1,25 @@
+{
+  "commits": [
+    {
+      "sha": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+      "subject": "Add the parser entry point",
+      "adjustments": [
+        {
+          "kind": "changed-signature",
+          "file": "internal/parse/parser.go",
+          "detail": "Upstream changed Parse(r io.Reader) to Parse(ctx context.Context, r io.Reader); this commit still calls the old signature.",
+          "action": "Thread ctx through the call and pass it to Parse.",
+          "upstream_ref": "9f8e7d6 Thread context through the parser",
+          "confidence": "verified"
+        }
+      ]
+    },
+    {
+      "sha": "b2c3d4e5f60718293a4b5c6d7e8f901234567890",
+      "subject": "Wire the parser into the CLI",
+      "adjustments": []
+    }
+  ],
+  "summary": "Two commits were replayed cleanly; the first relies on a parser signature upstream changed.",
+  "recommendation": "Apply the signature adjustment to the first commit before pushing."
+}
