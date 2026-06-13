@@ -193,7 +193,7 @@ Run these steps in order. Do not skip ahead.
    - Capture the exact commands you ran and their pass/fail status for the report below.
 7. SELF-REVIEW the diff against the issue's Acceptance Criteria. Remove anything that is not strictly required. Stop if you have drifted into a Non-Goal.
 8. PUSH the branch and OPEN A DRAFT PULL REQUEST linked to issue #` + fmt.Sprintf("%d", ctx.IssueNumber) + `. The PR description must:
-   - Reference the issue with "Implements #` + fmt.Sprintf("%d", ctx.IssueNumber) + `" (or "Closes #` + fmt.Sprintf("%d", ctx.IssueNumber) + `" if the issue is fully resolved by this PR).
+   - Link the issue with the GitHub closing keyword "Closes #` + fmt.Sprintf("%d", ctx.IssueNumber) + `" on its own line, so GitHub auto-links the PR to the issue and closes it on merge. This is mandatory. Do NOT use a bare "Implements #` + fmt.Sprintf("%d", ctx.IssueNumber) + `" mention — GitHub only recognizes the closing keywords (close/closes/closed, fix/fixes/fixed, resolve/resolves/resolved), so a plain reference does NOT create the linkage GitHub displays.
    - Walk the reviewer through the change set in commit order.
    - Call out anything that diverged from the issue (and why).
 9. OUTPUT the structured implementation report below.
@@ -322,7 +322,7 @@ Run these steps in order. Do not skip ahead.
    - Capture the exact commands you ran and their pass/fail status for the report below.
 7. SELF-REVIEW the diff against the issue's Acceptance Criteria. Remove anything that is not strictly required. Stop if you have drifted into a Non-Goal.
 8. PUSH the branch and OPEN A DRAFT PULL REQUEST linked to issue #` + fmt.Sprintf("%d", issueNumber) + `. The PR description must:
-   - Reference the issue with "Implements #` + fmt.Sprintf("%d", issueNumber) + `" (or "Closes #` + fmt.Sprintf("%d", issueNumber) + `" if the issue is fully resolved by this PR).
+   - Link the issue with the GitHub closing keyword "Closes #` + fmt.Sprintf("%d", issueNumber) + `" on its own line, so GitHub auto-links the PR to the issue and closes it on merge. This is mandatory. Do NOT use a bare "Implements #` + fmt.Sprintf("%d", issueNumber) + `" mention — GitHub only recognizes the closing keywords (close/closes/closed, fix/fixes/fixed, resolve/resolves/resolved), so a plain reference does NOT create the linkage GitHub displays.
    - Walk the reviewer through the change set in commit order.
    - Call out anything that diverged from the issue (and why).
 9. OUTPUT the structured implementation report below.
