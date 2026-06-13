@@ -15,6 +15,8 @@ import (
 	"github.com/planwerk/planwerk-review/internal/patterns"
 	"github.com/planwerk/planwerk-review/internal/planwerk"
 	"github.com/planwerk/planwerk-review/internal/propose"
+	"github.com/planwerk/planwerk-review/internal/rebase"
+	"github.com/planwerk/planwerk-review/internal/report"
 )
 
 // updateGolden regenerates the prompt golden files under testdata/prompts/.
@@ -270,4 +272,110 @@ func TestBuildFixPrompt_Local_Golden(t *testing.T) {
 	ctx := goldenFixContext()
 	ctx.Local = true
 	assertGoldenPrompt(t, "fix_local", BuildFixPrompt(ctx))
+}
+
+func goldenRebaseConflictContext() rebase.ConflictContext {
+	return rebase.ConflictContext{
+		RepoFullName:    "planwerk/planwerk-review",
+		PRNumber:        42,
+		Onto:            "main",
+		HeadBranch:      "feat/snapshot-tests",
+		Commit:          github.Commit{SHA: "abc1234def5678", Subject: "Add the snapshot helper"},
+		ConflictedFiles: []string{"internal/claude/runner.go", "internal/claude/runner_test.go"},
+		Patterns:        goldenPatterns(),
+		MaxPatterns:     0,
+	}
+}
+
+func goldenRebaseAnalysisContext() rebase.AnalysisContext {
+	return rebase.AnalysisContext{
+		RepoFullName:    "planwerk/planwerk-review",
+		PRNumber:        42,
+		Onto:            "main",
+		RebasedCommits:  []github.Commit{{SHA: "1111111aaaa", Subject: "Add the snapshot helper"}, {SHA: "2222222bbbb", Subject: "Wire the helper into the runner"}},
+		UpstreamCommits: []github.Commit{{SHA: "9999999zzzz", Subject: "Rename runClaude to runSession"}},
+		Patterns:        goldenPatterns(),
+		MaxPatterns:     0,
+	}
+}
+
+func goldenRebaseApplyContext() rebase.ApplyContext {
+	return rebase.ApplyContext{
+		RepoFullName: "planwerk/planwerk-review",
+		PRNumber:     42,
+		Onto:         "main",
+		HeadBranch:   "feat/snapshot-tests",
+		Analysis: report.RebaseAnalysis{
+			Commits: []report.CommitAnalysis{
+				{
+					SHA:     "1111111aaaa",
+					Subject: "Add the snapshot helper",
+					Adjustments: []report.Adjustment{
+						{
+							Kind:        "renamed-symbol",
+							File:        "internal/claude/runner.go",
+							Detail:      "Upstream renamed runClaude to runSession; this commit still calls runClaude.",
+							Action:      "Call runSession instead of runClaude.",
+							UpstreamRef: "9999999 Rename runClaude to runSession",
+							Confidence:  "verified",
+						},
+					},
+				},
+			},
+			Summary:        "One commit references a renamed symbol.",
+			Recommendation: "Apply the rename before pushing.",
+		},
+		Patterns:    goldenPatterns(),
+		MaxPatterns: 0,
+	}
+}
+
+func goldenBareRebaseContext() rebase.BareContext {
+	return rebase.BareContext{
+		RepoFullName: "planwerk/planwerk-review",
+		PRNumber:     42,
+		Onto:         "main",
+		TechTags:     []string{"go"},
+		PatternCatalog: []patterns.CatalogReference{
+			{
+				Name:       "Hardcoded secrets",
+				Severity:   "CRITICAL",
+				Category:   "design-principle",
+				ReviewArea: "security",
+				URL:        "https://raw.githubusercontent.com/planwerk/planwerk-review/main/internal/patterns/patterns/hardcoded-secrets.md",
+			},
+		},
+		BundledURLBase: "https://raw.githubusercontent.com/planwerk/planwerk-review/main/internal/patterns/patterns",
+	}
+}
+
+// TestBuildRebaseConflictPrompt_Golden locks the conflict-resolution prompt:
+// resolve semantically, git add the resolved files, never continue or push.
+func TestBuildRebaseConflictPrompt_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "rebase_conflict", BuildRebaseConflictPrompt(goldenRebaseConflictContext()))
+}
+
+// TestBuildRebaseAnalysisPrompt_Golden locks the structured analysis prompt.
+func TestBuildRebaseAnalysisPrompt_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "rebase_analysis", BuildRebaseAnalysisPrompt(goldenRebaseAnalysisContext()))
+}
+
+// TestBuildRebaseAnalysisPrompt_NoPatterns locks the fallback shape used when
+// no patterns are loaded: the prompt MUST still render, without the
+// pattern-injection block.
+func TestBuildRebaseAnalysisPrompt_NoPatterns(t *testing.T) {
+	ctx := goldenRebaseAnalysisContext()
+	ctx.Patterns = nil
+	assertGoldenPrompt(t, "rebase_analysis_no_patterns", BuildRebaseAnalysisPrompt(ctx))
+}
+
+// TestBuildRebaseApplyPrompt_Golden locks the apply prompt: fold the
+// adjustments into the commits they belong to, never push.
+func TestBuildRebaseApplyPrompt_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "rebase_apply", BuildRebaseApplyPrompt(goldenRebaseApplyContext()))
+}
+
+// TestBuildBareRebasePrompt_Golden locks the portable self-contained prompt.
+func TestBuildBareRebasePrompt_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "rebase_bare", BuildBareRebasePrompt(goldenBareRebaseContext()))
 }
