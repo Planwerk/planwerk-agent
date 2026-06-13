@@ -31,6 +31,7 @@ func main() {
 		newFixCmd(deps),
 		newImplementCmd(deps),
 		newCacheCmd(deps),
+		newSchemaCmd(deps),
 		newGenManCmd(deps),
 	)
 
