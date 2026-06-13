@@ -9,6 +9,7 @@ import (
 	"github.com/planwerk/planwerk-review/internal/audit"
 	"github.com/planwerk/planwerk-review/internal/doccheck"
 	"github.com/planwerk/planwerk-review/internal/elaborate"
+	"github.com/planwerk/planwerk-review/internal/fix"
 	"github.com/planwerk/planwerk-review/internal/github"
 	"github.com/planwerk/planwerk-review/internal/implement"
 	"github.com/planwerk/planwerk-review/internal/patterns"
@@ -228,4 +229,45 @@ func TestBuildImplementPromptWithPlan_Golden(t *testing.T) {
 
 func TestBuildPlanPrompt_Golden(t *testing.T) {
 	assertGoldenPrompt(t, "plan", BuildPlanPrompt(goldenImplementContext()))
+}
+
+func goldenFixContext() fix.Context {
+	return fix.Context{
+		RepoFullName:  "planwerk/planwerk-review",
+		PRNumber:      42,
+		PRTitle:       "Add the snapshot tests",
+		HeadBranch:    "feat/snapshot-tests",
+		BaseBranch:    "main",
+		HeadSHA:       "abc1234def5678",
+		Iteration:     2,
+		MaxIterations: 5,
+		FailedChecks: []fix.FailedCheck{
+			{
+				Name:          "test",
+				Conclusion:    "failure",
+				HTMLURL:       "https://github.com/planwerk/planwerk-review/actions/runs/99",
+				OutputTitle:   "1 failing test",
+				OutputSummary: "--- FAIL: TestParse",
+				Logs:          "--- FAIL: TestParse (0.00s)\n    parse_test.go:12: got 1, want 2\nFAIL",
+				WorkflowRunID: 99,
+			},
+		},
+		Patterns:    goldenPatterns(),
+		MaxPatterns: 0,
+	}
+}
+
+// TestBuildFixPrompt_Golden locks the default (temp-dir) fix prompt: a single
+// follow-up commit, a normal push, and the "NEVER force-push" hard rule.
+func TestBuildFixPrompt_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "fix", BuildFixPrompt(goldenFixContext()))
+}
+
+// TestBuildFixPrompt_Local_Golden locks the --local fix prompt: each change is
+// folded into the commit it belongs to (git commit --fixup + git rebase
+// --autosquash) and published with git push --force-with-lease.
+func TestBuildFixPrompt_Local_Golden(t *testing.T) {
+	ctx := goldenFixContext()
+	ctx.Local = true
+	assertGoldenPrompt(t, "fix_local", BuildFixPrompt(ctx))
 }

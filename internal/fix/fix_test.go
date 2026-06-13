@@ -28,13 +28,14 @@ type fakeGitHub struct {
 	headSequence []string
 	headIdx      atomic.Int32
 
-	prTitle    string
-	prBranch   string
-	prHeadSHA  string
-	cloneDir   string // optional: directory used as PR.Dir; "" → no-op cleanup
-	cloneCalls atomic.Int32
-	localCalls atomic.Int32
-	pullCalls  atomic.Int32
+	prTitle      string
+	prBranch     string
+	prBaseBranch string
+	prHeadSHA    string
+	cloneDir     string // optional: directory used as PR.Dir; "" → no-op cleanup
+	cloneCalls   atomic.Int32
+	localCalls   atomic.Int32
+	pullCalls    atomic.Int32
 }
 
 func (f *fakeGitHub) FetchAndCheckout(ref string) (*github.PR, error) {
@@ -66,6 +67,7 @@ func (f *fakeGitHub) makePR(ref string, local bool) (*github.PR, error) {
 		Number:     number,
 		Title:      f.prTitle,
 		HeadBranch: f.prBranch,
+		BaseBranch: f.prBaseBranch,
 		HeadSHA:    f.prHeadSHA,
 		Dir:        f.cloneDir,
 		Local:      local,
@@ -622,6 +624,7 @@ func TestRunLocalSkipsReclone(t *testing.T) {
 	gh := &fakeGitHub{
 		prTitle:        "demo",
 		prBranch:       "feat/x",
+		prBaseBranch:   "main",
 		prHeadSHA:      "sha0",
 		cloneDir:       t.TempDir(),
 		checkResponses: [][]github.CheckRun{failures, failures, failures},
@@ -641,6 +644,14 @@ func TestRunLocalSkipsReclone(t *testing.T) {
 	})
 	if !errors.Is(err, ErrMaxIterations) {
 		t.Fatalf("Run err = %v, want ErrMaxIterations", err)
+	}
+	// The Claude session must learn it is a --local run and which base branch
+	// bounds the autosquash fold, so the prompt can render the fixup workflow.
+	if !cl.ctx.Local {
+		t.Error("Claude context Local = false, want true in --local mode")
+	}
+	if cl.ctx.BaseBranch != "main" {
+		t.Errorf("Claude context BaseBranch = %q, want \"main\"", cl.ctx.BaseBranch)
 	}
 	if gh.localCalls.Load() != 1 {
 		t.Errorf("FetchAndCheckoutLocal calls = %d, want 1 (initial metadata fetch)", gh.localCalls.Load())

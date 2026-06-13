@@ -11,8 +11,11 @@ import (
 // Fix runs a fresh Claude Code session inside the given checkout directory
 // to repair the failing checks described in ctx. The session is responsible
 // for applying minimal-invasive code changes, simplifying and self-reviewing
-// the diff, then creating a follow-up commit and pushing it to the PR head
-// branch.
+// the diff, then publishing it to the PR head branch. In the default
+// (temp-dir) mode it appends a single follow-up commit and pushes; in
+// ctx.Local mode it folds each change into the branch commit it belongs to
+// (git commit --fixup + git rebase --autosquash) and force-pushes with
+// --force-with-lease.
 //
 // runClaude already creates a fresh `claude -p` invocation per call, so each
 // iteration of the fix loop runs in a brand-new Claude session by construction.
@@ -50,8 +53,12 @@ func BuildFixPrompt(ctx fix.Context) string {
 
 `)
 
-	fmt.Fprintf(&sb, "## Pull Request\n\n- Repository: %s\n- PR #%d: %s\n- Head branch: %s (committed to and pushed by you)\n- Head SHA at start of this iteration: %s\n- Iteration: %d of %d (max)\n\n",
+	fmt.Fprintf(&sb, "## Pull Request\n\n- Repository: %s\n- PR #%d: %s\n- Head branch: %s (committed to and pushed by you)\n- Head SHA at start of this iteration: %s\n- Iteration: %d of %d (max)\n",
 		ctx.RepoFullName, ctx.PRNumber, ctx.PRTitle, ctx.HeadBranch, ctx.HeadSHA, ctx.Iteration, ctx.MaxIterations)
+	if ctx.Local && ctx.BaseBranch != "" {
+		fmt.Fprintf(&sb, "- Base branch: %s — fold fixes into this branch's own commits, the range origin/%[1]s..HEAD\n", ctx.BaseBranch)
+	}
+	sb.WriteString("\n")
 
 	if len(ctx.Patterns) > 0 {
 		sb.WriteString("## Project Review Patterns to Honor\n\n")
@@ -62,7 +69,11 @@ func BuildFixPrompt(ctx fix.Context) string {
 	}
 
 	if ctx.Iteration > 1 {
-		fmt.Fprintf(&sb, "NOTE: This is iteration %d. A previous iteration already attempted a fix and pushed a commit, but checks are still failing. Before patching again, inspect the most recent commit on %s (e.g. `git log -1 -p`) and the failing logs below: if the SAME check is failing for the SAME reason, your previous approach did not work — change strategy or STOP and report instead of repeating it.\n\n", ctx.Iteration, ctx.HeadBranch)
+		if ctx.Local {
+			fmt.Fprintf(&sb, "NOTE: This is iteration %d. A previous iteration already folded fixes into this branch's commits and force-pushed, but checks are still failing. Before patching again, inspect what changed (e.g. `git log --oneline origin/%s..HEAD`, `git show <sha>`) and the failing logs below: if the SAME check is failing for the SAME reason, your previous approach did not work — change strategy or STOP and report instead of repeating it.\n\n", ctx.Iteration, ctx.BaseBranch)
+		} else {
+			fmt.Fprintf(&sb, "NOTE: This is iteration %d. A previous iteration already attempted a fix and pushed a commit, but checks are still failing. Before patching again, inspect the most recent commit on %s (e.g. `git log -1 -p`) and the failing logs below: if the SAME check is failing for the SAME reason, your previous approach did not work — change strategy or STOP and report instead of repeating it.\n\n", ctx.Iteration, ctx.HeadBranch)
+		}
 	}
 
 	if len(ctx.FailedChecks) > 0 {
@@ -119,18 +130,47 @@ Run these steps for EACH failing check above before editing any code:
 2. Apply the minimal change(s).
 3. Verify locally where possible. Re-read your diff. Remove anything not required.
 4. Self-review the diff against the original PR scope. Stop if your fix is drifting outside it.
-5. Stage your changes, create ONE follow-up commit using:
+`)
 
-   git add -A
-   git commit -m "Fix failing CI checks (iteration ` + fmt.Sprintf("%d", ctx.Iteration) + `)" -m "Failed checks: <comma-separated names>" --trailer "Co-Authored-By: planwerk-review fix <noreply@planwerk>"
+	if ctx.Local {
+		fmt.Fprintf(&sb, "5. Fold each change into the commit it belongs to. This branch may carry more\n"+
+			"   than one commit, and a fix for code that an earlier commit introduced\n"+
+			"   belongs IN that commit — not in a new commit stacked on top.\n\n"+
+			"   a. List the branch's own commits (oldest first):\n\n"+
+			"      git log --oneline --reverse origin/%[1]s..HEAD\n\n"+
+			"   b. For each distinct change, find the commit that introduced the code you\n"+
+			"      are fixing — use `git blame <file>`, `git log -p -- <file>`, or `git log -S<symbol>`.\n"+
+			"   c. Stage ONLY that change and record it as a fixup of its target commit:\n\n"+
+			"      git add -- <files for this change>\n"+
+			"      git commit --fixup=<target-sha>\n\n"+
+			"      Repeat (c) for every change that maps to a different commit.\n"+
+			"   d. Once every change is recorded as a fixup, fold them in non-interactively\n"+
+			"      (no editor opens). Rebase against the merge-base so ONLY this branch's\n"+
+			"      own commits are folded and the branch is never silently advanced onto a\n"+
+			"      moved base:\n\n"+
+			"      GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash \"$(git merge-base origin/%[1]s HEAD)\"\n\n"+
+			"   Create a NEW standalone commit ONLY when a change genuinely belongs to no\n"+
+			"   existing commit on this branch (e.g. an entirely new file unrelated to any\n"+
+			"   of them). That is the rare exception, not the default — and only then:\n\n"+
+			"      git commit -m \"<concise summary>\" -m \"Failed checks: <comma-separated names>\" --trailer \"Co-Authored-By: planwerk-review fix <noreply@planwerk>\"\n\n"+
+			"6. Publish the rewritten branch:\n\n"+
+			"      git push --force-with-lease origin HEAD:%[2]s\n\n"+
+			"   The autosquash rebase rewrote the branch's commit SHAs, so a plain push is\n"+
+			"   rejected. Use --force-with-lease (never plain --force): it publishes the\n"+
+			"   fold while refusing to clobber commits you have not seen.\n\n",
+			ctx.BaseBranch, ctx.HeadBranch)
+	} else {
+		fmt.Fprintf(&sb, "5. Stage your changes, create ONE follow-up commit using:\n\n"+
+			"   git add -A\n"+
+			"   git commit -m \"Fix failing CI checks (iteration %d)\" -m \"Failed checks: <comma-separated names>\" --trailer \"Co-Authored-By: planwerk-review fix <noreply@planwerk>\"\n\n"+
+			"6. Push to the PR head branch:\n\n"+
+			"   git push origin HEAD:%s\n\n",
+			ctx.Iteration, ctx.HeadBranch)
+	}
 
-6. Push to the PR head branch:
+	fmt.Fprintf(&sb, `7. After pushing, output a structured fix report in this exact shape:
 
-   git push origin HEAD:` + ctx.HeadBranch + `
-
-7. After pushing, output a structured fix report in this exact shape:
-
-   ## Fix Report (iteration ` + fmt.Sprintf("%d", ctx.Iteration) + `)
+   ## Fix Report (iteration %d)
 
    ### Per check
    - <check name>
@@ -138,18 +178,31 @@ Run these steps for EACH failing check above before editing any code:
      - Root cause: <one sentence>
      - Fix: <files touched + one-sentence description of the change>
      - Local verification: <exact command run + pass/fail, OR "not reproducible in this environment — relying on CI">
-     - Regression test: <added/extended test name, OR "n/a — <reason from step 7 above>">
+     - Regression test: <added/extended test name, OR "n/a — <reason from the diagnosis workflow above>">
    ### Diff summary
    - Files: <comma-separated list>
    - Approx lines added/removed: <+N/-M>
-   ### Status
+`, ctx.Iteration)
+
+	if ctx.Local {
+		sb.WriteString("   - Commit strategy: <per change: \"folded into <sha> <subject>\" via fixup/autosquash, OR \"new commit — <why it belonged to no existing commit>\">\n")
+	}
+
+	sb.WriteString(`   ### Status
    STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT>
    (DONE = all checks fixed and verified; DONE_WITH_CONCERNS = pushed but with reservations a human should see; BLOCKED = could not make progress; NEEDS_CONTEXT = missing information only a human can supply. The orchestrator reads this line and stops the loop on BLOCKED or NEEDS_CONTEXT.)
 
 ## Hard rules
 
-- NEVER force-push.
-- NEVER change files outside the failure surface. If a fix would require it, STOP and explain instead of committing.
+`)
+
+	if ctx.Local {
+		fmt.Fprintf(&sb, "- Force-push ONLY with --force-with-lease, ONLY to the PR's own head branch (%[1]s), and ONLY to publish the autosquash rebase above. NEVER use plain --force. NEVER rebase, reorder, drop, or rewrite commits that already exist on the base branch (origin/%[2]s) — only this branch's own commits (origin/%[2]s..HEAD) may be folded.\n", ctx.HeadBranch, ctx.BaseBranch)
+	} else {
+		sb.WriteString("- NEVER force-push.\n")
+	}
+
+	sb.WriteString(`- NEVER change files outside the failure surface. If a fix would require it, STOP and explain instead of committing.
 - NEVER skip, weaken, or suppress the failing check (see the "Do not cheat the check." pattern above for the explicit forbidden list).
 - NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).
 - NEVER bump dependencies that the failure log does not directly implicate.
@@ -324,4 +377,3 @@ func tailLines(s string, n int) string {
 	}
 	return strings.Join(lines[len(lines)-n:], "\n")
 }
-

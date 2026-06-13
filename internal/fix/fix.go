@@ -315,6 +315,8 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 				MaxIterations: opts.MaxIterations,
 				FailedChecks:  failed,
 				MaxPatterns:   opts.MaxPatterns,
+				Local:         opts.Local,
+				BaseBranch:    pr.BaseBranch,
 			})
 			if _, err := io.WriteString(w, prompt); err != nil {
 				return fmt.Errorf("writing prompt: %w", err)
@@ -358,6 +360,8 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 			FailedChecks:  failed,
 			Patterns:      pats,
 			MaxPatterns:   opts.MaxPatterns,
+			Local:         opts.Local,
+			BaseBranch:    pr.BaseBranch,
 		})
 		fresh.Cleanup()
 		if fixErr != nil {

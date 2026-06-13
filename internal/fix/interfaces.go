@@ -35,6 +35,16 @@ type Context struct {
 	FailedChecks  []FailedCheck
 	Patterns      []patterns.Pattern
 	MaxPatterns   int
+
+	// Local marks a --local run: the fix operates on the user's own checkout
+	// and folds each change into the branch commit it belongs to (git commit
+	// --fixup + git rebase --autosquash), then force-pushes with
+	// --force-with-lease — rather than appending a fresh follow-up commit.
+	Local bool
+	// BaseBranch is the PR's base (e.g. "main"). In Local mode it bounds the
+	// autosquash rebase to the branch's own commits (origin/<base>..HEAD) so
+	// the fold never rewrites history that already exists on the base branch.
+	BaseBranch string
 }
 
 // FixFn is the bare-function shape the CLI passes in to wire Claude into the
@@ -61,12 +71,12 @@ type PromptBuildFn func(ctx Context) string
 // short and the patterns Claude sees are always the same as those
 // displayed on github.com/planwerk/planwerk-review.
 type BareContext struct {
-	RepoFullName       string
-	PRNumber           int
-	TechTags           []string
-	PatternCatalog     []patterns.CatalogReference
-	BundledURLBase     string // for the prompt to mention canonical source
-	HasRepoLocalRefs   bool   // signals that LocalPath entries exist
+	RepoFullName     string
+	PRNumber         int
+	TechTags         []string
+	PatternCatalog   []patterns.CatalogReference
+	BundledURLBase   string // for the prompt to mention canonical source
+	HasRepoLocalRefs bool   // signals that LocalPath entries exist
 }
 
 // BarePromptBuildFn renders a self-contained fix prompt — no failing-check
