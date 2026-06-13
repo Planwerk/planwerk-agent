@@ -291,6 +291,31 @@ func TestResolvePlanModelDefault(t *testing.T) {
 	}
 }
 
+func TestResolvePlanEffortFlagWins(t *testing.T) {
+	t.Setenv(envPlanEffort, "high")
+	if got := resolvePlanEffort("max", true); got != "max" {
+		t.Fatalf("got %q, want flag value %q", got, "max")
+	}
+}
+
+func TestResolvePlanEffortEnvBeatsDefault(t *testing.T) {
+	t.Setenv(envPlanEffort, "  high  ")
+	if got := resolvePlanEffort("", false); got != "high" {
+		t.Fatalf("got %q, want trimmed env value %q", got, "high")
+	}
+}
+
+func TestResolvePlanEffortDefault(t *testing.T) {
+	t.Setenv(envPlanEffort, "")
+	if got := resolvePlanEffort("", false); got != claude.DefaultPlanEffort {
+		t.Fatalf("got %q, want default %q", got, claude.DefaultPlanEffort)
+	}
+	// An explicitly-set-but-empty flag falls through to the default too.
+	if got := resolvePlanEffort("", true); got != claude.DefaultPlanEffort {
+		t.Fatalf("got %q for empty flag, want default %q", got, claude.DefaultPlanEffort)
+	}
+}
+
 func TestRunCacheStatsEmpty(t *testing.T) {
 	dir := t.TempDir()
 	t.Cleanup(cache.SetDir(dir))

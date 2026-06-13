@@ -15,9 +15,10 @@ import (
 // only artifact is the plan text, which the subsequent implement session
 // receives verbatim via Context.Plan.
 //
-// It runs on the dedicated planning model (PlanModel, default "fable") so
-// the deepest reasoning happens where it steers the whole implementation,
-// while the implement session stays on the default model. Like every
+// It runs on the dedicated planning model (PlanModel, default "fable") at the
+// dedicated planning effort (PlanEffort, default "max") so the deepest
+// reasoning happens where it steers the whole implementation, while the
+// implement session stays on the default model and effort. Like every
 // runClaude* call it is a fresh `claude -p` invocation, so plan and
 // implement are two independent sessions by construction.
 func Plan(dir string, ctx implement.Context) (string, error) {
