@@ -119,6 +119,7 @@ The `--format json` output of every command is described by a JSON Schema
 |-------------|-----------|----------|
 | `report-result.schema.json` | `ReviewResult` (findings, summary, recommendation) | `review`, `audit` |
 | `proposal.schema.json` | `ProposalResult` envelope (repository overview + proposals) | `propose` |
+| `rebase-analysis.schema.json` | `RebaseAnalysis` (per-commit adjustments, summary, recommendation) | `rebase` |
 
 `review` and `audit` share `report-result.schema.json` because the audit path
 reuses the review result shape. The schemas pin the severity, confidence,

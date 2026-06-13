@@ -15,6 +15,7 @@ AI-powered code review and codebase analysis tool for GitHub repositories. Uses 
 - **Prompt** generation that fixes or implements an issue
 - **Implement** an elaborated issue end to end and open a draft PR
 - **Fix** a PR's failing CI checks in a self-healing loop
+- **Rebase** a PR onto its base, resolve conflicts with Claude, and analyze the rebased commits
 
 ## Quick start
 
