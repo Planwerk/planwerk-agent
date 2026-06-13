@@ -145,7 +145,10 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	checklistContent := checklist.Load(pr.Dir)
 
 	// 6. Fetch commit log for scope drift detection
-	commitLog := getCommitLog(pr.Dir, pr.BaseBranch)
+	commitLog, err := getCommitLog(pr.Dir, pr.BaseBranch)
+	if err != nil {
+		slog.Warn("fetching commit log failed; scope-drift detection will be degraded", "err", err)
+	}
 
 	// 7. Check for stale documentation
 	staleDocs := doccheck.Check(pr.Dir, pr.BaseBranch)
@@ -543,8 +546,9 @@ func writeSuppressionNote(w io.Writer, suppressed []report.Finding) {
 }
 
 // getCommitLog returns the one-line commit log between the base branch and HEAD.
-// Returns empty string on error (non-fatal).
-func getCommitLog(dir, baseBranch string) string {
+// On subprocess failure it returns an empty string and an error wrapping git's
+// stderr, so the caller can log the cause before degrading gracefully.
+func getCommitLog(dir, baseBranch string) (string, error) {
 	if baseBranch == "" {
 		baseBranch = claude.DefaultBaseBranch
 	}
@@ -552,9 +556,11 @@ func getCommitLog(dir, baseBranch string) string {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", "log", "origin/"+baseBranch+"..HEAD", "--oneline")
 	cmd.Dir = dir
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		return ""
+		return "", fmt.Errorf("git log origin/%s..HEAD: %w: %s", baseBranch, err, strings.TrimSpace(stderr.String()))
 	}
-	return strings.TrimSpace(string(out))
+	return strings.TrimSpace(string(out)), nil
 }
