@@ -178,6 +178,26 @@ func TestDetectOriginMissingRemote(t *testing.T) {
 	}
 }
 
+func TestIsStderrTTY(t *testing.T) {
+	// Redirect os.Stderr to a pipe so the check is deterministic regardless of
+	// how `go test` is invoked: a pipe is never a character device.
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	orig := os.Stderr
+	os.Stderr = w
+	t.Cleanup(func() {
+		os.Stderr = orig
+		_ = r.Close()
+		_ = w.Close()
+	})
+
+	if IsStderrTTY() {
+		t.Error("IsStderrTTY() = true for a pipe, want false")
+	}
+}
+
 func TestParseOriginURLBareForm(t *testing.T) {
 	owner, name, ok := parseOriginURL("acme/widgets")
 	if !ok || owner != "acme" || name != "widgets" {
