@@ -17,6 +17,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/planwerk/planwerk-review/internal/draft/inputeditor"
 	"github.com/planwerk/planwerk-review/internal/github"
 	"github.com/planwerk/planwerk-review/internal/workspace"
 )
@@ -57,11 +58,17 @@ type Runner struct {
 	// never pollute the --format json or --dry-run output written to w.
 	Prompt io.Writer
 	IsTTY  func() bool
+	// Capture is the multi-line composer used for the seed idea and each
+	// clarifying answer on an interactive terminal. It is nil-safe: when nil
+	// (or when the run is non-interactive / not a TTY) the single-line reads
+	// are used instead, keeping piped and --no-interactive input unchanged.
+	Capture Capturer
 }
 
 // NewRunner wires a Runner with the production backends: the github issue
-// creator and duplicate searcher, origin detection over the cwd, stdin, and
-// the stdin-TTY check.
+// creator and duplicate searcher, origin detection over the cwd, stdin, the
+// multi-line composer, and the TTY check. The composer renders to stderr, so
+// IsTTY requires both stdin and stderr to be terminals before it engages.
 func NewRunner(qFn QuestionsFn, dFn DraftFn, build PromptBuildFn, bare BarePromptBuildFn) *Runner {
 	return &Runner{
 		Claude:          claudeFnAdapter{questions: qFn, draft: dFn},
@@ -72,7 +79,8 @@ func NewRunner(qFn QuestionsFn, dFn DraftFn, build PromptBuildFn, bare BarePromp
 		BuildBarePrompt: bare,
 		In:              os.Stdin,
 		Prompt:          os.Stderr,
-		IsTTY:           workspace.IsStdinTTY,
+		IsTTY:           func() bool { return workspace.IsStdinTTY() && workspace.IsStderrTTY() },
+		Capture:         inputeditor.New(),
 	}
 }
 
@@ -106,7 +114,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 
 	var answers []QA
 	if !opts.NoInteractive {
-		answers, err = r.clarify(reader, seed)
+		answers, err = r.clarify(reader, opts, seed)
 		if err != nil {
 			return err
 		}
@@ -187,8 +195,17 @@ func (r *Runner) resolveRepo(opts Options) (string, string, error) {
 	return owner, name, nil
 }
 
+// useComposer reports whether the interactive multi-line composer should be
+// used for this run. It engages only when the run is interactive, a composer is
+// wired, and both stdin and stderr are a terminal (r.IsTTY). Everywhere else —
+// piped stdin, --no-interactive, or a non-TTY — the single-line reads are used,
+// keeping that input byte-for-byte stable and the composer dormant.
+func (r *Runner) useComposer(opts Options) bool {
+	return !opts.NoInteractive && r.Capture != nil && r.IsTTY != nil && r.IsTTY()
+}
+
 // resolveSeed returns the seed idea: the supplied one when present, or one
-// prompted interactively. It aborts with an actionable error when no idea is
+// captured interactively. It aborts with an actionable error when no idea is
 // available and the loop cannot ask for one (--no-interactive, or stdin is not
 // a TTY). The prompt goes to r.Prompt (stderr) so it never pollutes w.
 func (r *Runner) resolveSeed(reader *bufio.Reader, opts Options) (string, error) {
@@ -202,23 +219,42 @@ func (r *Runner) resolveSeed(reader *bufio.Reader, opts Options) (string, error)
 		return "", fmt.Errorf("no idea given and stdin is not a TTY; pass the idea as an argument")
 	}
 
-	_, _ = fmt.Fprint(r.Prompt, "Describe your feature idea in one line: ")
-	line, err := reader.ReadString('\n')
-	if err != nil && err != io.EOF {
-		return "", fmt.Errorf("reading idea: %w", err)
+	seed, err := r.captureSeed(reader, opts)
+	if err != nil {
+		return "", err
 	}
-	seed := strings.TrimSpace(line)
 	if seed == "" {
 		return "", fmt.Errorf("no idea provided")
 	}
 	return seed, nil
 }
 
+// captureSeed reads the seed idea, via the multi-line composer when it is
+// engaged or the single-line read otherwise. The returned value is trimmed.
+func (r *Runner) captureSeed(reader *bufio.Reader, opts Options) (string, error) {
+	if r.useComposer(opts) {
+		seed, err := r.Capture.Capture("Describe your feature idea", r.In, r.Prompt)
+		if err != nil {
+			return "", fmt.Errorf("capturing idea: %w", err)
+		}
+		return seed, nil
+	}
+
+	_, _ = fmt.Fprint(r.Prompt, "Describe your feature idea in one line: ")
+	line, err := reader.ReadString('\n')
+	if err != nil && err != io.EOF {
+		return "", fmt.Errorf("reading idea: %w", err)
+	}
+	return strings.TrimSpace(line), nil
+}
+
 // clarify runs the short Claude-led Q&A loop, capping the number of questions
-// and reading one answer per question from reader. Questions are written to
-// r.Prompt (stderr) so the machine-readable output on w stays clean. It returns
-// early on EOF so exhausted piped input does not error.
-func (r *Runner) clarify(reader *bufio.Reader, seed string) ([]QA, error) {
+// and capturing one answer per question. Questions are written to r.Prompt
+// (stderr) so the machine-readable output on w stays clean. On an interactive
+// terminal each answer uses the multi-line composer; otherwise it reads one
+// line per question and returns early on EOF so exhausted piped input does not
+// error.
+func (r *Runner) clarify(reader *bufio.Reader, opts Options, seed string) ([]QA, error) {
 	questions, err := r.Claude.GenerateQuestions(seed)
 	if err != nil {
 		return nil, fmt.Errorf("generating clarifying questions: %w", err)
@@ -229,6 +265,15 @@ func (r *Runner) clarify(reader *bufio.Reader, seed string) ([]QA, error) {
 
 	answers := make([]QA, 0, len(questions))
 	for i, q := range questions {
+		if r.useComposer(opts) {
+			answer, err := r.Capture.Capture(fmt.Sprintf("Q%d/%d: %s", i+1, len(questions), q), r.In, r.Prompt)
+			if err != nil {
+				return nil, fmt.Errorf("reading answer: %w", err)
+			}
+			answers = append(answers, QA{Question: q, Answer: answer})
+			continue
+		}
+
 		_, _ = fmt.Fprintf(r.Prompt, "\nQ%d/%d: %s\n> ", i+1, len(questions), q)
 		line, err := reader.ReadString('\n')
 		if err != nil && err != io.EOF {
