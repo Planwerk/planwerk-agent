@@ -34,13 +34,14 @@ planwerk-review draft --label enhancement --label needs-triage owner/repo "add a
 ## The interactive flow
 
 1. **Seed the idea.** Pass it as the final argument, or let the command prompt
-   you for it. In a non-interactive context (stdin is not a TTY) with no idea
-   and no `--no-interactive`, the command aborts with an actionable error
-   instead of hanging.
+   you for it in a multi-line composer (see [Compose your input](#compose-your-input)
+   below). In a non-interactive context (stdin is not a TTY) with no idea and no
+   `--no-interactive`, the command aborts with an actionable error instead of
+   hanging.
 2. **Answer a few questions.** Claude asks a handful of targeted questions — the
    problem, who benefits, rough scope, and any hard constraints — to sharpen the
-   description. `--no-interactive` / `-y` skips this and drafts from the seed
-   alone.
+   description. Each answer uses the same multi-line composer. `--no-interactive`
+   / `-y` skips this and drafts from the seed alone.
 3. **Review the draft.** The rendered issue is shown, and its title is checked
    against existing issues. If a possible duplicate is found, you are warned and
    asked whether to proceed.
@@ -51,6 +52,38 @@ The create step always asks for confirmation, even with `--no-interactive`
 (which skips only the clarifying questions). To script a non-interactive run,
 use `--dry-run` (or `--no-create`) to render without filing, or `--format json`
 to capture the drafted issue for your own tooling.
+
+## Compose your input
+
+On an interactive terminal, the idea prompt and each clarifying answer open a
+multi-line composer in the terminal, so you can write a real paragraph instead
+of cramming everything onto one line:
+
+| Key | Action |
+|-----|--------|
+| `Enter` | Insert a new line |
+| `Ctrl-D` | Submit the current text |
+| `Ctrl-E` | Open the text in your editor |
+| `Ctrl-C` | Cancel |
+
+An empty submission at the idea prompt aborts with `no idea provided`, just as
+before.
+
+`Ctrl-E` hands off to your editor on a temporary file seeded with what you have
+typed so far; when you save and exit, the file's contents replace the buffer.
+The editor is resolved with the same precedence `git` uses — `$VISUAL`, then
+`$EDITOR`, then `vi`:
+
+```bash
+# Use VS Code (it must block until the file is closed) for the composer escape
+export VISUAL="code --wait"
+planwerk-review draft owner/repo
+```
+
+The composer engages only when **both** stdin and stderr are a terminal. When
+stdin is piped, stderr is redirected, or `--no-interactive` is set, `draft`
+falls back to single-line reads, so piped input, `--format json`, and
+`--dry-run` stay byte-for-byte stable for scripting.
 
 ## Local mode
 
@@ -85,13 +118,14 @@ full walkthrough.
 
 ## How it works
 
-1. **Seed**: The one-line idea comes from the positional argument or an
-   interactive prompt.
+1. **Seed**: The idea comes from the positional argument or, on an interactive
+   terminal, the multi-line composer (with a `Ctrl-E` escape to `$EDITOR`).
 2. **Resolve the repo**: With `--local`, owner/repo is read from the `origin`
    remote of the current working directory; otherwise from the explicit
    repo-ref. No clone happens either way.
 3. **Clarify**: Claude generates a short, capped list of clarifying questions;
-   your answers are collected in the terminal. `--no-interactive` skips this.
+   your answers are collected in the terminal, each in the same multi-line
+   composer. `--no-interactive` skips this.
 4. **Draft**: A single Claude call turns the seed plus answers into a structured
    issue (title, Description, Motivation, rough Scope), validated against the
    [`draft` JSON schema](/reference/output-format#json-schema). The prompt

@@ -216,6 +216,14 @@ under `--local` must match `origin`. When the idea is omitted it is prompted for
 interactively — except in a non-interactive context (stdin is not a TTY, or
 `--no-interactive`), where a missing idea aborts with an actionable error.
 
+On an interactive terminal (both stdin and stderr a TTY), the idea and each
+clarifying answer are captured in a multi-line composer: `Enter` inserts a
+newline, `Ctrl-D` submits, `Ctrl-C` cancels, and `Ctrl-E` opens an external
+editor on the current text (precedence `$VISUAL` → `$EDITOR` → `vi`). When
+stdin is piped, stderr is redirected, or `--no-interactive` is set, `draft`
+falls back to single-line reads so scripted input stays stable. See
+[Compose your input](/how-to/draft-an-issue#compose-your-input).
+
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--local` | File against the current checkout's `origin` repo instead of taking an explicit repo-ref (see [Use local mode](/how-to/use-local-mode)). `draft` needs only the `origin` owner/repo — it takes no local checkout. | `false` |
