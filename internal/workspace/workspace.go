@@ -83,6 +83,18 @@ func IsStdinTTY() bool {
 	return (fi.Mode() & os.ModeCharDevice) != 0
 }
 
+// IsStderrTTY reports whether os.Stderr refers to a character device (i.e. an
+// interactive terminal). The draft composer renders to stderr, so it engages
+// only when both stdin and stderr are terminals; this is the output half of
+// that gate. Mirrors IsStdinTTY.
+func IsStderrTTY() bool {
+	fi, err := os.Stderr.Stat()
+	if err != nil {
+		return false
+	}
+	return (fi.Mode() & os.ModeCharDevice) != 0
+}
+
 // EnsureClean enforces the dirty-working-tree gate before any state-changing
 // step of a --local run. It returns nil when the tree is clean. When the tree
 // is dirty the behavior depends on force and whether stdin is a TTY:
