@@ -13,6 +13,14 @@ var repairJSON = func(malformed string, parseErr error, label string) (string, e
 	return runClaude("", buildRepairPrompt(malformed, parseErr), label+"-repair")
 }
 
+// repairInvalidJSON asks Claude to fix JSON that parsed cleanly but failed
+// schema validation, feeding the validation error back so the model can correct
+// the offending fields. It is a package variable so tests can substitute a
+// deterministic repair without invoking the claude CLI.
+var repairInvalidJSON = func(invalid string, validationErr error, label string) (string, error) {
+	return runClaude("", buildValidationRepairPrompt(invalid, validationErr), label+"-schema-repair")
+}
+
 // decodeJSONWithRepair strips markdown fences from text and unmarshals it into
 // v. On a parse error it asks Claude once to repair the JSON, then retries.
 // Every structuring step shares this so the repair behavior — and the one-shot
@@ -47,6 +55,25 @@ Fix the JSON so it is valid. Output ONLY the corrected JSON, nothing else.
 <malformed-json>
 ` + malformedJSON + `
 </malformed-json>`
+}
+
+// buildValidationRepairPrompt asks Claude to fix JSON that is well-formed but
+// violates the finding schema, using the validation error to pinpoint the fix.
+func buildValidationRepairPrompt(invalidJSON string, validationErr error) string {
+	return `The following JSON is valid JSON but violates the finding schema. The validator reported this error:
+
+` + validationErr.Error() + `
+
+Fix the offending finding so every finding satisfies these rules:
+- "title" must be a non-empty string.
+- "severity" must be one of BLOCKING, CRITICAL, WARNING, INFO.
+- "confidence" must be one of verified, likely, uncertain.
+
+Do not invent new findings or drop existing ones. Output ONLY the corrected JSON, nothing else.
+
+<invalid-json>
+` + invalidJSON + `
+</invalid-json>`
 }
 
 // stripMarkdownFences removes ```json ... ``` wrapping that LLMs frequently add.
