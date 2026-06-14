@@ -25,6 +25,9 @@ import (
 // a chatty model cannot turn the capture step into an interrogation.
 const maxQuestions = 5
 
+// formatJSON is the --format value that emits the machine-readable draft.
+const formatJSON = "json"
+
 // Options configures a draft run.
 type Options struct {
 	RepoRef         string
@@ -49,7 +52,11 @@ type Runner struct {
 	BuildPrompt     PromptBuildFn
 	BuildBarePrompt BarePromptBuildFn
 	In              io.Reader
-	IsTTY           func() bool
+	// Prompt receives the interactive seed and Q&A prompts. It is stderr in
+	// production so the prompts stay visible even when stdout is redirected and
+	// never pollute the --format json or --dry-run output written to w.
+	Prompt io.Writer
+	IsTTY  func() bool
 }
 
 // NewRunner wires a Runner with the production backends: the github issue
@@ -64,6 +71,7 @@ func NewRunner(qFn QuestionsFn, dFn DraftFn, build PromptBuildFn, bare BarePromp
 		BuildPrompt:     build,
 		BuildBarePrompt: bare,
 		In:              os.Stdin,
+		Prompt:          os.Stderr,
 		IsTTY:           workspace.IsStdinTTY,
 	}
 }
@@ -91,14 +99,14 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// confirmation so piped input is never split across two buffers.
 	reader := bufio.NewReader(r.In)
 
-	seed, err := r.resolveSeed(w, reader, opts)
+	seed, err := r.resolveSeed(reader, opts)
 	if err != nil {
 		return err
 	}
 
 	var answers []QA
 	if !opts.NoInteractive {
-		answers, err = r.clarify(w, reader, seed)
+		answers, err = r.clarify(reader, seed)
 		if err != nil {
 			return err
 		}
@@ -113,7 +121,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	repoFull := fmt.Sprintf("%s/%s", owner, name)
 
 	switch {
-	case opts.Format == "json":
+	case opts.Format == formatJSON:
 		return NewRenderer(w).RenderJSON(*result)
 	case opts.DryRun:
 		NewRenderer(w).RenderMarkdown(repoFull, opts.Version, result)
@@ -182,8 +190,8 @@ func (r *Runner) resolveRepo(opts Options) (string, string, error) {
 // resolveSeed returns the seed idea: the supplied one when present, or one
 // prompted interactively. It aborts with an actionable error when no idea is
 // available and the loop cannot ask for one (--no-interactive, or stdin is not
-// a TTY).
-func (r *Runner) resolveSeed(w io.Writer, reader *bufio.Reader, opts Options) (string, error) {
+// a TTY). The prompt goes to r.Prompt (stderr) so it never pollutes w.
+func (r *Runner) resolveSeed(reader *bufio.Reader, opts Options) (string, error) {
 	if seed := strings.TrimSpace(opts.Seed); seed != "" {
 		return seed, nil
 	}
@@ -194,7 +202,7 @@ func (r *Runner) resolveSeed(w io.Writer, reader *bufio.Reader, opts Options) (s
 		return "", fmt.Errorf("no idea given and stdin is not a TTY; pass the idea as an argument")
 	}
 
-	_, _ = fmt.Fprint(w, "Describe your feature idea in one line: ")
+	_, _ = fmt.Fprint(r.Prompt, "Describe your feature idea in one line: ")
 	line, err := reader.ReadString('\n')
 	if err != nil && err != io.EOF {
 		return "", fmt.Errorf("reading idea: %w", err)
@@ -207,9 +215,10 @@ func (r *Runner) resolveSeed(w io.Writer, reader *bufio.Reader, opts Options) (s
 }
 
 // clarify runs the short Claude-led Q&A loop, capping the number of questions
-// and reading one answer per question from reader. It returns early on EOF so
-// exhausted piped input does not error.
-func (r *Runner) clarify(w io.Writer, reader *bufio.Reader, seed string) ([]QA, error) {
+// and reading one answer per question from reader. Questions are written to
+// r.Prompt (stderr) so the machine-readable output on w stays clean. It returns
+// early on EOF so exhausted piped input does not error.
+func (r *Runner) clarify(reader *bufio.Reader, seed string) ([]QA, error) {
 	questions, err := r.Claude.GenerateQuestions(seed)
 	if err != nil {
 		return nil, fmt.Errorf("generating clarifying questions: %w", err)
@@ -220,7 +229,7 @@ func (r *Runner) clarify(w io.Writer, reader *bufio.Reader, seed string) ([]QA, 
 
 	answers := make([]QA, 0, len(questions))
 	for i, q := range questions {
-		_, _ = fmt.Fprintf(w, "\nQ%d/%d: %s\n> ", i+1, len(questions), q)
+		_, _ = fmt.Fprintf(r.Prompt, "\nQ%d/%d: %s\n> ", i+1, len(questions), q)
 		line, err := reader.ReadString('\n')
 		if err != nil && err != io.EOF {
 			return nil, fmt.Errorf("reading answer: %w", err)

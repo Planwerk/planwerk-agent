@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 
@@ -63,6 +64,7 @@ func newTestRunner(cl ClaudeDrafter, in string, isTTY bool, rec *recorder, searc
 		BuildPrompt:     func(ctx Context) string { return "DRAFT PROMPT seed=" + ctx.Seed },
 		BuildBarePrompt: func(seed string) string { return "BARE PROMPT seed=" + seed },
 		In:              strings.NewReader(in),
+		Prompt:          io.Discard,
 		IsTTY:           func() bool { return isTTY },
 	}
 }
@@ -152,7 +154,7 @@ func TestRun_FormatJSON_EmitsValidJSON(t *testing.T) {
 
 	opts := baseOpts()
 	opts.NoInteractive = true
-	opts.Format = "json"
+	opts.Format = formatJSON
 
 	var out bytes.Buffer
 	if err := r.Run(&out, opts); err != nil {
@@ -167,6 +169,30 @@ func TestRun_FormatJSON_EmitsValidJSON(t *testing.T) {
 	}
 	if result.Title != "Drafted Title" || !strings.Contains(result.Body, "## Description") {
 		t.Errorf("decoded result missing fields: %+v", result)
+	}
+}
+
+func TestRun_FormatJSON_PromptsDoNotPolluteOutput(t *testing.T) {
+	cl := &fakeClaude{questions: []string{"Who benefits?"}}
+	rec := &recorder{}
+	r := newTestRunner(cl, "end users\n", true, rec, nil)
+	// Capture the interactive prompts separately from the JSON output.
+	var prompts bytes.Buffer
+	r.Prompt = &prompts
+
+	opts := baseOpts()
+	opts.Format = formatJSON // interactive Q&A still runs
+
+	var out bytes.Buffer
+	if err := r.Run(&out, opts); err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+	var result Result
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+		t.Fatalf("stdout is not clean JSON (Q&A prompts leaked?): %v\n%s", err, out.String())
+	}
+	if !strings.Contains(prompts.String(), "Who benefits?") {
+		t.Errorf("Q&A prompt should go to the prompt writer, got:\n%s", prompts.String())
 	}
 }
 
