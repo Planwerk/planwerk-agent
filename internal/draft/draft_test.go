@@ -44,6 +44,27 @@ type recorder struct {
 	searchCalls  int
 }
 
+// fakeCapturer is a deterministic Capturer: it returns canned answers in order
+// and records each prompt. It mirrors the real composer by rendering the prompt
+// to out (stderr in production) so prompt-channel assertions hold and stdout
+// stays clean. An exhausted answer list yields "" (an empty submission).
+type fakeCapturer struct {
+	answers []string
+	calls   int
+	prompts []string
+}
+
+func (f *fakeCapturer) Capture(prompt string, _ io.Reader, out io.Writer) (string, error) {
+	f.prompts = append(f.prompts, prompt)
+	_, _ = io.WriteString(out, prompt+"\n")
+	ans := ""
+	if f.calls < len(f.answers) {
+		ans = f.answers[f.calls]
+	}
+	f.calls++
+	return ans, nil
+}
+
 // newTestRunner builds a Runner with deterministic fakes. searchMatches is what
 // the duplicate searcher returns; in (the reader contents) feeds the Q&A loop
 // and the create confirmation.
@@ -66,6 +87,9 @@ func newTestRunner(cl ClaudeDrafter, in string, isTTY bool, rec *recorder, searc
 		In:              strings.NewReader(in),
 		Prompt:          io.Discard,
 		IsTTY:           func() bool { return isTTY },
+		// Default to an empty composer: interactive tests override it with
+		// canned answers; non-interactive / non-TTY tests never reach it.
+		Capture: &fakeCapturer{},
 	}
 }
 
@@ -76,8 +100,11 @@ func baseOpts() Options {
 func TestRun_InteractiveQA_DraftsAndCreates(t *testing.T) {
 	cl := &fakeClaude{questions: []string{"Who benefits?", "Any hard constraints?"}}
 	rec := &recorder{}
-	// two answers, then "y" to create.
-	r := newTestRunner(cl, "end users\nnone\ny\n", true, rec, nil)
+	// On a TTY the Q&A answers come from the composer; stdin carries only the
+	// "y" for the create confirmation.
+	r := newTestRunner(cl, "y\n", true, rec, nil)
+	fc := &fakeCapturer{answers: []string{"end users", "none"}}
+	r.Capture = fc
 
 	var out bytes.Buffer
 	if err := r.Run(&out, baseOpts()); err != nil {
@@ -85,6 +112,9 @@ func TestRun_InteractiveQA_DraftsAndCreates(t *testing.T) {
 	}
 	if cl.questionsCalls != 1 {
 		t.Errorf("GenerateQuestions calls = %d, want 1", cl.questionsCalls)
+	}
+	if fc.calls != 2 {
+		t.Errorf("composer calls = %d, want 2 (one per question)", fc.calls)
 	}
 	if len(cl.lastCtx.Answers) != 2 {
 		t.Fatalf("Draft answers = %d, want 2: %+v", len(cl.lastCtx.Answers), cl.lastCtx.Answers)
@@ -175,10 +205,12 @@ func TestRun_FormatJSON_EmitsValidJSON(t *testing.T) {
 func TestRun_FormatJSON_PromptsDoNotPolluteOutput(t *testing.T) {
 	cl := &fakeClaude{questions: []string{"Who benefits?"}}
 	rec := &recorder{}
-	r := newTestRunner(cl, "end users\n", true, rec, nil)
-	// Capture the interactive prompts separately from the JSON output.
+	r := newTestRunner(cl, "", true, rec, nil)
+	// Capture the interactive prompts separately from the JSON output. The
+	// composer renders to this writer (stderr in production), never to stdout.
 	var prompts bytes.Buffer
 	r.Prompt = &prompts
+	r.Capture = &fakeCapturer{answers: []string{"end users"}}
 
 	opts := baseOpts()
 	opts.Format = formatJSON // interactive Q&A still runs
@@ -327,6 +359,73 @@ func TestRun_NoInteractive_NoSeed_Aborts(t *testing.T) {
 	}
 	if cl.draftCalls != 0 {
 		t.Errorf("Draft must not run without a seed")
+	}
+}
+
+func TestRun_InteractiveSeed_UsesComposer(t *testing.T) {
+	cl := &fakeClaude{} // no questions, so only the seed is captured
+	rec := &recorder{}
+	r := newTestRunner(cl, "", true, rec, nil)
+	fc := &fakeCapturer{answers: []string{"a multi\nline idea"}}
+	r.Capture = fc
+
+	opts := baseOpts()
+	opts.Seed = ""     // force interactive capture
+	opts.DryRun = true // render without filing, no confirmation read
+
+	if err := r.Run(&bytes.Buffer{}, opts); err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+	if fc.calls != 1 {
+		t.Fatalf("composer calls = %d, want 1 (seed)", fc.calls)
+	}
+	if cl.lastCtx.Seed != "a multi\nline idea" {
+		t.Errorf("drafted seed = %q, want the multi-line composer value", cl.lastCtx.Seed)
+	}
+}
+
+func TestRun_InteractiveSeed_EmptyAborts(t *testing.T) {
+	cl := &fakeClaude{}
+	rec := &recorder{}
+	r := newTestRunner(cl, "", true, rec, nil)
+	// The composer trims to empty (an empty submission), which must abort just
+	// like the single-line path does.
+	r.Capture = &fakeCapturer{answers: []string{""}}
+
+	opts := baseOpts()
+	opts.Seed = ""
+
+	err := r.Run(&bytes.Buffer{}, opts)
+	if err == nil || !strings.Contains(err.Error(), "no idea provided") {
+		t.Fatalf("expected a no-idea-provided abort, got %v", err)
+	}
+	if cl.draftCalls != 0 {
+		t.Errorf("Draft must not run when the composer yields no idea")
+	}
+}
+
+func TestRun_NonTTY_SkipsComposer(t *testing.T) {
+	cl := &fakeClaude{questions: []string{"Who benefits?", "Any constraints?"}}
+	rec := &recorder{}
+	// Not a TTY, interactive (no --no-interactive): the Q&A must read lines from
+	// stdin and the composer must never engage.
+	r := newTestRunner(cl, "answer1\nanswer2\ny\n", false, rec, nil)
+	fc := &fakeCapturer{answers: []string{"SENTINEL — must not be used"}}
+	r.Capture = fc
+
+	var out bytes.Buffer
+	if err := r.Run(&out, baseOpts()); err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+	if fc.calls != 0 {
+		t.Fatalf("composer engaged on a non-TTY (calls = %d), want 0", fc.calls)
+	}
+	if len(cl.lastCtx.Answers) != 2 ||
+		cl.lastCtx.Answers[0].Answer != "answer1" || cl.lastCtx.Answers[1].Answer != "answer2" {
+		t.Errorf("answers = %+v, want the piped answer1/answer2", cl.lastCtx.Answers)
+	}
+	if rec.createCalls != 1 {
+		t.Errorf("create calls = %d, want 1", rec.createCalls)
 	}
 }
 

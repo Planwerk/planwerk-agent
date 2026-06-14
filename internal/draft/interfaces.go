@@ -1,5 +1,7 @@
 package draft
 
+import "io"
+
 // QA is a single clarifying question and the user's answer collected during
 // the interactive draft loop.
 type QA struct {
@@ -22,6 +24,19 @@ type Context struct {
 type ClaudeDrafter interface {
 	GenerateQuestions(seed string) ([]string, error)
 	Draft(ctx Context) (*Result, error)
+}
+
+// Capturer captures one block of user text for an interactive prompt. The
+// draft runner uses it for the seed idea and each clarifying answer so a
+// multi-line terminal composer can replace the single-line reads when both
+// stdin and stderr are a terminal. The draft package depends on this interface
+// so tests can inject a deterministic fake, mirroring ClaudeDrafter.
+//
+// Implementations read keys from in and render their UI to out (stderr in
+// production, so stdout stays clean). They return the captured text, or an
+// error such as inputeditor.ErrCanceled when the user cancels.
+type Capturer interface {
+	Capture(prompt string, in io.Reader, out io.Writer) (string, error)
 }
 
 // QuestionsFn is the bare-function form of the question generator the CLI
