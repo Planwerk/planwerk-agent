@@ -27,6 +27,7 @@ func main() {
 		newGapAnalysisCmd(deps),
 		newReviewPreparedCmd(deps),
 		newElaborateCmd(deps),
+		newDraftCmd(deps),
 		newPromptCmd(deps),
 		newFixCmd(deps),
 		newRebaseCmd(deps),
