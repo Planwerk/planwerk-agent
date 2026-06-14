@@ -36,7 +36,14 @@ Without --local, the first positional is the target repository reference
 repo-ref needed) and the single positional is the idea; an explicit ref given
 under --local must match origin. When the idea is omitted it is prompted for
 interactively. Use --no-interactive/-y to skip the clarifying questions and
-draft straight from the seed.`,
+draft straight from the seed.
+
+On an interactive terminal the idea and each clarifying answer are captured
+in a multi-line composer: Enter starts a new line, Ctrl-D submits, Ctrl-C
+cancels, and Ctrl-E opens your editor (honoring $VISUAL, then $EDITOR, then
+vi) on the current text. When stdin is piped, stderr is not a terminal, or
+--no-interactive is set, draft falls back to single-line reads so scripted
+input stays stable.`,
 		Args: cobra.RangeArgs(0, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			switch draftCfg.Format {
