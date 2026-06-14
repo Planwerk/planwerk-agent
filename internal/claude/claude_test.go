@@ -579,3 +579,19 @@ func TestBuildRepairPrompt_ContainsErrorAndJSON(t *testing.T) {
 		t.Error("repair prompt should ask Claude to fix the JSON")
 	}
 }
+
+func TestBuildValidationRepairPrompt_ContainsErrorAndJSON(t *testing.T) {
+	invalid := `{"findings":[{"severity":"WARNING","title":"","confidence":"verified"}]}`
+	err := fmt.Errorf("finding 0 (%q): title is empty", "")
+	prompt := buildValidationRepairPrompt(invalid, err)
+
+	if !strings.Contains(prompt, "title is empty") {
+		t.Error("validation repair prompt should include the validation error")
+	}
+	if !strings.Contains(prompt, invalid) {
+		t.Error("validation repair prompt should include the invalid JSON")
+	}
+	if !strings.Contains(prompt, "Output ONLY the corrected JSON") {
+		t.Error("validation repair prompt should ask for corrected JSON only")
+	}
+}

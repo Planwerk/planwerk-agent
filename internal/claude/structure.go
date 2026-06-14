@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -19,7 +20,42 @@ func structureReview(rawReview string) (*report.ReviewResult, error) {
 	if err := decodeJSONWithRepair(text, "structured review", &result); err != nil {
 		return nil, err
 	}
+	if err := repairInvalidReview(&result); err != nil {
+		return nil, err
+	}
 	return &result, nil
+}
+
+// repairInvalidReview validates result against the finding schema. When a
+// finding has an empty title, an off-enum severity, or an off-enum confidence,
+// it asks Claude once to repair the offending fields instead of letting
+// assignIDs normalize the bad data into placeholder defaults. The repair is
+// bounded to a single round: if the repair call fails, or the repaired output
+// is unparseable or still invalid, it returns a descriptive error that wraps
+// the validation failure.
+func repairInvalidReview(result *report.ReviewResult) error {
+	verr := result.Validate()
+	if verr == nil {
+		return nil
+	}
+	current, err := json.Marshal(result)
+	if err != nil {
+		return fmt.Errorf("marshaling structured review for schema repair: %w", err)
+	}
+	repaired, err := repairInvalidJSON(string(current), verr, "structured review")
+	if err != nil {
+		return fmt.Errorf("repairing schema-invalid structured review: %w (validation error: %w)", err, verr)
+	}
+	repaired = stripMarkdownFences(repaired)
+	var fixed report.ReviewResult
+	if err := json.Unmarshal([]byte(repaired), &fixed); err != nil {
+		return fmt.Errorf("parsing schema-repaired structured review as JSON: %w\nraw output:\n%s", err, repaired)
+	}
+	if err := fixed.Validate(); err != nil {
+		return fmt.Errorf("structured review still invalid after schema repair: %w\nraw output:\n%s", err, repaired)
+	}
+	*result = fixed
+	return nil
 }
 
 func buildStructurePrompt(rawReview string) string {
