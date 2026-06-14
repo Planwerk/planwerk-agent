@@ -15,7 +15,7 @@ import (
 // constructors.
 func newSchemaCmd(_ *runtimeDeps) *cobra.Command {
 	return &cobra.Command{
-		Use:   "schema [review|audit|propose|rebase]",
+		Use:   "schema [review|audit|propose|rebase|draft]",
 		Short: "Print the JSON Schema for a command's --format json output",
 		Long: `Print the JSON Schema (draft 2020-12) describing a command's --format json
 output to stdout.
@@ -24,9 +24,10 @@ The schema is the contract downstream consumers can validate piped JSON
 against. "review" and "audit" share one schema (report-result.schema.json)
 because the audit output reuses the review result shape; "propose" emits the
 proposal-result envelope (proposal.schema.json); "rebase" emits the
-post-rebase analysis (rebase-analysis.schema.json).`,
+post-rebase analysis (rebase-analysis.schema.json); "draft" emits the drafted
+issue (draft.schema.json).`,
 		Args:      cobra.ExactArgs(1),
-		ValidArgs: []string{"review", "audit", "propose", "rebase"},
+		ValidArgs: []string{"review", "audit", "propose", "rebase", "draft"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			doc, err := schemaFor(args[0])
 			if err != nil {
@@ -49,7 +50,9 @@ func schemaFor(name string) ([]byte, error) {
 		return schema.Proposal, nil
 	case "rebase":
 		return schema.RebaseAnalysis, nil
+	case "draft":
+		return schema.Draft, nil
 	default:
-		return nil, fmt.Errorf("unknown schema %q, supported: review, audit, propose, rebase", name)
+		return nil, fmt.Errorf("unknown schema %q, supported: review, audit, propose, rebase, draft", name)
 	}
 }
