@@ -8,6 +8,7 @@ import (
 
 	"github.com/planwerk/planwerk-review/internal/audit"
 	"github.com/planwerk/planwerk-review/internal/doccheck"
+	"github.com/planwerk/planwerk-review/internal/draft"
 	"github.com/planwerk/planwerk-review/internal/elaborate"
 	"github.com/planwerk/planwerk-review/internal/fix"
 	"github.com/planwerk/planwerk-review/internal/github"
@@ -168,8 +169,30 @@ func goldenElaborateContext() elaborate.Context {
 	}
 }
 
+func goldenDraftContext() draft.Context {
+	return draft.Context{
+		Seed: "add a dark mode toggle to the settings page",
+		Answers: []draft.QA{
+			{Question: "Who benefits from this?", Answer: "Users who work at night."},
+			{Question: "Any hard constraints?", Answer: "Must respect the OS-level preference."},
+		},
+	}
+}
+
 func TestBuildReviewPrompt_Golden(t *testing.T) {
 	assertGoldenPrompt(t, "review", buildReviewPrompt(goldenReviewContext()))
+}
+
+func TestBuildDraftPrompt_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "draft", BuildDraftPrompt(goldenDraftContext()))
+}
+
+func TestBuildDraftQuestionsPrompt_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "draft_questions", buildDraftQuestionsPrompt("add a dark mode toggle to the settings page"))
+}
+
+func TestBuildBareDraftPrompt_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "draft_bare", BuildBareDraftPrompt("add a dark mode toggle to the settings page"))
 }
 
 func TestBuildElaboratePrompt_Golden(t *testing.T) {

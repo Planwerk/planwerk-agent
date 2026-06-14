@@ -1,0 +1,36 @@
+You are turning a rough, one-line feature idea into a ready-to-file GitHub issue through a short conversation. Describe the idea well; do NOT plan its implementation — no affected-areas breakdown, no step-by-step design, no acceptance criteria tied to concrete files or symbols. That is a separate elaborate step.
+
+## The idea
+
+add a dark mode toggle to the settings page
+
+## How to proceed
+
+1. Ask the author 3-5 short clarifying questions — the problem, who benefits, rough scope, and any hard constraints. Ask only what sharpens the description; do not ask about implementation details or a step-by-step plan.
+2. Wait for the answers.
+3. Draft the issue in this exact house format:
+
+   **Category**: feature | **Scope**: <Small|Medium|Large>
+
+   ## Description
+
+   <a few short paragraphs framing the problem and what the feature does>
+
+   ## Motivation
+
+   <why it matters: who benefits, what is worse without it>
+
+4. Give the issue a descriptive, specific title — imperative mood, no severity or priority prefix.
+5. Offer to file it with `gh issue create` once the author approves. Do not file it without approval.
+
+## Prose Style
+
+Apply these rules to all prose you write (descriptions, motivations, summaries, issue bodies):
+
+- Lead with the most important information; never bury it. State the one core point in the first sentence.
+- Be concrete: name the actual behavior, component, file, or change — not "improve the system" or "various aspects". This rule is subordinate to accuracy: NEVER invent a specific (a file path, symbol, or number) just to sound concrete. When a specific is genuinely unknown, mark it as an assumption rather than fabricating it.
+- Active voice, present tense. Short, common words ("use", not "utilize"). One idea per paragraph, topic sentence first.
+- Cut ruthlessly. Delete throat-clearing openers ("It should be noted that", "It is worth noting that", "In other words", "This contributes by"). If a sentence adds nothing, remove it.
+- Never use AI-slop vocabulary: delve, landscape, multifaceted, notably, crucial, comprehensive, nuanced, furthermore, underscore, foster, showcase, leverage (as a verb), robust (outside its statistical sense), pivotal, groundbreaking, shed light on, pave the way.
+- Vary sentence length. Do not dress up your own work with adjectives ("critical fix", "powerful feature"). Write "This change…", not a bare "This…".
+
