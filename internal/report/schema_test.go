@@ -8,6 +8,7 @@ import (
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
+	"github.com/planwerk/planwerk-review/internal/draft"
 	"github.com/planwerk/planwerk-review/internal/propose"
 	"github.com/planwerk/planwerk-review/internal/report"
 	"github.com/planwerk/planwerk-review/internal/report/schema"
@@ -49,6 +50,7 @@ func TestSchemasCompile(t *testing.T) {
 	compileSchema(t, "report-result.schema.json", schema.ReportResult)
 	compileSchema(t, "proposal.schema.json", schema.Proposal)
 	compileSchema(t, "rebase-analysis.schema.json", schema.RebaseAnalysis)
+	compileSchema(t, "draft.schema.json", schema.Draft)
 }
 
 // TestFixturesValidateAgainstSchema validates every JSON fixture under
@@ -63,6 +65,7 @@ func TestFixturesValidateAgainstSchema(t *testing.T) {
 		{dir: "report-result", doc: schema.ReportResult},
 		{dir: "proposal", doc: schema.Proposal},
 		{dir: "rebase-analysis", doc: schema.RebaseAnalysis},
+		{dir: "draft", doc: schema.Draft},
 	} {
 		t.Run(tc.dir, func(t *testing.T) {
 			sch := compileSchema(t, tc.dir, tc.doc)
@@ -133,6 +136,17 @@ func TestRendererOutputMatchesSchema(t *testing.T) {
 		}
 		if err := validate(t, sch, buf.Bytes()); err != nil {
 			t.Fatalf("rendered rebase output does not match schema: %v\n%s", err, buf.String())
+		}
+	})
+
+	t.Run("draft", func(t *testing.T) {
+		sch := compileSchema(t, "draft.schema.json", schema.Draft)
+		var buf bytes.Buffer
+		if err := draft.NewRenderer(&buf).RenderJSON(populatedDraft()); err != nil {
+			t.Fatalf("RenderJSON: %v", err)
+		}
+		if err := validate(t, sch, buf.Bytes()); err != nil {
+			t.Fatalf("rendered draft output does not match schema: %v\n%s", err, buf.String())
 		}
 	})
 }
@@ -236,6 +250,18 @@ func populatedRebaseAnalysis() report.RebaseAnalysis {
 		},
 		Summary:        "Two commits replayed cleanly; the first needs a signature adjustment.",
 		Recommendation: "Apply the adjustment before pushing.",
+	}
+}
+
+// populatedDraft returns a draft.Result with every field set so the drift
+// guard exercises the full draft schema surface. Scope is a valid enum member.
+func populatedDraft() draft.Result {
+	return draft.Result{
+		Title:       "Add a dark mode toggle to the settings page",
+		Description: "Add a toggle that switches the interface to a dark palette.",
+		Motivation:  "Night-time users want a theme that does not strain the eyes.",
+		Scope:       "Medium",
+		Body:        draft.BuildIssueBody(&draft.Result{Title: "Add a dark mode toggle to the settings page", Description: "Add a toggle that switches the interface to a dark palette.", Motivation: "Night-time users want a theme that does not strain the eyes.", Scope: "Medium"}),
 	}
 }
 

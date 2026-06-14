@@ -29,3 +29,10 @@ var Proposal []byte
 //
 //go:embed rebase-analysis.schema.json
 var RebaseAnalysis []byte
+
+// Draft is the JSON Schema (draft 2020-12) for the `draft` --format json
+// output, i.e. draft.Result: a captured feature idea (title, description,
+// motivation, rough scope) plus the rendered issue body.
+//
+//go:embed draft.schema.json
+var Draft []byte
