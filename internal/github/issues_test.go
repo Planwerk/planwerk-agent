@@ -1,6 +1,41 @@
 package github
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
+
+func TestCreateIssueArgs(t *testing.T) {
+	cases := []struct {
+		name   string
+		labels []string
+		want   []string
+	}{
+		{
+			name:   "no labels",
+			labels: nil,
+			want:   []string{"issue", "create", "--repo", "acme/widgets", "--title", "T", "--body", "B"},
+		},
+		{
+			name:   "one label",
+			labels: []string{"enhancement"},
+			want:   []string{"issue", "create", "--repo", "acme/widgets", "--title", "T", "--body", "B", "--label", "enhancement"},
+		},
+		{
+			name:   "multiple labels each repeated",
+			labels: []string{"enhancement", "needs-triage"},
+			want:   []string{"issue", "create", "--repo", "acme/widgets", "--title", "T", "--body", "B", "--label", "enhancement", "--label", "needs-triage"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := createIssueArgs("acme/widgets", "T", "B", tc.labels)
+			if !slices.Equal(got, tc.want) {
+				t.Fatalf("createIssueArgs() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
 
 func TestParseIssueRef(t *testing.T) {
 	cases := []struct {

@@ -42,22 +42,40 @@ func SearchIssues(owner, name, query string) ([]string, error) {
 // CreateIssue creates a GitHub issue in the given repo via the gh CLI.
 // It returns the URL of the created issue.
 func CreateIssue(owner, name, title, body string) (string, error) {
+	return CreateIssueWithLabels(owner, name, title, body, nil)
+}
+
+// CreateIssueWithLabels creates a GitHub issue with zero or more labels via the
+// gh CLI. Each label is passed as a repeated --label flag. A label that does
+// not exist on the target repo surfaces as a gh error. It returns the URL of
+// the created issue.
+func CreateIssueWithLabels(owner, name, title, body string, labels []string) (string, error) {
 	repo := fmt.Sprintf("%s/%s", owner, name)
-	args := []string{"issue", "create",
-		"--repo", repo,
-		"--title", title,
-		"--body", body,
-	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "gh", args...)
+	cmd := exec.CommandContext(ctx, "gh", createIssueArgs(repo, title, body, labels)...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("gh issue create: %s: %w", strings.TrimSpace(string(out)), err)
 	}
 
 	return strings.TrimSpace(string(out)), nil
+}
+
+// createIssueArgs builds the gh CLI arguments for creating an issue, appending
+// one repeated --label flag per label. Kept separate so the argument assembly
+// is unit-testable without invoking gh.
+func createIssueArgs(repo, title, body string, labels []string) []string {
+	args := []string{"issue", "create",
+		"--repo", repo,
+		"--title", title,
+		"--body", body,
+	}
+	for _, l := range labels {
+		args = append(args, "--label", l)
+	}
+	return args
 }
 
 // Issue is the minimal view of a GitHub issue used by the elaborate and
