@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/planwerk/planwerk-review/internal/audit"
+	"github.com/planwerk/planwerk-review/internal/draft"
 	"github.com/planwerk/planwerk-review/internal/elaborate"
 	"github.com/planwerk/planwerk-review/internal/fix"
 	"github.com/planwerk/planwerk-review/internal/gapanalysis"
@@ -161,6 +162,37 @@ func (c ElaborateConfig) ToElaborateOptions(version string) elaborate.Options {
 		CacheMaxAge:         c.CacheMaxAge,
 		Local:               c.Local,
 		Force:               c.Force,
+	}
+}
+
+// DraftConfig holds configuration for the draft command.
+type DraftConfig struct {
+	RepoRef         string
+	Seed            string
+	Local           bool
+	NoInteractive   bool
+	DryRun          bool
+	NoCreate        bool // alias of DryRun: render without filing
+	Labels          []string
+	Format          string // "markdown" or "json"
+	PrintPrompt     bool
+	PrintBarePrompt bool
+}
+
+// ToDraftOptions maps the CLI config to draft.Options. --no-create is an alias
+// of --dry-run, so either one renders the draft without filing it.
+func (c DraftConfig) ToDraftOptions(version string) draft.Options {
+	return draft.Options{
+		RepoRef:         c.RepoRef,
+		Seed:            c.Seed,
+		Local:           c.Local,
+		NoInteractive:   c.NoInteractive,
+		DryRun:          c.DryRun || c.NoCreate,
+		Labels:          c.Labels,
+		Format:          c.Format,
+		PrintPrompt:     c.PrintPrompt,
+		PrintBarePrompt: c.PrintBarePrompt,
+		Version:         version,
 	}
 }
 
