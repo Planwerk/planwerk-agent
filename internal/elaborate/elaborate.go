@@ -56,6 +56,12 @@ type Options struct {
 // this many rounds are surfaced in the output instead.
 const defaultMaxReviewIterations = 3
 
+// passingReviewScore is the executability bar (0-10) a draft must clear for the
+// reviewer refine loop to stop. Below it, the loop refines the draft until it
+// clears the bar or the iteration budget runs out. It is a package constant —
+// not a flag — because the issue does not ask for a configurable threshold.
+const passingReviewScore = 8
+
 // Runner executes the elaborate pipeline using injected Claude and GitHub
 // clients.
 type Runner struct {
@@ -244,11 +250,13 @@ func elaborateCacheKey(owner, name string, number int, issue *github.Issue, head
 	return cache.AuditKey(owner, name, "elaborate@"+headSHA, flags...)
 }
 
-// runReviewLoop runs the optional reviewer gate: it asks the reviewer to judge
-// the current draft for executability and, while gaps remain, refines the draft
-// to close them — bounded by opts.MaxReviewIterations. Gaps that survive the
-// budget are attached to the result so they are surfaced rather than silently
-// published. Any reviewer or refinement error keeps the best draft so far.
+// runReviewLoop runs the optional reviewer gate: it asks the reviewer to score
+// the current draft for executability (0-10) and, while the score stays below
+// passingReviewScore, refines the draft to close the reported gaps — bounded by
+// opts.MaxReviewIterations. The final score is attached to the result so
+// near-misses are surfaced; gaps and the "what a 10 looks like" target that
+// survive the budget are surfaced too rather than silently published. Any
+// reviewer or refinement error keeps the best draft so far.
 func (r *Runner) runReviewLoop(dir string, baseCtx Context, result *Result, opts Options) *Result {
 	maxIter := opts.MaxReviewIterations
 	if maxIter <= 0 {
@@ -261,16 +269,20 @@ func (r *Runner) runReviewLoop(dir string, baseCtx Context, result *Result, opts
 			slog.Warn("elaboration review failed; keeping current draft", "iteration", i, "err", err)
 			return result
 		}
-		if review.Approved || len(review.Gaps) == 0 {
-			slog.Info("elaboration approved by reviewer", "iteration", i)
+		score := review.Score
+		result.ReviewScore = &score
+		if review.Score >= passingReviewScore {
+			slog.Info("elaboration cleared the executability bar", "iteration", i, "score", review.Score)
+			result.Body = BuildIssueBody(result)
 			return result
 		}
-		slog.Info("reviewer found gaps; refining elaboration", "iteration", i, "gaps", len(review.Gaps))
+		slog.Info("reviewer scored the elaboration below the bar; refining", "iteration", i, "score", review.Score, "gaps", len(review.Gaps))
 
 		if i == maxIter {
-			// Out of budget — surface the surviving gaps instead of looping.
-			slog.Warn("elaboration still has unresolved reviewer gaps after max iterations", "gaps", len(review.Gaps))
+			// Out of budget — surface the score, surviving gaps, and target.
+			slog.Warn("elaboration still below the executability bar after max iterations", "score", review.Score, "gaps", len(review.Gaps))
 			result.UnresolvedGaps = review.Gaps
+			result.ReviewTarget = review.ToReachTen
 			result.Body = BuildIssueBody(result)
 			return result
 		}
@@ -278,9 +290,11 @@ func (r *Runner) runReviewLoop(dir string, baseCtx Context, result *Result, opts
 		refineCtx := baseCtx
 		refineCtx.PriorDraft = result.Body
 		refineCtx.ReviewGaps = review.Gaps
+		refineCtx.ReviewTarget = review.ToReachTen
 		refined, err := r.Claude.Elaborate(dir, refineCtx)
 		if err != nil {
 			slog.Warn("elaboration refinement failed; keeping current draft", "iteration", i, "err", err)
+			result.Body = BuildIssueBody(result)
 			return result
 		}
 		if refined.Title == "" {

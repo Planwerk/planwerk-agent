@@ -220,6 +220,11 @@ func TestBuildElaboratePrompt_Golden(t *testing.T) {
 	assertGoldenPrompt(t, "elaborate", buildElaboratePrompt(goldenElaborateContext()))
 }
 
+func TestBuildElaborateReviewPrompt_Golden(t *testing.T) {
+	draft := "**Description:**\n\nAdd golden files for every prompt builder.\n\n**Acceptance Criteria:**\n\n- [ ] A golden file exists for every builder\n"
+	assertGoldenPrompt(t, "elaborate_review", buildElaborateReviewPrompt(goldenElaborateContext(), draft))
+}
+
 func TestBuildAuditPrompt_Golden(t *testing.T) {
 	assertGoldenPrompt(t, "audit", buildAuditPrompt(goldenAuditContext()))
 }

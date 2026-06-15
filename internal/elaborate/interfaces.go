@@ -13,19 +13,24 @@ type Context struct {
 	MaxPatterns int
 	RepoName    string
 	Issue       *github.Issue
-	// PriorDraft and ReviewGaps drive the reviewer refine loop. When set, the
-	// elaboration prompt revises the prior draft to close the listed gaps
-	// instead of starting from scratch. Both empty on the first pass.
-	PriorDraft string
-	ReviewGaps []string
+	// PriorDraft, ReviewGaps, and ReviewTarget drive the reviewer refine loop.
+	// When set, the elaboration prompt revises the prior draft to close the
+	// listed gaps and reach the target instead of starting from scratch. All
+	// empty on the first pass.
+	PriorDraft   string
+	ReviewGaps   []string
+	ReviewTarget string
 }
 
 // ReviewResult is the verdict of the optional reviewer pass over an
-// elaboration draft. Approved short-circuits the refine loop; Gaps lists the
-// concrete executability problems the next iteration must close.
+// elaboration draft. Score rates the draft's executability from 0 to 10; Gaps
+// lists the concrete reasons it falls short of a 10; ToReachTen describes what
+// a 10/10 plan would look like so the next iteration has a target to optimize
+// against.
 type ReviewResult struct {
-	Approved bool     `json:"approved"`
-	Gaps     []string `json:"gaps"`
+	Score      int      `json:"score"`
+	Gaps       []string `json:"gaps"`
+	ToReachTen string   `json:"to_reach_ten"`
 }
 
 // ClaudeElaborator turns a high-level issue into a detailed engineering

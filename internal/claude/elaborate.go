@@ -76,6 +76,9 @@ Apply these thinking patterns:
 			}
 			sb.WriteString("\n")
 		}
+		if t := strings.TrimSpace(ctx.ReviewTarget); t != "" {
+			fmt.Fprintf(&sb, "What a 10/10 plan would look like: %s\n\n", t)
+		}
 		sb.WriteString("<prior-draft>\n")
 		sb.WriteString(strings.TrimSpace(ctx.PriorDraft))
 		sb.WriteString("\n</prior-draft>\n\n")
@@ -184,11 +187,11 @@ Field rules:
 </elaboration-output>`
 }
 
-// ReviewElaboration runs the optional reviewer gate: it judges a rendered
-// elaboration draft for executability against the repository and returns either
-// approval or a list of concrete gaps the next revision must close. It is a
-// single structured Claude call with the same malformed-JSON repair fallback as
-// the other structurers.
+// ReviewElaboration runs the optional reviewer gate: it scores a rendered
+// elaboration draft for executability against the repository (0-10) and returns
+// the score, the concrete gaps the next revision must close, and what a 10/10
+// plan would look like. It is a single structured Claude call with the same
+// malformed-JSON repair fallback as the other structurers.
 func ReviewElaboration(dir string, ctx elaborate.Context, draftBody string) (*elaborate.ReviewResult, error) {
 	text, err := runClaude(dir, buildElaborateReviewPrompt(ctx, draftBody), "elaborate-review")
 	if err != nil {
@@ -198,18 +201,27 @@ func ReviewElaboration(dir string, ctx elaborate.Context, draftBody string) (*el
 	if err := decodeJSONWithRepair(text, "elaboration review", &rr); err != nil {
 		return nil, err
 	}
-	// A non-empty gap list always means "not approved", regardless of what the
-	// model put in the boolean.
-	if len(rr.Gaps) > 0 {
-		rr.Approved = false
-	}
+	// Guard against an out-of-range score from the model so the gate and the
+	// rendered "N/10" stay sane.
+	rr.Score = clampScore(rr.Score)
 	return &rr, nil
+}
+
+// clampScore bounds an executability score to the valid 0-10 range.
+func clampScore(n int) int {
+	if n < 0 {
+		return 0
+	}
+	if n > 10 {
+		return 10
+	}
+	return n
 }
 
 func buildElaborateReviewPrompt(ctx elaborate.Context, draftBody string) string {
 	var sb strings.Builder
 
-	sb.WriteString(`You are a Senior Engineer reviewing a draft engineering plan BEFORE it is handed to an implementer. Decide whether the plan is executable as written; if not, list the concrete gaps that must be closed.
+	sb.WriteString(`You are a Senior Engineer reviewing a draft engineering plan BEFORE it is handed to an implementer. Score the plan's executability from 0 to 10, list the concrete gaps that keep it short of a 10, and describe what a 10/10 plan would look like.
 
 Do NOT rewrite the plan. Do NOT assume it is correct because it looks thorough — verify its claims against the repository. Judge it the way an implementer with zero prior context would experience it.
 
@@ -236,21 +248,29 @@ Do NOT rewrite the plan. Do NOT assume it is correct because it looks thorough �
 4. Name consistency — a symbol must be named identically throughout. Two names for one thing is a gap.
 5. Executable acceptance criteria — each criterion is an observable check, not a vague goal.
 
-## Calibration
+## Scoring rubric
 
-Only flag gaps that would make an implementer build the wrong thing or get stuck. Minor wording and stylistic preferences are NOT gaps. Approve the plan unless there are real executability problems.
+Score executability on this scale — the number is what the refine loop optimizes against, so calibrate it honestly:
+- 10: an implementer with zero context executes the plan correctly without asking a single question.
+- 8-9: solid; at most cosmetic gaps that would not change what gets built.
+- 4-7: real gaps that would make the implementer build the wrong thing or get stuck on a decision the plan should have made.
+- 0-3: not executable — missing coverage, placeholders, or citations that do not exist.
+
+Only count gaps that would make an implementer build the wrong thing or get stuck. Minor wording and stylistic preferences are NOT gaps.
 
 ## Output
 
 Output ONLY valid JSON (no markdown fences, no surrounding text):
 
 {
-  "approved": true,
-  "gaps": []
+  "score": 8,
+  "gaps": [],
+  "to_reach_ten": ""
 }
 
-- "approved": true ONLY when the plan is executable as written with no blocking gaps. If you list any gap, "approved" MUST be false.
-- "gaps": each entry is one concrete, actionable problem the next revision must fix, referencing the exact section or criterion. Empty array when approved.
+- "score": integer 0-10 from the rubric above.
+- "gaps": each entry is one concrete, actionable problem keeping the plan short of a 10, referencing the exact section or criterion. Empty array only for a 10.
+- "to_reach_ten": one or two sentences describing what a 10/10 version of THIS plan would add or fix. Empty string only for a 10.
 `)
 
 	return sb.String()

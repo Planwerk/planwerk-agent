@@ -88,9 +88,13 @@ func BuildIssueBody(r *Result) string {
 		fmt.Fprintln(&b)
 	}
 
+	if r.ReviewScore != nil {
+		fmt.Fprintf(&b, "**Executability score:** %d/10\n\n", *r.ReviewScore)
+	}
+
 	if len(r.UnresolvedGaps) > 0 {
 		fmt.Fprint(&b, "**Reviewer Notes (unresolved):**\n\n")
-		fmt.Fprint(&b, "The reviewer pass flagged these gaps that the refine loop could not close. Address them before implementing:\n\n")
+		fmt.Fprint(&b, "The reviewer pass scored this plan below the executability bar. The refine loop could not close these gaps. Address them before implementing:\n\n")
 		for _, g := range r.UnresolvedGaps {
 			g = strings.TrimSpace(g)
 			if g == "" {
@@ -99,6 +103,9 @@ func BuildIssueBody(r *Result) string {
 			fmt.Fprintf(&b, "- %s\n", g)
 		}
 		fmt.Fprintln(&b)
+		if t := strings.TrimSpace(r.ReviewTarget); t != "" {
+			fmt.Fprintf(&b, "What a 10/10 plan would look like: %s\n\n", t)
+		}
 	}
 
 	fmt.Fprint(&b, "---\n\n_Elaborated by [planwerk-review](https://github.com/planwerk/planwerk-review) with Claude Code_\n")

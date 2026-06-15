@@ -123,9 +123,9 @@ func TestRun_ReviewLoop_RefinesUntilApproved(t *testing.T) {
 	rv := &fakeReviewer{}
 	rv.fn = func(dir string, ctx Context, draft string) (*ReviewResult, error) {
 		if atomic.LoadInt32(&rv.calls) == 1 {
-			return &ReviewResult{Approved: false, Gaps: []string{"close gap X"}}, nil
+			return &ReviewResult{Score: 4, Gaps: []string{"close gap X"}, ToReachTen: "name the io.EOF path"}, nil
 		}
-		return &ReviewResult{Approved: true}, nil
+		return &ReviewResult{Score: 9}, nil
 	}
 	r := &Runner{Claude: cl, GitHub: gh, Reviewer: rv}
 
@@ -141,8 +141,12 @@ func TestRun_ReviewLoop_RefinesUntilApproved(t *testing.T) {
 	if got := atomic.LoadInt32(&rv.calls); got != 2 {
 		t.Errorf("reviewer calls = %d, want 2", got)
 	}
-	if s := out.String(); !strings.Contains(s, "refined draft") || strings.Contains(s, "Reviewer Notes") {
+	s := out.String()
+	if !strings.Contains(s, "refined draft") || strings.Contains(s, "Reviewer Notes") {
 		t.Errorf("expected refined draft and no unresolved-gap note, got:\n%s", s)
+	}
+	if !strings.Contains(s, "**Executability score:** 9/10") {
+		t.Errorf("expected passing score surfaced, got:\n%s", s)
 	}
 }
 
@@ -156,7 +160,7 @@ func TestRun_ReviewLoop_SurfacesUnresolvedGaps(t *testing.T) {
 		return &Result{Title: "Title", Description: "draft"}, nil
 	}}
 	rv := &fakeReviewer{fn: func(dir string, ctx Context, draft string) (*ReviewResult, error) {
-		return &ReviewResult{Approved: false, Gaps: []string{"persistent gap Y"}}, nil
+		return &ReviewResult{Score: 4, Gaps: []string{"persistent gap Y"}, ToReachTen: "enumerate the empty-slice path"}, nil
 	}}
 	r := &Runner{Claude: cl, GitHub: gh, Reviewer: rv}
 
@@ -173,6 +177,12 @@ func TestRun_ReviewLoop_SurfacesUnresolvedGaps(t *testing.T) {
 	s := out.String()
 	if !strings.Contains(s, "Reviewer Notes (unresolved)") || !strings.Contains(s, "persistent gap Y") {
 		t.Errorf("expected unresolved-gap note in output, got:\n%s", s)
+	}
+	if !strings.Contains(s, "**Executability score:** 4/10") {
+		t.Errorf("expected near-miss score surfaced, got:\n%s", s)
+	}
+	if !strings.Contains(s, "enumerate the empty-slice path") {
+		t.Errorf("expected the what-a-10-looks-like target surfaced, got:\n%s", s)
 	}
 }
 
@@ -432,6 +442,48 @@ func TestBuildIssueBodySectionsAndOrder(t *testing.T) {
 	if !strings.Contains(body, "_Elaborated by [planwerk-review]") {
 		t.Errorf("missing footer:\n%s", body)
 	}
+}
+
+func TestBuildIssueBody_ReviewScoreAndNotes(t *testing.T) {
+	score := func(n int) *int { return &n }
+
+	t.Run("near-miss renders score, notes, and target in order", func(t *testing.T) {
+		body := BuildIssueBody(&Result{
+			Description:    "desc",
+			ReviewScore:    score(4),
+			UnresolvedGaps: []string{"persistent gap Y"},
+			ReviewTarget:   "enumerate the empty-slice path",
+		})
+		scoreIdx := strings.Index(body, "**Executability score:** 4/10")
+		notesIdx := strings.Index(body, "**Reviewer Notes (unresolved):**")
+		gapIdx := strings.Index(body, "persistent gap Y")
+		targetIdx := strings.Index(body, "What a 10/10 plan would look like: enumerate the empty-slice path")
+		for name, idx := range map[string]int{"score": scoreIdx, "notes": notesIdx, "gap": gapIdx, "target": targetIdx} {
+			if idx < 0 {
+				t.Fatalf("missing %s in body:\n%s", name, body)
+			}
+		}
+		if scoreIdx >= notesIdx || notesIdx >= gapIdx || gapIdx >= targetIdx {
+			t.Fatalf("score/notes/gap/target out of order:\n%s", body)
+		}
+	})
+
+	t.Run("clean pass renders the score line and no notes block", func(t *testing.T) {
+		body := BuildIssueBody(&Result{Description: "desc", ReviewScore: score(10)})
+		if !strings.Contains(body, "**Executability score:** 10/10") {
+			t.Errorf("expected score line, got:\n%s", body)
+		}
+		if strings.Contains(body, "Reviewer Notes") {
+			t.Errorf("clean pass should not render a notes block, got:\n%s", body)
+		}
+	})
+
+	t.Run("no reviewer pass renders neither", func(t *testing.T) {
+		body := BuildIssueBody(&Result{Description: "desc"})
+		if strings.Contains(body, "Executability score") || strings.Contains(body, "Reviewer Notes") {
+			t.Errorf("non-review run should render no score or notes, got:\n%s", body)
+		}
+	})
 }
 
 func TestRun_FillsTitleFromIssueWhenClaudeOmitsIt(t *testing.T) {
