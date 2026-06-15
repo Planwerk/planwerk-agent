@@ -408,6 +408,8 @@ planwerk-review implement owner/repo#123
 planwerk-review implement --no-plan owner/repo#123
 planwerk-review implement --no-plan-reuse owner/repo#123
 planwerk-review implement --verify owner/repo#123
+planwerk-review implement --verify-adversarial owner/repo#123
+planwerk-review implement --verify --verify-adversarial owner/repo#123
 ```
 
 | Flag | Description | Default |
@@ -423,6 +425,7 @@ planwerk-review implement --verify owner/repo#123
 | `--plan-model` | Model for the planning session passed to Claude Code via `--model` (e.g. `fable`, `opus`; env: `PLANWERK_PLAN_MODEL`) | `fable` |
 | `--plan-effort` | Reasoning effort for the planning session passed via `--effort` (`low`, `medium`, `high`, `xhigh`, `max`; env: `PLANWERK_PLAN_EFFORT`) | `max` |
 | `--verify` | After implementing, run an independent pass that checks the actual diff against the issue's Acceptance Criteria without trusting the implementer's report | `false` |
+| `--verify-adversarial` | After implementing, red-team the produced diff for the bugs it introduces using the adversarial-review pass (independent of `--verify`) | `false` |
 | `--patterns` | Additional pattern source: local directory, `github:owner/repo[/sub][@ref]`, or `git+https://…[#ref[:sub]]` | - |
 | `--no-repo-patterns` | Ignore repo-specific patterns under `.planwerk/review_patterns/` in the target repo | `false` |
 | `--no-local-patterns` | Ignore local patterns from the tool | `false` |
@@ -433,6 +436,14 @@ planwerk-review implement --verify owner/repo#123
 `--dry-run`, `--print-prompt`, `--print-bare-prompt`, and `--print-plan-prompt`
 are mutually exclusive. The implement session runs in Claude Code's auto mode
 and requires Claude Code v2.1.83+.
+
+`--verify` and `--verify-adversarial` are independent verification passes that
+both run over the actual committed diff, not the implementer's self-report:
+`--verify` checks acceptance-criteria coverage, while `--verify-adversarial`
+reuses the same adversarial-review machinery as `review --thorough` to hunt for
+the bugs the change introduces (injection, race conditions, failure modes).
+Enable either, both, or neither. Both are non-fatal — a finding is reported, it
+does not fail the run.
 
 ## `cache`
 

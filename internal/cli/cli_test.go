@@ -41,3 +41,29 @@ func TestToDraftOptions(t *testing.T) {
 		}
 	})
 }
+
+// TestToImplementOptions_VerifyFlags guards the verify flag mappings: the two
+// passes are independent, and a missing copy in ToImplementOptions would
+// silently disable a flag with no compile error.
+func TestToImplementOptions_VerifyFlags(t *testing.T) {
+	t.Run("verify and verify-adversarial map independently", func(t *testing.T) {
+		opts := ImplementConfig{Verify: true, VerifyAdversarial: true}.ToImplementOptions("v1")
+		if !opts.Verify || !opts.VerifyAdversarial {
+			t.Errorf("Verify=%v VerifyAdversarial=%v, want true/true", opts.Verify, opts.VerifyAdversarial)
+		}
+	})
+
+	t.Run("verify-adversarial does not require verify", func(t *testing.T) {
+		opts := ImplementConfig{VerifyAdversarial: true}.ToImplementOptions("v1")
+		if opts.Verify || !opts.VerifyAdversarial {
+			t.Errorf("Verify=%v VerifyAdversarial=%v, want false/true", opts.Verify, opts.VerifyAdversarial)
+		}
+	})
+
+	t.Run("defaults stay off", func(t *testing.T) {
+		opts := ImplementConfig{}.ToImplementOptions("v1")
+		if opts.Verify || opts.VerifyAdversarial {
+			t.Errorf("Verify=%v VerifyAdversarial=%v, want false/false", opts.Verify, opts.VerifyAdversarial)
+		}
+	})
+}

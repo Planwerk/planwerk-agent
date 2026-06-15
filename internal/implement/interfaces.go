@@ -127,6 +127,27 @@ func (a verifyFnAdapter) VerifyImplementation(dir, issueTitle, issueBody string)
 	return a.fn(dir, issueTitle, issueBody)
 }
 
+// AdversarialVerifier red-teams a produced change set for the bugs it
+// introduces, reusing the adversarial-review machinery instead of only
+// checking acceptance-criteria coverage. Optional: wired only when
+// --verify-adversarial is set. baseBranch scopes the review to the diff
+// against that branch; an empty value falls back to the default branch.
+type AdversarialVerifier interface {
+	AdversarialReview(dir, baseBranch string) (*report.ReviewResult, error)
+}
+
+// AdversarialFn is the bare-function form of AdversarialVerifier. It matches
+// claude.AdversarialReview so the CLI can wire it directly.
+type AdversarialFn func(dir, baseBranch string) (*report.ReviewResult, error)
+
+type adversarialFnAdapter struct {
+	fn AdversarialFn
+}
+
+func (a adversarialFnAdapter) AdversarialReview(dir, baseBranch string) (*report.ReviewResult, error) {
+	return a.fn(dir, baseBranch)
+}
+
 // GitHubClient is the subset of github operations the implement command
 // needs: fetching the source issue, listing its comments (to detect and reuse
 // an implementation plan posted on an earlier run), cloning the repository so

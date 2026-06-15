@@ -43,9 +43,13 @@ type Options struct {
 	NoPlanComment   bool // do not post the finished plan as a comment on the source issue
 	NoReportComment bool // do not post the implementation report as a comment on the source issue
 	Verify          bool // after implementing, run an independent verification pass against the diff
-	Local           bool // operate on the current working directory instead of cloning
-	Force           bool // with Local, skip the dirty-working-tree confirmation prompt
-	Version         string
+	// VerifyAdversarial red-teams the produced diff for the bugs it
+	// introduces, reusing the adversarial-review machinery. Independent of
+	// Verify: either, both, or neither may be set.
+	VerifyAdversarial bool
+	Local             bool // operate on the current working directory instead of cloning
+	Force             bool // with Local, skip the dirty-working-tree confirmation prompt
+	Version           string
 
 	// Pattern loading mirrors review/audit/elaborate so the implementation
 	// is grounded in the same review catalog and any project-specific
@@ -76,15 +80,20 @@ type Runner struct {
 	// Verifier runs the optional independent verification pass. When nil (or
 	// opts.Verify is false) the pass is skipped.
 	Verifier ImplementationVerifier
+	// AdversarialVerifier red-teams the produced diff for introduced bugs.
+	// When nil (or opts.VerifyAdversarial is false) the pass is skipped.
+	AdversarialVerifier AdversarialVerifier
 }
 
 // NewRunner builds a Runner with the production GitHub backend, the given
-// Claude plan/implement functions, their prompt builders, and an optional
-// verifier. The CLI wires claude.Plan / claude.BuildPlanPrompt /
-// claude.Implement / claude.BuildImplementPrompt / claude.VerifyImplementation
-// so the import direction stays claude -> implement. A nil planFn disables
-// the planning phase; a nil verifyFn leaves the verification pass disabled.
-func NewRunner(planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn) *Runner {
+// Claude plan/implement functions, their prompt builders, and the optional
+// acceptance-criteria and adversarial verifiers. The CLI wires claude.Plan /
+// claude.BuildPlanPrompt / claude.Implement / claude.BuildImplementPrompt /
+// claude.VerifyImplementation / claude.AdversarialReview so the import
+// direction stays claude -> implement. A nil planFn disables the planning
+// phase; a nil verifyFn leaves the verification pass disabled; a nil
+// adversarialFn leaves the adversarial pass disabled.
+func NewRunner(planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn, adversarialFn AdversarialFn) *Runner {
 	r := &Runner{
 		Claude:          implementFnAdapter{fn: fn},
 		GitHub:          defaultGitHubClient{},
@@ -97,19 +106,22 @@ func NewRunner(planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build Pro
 	if verifyFn != nil {
 		r.Verifier = verifyFnAdapter{fn: verifyFn}
 	}
+	if adversarialFn != nil {
+		r.AdversarialVerifier = adversarialFnAdapter{fn: adversarialFn}
+	}
 	return r
 }
 
 // Run is a package-level convenience that delegates to NewRunner(...).Run.
-func Run(w io.Writer, opts Options, planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn) error {
-	return NewRunner(planFn, buildPlan, fn, build, verifyFn).Run(w, opts)
+func Run(w io.Writer, opts Options, planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn, adversarialFn AdversarialFn) error {
+	return NewRunner(planFn, buildPlan, fn, build, verifyFn, adversarialFn).Run(w, opts)
 }
 
 // PrintBarePrompt is a package-level convenience that delegates to
 // NewRunner(nil, ...).PrintBarePrompt. The prompt itself is built without
 // invoking Claude, so the functions passed to NewRunner are not used here.
 func PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuildFn) error {
-	return NewRunner(nil, nil, nil, nil, nil).PrintBarePrompt(w, opts, build)
+	return NewRunner(nil, nil, nil, nil, nil, nil).PrintBarePrompt(w, opts, build)
 }
 
 // PrintBarePrompt builds a self-contained ("bare") implement prompt from
@@ -315,6 +327,9 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 
 	if opts.Verify && r.Verifier != nil {
 		r.runVerification(w, repo.Dir, ctx)
+	}
+	if opts.VerifyAdversarial && r.AdversarialVerifier != nil {
+		r.runAdversarialVerification(w, repo.Dir)
 	}
 	return nil
 }
@@ -575,6 +590,43 @@ func renderVerification(w io.Writer, result *report.ReviewResult) {
 		return
 	}
 	_, _ = fmt.Fprintf(w, "\nIndependent verification: %d unmet criterion finding(s) — the implementer's report was not trusted.\n\n", len(result.Findings))
+	for _, f := range result.Findings {
+		_, _ = fmt.Fprintf(w, "- [%s] %s", f.Severity, f.Title)
+		if f.File != "" {
+			_, _ = fmt.Fprintf(w, " (%s)", f.File)
+		}
+		_, _ = fmt.Fprintln(w)
+		if f.Problem != "" {
+			_, _ = fmt.Fprintf(w, "  %s\n", f.Problem)
+		}
+	}
+}
+
+// runAdversarialVerification red-teams the change set the implement session
+// produced for the bugs it introduces, reusing the adversarial-review
+// machinery, and prints its verdict. Like the acceptance-criteria pass it is
+// non-fatal — the implementation already happened, and a red-team failure must
+// not mask it. The base branch is left empty so AdversarialReview falls back to
+// the repository's default branch.
+func (r *Runner) runAdversarialVerification(w io.Writer, dir string) {
+	slog.Info("running adversarial verification over the produced diff")
+	result, err := r.AdversarialVerifier.AdversarialReview(dir, "")
+	if err != nil {
+		slog.Warn("adversarial verification failed", "err", err)
+		_, _ = fmt.Fprintf(w, "\nAdversarial verification could not run: %v\n", err)
+		return
+	}
+	renderAdversarialVerification(w, result)
+}
+
+// renderAdversarialVerification prints the red-team verdict: a clean pass when
+// no introduced bug was found, otherwise one block per finding.
+func renderAdversarialVerification(w io.Writer, result *report.ReviewResult) {
+	if result == nil || len(result.Findings) == 0 {
+		_, _ = fmt.Fprint(w, "\nAdversarial verification: no introduced bugs found in the produced diff.\n")
+		return
+	}
+	_, _ = fmt.Fprintf(w, "\nAdversarial verification: %d finding(s) red-teaming the produced diff.\n\n", len(result.Findings))
 	for _, f := range result.Findings {
 		_, _ = fmt.Fprintf(w, "- [%s] %s", f.Severity, f.Title)
 		if f.File != "" {
