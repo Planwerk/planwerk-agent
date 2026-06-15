@@ -355,7 +355,9 @@ The conflict resolution and the apply step run in Claude Code's auto mode.
 
 Take an elaborated GitHub issue, run a read-only Claude Code planning session,
 then a fresh implement session that executes the plan end to end (code, tests,
-docs) and opens a draft pull request.
+docs) and opens a draft pull request. The implementation report is posted back
+onto the source issue as a comment on every run (use `--no-report-comment` to
+skip that), so the course of each implementation is recorded on the issue.
 
 ```bash
 planwerk-review implement owner/repo#123
@@ -371,6 +373,7 @@ planwerk-review implement --verify owner/repo#123
 | `--print-plan-prompt` | Render the planning prompt (with the issue body embedded) to stdout and exit | `false` |
 | `--no-plan` | Skip the planning session and implement directly in a single session | `false` |
 | `--no-plan-comment` | Do not post the generated implementation plan as a comment on the source issue | `false` |
+| `--no-report-comment` | Do not post the implementation report as a comment on the source issue | `false` |
 | `--plan-model` | Model for the planning session passed to Claude Code via `--model` (e.g. `fable`, `opus`; env: `PLANWERK_PLAN_MODEL`) | `fable` |
 | `--plan-effort` | Reasoning effort for the planning session passed via `--effort` (`low`, `medium`, `high`, `xhigh`, `max`; env: `PLANWERK_PLAN_EFFORT`) | `max` |
 | `--verify` | After implementing, run an independent pass that checks the actual diff against the issue's Acceptance Criteria without trusting the implementer's report | `false` |
