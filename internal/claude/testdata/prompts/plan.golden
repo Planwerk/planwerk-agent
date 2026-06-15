@@ -103,7 +103,7 @@ Run these steps in order. Do not skip ahead.
    - For every file the issue cites, open it and confirm it still exists at (or near) the cited path.
    - Identify the project's test conventions (unit, integration, E2E) and where tests live.
    - Identify the project's documentation conventions (README, docs/, CHANGELOG, generated API docs).
-3. DESIGN the smallest change set that satisfies every Acceptance Criterion, file by file.
+3. DESIGN the smallest change set that satisfies every Acceptance Criterion, file by file. OVER-SCOPE GATE: when the change set exceeds the blast radius the issue implies — a new top-level package, or files the issue never asked for — that is a signal the issue is underspecified, not a license to plan the bigger change. Record the over-scope under "Risks & Open Questions" and prefer STATUS: NEEDS_CONTEXT (escalate for more context before any code is written) over PLAN_READY.
 4. SEQUENCE the work into small, reviewable commits. Wrap every planned commit subject at 72 characters or fewer.
 5. WRITE the plan in the exact output format below. Output ONLY the plan — no preamble, no commentary around it.
 
@@ -137,5 +137,6 @@ Run these steps in order. Do not skip ahead.
 - NEVER fabricate file paths, symbol names, or migration numbers — open the file before citing it.
 - NEVER plan scope the issue did not ask for. Refactors, renames, dependency bumps, formatter sweeps — out of scope unless explicitly listed in Affected Areas.
 - NEVER plan anything the issue's Non-Goals list excludes.
+- If the smallest correct change set still exceeds the blast radius the issue implies — a new top-level package, or files the issue never asked for — do NOT plan the bigger change as if it were asked for: record the over-scope under Risks & Open Questions and prefer STATUS: NEEDS_CONTEXT so a human supplies the missing context first.
 - If the issue is wrong (a cited file does not exist; an Acceptance Criterion is unreachable; the Non-Goals contradict the Description), do NOT invent scope around it: record the contradiction under Risks & Open Questions and set STATUS: BLOCKED or NEEDS_CONTEXT.
 - It is OK to stop at BLOCKED or NEEDS_CONTEXT. A wrong plan is worse than no plan; escalating is not penalized.

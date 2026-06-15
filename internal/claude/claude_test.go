@@ -683,3 +683,16 @@ func TestBuildValidationRepairPrompt_ContainsErrorAndJSON(t *testing.T) {
 		t.Error("validation repair prompt should ask for corrected JSON only")
 	}
 }
+
+// TestBuildPlanPrompt_ContainsOverScopeGate locks the over-scope gate (issue
+// #89, I2): a plan whose change set exceeds the issue's implied blast radius
+// must escalate for context rather than plan the bigger change. The anchor
+// survives golden regeneration so the gate cannot be dropped silently.
+func TestBuildPlanPrompt_ContainsOverScopeGate(t *testing.T) {
+	prompt := BuildPlanPrompt(goldenImplementContext())
+	for _, want := range []string{"OVER-SCOPE GATE", "blast radius", "STATUS: NEEDS_CONTEXT"} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("plan prompt should record over-scope and escalate for context; missing %q", want)
+		}
+	}
+}
