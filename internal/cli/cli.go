@@ -309,6 +309,7 @@ type ImplementConfig struct {
 	PrintBarePrompt bool
 	PrintPlanPrompt bool
 	NoPlan          bool
+	NoPlanReuse     bool
 	NoPlanComment   bool
 	NoReportComment bool
 	Verify          bool
@@ -329,6 +330,7 @@ func (c ImplementConfig) ToImplementOptions(version string) implement.Options {
 		PrintBarePrompt: c.PrintBarePrompt,
 		PrintPlanPrompt: c.PrintPlanPrompt,
 		NoPlan:          c.NoPlan,
+		NoPlanReuse:     c.NoPlanReuse,
 		NoPlanComment:   c.NoPlanComment,
 		NoReportComment: c.NoReportComment,
 		Verify:          c.Verify,

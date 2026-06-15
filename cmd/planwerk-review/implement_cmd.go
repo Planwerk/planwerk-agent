@@ -42,6 +42,13 @@ that). A plan that reports STATUS: BLOCKED or NEEDS_CONTEXT aborts before any
 code is written. Use --no-plan to skip the planning session and implement
 directly in a single session.
 
+If an implementation plan planwerk-review posted on an earlier run is already
+on the issue (for example a run that planned but was aborted before
+implementing), it is reused verbatim by default: the planning session is
+skipped, no duplicate plan comment is posted, and the reused plan is still held
+to the same STATUS check. Use --no-plan-reuse to force a fresh planning session
+when the issue has changed and the posted plan has gone stale.
+
 The implement session runs in Claude Code's auto mode (--permission-mode
 auto) so it can edit files, run the test suite, commit, push the branch, and
 open the draft PR without an interactive confirmation. A background
@@ -103,6 +110,7 @@ or short form (owner/repo#123).`,
 	implementFlags.BoolVar(&implementCfg.PrintBarePrompt, "print-bare-prompt", false, "Render a self-contained implement prompt (no issue body) to stdout and exit; meant to be pasted into a manual Claude session already running inside a checkout of the repository")
 	implementFlags.BoolVar(&implementCfg.PrintPlanPrompt, "print-plan-prompt", false, "Render the planning prompt (with the issue body embedded) to stdout and exit; do not clone or invoke Claude")
 	implementFlags.BoolVar(&implementCfg.NoPlan, "no-plan", false, "Skip the planning session and implement directly in a single session")
+	implementFlags.BoolVar(&implementCfg.NoPlanReuse, "no-plan-reuse", false, "Always run a fresh planning session; do not reuse an implementation plan already posted on the issue")
 	implementFlags.BoolVar(&implementCfg.NoPlanComment, "no-plan-comment", false, "Do not post the generated implementation plan as a comment on the source issue")
 	implementFlags.BoolVar(&implementCfg.NoReportComment, "no-report-comment", false, "Do not post the implementation report as a comment on the source issue")
 	implementFlags.StringVar(&planModel, "plan-model", claude.DefaultPlanModel, "Model for the planning session passed to Claude Code via --model (e.g. fable, opus; env: "+envPlanModel+")")
