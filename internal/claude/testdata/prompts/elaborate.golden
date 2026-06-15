@@ -79,6 +79,15 @@ The plan must be executable, not merely readable. These are plan failures — ne
 
 Every Acceptance Criterion must map to a concrete, named change somewhere in Description or Affected Areas.
 
+## Edge-Case Enumeration
+
+A data-flow acceptance criterion is any criterion about a function, handler, or pipeline that consumes input and produces output. For EVERY such criterion, do not stop at the happy path — spell out its shadow paths as SEPARATE acceptance-criterion entries (one observable check each, since each renders as its own checkbox):
+- Empty or zero-length input: the empty string, the empty slice or map, a zero count. State the expected behavior (e.g. return an empty result, not an error).
+- Nil or absent input: a nil pointer or interface, a missing optional field, an absent config key. State the expected behavior.
+- Upstream error: the dependency this code calls returns an error. Name the CONCRETE error and how it is handled — for example io.EOF, sql.ErrNoRows, context.DeadlineExceeded, or a wrapped fmt.Errorf("doing X: %w", err) propagated to the caller.
+
+Name the actual error or exception value, never a vague "handle the error case". A criterion that says "handles edge cases" or "adds error handling" is a failure — replace it with the concrete shadow-path entries above.
+
 ## Anti-Hallucination Rules
 
 These are MANDATORY:

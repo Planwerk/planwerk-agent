@@ -113,6 +113,15 @@ The plan must be executable, not merely readable. These are plan failures — ne
 
 Every Acceptance Criterion must map to a concrete, named change somewhere in Description or Affected Areas.
 
+## Edge-Case Enumeration
+
+A data-flow acceptance criterion is any criterion about a function, handler, or pipeline that consumes input and produces output. For EVERY such criterion, do not stop at the happy path — spell out its shadow paths as SEPARATE acceptance-criterion entries (one observable check each, since each renders as its own checkbox):
+- Empty or zero-length input: the empty string, the empty slice or map, a zero count. State the expected behavior (e.g. return an empty result, not an error).
+- Nil or absent input: a nil pointer or interface, a missing optional field, an absent config key. State the expected behavior.
+- Upstream error: the dependency this code calls returns an error. Name the CONCRETE error and how it is handled — for example io.EOF, sql.ErrNoRows, context.DeadlineExceeded, or a wrapped fmt.Errorf("doing X: %w", err) propagated to the caller.
+
+Name the actual error or exception value, never a vague "handle the error case". A criterion that says "handles edge cases" or "adds error handling" is a failure — replace it with the concrete shadow-path entries above.
+
 ## Anti-Hallucination Rules
 
 These are MANDATORY:
@@ -247,6 +256,7 @@ Do NOT rewrite the plan. Do NOT assume it is correct because it looks thorough �
 3. Ground truth — every cited file path, symbol, or migration must exist in the repository. Walk the repo to confirm; a citation that does not exist is a gap unless the plan explicitly marks it as an assumption.
 4. Name consistency — a symbol must be named identically throughout. Two names for one thing is a gap.
 5. Executable acceptance criteria — each criterion is an observable check, not a vague goal.
+6. Edge-case coverage — every data-flow acceptance criterion enumerates its empty/zero-length, nil/absent, and upstream-error shadow paths as separate entries, each naming the concrete error (e.g. io.EOF, sql.ErrNoRows, a wrapped fmt.Errorf). A data-flow criterion that covers only the happy path is a gap.
 
 ## Scoring rubric
 

@@ -25,6 +25,7 @@ Add golden files for every prompt builder.
 3. Ground truth — every cited file path, symbol, or migration must exist in the repository. Walk the repo to confirm; a citation that does not exist is a gap unless the plan explicitly marks it as an assumption.
 4. Name consistency — a symbol must be named identically throughout. Two names for one thing is a gap.
 5. Executable acceptance criteria — each criterion is an observable check, not a vague goal.
+6. Edge-case coverage — every data-flow acceptance criterion enumerates its empty/zero-length, nil/absent, and upstream-error shadow paths as separate entries, each naming the concrete error (e.g. io.EOF, sql.ErrNoRows, a wrapped fmt.Errorf). A data-flow criterion that covers only the happy path is a gap.
 
 ## Scoring rubric
 
