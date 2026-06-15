@@ -13,6 +13,7 @@ import (
 	"github.com/planwerk/planwerk-review/internal/fix"
 	"github.com/planwerk/planwerk-review/internal/github"
 	"github.com/planwerk/planwerk-review/internal/implement"
+	"github.com/planwerk/planwerk-review/internal/meta"
 	"github.com/planwerk/planwerk-review/internal/patterns"
 	"github.com/planwerk/planwerk-review/internal/planwerk"
 	"github.com/planwerk/planwerk-review/internal/propose"
@@ -185,6 +186,26 @@ func TestBuildReviewPrompt_Golden(t *testing.T) {
 
 func TestBuildDraftPrompt_Golden(t *testing.T) {
 	assertGoldenPrompt(t, "draft", BuildDraftPrompt(goldenDraftContext()))
+}
+
+func goldenMetaContext() meta.Context {
+	return meta.Context{
+		Issue: &github.Issue{
+			Number: 78,
+			Title:  "Restructure the documentation site",
+			URL:    "https://github.com/planwerk/planwerk-review/issues/78",
+			Body: "Split the docs overhaul into lettered workstreams.\n\n" +
+				"## Workstreams\n\n" +
+				"- A. Reorganize the reference section\n" +
+				"- B. Rewrite the how-to guides\n" +
+				"- C. Add an explanation section",
+			State: "open",
+		},
+	}
+}
+
+func TestBuildMetaPrompt_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "meta", BuildMetaPrompt(goldenMetaContext()))
 }
 
 func TestBuildDraftQuestionsPrompt_Golden(t *testing.T) {
