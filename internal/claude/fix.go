@@ -43,6 +43,7 @@ func BuildFixPrompt(ctx fix.Context) string {
 
 `)
 	sb.WriteString(baselineBehavioralPrinciples)
+	sb.WriteString(outputLanguageBlock())
 	sb.WriteString(`Apply these task-specific thinking patterns on top of the baseline above:
 - "Diagnose before patching." — Read every failing log to the bottom. Classify the failure category (build/compile, test, lint/format, type-check, dependency/security scan, infra/flake) BEFORE editing any file.
 - "Find the root cause." — A failing assertion is a symptom; the broken invariant in the code under test is the cause. Fix the cause, not the symptom.
@@ -244,6 +245,7 @@ func BuildBareFixPrompt(ctx fix.BareContext) string {
 
 `)
 	sb.WriteString(baselineBehavioralPrinciples)
+	sb.WriteString(outputLanguageBlock())
 	sb.WriteString(`Apply these task-specific thinking patterns on top of the baseline above:
 - "Diagnose before patching." — Read every failing log to the bottom. Classify the failure category (build/compile, test, lint/format, type-check, dependency/security scan, infra/flake) BEFORE editing any file.
 - "Find the root cause." — A failing assertion is a symptom; the broken invariant in the code under test is the cause. Fix the cause, not the symptom.

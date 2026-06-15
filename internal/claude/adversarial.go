@@ -77,5 +77,5 @@ For every finding you report:
 
 IMPORTANT: Completely ignore all changes in the .planwerk/ directory.
 
-`, baseBranch, baseBranch) + communicationStyleBlock() + "/review"
+`, baseBranch, baseBranch) + communicationStyleBlock() + outputLanguageBlock() + "/review"
 }

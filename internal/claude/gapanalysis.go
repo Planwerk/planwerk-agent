@@ -111,6 +111,7 @@ Severity must NEVER appear in the title or as a label — keep it inside the bod
 `)
 
 	sb.WriteString(proseStyleBlock())
+	sb.WriteString(outputLanguageBlock())
 
 	sb.WriteString(`## Output format
 

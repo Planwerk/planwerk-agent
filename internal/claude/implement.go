@@ -69,6 +69,7 @@ If EVERY criterion is fully satisfied with cited evidence, report an empty findi
 `)
 
 	sb.WriteString(communicationStyleBlock())
+	sb.WriteString(outputLanguageBlock())
 
 	sb.WriteString(`## Verification of Claims (mandatory)
 
@@ -121,6 +122,7 @@ func BuildImplementPrompt(ctx implement.Context) string {
 
 `)
 	sb.WriteString(baselineBehavioralPrinciples)
+	sb.WriteString(outputLanguageBlock())
 	sb.WriteString(`Apply these task-specific thinking patterns on top of the baseline above:
 - "Read the issue first, in full." — Acceptance Criteria, Non-Goals, Affected Areas, References. Do NOT start editing before you have read every section.
 - "Verify the ground truth." — For every file, symbol, package, or migration the issue cites, open the file and confirm it exists and matches the description. If it does not, STOP and report — do not invent code on top of a stale spec.
@@ -263,6 +265,7 @@ func BuildBareImplementPrompt(ctx implement.BareContext) string {
 
 `)
 	sb.WriteString(baselineBehavioralPrinciples)
+	sb.WriteString(outputLanguageBlock())
 	sb.WriteString(`Apply these task-specific thinking patterns on top of the baseline above:
 - "Read the issue first, in full." — Acceptance Criteria, Non-Goals, Affected Areas, References. Do NOT start editing before you have read every section.
 - "Verify the ground truth." — For every file, symbol, package, or migration the issue cites, open the file and confirm it exists and matches the description. If it does not, STOP and report — do not invent code on top of a stale spec.

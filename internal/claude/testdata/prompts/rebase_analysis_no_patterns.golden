@@ -22,6 +22,10 @@ semantic behavior change it assumed away.
 
 - 9999999zzzz Rename runClaude to runSession
 
+## Output Language
+
+Write your entire output in English, whatever language the input is written in — the issue, diff, seed idea, code comments, or Q&A answers may be in another language. Read non-English input faithfully, but never mirror its language back: the artifact you produce is always English. Quote identifiers, code, paths, and command output verbatim; translate the surrounding prose.
+
 ## What to do
 
 For EACH rebased commit above:

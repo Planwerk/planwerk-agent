@@ -62,6 +62,7 @@ func BuildRebaseConflictPrompt(ctx rebase.ConflictContext) string {
 
 `)
 	sb.WriteString(baselineBehavioralPrinciples)
+	sb.WriteString(outputLanguageBlock())
 	sb.WriteString(`Apply these task-specific thinking patterns on top of the baseline above:
 - "Resolve semantically, never a blind side-pick." — Do NOT just take "ours" or "theirs". Produce the resolution that keeps BOTH the replayed commit's intent and the upstream change correct.
 - "Honor the replayed commit's intent." — The commit being applied has a purpose (its subject/message). The resolved file must still serve that purpose after absorbing the upstream change.
@@ -139,6 +140,8 @@ semantic behavior change it assumed away.
 	writePatternSection(&sb, ctx.Patterns, ctx.MaxPatterns,
 		"Ground your analysis in these patterns: a rebased commit that now violates one because of an upstream change is exactly the kind of adjustment to report.")
 
+	sb.WriteString(outputLanguageBlock())
+
 	sb.WriteString(`## What to do
 
 For EACH rebased commit above:
@@ -191,6 +194,7 @@ func BuildRebaseApplyPrompt(ctx rebase.ApplyContext) string {
 
 `)
 	sb.WriteString(baselineBehavioralPrinciples)
+	sb.WriteString(outputLanguageBlock())
 	sb.WriteString(`Apply these task-specific thinking patterns on top of the baseline above:
 - "Apply only the reported adjustments." — Make exactly the changes the analysis below lists. No drive-by refactors, no unrelated cleanups.
 - "Fold each change into the commit it belongs to." — A fix for code a specific commit introduced belongs IN that commit, not in a new commit stacked on top.
@@ -254,6 +258,7 @@ func BuildBareRebasePrompt(ctx rebase.BareContext) string {
 
 `)
 	sb.WriteString(baselineBehavioralPrinciples)
+	sb.WriteString(outputLanguageBlock())
 	sb.WriteString(`Apply these task-specific thinking patterns on top of the baseline above:
 - "Resolve conflicts semantically, never a blind side-pick." — Keep both the replayed commit's intent and the upstream change correct.
 - "Preserve individual commits." — Replay each commit; do NOT squash. The per-commit analysis depends on it.

@@ -40,7 +40,9 @@ planwerk-review draft --label enhancement --label needs-triage owner/repo "add a
    hanging.
 2. **Answer a few questions.** Claude asks a handful of targeted questions — the
    problem, who benefits, rough scope, and any hard constraints — to sharpen the
-   description. Each answer uses the same multi-line composer. `--no-interactive`
+   description. The questions are asked in the same language as your seed idea, so
+   you can answer comfortably; the drafted issue itself is always written in
+   English. Each answer uses the same multi-line composer. `--no-interactive`
    / `-y` skips this and drafts from the seed alone.
 3. **Review the draft.** The rendered issue is shown, and its title is checked
    against existing issues. If a possible duplicate is found, you are warned and
@@ -127,10 +129,10 @@ full walkthrough.
    your answers are collected in the terminal, each in the same multi-line
    composer. `--no-interactive` skips this.
 4. **Draft**: A single Claude call turns the seed plus answers into a structured
-   issue (title, Description, Motivation, rough Scope), validated against the
-   [`draft` JSON schema](/reference/output-format#json-schema). The prompt
-   enforces the house issue format and the non-goals — describe the idea, do not
-   plan it.
+   issue (title, Description, Motivation, rough Scope) written in English,
+   validated against the [`draft` JSON schema](/reference/output-format#json-schema).
+   The prompt enforces the house issue format and the non-goals — describe the
+   idea, do not plan it.
 5. **Preview, dedupe, confirm**: The rendered draft is shown, its title is
    searched against existing issues, and the issue is created via `gh` only on
    confirmation.

@@ -52,7 +52,7 @@ func buildDraftQuestionsPrompt(seed string) string {
 
 Ask the few clarifying questions you need to write a strong issue description: the problem behind the idea, who benefits, rough scope, and any hard constraints. Ask only what genuinely sharpens the description. Do NOT ask about implementation details, file layout, or a step-by-step plan — that is a separate, later step.
 
-Output between 3 and 5 questions, each a single short sentence.
+Output between 3 and 5 questions, each a single short sentence. Write the questions in the same language as the idea above, so the author can answer in their own language — the drafted issue itself will be written in English in a separate step.
 
 Output ONLY valid JSON (no markdown fences, no surrounding text):
 
@@ -111,6 +111,7 @@ If you catch yourself writing an "Affected Areas" list, "Acceptance Criteria", o
 `)
 
 	sb.WriteString(proseStyleBlock())
+	sb.WriteString(outputLanguageBlock())
 
 	sb.WriteString(`## Output
 
@@ -146,9 +147,9 @@ func BuildBareDraftPrompt(seed string) string {
 
 	sb.WriteString(`## How to proceed
 
-1. Ask the author 3-5 short clarifying questions — the problem, who benefits, rough scope, and any hard constraints. Ask only what sharpens the description; do not ask about implementation details or a step-by-step plan.
+1. Ask the author 3-5 short clarifying questions — the problem, who benefits, rough scope, and any hard constraints. Ask these questions in the same language as the idea above. Ask only what sharpens the description; do not ask about implementation details or a step-by-step plan.
 2. Wait for the answers.
-3. Draft the issue in this exact house format:
+3. Draft the issue in English (translate if the conversation was in another language) in this exact house format:
 
    **Category**: feature | **Scope**: <Small|Medium|Large>
 

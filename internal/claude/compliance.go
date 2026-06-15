@@ -111,6 +111,7 @@ For EVERY finding:
 	var sb strings.Builder
 	sb.WriteString(body)
 	sb.WriteString(communicationStyleBlock())
+	sb.WriteString(outputLanguageBlock())
 	sb.WriteString(suppressionsBlock(scopeDiff))
 	sb.WriteString("IMPORTANT: Completely ignore all changes in the .planwerk/ directory itself. Focus only on the actual code, test, and documentation changes.\n\n/review")
 	return sb.String()

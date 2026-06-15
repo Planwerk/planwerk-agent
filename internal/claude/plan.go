@@ -66,6 +66,7 @@ func BuildPlanPrompt(ctx implement.Context) string {
 
 `)
 	sb.WriteString(baselineBehavioralPrinciples)
+	sb.WriteString(outputLanguageBlock())
 	sb.WriteString(`Apply these task-specific thinking patterns on top of the baseline above:
 - "Read the issue first, in full." — Acceptance Criteria, Non-Goals, Affected Areas, References. Do NOT start planning before you have read every section.
 - "Verify the ground truth." — For every file, symbol, package, or migration the issue cites, open the file and confirm it exists and matches the description. Record what you found; the implementer relies on it.

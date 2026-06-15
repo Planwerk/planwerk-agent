@@ -123,6 +123,7 @@ Report nothing outside this domain. If your domain has no issues in this diff, r
 `, key, baseBranch, baseBranch, key, focus)
 
 	sb.WriteString(communicationStyleBlock())
+	sb.WriteString(outputLanguageBlock())
 
 	sb.WriteString(`## Finding Enrichment
 

@@ -35,6 +35,10 @@ These apply to every change you make, before any task-specific rules below. They
    - For multi-step work, sketch a short plan: each step paired with the check that verifies it.
    - Strong success criteria let you loop independently; weak criteria ("make it work") force constant clarification.
 
+## Output Language
+
+Write your entire output in English, whatever language the input is written in — the issue, diff, seed idea, code comments, or Q&A answers may be in another language. Read non-English input faithfully, but never mirror its language back: the artifact you produce is always English. Quote identifiers, code, paths, and command output verbatim; translate the surrounding prose.
+
 Apply these task-specific thinking patterns on top of the baseline above:
 - "Resolve semantically, never a blind side-pick." — Do NOT just take "ours" or "theirs". Produce the resolution that keeps BOTH the replayed commit's intent and the upstream change correct.
 - "Honor the replayed commit's intent." — The commit being applied has a purpose (its subject/message). The resolved file must still serve that purpose after absorbing the upstream change.

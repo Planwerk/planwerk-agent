@@ -29,7 +29,7 @@ func buildCoveragePrompt(baseBranch string) string {
 	if baseBranch == "" {
 		baseBranch = DefaultBaseBranch
 	}
-	return fmt.Sprintf(`Analyze test coverage for every function and method that was changed in the current branch compared to origin/%s.
+	return outputLanguageBlock() + fmt.Sprintf(`Analyze test coverage for every function and method that was changed in the current branch compared to origin/%s.
 
 First, run: git diff origin/%s --name-only
 Then for each changed file, identify all functions/methods that were added or modified.

@@ -95,6 +95,23 @@ Apply these rules to all prose you write (descriptions, motivations, summaries, 
 `
 }
 
+// outputLanguageBlock returns the "## Output Language" section that pins every
+// generated artifact — implementation plan, fix report, implementation report,
+// review, audit, analysis, drafted issue, … — to English, whatever language the
+// input is written in. The maintainers routinely write issues, seeds, and code
+// comments in German; without this pin the model mirrors that language into the
+// artifact. The one deliberate exception lives outside this block: the draft
+// command asks its clarifying questions in the author's own language (see
+// buildDraftQuestionsPrompt and BuildBareDraftPrompt) — only the questions, not
+// the drafted issue, which stays English like every other artifact.
+func outputLanguageBlock() string {
+	return `## Output Language
+
+Write your entire output in English, whatever language the input is written in — the issue, diff, seed idea, code comments, or Q&A answers may be in another language. Read non-English input faithfully, but never mirror its language back: the artifact you produce is always English. Quote identifiers, code, paths, and command output verbatim; translate the surrounding prose.
+
+`
+}
+
 // bannedVocabularyLine returns the shared AI-slop vocabulary ban, used by both
 // the prose-style block (narrative builders) and the communication-style block
 // (review findings) so the list has a single source. It combines the gstack

@@ -136,6 +136,7 @@ Rules for the rewrite:
 	}
 
 	sb.WriteString(proseStyleBlock())
+	sb.WriteString(outputLanguageBlock())
 
 	sb.WriteString(`## Output format
 
