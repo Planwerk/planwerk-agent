@@ -270,6 +270,45 @@ func TestRun_PlanEscalationAbortsBeforeImplement(t *testing.T) {
 	}
 }
 
+func TestPlanEscalation(t *testing.T) {
+	// A plan whose subject IS the BLOCKED/NEEDS_CONTEXT status values (issue
+	// #89 hardens the implement session's stop conditions) mentions those
+	// markers mid-sentence and inside backticks while still ending in a
+	// PLAN_READY verdict. The escalation check must read the terminal verdict,
+	// not any "STATUS: BLOCKED" substring in the body.
+	const issue89Plan = "## Implementation Plan (issue #89)\n\n" +
+		"### Change Set\n" +
+		"- instruct the session to halt and emit `STATUS: DONE_WITH_CONCERNS` " +
+		"or `STATUS: BLOCKED` (nothing shippable), reusing the existing " +
+		"`STATUS: NEEDS_CONTEXT` path.\n\n" +
+		"### Status\nSTATUS: PLAN_READY"
+
+	cases := []struct {
+		name string
+		plan string
+		want string
+	}{
+		{"ready", "## Plan\n\nSTATUS: PLAN_READY", ""},
+		{"blocked", "## Plan\n\nSTATUS: BLOCKED", "BLOCKED"},
+		{"needs context", "## Plan\n\nSTATUS: NEEDS_CONTEXT", "NEEDS_CONTEXT"},
+		{"free-form without marker", "## Plan\n\n- do the thing", ""},
+		{"issue #89 mentions markers but is ready", issue89Plan, ""},
+		{"mid-sentence mention is not a verdict", "The session emits STATUS: BLOCKED when stuck.\n\nSTATUS: PLAN_READY", ""},
+		{"inline-code line is not a verdict", "`STATUS: BLOCKED`\n\nSTATUS: PLAN_READY", ""},
+		{"format spec line is not a verdict", "STATUS: <PLAN_READY | BLOCKED | NEEDS_CONTEXT>", ""},
+		{"terminal verdict wins over earlier line", "STATUS: PLAN_READY\n\n(revised)\n\nSTATUS: BLOCKED", "BLOCKED"},
+		{"verdict with trailing reason", "STATUS: NEEDS_CONTEXT — missing the auth config", "NEEDS_CONTEXT"},
+		{"indented verdict still counts", "## Plan\n\n   STATUS: BLOCKED", "BLOCKED"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := planEscalation(tc.plan); got != tc.want {
+				t.Errorf("planEscalation() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestStripPlanCommentFooter(t *testing.T) {
 	const plan = "## Implementation Plan (issue #42)\n\n### Summary\n- do the thing\n\nSTATUS: PLAN_READY"
 	cases := []struct {

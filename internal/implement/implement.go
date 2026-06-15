@@ -516,14 +516,38 @@ func formatReportComment(report string) string {
 	return report + "\n\n---\n\n" + reportCommentFooter + "\n"
 }
 
-// planEscalation extracts a non-executable STATUS marker (BLOCKED or
-// NEEDS_CONTEXT) from the plan text. It returns the marker, or "" when the
-// plan is executable (PLAN_READY, or a free-form plan without the marker).
+// planEscalation extracts the plan's terminal STATUS verdict and returns it
+// when the plan is non-executable (BLOCKED or NEEDS_CONTEXT), or "" when the
+// plan is executable (PLAN_READY, or a free-form plan with no STATUS line).
+//
+// Only the plan's authoritative verdict counts — the last line whose trimmed
+// content begins with "STATUS: " followed by a known marker. A plan may
+// legitimately *mention* "STATUS: BLOCKED" mid-sentence or inside backticks
+// when the work it describes is about those very status values (the plan for
+// issue #89, which hardens the implement session's BLOCKED/DONE_WITH_CONCERNS
+// stop conditions, is exactly this case). Such mentions are documentation, not
+// the verdict, and must not abort the run. Scanning line-anchored for the last
+// standalone STATUS line — rather than a substring anywhere in the body —
+// keeps those mentions, and the prompt's "STATUS: <PLAN_READY | BLOCKED |
+// NEEDS_CONTEXT>" format spec, from tripping a false escalation.
 func planEscalation(plan string) string {
-	for _, status := range []string{"BLOCKED", "NEEDS_CONTEXT"} {
-		if strings.Contains(plan, "STATUS: "+status) {
-			return status
+	verdict := ""
+	for _, line := range strings.Split(plan, "\n") {
+		rest, ok := strings.CutPrefix(strings.TrimSpace(line), "STATUS: ")
+		if !ok {
+			continue
 		}
+		fields := strings.Fields(rest)
+		if len(fields) == 0 {
+			continue
+		}
+		switch fields[0] {
+		case "PLAN_READY", "BLOCKED", "NEEDS_CONTEXT":
+			verdict = fields[0]
+		}
+	}
+	if verdict == "BLOCKED" || verdict == "NEEDS_CONTEXT" {
+		return verdict
 	}
 	return ""
 }
