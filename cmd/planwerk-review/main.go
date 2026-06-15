@@ -28,6 +28,7 @@ func main() {
 		newReviewPreparedCmd(deps),
 		newElaborateCmd(deps),
 		newDraftCmd(deps),
+		newMetaCmd(deps),
 		newPromptCmd(deps),
 		newFixCmd(deps),
 		newRebaseCmd(deps),
