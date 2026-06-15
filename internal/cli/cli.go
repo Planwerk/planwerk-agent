@@ -303,16 +303,17 @@ func (c RebaseConfig) ToRebaseOptions(version string) rebase.Options {
 
 // ImplementConfig holds configuration for the implement command.
 type ImplementConfig struct {
-	IssueRef        string
-	DryRun          bool
-	PrintPrompt     bool
-	PrintBarePrompt bool
-	PrintPlanPrompt bool
-	NoPlan          bool
-	NoPlanReuse     bool
-	NoPlanComment   bool
-	NoReportComment bool
-	Verify          bool
+	IssueRef          string
+	DryRun            bool
+	PrintPrompt       bool
+	PrintBarePrompt   bool
+	PrintPlanPrompt   bool
+	NoPlan            bool
+	NoPlanReuse       bool
+	NoPlanComment     bool
+	NoReportComment   bool
+	Verify            bool
+	VerifyAdversarial bool
 
 	PatternDirs     []string
 	NoRepoPatterns  bool
@@ -324,23 +325,24 @@ type ImplementConfig struct {
 
 func (c ImplementConfig) ToImplementOptions(version string) implement.Options {
 	return implement.Options{
-		IssueRef:        c.IssueRef,
-		DryRun:          c.DryRun,
-		PrintPrompt:     c.PrintPrompt,
-		PrintBarePrompt: c.PrintBarePrompt,
-		PrintPlanPrompt: c.PrintPlanPrompt,
-		NoPlan:          c.NoPlan,
-		NoPlanReuse:     c.NoPlanReuse,
-		NoPlanComment:   c.NoPlanComment,
-		NoReportComment: c.NoReportComment,
-		Verify:          c.Verify,
-		Version:         version,
-		PatternDirs:     c.PatternDirs,
-		NoRepoPatterns:  c.NoRepoPatterns,
-		NoLocalPatterns: c.NoLocalPatterns,
-		MaxPatterns:     c.MaxPatterns,
-		Local:           c.Local,
-		Force:           c.Force,
+		IssueRef:          c.IssueRef,
+		DryRun:            c.DryRun,
+		PrintPrompt:       c.PrintPrompt,
+		PrintBarePrompt:   c.PrintBarePrompt,
+		PrintPlanPrompt:   c.PrintPlanPrompt,
+		NoPlan:            c.NoPlan,
+		NoPlanReuse:       c.NoPlanReuse,
+		NoPlanComment:     c.NoPlanComment,
+		NoReportComment:   c.NoReportComment,
+		Verify:            c.Verify,
+		VerifyAdversarial: c.VerifyAdversarial,
+		Version:           version,
+		PatternDirs:       c.PatternDirs,
+		NoRepoPatterns:    c.NoRepoPatterns,
+		NoLocalPatterns:   c.NoLocalPatterns,
+		MaxPatterns:       c.MaxPatterns,
+		Local:             c.Local,
+		Force:             c.Force,
 	}
 }
 

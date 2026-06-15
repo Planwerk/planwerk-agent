@@ -100,7 +100,7 @@ or short form (owner/repo#123).`,
 			if implementCfg.PrintBarePrompt {
 				return implement.PrintBarePrompt(cmd.OutOrStdout(), opts, claude.BuildBareImplementPrompt)
 			}
-			return implement.Run(cmd.OutOrStdout(), opts, claude.Plan, claude.BuildPlanPrompt, claude.Implement, claude.BuildImplementPrompt, claude.VerifyImplementation)
+			return implement.Run(cmd.OutOrStdout(), opts, claude.Plan, claude.BuildPlanPrompt, claude.Implement, claude.BuildImplementPrompt, claude.VerifyImplementation, claude.AdversarialReview)
 		},
 	}
 
@@ -116,6 +116,7 @@ or short form (owner/repo#123).`,
 	implementFlags.StringVar(&planModel, "plan-model", claude.DefaultPlanModel, "Model for the planning session passed to Claude Code via --model (e.g. fable, opus; env: "+envPlanModel+")")
 	implementFlags.StringVar(&planEffort, "plan-effort", claude.DefaultPlanEffort, "Reasoning effort for the planning session passed to Claude Code via --effort (low, medium, high, xhigh, max; env: "+envPlanEffort+")")
 	implementFlags.BoolVar(&implementCfg.Verify, "verify", false, "After implementing, run an independent pass that checks the actual diff against the issue's Acceptance Criteria without trusting the implementer's report")
+	implementFlags.BoolVar(&implementCfg.VerifyAdversarial, "verify-adversarial", false, "After implementing, red-team the produced diff for the bugs it introduces using the adversarial-review pass (independent of --verify)")
 	implementFlags.StringSliceVar(&implementCfg.PatternDirs, "patterns", nil, "Additional pattern sources: local dirs, github:owner/repo[/sub][@ref], or git+https://...[#ref[:sub]]")
 	implementFlags.BoolVar(&implementCfg.NoRepoPatterns, "no-repo-patterns", false, "Ignore repo-specific patterns under .planwerk/review_patterns/ in the target repo")
 	implementFlags.BoolVar(&implementCfg.NoLocalPatterns, "no-local-patterns", false, "Ignore local patterns from the tool")
