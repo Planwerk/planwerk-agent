@@ -9,6 +9,7 @@ import (
 	"github.com/planwerk/planwerk-review/internal/fix"
 	"github.com/planwerk/planwerk-review/internal/gapanalysis"
 	"github.com/planwerk/planwerk-review/internal/implement"
+	"github.com/planwerk/planwerk-review/internal/meta"
 	"github.com/planwerk/planwerk-review/internal/prompt"
 	"github.com/planwerk/planwerk-review/internal/propose"
 	"github.com/planwerk/planwerk-review/internal/rebase"
@@ -193,6 +194,27 @@ func (c DraftConfig) ToDraftOptions(version string) draft.Options {
 		PrintPrompt:     c.PrintPrompt,
 		PrintBarePrompt: c.PrintBarePrompt,
 		Version:         version,
+	}
+}
+
+// MetaConfig holds configuration for the meta command.
+type MetaConfig struct {
+	IssueRef string
+	Format   string // "markdown" or "json"
+	Labels   []string
+	DryRun   bool
+	NoCreate bool // alias of DryRun: render the split without filing
+}
+
+// ToMetaOptions maps the CLI config to meta.Options. --no-create is an alias of
+// --dry-run, so either one renders the planned split without filing it.
+func (c MetaConfig) ToMetaOptions(version string) meta.Options {
+	return meta.Options{
+		IssueRef: c.IssueRef,
+		Format:   c.Format,
+		Labels:   c.Labels,
+		DryRun:   c.DryRun || c.NoCreate,
+		Version:  version,
 	}
 }
 
