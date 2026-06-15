@@ -40,3 +40,18 @@ and append a follow-up comment). See the
 6. **Claude Elaboration**: Claude is instructed to walk the repo first, identify what already exists vs. what the issue adds, and emit a detailed plan in six sections (Description with concrete "already exists / this story adds" boundaries, Motivation, Affected Areas, Acceptance Criteria, Non-Goals, References).
 7. **Structuring**: A second Claude call converts the elaboration into a strict JSON schema so the final body renders consistently.
 8. **Output**: The elaborated body is rendered as Markdown (default) or JSON. With `--update-issue`, the issue body is overwritten; with `--post-comment`, the elaboration is posted as a new comment.
+
+## Score the draft before output (`--review`)
+
+`--review` adds a reviewer pass between elaboration and output. A reviewer
+scores the draft from 0 to 10 for executability — a 10 is a plan a zero-context
+implementer executes without asking a single question. While the score stays
+below the bar, the refine loop revises the draft to close the reviewer's gaps
+and iterates until the score clears the bar or `--max-review-iterations` is
+exhausted (default 3).
+
+The final score is surfaced in the output as `Executability score: N/10`, so a
+near-miss is visible rather than hidden behind a binary pass/fail. When the loop
+runs out of iterations below the bar, the surviving gaps and a "what a 10/10
+plan would look like" target are rendered alongside the score under **Reviewer
+Notes (unresolved)** — address them before implementing.
