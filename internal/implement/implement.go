@@ -39,6 +39,7 @@ type Options struct {
 	PrintBarePrompt bool // render a self-contained prompt to stdout and exit; never fetch issue or clone
 	PrintPlanPrompt bool // render the planning prompt to stdout and exit; never invoke Claude
 	NoPlan          bool // skip the planning session; the implement session plans for itself
+	NoPlanReuse     bool // always run a fresh planning session; do not reuse a plan already posted on the issue
 	NoPlanComment   bool // do not post the finished plan as a comment on the source issue
 	NoReportComment bool // do not post the implementation report as a comment on the source issue
 	Verify          bool // after implementing, run an independent verification pass against the diff
@@ -198,10 +199,14 @@ func (r *Runner) PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuil
 //     prompt with the issue body embedded and exit.
 //  3. Otherwise clone the repo into a fresh temp directory.
 //  4. In --dry-run mode: report what would happen and exit.
-//  5. Unless --no-plan: run a read-only Claude planning session inside the
-//     clone (on the dedicated planning model), post the finished plan back
-//     onto the source issue as a comment (unless --no-plan-comment), and
-//     embed the plan into the implement context.
+//  5. Unless --no-plan: supply the implement context with a plan. By default
+//     an implementation plan planwerk-review already posted on the issue is
+//     reused verbatim (no planning session, no duplicate comment); --no-plan-reuse
+//     forces a fresh read-only Claude planning session inside the clone (on the
+//     dedicated planning model) whose finished plan is posted back onto the
+//     source issue as a comment (unless --no-plan-comment). Either way the plan
+//     is embedded into the implement context, and a STATUS: BLOCKED /
+//     NEEDS_CONTEXT plan aborts before any code is written.
 //  6. Run a Claude session inside the clone to implement the issue
 //     end-to-end (code + tests + docs) and open a draft PR.
 //  7. Post the implementation report back onto the source issue as a comment
@@ -285,7 +290,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	ctx.Patterns = loadPatterns(opts, repo.Dir)
 
 	if planEnabled {
-		if err := r.runPlanning(w, opts, owner, name, repo.Dir, &ctx); err != nil {
+		if err := r.preparePlan(w, opts, owner, name, repo.Dir, &ctx); err != nil {
 			return err
 		}
 	}
@@ -328,6 +333,80 @@ func (r *Runner) openRepo(opts Options, fullName string) (*github.Repo, error) {
 	}
 	slog.Info("cloning repository for implementation", "repo", fullName)
 	return r.GitHub.CloneRepo(fullName)
+}
+
+// planHeading is the first line every plan carries ("## Implementation Plan
+// (issue #N)"). It mirrors claude.planHeading; the constant is duplicated here
+// rather than imported because the import direction is claude -> implement, so
+// implement cannot reach into the claude package. mostRecentPlanComment uses it
+// (together with planCommentFooter) to recognize a comment as a posted plan.
+const planHeading = "## Implementation Plan"
+
+// preparePlan supplies the implement context with its plan. By default it first
+// looks for an implementation plan planwerk-review already posted on the source
+// issue — left by an earlier run that planned but was aborted before
+// implementing — and reuses it verbatim, skipping the expensive planning
+// session and posting no duplicate comment. --no-plan-reuse forces a fresh
+// planning session instead, for a plan that has gone stale because the issue
+// changed after it was posted.
+//
+// A reused plan is held to the same bar as a fresh one: it is printed for the
+// operator and run through planEscalation, so a previously posted STATUS:
+// BLOCKED / NEEDS_CONTEXT plan still aborts before any code is written.
+//
+// Reading the comments is treated as load-bearing, not best-effort: if the
+// lookup fails we abort rather than silently paying for a fresh planning pass
+// the operator may not expect. --no-plan-reuse (skip the lookup) and --no-plan
+// (skip planning) are the escape hatches when GitHub is unreachable.
+func (r *Runner) preparePlan(w io.Writer, opts Options, owner, name, dir string, ctx *Context) error {
+	if !opts.NoPlanReuse {
+		comments, err := r.GitHub.ListIssueComments(owner, name, ctx.IssueNumber)
+		if err != nil {
+			return fmt.Errorf("reading issue comments to reuse a posted plan: %w (rerun with --no-plan-reuse to plan afresh, or --no-plan to skip planning)", err)
+		}
+		if plan := mostRecentPlanComment(comments); plan != "" {
+			_, _ = fmt.Fprintf(w, "\nReusing the implementation plan already posted on issue #%d:\n%s\n", ctx.IssueNumber, plan)
+			if status := planEscalation(plan); status != "" {
+				return fmt.Errorf("the implementation plan already posted on issue #%d reported %s; review the plan above and clarify the issue, then rerun with --no-plan-reuse to plan afresh", ctx.IssueNumber, status)
+			}
+			ctx.Plan = plan
+			slog.Info("reused existing plan from issue", "issue", ctx.IssueNumber)
+			return nil
+		}
+		slog.Info("no reusable plan on issue; planning fresh", "issue", ctx.IssueNumber)
+	}
+	return r.runPlanning(w, opts, owner, name, dir, ctx)
+}
+
+// mostRecentPlanComment returns the body — footer stripped — of the most recent
+// comment that planwerk-review posted as an implementation plan, or "" when no
+// comment is one. A plan comment is identified by carrying BOTH the
+// "## Implementation Plan" heading and the plan attribution footer; requiring
+// both keeps a report comment (reportCommentFooter + "## Implementation
+// Report") from ever being mistaken for a plan. gh lists comments oldest-first,
+// so the walk runs newest-first and returns the first match.
+func mostRecentPlanComment(comments []github.IssueComment) string {
+	for i := len(comments) - 1; i >= 0; i-- {
+		body := comments[i].Body
+		if strings.Contains(body, planHeading) && strings.Contains(body, planCommentFooter) {
+			return stripPlanCommentFooter(body)
+		}
+	}
+	return ""
+}
+
+// stripPlanCommentFooter reverses formatPlanComment: it drops the "---"
+// separator and attribution footer that wrap the plan in its comment body,
+// returning the plan text alone (with its own "## Implementation Plan" heading)
+// so it can feed Context.Plan exactly as a freshly generated plan would. A body
+// without the footer is returned trimmed but otherwise unchanged.
+func stripPlanCommentFooter(body string) string {
+	if i := strings.LastIndex(body, planCommentFooter); i >= 0 {
+		body = body[:i]
+	}
+	body = strings.TrimSpace(body)
+	body = strings.TrimSuffix(body, "---")
+	return strings.TrimSpace(body)
 }
 
 // runPlanning runs the read-only planning session inside the checkout and

@@ -270,6 +270,237 @@ func TestRun_PlanEscalationAbortsBeforeImplement(t *testing.T) {
 	}
 }
 
+func TestStripPlanCommentFooter(t *testing.T) {
+	const plan = "## Implementation Plan (issue #42)\n\n### Summary\n- do the thing\n\nSTATUS: PLAN_READY"
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"round-trips a formatted plan comment", formatPlanComment(plan), plan},
+		{"no footer returned trimmed", "  " + plan + "  ", plan},
+		{"trailing separator and whitespace stripped", plan + "\n\n---\n\n" + planCommentFooter + "\n\n", plan},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := stripPlanCommentFooter(tc.in); got != tc.want {
+				t.Errorf("stripPlanCommentFooter() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestMostRecentPlanComment(t *testing.T) {
+	const planA = "## Implementation Plan (issue #42)\n\nfirst plan\n\nSTATUS: PLAN_READY"
+	const planB = "## Implementation Plan (issue #42)\n\nsecond plan\n\nSTATUS: PLAN_READY"
+	reportComment := "## Implementation Report (issue #42)\n\ndone\n\n---\n\n" + reportCommentFooter + "\n"
+
+	cases := []struct {
+		name string
+		in   []github.IssueComment
+		want string
+	}{
+		{
+			name: "picks the last comment carrying both markers",
+			in: []github.IssueComment{
+				{Body: formatPlanComment(planA)},
+				{Body: formatPlanComment(planB)},
+			},
+			want: planB,
+		},
+		{
+			name: "ignores a plan heading without the footer",
+			in:   []github.IssueComment{{Body: planA}},
+			want: "",
+		},
+		{
+			name: "ignores the footer without the plan heading",
+			in:   []github.IssueComment{{Body: "random text\n\n---\n\n" + planCommentFooter + "\n"}},
+			want: "",
+		},
+		{
+			name: "ignores a report comment",
+			in:   []github.IssueComment{{Body: reportComment}},
+			want: "",
+		},
+		{
+			name: "skips a later report to find the earlier plan",
+			in: []github.IssueComment{
+				{Body: formatPlanComment(planA)},
+				{Body: reportComment},
+			},
+			want: planA,
+		},
+		{
+			name: "no comments yields empty",
+			in:   nil,
+			want: "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := mostRecentPlanComment(tc.in); got != tc.want {
+				t.Errorf("mostRecentPlanComment() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestRun_ReusesExistingPlan(t *testing.T) {
+	const plan = "## Implementation Plan (issue #42)\n\nreuse me\n\nSTATUS: PLAN_READY"
+	gh := &fakeGitHub{
+		issue:    sampleIssue(),
+		cloneDir: t.TempDir(),
+		comments: []github.IssueComment{{Body: formatPlanComment(plan)}},
+	}
+	cl := &fakeClaude{report: "PR opened"}
+	fp := &fakePlanner{plan: "FRESH PLAN should not be used"}
+	r := newRunner(gh, cl)
+	r.Planner = fp
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if fp.called.Load() != 0 {
+		t.Errorf("planner called %d times, want 0 — a posted plan should be reused", fp.called.Load())
+	}
+	if gh.listCalls.Load() != 1 {
+		t.Errorf("ListIssueComments called %d times, want 1", gh.listCalls.Load())
+	}
+	if cl.ctx.Plan != plan {
+		t.Errorf("implement received Plan %q, want the reused plan %q", cl.ctx.Plan, plan)
+	}
+	if !strings.Contains(buf.String(), "Reusing the implementation plan already posted on issue #42") {
+		t.Errorf("missing plan-reuse notice in output:\n%s", buf.String())
+	}
+	if gh.commentCalls.Load() != 1 {
+		t.Fatalf("AddIssueComment called %d times, want 1 — only the report, no duplicate plan", gh.commentCalls.Load())
+	}
+	if strings.Contains(gh.commentBodies[0], planCommentFooter) {
+		t.Errorf("reuse must not re-post the plan, but a plan comment was posted:\n%s", gh.commentBodies[0])
+	}
+	if !strings.Contains(gh.commentBodies[0], reportCommentFooter) {
+		t.Errorf("the single posted comment should be the report, got:\n%s", gh.commentBodies[0])
+	}
+}
+
+func TestRun_NoPlanReuseForcesFreshPlan(t *testing.T) {
+	const posted = "## Implementation Plan (issue #42)\n\nstale\n\nSTATUS: PLAN_READY"
+	gh := &fakeGitHub{
+		issue:    sampleIssue(),
+		cloneDir: t.TempDir(),
+		comments: []github.IssueComment{{Body: formatPlanComment(posted)}},
+	}
+	cl := &fakeClaude{report: "PR opened"}
+	fp := &fakePlanner{plan: "## Implementation Plan (issue #42)\n\nfresh\n\nSTATUS: PLAN_READY"}
+	r := newRunner(gh, cl)
+	r.Planner = fp
+
+	if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42", NoPlanReuse: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if fp.called.Load() != 1 {
+		t.Errorf("planner called %d times, want 1 — --no-plan-reuse forces a fresh session", fp.called.Load())
+	}
+	if gh.listCalls.Load() != 0 {
+		t.Errorf("ListIssueComments called %d times, want 0 — --no-plan-reuse skips the lookup", gh.listCalls.Load())
+	}
+	if cl.ctx.Plan != fp.plan {
+		t.Errorf("implement received Plan %q, want the fresh plan %q", cl.ctx.Plan, fp.plan)
+	}
+	if gh.commentCalls.Load() != 2 {
+		t.Errorf("AddIssueComment called %d times, want 2 (fresh plan then report)", gh.commentCalls.Load())
+	}
+}
+
+func TestRun_ReusedPlanEscalationAborts(t *testing.T) {
+	for _, status := range []string{"BLOCKED", "NEEDS_CONTEXT"} {
+		t.Run(status, func(t *testing.T) {
+			plan := "## Implementation Plan (issue #42)\n\nnope\n\nSTATUS: " + status
+			gh := &fakeGitHub{
+				issue:    sampleIssue(),
+				cloneDir: t.TempDir(),
+				comments: []github.IssueComment{{Body: formatPlanComment(plan)}},
+			}
+			cl := &fakeClaude{report: "unused"}
+			fp := &fakePlanner{plan: "unused"}
+			r := newRunner(gh, cl)
+			r.Planner = fp
+
+			var buf bytes.Buffer
+			err := r.Run(&buf, Options{IssueRef: "owner/repo#42"})
+			if err == nil || !strings.Contains(err.Error(), status) {
+				t.Fatalf("Run returned %v, want %s escalation error", err, status)
+			}
+			if fp.called.Load() != 0 {
+				t.Errorf("planner called %d times, want 0 — reuse short-circuits planning", fp.called.Load())
+			}
+			if cl.called.Load() != 0 {
+				t.Errorf("implement called %d times, want 0 after a reused %s plan", cl.called.Load(), status)
+			}
+			if !strings.Contains(buf.String(), "STATUS: "+status) {
+				t.Errorf("reused escalating plan not printed for review:\n%s", buf.String())
+			}
+			if gh.commentCalls.Load() != 0 {
+				t.Errorf("AddIssueComment called %d times, want 0 — the plan is already on the issue", gh.commentCalls.Load())
+			}
+		})
+	}
+}
+
+func TestRun_NoPlanBeatsReuse(t *testing.T) {
+	const posted = "## Implementation Plan (issue #42)\n\nreusable\n\nSTATUS: PLAN_READY"
+	gh := &fakeGitHub{
+		issue:    sampleIssue(),
+		cloneDir: t.TempDir(),
+		comments: []github.IssueComment{{Body: formatPlanComment(posted)}},
+	}
+	cl := &fakeClaude{report: "PR opened"}
+	fp := &fakePlanner{plan: "unused"}
+	r := newRunner(gh, cl)
+	r.Planner = fp
+
+	if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42", NoPlan: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if fp.called.Load() != 0 {
+		t.Errorf("planner called %d times, want 0 with --no-plan", fp.called.Load())
+	}
+	if gh.listCalls.Load() != 0 {
+		t.Errorf("ListIssueComments called %d times, want 0 — --no-plan short-circuits reuse", gh.listCalls.Load())
+	}
+	if cl.ctx.Plan != "" {
+		t.Errorf("implement received Plan %q, want empty — --no-plan implements without a plan", cl.ctx.Plan)
+	}
+	if cl.called.Load() != 1 {
+		t.Errorf("implement called %d times, want 1", cl.called.Load())
+	}
+}
+
+func TestRun_ReuseCommentFetchFailureAborts(t *testing.T) {
+	gh := &fakeGitHub{
+		issue:       sampleIssue(),
+		cloneDir:    t.TempDir(),
+		commentsErr: errors.New("github down"),
+	}
+	cl := &fakeClaude{report: "unused"}
+	fp := &fakePlanner{plan: "unused"}
+	r := newRunner(gh, cl)
+	r.Planner = fp
+
+	err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42"})
+	if err == nil || !strings.Contains(err.Error(), "reading issue comments") {
+		t.Fatalf("Run returned %v, want a comment-fetch error", err)
+	}
+	if fp.called.Load() != 0 {
+		t.Errorf("planner called %d times, want 0 — the fetch failure aborts before planning", fp.called.Load())
+	}
+	if cl.called.Load() != 0 {
+		t.Errorf("implement called %d times, want 0 after the abort", cl.called.Load())
+	}
+}
+
 func TestRun_PrintPlanPrompt(t *testing.T) {
 	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
 	cl := &fakeClaude{report: "unused"}
@@ -367,6 +598,10 @@ type fakeGitHub struct {
 	issue    *github.Issue
 	issueErr error
 
+	comments    []github.IssueComment
+	commentsErr error
+	listCalls   atomic.Int32
+
 	cloneDir        string
 	cloneErr        error
 	getCalls        atomic.Int32
@@ -388,6 +623,18 @@ func (f *fakeGitHub) GetIssue(owner, name string, number int) (*github.Issue, er
 	iss.Name = name
 	iss.Number = number
 	return &iss, nil
+}
+
+// ListIssueComments returns the canned comments (oldest-first, as gh does),
+// unless commentsErr is set to simulate a GitHub failure. The default zero
+// value (nil comments, nil error) means "no comments", so plan-reuse finds
+// nothing and the existing planning tests fall through to a fresh session.
+func (f *fakeGitHub) ListIssueComments(_, _ string, _ int) ([]github.IssueComment, error) {
+	f.listCalls.Add(1)
+	if f.commentsErr != nil {
+		return nil, f.commentsErr
+	}
+	return f.comments, nil
 }
 
 func (f *fakeGitHub) CloneRepo(ref string) (*github.Repo, error) {
