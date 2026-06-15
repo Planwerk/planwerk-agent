@@ -13,6 +13,7 @@ AI-powered code review and codebase analysis tool for GitHub repositories. Uses 
 - **Gap-analysis** of completed features against the actual code
 - **Draft** a one-line feature idea into a ready-to-file GitHub issue
 - **Elaborate** a high-level issue into a detailed engineering plan
+- **Meta** split a Meta Issue into linked, draft-depth Sub Issues
 - **Prompt** generation that fixes or implements an issue
 - **Implement** an elaborated issue end to end and open a draft PR
 - **Fix** a PR's failing CI checks in a self-healing loop
