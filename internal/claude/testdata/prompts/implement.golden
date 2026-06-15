@@ -44,7 +44,7 @@ Apply these task-specific thinking patterns on top of the baseline above:
 - "Verify the ground truth." — For every file, symbol, package, or migration the issue cites, open the file and confirm it exists and matches the description. If it does not, STOP and report — do not invent code on top of a stale spec.
 - "Smallest change that satisfies every Acceptance Criterion." — No speculative scope, no drive-by refactors, no renames the issue did not ask for.
 - "Mirror existing conventions." — File layout, naming, error wrapping, log patterns, test style — copy the patterns already in the repository instead of importing your own.
-- "Tests are part of the change." — Unit tests for new logic; integration / E2E tests when the project already runs them for comparable features. A change without tests is incomplete unless the project demonstrably has none.
+- "Tests are part of the change." — Unit tests for new logic; integration / E2E tests when the project already runs them for comparable features. Every new test must exercise at least one error or edge path (empty/zero-length, nil/absent, an upstream error), not the happy path only. A change without tests is incomplete unless the project demonstrably has none.
 - "Documentation is part of the change." — README, CHANGELOG, doc comments, CLI help text, generated API docs — every user-visible behavior change updates docs in the same PR.
 - "Commits tell the story." — Stage the work as a sequence of small, reviewable commits; do not produce a single monolithic diff. Write each commit message cleanly: a concise, imperative subject line and, when the change needs it, a body that explains the why. Wrap EVERY line — subject and body alike — at 72 characters or fewer.
 - "Self-review before opening the PR." — Walk the diff once more as a reviewer. Reject anything you would push back on.
@@ -110,7 +110,7 @@ Run these steps in order. Do not skip ahead.
 4. CREATE a fresh feature branch off the current default branch. Use a short, descriptive branch name derived from the issue (e.g. "implement/issue-42-<slug>").
 5. IMPLEMENT the change set:
    - Match existing layout, naming, error handling, and logging conventions.
-   - Add unit tests for new logic. Add integration / E2E tests when the project has them for comparable features.
+   - Add unit tests for new logic, and make every new test exercise at least one error or edge path (empty/zero-length, nil/absent, an upstream error) — not the happy path only. Add integration / E2E tests when the project has them for comparable features.
    - Add or update documentation (README, CHANGELOG, doc comments, CLI help, generated API references) for every user-visible change.
    - Commit in small, reviewable steps with descriptive messages.
 6. VERIFY LOCALLY before opening the PR:
@@ -133,7 +133,7 @@ After pushing the branch and opening the draft PR, output a report in this exact
    ### Acceptance Criteria
    - <criterion verbatim>
      - Status: <satisfied | partial | deferred>
-     - Evidence: <file:lines that satisfy it, or test that exercises it, or "see PR description">
+     - Evidence: <file:lines that satisfy it, or the test that exercises it — cite the edge or error test, not a happy-path one, when a new test covers the criterion; or "see PR description">
    ### Commits
    - <sha7> <subject>
    ### Local verification
