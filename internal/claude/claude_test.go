@@ -709,3 +709,17 @@ func TestBuildImplementPrompt_ContainsCircuitBreakers(t *testing.T) {
 		}
 	}
 }
+
+// TestBuildImplementPrompt_RequiresEdgeOrErrorTest locks the test-quality bar
+// (issue #89, I4): every new test must exercise at least one error or edge
+// path, not the happy path only, and the report's acceptance-criteria evidence
+// must cite that edge or error test.
+func TestBuildImplementPrompt_RequiresEdgeOrErrorTest(t *testing.T) {
+	prompt := BuildImplementPrompt(goldenImplementContext())
+	if !strings.Contains(prompt, "error or edge path") {
+		t.Error("implement prompt should require every new test to exercise an error or edge path")
+	}
+	if !strings.Contains(prompt, "cite the edge or error test") {
+		t.Error("implement report evidence should cite the edge or error test, not a happy-path one")
+	}
+}
