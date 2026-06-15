@@ -12,8 +12,8 @@ omitted. Shell completions and man pages are produced by the built-in
 ## Global flags
 
 These persistent flags apply to every command (`review`, `propose`, `audit`,
-`gap-analysis`, `review-prepared`, `draft`, `elaborate`, `prompt`, `fix`,
-`rebase`, `implement`, `cache`, `schema`).
+`gap-analysis`, `review-prepared`, `draft`, `elaborate`, `meta`, `prompt`,
+`fix`, `rebase`, `implement`, `cache`, `schema`).
 
 | Flag | Description | Default |
 |------|-------------|---------|
@@ -268,6 +268,45 @@ planwerk-review elaborate --post-comment owner/repo#123
 | `--force` | With `--local`, skip the confirmation prompt when the working tree is dirty | `false` |
 
 `--update-issue` and `--post-comment` are mutually exclusive.
+
+## `meta`
+
+Expand a Meta Issue — an issue that frames a larger body of work as several
+self-contained work packages — into linked, draft-depth Sub Issues. The command
+reads the Meta Issue and decides the breakdown on its own: it carves it into the
+fewest sensible Sub Issues, files each one at draft depth, links it to the Meta
+Issue via GitHub's native sub-issue relationship, and back-fills the Meta Issue
+body so its work-package lines reference the freshly created Sub Issues.
+
+Like `draft`, each Sub Issue stops at an initial feature description — it is
+deliberately **not** elaborated. Turning a Sub Issue into a file-level
+engineering plan stays the job of `elaborate` / `implement`, run per Sub Issue.
+The command stops at creating and linking: it does not orchestrate the Sub
+Issues through `elaborate` / `implement` / `fix`, and it does not close the Meta
+Issue.
+
+```bash
+# Preview the planned split without filing or linking anything
+planwerk-review meta --dry-run owner/repo#123
+
+# Carve the Meta Issue into Sub Issues, link them, and sync the body
+planwerk-review meta owner/repo#123
+
+# Attach a label to each created Sub Issue
+planwerk-review meta --label enhancement owner/repo#123
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--dry-run` | Render the planned split without filing or linking any sub-issues | `false` |
+| `--no-create` | Alias of `--dry-run`: render the planned split without filing | `false` |
+| `--label` | Label to attach to each created sub-issue (repeatable; no severity/priority levels — house convention) | - |
+| `--format` | Output format (`markdown`, `json`) | `markdown` |
+
+A link failure on one Sub Issue does not abort the run — the Sub Issue is still
+created and the failure is reported so it can be linked by hand. The Meta Issue
+body is back-filled only when every reference resolves, so it is never left with
+a dangling placeholder.
 
 ## `prompt`
 

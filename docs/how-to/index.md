@@ -9,6 +9,7 @@ solves one specific problem.
 - [Check completed features for gaps](/how-to/check-feature-gaps)
 - [Draft an issue](/how-to/draft-an-issue)
 - [Elaborate an issue](/how-to/elaborate-an-issue)
+- [Split a Meta Issue](/how-to/split-a-meta-issue)
 - [Generate a fix/implement prompt](/how-to/generate-a-prompt)
 - [Implement an issue](/how-to/implement-an-issue)
 - [Rebase a PR](/how-to/rebase-a-pr)

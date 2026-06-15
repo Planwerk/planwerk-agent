@@ -55,6 +55,7 @@ export default defineConfig({
             { text: 'Check feature gaps', link: '/how-to/check-feature-gaps' },
             { text: 'Draft an issue', link: '/how-to/draft-an-issue' },
             { text: 'Elaborate an issue', link: '/how-to/elaborate-an-issue' },
+            { text: 'Split a Meta Issue', link: '/how-to/split-a-meta-issue' },
             { text: 'Generate a prompt', link: '/how-to/generate-a-prompt' },
             { text: 'Implement an issue', link: '/how-to/implement-an-issue' },
             { text: 'Rebase a PR', link: '/how-to/rebase-a-pr' },
