@@ -218,7 +218,7 @@ func TestRun_FixesFailureInOneIteration(t *testing.T) {
 }
 
 // fixReport is a realistic orchestrator-driven report, carrying the mandated
-// "## Fix Report (iteration N)" heading the PR comment must strip.
+// "## Fix Report (iteration N)" heading the PR comment keeps as its title.
 const fixReport = `## Fix Report (iteration 1)
 
 ### Per check
@@ -252,8 +252,8 @@ func TestRun_PostsFixComment(t *testing.T) {
 		t.Fatalf("AddPRComment called %d times, want 1", gh.commentCalls.Load())
 	}
 	body := gh.commentBodies[0]
-	if strings.Contains(body, fixReportHeading) {
-		t.Errorf("posted comment must not carry the %q heading:\n%s", fixReportHeading, body)
+	if !strings.Contains(body, "## Fix Report (iteration 1)") {
+		t.Errorf("posted comment must keep the report heading as its title:\n%s", body)
 	}
 	if !strings.Contains(body, "corrected the slice bound") || !strings.Contains(body, "### Per check") {
 		t.Errorf("posted comment dropped the fix details:\n%s", body)
@@ -338,45 +338,6 @@ func TestRun_PostsEscalatedFixComment(t *testing.T) {
 	// intervene sees why the loop stopped.
 	if gh.commentCalls.Load() != 1 {
 		t.Errorf("AddPRComment called %d times, want 1 — an escalated report must still be posted", gh.commentCalls.Load())
-	}
-}
-
-func TestStripFixReportHeading(t *testing.T) {
-	const body = "### Per check\n- test\n### Status\nSTATUS: DONE"
-
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{
-			name:  "iteration heading is dropped",
-			input: "## Fix Report (iteration 1)\n\n" + body,
-			want:  body,
-		},
-		{
-			name:  "bare heading is dropped",
-			input: "## Fix Report\n\n" + body,
-			want:  body,
-		},
-		{
-			name:  "no heading is returned trimmed but intact",
-			input: "\n  " + body + "  \n",
-			want:  body,
-		},
-		{
-			name:  "preamble before the heading is dropped too",
-			input: "Pushed the fix.\n\n## Fix Report (iteration 2)\n\n" + body,
-			want:  body,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := stripFixReportHeading(tt.input); got != tt.want {
-				t.Errorf("stripFixReportHeading() = %q, want %q", got, tt.want)
-			}
-		})
 	}
 }
 
