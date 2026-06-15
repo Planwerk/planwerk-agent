@@ -398,9 +398,15 @@ docs) and opens a draft pull request. The implementation report is posted back
 onto the source issue as a comment on every run (use `--no-report-comment` to
 skip that), so the course of each implementation is recorded on the issue.
 
+A plan planwerk-review already posted on the issue (from an earlier run that
+planned but was aborted before implementing) is reused by default: the planning
+session is skipped and no duplicate plan comment is posted. Use `--no-plan-reuse`
+to force a fresh planning session when the posted plan has gone stale.
+
 ```bash
 planwerk-review implement owner/repo#123
 planwerk-review implement --no-plan owner/repo#123
+planwerk-review implement --no-plan-reuse owner/repo#123
 planwerk-review implement --verify owner/repo#123
 ```
 
@@ -411,6 +417,7 @@ planwerk-review implement --verify owner/repo#123
 | `--print-bare-prompt` | Render a self-contained implement prompt (no issue body) to stdout and exit | `false` |
 | `--print-plan-prompt` | Render the planning prompt (with the issue body embedded) to stdout and exit | `false` |
 | `--no-plan` | Skip the planning session and implement directly in a single session | `false` |
+| `--no-plan-reuse` | Always run a fresh planning session; do not reuse an implementation plan already posted on the issue | `false` |
 | `--no-plan-comment` | Do not post the generated implementation plan as a comment on the source issue | `false` |
 | `--no-report-comment` | Do not post the implementation report as a comment on the source issue | `false` |
 | `--plan-model` | Model for the planning session passed to Claude Code via `--model` (e.g. `fable`, `opus`; env: `PLANWERK_PLAN_MODEL`) | `fable` |
