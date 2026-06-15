@@ -37,6 +37,58 @@ func TestCreateIssueArgs(t *testing.T) {
 	}
 }
 
+func TestParseIssueComments(t *testing.T) {
+	cases := []struct {
+		name    string
+		in      string
+		want    []string // comment bodies, in order
+		wantErr bool
+	}{
+		{
+			name: "two comments preserve order",
+			in:   `{"comments":[{"body":"first"},{"body":"second"}]}`,
+			want: []string{"first", "second"},
+		},
+		{
+			name: "empty comments array",
+			in:   `{"comments":[]}`,
+			want: nil,
+		},
+		{
+			name: "missing comments key",
+			in:   `{}`,
+			want: nil,
+		},
+		{
+			name:    "malformed json",
+			in:      `{"comments":[`,
+			wantErr: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parseIssueComments([]byte(tc.in))
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got %+v", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(got) != len(tc.want) {
+				t.Fatalf("got %d comments, want %d: %+v", len(got), len(tc.want), got)
+			}
+			for i, body := range tc.want {
+				if got[i].Body != body {
+					t.Errorf("comment[%d].Body = %q, want %q", i, got[i].Body, body)
+				}
+			}
+		})
+	}
+}
+
 func TestParseIssueRef(t *testing.T) {
 	cases := []struct {
 		name      string

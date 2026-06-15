@@ -145,6 +145,43 @@ func GetIssue(owner, name string, number int) (*Issue, error) {
 	return &iss, nil
 }
 
+// IssueComment is a single comment on a GitHub issue. Only the body is read:
+// the implement command scans comment bodies to find an implementation plan it
+// posted on an earlier run and can reuse instead of re-planning.
+type IssueComment struct {
+	Body string `json:"body"`
+}
+
+// ListIssueComments fetches the comments on an issue via gh, in the order gh
+// returns them (oldest first). Used by the implement command to detect and
+// reuse an implementation plan it posted on an earlier run.
+func ListIssueComments(owner, name string, number int) ([]IssueComment, error) {
+	repo := fmt.Sprintf("%s/%s", owner, name)
+	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "gh", "issue", "view", strconv.Itoa(number),
+		"--repo", repo,
+		"--json", "comments")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("gh issue view: %s: %w", strings.TrimSpace(string(out)), err)
+	}
+	return parseIssueComments(out)
+}
+
+// parseIssueComments decodes the {"comments":[{"body":...}]} payload gh emits
+// for `issue view --json comments`. Kept separate so the decode is
+// unit-testable without invoking gh.
+func parseIssueComments(out []byte) ([]IssueComment, error) {
+	var payload struct {
+		Comments []IssueComment `json:"comments"`
+	}
+	if err := json.Unmarshal(out, &payload); err != nil {
+		return nil, fmt.Errorf("parsing gh issue view comments output: %w", err)
+	}
+	return payload.Comments, nil
+}
+
 // EditIssueBody replaces the body of an existing issue. The body is passed
 // via stdin so it is not subject to argv length limits or shell quoting.
 func EditIssueBody(owner, name string, number int, body string) error {
