@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/planwerk/planwerk-review/internal/address"
 	"github.com/planwerk/planwerk-review/internal/audit"
 	"github.com/planwerk/planwerk-review/internal/doccheck"
 	"github.com/planwerk/planwerk-review/internal/draft"
@@ -321,6 +322,68 @@ func TestBuildFixPrompt_Local_Golden(t *testing.T) {
 	ctx := goldenFixContext()
 	ctx.Local = true
 	assertGoldenPrompt(t, "fix_local", BuildFixPrompt(ctx))
+}
+
+func goldenAddressContext() address.Context {
+	return address.Context{
+		RepoFullName: "planwerk/planwerk-review",
+		PRNumber:     42,
+		PRTitle:      "Add the snapshot tests",
+		HeadBranch:   "feat/snapshot-tests",
+		BaseBranch:   "main",
+		Threads: []github.ReviewThread{
+			{
+				ID:       "PRRT_kwDOAbc123",
+				Path:     "internal/claude/runner.go",
+				Line:     42,
+				DiffHunk: "@@ -40,3 +40,3 @@\n-\trunClaude(dir, prompt)\n+\trunSession(dir, prompt)",
+				Comments: []github.ReviewThreadComment{
+					{Author: "reviewer", Body: "This should call runSession, not runClaude.", CreatedAt: "2026-06-01T10:00:00Z"},
+					{Author: "author", Body: "Will fix.", CreatedAt: "2026-06-01T11:00:00Z"},
+				},
+			},
+		},
+		OneCommitPerThread: true,
+		Patterns:           goldenPatterns(),
+		MaxPatterns:        0,
+	}
+}
+
+func goldenBareAddressContext() address.BareContext {
+	return address.BareContext{
+		RepoFullName: "planwerk/planwerk-review",
+		PRNumber:     42,
+		TechTags:     []string{"go"},
+		PatternCatalog: []patterns.CatalogReference{
+			{
+				Name:       "Hardcoded secrets",
+				Severity:   "CRITICAL",
+				Category:   "design-principle",
+				ReviewArea: "security",
+				URL:        "https://raw.githubusercontent.com/planwerk/planwerk-review/main/internal/patterns/patterns/hardcoded-secrets.md",
+			},
+		},
+		BundledURLBase: "https://raw.githubusercontent.com/planwerk/planwerk-review/main/internal/patterns/patterns",
+	}
+}
+
+// TestBuildAddressPrompt_Golden locks the per-thread address prompt: address
+// the thread, commit one focused follow-up commit, never push.
+func TestBuildAddressPrompt_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "address", BuildAddressPrompt(goldenAddressContext()))
+}
+
+// TestBuildAddressPrompt_Aggregate_Golden locks the aggregate variant: fold
+// every selected thread into one commit.
+func TestBuildAddressPrompt_Aggregate_Golden(t *testing.T) {
+	ctx := goldenAddressContext()
+	ctx.OneCommitPerThread = false
+	assertGoldenPrompt(t, "address_aggregate", BuildAddressPrompt(ctx))
+}
+
+// TestBuildBareAddressPrompt_Golden locks the portable self-contained prompt.
+func TestBuildBareAddressPrompt_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "address_bare", BuildBareAddressPrompt(goldenBareAddressContext()))
 }
 
 func goldenRebaseConflictContext() rebase.ConflictContext {

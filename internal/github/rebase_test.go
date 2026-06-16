@@ -212,6 +212,45 @@ func TestResetHard(t *testing.T) {
 	}
 }
 
+func TestPushHead(t *testing.T) {
+	dir, bare, _ := initRebaseRepo(t)
+
+	git(t, dir, "checkout", "-q", "-b", "feature")
+	git(t, dir, "push", "-q", "-u", "origin", "feature")
+
+	// Append a follow-up commit, the way the address command does.
+	writeRepoFile(t, dir, "followup.txt", "f\n")
+	git(t, dir, "add", ".")
+	git(t, dir, "commit", "-q", "-m", "follow-up commit")
+	want := gitOut(t, dir, "rev-parse", "HEAD")
+
+	if err := PushHead(dir, "feature"); err != nil {
+		t.Fatalf("PushHead: %v", err)
+	}
+	if got := gitOut(t, bare, "rev-parse", "feature"); got != want {
+		t.Errorf("remote feature = %q, want pushed HEAD %q", got, want)
+	}
+}
+
+// TestPushHead_RejectsNonFastForward covers the upstream-error path: a plain
+// push that would overwrite remote history is rejected (address never forces).
+func TestPushHead_RejectsNonFastForward(t *testing.T) {
+	dir, _, _ := initRebaseRepo(t)
+
+	git(t, dir, "checkout", "-q", "-b", "feature")
+	git(t, dir, "push", "-q", "-u", "origin", "feature")
+
+	// Rewrite local history so HEAD diverges from the remote feature tip; a
+	// plain push must fail rather than clobber the remote.
+	writeRepoFile(t, dir, "rewrite.txt", "r\n")
+	git(t, dir, "add", ".")
+	git(t, dir, "commit", "-q", "--amend", "-m", "rewritten base")
+
+	if err := PushHead(dir, "feature"); err == nil {
+		t.Fatal("PushHead should fail on a non-fast-forward push, got nil")
+	}
+}
+
 func TestForceWithLeasePush(t *testing.T) {
 	dir, bare, _ := initRebaseRepo(t)
 
