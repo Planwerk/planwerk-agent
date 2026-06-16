@@ -138,3 +138,32 @@ Be direct and decisive in your findings. Do NOT hedge:
 
 `
 }
+
+// commitTrailerBlock returns the "## Commit trailers" section shared by every
+// prompt whose session creates commits (implement, fix, address, and their
+// bare variants). It pins the trailer convention the maintainers require on
+// EVERY commit: an Assisted-by trailer naming the assistant, a Signed-off-by
+// added via `git commit -s` as the final line, and never a Co-authored-by
+// trailer.
+//
+// Ordering is load-bearing. The Signed-off-by MUST be the last line, so the
+// Assisted-by line is passed as the final `-m` paragraph — `git commit -s`
+// folds its Signed-off-by into that same trailer block, landing it last.
+// Passing Assisted-by via `--trailer` instead would place it AFTER the
+// sign-off, breaking the order. The Assisted-by format follows the osism
+// promptcraft commit skill: the agent's own name, optionally suffixed with its
+// exact model id.
+func commitTrailerBlock() string {
+	return `## Commit trailers
+
+EVERY commit you create MUST end with exactly these two trailers, in this order:
+
+    Assisted-by: Claude
+    Signed-off-by: <committer name> <committer email>
+
+- Pass ` + "`-s`" + ` to ` + "`git commit`" + ` so git appends the ` + "`Signed-off-by`" + ` line from the committer identity. It MUST be the very last line of the message.
+- Add an ` + "`Assisted-by: Claude`" + ` trailer naming yourself as the assistant. Append your exact model id when your runtime context provides it (e.g. ` + "`Assisted-by: Claude:claude-opus-4-8`" + `); otherwise emit ` + "`Assisted-by: Claude`" + ` alone — never guess the id. Pass it as the final ` + "`-m`" + ` paragraph, NOT via ` + "`--trailer`" + ` (git places ` + "`--trailer`" + ` values after the sign-off), so it lands directly above ` + "`Signed-off-by`" + `.
+- NEVER add a ` + "`Co-authored-by`" + ` trailer — not for Claude, not for planwerk-review, not for anyone.
+
+`
+}

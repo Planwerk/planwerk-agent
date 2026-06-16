@@ -77,8 +77,9 @@ func BuildAddressPrompt(ctx address.Context) string {
    thread:
 
       git add -- <files for this thread>
-      git commit -m "<concise summary of the change>" \
-        --trailer "Co-Authored-By: planwerk-review address <noreply@planwerk>"
+      git commit -s \
+        -m "<concise summary of the change>" \
+        -m "Assisted-by: Claude"
 
    Wrap every commit-message line at 72 characters or fewer.
 5. Do NOT push. The orchestrator pushes the follow-up commit to %s after
@@ -89,9 +90,10 @@ func BuildAddressPrompt(ctx address.Context) string {
    all the threads above:
 
       git add -A
-      git commit -m "Address review comments" \
+      git commit -s \
+        -m "Address review comments" \
         -m "Threads: <comma-separated thread ids>" \
-        --trailer "Co-Authored-By: planwerk-review address <noreply@planwerk>"
+        -m "Assisted-by: Claude"
 
    Wrap every commit-message line at 72 characters or fewer.
 5. Do NOT push. The orchestrator pushes the follow-up commit to %s after
@@ -121,7 +123,7 @@ Field rules:
 - "files" lists the repo-relative paths you touched for that thread; omit it when you changed nothing.
 - The top-level "status" is the run's overall terminal status. The orchestrator stops and escalates on BLOCKED or NEEDS_CONTEXT.
 
-## Hard rules
+` + commitTrailerBlock() + `## Hard rules
 
 - Address ONLY the threads listed above. Do NOT touch unrelated code.
 - Do NOT push. Do NOT force-push. The orchestrator publishes the branch separately.
@@ -197,7 +199,7 @@ Skip threads that are already resolved (isResolved: true) and any thread whose f
 4. Commit the change(s) as follow-up commits (one per thread keeps the mapping comment to commit legible). Wrap every commit-message line at 72 characters or fewer:
 
    git add -- <files for this thread>
-   git commit -m "<concise summary>" --trailer "Co-Authored-By: planwerk-review address <noreply@planwerk>"
+   git commit -s -m "<concise summary>" -m "Assisted-by: Claude"
 
 5. Push the follow-up commits to the PR head branch:
 
@@ -206,14 +208,18 @@ Skip threads that are already resolved (isResolved: true) and any thread whose f
 6. For each addressed thread, optionally reply summarizing what changed (addPullRequestReviewThreadReply) and, only if asked, resolve it (resolveReviewThread). Replying and resolving are best-effort — a GitHub failure must not undo the pushed commit.
 7. Output a short report: per thread, what you changed (or why you could not), then an overall summary.
 
-## Hard rules
+`, ctx.PRNumber)
+
+	sb.WriteString(commitTrailerBlock())
+
+	sb.WriteString(`## Hard rules
 
 - Address ONLY the reviewers' comments. Do NOT touch unrelated code.
-- Do NOT force-push. Follow-up commits push cleanly with a plain `+"`git push origin HEAD`"+`.
+- Do NOT force-push. Follow-up commits push cleanly with a plain ` + "`git push origin HEAD`" + `.
 - NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).
 - NEVER fabricate file paths or line numbers — open the file before claiming.
 - If a comment is ambiguous or references code that no longer exists, leave it untouched and report it — do not guess.
-`, ctx.PRNumber)
+`)
 
 	return sb.String()
 }

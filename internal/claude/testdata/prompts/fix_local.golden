@@ -166,7 +166,7 @@ Run these steps for EACH failing check above before editing any code:
    existing commit on this branch (e.g. an entirely new file unrelated to any
    of them). That is the rare exception, not the default — and only then:
 
-      git commit -m "<concise summary>" -m "Failed checks: <comma-separated names>" --trailer "Co-Authored-By: planwerk-review fix <noreply@planwerk>"
+      git commit -s -m "<concise summary>" -m "Failed checks: <comma-separated names>" -m "Assisted-by: Claude"
 
 6. Publish the rewritten branch:
 
@@ -194,6 +194,17 @@ Run these steps for EACH failing check above before editing any code:
    ### Status
    STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT>
    (DONE = all checks fixed and verified; DONE_WITH_CONCERNS = pushed but with reservations a human should see; BLOCKED = could not make progress; NEEDS_CONTEXT = missing information only a human can supply. The orchestrator reads this line and stops the loop on BLOCKED or NEEDS_CONTEXT.)
+
+## Commit trailers
+
+EVERY commit you create MUST end with exactly these two trailers, in this order:
+
+    Assisted-by: Claude
+    Signed-off-by: <committer name> <committer email>
+
+- Pass `-s` to `git commit` so git appends the `Signed-off-by` line from the committer identity. It MUST be the very last line of the message.
+- Add an `Assisted-by: Claude` trailer naming yourself as the assistant. Append your exact model id when your runtime context provides it (e.g. `Assisted-by: Claude:claude-opus-4-8`); otherwise emit `Assisted-by: Claude` alone — never guess the id. Pass it as the final `-m` paragraph, NOT via `--trailer` (git places `--trailer` values after the sign-off), so it lands directly above `Signed-off-by`.
+- NEVER add a `Co-authored-by` trailer — not for Claude, not for planwerk-review, not for anyone.
 
 ## Hard rules
 

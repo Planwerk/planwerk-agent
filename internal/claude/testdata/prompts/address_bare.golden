@@ -96,7 +96,7 @@ Skip threads that are already resolved (isResolved: true) and any thread whose f
 4. Commit the change(s) as follow-up commits (one per thread keeps the mapping comment to commit legible). Wrap every commit-message line at 72 characters or fewer:
 
    git add -- <files for this thread>
-   git commit -m "<concise summary>" --trailer "Co-Authored-By: planwerk-review address <noreply@planwerk>"
+   git commit -s -m "<concise summary>" -m "Assisted-by: Claude"
 
 5. Push the follow-up commits to the PR head branch:
 
@@ -104,6 +104,17 @@ Skip threads that are already resolved (isResolved: true) and any thread whose f
 
 6. For each addressed thread, optionally reply summarizing what changed (addPullRequestReviewThreadReply) and, only if asked, resolve it (resolveReviewThread). Replying and resolving are best-effort — a GitHub failure must not undo the pushed commit.
 7. Output a short report: per thread, what you changed (or why you could not), then an overall summary.
+
+## Commit trailers
+
+EVERY commit you create MUST end with exactly these two trailers, in this order:
+
+    Assisted-by: Claude
+    Signed-off-by: <committer name> <committer email>
+
+- Pass `-s` to `git commit` so git appends the `Signed-off-by` line from the committer identity. It MUST be the very last line of the message.
+- Add an `Assisted-by: Claude` trailer naming yourself as the assistant. Append your exact model id when your runtime context provides it (e.g. `Assisted-by: Claude:claude-opus-4-8`); otherwise emit `Assisted-by: Claude` alone — never guess the id. Pass it as the final `-m` paragraph, NOT via `--trailer` (git places `--trailer` values after the sign-off), so it lands directly above `Signed-off-by`.
+- NEVER add a `Co-authored-by` trailer — not for Claude, not for planwerk-review, not for anyone.
 
 ## Hard rules
 

@@ -172,7 +172,7 @@ Run these steps for EACH failing check above before editing any code:
 			"   Create a NEW standalone commit ONLY when a change genuinely belongs to no\n"+
 			"   existing commit on this branch (e.g. an entirely new file unrelated to any\n"+
 			"   of them). That is the rare exception, not the default — and only then:\n\n"+
-			"      git commit -m \"<concise summary>\" -m \"Failed checks: <comma-separated names>\" --trailer \"Co-Authored-By: planwerk-review fix <noreply@planwerk>\"\n\n"+
+			"      git commit -s -m \"<concise summary>\" -m \"Failed checks: <comma-separated names>\" -m \"Assisted-by: Claude\"\n\n"+
 			"6. Publish the rewritten branch:\n\n"+
 			"      git push --force-with-lease origin HEAD:%[2]s\n\n"+
 			"   The autosquash rebase rewrote the branch's commit SHAs, so a plain push is\n"+
@@ -182,7 +182,7 @@ Run these steps for EACH failing check above before editing any code:
 	} else {
 		fmt.Fprintf(&sb, "5. Stage your changes, create ONE follow-up commit using:\n\n"+
 			"   git add -A\n"+
-			"   git commit -m \"Fix failing CI checks (iteration %d)\" -m \"Failed checks: <comma-separated names>\" --trailer \"Co-Authored-By: planwerk-review fix <noreply@planwerk>\"\n\n"+
+			"   git commit -s -m \"Fix failing CI checks (iteration %d)\" -m \"Failed checks: <comma-separated names>\" -m \"Assisted-by: Claude\"\n\n"+
 			"6. Push to the PR head branch:\n\n"+
 			"   git push origin HEAD:%s\n\n",
 			ctx.Iteration, ctx.HeadBranch)
@@ -212,7 +212,7 @@ Run these steps for EACH failing check above before editing any code:
    STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT>
    (DONE = all checks fixed and verified; DONE_WITH_CONCERNS = pushed but with reservations a human should see; BLOCKED = could not make progress; NEEDS_CONTEXT = missing information only a human can supply. The orchestrator reads this line and stops the loop on BLOCKED or NEEDS_CONTEXT.)
 
-## Hard rules
+` + commitTrailerBlock() + `## Hard rules
 
 `)
 
@@ -343,7 +343,7 @@ Run these steps for EACH failing check before editing any code:
 6. Stage your changes and create ONE follow-up commit:
 
    git add -A
-   git commit -m "Fix failing CI checks" -m "Failed checks: <comma-separated names>" --trailer "Co-Authored-By: planwerk-review fix <noreply@planwerk>"
+   git commit -s -m "Fix failing CI checks" -m "Failed checks: <comma-separated names>" -m "Assisted-by: Claude"
 
 7. Push back to the PR's head branch:
 
@@ -367,7 +367,7 @@ Run these steps for EACH failing check before editing any code:
    STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT>
    (DONE = all checks fixed and verified; DONE_WITH_CONCERNS = pushed but with reservations a human should see; BLOCKED = could not make progress; NEEDS_CONTEXT = missing information only a human can supply. The orchestrator reads this line and stops the loop on BLOCKED or NEEDS_CONTEXT.)
 
-## Hard rules
+` + commitTrailerBlock() + `## Hard rules
 
 - NEVER force-push.
 - PREFER to change only files on the failure surface. Reaching outside it is a last resort, reserved for the worst case where the failing check genuinely cannot be fixed any other way — then make the smallest out-of-scope change that works and call it out explicitly in the report. NEVER reach outside for convenience, drive-by cleanups, or unrelated improvements.
