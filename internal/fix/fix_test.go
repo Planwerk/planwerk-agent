@@ -258,7 +258,7 @@ func TestRun_PostsFixComment(t *testing.T) {
 	if !strings.Contains(body, "corrected the slice bound") || !strings.Contains(body, "### Per check") {
 		t.Errorf("posted comment dropped the fix details:\n%s", body)
 	}
-	if !strings.Contains(body, fixCommentFooter) {
+	if !strings.Contains(body, fixCommentFooter()) {
 		t.Errorf("posted comment is missing the attribution footer:\n%s", body)
 	}
 	if !strings.Contains(buf.String(), "Posted the fix report as a comment on PR #7") {

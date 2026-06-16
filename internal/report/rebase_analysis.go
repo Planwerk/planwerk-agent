@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/planwerk/planwerk-review/internal/attribution"
 )
 
 // RebaseAnalysis is the structured result of the post-rebase pass: for each
@@ -55,7 +57,7 @@ func (r *Renderer) RenderRebaseAnalysisJSON(result RebaseAnalysis) error {
 func (r *Renderer) RenderRebaseAnalysisMarkdown(result RebaseAnalysis, repoFullName string, prNumber int, onto, version string) {
 	_, _ = fmt.Fprintf(r.w, "# Rebase analysis: %s#%d\n\n", repoFullName, prNumber)
 	_, _ = fmt.Fprintf(r.w, "> Rebased onto `%s`  \n", onto)
-	_, _ = fmt.Fprintf(r.w, "> Analyzed by planwerk-review %s with Claude Code\n\n", version)
+	_, _ = fmt.Fprintf(r.w, "> Analyzed by planwerk-review %s %s\n\n", version, attribution.Assistant())
 
 	_, _ = fmt.Fprintf(r.w, "<!-- planwerk-rebase: commits=%d adjustments=%d -->\n\n",
 		len(result.Commits), countAdjustments(result.Commits))

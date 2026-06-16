@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/planwerk/planwerk-review/internal/attribution"
 )
 
 // Renderer writes a drafted issue to an output stream as Markdown or JSON.
@@ -28,7 +30,7 @@ func (r *Renderer) RenderJSON(result Result) error {
 // target repo and title, a generated-by line, then the issue body.
 func (r *Renderer) RenderMarkdown(repoFullName, version string, result *Result) {
 	_, _ = fmt.Fprintf(r.w, "# Draft issue for %s — %s\n\n", repoFullName, result.Title)
-	_, _ = fmt.Fprintf(r.w, "> Drafted by planwerk-review %s with Claude Code\n\n", version)
+	_, _ = fmt.Fprintf(r.w, "> Drafted by planwerk-review %s %s\n\n", version, attribution.Assistant())
 	_, _ = fmt.Fprint(r.w, "---\n\n")
 	_, _ = fmt.Fprint(r.w, result.Body)
 	if !strings.HasSuffix(result.Body, "\n") {
@@ -62,6 +64,6 @@ func BuildIssueBody(r *Result) string {
 		fmt.Fprintf(&b, "## Motivation\n\n%s\n\n", m)
 	}
 
-	fmt.Fprint(&b, "---\n\n_Drafted by [planwerk-review](https://github.com/planwerk/planwerk-review) with Claude Code_\n")
+	fmt.Fprintf(&b, "---\n\n_Drafted by %s %s_\n", attribution.Link, attribution.Assistant())
 	return b.String()
 }

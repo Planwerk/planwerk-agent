@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/planwerk/planwerk-review/internal/attribution"
 )
 
 const (
@@ -283,19 +285,31 @@ func runClaudeWithPermission(dir, prompt, label, permissionMode, model, effort s
 		}
 		return "", fmt.Errorf("claude: %w", err)
 	}
-	return extractText(out)
+	text, model := extractText(out)
+	// Record the exact model id the envelope reports so the artifact footers
+	// (rendered after this call returns) name the model that produced them,
+	// mirroring the streaming path in runClaudeStream.
+	if model != "" {
+		attribution.SetModel(model)
+	}
+	return text, nil
 }
 
 type claudeResponse struct {
 	Result string `json:"result"`
+	// Model is the resolved model id the CLI reports in the JSON envelope
+	// (e.g. "claude-opus-4-8"). It is the non-streaming counterpart of the
+	// streamEvent init model and feeds the attribution footers.
+	Model string `json:"model,omitempty"`
 }
 
-// extractText extracts the text content from Claude's JSON output envelope.
-func extractText(raw []byte) (string, error) {
+// extractText extracts the response text and the resolved model id from
+// Claude's JSON output envelope. When the output is not the expected envelope it
+// falls back to treating the entire output as the response text with no model.
+func extractText(raw []byte) (text, model string) {
 	var resp claudeResponse
 	if err := json.Unmarshal(raw, &resp); err != nil {
-		// Fall back to treating the entire output as the response text
-		return string(raw), nil
+		return string(raw), ""
 	}
-	return resp.Result, nil
+	return resp.Result, resp.Model
 }

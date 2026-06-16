@@ -6,7 +6,7 @@ The generated Markdown report follows a fixed structure:
 # Review: owner/repo#123
 
 > *Feature: Add user authentication*
-> Reviewed by planwerk-review vX.Y.Z with Claude Code
+> Reviewed by planwerk-review vX.Y.Z with Claude:claude-opus-4-8
 
 <!-- planwerk-review: blocking=1 critical=2 warning=3 info=1 recommendation=HOLD -->
 
@@ -64,6 +64,13 @@ The PR introduces user authentication with a well-structured handler layer, but 
 > [!CAUTION]
 > **Do not merge** — 1 BLOCKING and 2 CRITICAL findings must be resolved first.
 ```
+
+The attribution line names the exact Claude model that produced the report —
+`with Claude:claude-opus-4-8`, not the alias passed via `--claude-model`. The id
+is read from the model the session reports at startup; when it is unavailable the
+line falls back to a bare `with Claude`. Every artifact planwerk-review leaves on
+GitHub (issue bodies, pull request descriptions, review comments, thread replies)
+carries the same self-attribution footer, linking back to the project repository.
 
 ## Severity Levels
 

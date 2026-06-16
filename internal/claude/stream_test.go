@@ -19,10 +19,10 @@ func (s *recordingSink) record(kind string) {
 	s.events = append(s.events, kind)
 }
 
-func (s *recordingSink) starting(label string)     { s.record("start:" + label) }
-func (s *recordingSink) text(label, t string)      { s.record("text:" + label + ":" + t) }
-func (s *recordingSink) tool(label, name string)   { s.record("tool:" + label + ":" + name) }
-func (s *recordingSink) toolResult(label string)   { s.record("tool_result:" + label) }
+func (s *recordingSink) starting(label string)   { s.record("start:" + label) }
+func (s *recordingSink) text(label, t string)    { s.record("text:" + label + ":" + t) }
+func (s *recordingSink) tool(label, name string) { s.record("tool:" + label + ":" + name) }
+func (s *recordingSink) toolResult(label string) { s.record("tool_result:" + label) }
 
 func (s *recordingSink) snapshot() []string {
 	s.mu.Lock()
@@ -41,7 +41,7 @@ func TestReadStream_DispatchesAssistantTextAndCapturesResult(t *testing.T) {
 {"type":"result","subtype":"success","result":"final review text"}
 `
 	sink := &recordingSink{}
-	final, acc, err := readStream(strings.NewReader(stream), "review", sink)
+	final, acc, _, err := readStream(strings.NewReader(stream), "review", sink)
 	if err != nil {
 		t.Fatalf("readStream: %v", err)
 	}
@@ -69,11 +69,38 @@ func TestReadStream_DispatchesAssistantTextAndCapturesResult(t *testing.T) {
 	}
 }
 
+func TestReadStream_CapturesResolvedModelFromInitEvent(t *testing.T) {
+	const stream = `{"type":"system","subtype":"init","model":"claude-opus-4-8"}
+{"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}
+{"type":"result","result":"ok"}
+`
+	_, _, model, err := readStream(strings.NewReader(stream), "review", &recordingSink{})
+	if err != nil {
+		t.Fatalf("readStream: %v", err)
+	}
+	if model != "claude-opus-4-8" {
+		t.Errorf("resolved model = %q, want %q", model, "claude-opus-4-8")
+	}
+}
+
+func TestReadStream_ResolvedModelEmptyWhenInitOmitsIt(t *testing.T) {
+	const stream = `{"type":"system","subtype":"init"}
+{"type":"result","result":"ok"}
+`
+	_, _, model, err := readStream(strings.NewReader(stream), "review", &recordingSink{})
+	if err != nil {
+		t.Fatalf("readStream: %v", err)
+	}
+	if model != "" {
+		t.Errorf("resolved model = %q, want empty when the init event omits it", model)
+	}
+}
+
 func TestReadStream_FallsBackToAccumulatedTextWhenNoResultEvent(t *testing.T) {
 	const stream = `{"type":"assistant","message":{"content":[{"type":"text","text":"partial"}]}}
 `
 	sink := &recordingSink{}
-	final, acc, err := readStream(strings.NewReader(stream), "review", sink)
+	final, acc, _, err := readStream(strings.NewReader(stream), "review", sink)
 	if err != nil {
 		t.Fatalf("readStream: %v", err)
 	}
@@ -92,7 +119,7 @@ func TestReadStream_TolerantOfMalformedAndUnknownLines(t *testing.T) {
 {"type":"result","result":"ok"}
 `
 	sink := &recordingSink{}
-	final, _, err := readStream(strings.NewReader(stream), "review", sink)
+	final, _, _, err := readStream(strings.NewReader(stream), "review", sink)
 	if err != nil {
 		t.Fatalf("readStream should not fail on malformed/unknown lines: %v", err)
 	}
@@ -109,7 +136,7 @@ func TestReadStream_LaterResultEventOverwritesEarlier(t *testing.T) {
 	const stream = `{"type":"result","result":"first"}
 {"type":"result","result":"second"}
 `
-	final, _, err := readStream(strings.NewReader(stream), "review", &recordingSink{})
+	final, _, _, err := readStream(strings.NewReader(stream), "review", &recordingSink{})
 	if err != nil {
 		t.Fatalf("readStream: %v", err)
 	}
@@ -121,8 +148,8 @@ func TestReadStream_LaterResultEventOverwritesEarlier(t *testing.T) {
 func TestHandleStreamLine_EmptyAndWhitespaceLinesAreIgnored(t *testing.T) {
 	sink := &recordingSink{}
 	var acc, final strings.Builder
-	handleStreamLine([]byte(""), "review", sink, &acc, &final)
-	handleStreamLine([]byte("   \t  "), "review", sink, &acc, &final)
+	handleStreamLine([]byte(""), "review", sink, &acc, &final, nil)
+	handleStreamLine([]byte("   \t  "), "review", sink, &acc, &final, nil)
 	if acc.Len() != 0 || final.Len() != 0 {
 		t.Errorf("blank lines should not modify buffers (acc=%q, final=%q)", acc.String(), final.String())
 	}
@@ -135,7 +162,7 @@ func TestHandleStreamLine_SkipsAssistantTextWithEmptyString(t *testing.T) {
 	sink := &recordingSink{}
 	var acc, final strings.Builder
 	const line = `{"type":"assistant","message":{"content":[{"type":"text","text":""}]}}`
-	handleStreamLine([]byte(line), "review", sink, &acc, &final)
+	handleStreamLine([]byte(line), "review", sink, &acc, &final, nil)
 	if acc.Len() != 0 {
 		t.Errorf("empty assistant text must not be accumulated, got %q", acc.String())
 	}

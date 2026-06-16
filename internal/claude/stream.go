@@ -12,6 +12,8 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+
+	"github.com/planwerk/planwerk-review/internal/attribution"
 )
 
 // streamMaxLineBytes caps a single NDJSON line from claude. The final
@@ -27,6 +29,11 @@ const streamMaxLineBytes = 16 * 1024 * 1024
 type streamEvent struct {
 	Type    string `json:"type"`
 	Subtype string `json:"subtype,omitempty"`
+	// Model is the resolved model id the CLI reports on the `system`/`init`
+	// event (e.g. "claude-opus-4-8"). The orchestrator only ever passes a model
+	// alias ("opus") via --model, so this event is the one place the exact id
+	// becomes known; the runner records it for the attribution footers.
+	Model   string `json:"model,omitempty"`
 	Message struct {
 		Content []struct {
 			Type string `json:"type"`
@@ -165,7 +172,14 @@ func runClaudeStream(dir, prompt, label, permissionMode, model, effort string) (
 		_, _ = io.Copy(&stderrBuf, stderr)
 	}()
 
-	finalResult, accText, scanErr := readStream(stdout, label, sink)
+	finalResult, accText, resolvedModel, scanErr := readStream(stdout, label, sink)
+
+	// Record the exact model id the session reported so the artifact footers
+	// (rendered after this call returns) name the model that produced them,
+	// not the alias the orchestrator passed via --model.
+	if resolvedModel != "" {
+		attribution.SetModel(resolvedModel)
+	}
 
 	waitErr := cmd.Wait()
 	wg.Wait()
@@ -189,8 +203,9 @@ func runClaudeStream(dir, prompt, label, permissionMode, model, effort string) (
 // readStream consumes NDJSON events from r until EOF, dispatching to
 // sink as they arrive. It returns the final result string captured from
 // a "result" event, the accumulated assistant text as a defensive
-// fallback for schema drift, and any read error.
-func readStream(r io.Reader, label string, sink streamSink) (final, acc string, err error) {
+// fallback for schema drift, the resolved model id reported on the init
+// event (empty if the stream never announced one), and any read error.
+func readStream(r io.Reader, label string, sink streamSink) (final, acc, model string, err error) {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), streamMaxLineBytes)
 
@@ -199,18 +214,20 @@ func readStream(r io.Reader, label string, sink streamSink) (final, acc string, 
 		accBuf   strings.Builder
 	)
 	for scanner.Scan() {
-		handleStreamLine(scanner.Bytes(), label, sink, &accBuf, &finalBuf)
+		handleStreamLine(scanner.Bytes(), label, sink, &accBuf, &finalBuf, &model)
 	}
 	if err := scanner.Err(); err != nil {
-		return finalBuf.String(), accBuf.String(), err
+		return finalBuf.String(), accBuf.String(), model, err
 	}
-	return finalBuf.String(), accBuf.String(), nil
+	return finalBuf.String(), accBuf.String(), model, nil
 }
 
 // handleStreamLine parses one NDJSON line and dispatches its events to
 // the sink. Malformed lines are logged at debug level and skipped so a
-// single bad line does not abort the stream.
-func handleStreamLine(line []byte, label string, sink streamSink, accBuf, finalBuf *strings.Builder) {
+// single bad line does not abort the stream. When the line carries the
+// resolved model id (the `system`/`init` event), it is recorded in *model so
+// the caller can stamp the attribution footers with the exact model.
+func handleStreamLine(line []byte, label string, sink streamSink, accBuf, finalBuf *strings.Builder, model *string) {
 	if len(bytes.TrimSpace(line)) == 0 {
 		return
 	}
@@ -223,7 +240,11 @@ func handleStreamLine(line []byte, label string, sink streamSink, accBuf, finalB
 	case "system":
 		// The "starting..." line is emitted once before the loop; the
 		// system init event itself is not surfaced to avoid double
-		// announcing.
+		// announcing. The init event does carry the resolved model id,
+		// which we record (first value wins) for the attribution footers.
+		if model != nil && *model == "" && ev.Model != "" {
+			*model = ev.Model
+		}
 	case "assistant":
 		for _, c := range ev.Message.Content {
 			switch c.Type {

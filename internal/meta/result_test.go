@@ -3,6 +3,8 @@ package meta
 import (
 	"strings"
 	"testing"
+
+	"github.com/planwerk/planwerk-review/internal/attribution"
 )
 
 func TestApplyMetaReferences(t *testing.T) {
@@ -60,11 +62,25 @@ func TestBuildSubIssueBody(t *testing.T) {
 		"**Category**: feature | **Scope**: Large",
 		"## Description\n\nLay the groundwork.",
 		"## Motivation\n\nEverything else builds on it.",
-		"_Split from #525 by [planwerk-review](https://github.com/planwerk/planwerk-review) with Claude Code_",
+		"_Split from #525 by [planwerk-review](https://github.com/planwerk/planwerk-review) with Claude_",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body missing %q\n%s", want, body)
 		}
+	}
+}
+
+// TestBuildSubIssueBody_NamesResolvedModel confirms the rendered footer carries
+// the resolved model id when the session recorded one — the renderer reads it
+// through internal/attribution rather than hardcoding the assistant name.
+func TestBuildSubIssueBody_NamesResolvedModel(t *testing.T) {
+	attribution.SetModel("claude-opus-4-8")
+	t.Cleanup(func() { attribution.SetModel("") })
+
+	body := BuildSubIssueBody(525, SubIssue{Key: "a", Title: "Foundation", Description: "Lay the groundwork."})
+	want := "_Split from #525 by [planwerk-review](https://github.com/planwerk/planwerk-review) with Claude:claude-opus-4-8_"
+	if !strings.Contains(body, want) {
+		t.Errorf("body missing model-named footer %q\n%s", want, body)
 	}
 }
 

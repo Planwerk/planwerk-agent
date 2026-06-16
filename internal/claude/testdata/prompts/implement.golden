@@ -167,6 +167,18 @@ EVERY commit you create MUST end with exactly these two trailers, in this order:
 - Add an `Assisted-by: Claude` trailer naming yourself as the assistant. Append your exact model id when your runtime context provides it (e.g. `Assisted-by: Claude:claude-opus-4-8`); otherwise emit `Assisted-by: Claude` alone — never guess the id. Pass it as the final `-m` paragraph, NOT via `--trailer` (git places `--trailer` values after the sign-off), so it lands directly above `Signed-off-by`.
 - NEVER add a `Co-authored-by` trailer — not for Claude, not for planwerk-review, not for anyone.
 
+## Attribution footer
+
+End every GitHub artifact you author yourself — the pull request description, any issue or PR comment, any review-thread reply — with this attribution footer as its final line, after a "---" separator:
+
+    ---
+
+    _Drafted by [planwerk-review](https://github.com/planwerk/planwerk-review) with Claude:<your model id>_
+
+- Append your exact model id when your runtime context provides it (e.g. `with Claude:claude-opus-4-8`); otherwise write a bare `with Claude` — never guess the id. This mirrors the Assisted-by commit trailer.
+- Keep the `[planwerk-review]` link intact so the artifact points back at the tool that produced it.
+- Add the footer once, as the last line of the artifact — do NOT repeat it per section.
+
 ## Hard rules
 
 - NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/planwerk/planwerk-review/internal/attribution"
 )
 
 // emDashPlaceholder is rendered in cells/fields that have no value.
@@ -40,7 +42,7 @@ func (r *Renderer) RenderMarkdown(result ReviewResult, pr PRInfo, minSeverity Se
 
 	_, _ = fmt.Fprintf(r.w, "# Review: %s/%s#%d\n\n", pr.Owner, pr.Repo, pr.Number)
 	_, _ = fmt.Fprintf(r.w, "> *%s*  \n", pr.Title)
-	_, _ = fmt.Fprintf(r.w, "> Reviewed by planwerk-review %s with Claude Code\n\n", version)
+	_, _ = fmt.Fprintf(r.w, "> Reviewed by planwerk-review %s %s\n\n", version, attribution.Assistant())
 
 	// Machine-readable summary for tooling (Claude Code, CI scripts, etc.)
 	_, _ = fmt.Fprintf(r.w, "<!-- planwerk-review: blocking=%d critical=%d warning=%d info=%d unverified=%d recommendation=%s -->\n\n",
@@ -252,7 +254,7 @@ func (r *Renderer) RenderAuditMarkdown(result ReviewResult, repo RepoInfo, minSe
 	cf := Categorize(result.Findings, minSeverity, minConfidence)
 
 	_, _ = fmt.Fprintf(r.w, "# Audit: %s/%s\n\n", repo.Owner, repo.Name)
-	_, _ = fmt.Fprintf(r.w, "> Audited by planwerk-review %s with Claude Code\n\n", version)
+	_, _ = fmt.Fprintf(r.w, "> Audited by planwerk-review %s %s\n\n", version, attribution.Assistant())
 
 	_, _ = fmt.Fprintf(r.w, "<!-- planwerk-audit: blocking=%d critical=%d warning=%d info=%d unverified=%d verdict=%s -->\n\n",
 		len(cf.Blocking), len(cf.Critical), len(cf.Warning), len(cf.Info), len(cf.Unverified),

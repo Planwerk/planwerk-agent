@@ -211,6 +211,7 @@ Skip threads that are already resolved (isResolved: true) and any thread whose f
 `, ctx.PRNumber)
 
 	sb.WriteString(commitTrailerBlock())
+	sb.WriteString(attributionFooterBlock())
 
 	sb.WriteString(`## Hard rules
 

@@ -246,7 +246,7 @@ You run fully autonomously, with no human in the loop and a bounded budget, so a
 
 When you hit a circuit breaker, halt immediately and emit STATUS: DONE_WITH_CONCERNS when a partial but reviewable change already exists (commit it, push the branch, and open the draft PR so a human can take it from there), or STATUS: BLOCKED when nothing shippable was produced. A stopped run that explains why is worth far more than an exhausted budget.
 
-` + commitTrailerBlock() + `## Hard rules
+` + commitTrailerBlock() + attributionFooterBlock() + `## Hard rules
 
 - NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).
 - NEVER weaken or delete tests to make the suite green; fix the root cause.
@@ -376,7 +376,7 @@ After pushing the branch and opening the draft PR, output a report in this exact
    STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT>
    (DONE = implemented, tested, and PR opened; DONE_WITH_CONCERNS = opened but with reservations a reviewer should see; BLOCKED = could not implement; NEEDS_CONTEXT = the issue is underspecified and a human must clarify.)
 
-` + commitTrailerBlock() + `## Hard rules
+` + commitTrailerBlock() + attributionFooterBlock() + `## Hard rules
 
 - NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).
 - NEVER weaken or delete tests to make the suite green; fix the root cause.

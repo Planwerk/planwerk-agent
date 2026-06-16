@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/planwerk/planwerk-review/internal/attribution"
 )
 
 // SubIssue is one draft-depth Sub Issue carved out of a Meta Issue. The first
@@ -72,7 +74,7 @@ func BuildSubIssueBody(metaNumber int, s SubIssue) string {
 		fmt.Fprintf(&b, "## Motivation\n\n%s\n\n", m)
 	}
 
-	fmt.Fprintf(&b, "---\n\n_Split from #%d by [planwerk-review](https://github.com/planwerk/planwerk-review) with Claude Code_\n", metaNumber)
+	fmt.Fprintf(&b, "---\n\n_Split from #%d by %s %s_\n", metaNumber, attribution.Link, attribution.Assistant())
 	return b.String()
 }
 
