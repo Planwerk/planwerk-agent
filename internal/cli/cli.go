@@ -3,6 +3,7 @@ package cli
 import (
 	"time"
 
+	"github.com/planwerk/planwerk-review/internal/address"
 	"github.com/planwerk/planwerk-review/internal/audit"
 	"github.com/planwerk/planwerk-review/internal/draft"
 	"github.com/planwerk/planwerk-review/internal/elaborate"
@@ -253,6 +254,58 @@ func (c FixConfig) ToFixOptions(version string) fix.Options {
 		MaxPatterns:     c.MaxPatterns,
 		Local:           c.Local,
 		Force:           c.Force,
+	}
+}
+
+// AddressConfig holds configuration for the address command.
+type AddressConfig struct {
+	PRRef              string
+	All                bool
+	ThreadIDs          []string
+	IncludeResolved    bool
+	Reply              bool
+	NoReply            bool
+	Resolve            bool
+	OneCommitPerThread bool
+	NoAddressComment   bool
+	MaxIterations      int
+	DryRun             bool
+	PrintPrompt        bool
+	PrintBarePrompt    bool
+
+	PatternDirs     []string
+	NoRepoPatterns  bool
+	NoLocalPatterns bool
+	MaxPatterns     int
+	Local           bool
+	Force           bool
+}
+
+// ToAddressOptions maps the CLI config to address.Options. --no-reply overrides
+// --reply (so the default-on reply can be turned off), mirroring how
+// DraftConfig reconciles --no-create with --dry-run. PrintBarePrompt is handled
+// at the cmd layer (it selects a different entry point), so it is not carried
+// into Options — mirroring FixConfig/RebaseConfig.
+func (c AddressConfig) ToAddressOptions(version string) address.Options {
+	return address.Options{
+		PRRef:              c.PRRef,
+		All:                c.All,
+		ThreadIDs:          c.ThreadIDs,
+		IncludeResolved:    c.IncludeResolved,
+		Reply:              c.Reply && !c.NoReply,
+		Resolve:            c.Resolve,
+		OneCommitPerThread: c.OneCommitPerThread,
+		NoAddressComment:   c.NoAddressComment,
+		MaxIterations:      c.MaxIterations,
+		DryRun:             c.DryRun,
+		PrintPrompt:        c.PrintPrompt,
+		Version:            version,
+		PatternDirs:        c.PatternDirs,
+		NoRepoPatterns:     c.NoRepoPatterns,
+		NoLocalPatterns:    c.NoLocalPatterns,
+		MaxPatterns:        c.MaxPatterns,
+		Local:              c.Local,
+		Force:              c.Force,
 	}
 }
 
