@@ -150,6 +150,23 @@ func ForceWithLeasePush(dir, branch string) error {
 	return nil
 }
 
+// PushHead publishes the local HEAD to the PR's head branch with a plain
+// `git push origin HEAD:<branch>`. The address command uses it to push the
+// follow-up commits it appends per addressed thread; unlike a rebase, address
+// only adds commits, so no force is needed.
+func PushHead(dir, branch string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), gitRemoteTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", "push", "origin", "HEAD:"+branch)
+	cmd.Dir = dir
+	cmd.Stderr = os.Stderr
+	cmd.Stdout = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git push origin HEAD:%s: %w", branch, err)
+	}
+	return nil
+}
+
 // runRebaseCommand runs a `git rebase ...` invocation whose non-zero exit on a
 // conflict is an expected outcome, not a hard error. It forces non-interactive
 // editors and returns the raw run error for rebaseStateFrom to classify.
