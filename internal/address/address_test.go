@@ -12,6 +12,13 @@ import (
 	"github.com/planwerk/planwerk-review/internal/report"
 )
 
+// Thread IDs reused across the address tests' fixtures and assertions.
+const (
+	threadID1 = "RT_1"
+	threadID2 = "RT_2"
+	threadID3 = "RT_3"
+)
+
 // fakeGitHub is a scripted GitHubClient recording every outward-facing call so
 // tests can assert which threads were pushed, replied to, and resolved.
 type fakeGitHub struct {
@@ -134,8 +141,8 @@ func (f *fakeClaude) Address(_ string, ctx Context) (*report.AddressResult, erro
 
 func sampleThreads() []github.ReviewThread {
 	return []github.ReviewThread{
-		{ID: "RT_1", Path: "a.go", Line: 1, Comments: []github.ReviewThreadComment{{Author: "rev", Body: "fix a"}}},
-		{ID: "RT_2", Path: "b.go", Line: 2, Comments: []github.ReviewThreadComment{{Author: "rev", Body: "fix b"}}},
+		{ID: threadID1, Path: "a.go", Line: 1, Comments: []github.ReviewThreadComment{{Author: "rev", Body: "fix a"}}},
+		{ID: threadID2, Path: "b.go", Line: 2, Comments: []github.ReviewThreadComment{{Author: "rev", Body: "fix b"}}},
 	}
 }
 
@@ -183,7 +190,7 @@ func TestRun_NoThreads(t *testing.T) {
 
 func TestRun_AllPerThread(t *testing.T) {
 	gh := &fakeGitHub{prBranch: "feat/x", threads: sampleThreads()}
-	cl := &fakeClaude{results: []*report.AddressResult{doneResult("RT_1"), doneResult("RT_2")}}
+	cl := &fakeClaude{results: []*report.AddressResult{doneResult(threadID1), doneResult(threadID2)}}
 	r := newRunner(gh, cl)
 
 	opts := baseOpts("o/r#1")
@@ -214,8 +221,8 @@ func TestRun_Aggregate(t *testing.T) {
 	gh := &fakeGitHub{prBranch: "feat/x", threads: sampleThreads()}
 	cl := &fakeClaude{results: []*report.AddressResult{{
 		Threads: []report.AddressedThread{
-			{ThreadID: "RT_1", Status: "DONE", Summary: "a"},
-			{ThreadID: "RT_2", Status: "DONE", Summary: "b"},
+			{ThreadID: threadID1, Status: "DONE", Summary: "a"},
+			{ThreadID: threadID2, Status: "DONE", Summary: "b"},
 		},
 		Summary: "both",
 		Status:  "DONE",
@@ -244,18 +251,18 @@ func TestRun_Aggregate(t *testing.T) {
 
 func TestRun_ThreadIDSelectsSubset(t *testing.T) {
 	gh := &fakeGitHub{prBranch: "feat/x", threads: sampleThreads()}
-	cl := &fakeClaude{results: []*report.AddressResult{doneResult("RT_2")}}
+	cl := &fakeClaude{results: []*report.AddressResult{doneResult(threadID2)}}
 	r := newRunner(gh, cl)
 
 	opts := baseOpts("o/r#1")
-	opts.ThreadIDs = []string{"RT_2"}
+	opts.ThreadIDs = []string{threadID2}
 	if err := r.Run(io.Discard, opts); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
 	if cl.called.Load() != 1 {
 		t.Fatalf("Claude.Address called %d times, want 1", cl.called.Load())
 	}
-	if cl.ctxs[0].Threads[0].ID != "RT_2" {
+	if cl.ctxs[0].Threads[0].ID != threadID2 {
 		t.Errorf("addressed thread %q, want RT_2", cl.ctxs[0].Threads[0].ID)
 	}
 }
@@ -284,7 +291,7 @@ func TestRun_ThreadIDUnknownWarns(t *testing.T) {
 
 func TestRun_Resolve(t *testing.T) {
 	gh := &fakeGitHub{prBranch: "feat/x", threads: sampleThreads()[:1]}
-	cl := &fakeClaude{results: []*report.AddressResult{doneResult("RT_1")}}
+	cl := &fakeClaude{results: []*report.AddressResult{doneResult(threadID1)}}
 	r := newRunner(gh, cl)
 
 	opts := baseOpts("o/r#1")
@@ -293,7 +300,7 @@ func TestRun_Resolve(t *testing.T) {
 	if err := r.Run(io.Discard, opts); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
-	if len(gh.resolvedThreads) != 1 || gh.resolvedThreads[0] != "RT_1" {
+	if len(gh.resolvedThreads) != 1 || gh.resolvedThreads[0] != threadID1 {
 		t.Errorf("resolved %v, want [RT_1] with --resolve", gh.resolvedThreads)
 	}
 }
@@ -306,7 +313,7 @@ func TestRun_ReplyResolveFailuresAreNonFatal(t *testing.T) {
 		resolveErr: errors.New("resolve down"),
 		commentErr: errors.New("comment down"),
 	}
-	cl := &fakeClaude{results: []*report.AddressResult{doneResult("RT_1")}}
+	cl := &fakeClaude{results: []*report.AddressResult{doneResult(threadID1)}}
 	r := newRunner(gh, cl)
 
 	opts := baseOpts("o/r#1")
@@ -330,7 +337,7 @@ func TestRun_ReplyResolveFailuresAreNonFatal(t *testing.T) {
 
 func TestRun_NoAddressCommentSkipsComment(t *testing.T) {
 	gh := &fakeGitHub{prBranch: "feat/x", threads: sampleThreads()[:1]}
-	cl := &fakeClaude{results: []*report.AddressResult{doneResult("RT_1")}}
+	cl := &fakeClaude{results: []*report.AddressResult{doneResult(threadID1)}}
 	r := newRunner(gh, cl)
 
 	opts := baseOpts("o/r#1")
@@ -347,7 +354,7 @@ func TestRun_NoAddressCommentSkipsComment(t *testing.T) {
 func TestRun_EscalationStopsAndStillPostsComment(t *testing.T) {
 	gh := &fakeGitHub{prBranch: "feat/x", threads: sampleThreads()}
 	blocked := &report.AddressResult{
-		Threads: []report.AddressedThread{{ThreadID: "RT_1", Status: "BLOCKED", Summary: "stale ref"}},
+		Threads: []report.AddressedThread{{ThreadID: threadID1, Status: "BLOCKED", Summary: "stale ref"}},
 		Summary: "blocked",
 		Status:  "BLOCKED",
 	}
@@ -378,12 +385,12 @@ func TestRun_EscalationStopsAndStillPostsComment(t *testing.T) {
 
 func TestRun_ExhaustsMaxIterations(t *testing.T) {
 	threads := []github.ReviewThread{
-		{ID: "RT_1", Comments: []github.ReviewThreadComment{{Body: "a"}}},
-		{ID: "RT_2", Comments: []github.ReviewThreadComment{{Body: "b"}}},
-		{ID: "RT_3", Comments: []github.ReviewThreadComment{{Body: "c"}}},
+		{ID: threadID1, Comments: []github.ReviewThreadComment{{Body: "a"}}},
+		{ID: threadID2, Comments: []github.ReviewThreadComment{{Body: "b"}}},
+		{ID: threadID3, Comments: []github.ReviewThreadComment{{Body: "c"}}},
 	}
 	gh := &fakeGitHub{prBranch: "feat/x", threads: threads}
-	cl := &fakeClaude{results: []*report.AddressResult{doneResult("RT_1"), doneResult("RT_2")}}
+	cl := &fakeClaude{results: []*report.AddressResult{doneResult(threadID1), doneResult(threadID2)}}
 	r := newRunner(gh, cl)
 
 	opts := baseOpts("o/r#1")
@@ -413,7 +420,7 @@ func TestRun_PropagatesClaudeError(t *testing.T) {
 
 func TestRun_PushFailureIsFatal(t *testing.T) {
 	gh := &fakeGitHub{prBranch: "feat/x", threads: sampleThreads()[:1], pushErr: errors.New("push rejected")}
-	cl := &fakeClaude{results: []*report.AddressResult{doneResult("RT_1")}}
+	cl := &fakeClaude{results: []*report.AddressResult{doneResult(threadID1)}}
 	r := newRunner(gh, cl)
 
 	opts := baseOpts("o/r#1")
@@ -426,7 +433,7 @@ func TestRun_PushFailureIsFatal(t *testing.T) {
 
 func TestRun_NonTTYDefaultsToAll(t *testing.T) {
 	gh := &fakeGitHub{prBranch: "feat/x", threads: sampleThreads()}
-	cl := &fakeClaude{results: []*report.AddressResult{doneResult("RT_1"), doneResult("RT_2")}}
+	cl := &fakeClaude{results: []*report.AddressResult{doneResult(threadID1), doneResult(threadID2)}}
 	r := newRunner(gh, cl) // IsTTY returns false
 
 	// No --all, no --thread, no TTY → defaults to addressing every thread.
@@ -440,7 +447,7 @@ func TestRun_NonTTYDefaultsToAll(t *testing.T) {
 
 func TestRun_InteractiveSelectsSubset(t *testing.T) {
 	gh := &fakeGitHub{prBranch: "feat/x", threads: sampleThreads()}
-	cl := &fakeClaude{results: []*report.AddressResult{doneResult("RT_2")}}
+	cl := &fakeClaude{results: []*report.AddressResult{doneResult(threadID2)}}
 	r := newRunner(gh, cl)
 	r.IsTTY = func() bool { return true }
 	// Skip RT_1, address RT_2.
@@ -452,7 +459,7 @@ func TestRun_InteractiveSelectsSubset(t *testing.T) {
 	if cl.called.Load() != 1 {
 		t.Fatalf("Claude.Address called %d times, want 1 (only RT_2 selected)", cl.called.Load())
 	}
-	if cl.ctxs[0].Threads[0].ID != "RT_2" {
+	if cl.ctxs[0].Threads[0].ID != threadID2 {
 		t.Errorf("addressed %q, want RT_2", cl.ctxs[0].Threads[0].ID)
 	}
 }
@@ -475,7 +482,7 @@ func TestRun_DryRunSkipsClaude(t *testing.T) {
 		t.Errorf("PushHead called %d times in dry-run, want 0", gh.pushCalls.Load())
 	}
 	out := buf.String()
-	if !strings.Contains(out, "[dry-run]") || !strings.Contains(out, "RT_1") {
+	if !strings.Contains(out, "[dry-run]") || !strings.Contains(out, threadID1) {
 		t.Errorf("dry-run output missing plan or threads: %s", out)
 	}
 }
@@ -537,7 +544,7 @@ func TestRun_LocalSkipsCloneAndSurvives(t *testing.T) {
 		cloneDir: t.TempDir(),
 		threads:  sampleThreads()[:1],
 	}
-	cl := &fakeClaude{results: []*report.AddressResult{doneResult("RT_1")}}
+	cl := &fakeClaude{results: []*report.AddressResult{doneResult(threadID1)}}
 	r := newRunner(gh, cl)
 
 	opts := baseOpts("o/r#1")

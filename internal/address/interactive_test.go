@@ -10,9 +10,9 @@ import (
 
 func selectorThreads() []github.ReviewThread {
 	return []github.ReviewThread{
-		{ID: "RT_1", Path: "a.go", Line: 10, Comments: []github.ReviewThreadComment{{Author: "rev", Body: "rename this\nwith more detail"}}},
-		{ID: "RT_2", Path: "b.go", Line: 20, Comments: []github.ReviewThreadComment{{Author: "rev", Body: "add a guard"}}},
-		{ID: "RT_3", Path: "c.go", Line: 30, Comments: []github.ReviewThreadComment{{Author: "rev", Body: "fix the typo"}}},
+		{ID: threadID1, Path: "a.go", Line: 10, Comments: []github.ReviewThreadComment{{Author: "rev", Body: "rename this\nwith more detail"}}},
+		{ID: threadID2, Path: "b.go", Line: 20, Comments: []github.ReviewThreadComment{{Author: "rev", Body: "add a guard"}}},
+		{ID: threadID3, Path: "c.go", Line: 30, Comments: []github.ReviewThreadComment{{Author: "rev", Body: "fix the typo"}}},
 	}
 }
 
@@ -24,7 +24,7 @@ func TestRunInteractiveThreadSelection_SelectsAndSkips(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(got) != 2 || got[0].ID != "RT_1" || got[1].ID != "RT_3" {
+	if len(got) != 2 || got[0].ID != threadID1 || got[1].ID != threadID3 {
 		t.Errorf("selected %v, want [RT_1 RT_3]", ids(got))
 	}
 	// The one-line excerpt should be shown, not the multi-line body.
@@ -44,7 +44,7 @@ func TestRunInteractiveThreadSelection_QuitMidway(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(got) != 1 || got[0].ID != "RT_1" {
+	if len(got) != 1 || got[0].ID != threadID1 {
 		t.Errorf("selected %v, want [RT_1]", ids(got))
 	}
 	if strings.Contains(buf.String(), "Thread 3/3") {
@@ -61,7 +61,7 @@ func TestRunInteractiveThreadSelection_EOFFinishesWithSelection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(got) != 1 || got[0].ID != "RT_1" {
+	if len(got) != 1 || got[0].ID != threadID1 {
 		t.Errorf("selected %v, want [RT_1] on early EOF", ids(got))
 	}
 }
