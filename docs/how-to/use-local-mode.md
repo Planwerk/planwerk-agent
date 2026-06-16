@@ -1,6 +1,6 @@
 # Use local mode
 
-By default every repo-facing subcommand (`review`, `fix`, `rebase`,
+By default every repo-facing subcommand (`review`, `fix`, `rebase`, `address`,
 `implement`, `propose`, `audit`, `gap-analysis`, `review-prepared`,
 `elaborate`) performs a fresh `gh repo clone` into a temp directory and deletes
 it on exit. The
@@ -24,16 +24,16 @@ This unlocks three workflows the temp-dir clone blocks:
 ## Semantics
 
 - **Reference inference.** The PR/repo reference may be omitted for the
-  repo-facing commands: `review`/`fix`/`rebase` infer the PR from the current
-  branch (via `gh pr view`); `propose`/`audit`/`gap-analysis`/`review-prepared`
+  repo-facing commands: `review`/`fix`/`rebase`/`address` infer the PR from the
+  current branch (via `gh pr view`); `propose`/`audit`/`gap-analysis`/`review-prepared`
   infer owner/repo from the `origin` remote. `elaborate` and `implement` still
   require their issue reference (you must name the issue) — only the repository
   checkout is taken locally. `draft` infers **only** the `origin` owner/repo so
   it knows where to file the issue; it takes no checkout, clones nothing, and
   runs no codebase analysis. When a reference **is** given explicitly, its
   owner/repo must match the cwd's `origin`, otherwise the run aborts.
-- **Branch left on.** For `review`/`fix`/`rebase` the working tree is switched
-  to the PR head via `gh pr checkout` (no restore afterwards). The runner logs
+- **Branch left on.** For `review`/`fix`/`rebase`/`address` the working tree is
+  switched to the PR head via `gh pr checkout` (no restore afterwards). The runner logs
   `working tree left on PR branch` so you know where you landed. `rebase` then
   rewrites that branch in place; pass `--push` to publish it with
   `--force-with-lease`.

@@ -18,6 +18,7 @@ AI-powered code review and codebase analysis tool for GitHub repositories. Uses 
 - **Implement** an elaborated issue end to end and open a draft PR
 - **Fix** a PR's failing CI checks in a self-healing loop
 - **Rebase** a PR onto its base, resolve conflicts with Claude, and analyze the rebased commits
+- **Address** a PR's review comments by incorporating selected threads as follow-up commits
 
 ## Quick start
 

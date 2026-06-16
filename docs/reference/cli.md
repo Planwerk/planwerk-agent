@@ -13,7 +13,7 @@ omitted. Shell completions and man pages are produced by the built-in
 
 These persistent flags apply to every command (`review`, `propose`, `audit`,
 `gap-analysis`, `review-prepared`, `draft`, `elaborate`, `meta`, `prompt`,
-`fix`, `rebase`, `implement`, `cache`, `schema`).
+`fix`, `rebase`, `address`, `implement`, `cache`, `schema`).
 
 | Flag | Description | Default |
 |------|-------------|---------|
@@ -444,6 +444,54 @@ reuses the same adversarial-review machinery as `review --thorough` to hunt for
 the bugs the change introduces (injection, race conditions, failure modes).
 Enable either, both, or neither. Both are non-fatal — a finding is reported, it
 does not fail the run.
+
+## `address`
+
+Read a pull request's human review threads, present the unresolved ones as an
+interactive selection list, and drive a fresh Claude Code session to incorporate
+the selected ones as follow-up commits on the PR head branch — then, gated,
+reply to and resolve each addressed thread. This closes the loop the other
+commands leave open: `fix` loops on failing CI checks, `rebase` resolves merge
+conflicts, and `implement` works from an issue — none of them consume the
+inline reviewer feedback on a PR.
+
+Threads GitHub already marks resolved, and the tool's own inline review
+comments, are skipped by default. The orchestrator pushes the follow-up commits;
+replies are best-effort and on by default, resolving is best-effort and off by
+default (it is outward-facing).
+
+```bash
+planwerk-review address owner/repo#123
+planwerk-review address --all owner/repo#123
+planwerk-review address --thread PRRT_kwDOAbc123 owner/repo#123
+planwerk-review address --resolve owner/repo#123
+planwerk-review address --dry-run owner/repo#123
+planwerk-review address --local --force
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--all` | Address every unresolved thread without prompting | `false` |
+| `--thread` | Address only the named review thread(s) (repeatable) | - |
+| `--include-resolved` | Also offer threads GitHub already marks resolved | `false` |
+| `--reply` | Post a per-thread reply summarizing the change | `true` |
+| `--no-reply` | Do not post per-thread replies (overrides `--reply`) | `false` |
+| `--resolve` | Mark addressed threads as resolved (outward-facing) | `false` |
+| `--one-commit-per-thread` | Commit each thread separately instead of one aggregate commit | `true` |
+| `--no-address-comment` | Do not post the aggregate address report as a comment on the pull request | `false` |
+| `--max-iterations` | Maximum number of per-thread address iterations | `10` |
+| `--dry-run` | List the selected threads and the planned changes without invoking Claude or committing | `false` |
+| `--print-prompt` | Render the address prompt for the selected threads to stdout and exit | `false` |
+| `--print-bare-prompt` | Render a self-contained address prompt (no thread fetch) to stdout and exit | `false` |
+| `--patterns` | Additional pattern source: local directory, `github:owner/repo[/sub][@ref]`, or `git+https://…[#ref[:sub]]` | - |
+| `--no-repo-patterns` | Ignore repo-specific patterns under `.planwerk/review_patterns/` in the target repo | `false` |
+| `--no-local-patterns` | Ignore local patterns from the tool | `false` |
+| `--max-patterns` | Max review patterns injected into the prompt (`<=0` disables truncation; env: `PLANWERK_MAX_PATTERNS`) | `0` (unlimited) |
+| `--local` | Operate on the current working directory instead of cloning into a temp dir | `false` |
+| `--force` | With `--local`, skip the confirmation prompt when the working tree is dirty | `false` |
+
+`--dry-run`, `--print-prompt`, and `--print-bare-prompt` are mutually exclusive.
+The address session runs in Claude Code's auto mode.
 
 ## `cache`
 

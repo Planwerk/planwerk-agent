@@ -59,6 +59,10 @@ export default defineConfig({
             { text: 'Generate a prompt', link: '/how-to/generate-a-prompt' },
             { text: 'Implement an issue', link: '/how-to/implement-an-issue' },
             { text: 'Rebase a PR', link: '/how-to/rebase-a-pr' },
+            {
+              text: 'Address review comments',
+              link: '/how-to/address-review-comments',
+            },
             { text: 'Use local mode', link: '/how-to/use-local-mode' },
             {
               text: 'Use the GitHub Action',
