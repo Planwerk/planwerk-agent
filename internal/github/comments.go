@@ -79,6 +79,60 @@ func AddPRComment(owner, repo string, number int, body string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+// AddReviewThreadReply posts a reply onto an existing PR review thread via the
+// GraphQL addPullRequestReviewThreadReply mutation and returns the new comment's
+// URL. The address command uses it to record, per thread, what the follow-up
+// commit changed. Uses GraphQL variables so the thread ID and body cannot inject.
+func AddReviewThreadReply(threadID, body string) (string, error) {
+	query := `mutation($threadId: ID!, $body: String!) { addPullRequestReviewThreadReply(input: {pullRequestReviewThreadId: $threadId, body: $body}) { comment { url } } }`
+
+	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "gh", "api", "graphql",
+		"-f", "query="+query,
+		"-f", "threadId="+threadID,
+		"-f", "body="+body,
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("gh api graphql (reply to review thread): %s: %w", strings.TrimSpace(string(out)), err)
+	}
+
+	var resp struct {
+		Data struct {
+			AddPullRequestReviewThreadReply struct {
+				Comment struct {
+					URL string `json:"url"`
+				} `json:"comment"`
+			} `json:"addPullRequestReviewThreadReply"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(out, &resp); err != nil {
+		return strings.TrimSpace(string(out)), nil
+	}
+	return resp.Data.AddPullRequestReviewThreadReply.Comment.URL, nil
+}
+
+// ResolveReviewThread marks a PR review thread resolved via the GraphQL
+// resolveReviewThread mutation. The address command calls it only under
+// --resolve, since resolving is outward-facing. Uses a GraphQL variable for the
+// thread ID so it cannot inject.
+func ResolveReviewThread(threadID string) error {
+	query := `mutation($threadId: ID!) { resolveReviewThread(input: {threadId: $threadId}) { thread { isResolved } } }`
+
+	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "gh", "api", "graphql",
+		"-f", "query="+query,
+		"-f", "threadId="+threadID,
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("gh api graphql (resolve review thread): %s: %w", strings.TrimSpace(string(out)), err)
+	}
+	return nil
+}
+
 // truncateComment ensures body does not exceed GitHub's comment size limit.
 // It avoids splitting multi-byte UTF-8 characters at the cut point.
 func truncateComment(body string) string {
