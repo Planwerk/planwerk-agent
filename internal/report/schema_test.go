@@ -2,6 +2,7 @@ package report_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -51,6 +52,7 @@ func TestSchemasCompile(t *testing.T) {
 	compileSchema(t, "proposal.schema.json", schema.Proposal)
 	compileSchema(t, "rebase-analysis.schema.json", schema.RebaseAnalysis)
 	compileSchema(t, "draft.schema.json", schema.Draft)
+	compileSchema(t, "address-result.schema.json", schema.AddressResult)
 }
 
 // TestFixturesValidateAgainstSchema validates every JSON fixture under
@@ -66,6 +68,7 @@ func TestFixturesValidateAgainstSchema(t *testing.T) {
 		{dir: "proposal", doc: schema.Proposal},
 		{dir: "rebase-analysis", doc: schema.RebaseAnalysis},
 		{dir: "draft", doc: schema.Draft},
+		{dir: "address-result", doc: schema.AddressResult},
 	} {
 		t.Run(tc.dir, func(t *testing.T) {
 			sch := compileSchema(t, tc.dir, tc.doc)
@@ -149,6 +152,21 @@ func TestRendererOutputMatchesSchema(t *testing.T) {
 			t.Fatalf("rendered draft output does not match schema: %v\n%s", err, buf.String())
 		}
 	})
+
+	// AddressResult has no renderer — it is the address session's own
+	// structured output — so the drift guard marshals a fully-populated value
+	// directly. additionalProperties:false still catches a struct field that
+	// the schema does not declare.
+	t.Run("address", func(t *testing.T) {
+		sch := compileSchema(t, "address-result.schema.json", schema.AddressResult)
+		data, err := json.Marshal(populatedAddressResult())
+		if err != nil {
+			t.Fatalf("marshal AddressResult: %v", err)
+		}
+		if err := validate(t, sch, data); err != nil {
+			t.Fatalf("marshaled address output does not match schema: %v\n%s", err, data)
+		}
+	})
 }
 
 // TestInvalidRebaseAnalysisRejected feeds inline documents that violate the
@@ -159,6 +177,24 @@ func TestInvalidRebaseAnalysisRejected(t *testing.T) {
 		"bad kind enum":           `{"commits":[{"sha":"a","subject":"s","adjustments":[{"kind":"reworded","file":"f","detail":"d","action":"a"}]}],"summary":"","recommendation":""}`,
 		"missing required action": `{"commits":[{"sha":"a","subject":"s","adjustments":[{"kind":"lint-rule","file":"f","detail":"d"}]}],"summary":"","recommendation":""}`,
 		"unknown property":        `{"commits":null,"summary":"","recommendation":"","extra":true}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := validate(t, sch, []byte(doc)); err == nil {
+				t.Fatalf("expected a validation error for %q, got nil", name)
+			}
+		})
+	}
+}
+
+// TestInvalidAddressResultRejected feeds inline documents that violate the
+// address-result contract and asserts the validator rejects each.
+func TestInvalidAddressResultRejected(t *testing.T) {
+	sch := compileSchema(t, "address-result.schema.json", schema.AddressResult)
+	for name, doc := range map[string]string{
+		"bad status enum":            `{"threads":null,"summary":"","status":"FINISHED"}`,
+		"bad thread status enum":     `{"threads":[{"thread_id":"t","status":"OK","summary":"s"}],"summary":"","status":"DONE"}`,
+		"missing required thread_id": `{"threads":[{"status":"DONE","summary":"s"}],"summary":"","status":"DONE"}`,
+		"unknown property":           `{"threads":null,"summary":"","status":"DONE","extra":true}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			if err := validate(t, sch, []byte(doc)); err == nil {
@@ -250,6 +286,29 @@ func populatedRebaseAnalysis() report.RebaseAnalysis {
 		},
 		Summary:        "Two commits replayed cleanly; the first needs a signature adjustment.",
 		Recommendation: "Apply the adjustment before pushing.",
+	}
+}
+
+// populatedAddressResult returns an AddressResult with every field set so the
+// drift guard exercises the full address-result schema surface: a thread with
+// files and a thread without (Files omitted).
+func populatedAddressResult() report.AddressResult {
+	return report.AddressResult{
+		Threads: []report.AddressedThread{
+			{
+				ThreadID: "PRRT_kwDOAbc123",
+				Status:   "DONE",
+				Summary:  "Renamed the helper and updated its callers as the reviewer asked.",
+				Files:    []string{"internal/foo/bar.go", "internal/foo/bar_test.go"},
+			},
+			{
+				ThreadID: "PRRT_kwDOAbc456",
+				Status:   "DONE_WITH_CONCERNS",
+				Summary:  "Applied the guard, but flagged an edge case for a follow-up.",
+			},
+		},
+		Summary: "Addressed both threads; one carries a reservation.",
+		Status:  "DONE_WITH_CONCERNS",
 	}
 }
 

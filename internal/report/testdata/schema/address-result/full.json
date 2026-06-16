@@ -1,0 +1,23 @@
+{
+  "threads": [
+    {
+      "thread_id": "PRRT_kwDOAbc123",
+      "status": "DONE",
+      "summary": "Renamed the helper as the reviewer asked and updated its callers.",
+      "files": ["internal/foo/bar.go", "internal/foo/bar_test.go"]
+    },
+    {
+      "thread_id": "PRRT_kwDOAbc456",
+      "status": "DONE_WITH_CONCERNS",
+      "summary": "Applied the suggested guard, but the edge case the reviewer hinted at needs a follow-up."
+    },
+    {
+      "thread_id": "PRRT_kwDOAbc789",
+      "status": "BLOCKED",
+      "summary": "Could not address: the comment references a file that no longer exists on the branch.",
+      "files": null
+    }
+  ],
+  "summary": "Addressed two of three threads; one is blocked on a stale reference.",
+  "status": "DONE_WITH_CONCERNS"
+}

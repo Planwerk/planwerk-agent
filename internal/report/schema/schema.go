@@ -4,6 +4,11 @@
 // and downstream consumers can validate piped JSON against a declared
 // contract. The schemas are the source of truth: the report and propose
 // renderers are kept in sync with them by contract tests in schema_test.go.
+//
+// One schema (AddressResult) is the exception: it is the contract for the
+// `address` command's per-run Claude output, not a `--format json` stdout
+// payload (address has no JSON output mode). It lives here so it reuses the
+// same contract-test harness that guards the renderer-backed schemas.
 package schema
 
 import _ "embed"
@@ -36,3 +41,12 @@ var RebaseAnalysis []byte
 //
 //go:embed draft.schema.json
 var Draft []byte
+
+// AddressResult is the JSON Schema (draft 2020-12) for the `address` command's
+// per-run Claude output, i.e. report.AddressResult. Unlike the other schemas
+// here it does not back a `--format json` stdout payload — it is the contract
+// the address session's structured output is decoded against. A single thread
+// result is defined under $defs/addressedThread.
+//
+//go:embed address-result.schema.json
+var AddressResult []byte

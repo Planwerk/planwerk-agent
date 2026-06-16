@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AddressResult",
+  "description": "Contract for the `address` command's per-run Claude output (report.AddressResult): per addressed review thread, the follow-up change and its status, plus an overall summary and terminal status. This is the address session's own structured output, not a --format json stdout payload.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["threads", "summary", "status"],
+  "properties": {
+    "threads": {
+      "description": "Per-thread results, one per addressed review thread. Encoded as null (not []) when there are none.",
+      "type": ["array", "null"],
+      "items": { "$ref": "#/$defs/addressedThread" }
+    },
+    "summary": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["DONE", "DONE_WITH_CONCERNS", "BLOCKED", "NEEDS_CONTEXT"]
+    }
+  },
+  "$defs": {
+    "addressedThread": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["thread_id", "status", "summary"],
+      "properties": {
+        "thread_id": { "type": "string" },
+        "status": {
+          "type": "string",
+          "enum": ["DONE", "DONE_WITH_CONCERNS", "BLOCKED", "NEEDS_CONTEXT"]
+        },
+        "summary": { "type": "string" },
+        "files": {
+          "description": "Repo-relative paths the follow-up change touched. Omitted or null when nothing changed.",
+          "type": ["array", "null"],
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}
