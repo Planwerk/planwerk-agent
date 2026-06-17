@@ -184,14 +184,19 @@ EVERY commit you create MUST end with exactly these two trailers, in this order:
 // writes directly, where the orchestrator only ever passed a model alias and
 // only the agent knows its exact model id at runtime — the same reason the
 // model id lives in the prompt rather than the Go renderer.
-func attributionFooterBlock() string {
+//
+// verb names the action in the footer's lead so it matches the command the
+// session runs ("Implemented by" for implement, "Addressed by" for address)
+// instead of a generic word the agent would otherwise copy verbatim. It mirrors
+// the verb the Go renderers use for the same command's artifacts.
+func attributionFooterBlock(verb string) string {
 	return `## Attribution footer
 
 End every GitHub artifact you author yourself — the pull request description, any issue or PR comment, any review-thread reply — with this attribution footer as its final line, after a "---" separator:
 
     ---
 
-    _Drafted by ` + attribution.Tool() + ` with Claude:<your model id>_
+    _` + verb + ` ` + attribution.Tool() + ` with Claude:<your model id>_
 
 - Append your exact model id when your runtime context provides it (e.g. ` + "`with Claude:claude-opus-4-8`" + `); otherwise write a bare ` + "`with Claude`" + ` — never guess the id. This mirrors the Assisted-by commit trailer.
 - Keep the ` + "`[planwerk-review]`" + ` link intact so the artifact points back at the tool that produced it.
