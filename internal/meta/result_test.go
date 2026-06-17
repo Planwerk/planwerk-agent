@@ -84,6 +84,25 @@ func TestBuildSubIssueBody_NamesResolvedModel(t *testing.T) {
 	}
 }
 
+// TestBuildSubIssueBody_NamesVersionAndModel confirms the footer carries the
+// recorded build version right after the repository link, alongside the resolved
+// model — the shared shape every artifact uses so headers and footers read
+// identically.
+func TestBuildSubIssueBody_NamesVersionAndModel(t *testing.T) {
+	attribution.SetModel("claude-opus-4-8")
+	attribution.SetVersion("e1efd0d")
+	t.Cleanup(func() {
+		attribution.SetModel("")
+		attribution.SetVersion("")
+	})
+
+	body := BuildSubIssueBody(525, SubIssue{Key: "a", Title: "Foundation", Description: "Lay the groundwork."})
+	want := "_Split from #525 by [planwerk-review](https://github.com/planwerk/planwerk-review) e1efd0d with Claude:claude-opus-4-8_"
+	if !strings.Contains(body, want) {
+		t.Errorf("body missing version+model footer %q\n%s", want, body)
+	}
+}
+
 func TestBuildSubIssueBodyDefaultsScopeToMedium(t *testing.T) {
 	body := BuildSubIssueBody(1, SubIssue{Key: "a", Title: "T", Description: "D"})
 	if !strings.Contains(body, "**Scope**: Medium") {

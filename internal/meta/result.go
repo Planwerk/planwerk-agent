@@ -74,7 +74,7 @@ func BuildSubIssueBody(metaNumber int, s SubIssue) string {
 		fmt.Fprintf(&b, "## Motivation\n\n%s\n\n", m)
 	}
 
-	fmt.Fprintf(&b, "---\n\n_Split from #%d by %s %s_\n", metaNumber, attribution.Link, attribution.Assistant())
+	fmt.Fprintf(&b, "---\n\n_Split from #%d by %s %s_\n", metaNumber, attribution.Tool(), attribution.Assistant())
 	return b.String()
 }
 

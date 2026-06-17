@@ -30,7 +30,7 @@ func (r *Renderer) RenderJSON(result Result) error {
 // target repo and title, a generated-by line, then the issue body.
 func (r *Renderer) RenderMarkdown(repoFullName, version string, result *Result) {
 	_, _ = fmt.Fprintf(r.w, "# Draft issue for %s — %s\n\n", repoFullName, result.Title)
-	_, _ = fmt.Fprintf(r.w, "> Drafted by planwerk-review %s %s\n\n", version, attribution.Assistant())
+	_, _ = fmt.Fprintf(r.w, "> Drafted by %s %s\n\n", attribution.ToolWithVersion(version), attribution.Assistant())
 	_, _ = fmt.Fprint(r.w, "---\n\n")
 	_, _ = fmt.Fprint(r.w, result.Body)
 	if !strings.HasSuffix(result.Body, "\n") {
@@ -64,6 +64,6 @@ func BuildIssueBody(r *Result) string {
 		fmt.Fprintf(&b, "## Motivation\n\n%s\n\n", m)
 	}
 
-	fmt.Fprintf(&b, "---\n\n_Drafted by %s %s_\n", attribution.Link, attribution.Assistant())
+	fmt.Fprintf(&b, "---\n\n_Drafted by %s %s_\n", attribution.Tool(), attribution.Assistant())
 	return b.String()
 }

@@ -1,6 +1,10 @@
 package claude
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/planwerk/planwerk-review/internal/attribution"
+)
 
 // This file holds prompt building blocks that are shared across more than one
 // prompt builder. Keeping them in one place stops the copies from drifting
@@ -187,7 +191,7 @@ End every GitHub artifact you author yourself — the pull request description, 
 
     ---
 
-    _Drafted by [planwerk-review](https://github.com/planwerk/planwerk-review) with Claude:<your model id>_
+    _Drafted by ` + attribution.Tool() + ` with Claude:<your model id>_
 
 - Append your exact model id when your runtime context provides it (e.g. ` + "`with Claude:claude-opus-4-8`" + `); otherwise write a bare ` + "`with Claude`" + ` — never guess the id. This mirrors the Assisted-by commit trailer.
 - Keep the ` + "`[planwerk-review]`" + ` link intact so the artifact points back at the tool that produced it.

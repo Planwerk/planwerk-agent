@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/planwerk/planwerk-review/internal/attribution"
 	"github.com/planwerk/planwerk-review/internal/cache"
 	"github.com/planwerk/planwerk-review/internal/claude"
 	"github.com/planwerk/planwerk-review/internal/cli"
@@ -80,6 +81,12 @@ or short form (owner/repo#123).`,
 
 			claude.SetModel(resolveClaudeModel(claudeModel, cmd.Flags().Changed("claude-model")))
 			claude.SetEffort(resolveClaudeEffort(claudeEffort, cmd.Flags().Changed("claude-effort")))
+
+			// Record the build version so every attribution footer names the
+			// exact planwerk-review build, matching the report headers and the
+			// `--version` output. Same value threaded into every command's
+			// options (deps.version).
+			attribution.SetVersion(deps.version)
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {

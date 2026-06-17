@@ -89,7 +89,7 @@ func TestRun_IncludesIssueMetadata(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 	got := out.String()
-	for _, want := range []string{"acme/widgets", "Issue**: #1 — T", "https://example/issues/1", "OPEN", "Body content.", "planwerk-review v0"} {
+	for _, want := range []string{"acme/widgets", "Issue**: #1 — T", "https://example/issues/1", "OPEN", "Body content.", "[planwerk-review](https://github.com/planwerk/planwerk-review) v0"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("output missing %q\n%s", want, got)
 		}

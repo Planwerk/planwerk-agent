@@ -15,6 +15,13 @@
 // back. When no model has been recorded — a footer rendered with no session
 // behind it — the attribution falls back to a bare "with Claude" rather than
 // guessing an id.
+//
+// Every footer also names the planwerk-review build that produced it — the same
+// string "planwerk-review --version" prints — placed right after the repository
+// link so the report headers and the issue/PR/comment footers read identically.
+// Like the model id, the version is a process-wide fact recorded once at startup
+// (SetVersion) and read back by Tool(); renderers that already receive it as a
+// parameter pass it to ToolWithVersion directly.
 package attribution
 
 import (
@@ -41,6 +48,7 @@ const (
 var (
 	mu            sync.RWMutex
 	resolvedModel string
+	toolVersion   string
 )
 
 // SetModel records the resolved Claude model id (e.g. "claude-opus-4-8") that
@@ -60,6 +68,47 @@ func Model() string {
 	mu.RLock()
 	defer mu.RUnlock()
 	return resolvedModel
+}
+
+// SetVersion records the planwerk-review build version — the same string
+// "planwerk-review --version" prints (e.g. "e1efd0d") — so every footer can name
+// the exact build that produced the artifact. The root command calls it once at
+// startup from the build-time version var; Tool() reads it back. Passing an
+// empty (or whitespace-only) version clears the record, in which case the footer
+// falls back to the bare repository link.
+func SetVersion(v string) {
+	mu.Lock()
+	toolVersion = strings.TrimSpace(v)
+	mu.Unlock()
+}
+
+// Version reports the build version recorded by the last SetVersion call, or ""
+// when none has been recorded.
+func Version() string {
+	mu.RLock()
+	defer mu.RUnlock()
+	return toolVersion
+}
+
+// Tool renders the tool clause — the repository link followed by the recorded
+// build version, "[planwerk-review](url) e1efd0d" — or the bare link when no
+// version has been recorded. Footer helpers that have no version in scope use it
+// so the version is threaded from a single process-wide source, the same way the
+// resolved model is.
+func Tool() string {
+	return ToolWithVersion(Version())
+}
+
+// ToolWithVersion renders the tool clause for an explicit version: the
+// repository link followed by version when non-empty, or the bare link
+// otherwise. Renderers that already receive the version as a parameter (the
+// review/audit/draft headers) pass it directly; Tool() supplies the recorded
+// version for the helpers that do not, so both render identically.
+func ToolWithVersion(version string) string {
+	if v := strings.TrimSpace(version); v != "" {
+		return Link + " " + v
+	}
+	return Link
 }
 
 // Assistant renders the assistant attribution clause: "with Claude:claude-opus-4-8"
