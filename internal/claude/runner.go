@@ -71,6 +71,40 @@ const (
 	claudeAutoPermissionMode = "auto"
 )
 
+// claudeAllowedTools are pre-approved on every orchestrated `claude -p` session
+// via --allowed-tools so the non-interactive sessions may use them without a
+// permission prompt. WebSearch and WebFetch both require permission by default,
+// and a non-interactive session has no human to grant it, so without this the
+// read-only sessions (plan, draft, propose, elaborate, audit, …) would have
+// every web call silently auto-denied. WebSearch finds sources; WebFetch reads
+// the pages it surfaces — the pair lets a session verify, say, the current
+// version or deprecation status of a dependency. The bare "WebFetch" entry
+// carries no domain specifier, which pre-approves every domain (equivalent to
+// WebFetch(domain:*)); a domain-scoped rule would instead prompt — and thus
+// auto-deny — on every domain outside the list.
+//
+// --allowed-tools only ADDS these to the auto-approve list; it does NOT
+// restrict the rest of the toolset. The auto-mode sessions (implement, fix,
+// address, rebase) already get both from the auto classifier's read-only-HTTP
+// allowance, so listing them here is redundant-but-harmless for them and
+// load-bearing for the default-mode ones.
+var claudeAllowedTools = []string{"WebSearch", "WebFetch"}
+
+// withAllowedTools appends the --allowed-tools flag followed by every entry in
+// claudeAllowedTools (a no-op when the list is empty). Both the JSON runner
+// (runClaudeWithPermission) and the streaming runner (runClaudeStream) route
+// their args through it so the two paths can never drift on which tools a
+// session may use. The prompt is fed on stdin, never as a positional argument,
+// so a trailing variadic flag is safe — there is no positional for the flag to
+// swallow.
+func withAllowedTools(args []string) []string {
+	if len(claudeAllowedTools) == 0 {
+		return args
+	}
+	args = append(args, "--allowed-tools")
+	return append(args, claudeAllowedTools...)
+}
+
 // claudeTimeout is the effective per-invocation timeout. It defaults to
 // DefaultClaudeTimeout and is overridable at startup via SetTimeout.
 var claudeTimeout = DefaultClaudeTimeout
@@ -244,8 +278,9 @@ func runClaudeAuto(dir, prompt, label string) (string, error) {
 // passed to claude as --permission-mode; an empty value leaves claude on
 // its default mode. model is the --model value and effort the --effort value
 // (callers pass claudeModel/claudeEffort, or planModel/planEffort for the
-// planning session). The label tags elapsed-time progress updates (or
-// per-line stream prefixes when streaming is enabled).
+// planning session). Every invocation also pre-approves claudeAllowedTools via
+// --allowed-tools (see withAllowedTools). The label tags elapsed-time progress
+// updates (or per-line stream prefixes when streaming is enabled).
 //
 // When showOutput is false it uses --output-format json and captures the
 // full result via cmd.Output(). When showOutput is true it delegates to
@@ -272,6 +307,7 @@ func runClaudeWithPermission(dir, prompt, label, permissionMode, model, effort s
 	if permissionMode != "" {
 		args = append(args, "--permission-mode", permissionMode)
 	}
+	args = withAllowedTools(args)
 	cmd := exec.CommandContext(ctx, "claude", args...)
 	if dir != "" {
 		cmd.Dir = dir
