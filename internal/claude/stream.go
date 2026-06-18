@@ -140,6 +140,7 @@ func runClaudeStream(dir, prompt, label, permissionMode, model, effort string) (
 	if permissionMode != "" {
 		args = append(args, "--permission-mode", permissionMode)
 	}
+	args = withAllowedTools(args)
 	cmd := exec.CommandContext(ctx, "claude", args...)
 	if dir != "" {
 		cmd.Dir = dir
