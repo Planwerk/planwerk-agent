@@ -66,6 +66,16 @@ func TestToImplementOptions_VerifyFlags(t *testing.T) {
 			t.Errorf("Verify=%v VerifyAdversarial=%v, want false/false", opts.Verify, opts.VerifyAdversarial)
 		}
 	})
+
+	t.Run("no-simplify maps through", func(t *testing.T) {
+		if opts := (ImplementConfig{NoSimplify: true}).ToImplementOptions("v1"); !opts.NoSimplify {
+			t.Errorf("NoSimplify=%v, want true", opts.NoSimplify)
+		}
+		// The simplify pass is on by default, so the zero config leaves it off.
+		if opts := (ImplementConfig{}).ToImplementOptions("v1"); opts.NoSimplify {
+			t.Errorf("NoSimplify=%v, want false by default", opts.NoSimplify)
+		}
+	})
 }
 
 // TestToAddressOptions guards the reply reconciliation (the only non-trivial

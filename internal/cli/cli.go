@@ -369,6 +369,7 @@ type ImplementConfig struct {
 	NoReportComment   bool
 	Verify            bool
 	VerifyAdversarial bool
+	NoSimplify        bool
 
 	PatternDirs     []string
 	NoRepoPatterns  bool
@@ -391,6 +392,7 @@ func (c ImplementConfig) ToImplementOptions(version string) implement.Options {
 		NoReportComment:   c.NoReportComment,
 		Verify:            c.Verify,
 		VerifyAdversarial: c.VerifyAdversarial,
+		NoSimplify:        c.NoSimplify,
 		Version:           version,
 		PatternDirs:       c.PatternDirs,
 		NoRepoPatterns:    c.NoRepoPatterns,
