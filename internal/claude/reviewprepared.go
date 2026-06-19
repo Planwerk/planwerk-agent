@@ -17,13 +17,13 @@ import (
 //  2. Structuring pass that converts the review into the JSON shape the
 //     reviewprepared.Result expects, INCLUDING the rewritten feature JSON
 //     when ctx.IncludeImproved is set.
-func ReviewPrepared(dir string, ctx reviewprepared.AnalysisContext) (*reviewprepared.Result, error) {
-	rawAnalysis, err := runClaude(dir, buildReviewPreparedPrompt(ctx), "review-prepared")
+func (c *Client) ReviewPrepared(dir string, ctx reviewprepared.AnalysisContext) (*reviewprepared.Result, error) {
+	rawAnalysis, err := c.runClaude(dir, buildReviewPreparedPrompt(ctx), "review-prepared")
 	if err != nil {
 		return nil, fmt.Errorf("running review-prepared analysis: %w", err)
 	}
 
-	result, err := structureReviewPreparedResult(rawAnalysis, ctx)
+	result, err := c.structureReviewPreparedResult(rawAnalysis, ctx)
 	if err != nil {
 		return nil, fmt.Errorf("structuring review-prepared output: %w", err)
 	}
@@ -154,13 +154,13 @@ When you are done, emit a comprehensive review grouped by feature_id. For every 
 
 // structureReviewPreparedResult turns the free-form review into the strict
 // JSON shape that reviewprepared.Result expects.
-func structureReviewPreparedResult(rawAnalysis string, ctx reviewprepared.AnalysisContext) (*reviewprepared.Result, error) {
-	text, err := runClaude("", buildReviewPreparedStructurePrompt(rawAnalysis, ctx.IncludeImproved), "review-prepared-structure")
+func (c *Client) structureReviewPreparedResult(rawAnalysis string, ctx reviewprepared.AnalysisContext) (*reviewprepared.Result, error) {
+	text, err := c.runClaude("", buildReviewPreparedStructurePrompt(rawAnalysis, ctx.IncludeImproved), "review-prepared-structure")
 	if err != nil {
 		return nil, err
 	}
 	var result reviewprepared.Result
-	if err := decodeJSONWithRepair(text, "structured review-prepared", &result); err != nil {
+	if err := c.decodeJSONWithRepair(text, "structured review-prepared", &result); err != nil {
 		return nil, err
 	}
 	reconcileReviewFeatures(&result, ctx.Features)

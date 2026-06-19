@@ -94,14 +94,21 @@ or short form (owner/repo#123).`,
 			if modes > 1 {
 				return fmt.Errorf("--dry-run, --print-prompt, --print-bare-prompt, and --print-plan-prompt are mutually exclusive")
 			}
-			claude.SetPlanModel(resolvePlanModel(planModel, cmd.Flags().Changed("plan-model")))
-			claude.SetPlanEffort(resolvePlanEffort(planEffort, cmd.Flags().Changed("plan-effort")))
+			// The planning session runs on its own model/effort, so build a
+			// client that layers the resolved --plan-* options on top of the
+			// shared --claude-* options.
+			planOpts := append([]claude.Option{}, deps.claudeOpts...)
+			planOpts = append(planOpts,
+				claude.WithPlanModel(resolvePlanModel(planModel, cmd.Flags().Changed("plan-model"))),
+				claude.WithPlanEffort(resolvePlanEffort(planEffort, cmd.Flags().Changed("plan-effort"))),
+			)
+			client := claude.NewClient(planOpts...)
 			opts := implementCfg.ToImplementOptions(deps.version)
 			opts.Remote = deps.remoteOpts
 			if implementCfg.PrintBarePrompt {
 				return implement.PrintBarePrompt(cmd.OutOrStdout(), opts, claude.BuildBareImplementPrompt)
 			}
-			return implement.Run(cmd.OutOrStdout(), opts, claude.Plan, claude.BuildPlanPrompt, claude.Implement, claude.BuildImplementPrompt, claude.VerifyImplementation, claude.AdversarialReview)
+			return implement.Run(cmd.OutOrStdout(), opts, client.Plan, claude.BuildPlanPrompt, client.Implement, claude.BuildImplementPrompt, client.VerifyImplementation, client.AdversarialReview)
 		},
 	}
 

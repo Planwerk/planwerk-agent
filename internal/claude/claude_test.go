@@ -359,71 +359,84 @@ func TestAssignIDs_DropsRecommendedOptionWhenIDMissing(t *testing.T) {
 	}
 }
 
-func TestSetTimeout_TogglesAndRestores(t *testing.T) {
-	if Timeout() != DefaultClaudeTimeout {
-		t.Fatalf("precondition: Timeout() = %s, want default %s", Timeout(), DefaultClaudeTimeout)
+func TestNewClient_DefaultsFromConsts(t *testing.T) {
+	c := NewClient()
+	if c.timeout != DefaultClaudeTimeout {
+		t.Errorf("timeout = %s, want default %s", c.timeout, DefaultClaudeTimeout)
 	}
-
-	restore := SetTimeout(42 * time.Minute)
-	if Timeout() != 42*time.Minute {
-		t.Errorf("Timeout() = %s after SetTimeout(42m), want 42m0s", Timeout())
+	if c.model != DefaultClaudeModel {
+		t.Errorf("model = %q, want default %q", c.model, DefaultClaudeModel)
 	}
-	restore()
-	if Timeout() != DefaultClaudeTimeout {
-		t.Errorf("Timeout() = %s after restore, want default %s", Timeout(), DefaultClaudeTimeout)
+	if c.planModel != DefaultPlanModel {
+		t.Errorf("planModel = %q, want default %q", c.planModel, DefaultPlanModel)
 	}
-}
-
-func TestSetTimeout_IgnoresNonPositive(t *testing.T) {
-	prev := Timeout()
-	t.Cleanup(SetTimeout(prev))
-
-	SetTimeout(0)
-	if Timeout() != prev {
-		t.Errorf("SetTimeout(0) must be ignored; Timeout() = %s, want %s", Timeout(), prev)
+	if c.effort != DefaultClaudeEffort {
+		t.Errorf("effort = %q, want default %q", c.effort, DefaultClaudeEffort)
 	}
-	SetTimeout(-5 * time.Minute)
-	if Timeout() != prev {
-		t.Errorf("SetTimeout(-5m) must be ignored; Timeout() = %s, want %s", Timeout(), prev)
+	if c.planEffort != DefaultPlanEffort {
+		t.Errorf("planEffort = %q, want default %q", c.planEffort, DefaultPlanEffort)
+	}
+	if c.showOutput {
+		t.Errorf("showOutput = true, want default false")
 	}
 }
 
-func TestSetShowOutput_TogglesAndRestores(t *testing.T) {
-	if ShowOutput() {
-		t.Fatalf("precondition: ShowOutput() should default to false")
+func TestNewClient_AppliesOptions(t *testing.T) {
+	c := NewClient(
+		WithTimeout(42*time.Minute),
+		WithModel("fable"),
+		WithPlanModel("opus"),
+		WithEffort("max"),
+		WithPlanEffort("high"),
+		WithShowOutput(true),
+	)
+	if c.timeout != 42*time.Minute {
+		t.Errorf("timeout = %s, want 42m0s", c.timeout)
 	}
-	restore := SetShowOutput(true)
-	if !ShowOutput() {
-		t.Errorf("ShowOutput() should be true after SetShowOutput(true)")
+	if c.model != "fable" {
+		t.Errorf("model = %q, want \"fable\"", c.model)
 	}
-	restore()
-	if ShowOutput() {
-		t.Errorf("ShowOutput() should be false after restore")
+	if c.planModel != "opus" {
+		t.Errorf("planModel = %q, want \"opus\"", c.planModel)
+	}
+	if c.effort != "max" {
+		t.Errorf("effort = %q, want \"max\"", c.effort)
+	}
+	if c.planEffort != "high" {
+		t.Errorf("planEffort = %q, want \"high\"", c.planEffort)
+	}
+	if !c.showOutput {
+		t.Errorf("showOutput = false, want true")
 	}
 }
 
-func TestSetModel_TogglesAndRestores(t *testing.T) {
-	if Model() != DefaultClaudeModel {
-		t.Fatalf("precondition: Model() = %q, want default %q", Model(), DefaultClaudeModel)
+// TestNewClient_OptionsIgnoreBadValues pins the guard semantics carried over
+// from the former package-level setters: a non-positive timeout or an empty
+// model/effort string is ignored so a misconfigured flag cannot disable the
+// timeout or select an empty model.
+func TestNewClient_OptionsIgnoreBadValues(t *testing.T) {
+	c := NewClient(
+		WithTimeout(0),
+		WithTimeout(-5*time.Minute),
+		WithModel(""),
+		WithPlanModel(""),
+		WithEffort(""),
+		WithPlanEffort(""),
+	)
+	if c.timeout != DefaultClaudeTimeout {
+		t.Errorf("non-positive WithTimeout must be ignored; timeout = %s, want %s", c.timeout, DefaultClaudeTimeout)
 	}
-
-	restore := SetModel("fable")
-	if Model() != "fable" {
-		t.Errorf("Model() = %q after SetModel(\"fable\"), want \"fable\"", Model())
+	if c.model != DefaultClaudeModel {
+		t.Errorf("empty WithModel must be ignored; model = %q, want %q", c.model, DefaultClaudeModel)
 	}
-	restore()
-	if Model() != DefaultClaudeModel {
-		t.Errorf("Model() = %q after restore, want default %q", Model(), DefaultClaudeModel)
+	if c.planModel != DefaultPlanModel {
+		t.Errorf("empty WithPlanModel must be ignored; planModel = %q, want %q", c.planModel, DefaultPlanModel)
 	}
-}
-
-func TestSetModel_IgnoresEmpty(t *testing.T) {
-	prev := Model()
-	t.Cleanup(SetModel(prev))
-
-	SetModel("")
-	if Model() != prev {
-		t.Errorf("SetModel(\"\") must be ignored; Model() = %q, want %q", Model(), prev)
+	if c.effort != DefaultClaudeEffort {
+		t.Errorf("empty WithEffort must be ignored; effort = %q, want %q", c.effort, DefaultClaudeEffort)
+	}
+	if c.planEffort != DefaultPlanEffort {
+		t.Errorf("empty WithPlanEffort must be ignored; planEffort = %q, want %q", c.planEffort, DefaultPlanEffort)
 	}
 }
 
@@ -574,81 +587,6 @@ func TestSanitizeImplementationReport(t *testing.T) {
 				t.Errorf("sanitizeImplementationReport() = %q, want %q", got, tt.want)
 			}
 		})
-	}
-}
-
-func TestSetPlanModel_TogglesAndRestores(t *testing.T) {
-	if PlanModel() != DefaultPlanModel {
-		t.Fatalf("precondition: PlanModel() = %q, want default %q", PlanModel(), DefaultPlanModel)
-	}
-
-	restore := SetPlanModel("opus")
-	if PlanModel() != "opus" {
-		t.Errorf("PlanModel() = %q after SetPlanModel(\"opus\"), want \"opus\"", PlanModel())
-	}
-	restore()
-	if PlanModel() != DefaultPlanModel {
-		t.Errorf("PlanModel() = %q after restore, want default %q", PlanModel(), DefaultPlanModel)
-	}
-}
-
-func TestSetPlanModel_IgnoresEmpty(t *testing.T) {
-	prev := PlanModel()
-	t.Cleanup(SetPlanModel(prev))
-
-	SetPlanModel("")
-	if PlanModel() != prev {
-		t.Errorf("SetPlanModel(\"\") must be ignored; PlanModel() = %q, want %q", PlanModel(), prev)
-	}
-}
-
-func TestSetPlanEffort_TogglesAndRestores(t *testing.T) {
-	if PlanEffort() != DefaultPlanEffort {
-		t.Fatalf("precondition: PlanEffort() = %q, want default %q", PlanEffort(), DefaultPlanEffort)
-	}
-
-	restore := SetPlanEffort("high")
-	if PlanEffort() != "high" {
-		t.Errorf("PlanEffort() = %q after SetPlanEffort(\"high\"), want \"high\"", PlanEffort())
-	}
-	restore()
-	if PlanEffort() != DefaultPlanEffort {
-		t.Errorf("PlanEffort() = %q after restore, want default %q", PlanEffort(), DefaultPlanEffort)
-	}
-}
-
-func TestSetPlanEffort_IgnoresEmpty(t *testing.T) {
-	prev := PlanEffort()
-	t.Cleanup(SetPlanEffort(prev))
-
-	SetPlanEffort("")
-	if PlanEffort() != prev {
-		t.Errorf("SetPlanEffort(\"\") must be ignored; PlanEffort() = %q, want %q", PlanEffort(), prev)
-	}
-}
-
-func TestSetEffort_TogglesAndRestores(t *testing.T) {
-	if Effort() != DefaultClaudeEffort {
-		t.Fatalf("precondition: Effort() = %q, want default %q", Effort(), DefaultClaudeEffort)
-	}
-
-	restore := SetEffort("max")
-	if Effort() != "max" {
-		t.Errorf("Effort() = %q after SetEffort(\"max\"), want \"max\"", Effort())
-	}
-	restore()
-	if Effort() != DefaultClaudeEffort {
-		t.Errorf("Effort() = %q after restore, want default %q", Effort(), DefaultClaudeEffort)
-	}
-}
-
-func TestSetEffort_IgnoresEmpty(t *testing.T) {
-	prev := Effort()
-	t.Cleanup(SetEffort(prev))
-
-	SetEffort("")
-	if Effort() != prev {
-		t.Errorf("SetEffort(\"\") must be ignored; Effort() = %q, want %q", Effort(), prev)
 	}
 }
 

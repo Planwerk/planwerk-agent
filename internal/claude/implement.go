@@ -14,12 +14,12 @@ import (
 // Acceptance Criteria. It deliberately does NOT trust any implementation
 // report: it diffs the feature branch and reads the actual committed code.
 // Findings are returned for every criterion that is not fully satisfied.
-func VerifyImplementation(dir, issueTitle, issueBody string) (*report.ReviewResult, error) {
-	raw, err := runClaudeAuto(dir, buildVerifyImplementationPrompt(issueTitle, issueBody), "verify-implementation")
+func (c *Client) VerifyImplementation(dir, issueTitle, issueBody string) (*report.ReviewResult, error) {
+	raw, err := c.runClaudeAuto(dir, buildVerifyImplementationPrompt(issueTitle, issueBody), "verify-implementation")
 	if err != nil {
 		return nil, fmt.Errorf("running implementation verification: %w", err)
 	}
-	result, err := structureReview(raw)
+	result, err := c.structureReview(raw)
 	if err != nil {
 		return nil, fmt.Errorf("structuring implementation verification: %w", err)
 	}
@@ -101,8 +101,8 @@ IMPORTANT: Completely ignore changes in the .planwerk/ directory.
 // files, run tests, commit, push the branch, and open the draft PR without
 // an interactive confirmation, while the auto-mode classifier still vets
 // each action.
-func Implement(dir string, ctx implement.Context) (string, error) {
-	out, err := runClaudeAuto(dir, BuildImplementPrompt(ctx), "implement")
+func (c *Client) Implement(dir string, ctx implement.Context) (string, error) {
+	out, err := c.runClaudeAuto(dir, BuildImplementPrompt(ctx), "implement")
 	if err != nil {
 		return "", fmt.Errorf("running implement: %w", err)
 	}

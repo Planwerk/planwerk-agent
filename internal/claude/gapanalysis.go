@@ -16,13 +16,13 @@ import (
 // It runs two Claude calls:
 //  1. Analyze the spec vs. the code and produce a free-form gap report.
 //  2. Structure that report into JSON matching gapanalysis.Result.
-func GapAnalysis(dir string, ctx gapanalysis.AnalysisContext) (*gapanalysis.Result, error) {
-	rawAnalysis, err := runClaude(dir, buildGapAnalysisPrompt(ctx), "gap-analysis")
+func (c *Client) GapAnalysis(dir string, ctx gapanalysis.AnalysisContext) (*gapanalysis.Result, error) {
+	rawAnalysis, err := c.runClaude(dir, buildGapAnalysisPrompt(ctx), "gap-analysis")
 	if err != nil {
 		return nil, fmt.Errorf("running gap analysis: %w", err)
 	}
 
-	result, err := structureGapResult(rawAnalysis, ctx)
+	result, err := c.structureGapResult(rawAnalysis, ctx)
 	if err != nil {
 		return nil, fmt.Errorf("structuring gap-analysis output: %w", err)
 	}
@@ -127,13 +127,13 @@ Now perform the gap analysis.
 // strict JSON shape matching gapanalysis.Result. The features array is then
 // reconciled against the input feature list so the result has one entry per
 // audited feature even if the model dropped a fully-implemented feature.
-func structureGapResult(rawAnalysis string, ctx gapanalysis.AnalysisContext) (*gapanalysis.Result, error) {
-	text, err := runClaude("", buildGapStructurePrompt(rawAnalysis), "gap-structure")
+func (c *Client) structureGapResult(rawAnalysis string, ctx gapanalysis.AnalysisContext) (*gapanalysis.Result, error) {
+	text, err := c.runClaude("", buildGapStructurePrompt(rawAnalysis), "gap-structure")
 	if err != nil {
 		return nil, err
 	}
 	var result gapanalysis.Result
-	if err := decodeJSONWithRepair(text, "structured gap-analysis", &result); err != nil {
+	if err := c.decodeJSONWithRepair(text, "structured gap-analysis", &result); err != nil {
 		return nil, err
 	}
 	reconcileFeatures(&result, ctx.Features)

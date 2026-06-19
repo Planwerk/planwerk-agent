@@ -75,12 +75,17 @@ or short form (owner/repo#123).`,
 			if err != nil {
 				return err
 			}
-			claude.SetTimeout(timeout)
 
-			claude.SetShowOutput(resolveShowClaudeOutput(showClaudeOutput, cmd.Flags().Changed("show-claude-output")))
-
-			claude.SetModel(resolveClaudeModel(claudeModel, cmd.Flags().Changed("claude-model")))
-			claude.SetEffort(resolveClaudeEffort(claudeEffort, cmd.Flags().Changed("claude-effort")))
+			// Build the Claude Code client once from the resolved --claude-*
+			// flags and share it with every subcommand via deps. The implement
+			// command appends its --plan-* options to deps.claudeOpts.
+			deps.claudeOpts = []claude.Option{
+				claude.WithTimeout(timeout),
+				claude.WithShowOutput(resolveShowClaudeOutput(showClaudeOutput, cmd.Flags().Changed("show-claude-output"))),
+				claude.WithModel(resolveClaudeModel(claudeModel, cmd.Flags().Changed("claude-model"))),
+				claude.WithEffort(resolveClaudeEffort(claudeEffort, cmd.Flags().Changed("claude-effort"))),
+			}
+			deps.claude = claude.NewClient(deps.claudeOpts...)
 
 			// Record the build version so every attribution footer names the
 			// exact planwerk-review build, matching the report headers and the
@@ -160,7 +165,7 @@ or short form (owner/repo#123).`,
 
 			opts := cfg.ToReviewOptions(deps.version)
 			opts.Remote = deps.remoteOpts
-			return review.Run(os.Stdout, opts)
+			return review.Run(os.Stdout, opts, deps.claude)
 		},
 	}
 

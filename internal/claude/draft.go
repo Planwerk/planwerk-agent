@@ -10,15 +10,15 @@ import (
 // DraftQuestions asks Claude for a short list of clarifying questions that
 // sharpen a one-line feature idea into a fileable issue. It is the first of the
 // draft command's two Claude calls.
-func DraftQuestions(seed string) ([]string, error) {
-	text, err := runClaude("", buildDraftQuestionsPrompt(seed), "draft-questions")
+func (c *Client) DraftQuestions(seed string) ([]string, error) {
+	text, err := c.runClaude("", buildDraftQuestionsPrompt(seed), "draft-questions")
 	if err != nil {
 		return nil, fmt.Errorf("generating draft questions: %w", err)
 	}
 	var payload struct {
 		Questions []string `json:"questions"`
 	}
-	if err := decodeJSONWithRepair(text, "draft questions", &payload); err != nil {
+	if err := c.decodeJSONWithRepair(text, "draft questions", &payload); err != nil {
 		return nil, err
 	}
 	return payload.Questions, nil
@@ -28,13 +28,13 @@ func DraftQuestions(seed string) ([]string, error) {
 // draft (title, description, motivation, rough scope). It runs one Claude call
 // with no checkout — draft describes the idea, it does not plan against the
 // repository.
-func Draft(ctx draft.Context) (*draft.Result, error) {
-	text, err := runClaude("", BuildDraftPrompt(ctx), "draft")
+func (c *Client) Draft(ctx draft.Context) (*draft.Result, error) {
+	text, err := c.runClaude("", BuildDraftPrompt(ctx), "draft")
 	if err != nil {
 		return nil, fmt.Errorf("running draft: %w", err)
 	}
 	var result draft.Result
-	if err := decodeJSONWithRepair(text, "drafted issue", &result); err != nil {
+	if err := c.decodeJSONWithRepair(text, "drafted issue", &result); err != nil {
 		return nil, err
 	}
 	return &result, nil

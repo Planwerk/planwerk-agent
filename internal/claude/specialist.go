@@ -85,12 +85,12 @@ var Specialists = []Specialist{
 // SpecialistReview runs a single domain-focused review pass over the diff and
 // returns its findings, tagged with the specialist's pattern. baseBranch scopes
 // the review to changes relative to that branch.
-func SpecialistReview(dir, baseBranch, key, focus string) (*report.ReviewResult, error) {
-	raw, err := runClaude(dir, buildSpecialistPrompt(baseBranch, key, focus), "specialist-"+key)
+func (c *Client) SpecialistReview(dir, baseBranch, key, focus string) (*report.ReviewResult, error) {
+	raw, err := c.runClaude(dir, buildSpecialistPrompt(baseBranch, key, focus), "specialist-"+key)
 	if err != nil {
 		return nil, fmt.Errorf("running %s specialist review: %w", key, err)
 	}
-	result, err := structureReview(raw)
+	result, err := c.structureReview(raw)
 	if err != nil {
 		return nil, fmt.Errorf("structuring %s specialist review: %w", key, err)
 	}

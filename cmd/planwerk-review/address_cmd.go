@@ -71,7 +71,7 @@ or short form (owner/repo#123).`,
 			if addressCfg.PrintBarePrompt {
 				return address.PrintBarePrompt(cmd.OutOrStdout(), opts, claude.BuildBareAddressPrompt)
 			}
-			return address.Run(cmd.OutOrStdout(), opts, claude.Address, claude.BuildAddressPrompt)
+			return address.Run(cmd.OutOrStdout(), opts, deps.claude.Address, claude.BuildAddressPrompt)
 		},
 	}
 

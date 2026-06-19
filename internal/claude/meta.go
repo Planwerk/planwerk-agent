@@ -10,13 +10,13 @@ import (
 // Meta carves a Meta Issue into the fewest sensible draft-depth Sub Issues. It
 // runs one Claude call with no checkout — meta reads the issue and decides the
 // breakdown, it does not plan against the repository.
-func Meta(ctx meta.Context) (*meta.Result, error) {
-	text, err := runClaude("", BuildMetaPrompt(ctx), "meta")
+func (c *Client) Meta(ctx meta.Context) (*meta.Result, error) {
+	text, err := c.runClaude("", BuildMetaPrompt(ctx), "meta")
 	if err != nil {
 		return nil, fmt.Errorf("running meta split: %w", err)
 	}
 	var result meta.Result
-	if err := decodeJSONWithRepair(text, "meta split", &result); err != nil {
+	if err := c.decodeJSONWithRepair(text, "meta split", &result); err != nil {
 		return nil, err
 	}
 	return &result, nil

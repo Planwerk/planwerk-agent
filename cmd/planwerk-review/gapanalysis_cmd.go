@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/planwerk/planwerk-review/internal/cache"
-	"github.com/planwerk/planwerk-review/internal/claude"
 	"github.com/planwerk/planwerk-review/internal/cli"
 	"github.com/planwerk/planwerk-review/internal/gapanalysis"
 	"github.com/planwerk/planwerk-review/internal/patterns"
@@ -60,7 +59,7 @@ or short form (owner/repo).`,
 
 			opts := gapCfg.ToGapAnalysisOptions(deps.version)
 			opts.Remote = deps.remoteOpts
-			return gapanalysis.Run(os.Stdout, opts, claude.GapAnalysis)
+			return gapanalysis.Run(os.Stdout, opts, deps.claude.GapAnalysis)
 		},
 	}
 

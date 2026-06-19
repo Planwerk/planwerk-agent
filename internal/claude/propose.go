@@ -12,13 +12,13 @@ import (
 // It runs two Claude calls:
 //  1. Deep analysis of the codebase, grounded in the loaded review patterns.
 //  2. Structuring the analysis into JSON proposals.
-func Propose(dir string, ctx propose.AnalysisContext) (*propose.ProposalResult, error) {
-	rawAnalysis, err := runAnalysis(dir, ctx)
+func (c *Client) Propose(dir string, ctx propose.AnalysisContext) (*propose.ProposalResult, error) {
+	rawAnalysis, err := c.runAnalysis(dir, ctx)
 	if err != nil {
 		return nil, fmt.Errorf("running analysis: %w", err)
 	}
 
-	result, err := structureProposals(rawAnalysis)
+	result, err := c.structureProposals(rawAnalysis)
 	if err != nil {
 		return nil, fmt.Errorf("structuring proposals: %w", err)
 	}
@@ -27,8 +27,8 @@ func Propose(dir string, ctx propose.AnalysisContext) (*propose.ProposalResult, 
 	return result, nil
 }
 
-func runAnalysis(dir string, ctx propose.AnalysisContext) (string, error) {
-	return runClaude(dir, buildAnalysisPrompt(ctx), "analysis")
+func (c *Client) runAnalysis(dir string, ctx propose.AnalysisContext) (string, error) {
+	return c.runClaude(dir, buildAnalysisPrompt(ctx), "analysis")
 }
 
 // buildAnalysisPrompt constructs the deep-analysis prompt. When patterns are
@@ -87,13 +87,13 @@ IMPORTANT: Do NOT just list generic software improvements. Your proposals must b
 	return sb.String()
 }
 
-func structureProposals(rawAnalysis string) (*propose.ProposalResult, error) {
-	text, err := runClaude("", buildProposalStructurePrompt(rawAnalysis), "proposals")
+func (c *Client) structureProposals(rawAnalysis string) (*propose.ProposalResult, error) {
+	text, err := c.runClaude("", buildProposalStructurePrompt(rawAnalysis), "proposals")
 	if err != nil {
 		return nil, err
 	}
 	var result propose.ProposalResult
-	if err := decodeJSONWithRepair(text, "structured proposals", &result); err != nil {
+	if err := c.decodeJSONWithRepair(text, "structured proposals", &result); err != nil {
 		return nil, err
 	}
 	return &result, nil

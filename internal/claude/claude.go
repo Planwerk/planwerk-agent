@@ -30,15 +30,15 @@ type ReviewContext struct {
 // It runs two Claude calls:
 //  1. `claude /review` to get the unstructured review output
 //  2. `claude -p` to structure the output into JSON
-func Review(dir string, ctx ReviewContext) (*report.ReviewResult, error) {
+func (c *Client) Review(dir string, ctx ReviewContext) (*report.ReviewResult, error) {
 	// Step 1: Run /review
-	rawReview, err := runReview(dir, ctx)
+	rawReview, err := c.runReview(dir, ctx)
 	if err != nil {
 		return nil, fmt.Errorf("running /review: %w", err)
 	}
 
 	// Step 2: Structure the output into JSON
-	result, err := structureReview(rawReview)
+	result, err := c.structureReview(rawReview)
 	if err != nil {
 		return nil, fmt.Errorf("structuring review output: %w", err)
 	}
@@ -48,6 +48,6 @@ func Review(dir string, ctx ReviewContext) (*report.ReviewResult, error) {
 }
 
 // runReview invokes `claude -p` with a prompt that includes patterns and the /review command.
-func runReview(dir string, rctx ReviewContext) (string, error) {
-	return runClaude(dir, buildReviewPrompt(rctx), "review")
+func (c *Client) runReview(dir string, rctx ReviewContext) (string, error) {
+	return c.runClaude(dir, buildReviewPrompt(rctx), "review")
 }

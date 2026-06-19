@@ -21,8 +21,8 @@ import (
 // implement session stays on the default model and effort. Like every
 // runClaude* call it is a fresh `claude -p` invocation, so plan and
 // implement are two independent sessions by construction.
-func Plan(dir string, ctx implement.Context) (string, error) {
-	out, err := runClaudePlan(dir, BuildPlanPrompt(ctx), "plan")
+func (c *Client) Plan(dir string, ctx implement.Context) (string, error) {
+	out, err := c.runClaudePlan(dir, BuildPlanPrompt(ctx), "plan")
 	if err != nil {
 		return "", fmt.Errorf("running plan: %w", err)
 	}

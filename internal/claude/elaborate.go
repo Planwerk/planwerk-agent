@@ -14,13 +14,13 @@ import (
 // actual repository state. It runs two Claude calls:
 //  1. Read the issue + walk the repo, producing a freeform elaboration.
 //  2. Structure the elaboration into JSON matching elaborate.Result.
-func Elaborate(dir string, ctx elaborate.Context) (*elaborate.Result, error) {
-	rawElaboration, err := runClaude(dir, buildElaboratePrompt(ctx), "elaborate")
+func (c *Client) Elaborate(dir string, ctx elaborate.Context) (*elaborate.Result, error) {
+	rawElaboration, err := c.runClaude(dir, buildElaboratePrompt(ctx), "elaborate")
 	if err != nil {
 		return nil, fmt.Errorf("running elaboration: %w", err)
 	}
 
-	result, err := structureElaboration(rawElaboration, ctx)
+	result, err := c.structureElaboration(rawElaboration, ctx)
 	if err != nil {
 		return nil, fmt.Errorf("structuring elaboration: %w", err)
 	}
@@ -156,13 +156,13 @@ Before you output the elaborated issue, review your own draft and fix what you f
 	return sb.String()
 }
 
-func structureElaboration(rawElaboration string, ctx elaborate.Context) (*elaborate.Result, error) {
-	text, err := runClaude("", buildElaborateStructurePrompt(rawElaboration, ctx), "elaborate-structure")
+func (c *Client) structureElaboration(rawElaboration string, ctx elaborate.Context) (*elaborate.Result, error) {
+	text, err := c.runClaude("", buildElaborateStructurePrompt(rawElaboration, ctx), "elaborate-structure")
 	if err != nil {
 		return nil, err
 	}
 	var result elaborate.Result
-	if err := decodeJSONWithRepair(text, "structured elaboration", &result); err != nil {
+	if err := c.decodeJSONWithRepair(text, "structured elaboration", &result); err != nil {
 		return nil, err
 	}
 	return &result, nil
@@ -203,13 +203,13 @@ Field rules:
 // the score, the concrete gaps the next revision must close, and what a 10/10
 // plan would look like. It is a single structured Claude call with the same
 // malformed-JSON repair fallback as the other structurers.
-func ReviewElaboration(dir string, ctx elaborate.Context, draftBody string) (*elaborate.ReviewResult, error) {
-	text, err := runClaude(dir, buildElaborateReviewPrompt(ctx, draftBody), "elaborate-review")
+func (c *Client) ReviewElaboration(dir string, ctx elaborate.Context, draftBody string) (*elaborate.ReviewResult, error) {
+	text, err := c.runClaude(dir, buildElaborateReviewPrompt(ctx, draftBody), "elaborate-review")
 	if err != nil {
 		return nil, fmt.Errorf("running elaboration review: %w", err)
 	}
 	var rr elaborate.ReviewResult
-	if err := decodeJSONWithRepair(text, "elaboration review", &rr); err != nil {
+	if err := c.decodeJSONWithRepair(text, "elaboration review", &rr); err != nil {
 		return nil, err
 	}
 	// Guard against an out-of-range score from the model so the gate and the

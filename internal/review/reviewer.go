@@ -59,20 +59,20 @@ type Runner struct {
 	GitHub GitHubClient
 }
 
-// NewRunner returns a Runner wired with the production Claude Code and
-// GitHub (gh CLI) backends.
-func NewRunner() *Runner {
+// NewRunner returns a Runner wired with the production Claude Code (driven by
+// the given client) and GitHub (gh CLI) backends.
+func NewRunner(client *claude.Client) *Runner {
 	return &Runner{
-		Claude: defaultClaudeRunner{},
+		Claude: defaultClaudeRunner{client: client},
 		GitHub: defaultGitHubClient{},
 	}
 }
 
-// Run is a package-level convenience that delegates to NewRunner().Run.
+// Run is a package-level convenience that delegates to NewRunner(client).Run.
 // Callers that need to inject alternative Claude or GitHub backends should
 // construct a Runner directly.
-func Run(w io.Writer, opts Options) error {
-	return NewRunner().Run(w, opts)
+func Run(w io.Writer, opts Options, client *claude.Client) error {
+	return NewRunner(client).Run(w, opts)
 }
 
 // Run executes the full review pipeline:

@@ -61,7 +61,7 @@ input stays stable.`,
 			}
 
 			opts := draftCfg.ToDraftOptions(deps.version)
-			return draft.Run(cmd.OutOrStdout(), opts, claude.DraftQuestions, claude.Draft, claude.BuildDraftPrompt, claude.BuildBareDraftPrompt)
+			return draft.Run(cmd.OutOrStdout(), opts, deps.claude.DraftQuestions, deps.claude.Draft, claude.BuildDraftPrompt, claude.BuildBareDraftPrompt)
 		},
 	}
 

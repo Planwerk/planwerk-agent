@@ -105,162 +105,118 @@ func withAllowedTools(args []string) []string {
 	return append(args, claudeAllowedTools...)
 }
 
-// claudeTimeout is the effective per-invocation timeout. It defaults to
-// DefaultClaudeTimeout and is overridable at startup via SetTimeout.
-var claudeTimeout = DefaultClaudeTimeout
-
-// claudeModel is the effective model passed to Claude Code via --model. It
-// defaults to DefaultClaudeModel and is overridable at startup via SetModel.
-var claudeModel = DefaultClaudeModel
-
-// planModel is the effective model for the implement command's planning
-// session. It defaults to DefaultPlanModel and is overridable at startup
-// via SetPlanModel.
-var planModel = DefaultPlanModel
-
-// claudeEffort is the effective reasoning effort passed to Claude Code via
-// --effort. It defaults to DefaultClaudeEffort and is overridable at startup
-// via SetEffort.
-var claudeEffort = DefaultClaudeEffort
-
-// planEffort is the effective reasoning effort for the implement command's
-// planning session. It defaults to DefaultPlanEffort and is overridable at
-// startup via SetPlanEffort.
-var planEffort = DefaultPlanEffort
-
-// showOutput toggles live streaming of Claude Code output. When false
-// (the default), runClaude buffers the result via --output-format json.
-// When true, runClaude delegates to runClaudeStream which uses
-// --output-format stream-json --verbose and surfaces assistant text and
-// tool activity to a streamSink as it arrives.
-var showOutput bool
-
-// SetShowOutput installs b as the package-level streaming toggle used by
-// every runClaude invocation. The CLI sets this once at startup; tests
-// use the returned restore function to revert to the previous value.
-func SetShowOutput(b bool) (restore func()) {
-	old := showOutput
-	showOutput = b
-	return func() { showOutput = old }
+// Client runs Claude Code sessions with a fixed configuration. Each Client
+// owns its own timeout, model, and effort settings, so independent runners can
+// execute concurrently without sharing mutable state — the injectable
+// counterpart to the package-level configuration this type replaces. Construct
+// one with NewClient and thread it through the runners.
+type Client struct {
+	timeout    time.Duration
+	model      string
+	planModel  string
+	effort     string
+	planEffort string
+	showOutput bool
 }
 
-// ShowOutput reports whether live streaming of Claude Code output is
-// currently enabled. Exposed primarily for the CLI test suite to verify
-// that PLANWERK_SHOW_CLAUDE_OUTPUT and --show-claude-output route into
-// the package-level toggle.
-func ShowOutput() bool { return showOutput }
+// Option configures a Client. Pass any number of options to NewClient; later
+// options win when two set the same field.
+type Option func(*Client)
 
-// SetTimeout installs d as the per-invocation Claude Code timeout used by
-// every subsequent runClaude / runClaudeStream call. A non-positive d is
-// ignored and the previous value is preserved — that keeps a misconfigured
-// flag from silently disabling the timeout. The returned restore function
-// reverts to the previous value; the CLI test suite uses it to scope
-// changes to a single test.
-func SetTimeout(d time.Duration) (restore func()) {
-	old := claudeTimeout
-	if d > 0 {
-		claudeTimeout = d
+// NewClient returns a Client seeded with the compiled-in defaults
+// (DefaultClaudeTimeout/Model/Effort and the planning defaults), then applies
+// opts. With no options it behaves exactly as the historical package defaults.
+func NewClient(opts ...Option) *Client {
+	c := &Client{
+		timeout:    DefaultClaudeTimeout,
+		model:      DefaultClaudeModel,
+		planModel:  DefaultPlanModel,
+		effort:     DefaultClaudeEffort,
+		planEffort: DefaultPlanEffort,
 	}
-	return func() { claudeTimeout = old }
-}
-
-// Timeout reports the currently effective per-invocation Claude Code
-// timeout. Exposed primarily for the CLI test suite to verify that
-// --claude-timeout / PLANWERK_CLAUDE_TIMEOUT route into the package-level
-// value.
-func Timeout() time.Duration { return claudeTimeout }
-
-// SetModel installs m as the model passed to Claude Code via --model by every
-// subsequent runClaude / runClaudeStream call. An empty m is ignored and the
-// previous value is preserved — that keeps a misconfigured flag from silently
-// selecting an empty model. The returned restore function reverts to the
-// previous value; the CLI test suite uses it to scope changes to a single
-// test.
-func SetModel(m string) (restore func()) {
-	old := claudeModel
-	if m != "" {
-		claudeModel = m
+	for _, opt := range opts {
+		opt(c)
 	}
-	return func() { claudeModel = old }
+	return c
 }
 
-// Model reports the currently effective model passed to Claude Code. Exposed
-// primarily for the CLI test suite to verify that --claude-model /
-// PLANWERK_CLAUDE_MODEL route into the package-level value.
-func Model() string { return claudeModel }
-
-// SetPlanModel installs m as the model used by Plan sessions (the implement
-// command's planning phase). An empty m is ignored and the previous value is
-// preserved — that keeps a misconfigured flag from silently selecting an
-// empty model. The returned restore function reverts to the previous value;
-// the CLI test suite uses it to scope changes to a single test.
-func SetPlanModel(m string) (restore func()) {
-	old := planModel
-	if m != "" {
-		planModel = m
+// WithTimeout sets the per-invocation Claude Code timeout. A non-positive d is
+// ignored and the default is preserved — that keeps a misconfigured flag from
+// silently disabling the timeout.
+func WithTimeout(d time.Duration) Option {
+	return func(c *Client) {
+		if d > 0 {
+			c.timeout = d
+		}
 	}
-	return func() { planModel = old }
 }
 
-// PlanModel reports the currently effective planning model. Exposed
-// primarily for the CLI test suite to verify that --plan-model /
-// PLANWERK_PLAN_MODEL route into the package-level value.
-func PlanModel() string { return planModel }
-
-// SetEffort installs e as the reasoning effort passed to Claude Code via
-// --effort by every subsequent runClaude / runClaudeStream call. An empty e
-// is ignored and the previous value is preserved — that keeps a misconfigured
-// flag from silently selecting an empty effort. The returned restore function
-// reverts to the previous value; the CLI test suite uses it to scope changes
-// to a single test.
-func SetEffort(e string) (restore func()) {
-	old := claudeEffort
-	if e != "" {
-		claudeEffort = e
+// WithModel sets the model passed to Claude Code via --model. An empty m is
+// ignored so a misconfigured flag cannot select an empty model.
+func WithModel(m string) Option {
+	return func(c *Client) {
+		if m != "" {
+			c.model = m
+		}
 	}
-	return func() { claudeEffort = old }
 }
 
-// Effort reports the currently effective reasoning effort passed to Claude
-// Code. Exposed primarily for the CLI test suite to verify that
-// --claude-effort / PLANWERK_CLAUDE_EFFORT route into the package-level value.
-func Effort() string { return claudeEffort }
-
-// SetPlanEffort installs e as the reasoning effort used by Plan sessions (the
-// implement command's planning phase). An empty e is ignored and the previous
-// value is preserved — that keeps a misconfigured flag from silently selecting
-// an empty effort. The returned restore function reverts to the previous
-// value; the CLI test suite uses it to scope changes to a single test.
-func SetPlanEffort(e string) (restore func()) {
-	old := planEffort
-	if e != "" {
-		planEffort = e
+// WithPlanModel sets the model used by Plan sessions (the implement command's
+// planning phase). An empty m is ignored.
+func WithPlanModel(m string) Option {
+	return func(c *Client) {
+		if m != "" {
+			c.planModel = m
+		}
 	}
-	return func() { planEffort = old }
 }
 
-// PlanEffort reports the currently effective planning reasoning effort.
-// Exposed primarily for the CLI test suite to verify that --plan-effort /
-// PLANWERK_PLAN_EFFORT route into the package-level value.
-func PlanEffort() string { return planEffort }
+// WithEffort sets the reasoning effort passed to Claude Code via --effort. An
+// empty e is ignored so a misconfigured flag cannot select an empty effort.
+func WithEffort(e string) Option {
+	return func(c *Client) {
+		if e != "" {
+			c.effort = e
+		}
+	}
+}
+
+// WithPlanEffort sets the reasoning effort used by Plan sessions (the implement
+// command's planning phase). An empty e is ignored.
+func WithPlanEffort(e string) Option {
+	return func(c *Client) {
+		if e != "" {
+			c.planEffort = e
+		}
+	}
+}
+
+// WithShowOutput toggles live streaming of Claude Code output. When false (the
+// default), runClaude buffers the result via --output-format json. When true,
+// runClaude delegates to runClaudeStream which uses
+// --output-format stream-json --verbose and surfaces assistant text and tool
+// activity to a streamSink as it arrives.
+func WithShowOutput(b bool) Option {
+	return func(c *Client) { c.showOutput = b }
+}
 
 // runClaude invokes claude in the given directory on its default permission
 // mode and returns the extracted text response. Use it for the read-only
 // analysis steps (review, audit, structure, repair, …) that do not mutate
 // the checkout.
-func runClaude(dir, prompt, label string) (string, error) {
-	return runClaudeWithPermission(dir, prompt, label, "", claudeModel, claudeEffort)
+func (c *Client) runClaude(dir, prompt, label string) (string, error) {
+	return c.runClaudeWithPermission(dir, prompt, label, "", c.model, c.effort)
 }
 
-// runClaudePlan is runClaude on the dedicated planning model (PlanModel,
-// default "fable") at the dedicated planning effort (PlanEffort, default
+// runClaudePlan is runClaude on the dedicated planning model (planModel,
+// default "fable") at the dedicated planning effort (planEffort, default
 // "max"). The implement command's planning session uses it: the session only
 // reads the checkout and emits the implementation plan as text, so it keeps
 // the default (read-only) permission mode while the strongest-reasoning model
 // thinks at the largest budget — the one session where that depth steers the
 // whole implementation.
-func runClaudePlan(dir, prompt, label string) (string, error) {
-	return runClaudeWithPermission(dir, prompt, label, "", planModel, planEffort)
+func (c *Client) runClaudePlan(dir, prompt, label string) (string, error) {
+	return c.runClaudeWithPermission(dir, prompt, label, "", c.planModel, c.planEffort)
 }
 
 // runClaudeAuto is runClaude with claudeAutoPermissionMode, letting the
@@ -269,30 +225,30 @@ func runClaudePlan(dir, prompt, label string) (string, error) {
 // `claude -p` session runs unattended inside a checkout and must commit,
 // push a feature branch, and open a PR without a human confirming each
 // step. The auto-mode classifier still vets every action.
-func runClaudeAuto(dir, prompt, label string) (string, error) {
-	return runClaudeWithPermission(dir, prompt, label, claudeAutoPermissionMode, claudeModel, claudeEffort)
+func (c *Client) runClaudeAuto(dir, prompt, label string) (string, error) {
+	return c.runClaudeWithPermission(dir, prompt, label, claudeAutoPermissionMode, c.model, c.effort)
 }
 
 // runClaudeWithPermission is the shared implementation behind runClaude,
 // runClaudePlan, and runClaudeAuto. permissionMode, when non-empty, is
 // passed to claude as --permission-mode; an empty value leaves claude on
 // its default mode. model is the --model value and effort the --effort value
-// (callers pass claudeModel/claudeEffort, or planModel/planEffort for the
+// (callers pass c.model/c.effort, or c.planModel/c.planEffort for the
 // planning session). Every invocation also pre-approves claudeAllowedTools via
 // --allowed-tools (see withAllowedTools). The label tags elapsed-time progress
 // updates (or per-line stream prefixes when streaming is enabled).
 //
-// When showOutput is false it uses --output-format json and captures the
-// full result via cmd.Output(). When showOutput is true it delegates to
+// When c.showOutput is false it uses --output-format json and captures the
+// full result via cmd.Output(). When c.showOutput is true it delegates to
 // runClaudeStream, which uses --output-format stream-json --verbose and
 // surfaces output incrementally; the periodic heartbeat is skipped in that
 // mode because the stream itself is the heartbeat.
-func runClaudeWithPermission(dir, prompt, label, permissionMode, model, effort string) (string, error) {
-	if showOutput {
-		return runClaudeStream(dir, prompt, label, permissionMode, model, effort)
+func (c *Client) runClaudeWithPermission(dir, prompt, label, permissionMode, model, effort string) (string, error) {
+	if c.showOutput {
+		return c.runClaudeStream(dir, prompt, label, permissionMode, model, effort)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), claudeTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
 	stopProgress := startProgress(label)

@@ -8,17 +8,19 @@ import (
 
 // repairJSON asks Claude to fix malformed JSON, feeding the parse error back so
 // the model can correct it. It is a package variable so tests can substitute a
-// deterministic repair without invoking the claude CLI.
-var repairJSON = func(malformed string, parseErr error, label string) (string, error) {
-	return runClaude("", buildRepairPrompt(malformed, parseErr), label+"-repair")
+// deterministic repair without invoking the claude CLI; the *Client carries the
+// session configuration the repair call runs under.
+var repairJSON = func(c *Client, malformed string, parseErr error, label string) (string, error) {
+	return c.runClaude("", buildRepairPrompt(malformed, parseErr), label+"-repair")
 }
 
 // repairInvalidJSON asks Claude to fix JSON that parsed cleanly but failed
 // schema validation, feeding the validation error back so the model can correct
 // the offending fields. It is a package variable so tests can substitute a
-// deterministic repair without invoking the claude CLI.
-var repairInvalidJSON = func(invalid string, validationErr error, label string) (string, error) {
-	return runClaude("", buildValidationRepairPrompt(invalid, validationErr), label+"-schema-repair")
+// deterministic repair without invoking the claude CLI; the *Client carries the
+// session configuration the repair call runs under.
+var repairInvalidJSON = func(c *Client, invalid string, validationErr error, label string) (string, error) {
+	return c.runClaude("", buildValidationRepairPrompt(invalid, validationErr), label+"-schema-repair")
 }
 
 // decodeJSONWithRepair strips markdown fences from text and unmarshals it into
@@ -27,13 +29,13 @@ var repairInvalidJSON = func(invalid string, validationErr error, label string) 
 // fallback that keeps a one-character JSON glitch from failing the whole run —
 // stays identical across review, audit, elaborate, propose, gap-analysis, and
 // review-prepared. The common case (valid JSON) never triggers a repair call.
-func decodeJSONWithRepair(text, label string, v any) error {
+func (c *Client) decodeJSONWithRepair(text, label string, v any) error {
 	text = stripMarkdownFences(text)
 	err := json.Unmarshal([]byte(text), v)
 	if err == nil {
 		return nil
 	}
-	retry, retryErr := repairJSON(text, err, label)
+	retry, retryErr := repairJSON(c, text, err, label)
 	if retryErr != nil {
 		return fmt.Errorf("parsing %s as JSON: %w\nraw output:\n%s", label, err, text)
 	}

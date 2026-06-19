@@ -9,8 +9,8 @@ import (
 
 // CoverageMap runs a Claude call that analyzes test coverage of changed functions.
 // baseBranch determines which branch to diff against (e.g. "main").
-func CoverageMap(dir, baseBranch string) (*report.CoverageResult, error) {
-	text, err := runClaude(dir, buildCoveragePrompt(baseBranch), "coverage")
+func (c *Client) CoverageMap(dir, baseBranch string) (*report.CoverageResult, error) {
+	text, err := c.runClaude(dir, buildCoveragePrompt(baseBranch), "coverage")
 	if err != nil {
 		return nil, err
 	}

@@ -16,8 +16,8 @@ import (
 // resolution, and stages it with `git add` — but does NOT run
 // `git rebase --continue` or push; the orchestrator owns those. It runs in
 // auto mode so the session can edit and `git add` without confirmation.
-func ResolveRebaseConflict(dir string, ctx rebase.ConflictContext) (string, error) {
-	out, err := runClaudeAuto(dir, BuildRebaseConflictPrompt(ctx), "rebase-conflict")
+func (c *Client) ResolveRebaseConflict(dir string, ctx rebase.ConflictContext) (string, error) {
+	out, err := c.runClaudeAuto(dir, BuildRebaseConflictPrompt(ctx), "rebase-conflict")
 	if err != nil {
 		return "", fmt.Errorf("resolving rebase conflict: %w", err)
 	}
@@ -28,13 +28,13 @@ func ResolveRebaseConflict(dir string, ctx rebase.ConflictContext) (string, erro
 // rebased commit against the upstream range and returns the structured
 // per-commit adjustments. The decode shares decodeJSONWithRepair so a
 // one-character JSON glitch does not fail the run.
-func AnalyzeRebasedCommits(dir string, ctx rebase.AnalysisContext) (*report.RebaseAnalysis, error) {
-	text, err := runClaude(dir, BuildRebaseAnalysisPrompt(ctx), "rebase-analysis")
+func (c *Client) AnalyzeRebasedCommits(dir string, ctx rebase.AnalysisContext) (*report.RebaseAnalysis, error) {
+	text, err := c.runClaude(dir, BuildRebaseAnalysisPrompt(ctx), "rebase-analysis")
 	if err != nil {
 		return nil, fmt.Errorf("analyzing rebased commits: %w", err)
 	}
 	var result report.RebaseAnalysis
-	if err := decodeJSONWithRepair(text, "structured rebase-analysis", &result); err != nil {
+	if err := c.decodeJSONWithRepair(text, "structured rebase-analysis", &result); err != nil {
 		return nil, err
 	}
 	return &result, nil
@@ -44,8 +44,8 @@ func AnalyzeRebasedCommits(dir string, ctx rebase.AnalysisContext) (*report.Reba
 // post-rebase analysis as fixup commits folded into the commits they belong to
 // (git commit --fixup + git rebase --autosquash), reusing the fix --local
 // recipe. It does NOT push — the orchestrator force-pushes under --push.
-func ApplyRebaseAdjustments(dir string, ctx rebase.ApplyContext) (string, error) {
-	out, err := runClaudeAuto(dir, BuildRebaseApplyPrompt(ctx), "rebase-apply")
+func (c *Client) ApplyRebaseAdjustments(dir string, ctx rebase.ApplyContext) (string, error) {
+	out, err := c.runClaudeAuto(dir, BuildRebaseApplyPrompt(ctx), "rebase-apply")
 	if err != nil {
 		return "", fmt.Errorf("applying rebase adjustments: %w", err)
 	}

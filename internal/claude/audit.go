@@ -13,13 +13,13 @@ import (
 // It runs two Claude calls:
 //  1. Audit the codebase against all patterns and emit an unstructured finding list.
 //  2. Structure the output into JSON matching report.ReviewResult.
-func Audit(dir string, ctx audit.AuditContext) (*report.ReviewResult, error) {
-	rawAudit, err := runClaude(dir, buildAuditPrompt(ctx), "audit")
+func (c *Client) Audit(dir string, ctx audit.AuditContext) (*report.ReviewResult, error) {
+	rawAudit, err := c.runClaude(dir, buildAuditPrompt(ctx), "audit")
 	if err != nil {
 		return nil, fmt.Errorf("running audit: %w", err)
 	}
 
-	result, err := structureReview(rawAudit)
+	result, err := c.structureReview(rawAudit)
 	if err != nil {
 		return nil, fmt.Errorf("structuring audit output: %w", err)
 	}

@@ -42,7 +42,7 @@ func addressTestContext() address.Context {
 func TestDecodeAddressResult_Valid(t *testing.T) {
 	called := false
 	restore := repairJSON
-	repairJSON = func(string, error, string) (string, error) {
+	repairJSON = func(*Client, string, error, string) (string, error) {
 		called = true
 		return "", errors.New("repair must not be called for valid JSON")
 	}
@@ -50,7 +50,7 @@ func TestDecodeAddressResult_Valid(t *testing.T) {
 
 	const payload = "```json\n{\"threads\":[{\"thread_id\":\"RT_1\",\"status\":\"DONE\",\"summary\":\"renamed\",\"files\":[\"internal/foo/bar.go\"]}],\"summary\":\"done\",\"status\":\"DONE\"}\n```"
 	var got report.AddressResult
-	if err := decodeJSONWithRepair(payload, "structured address-result", &got); err != nil {
+	if err := (&Client{}).decodeJSONWithRepair(payload, "structured address-result", &got); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if called {
@@ -66,7 +66,7 @@ func TestDecodeAddressResult_Valid(t *testing.T) {
 // session's output does not fail the run.
 func TestDecodeAddressResult_Repairs(t *testing.T) {
 	restore := repairJSON
-	repairJSON = func(malformed string, parseErr error, label string) (string, error) {
+	repairJSON = func(_ *Client, malformed string, parseErr error, label string) (string, error) {
 		if parseErr == nil {
 			t.Error("repair should receive the original parse error")
 		}
@@ -75,7 +75,7 @@ func TestDecodeAddressResult_Repairs(t *testing.T) {
 	t.Cleanup(func() { repairJSON = restore })
 
 	var got report.AddressResult
-	if err := decodeJSONWithRepair(`{"threads":null,"summary":"recovered","status":"DONE"`, "structured address-result", &got); err != nil {
+	if err := (&Client{}).decodeJSONWithRepair(`{"threads":null,"summary":"recovered","status":"DONE"`, "structured address-result", &got); err != nil {
 		t.Fatalf("expected repair to succeed, got: %v", err)
 	}
 	if got.Summary != "recovered" || got.Status != "DONE" {

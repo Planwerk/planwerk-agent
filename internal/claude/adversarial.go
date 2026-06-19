@@ -9,13 +9,13 @@ import (
 // AdversarialReview runs an independent adversarial review pass using a fresh Claude context.
 // It focuses on security vulnerabilities, failure modes, and attack vectors.
 // baseBranch scopes the review to changes relative to the given branch.
-func AdversarialReview(dir, baseBranch string) (*report.ReviewResult, error) {
-	rawReview, err := runAdversarialReview(dir, baseBranch)
+func (c *Client) AdversarialReview(dir, baseBranch string) (*report.ReviewResult, error) {
+	rawReview, err := c.runAdversarialReview(dir, baseBranch)
 	if err != nil {
 		return nil, fmt.Errorf("running adversarial review: %w", err)
 	}
 
-	result, err := structureReview(rawReview)
+	result, err := c.structureReview(rawReview)
 	if err != nil {
 		return nil, fmt.Errorf("structuring adversarial review: %w", err)
 	}
@@ -31,8 +31,8 @@ func AdversarialReview(dir, baseBranch string) (*report.ReviewResult, error) {
 	return result, nil
 }
 
-func runAdversarialReview(dir, baseBranch string) (string, error) {
-	return runClaude(dir, buildAdversarialPrompt(baseBranch), "adversarial")
+func (c *Client) runAdversarialReview(dir, baseBranch string) (string, error) {
+	return c.runClaude(dir, buildAdversarialPrompt(baseBranch), "adversarial")
 }
 
 func buildAdversarialPrompt(baseBranch string) string {

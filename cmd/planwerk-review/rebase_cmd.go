@@ -71,10 +71,10 @@ or short form (owner/repo#123).`,
 				return rebase.PrintBarePrompt(cmd.OutOrStdout(), opts, claude.BuildBareRebasePrompt)
 			}
 			return rebase.Run(cmd.OutOrStdout(), opts,
-				claude.ResolveRebaseConflict,
-				claude.AnalyzeRebasedCommits,
+				deps.claude.ResolveRebaseConflict,
+				deps.claude.AnalyzeRebasedCommits,
 				claude.BuildRebaseAnalysisPrompt,
-				claude.ApplyRebaseAdjustments)
+				deps.claude.ApplyRebaseAdjustments)
 		},
 	}
 

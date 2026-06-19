@@ -17,13 +17,13 @@ import (
 // the session can edit files, run tests, and commit without an interactive
 // confirmation. The decode shares decodeJSONWithRepair so a one-character JSON
 // glitch does not fail the run.
-func Address(dir string, ctx address.Context) (*report.AddressResult, error) {
-	out, err := runClaudeAuto(dir, BuildAddressPrompt(ctx), "address")
+func (c *Client) Address(dir string, ctx address.Context) (*report.AddressResult, error) {
+	out, err := c.runClaudeAuto(dir, BuildAddressPrompt(ctx), "address")
 	if err != nil {
 		return nil, fmt.Errorf("running address: %w", err)
 	}
 	var result report.AddressResult
-	if err := decodeJSONWithRepair(out, "structured address-result", &result); err != nil {
+	if err := c.decodeJSONWithRepair(out, "structured address-result", &result); err != nil {
 		return nil, err
 	}
 	return &result, nil

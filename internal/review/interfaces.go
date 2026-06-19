@@ -33,27 +33,31 @@ type GitHubClient interface {
 	FetchReviewComment(owner, repo string, number int) (string, bool, error)
 }
 
-// defaultClaudeRunner is the production ClaudeRunner backed by the claude package.
-type defaultClaudeRunner struct{}
-
-func (defaultClaudeRunner) Review(dir string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
-	return claude.Review(dir, ctx)
+// defaultClaudeRunner is the production ClaudeRunner backed by the claude
+// package. It delegates to an injected *claude.Client so each runner carries
+// its own Claude Code configuration instead of sharing package-level state.
+type defaultClaudeRunner struct {
+	client *claude.Client
 }
 
-func (defaultClaudeRunner) AdversarialReview(dir, baseBranch string) (*report.ReviewResult, error) {
-	return claude.AdversarialReview(dir, baseBranch)
+func (r defaultClaudeRunner) Review(dir string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
+	return r.client.Review(dir, ctx)
 }
 
-func (defaultClaudeRunner) CoverageMap(dir, baseBranch string) (*report.CoverageResult, error) {
-	return claude.CoverageMap(dir, baseBranch)
+func (r defaultClaudeRunner) AdversarialReview(dir, baseBranch string) (*report.ReviewResult, error) {
+	return r.client.AdversarialReview(dir, baseBranch)
 }
 
-func (defaultClaudeRunner) SpecialistReview(dir, baseBranch, key, focus string) (*report.ReviewResult, error) {
-	return claude.SpecialistReview(dir, baseBranch, key, focus)
+func (r defaultClaudeRunner) CoverageMap(dir, baseBranch string) (*report.CoverageResult, error) {
+	return r.client.CoverageMap(dir, baseBranch)
 }
 
-func (defaultClaudeRunner) FeatureCompliance(dir, baseBranch string, feature *planwerk.Feature) (*report.ReviewResult, error) {
-	return claude.FeatureCompliance(dir, baseBranch, feature)
+func (r defaultClaudeRunner) SpecialistReview(dir, baseBranch, key, focus string) (*report.ReviewResult, error) {
+	return r.client.SpecialistReview(dir, baseBranch, key, focus)
+}
+
+func (r defaultClaudeRunner) FeatureCompliance(dir, baseBranch string, feature *planwerk.Feature) (*report.ReviewResult, error) {
+	return r.client.FeatureCompliance(dir, baseBranch, feature)
 }
 
 // defaultGitHubClient is the production GitHubClient backed by the github package.

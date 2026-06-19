@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/planwerk/planwerk-review/internal/cache"
-	"github.com/planwerk/planwerk-review/internal/claude"
 	"github.com/planwerk/planwerk-review/internal/cli"
 	"github.com/planwerk/planwerk-review/internal/elaborate"
 	"github.com/planwerk/planwerk-review/internal/patterns"
@@ -51,7 +50,7 @@ or short form (owner/repo#123).`,
 
 			opts := elaborateCfg.ToElaborateOptions(deps.version)
 			opts.Remote = deps.remoteOpts
-			return elaborate.Run(os.Stdout, opts, claude.Elaborate, claude.ReviewElaboration)
+			return elaborate.Run(os.Stdout, opts, deps.claude.Elaborate, deps.claude.ReviewElaboration)
 		},
 	}
 

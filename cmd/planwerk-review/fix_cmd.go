@@ -78,7 +78,7 @@ or short form (owner/repo#123).`,
 			if fixCfg.PrintBarePrompt {
 				return fix.PrintBarePrompt(cmd.OutOrStdout(), opts, claude.BuildBareFixPrompt)
 			}
-			return fix.Run(cmd.OutOrStdout(), opts, claude.Fix, claude.BuildFixPrompt)
+			return fix.Run(cmd.OutOrStdout(), opts, deps.claude.Fix, claude.BuildFixPrompt)
 		},
 	}
 

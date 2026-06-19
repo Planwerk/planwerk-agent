@@ -8,7 +8,6 @@ import (
 
 	"github.com/planwerk/planwerk-review/internal/audit"
 	"github.com/planwerk/planwerk-review/internal/cache"
-	"github.com/planwerk/planwerk-review/internal/claude"
 	"github.com/planwerk/planwerk-review/internal/cli"
 	"github.com/planwerk/planwerk-review/internal/patterns"
 	"github.com/planwerk/planwerk-review/internal/report"
@@ -90,7 +89,7 @@ or short form (owner/repo).`,
 
 			opts := auditCfg.ToAuditOptions(deps.version)
 			opts.Remote = deps.remoteOpts
-			return audit.Run(os.Stdout, opts, claude.Audit)
+			return audit.Run(os.Stdout, opts, deps.claude.Audit)
 		},
 	}
 

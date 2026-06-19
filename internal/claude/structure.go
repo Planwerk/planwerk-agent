@@ -11,16 +11,16 @@ import (
 // structureReview calls Claude to convert unstructured review text into JSON.
 // If the first attempt produces invalid JSON, decodeJSONWithRepair retries once
 // with the parse error included so Claude can correct the output.
-func structureReview(rawReview string) (*report.ReviewResult, error) {
-	text, err := runClaude("", buildStructurePrompt(rawReview), "structure")
+func (c *Client) structureReview(rawReview string) (*report.ReviewResult, error) {
+	text, err := c.runClaude("", buildStructurePrompt(rawReview), "structure")
 	if err != nil {
 		return nil, err
 	}
 	var result report.ReviewResult
-	if err := decodeJSONWithRepair(text, "structured review", &result); err != nil {
+	if err := c.decodeJSONWithRepair(text, "structured review", &result); err != nil {
 		return nil, err
 	}
-	if err := repairInvalidReview(&result); err != nil {
+	if err := c.repairInvalidReview(&result); err != nil {
 		return nil, err
 	}
 	return &result, nil
@@ -33,7 +33,7 @@ func structureReview(rawReview string) (*report.ReviewResult, error) {
 // bounded to a single round: if the repair call fails, or the repaired output
 // is unparseable or still invalid, it returns a descriptive error that wraps
 // the validation failure.
-func repairInvalidReview(result *report.ReviewResult) error {
+func (c *Client) repairInvalidReview(result *report.ReviewResult) error {
 	verr := result.Validate()
 	if verr == nil {
 		return nil
@@ -42,7 +42,7 @@ func repairInvalidReview(result *report.ReviewResult) error {
 	if err != nil {
 		return fmt.Errorf("marshaling structured review for schema repair: %w", err)
 	}
-	repaired, err := repairInvalidJSON(string(current), verr, "structured review")
+	repaired, err := repairInvalidJSON(c, string(current), verr, "structured review")
 	if err != nil {
 		return fmt.Errorf("repairing schema-invalid structured review: %w (validation error: %w)", err, verr)
 	}

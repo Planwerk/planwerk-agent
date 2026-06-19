@@ -5,7 +5,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/planwerk/planwerk-review/internal/claude"
 	"github.com/planwerk/planwerk-review/internal/cli"
 	"github.com/planwerk/planwerk-review/internal/meta"
 )
@@ -50,7 +49,7 @@ without filing or linking anything.`,
 
 			metaCfg.IssueRef = args[0]
 			opts := metaCfg.ToMetaOptions(deps.version)
-			return meta.Run(cmd.OutOrStdout(), opts, claude.Meta)
+			return meta.Run(cmd.OutOrStdout(), opts, deps.claude.Meta)
 		},
 	}
 

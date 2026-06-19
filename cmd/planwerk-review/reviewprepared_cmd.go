@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/planwerk/planwerk-review/internal/cache"
-	"github.com/planwerk/planwerk-review/internal/claude"
 	"github.com/planwerk/planwerk-review/internal/cli"
 	"github.com/planwerk/planwerk-review/internal/patterns"
 	"github.com/planwerk/planwerk-review/internal/report"
@@ -78,7 +77,7 @@ or short form (owner/repo).`,
 
 			opts := preparedCfg.ToReviewPreparedOptions(deps.version)
 			opts.Remote = deps.remoteOpts
-			return reviewprepared.Run(os.Stdout, opts, claude.ReviewPrepared)
+			return reviewprepared.Run(os.Stdout, opts, deps.claude.ReviewPrepared)
 		},
 	}
 
