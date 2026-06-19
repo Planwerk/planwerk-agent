@@ -48,28 +48,6 @@ type RemoteOptions struct {
 	Now func() time.Time
 }
 
-// remoteOpts is the package-level RemoteOptions consulted by LoadFiltered
-// when resolving remote pattern sources. The CLI sets this once at startup
-// via SetRemoteOptions; tests reassign it directly.
-var remoteOpts RemoteOptions
-
-// SetRemoteOptions installs opts as the package-level configuration used by
-// LoadFiltered for remote pattern resolution. It returns a function that
-// restores the previous value, intended for use in tests.
-func SetRemoteOptions(opts RemoteOptions) (restore func()) {
-	old := remoteOpts
-	remoteOpts = opts
-	return func() { remoteOpts = old }
-}
-
-// RemoteOpts returns the package-level remote options configured via
-// SetRemoteOptions. Subcommands pass it to LoadFilteredWithOptions so a remote
-// --patterns source still honors the configured --remote-patterns-ttl even
-// though that call form also sets NoEmbedded.
-func RemoteOpts() RemoteOptions {
-	return remoteOpts
-}
-
 // IsRemote reports whether src looks like a remote pattern URI rather than a
 // local directory path. The check is purely syntactic.
 func IsRemote(src string) bool {

@@ -7,6 +7,7 @@ package gapanalysis
 import (
 	"time"
 
+	"github.com/planwerk/planwerk-review/internal/patterns"
 	"github.com/planwerk/planwerk-review/internal/report"
 )
 
@@ -94,6 +95,9 @@ type Options struct {
 	CacheMaxAge   time.Duration
 	Local         bool // operate on the current working directory instead of cloning
 	Force         bool // with Local, skip the dirty-working-tree confirmation prompt
+	// Remote configures how remote pattern URIs (--patterns github:..., git+...)
+	// resolve into local directories; carries the --remote-patterns-ttl value.
+	Remote patterns.RemoteOptions
 }
 
 // AllGaps flattens the per-feature buckets back into a single slice in the

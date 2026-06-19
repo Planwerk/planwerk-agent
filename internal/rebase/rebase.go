@@ -61,6 +61,9 @@ type Options struct {
 	NoRepoPatterns  bool
 	NoLocalPatterns bool
 	MaxPatterns     int
+	// Remote configures how remote pattern URIs (--patterns github:..., git+...)
+	// resolve into local directories; carries the --remote-patterns-ttl value.
+	Remote patterns.RemoteOptions
 }
 
 // Runner glues together the git client, the Claude rebaser, and the analysis
@@ -439,7 +442,7 @@ func loadPatterns(opts Options, repoDir string) []patterns.Pattern {
 	if err != nil {
 		slog.Warn("resolving pattern sources failed; continuing without them", "err", err)
 	}
-	pats, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{Remote: patterns.RemoteOpts(), NoEmbedded: opts.NoLocalPatterns}, tags, dirs...)
+	pats, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{Remote: opts.Remote, NoEmbedded: opts.NoLocalPatterns}, tags, dirs...)
 	if err != nil {
 		slog.Warn("loading review patterns failed; continuing without them", "err", err)
 		return nil

@@ -77,6 +77,7 @@ or short form (owner/repo).`,
 			}
 
 			opts := preparedCfg.ToReviewPreparedOptions(deps.version)
+			opts.Remote = deps.remoteOpts
 			return reviewprepared.Run(os.Stdout, opts, claude.ReviewPrepared)
 		},
 	}

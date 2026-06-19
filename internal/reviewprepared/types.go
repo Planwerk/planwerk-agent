@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/planwerk/planwerk-review/internal/patterns"
 	"github.com/planwerk/planwerk-review/internal/report"
 )
 
@@ -81,7 +82,7 @@ type Finding struct {
 	Severity    report.Severity `json:"severity"`
 	Title       string          `json:"title"`
 	Description string          `json:"description"`
-	Suggestion  string          `json:"suggestion"`  // concrete edit recommended for the JSON file
+	Suggestion  string          `json:"suggestion"`   // concrete edit recommended for the JSON file
 	SpecPointer string          `json:"spec_pointer"` // e.g. "stories[2].criteria[1]" — the JSON-pointer-ish path
 	Confidence  Confidence      `json:"confidence"`
 }
@@ -143,6 +144,9 @@ type Options struct {
 	CacheMaxAge time.Duration
 	Local       bool // operate on the current working directory instead of cloning
 	Force       bool // with Local, skip the dirty-working-tree confirmation prompt
+	// Remote configures how remote pattern URIs (--patterns github:..., git+...)
+	// resolve into local directories; carries the --remote-patterns-ttl value.
+	Remote patterns.RemoteOptions
 }
 
 // AllFindings flattens the per-feature buckets into a single slice in emit

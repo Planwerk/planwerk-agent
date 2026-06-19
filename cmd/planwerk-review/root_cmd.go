@@ -69,7 +69,7 @@ or short form (owner/repo#123).`,
 			if err != nil {
 				return err
 			}
-			patterns.SetRemoteOptions(patterns.RemoteOptions{TTL: ttl})
+			deps.remoteOpts = patterns.RemoteOptions{TTL: ttl}
 
 			timeout, err := resolveClaudeTimeout(claudeTimeout, cmd.Flags().Changed("claude-timeout"))
 			if err != nil {
@@ -159,6 +159,7 @@ or short form (owner/repo#123).`,
 			}
 
 			opts := cfg.ToReviewOptions(deps.version)
+			opts.Remote = deps.remoteOpts
 			return review.Run(os.Stdout, opts)
 		},
 	}
