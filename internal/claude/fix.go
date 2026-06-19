@@ -11,11 +11,13 @@ import (
 // Fix runs a fresh Claude Code session inside the given checkout directory
 // to repair the failing checks described in ctx. The session is responsible
 // for applying minimal-invasive code changes, simplifying and self-reviewing
-// the diff, then publishing it to the PR head branch. In the default
-// (temp-dir) mode it appends a single follow-up commit and pushes; in
-// ctx.Local mode it folds each change into the branch commit it belongs to
-// (git commit --fixup + git rebase --autosquash) and force-pushes with
-// --force-with-lease.
+// the diff, then publishing it to the PR head branch. By default (ctx.Fixup)
+// it folds each change into the branch commit it belongs to (git commit
+// --fixup + git rebase --autosquash) and force-pushes with --force-with-lease;
+// with --no-fixup (ctx.Fixup false) it appends a single on-top follow-up commit
+// and pushes without rewriting history. The choice is independent of ctx.Local,
+// which only controls whether the session runs in the user's own checkout or a
+// throw-away temp-dir clone.
 //
 // runClaudeAuto already creates a fresh `claude -p` invocation per call, so each
 // iteration of the fix loop runs in a brand-new Claude session by construction.
@@ -75,7 +77,7 @@ func BuildFixPrompt(ctx fix.Context) string {
 
 	fmt.Fprintf(&sb, "## Pull Request\n\n- Repository: %s\n- PR #%d: %s\n- Head branch: %s (committed to and pushed by you)\n- Head SHA at start of this iteration: %s\n- Iteration: %d of %d (max)\n",
 		ctx.RepoFullName, ctx.PRNumber, ctx.PRTitle, ctx.HeadBranch, ctx.HeadSHA, ctx.Iteration, ctx.MaxIterations)
-	if ctx.Local && ctx.BaseBranch != "" {
+	if ctx.Fixup && ctx.BaseBranch != "" {
 		fmt.Fprintf(&sb, "- Base branch: %s — fold fixes into this branch's own commits, the range origin/%[1]s..HEAD\n", ctx.BaseBranch)
 	}
 	sb.WriteString("\n")
@@ -89,7 +91,7 @@ func BuildFixPrompt(ctx fix.Context) string {
 	}
 
 	if ctx.Iteration > 1 {
-		if ctx.Local {
+		if ctx.Fixup {
 			fmt.Fprintf(&sb, "NOTE: This is iteration %d. A previous iteration already folded fixes into this branch's commits and force-pushed, but checks are still failing. Before patching again, inspect what changed (e.g. `git log --oneline origin/%s..HEAD`, `git show <sha>`) and the failing logs below: if the SAME check is failing for the SAME reason, your previous approach did not work — change strategy or STOP and report instead of repeating it.\n\n", ctx.Iteration, ctx.BaseBranch)
 		} else {
 			fmt.Fprintf(&sb, "NOTE: This is iteration %d. A previous iteration already attempted a fix and pushed a commit, but checks are still failing. Before patching again, inspect the most recent commit on %s (e.g. `git log -1 -p`) and the failing logs below: if the SAME check is failing for the SAME reason, your previous approach did not work — change strategy or STOP and report instead of repeating it.\n\n", ctx.Iteration, ctx.HeadBranch)
@@ -152,7 +154,7 @@ Run these steps for EACH failing check above before editing any code:
 4. Self-review the diff against the original PR scope. Keep the fix inside it unless reaching outside is the only way to make the failing check pass — and if you must, confine the out-of-scope change to the minimum and call it out in the report.
 `)
 
-	if ctx.Local {
+	if ctx.Fixup {
 		fmt.Fprintf(&sb, "5. Fold each change into the commit it belongs to. This branch may carry more\n"+
 			"   than one commit, and a fix for code that an earlier commit introduced\n"+
 			"   belongs IN that commit — not in a new commit stacked on top.\n\n"+
@@ -204,7 +206,7 @@ Run these steps for EACH failing check above before editing any code:
    - Approx lines added/removed: <+N/-M>
 `, ctx.Iteration)
 
-	if ctx.Local {
+	if ctx.Fixup {
 		sb.WriteString("   - Commit strategy: <per change: \"folded into <sha> <subject>\" via fixup/autosquash, OR \"new commit — <why it belonged to no existing commit>\">\n")
 	}
 
@@ -216,7 +218,7 @@ Run these steps for EACH failing check above before editing any code:
 
 `)
 
-	if ctx.Local {
+	if ctx.Fixup {
 		fmt.Fprintf(&sb, "- Force-push ONLY with --force-with-lease, ONLY to the PR's own head branch (%[1]s), and ONLY to publish the autosquash rebase above. NEVER use plain --force. NEVER rebase, reorder, drop, or rewrite commits that already exist on the base branch (origin/%[2]s) — only this branch's own commits (origin/%[2]s..HEAD) may be folded.\n", ctx.HeadBranch, ctx.BaseBranch)
 	} else {
 		sb.WriteString("- NEVER force-push.\n")
@@ -283,7 +285,7 @@ func BuildBareFixPrompt(ctx fix.BareContext) string {
 			strings.Join(ctx.TechTags, ", "))
 	}
 
-	sb.WriteString("You are already running inside a checkout of this PR's head branch. Do NOT re-checkout, do NOT clone. Operate on the working tree you have. You run as a one-shot session: discover the failing checks yourself, fix them, push a single follow-up commit, and report.\n\n")
+	sb.WriteString("You are already running inside a checkout of this PR's head branch. Do NOT re-checkout, do NOT clone. Operate on the working tree you have. You run as a one-shot session: discover the failing checks yourself, fix them, publish the fix, and report.\n\n")
 
 	sb.WriteString(renderBareCatalog(ctx.PatternCatalog, ctx.HasRepoLocalRefs))
 
@@ -340,16 +342,62 @@ Run these steps for EACH failing check before editing any code:
 3. Apply the minimal change(s).
 4. Verify locally where possible. Re-read your diff. Remove anything not required.
 5. Self-review the diff against the original PR scope. Keep the fix inside it unless reaching outside is the only way to make the failing check pass — and if you must, confine the out-of-scope change to the minimum and call it out in the report.
-6. Stage your changes and create ONE follow-up commit:
+`)
 
-   git add -A
-   git commit -s -m "Fix failing CI checks" -m "Failed checks: <comma-separated names>" -m "Assisted-by: Claude"
+	if ctx.Fixup {
+		fmt.Fprintf(&sb, `6. Determine the PR's base branch so you can bound the fold to this branch's
+   own commits, then fetch it so origin/<base> exists:
 
-7. Push back to the PR's head branch:
+   gh pr view %d --repo %s --json baseRefName -q .baseRefName
+   git fetch origin <base>
 
-   git push origin HEAD
+   Use the printed name wherever <base> appears below.
+7. Fold each change into the commit it belongs to. This branch may carry more
+   than one commit, and a fix for code that an earlier commit introduced
+   belongs IN that commit — not in a new commit stacked on top.
 
-8. After pushing, output a structured fix report in this exact shape:
+   a. List the branch's own commits (oldest first):
+
+      git log --oneline --reverse origin/<base>..HEAD
+
+   b. For each distinct change, find the commit that introduced the code you
+      are fixing (git blame <file>, git log -p -- <file>, or git log -S<symbol>).
+   c. Stage ONLY that change and record it as a fixup of its target commit:
+
+      git add -- <files for this change>
+      git commit --fixup=<target-sha>
+
+      Repeat (c) for every change that maps to a different commit.
+   d. Once every change is recorded as a fixup, fold them in non-interactively
+      (no editor opens), bounded to the merge-base so ONLY this branch's own
+      commits are folded:
+
+      GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash "$(git merge-base origin/<base> HEAD)"
+
+   Create a NEW standalone commit ONLY when a change genuinely belongs to no
+   existing commit on this branch (e.g. an entirely new file unrelated to any
+   of them). That is the rare exception, not the default — and only then:
+
+      git commit -s -m "<concise summary>" -m "Failed checks: <comma-separated names>" -m "Assisted-by: Claude"
+
+8. Publish the rewritten branch:
+
+      git push --force-with-lease origin HEAD
+
+   The autosquash rebase rewrote the branch's commit SHAs, so a plain push is
+   rejected. Use --force-with-lease (never plain --force): it publishes the fold
+   while refusing to clobber commits you have not seen.
+
+`, ctx.PRNumber, ctx.RepoFullName)
+	} else {
+		sb.WriteString("6. Stage your changes and create ONE follow-up commit:\n\n" +
+			"   git add -A\n" +
+			"   git commit -s -m \"Fix failing CI checks\" -m \"Failed checks: <comma-separated names>\" -m \"Assisted-by: Claude\"\n\n" +
+			"7. Push back to the PR's head branch:\n\n" +
+			"   git push origin HEAD\n\n")
+	}
+
+	sb.WriteString(`After pushing, output a structured fix report in this exact shape:
 
    ## Fix Report
 
@@ -363,14 +411,27 @@ Run these steps for EACH failing check before editing any code:
    ### Diff summary
    - Files: <comma-separated list>
    - Approx lines added/removed: <+N/-M>
-   ### Status
+`)
+
+	if ctx.Fixup {
+		sb.WriteString("   - Commit strategy: <per change: \"folded into <sha> <subject>\" via fixup/autosquash, OR \"new commit — <why it belonged to no existing commit>\">\n")
+	}
+
+	sb.WriteString(`   ### Status
    STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT>
    (DONE = all checks fixed and verified; DONE_WITH_CONCERNS = pushed but with reservations a human should see; BLOCKED = could not make progress; NEEDS_CONTEXT = missing information only a human can supply. The orchestrator reads this line and stops the loop on BLOCKED or NEEDS_CONTEXT.)
 
 ` + commitTrailerBlock() + `## Hard rules
 
-- NEVER force-push.
-- PREFER to change only files on the failure surface. Reaching outside it is a last resort, reserved for the worst case where the failing check genuinely cannot be fixed any other way — then make the smallest out-of-scope change that works and call it out explicitly in the report. NEVER reach outside for convenience, drive-by cleanups, or unrelated improvements.
+`)
+
+	if ctx.Fixup {
+		sb.WriteString("- Force-push ONLY with --force-with-lease, ONLY to the PR's own head branch, and ONLY to publish the autosquash rebase above. NEVER use plain --force. NEVER rebase, reorder, drop, or rewrite commits that already exist on the base branch — only this branch's own commits (origin/<base>..HEAD) may be folded.\n")
+	} else {
+		sb.WriteString("- NEVER force-push.\n")
+	}
+
+	sb.WriteString(`- PREFER to change only files on the failure surface. Reaching outside it is a last resort, reserved for the worst case where the failing check genuinely cannot be fixed any other way — then make the smallest out-of-scope change that works and call it out explicitly in the report. NEVER reach outside for convenience, drive-by cleanups, or unrelated improvements.
 - NEVER skip, weaken, or suppress the failing check (see the "Do not cheat the check." pattern above for the explicit forbidden list).
 - NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).
 - NEVER bump dependencies that the failure log does not directly implicate.

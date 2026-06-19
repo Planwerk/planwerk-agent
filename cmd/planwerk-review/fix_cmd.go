@@ -22,17 +22,23 @@ func newFixCmd(deps *runtimeDeps) *cobra.Command {
 		Use:   "fix <pr-ref>",
 		Short: "Loop on a PR's failing CI checks until they all pass",
 		Long: `Watch a GitHub pull request's CI checks and, when one fails, dispatch a
-fresh Claude Code session to apply a minimal-invasive fix and push it as a
-follow-up commit. After each push the loop waits for the new commit's checks
-to complete; if any still fail the loop starts over. Continues until every
-check is green or --max-iterations is hit.
+fresh Claude Code session to apply a minimal-invasive fix and publish it. After
+each push the loop waits for the new commit's checks to complete; if any still
+fail the loop starts over. Continues until every check is green or
+--max-iterations is hit.
+
+By default each fix is folded into the branch commit it belongs to
+(git commit --fixup + git rebase --autosquash) and published with
+git push --force-with-lease, so the branch history stays clean instead of
+accumulating "Fix failing CI checks" commits. Pass --no-fixup to append the fix
+as a fresh on-top follow-up commit and push without rewriting history.
 
 Status checks are queried directly via the GitHub API (gh CLI) — Claude is
 only invoked when an actual fix is needed.
 
 After each iteration the report of what was fixed is also posted back onto the
 pull request as a comment (use --no-fix-comment to skip that), so the record of
-what each follow-up commit changed lives on the PR itself.
+what each iteration changed lives on the PR itself.
 
 PR reference can be a URL (https://github.com/owner/repo/pull/123)
 or short form (owner/repo#123).`,
@@ -89,6 +95,7 @@ or short form (owner/repo#123).`,
 	fixFlags.IntVar(&fixCfg.MaxPatterns, "max-patterns", patterns.DefaultMaxPatternsInPrompt, "Max review patterns injected into the prompt (<=0 disables truncation, env: "+envMaxPatterns+")")
 	fixFlags.BoolVar(&fixCfg.Local, "local", false, "Operate on the current working directory instead of cloning into a temp dir")
 	fixFlags.BoolVar(&fixCfg.Force, "force", false, "With --local, skip the confirmation prompt when the working tree is dirty")
+	fixFlags.BoolVar(&fixCfg.NoFixup, "no-fixup", false, "Append the fix as a fresh on-top follow-up commit instead of folding it into the commits it belongs to (git commit --fixup + git rebase --autosquash, then push --force-with-lease)")
 
 	return fixCmd
 }

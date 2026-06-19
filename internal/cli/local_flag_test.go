@@ -66,3 +66,17 @@ func TestLocalForcePropagation(t *testing.T) {
 		}
 	})
 }
+
+// TestFixNoFixupPropagation asserts that --no-fixup copies through FixConfig's
+// ToFixOptions mapping, and that the zero value leaves fixup as the default
+// (NoFixup=false → fix.Run sets Context.Fixup=true).
+func TestFixNoFixupPropagation(t *testing.T) {
+	const version = "test"
+
+	if opts := (FixConfig{NoFixup: true}).ToFixOptions(version); !opts.NoFixup {
+		t.Errorf("fix: NoFixup=%v, want true", opts.NoFixup)
+	}
+	if opts := (FixConfig{}).ToFixOptions(version); opts.NoFixup {
+		t.Errorf("fix default: NoFixup=%v, want false (fixup stays the default)", opts.NoFixup)
+	}
+}

@@ -54,66 +54,48 @@ Apply these task-specific thinking patterns on top of the baseline above:
 ## Pull Request
 
 - Repository: planwerk/planwerk-review
-- PR #42: Add the snapshot tests
-- Head branch: feat/snapshot-tests (committed to and pushed by you)
-- Head SHA at start of this iteration: abc1234def5678
-- Iteration: 2 of 5 (max)
-- Base branch: main — fold fixes into this branch's own commits, the range origin/main..HEAD
+- PR #42
+
+Detected technologies in the target repo (used to filter the pattern catalog below): go
+
+You are already running inside a checkout of this PR's head branch. Do NOT re-checkout, do NOT clone. Operate on the working tree you have. You run as a one-shot session: discover the failing checks yourself, fix them, publish the fix, and report.
 
 ## Project Review Patterns to Honor
 
-These patterns are the catalog the project's review/audit/elaborate tools share — including any project-specific patterns shipped under `.planwerk/review_patterns/` in this repository. The fix you push MUST stay consistent with them: do not introduce code or test changes that would itself be flagged by a pattern below. When the fix touches an area covered by a pattern, prefer the resolution the pattern endorses.
+planwerk-review identified the patterns below as relevant to the technologies in the target repo (the catalog has already been filtered by the detected technology tags above). Treat them as binding context: your work MUST stay consistent with them, and when the change touches an area covered by a pattern, prefer the resolution the pattern endorses.
 
-<review-patterns>
-<technology-patterns>
-### Pattern: Missing context.Context parameter
-- Category: technology
-- Area: reliability
-- Detection: long-running Go functions without ctx
-- Severity: WARNING
-## Rule
-Long-running functions MUST accept a context.Context.
+To load each pattern, fetch its URL — use the WebFetch tool when available, or `curl -fsSL <URL>` otherwise. Read the markdown body in full; each file follows the planwerk-review pattern schema (`# Review Pattern: …` header, `**Review-Area**`, `**Detection-Hint**`, `**Severity**`, `**Category**`, `**Applies-When**`, optional `**Sources**`, then the rule body). Patterns marked with a checkout path live inside the working tree you are already in and need no fetch — open them directly.
 
-</technology-patterns>
+<review-pattern-catalog>
+- **Hardcoded secrets** (CRITICAL) — fetch https://raw.githubusercontent.com/planwerk/planwerk-review/main/internal/patterns/patterns/hardcoded-secrets.md  
+  category=design-principle; area=security
+</review-pattern-catalog>
 
-<design-patterns>
-### Pattern: Hardcoded secrets
-- Category: design-principle
-- Area: security
-- Detection: literal API keys or passwords in source
-- Severity: CRITICAL
-- Sources: OWASP ASVS
-## Rule
-Secrets MUST be loaded from environment variables or a secret manager.
+## Discover failing checks
 
-</design-patterns>
+Do NOT guess what is failing. Use the GitHub CLI to enumerate the PR's check runs and pull the failed-step logs.
 
-</review-patterns>
-
-NOTE: This is iteration 2. A previous iteration already folded fixes into this branch's commits and force-pushed, but checks are still failing. Before patching again, inspect what changed (e.g. `git log --oneline origin/main..HEAD`, `git show <sha>`) and the failing logs below: if the SAME check is failing for the SAME reason, your previous approach did not work — change strategy or STOP and report instead of repeating it.
-
-## Failing Checks
-
-### test — failure
-
-- URL: https://github.com/planwerk/planwerk-review/actions/runs/99
-- Title: 1 failing test
-- Summary:
+1. List the checks for the PR:
 
 ```
---- FAIL: TestParse
+gh pr checks 42 --repo planwerk/planwerk-review
 ```
-- Failed-step logs (truncated to the last lines):
+
+2. For each check reported as "fail" / "failure", record its name, conclusion, and the link to the run / job.
+
+3. For each Actions-backed failing check, fetch the failed-step logs:
 
 ```
---- FAIL: TestParse (0.00s)
-    parse_test.go:12: got 1, want 2
-FAIL
+gh run view <run-id> --repo planwerk/planwerk-review --log-failed
 ```
+
+   The failure tail is what matters — CI logs cluster errors at the end. Read to the bottom of each log.
+
+4. For third-party checks (no Actions run id), you cannot pull logs from the CLI. Open the check URL to investigate. If the cause cannot be diagnosed from the visible signal, STOP and report — do not invent a fix.
 
 ## Diagnosis Workflow
 
-Run these steps for EACH failing check above before editing any code:
+Run these steps for EACH failing check before editing any code:
 
 1. CATEGORIZE the failure from the logs:
    - build/compile error (syntax, missing symbol, broken import)
@@ -135,20 +117,28 @@ Run these steps for EACH failing check above before editing any code:
 
 ## What to do
 
-1. Run the diagnosis workflow for every failing check.
-2. Apply the minimal change(s).
-3. Verify locally where possible. Re-read your diff. Remove anything not required.
-4. Self-review the diff against the original PR scope. Keep the fix inside it unless reaching outside is the only way to make the failing check pass — and if you must, confine the out-of-scope change to the minimum and call it out in the report.
-5. Fold each change into the commit it belongs to. This branch may carry more
+1. Run the discovery steps above to enumerate failing checks and pull their logs.
+2. Run the diagnosis workflow for every failing check.
+3. Apply the minimal change(s).
+4. Verify locally where possible. Re-read your diff. Remove anything not required.
+5. Self-review the diff against the original PR scope. Keep the fix inside it unless reaching outside is the only way to make the failing check pass — and if you must, confine the out-of-scope change to the minimum and call it out in the report.
+6. Determine the PR's base branch so you can bound the fold to this branch's
+   own commits, then fetch it so origin/<base> exists:
+
+   gh pr view 42 --repo planwerk/planwerk-review --json baseRefName -q .baseRefName
+   git fetch origin <base>
+
+   Use the printed name wherever <base> appears below.
+7. Fold each change into the commit it belongs to. This branch may carry more
    than one commit, and a fix for code that an earlier commit introduced
    belongs IN that commit — not in a new commit stacked on top.
 
    a. List the branch's own commits (oldest first):
 
-      git log --oneline --reverse origin/main..HEAD
+      git log --oneline --reverse origin/<base>..HEAD
 
    b. For each distinct change, find the commit that introduced the code you
-      are fixing — use `git blame <file>`, `git log -p -- <file>`, or `git log -S<symbol>`.
+      are fixing (git blame <file>, git log -p -- <file>, or git log -S<symbol>).
    c. Stage ONLY that change and record it as a fixup of its target commit:
 
       git add -- <files for this change>
@@ -156,11 +146,10 @@ Run these steps for EACH failing check above before editing any code:
 
       Repeat (c) for every change that maps to a different commit.
    d. Once every change is recorded as a fixup, fold them in non-interactively
-      (no editor opens). Rebase against the merge-base so ONLY this branch's
-      own commits are folded and the branch is never silently advanced onto a
-      moved base:
+      (no editor opens), bounded to the merge-base so ONLY this branch's own
+      commits are folded:
 
-      GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash "$(git merge-base origin/main HEAD)"
+      GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash "$(git merge-base origin/<base> HEAD)"
 
    Create a NEW standalone commit ONLY when a change genuinely belongs to no
    existing commit on this branch (e.g. an entirely new file unrelated to any
@@ -168,17 +157,17 @@ Run these steps for EACH failing check above before editing any code:
 
       git commit -s -m "<concise summary>" -m "Failed checks: <comma-separated names>" -m "Assisted-by: Claude"
 
-6. Publish the rewritten branch:
+8. Publish the rewritten branch:
 
-      git push --force-with-lease origin HEAD:feat/snapshot-tests
+      git push --force-with-lease origin HEAD
 
    The autosquash rebase rewrote the branch's commit SHAs, so a plain push is
-   rejected. Use --force-with-lease (never plain --force): it publishes the
-   fold while refusing to clobber commits you have not seen.
+   rejected. Use --force-with-lease (never plain --force): it publishes the fold
+   while refusing to clobber commits you have not seen.
 
-7. After pushing, output a structured fix report in this exact shape:
+After pushing, output a structured fix report in this exact shape:
 
-   ## Fix Report (iteration 2)
+   ## Fix Report
 
    ### Per check
    - <check name>
@@ -186,7 +175,7 @@ Run these steps for EACH failing check above before editing any code:
      - Root cause: <one sentence>
      - Fix: <files touched + one-sentence description of the change>
      - Local verification: <exact command run + pass/fail, OR "not reproducible in this environment — relying on CI">
-     - Regression test: <added/extended test name, OR "n/a — <reason from the diagnosis workflow above>">
+     - Regression test: <added/extended test name, OR "n/a — <reason from step 7 above>">
    ### Diff summary
    - Files: <comma-separated list>
    - Approx lines added/removed: <+N/-M>
@@ -208,7 +197,7 @@ EVERY commit you create MUST end with exactly these two trailers, in this order:
 
 ## Hard rules
 
-- Force-push ONLY with --force-with-lease, ONLY to the PR's own head branch (feat/snapshot-tests), and ONLY to publish the autosquash rebase above. NEVER use plain --force. NEVER rebase, reorder, drop, or rewrite commits that already exist on the base branch (origin/main) — only this branch's own commits (origin/main..HEAD) may be folded.
+- Force-push ONLY with --force-with-lease, ONLY to the PR's own head branch, and ONLY to publish the autosquash rebase above. NEVER use plain --force. NEVER rebase, reorder, drop, or rewrite commits that already exist on the base branch — only this branch's own commits (origin/<base>..HEAD) may be folded.
 - PREFER to change only files on the failure surface. Reaching outside it is a last resort, reserved for the worst case where the failing check genuinely cannot be fixed any other way — then make the smallest out-of-scope change that works and call it out explicitly in the report. NEVER reach outside for convenience, drive-by cleanups, or unrelated improvements.
 - NEVER skip, weaken, or suppress the failing check (see the "Do not cheat the check." pattern above for the explicit forbidden list).
 - NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).
@@ -218,4 +207,3 @@ EVERY commit you create MUST end with exactly these two trailers, in this order:
 - If you cannot diagnose a failure from the logs (truncation, infra flake, expired secret, third-party check without logs), STOP and explain — do not invent a fix.
 - If there is nothing to commit after the fix attempt, do NOT create an empty commit; output the report and stop.
 - It is OK to stop and report BLOCKED or NEEDS_CONTEXT. Bad work is worse than no work; escalating is not penalized. Emit the matching STATUS and do not push a placebo fix.
-- If the same check is failing for the same root cause as the previous iteration, STOP and report — repeating the failed approach will not help.

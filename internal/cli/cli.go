@@ -236,6 +236,7 @@ type FixConfig struct {
 	MaxPatterns     int
 	Local           bool
 	Force           bool
+	NoFixup         bool
 }
 
 func (c FixConfig) ToFixOptions(version string) fix.Options {
@@ -254,6 +255,7 @@ func (c FixConfig) ToFixOptions(version string) fix.Options {
 		MaxPatterns:     c.MaxPatterns,
 		Local:           c.Local,
 		Force:           c.Force,
+		NoFixup:         c.NoFixup,
 	}
 }
 

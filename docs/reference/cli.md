@@ -326,12 +326,20 @@ planwerk-review prompt --mode implement owner/repo#42
 ## `fix`
 
 Watch a pull request's CI checks and, when one fails, dispatch a fresh Claude
-Code session to apply a minimal fix and push it as a follow-up commit. The loop
-continues until every check is green or `--max-iterations` is exhausted.
+Code session to apply a minimal fix and publish it. The loop continues until
+every check is green or `--max-iterations` is exhausted.
+
+By default each fix is folded into the branch commit it belongs to
+(`git commit --fixup` + `git rebase --autosquash`) and published with
+`git push --force-with-lease`, so the branch history stays clean instead of
+accumulating "Fix failing CI checks" commits. This is the default in both
+temp-dir and `--local` runs. Pass `--no-fixup` to append the fix as a fresh
+on-top follow-up commit and push without rewriting history.
 
 ```bash
 planwerk-review fix owner/repo#123
 planwerk-review fix --dry-run owner/repo#123
+planwerk-review fix --no-fixup owner/repo#123
 planwerk-review fix --local --force
 ```
 
@@ -350,6 +358,7 @@ planwerk-review fix --local --force
 | `--max-patterns` | Max review patterns injected into the prompt (`<=0` disables truncation; env: `PLANWERK_MAX_PATTERNS`) | `0` (unlimited) |
 | `--local` | Operate on the current working directory instead of cloning into a temp dir | `false` |
 | `--force` | With `--local`, skip the confirmation prompt when the working tree is dirty | `false` |
+| `--no-fixup` | Append the fix as a fresh on-top follow-up commit instead of folding it into the commits it belongs to (`git commit --fixup` + `git rebase --autosquash`, then `push --force-with-lease`) | `false` |
 
 `--dry-run`, `--print-prompt`, and `--print-bare-prompt` are mutually exclusive.
 

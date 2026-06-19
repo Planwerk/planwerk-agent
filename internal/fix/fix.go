@@ -46,6 +46,7 @@ type Options struct {
 	NoFixComment  bool          // do not post each iteration's fix report as a PR comment
 	Local         bool          // operate on the current working directory instead of cloning
 	Force         bool          // with Local, skip the dirty-working-tree confirmation prompt
+	NoFixup       bool          // append an on-top follow-up commit instead of folding via fixup/autosquash
 	Version       string
 
 	// Pattern loading mirrors review/audit/elaborate so the fix is grounded
@@ -195,6 +196,7 @@ func (r *Runner) PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuil
 		PatternCatalog:   catalog,
 		BundledURLBase:   BundledPatternsURLBase,
 		HasRepoLocalRefs: hasRepoLocal,
+		Fixup:            !opts.NoFixup,
 	})
 	if _, err := io.WriteString(w, prompt); err != nil {
 		return fmt.Errorf("writing prompt: %w", err)
@@ -220,7 +222,8 @@ var ErrUserStopped = errors.New("stopped by user")
 //  3. If all green, exit success.
 //  4. Otherwise fetch failed-step logs, optionally confirm with user, then
 //     run a fresh Claude session inside a fresh checkout to apply a fix and
-//     push it as a follow-up commit.
+//     publish it — folded into the commits it belongs to (fixup/autosquash,
+//     the default) or as an on-top follow-up commit (--no-fixup).
 //  5. Wait for the new commit's checks to start, then loop back to step 2.
 func (r *Runner) Run(w io.Writer, opts Options) error {
 	r.applyDefaults(&opts)
@@ -318,6 +321,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 				FailedChecks:  failed,
 				MaxPatterns:   opts.MaxPatterns,
 				Local:         opts.Local,
+				Fixup:         !opts.NoFixup,
 				BaseBranch:    pr.BaseBranch,
 			})
 			if _, err := io.WriteString(w, prompt); err != nil {
@@ -363,6 +367,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 			Patterns:      pats,
 			MaxPatterns:   opts.MaxPatterns,
 			Local:         opts.Local,
+			Fixup:         !opts.NoFixup,
 			BaseBranch:    pr.BaseBranch,
 		})
 		fresh.Cleanup()

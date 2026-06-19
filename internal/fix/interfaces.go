@@ -37,11 +37,17 @@ type Context struct {
 	MaxPatterns   int
 
 	// Local marks a --local run: the fix operates on the user's own checkout
-	// and folds each change into the branch commit it belongs to (git commit
-	// --fixup + git rebase --autosquash), then force-pushes with
-	// --force-with-lease — rather than appending a fresh follow-up commit.
+	// (PullOnBranch each iteration) instead of a throw-away temp-dir clone. It
+	// controls only WHERE the fix happens, not HOW it is committed — the commit
+	// strategy is selected by Fixup.
 	Local bool
-	// BaseBranch is the PR's base (e.g. "main"). In Local mode it bounds the
+	// Fixup selects the commit strategy. When true (the default) each change is
+	// folded into the branch commit it belongs to (git commit --fixup + git
+	// rebase --autosquash) and the rewritten branch is published with
+	// git push --force-with-lease. When false (--no-fixup) the fix is appended
+	// as a single on-top follow-up commit and pushed without rewriting history.
+	Fixup bool
+	// BaseBranch is the PR's base (e.g. "main"). In Fixup mode it bounds the
 	// autosquash rebase to the branch's own commits (origin/<base>..HEAD) so
 	// the fold never rewrites history that already exists on the base branch.
 	BaseBranch string
@@ -77,6 +83,12 @@ type BareContext struct {
 	PatternCatalog   []patterns.CatalogReference
 	BundledURLBase   string // for the prompt to mention canonical source
 	HasRepoLocalRefs bool   // signals that LocalPath entries exist
+	// Fixup mirrors Context.Fixup for the self-contained bare prompt: when true
+	// (the default) the manual session is told to discover the PR's base branch
+	// itself, fold each change via git commit --fixup + git rebase --autosquash,
+	// and publish with git push --force-with-lease; when false (--no-fixup) it
+	// appends a single on-top follow-up commit and pushes plainly.
+	Fixup bool
 }
 
 // BarePromptBuildFn renders a self-contained fix prompt — no failing-check

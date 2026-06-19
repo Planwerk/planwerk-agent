@@ -48,17 +48,19 @@ This unlocks three workflows the temp-dir clone blocks:
 - **`fix` loop.** Each fix iteration fast-forwards the existing checkout with
   `git pull --ff-only` instead of re-cloning, which is materially cheaper and
   produces the same state for the next Claude session.
-- **`fix` commit strategy.** In `--local` mode the fix is folded into the
-  branch's existing commits instead of being appended as a fresh "Fix failing
-  CI checks" commit: each change is staged against the commit that introduced
-  the code it repairs (`git commit --fixup=<sha>`), all fixups are squashed in
-  with `git rebase --autosquash origin/<base>`, and the rewritten branch is
-  published with `git push --force-with-lease`. A new standalone commit is
-  created **only** when a change belongs to no existing commit on the branch.
-  The default temp-dir mode is unchanged — it appends a single follow-up commit
-  and never force-pushes. Force-pushing is therefore scoped to `--local`, only
-  ever uses `--force-with-lease`, and never touches commits that already exist
-  on the base branch.
+- **`fix` commit strategy.** The fix is folded into the branch's existing
+  commits by default — in **both** temp-dir and `--local` runs — instead of
+  being appended as a fresh "Fix failing CI checks" commit: each change is
+  staged against the commit that introduced the code it repairs
+  (`git commit --fixup=<sha>`), all fixups are squashed in with
+  `git rebase --autosquash` bounded to `origin/<base>..HEAD`, and the rewritten
+  branch is published with `git push --force-with-lease`. A new standalone
+  commit is created **only** when a change belongs to no existing commit on the
+  branch. `--local` therefore changes only **where** the fix runs (your
+  checkout vs. a temp-dir clone), not **how** it is committed. Pass `--no-fixup`
+  to opt out: the fix is then appended as a single on-top follow-up commit and
+  pushed without force. Force-pushing only ever uses `--force-with-lease` and
+  never touches commits that already exist on the base branch.
 
 ```bash
 # Review the PR for the current branch, using this checkout

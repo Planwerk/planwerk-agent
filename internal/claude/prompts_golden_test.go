@@ -372,22 +372,58 @@ func goldenFixContext() fix.Context {
 		},
 		Patterns:    goldenPatterns(),
 		MaxPatterns: 0,
+		Fixup:       true,
 	}
 }
 
-// TestBuildFixPrompt_Golden locks the default (temp-dir) fix prompt: a single
-// follow-up commit, a normal push, and the "NEVER force-push" hard rule.
+// TestBuildFixPrompt_Golden locks the default fix prompt: each change is folded
+// into the commit it belongs to (git commit --fixup + git rebase --autosquash)
+// and published with git push --force-with-lease. This is independent of
+// --local — the same fixup strategy is the default in temp-dir and local runs.
 func TestBuildFixPrompt_Golden(t *testing.T) {
 	assertGoldenPrompt(t, "fix", BuildFixPrompt(goldenFixContext()))
 }
 
-// TestBuildFixPrompt_Local_Golden locks the --local fix prompt: each change is
-// folded into the commit it belongs to (git commit --fixup + git rebase
-// --autosquash) and published with git push --force-with-lease.
-func TestBuildFixPrompt_Local_Golden(t *testing.T) {
+// TestBuildFixPrompt_NoFixup_Golden locks the --no-fixup fix prompt: a single
+// on-top follow-up commit, a normal push, and the "NEVER force-push" hard rule.
+func TestBuildFixPrompt_NoFixup_Golden(t *testing.T) {
 	ctx := goldenFixContext()
-	ctx.Local = true
-	assertGoldenPrompt(t, "fix_local", BuildFixPrompt(ctx))
+	ctx.Fixup = false
+	assertGoldenPrompt(t, "fix_no_fixup", BuildFixPrompt(ctx))
+}
+
+func goldenBareFixContext() fix.BareContext {
+	return fix.BareContext{
+		RepoFullName: "planwerk/planwerk-review",
+		PRNumber:     42,
+		TechTags:     []string{"go"},
+		PatternCatalog: []patterns.CatalogReference{
+			{
+				Name:       "Hardcoded secrets",
+				Severity:   "CRITICAL",
+				Category:   "design-principle",
+				ReviewArea: "security",
+				URL:        "https://raw.githubusercontent.com/planwerk/planwerk-review/main/internal/patterns/patterns/hardcoded-secrets.md",
+			},
+		},
+		BundledURLBase: "https://raw.githubusercontent.com/planwerk/planwerk-review/main/internal/patterns/patterns",
+		Fixup:          true,
+	}
+}
+
+// TestBuildBareFixPrompt_Golden locks the portable self-contained fix prompt for
+// the default fixup strategy: discover the base branch, fold via
+// fixup/autosquash, and publish with git push --force-with-lease.
+func TestBuildBareFixPrompt_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "fix_bare", BuildBareFixPrompt(goldenBareFixContext()))
+}
+
+// TestBuildBareFixPrompt_NoFixup_Golden locks the --no-fixup bare prompt: a
+// single on-top follow-up commit and a normal push.
+func TestBuildBareFixPrompt_NoFixup_Golden(t *testing.T) {
+	ctx := goldenBareFixContext()
+	ctx.Fixup = false
+	assertGoldenPrompt(t, "fix_bare_no_fixup", BuildBareFixPrompt(ctx))
 }
 
 func goldenAddressContext() address.Context {
