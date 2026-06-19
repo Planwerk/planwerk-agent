@@ -39,6 +39,63 @@ type PR struct {
 	Local bool
 }
 
+// PRRef identifies the open pull request associated with a checkout's current
+// branch: its number plus the base and head branch names. It is the minimal
+// slice of PR metadata the implement command's simplify pass needs to fold its
+// findings into the PR the implement session just opened and force-push to the
+// PR head.
+type PRRef struct {
+	Number     int
+	BaseBranch string
+	HeadBranch string
+}
+
+// CurrentPR resolves the open pull request associated with the branch currently
+// checked out in dir — the one the implement session opened. It runs
+// `gh pr view` with no number so gh resolves the PR from the current branch, and
+// returns (nil, nil) when no pull request is associated with the branch so
+// callers can cleanly skip rather than treat the absence as an error.
+func CurrentPR(dir string) (*PRRef, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "gh", "pr", "view",
+		"--json", "number,baseRefName,headRefName")
+	cmd.Dir = dir
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		if noPRForBranch(stderr.String()) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("gh pr view: %w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+	return parsePRRef(out)
+}
+
+// noPRForBranch reports whether gh's stderr indicates the current branch simply
+// has no associated pull request (versus a genuine failure such as an auth error
+// or an unreachable remote). gh prints "no pull requests found for branch ..."
+// in that case; matching it lets CurrentPR return (nil, nil) instead of an error.
+func noPRForBranch(stderr string) bool {
+	return strings.Contains(strings.ToLower(stderr), "no pull requests found")
+}
+
+// parsePRRef decodes the `gh pr view --json number,baseRefName,headRefName`
+// payload into a PRRef. Split out from CurrentPR so the JSON shape can be unit
+// tested without invoking the gh subprocess.
+func parsePRRef(data []byte) (*PRRef, error) {
+	var raw struct {
+		Number      int    `json:"number"`
+		BaseRefName string `json:"baseRefName"`
+		HeadRefName string `json:"headRefName"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, fmt.Errorf("parsing gh pr view output: %w", err)
+	}
+	return &PRRef{Number: raw.Number, BaseBranch: raw.BaseRefName, HeadBranch: raw.HeadRefName}, nil
+}
+
 // FetchAndCheckout retrieves PR metadata and checks out the PR locally into a temp directory.
 func FetchAndCheckout(ref string) (*PR, error) {
 	owner, repo, number, err := ParseRef(ref)

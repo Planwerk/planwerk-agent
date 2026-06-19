@@ -240,6 +240,54 @@ func TestDiffNames(t *testing.T) {
 	})
 }
 
+func TestParsePRRef(t *testing.T) {
+	t.Run("valid payload", func(t *testing.T) {
+		ref, err := parsePRRef([]byte(`{"number":42,"baseRefName":"main","headRefName":"feat/x"}`))
+		if err != nil {
+			t.Fatalf("parsePRRef returned error: %v", err)
+		}
+		if ref.Number != 42 || ref.BaseBranch != "main" || ref.HeadBranch != "feat/x" {
+			t.Errorf("parsePRRef = %+v, want {42 main feat/x}", ref)
+		}
+	})
+
+	t.Run("garbage is an error", func(t *testing.T) {
+		ref, err := parsePRRef([]byte("not json"))
+		if err == nil {
+			t.Fatalf("parsePRRef(garbage) = %+v, want error", ref)
+		}
+		if ref != nil {
+			t.Errorf("parsePRRef returned %+v on error, want nil", ref)
+		}
+	})
+
+	t.Run("empty input is an error", func(t *testing.T) {
+		if _, err := parsePRRef(nil); err == nil {
+			t.Error("parsePRRef(nil) = nil error, want error")
+		}
+	})
+}
+
+func TestNoPRForBranch(t *testing.T) {
+	cases := []struct {
+		name   string
+		stderr string
+		want   bool
+	}{
+		{"gh no-pr message", `no pull requests found for branch "feat/x"`, true},
+		{"mixed case", "No Pull Requests Found for branch", true},
+		{"auth failure is not a missing PR", "error: gh auth login required", false},
+		{"empty stderr", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := noPRForBranch(tc.stderr); got != tc.want {
+				t.Errorf("noPRForBranch(%q) = %v, want %v", tc.stderr, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestPRCleanupNoOpWhenLocal(t *testing.T) {
 	dir := t.TempDir()
 	pr := &PR{Dir: dir, Local: true}
