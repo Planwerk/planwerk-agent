@@ -420,6 +420,7 @@ planwerk-review implement --verify owner/repo#123
 planwerk-review implement --verify-adversarial owner/repo#123
 planwerk-review implement --verify --verify-adversarial owner/repo#123
 planwerk-review implement --no-simplify owner/repo#123
+planwerk-review implement --no-review owner/repo#123
 ```
 
 | Flag | Description | Default |
@@ -437,6 +438,7 @@ planwerk-review implement --no-simplify owner/repo#123
 | `--verify` | After implementing, run an independent pass that checks the actual diff against the issue's Acceptance Criteria without trusting the implementer's report | `false` |
 | `--verify-adversarial` | After implementing, red-team the produced diff for the bugs it introduces using the adversarial-review pass (independent of `--verify`) | `false` |
 | `--no-simplify` | Skip the automatic simplify pass that folds over-engineering removals into the PR before the review phase | `false` |
+| `--no-review` | Skip the automatic review-and-fix pass that folds review findings into the PR after the simplify pass | `false` |
 | `--patterns` | Additional pattern source: local directory, `github:owner/repo[/sub][@ref]`, or `git+https://…[#ref[:sub]]` | - |
 | `--no-repo-patterns` | Ignore repo-specific patterns under `.planwerk/review_patterns/` in the target repo | `false` |
 | `--no-local-patterns` | Ignore local patterns from the tool | `false` |
@@ -457,16 +459,33 @@ Enable either, both, or neither. Both are non-fatal — a finding is reported, i
 does not fail the run.
 
 The simplify pass runs by default once the draft PR is open, before the
-verification passes, so they assess the leaner diff. A read-only ponytail-style
-finder reviews the diff through a YAGNI decision ladder for over-engineering;
-when it finds something, a fresh session folds each removal into the commit it
-belongs to (`git commit --fixup` + `git rebase --autosquash`) and force-pushes
-the leaner branch to the PR head with `git push --force-with-lease` — only
-`--force-with-lease`, only to the PR's own head, never the base branch. It never
-removes validation, error handling, security, or accessibility code and never
-deletes or weakens tests or assertions; its report is posted as a PR comment.
-Nothing to simplify is a clean no-op (no commit, no force-push, no comment), and
-the pass is non-fatal. Disable it with `--no-simplify`.
+review-and-fix and verification passes, so they assess the leaner diff. A
+read-only ponytail-style finder reviews the diff through a YAGNI decision ladder
+for over-engineering; when it finds something, a fresh session folds each removal
+into the commit it belongs to (`git commit --fixup` + `git rebase --autosquash`)
+and force-pushes the leaner branch to the PR head with `git push
+--force-with-lease` — only `--force-with-lease`, only to the PR's own head, never
+the base branch. It never removes validation, error handling, security, or
+accessibility code and never deletes or weakens tests or assertions; its report
+is posted as a PR comment. Nothing to simplify is a clean no-op (no commit, no
+force-push, no comment), and the pass is non-fatal. Disable it with
+`--no-simplify`.
+
+The review-and-fix pass runs by default after the simplify pass — a full run is
+**implement → simplify → review**. The same adversarial-review machinery that
+`--verify-adversarial` uses runs read-only over the produced diff; when it finds
+something, a fresh session resolves each finding and folds the fix into the
+commit it belongs to (`git commit --fixup` + `git rebase --autosquash`), then
+force-pushes the fixed branch to the PR head with `git push --force-with-lease` —
+only `--force-with-lease`, only to the PR's own head, never the base branch.
+Unlike the simplify pass, it is allowed to add regression tests. Its report is
+posted as a PR comment (best-effort), and a `STATUS: BLOCKED` / `NEEDS_CONTEXT`
+report stops the pass without retrying. Nothing to fix is a clean no-op (no
+commit, no force-push, no comment beyond a short stdout note). The pass is
+non-fatal — a failed or escalated review never changes the run's exit code, which
+reflects only the implement session. The read-only `--verify` /
+`--verify-adversarial` flags remain available for a report-only run. Disable the
+apply behavior with `--no-review`.
 
 ## `address`
 
