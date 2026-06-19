@@ -48,9 +48,13 @@ type Options struct {
 	// introduces, reusing the adversarial-review machinery. Independent of
 	// Verify: either, both, or neither may be set.
 	VerifyAdversarial bool
-	Local             bool // operate on the current working directory instead of cloning
-	Force             bool // with Local, skip the dirty-working-tree confirmation prompt
-	Version           string
+	// NoSimplify disables the automatic simplify pass that, after the draft PR
+	// is opened, folds removals of over-engineering into the PR's commits and
+	// force-pushes the leaner branch. The pass is on by default.
+	NoSimplify bool
+	Local      bool // operate on the current working directory instead of cloning
+	Force      bool // with Local, skip the dirty-working-tree confirmation prompt
+	Version    string
 
 	// Pattern loading mirrors review/audit/elaborate so the implementation
 	// is grounded in the same review catalog and any project-specific
@@ -87,6 +91,13 @@ type Runner struct {
 	// AdversarialVerifier red-teams the produced diff for introduced bugs.
 	// When nil (or opts.VerifyAdversarial is false) the pass is skipped.
 	AdversarialVerifier AdversarialVerifier
+	// Simplifier runs the read-only ponytail-style simplify pass over the
+	// produced diff. Both it and SimplifyApplier must be non-nil (and
+	// opts.NoSimplify false) for the simplify pass to run.
+	Simplifier SimplifyFinder
+	// SimplifyApplier applies the simplify findings and force-pushes the
+	// leaner branch. Paired with Simplifier; nil leaves the pass disabled.
+	SimplifyApplier SimplifyApplier
 }
 
 // NewRunner builds a Runner with the production GitHub backend, the given
@@ -339,6 +350,13 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		r.postReportComment(w, opts, owner, name, number, implReport, model)
 	}
 	slog.Info("implementation complete", "issue", number)
+
+	// Simplify pass: runs after the draft PR is opened and before the verify
+	// passes, so they assess the leaner diff. On by default; --no-simplify or an
+	// unwired dependency skips it. Non-fatal, like the verify passes.
+	if !opts.NoSimplify && r.Simplifier != nil && r.SimplifyApplier != nil {
+		r.runSimplify(w, repo.Dir, owner, name, ctx)
+	}
 
 	if opts.Local {
 		// The feature branch the implement session created lives in the user's
@@ -675,6 +693,158 @@ func renderAdversarialVerification(w io.Writer, result *report.ReviewResult) {
 			_, _ = fmt.Fprintf(w, "  %s\n", f.Problem)
 		}
 	}
+}
+
+// runSimplify runs the automatic simplify pass over the diff the implement
+// session produced: a read-only ponytail-style finder yields a delete-list of
+// over-engineering, the guardrail filter drops any finding touching tests or
+// assertions, and — when findings remain — a fresh session applies them and
+// folds each into the commit it belongs to before force-pushing the leaner
+// branch to the PR head. The whole pass is non-fatal: any failure (no PR, finder
+// error, apply error, comment-post failure) is logged and surfaced but never
+// aborts the run, matching the verify passes' contract. No findings is a clean
+// no-op — no commit, no force-push, no PR comment.
+func (r *Runner) runSimplify(w io.Writer, dir, owner, name string, ctx Context) {
+	slog.Info("running simplify pass over the produced diff")
+	pr, err := r.GitHub.CurrentPR(dir)
+	if err != nil {
+		slog.Warn("could not resolve the PR for the simplify pass; skipping", "err", err)
+		_, _ = fmt.Fprintf(w, "\nSimplify pass skipped: could not resolve the PR for this branch: %v\n", err)
+		return
+	}
+	if pr == nil {
+		slog.Info("no PR associated with the branch; skipping simplify pass")
+		_, _ = fmt.Fprintln(w, "\nSimplify pass skipped: no pull request is associated with this branch.")
+		return
+	}
+
+	result, err := r.Simplifier.SimplifyFindings(dir, pr.BaseBranch)
+	if err != nil {
+		slog.Warn("simplify finder failed", "err", err)
+		_, _ = fmt.Fprintf(w, "\nSimplify pass could not run: %v\n", err)
+		return
+	}
+
+	var findings []report.Finding
+	if result != nil {
+		findings = result.Findings
+	}
+	kept, rejected := keepSimplifyFindings(findings)
+	if len(rejected) > 0 {
+		slog.Info("simplify guardrail rejected findings touching tests or assertions", "rejected", len(rejected))
+		_, _ = fmt.Fprintf(w, "\nSimplify guardrail rejected %d finding(s) touching test or assertion files.\n", len(rejected))
+	}
+	if len(kept) == 0 {
+		slog.Info("simplify pass found nothing to simplify")
+		_, _ = fmt.Fprintln(w, "\nNothing to simplify.")
+		return
+	}
+
+	simplifyReport, model, err := r.SimplifyApplier.ApplySimplifications(dir, SimplifyApplyContext{
+		RepoFullName: ctx.RepoFullName,
+		PRNumber:     pr.Number,
+		HeadBranch:   pr.HeadBranch,
+		BaseBranch:   pr.BaseBranch,
+		Findings:     kept,
+		Patterns:     ctx.Patterns,
+		MaxPatterns:  ctx.MaxPatterns,
+	})
+	if err != nil {
+		slog.Warn("simplify apply failed", "err", err)
+		_, _ = fmt.Fprintf(w, "\nSimplify apply could not run: %v\n", err)
+		return
+	}
+	if simplifyReport != "" {
+		_, _ = fmt.Fprintf(w, "\nSimplification report:\n%s\n", simplifyReport)
+		// Post the report before the escalation check so an escalated report
+		// still lands on the PR for the human who must look at it.
+		r.postSimplifyComment(w, owner, name, pr.Number, simplifyReport, model)
+	}
+	if status := planEscalation(simplifyReport); status != "" {
+		_, _ = fmt.Fprintf(w, "\nClaude reported %s — stopping the simplify pass.\n", status)
+	}
+	slog.Info("simplify pass complete", "pr", pr.Number)
+}
+
+// keepSimplifyFindings splits simplify findings into those safe to apply and
+// those the guardrail rejects. The hard guardrail forbids the pass from touching
+// tests or assertions, so any finding whose File is a test or assertion file is
+// rejected rather than applied. The other guardrail areas (validation, error
+// handling, security, accessibility) are semantic and are enforced by the
+// finder/apply prompts' hard rules.
+func keepSimplifyFindings(in []report.Finding) (kept, rejected []report.Finding) {
+	for _, f := range in {
+		if isTestFile(f.File) {
+			rejected = append(rejected, f)
+			continue
+		}
+		kept = append(kept, f)
+	}
+	return kept, rejected
+}
+
+// isTestFile reports whether path looks like a test or assertion file, using a
+// path heuristic that covers the conventions across the languages the tool
+// reviews: a base name ending in _test.go / _test.py, a .test. / .spec.
+// JS/TS-style name, or a path under a test/, tests/, or testdata/ directory.
+func isTestFile(path string) bool {
+	if path == "" {
+		return false
+	}
+	p := strings.ToLower(path)
+	base := p
+	if i := strings.LastIndex(p, "/"); i >= 0 {
+		base = p[i+1:]
+	}
+	if strings.HasSuffix(base, "_test.go") || strings.HasSuffix(base, "_test.py") {
+		return true
+	}
+	if strings.Contains(base, ".test.") || strings.Contains(base, ".spec.") {
+		return true
+	}
+	for _, seg := range []string{"test", "tests", "testdata"} {
+		if strings.Contains(p, "/"+seg+"/") || strings.HasPrefix(p, seg+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// simplifyCommentFooter attributes the posted simplification report to
+// planwerk-review, naming the model that produced it and matching the footer the
+// implement command's plan/report comments append to the artifacts they leave on
+// GitHub.
+func simplifyCommentFooter(model string) string {
+	return "_Simplification report generated by " + attribution.Tool() + " implement " + attribution.AssistantWith(model) + "_"
+}
+
+// formatSimplifyComment wraps the simplification report in the PR-comment body:
+// the report verbatim (it already carries its own "## Simplification Report"
+// heading) followed by the attribution footer.
+func formatSimplifyComment(simplifyReport, model string) string {
+	return strings.TrimSpace(simplifyReport) + "\n\n---\n\n" + simplifyCommentFooter(model) + "\n"
+}
+
+// postSimplifyComment posts the simplification report as a comment on the PR the
+// implement session opened, so the record of what the simplify pass folded into
+// the branch lives on the PR itself.
+//
+// Posting is best-effort: a failure to reach GitHub is logged and surfaced to
+// the operator but never aborts the run — the simplification is already pushed,
+// and its report is on stdout regardless.
+func (r *Runner) postSimplifyComment(w io.Writer, owner, name string, number int, simplifyReport, model string) {
+	url, err := r.GitHub.AddPRComment(owner, name, number, formatSimplifyComment(simplifyReport, model))
+	if err != nil {
+		slog.Warn("posting simplify comment failed", "pr", number, "err", err)
+		_, _ = fmt.Fprintf(w, "\nCould not post the simplification report as a PR comment: %v\n", err)
+		return
+	}
+	slog.Info("posted simplification report comment", "pr", number, "url", url)
+	_, _ = fmt.Fprintf(w, "\nPosted the simplification report as a comment on PR #%d", number)
+	if url != "" {
+		_, _ = fmt.Fprintf(w, " (%s)", url)
+	}
+	_, _ = fmt.Fprintln(w)
 }
 
 // loadPatterns runs technology detection on the cloned repo and loads the
