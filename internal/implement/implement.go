@@ -52,9 +52,14 @@ type Options struct {
 	// is opened, folds removals of over-engineering into the PR's commits and
 	// force-pushes the leaner branch. The pass is on by default.
 	NoSimplify bool
-	Local      bool // operate on the current working directory instead of cloning
-	Force      bool // with Local, skip the dirty-working-tree confirmation prompt
-	Version    string
+	// NoReview disables the automatic review-and-fix pass that, after the
+	// simplify pass, runs the adversarial review over the diff and folds each
+	// fix into the commit it belongs to before force-pushing. The pass is on by
+	// default; a full run is implement -> simplify -> review.
+	NoReview bool
+	Local    bool // operate on the current working directory instead of cloning
+	Force    bool // with Local, skip the dirty-working-tree confirmation prompt
+	Version  string
 
 	// Pattern loading mirrors review/audit/elaborate so the implementation
 	// is grounded in the same review catalog and any project-specific
@@ -98,19 +103,26 @@ type Runner struct {
 	// SimplifyApplier applies the simplify findings and force-pushes the
 	// leaner branch. Paired with Simplifier; nil leaves the pass disabled.
 	SimplifyApplier SimplifyApplier
+	// ReviewApplier applies the review pass's findings and force-pushes the
+	// fixed branch. The review pass reuses AdversarialVerifier as its finder, so
+	// both that field and this one must be non-nil (and opts.NoReview false) for
+	// the pass to run. Nil leaves the review-and-fix pass disabled.
+	ReviewApplier ReviewApplier
 }
 
 // NewRunner builds a Runner with the production GitHub backend, the given
 // Claude plan/implement functions, their prompt builders, the optional
-// acceptance-criteria and adversarial verifiers, and the optional simplify
-// finder/applier. The CLI wires claude.Plan / claude.BuildPlanPrompt /
-// claude.Implement / claude.BuildImplementPrompt / claude.VerifyImplementation /
-// claude.AdversarialReview / claude.SimplifyFindings / claude.ApplySimplifications
-// so the import direction stays claude -> implement. A nil planFn disables the
-// planning phase; a nil verifyFn leaves the verification pass disabled; a nil
-// adversarialFn leaves the adversarial pass disabled; a nil simplifyFindFn or
-// simplifyApplyFn leaves the simplify pass disabled.
-func NewRunner(planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn, adversarialFn AdversarialFn, simplifyFindFn SimplifyFindFn, simplifyApplyFn SimplifyApplyFn) *Runner {
+// acceptance-criteria and adversarial verifiers, the optional simplify
+// finder/applier, and the optional review applier. The CLI wires claude.Plan /
+// claude.BuildPlanPrompt / claude.Implement / claude.BuildImplementPrompt /
+// claude.VerifyImplementation / claude.AdversarialReview / claude.SimplifyFindings /
+// claude.ApplySimplifications / claude.ApplyReview so the import direction stays
+// claude -> implement. A nil planFn disables the planning phase; a nil verifyFn
+// leaves the verification pass disabled; a nil adversarialFn leaves both the
+// adversarial pass and the review-and-fix finder disabled; a nil simplifyFindFn
+// or simplifyApplyFn leaves the simplify pass disabled; a nil reviewApplyFn
+// leaves the review-and-fix pass disabled.
+func NewRunner(planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn, adversarialFn AdversarialFn, simplifyFindFn SimplifyFindFn, simplifyApplyFn SimplifyApplyFn, reviewApplyFn ReviewApplyFn) *Runner {
 	r := &Runner{
 		Claude:          implementFnAdapter{fn: fn},
 		GitHub:          defaultGitHubClient{},
@@ -132,19 +144,22 @@ func NewRunner(planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build Pro
 	if simplifyApplyFn != nil {
 		r.SimplifyApplier = simplifyApplyFnAdapter{fn: simplifyApplyFn}
 	}
+	if reviewApplyFn != nil {
+		r.ReviewApplier = reviewApplyFnAdapter{fn: reviewApplyFn}
+	}
 	return r
 }
 
 // Run is a package-level convenience that delegates to NewRunner(...).Run.
-func Run(w io.Writer, opts Options, planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn, adversarialFn AdversarialFn, simplifyFindFn SimplifyFindFn, simplifyApplyFn SimplifyApplyFn) error {
-	return NewRunner(planFn, buildPlan, fn, build, verifyFn, adversarialFn, simplifyFindFn, simplifyApplyFn).Run(w, opts)
+func Run(w io.Writer, opts Options, planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn, adversarialFn AdversarialFn, simplifyFindFn SimplifyFindFn, simplifyApplyFn SimplifyApplyFn, reviewApplyFn ReviewApplyFn) error {
+	return NewRunner(planFn, buildPlan, fn, build, verifyFn, adversarialFn, simplifyFindFn, simplifyApplyFn, reviewApplyFn).Run(w, opts)
 }
 
 // PrintBarePrompt is a package-level convenience that delegates to
 // NewRunner(nil, ...).PrintBarePrompt. The prompt itself is built without
 // invoking Claude, so the functions passed to NewRunner are not used here.
 func PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuildFn) error {
-	return NewRunner(nil, nil, nil, nil, nil, nil, nil, nil).PrintBarePrompt(w, opts, build)
+	return NewRunner(nil, nil, nil, nil, nil, nil, nil, nil, nil).PrintBarePrompt(w, opts, build)
 }
 
 // PrintBarePrompt builds a self-contained ("bare") implement prompt from
@@ -364,6 +379,15 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// unwired dependency skips it. Non-fatal, like the verify passes.
 	if !opts.NoSimplify && r.Simplifier != nil && r.SimplifyApplier != nil {
 		r.runSimplify(w, repo.Dir, owner, name, ctx)
+	}
+
+	// Review-and-fix pass: runs after the simplify pass (a full run is
+	// implement -> simplify -> review), reusing the adversarial review as the
+	// finder and folding each fix into the commit it belongs to. On by default;
+	// --no-review or an unwired dependency skips it. Non-fatal, like the verify
+	// and simplify passes.
+	if !opts.NoReview && r.AdversarialVerifier != nil && r.ReviewApplier != nil {
+		r.runReview(w, repo.Dir, owner, name, ctx)
 	}
 
 	if opts.Local {
@@ -849,6 +873,109 @@ func (r *Runner) postSimplifyComment(w io.Writer, owner, name string, number int
 	}
 	slog.Info("posted simplification report comment", "pr", number, "url", url)
 	_, _ = fmt.Fprintf(w, "\nPosted the simplification report as a comment on PR #%d", number)
+	if url != "" {
+		_, _ = fmt.Fprintf(w, " (%s)", url)
+	}
+	_, _ = fmt.Fprintln(w)
+}
+
+// runReview runs the automatic review-and-fix pass over the diff the implement
+// session produced: the adversarial review (the same finder --verify-adversarial
+// uses, grounded in the implement pattern catalog via /review) yields structured
+// findings, and — when findings remain — a fresh session resolves them and folds
+// each fix into the commit it belongs to before force-pushing the fixed branch
+// to the PR head. The whole pass is non-fatal: any failure (no PR, finder error,
+// apply error, comment-post failure) is logged and surfaced but never aborts the
+// run, matching the simplify and verify passes' contract. No findings is a clean
+// no-op — no commit, no force-push, no PR comment beyond a short stdout note.
+func (r *Runner) runReview(w io.Writer, dir, owner, name string, ctx Context) {
+	slog.Info("running review-and-fix pass over the produced diff")
+	pr, err := r.GitHub.CurrentPR(dir)
+	if err != nil {
+		slog.Warn("could not resolve the PR for the review pass; skipping", "err", err)
+		_, _ = fmt.Fprintf(w, "\nReview pass skipped: could not resolve the PR for this branch: %v\n", err)
+		return
+	}
+	if pr == nil {
+		slog.Info("no PR associated with the branch; skipping review pass")
+		_, _ = fmt.Fprintln(w, "\nReview pass skipped: no pull request is associated with this branch.")
+		return
+	}
+
+	result, err := r.AdversarialVerifier.AdversarialReview(dir, pr.BaseBranch)
+	if err != nil {
+		slog.Warn("review finder failed", "err", err)
+		_, _ = fmt.Fprintf(w, "\nReview pass could not run: %v\n", err)
+		return
+	}
+
+	var findings []report.Finding
+	if result != nil {
+		findings = result.Findings
+	}
+	if len(findings) == 0 {
+		slog.Info("review pass found nothing to fix")
+		_, _ = fmt.Fprintln(w, "\nReview found nothing to fix.")
+		return
+	}
+
+	reviewReport, model, err := r.ReviewApplier.ApplyReview(dir, ReviewApplyContext{
+		RepoFullName: ctx.RepoFullName,
+		PRNumber:     pr.Number,
+		HeadBranch:   pr.HeadBranch,
+		BaseBranch:   pr.BaseBranch,
+		Findings:     findings,
+		Patterns:     ctx.Patterns,
+		MaxPatterns:  ctx.MaxPatterns,
+	})
+	if err != nil {
+		slog.Warn("review apply failed", "err", err)
+		_, _ = fmt.Fprintf(w, "\nReview apply could not run: %v\n", err)
+		return
+	}
+	if reviewReport != "" {
+		_, _ = fmt.Fprintf(w, "\nReview report:\n%s\n", reviewReport)
+		// Post the report before the escalation check so an escalated report
+		// still lands on the PR for the human who must look at it.
+		r.postReviewComment(w, owner, name, pr.Number, reviewReport, model)
+	}
+	if status := planEscalation(reviewReport); status != "" {
+		_, _ = fmt.Fprintf(w, "\nClaude reported %s — stopping the review pass.\n", status)
+	}
+	slog.Info("review pass complete", "pr", pr.Number)
+}
+
+// reviewCommentFooter attributes the posted review report to planwerk-review,
+// naming the model that produced it and matching the footer the implement
+// command's plan/report/simplify comments append to the artifacts they leave on
+// GitHub.
+func reviewCommentFooter(model string) string {
+	return "_Review report generated by " + attribution.Tool() + " implement " + attribution.AssistantWith(model) + "_"
+}
+
+// formatReviewComment wraps the review report in the PR-comment body: the report
+// verbatim (it already carries its own "## Review Report" heading) followed by
+// the attribution footer.
+func formatReviewComment(reviewReport, model string) string {
+	return strings.TrimSpace(reviewReport) + "\n\n---\n\n" + reviewCommentFooter(model) + "\n"
+}
+
+// postReviewComment posts the review report as a comment on the PR the implement
+// session opened, so the record of what the review pass folded into the branch
+// lives on the PR itself.
+//
+// Posting is best-effort: a failure to reach GitHub is logged and surfaced to
+// the operator but never aborts the run — the fixes are already pushed, and the
+// report is on stdout regardless.
+func (r *Runner) postReviewComment(w io.Writer, owner, name string, number int, reviewReport, model string) {
+	url, err := r.GitHub.AddPRComment(owner, name, number, formatReviewComment(reviewReport, model))
+	if err != nil {
+		slog.Warn("posting review comment failed", "pr", number, "err", err)
+		_, _ = fmt.Fprintf(w, "\nCould not post the review report as a PR comment: %v\n", err)
+		return
+	}
+	slog.Info("posted review report comment", "pr", number, "url", url)
+	_, _ = fmt.Fprintf(w, "\nPosted the review report as a comment on PR #%d", number)
 	if url != "" {
 		_, _ = fmt.Fprintf(w, " (%s)", url)
 	}
