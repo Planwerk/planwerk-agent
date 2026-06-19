@@ -61,6 +61,15 @@ source issue as a comment on every run — including runs where nothing was
 implemented or the attempt failed — so the course of the implementation is
 recorded on the issue (use --no-report-comment to skip that).
 
+Once the draft PR is open, a simplify pass runs by default: a read-only
+ponytail-style finder reviews the produced diff through a YAGNI decision ladder
+for over-engineering, then a fresh session folds each removal into the commit it
+belongs to (git commit --fixup + git rebase --autosquash) and force-pushes the
+leaner branch to the PR head with --force-with-lease. It never removes
+validation, error handling, security, accessibility, tests, or assertions, posts
+its report as a PR comment, and is non-fatal. Nothing to simplify is a clean
+no-op. Disable it with --no-simplify.
+
 Use --print-prompt to render the implement prompt (with the issue body
 embedded, without a plan) to stdout without invoking Claude;
 --print-plan-prompt does the same for the planning prompt. Use
@@ -108,7 +117,7 @@ or short form (owner/repo#123).`,
 			if implementCfg.PrintBarePrompt {
 				return implement.PrintBarePrompt(cmd.OutOrStdout(), opts, claude.BuildBareImplementPrompt)
 			}
-			return implement.Run(cmd.OutOrStdout(), opts, client.Plan, claude.BuildPlanPrompt, client.Implement, claude.BuildImplementPrompt, client.VerifyImplementation, client.AdversarialReview)
+			return implement.Run(cmd.OutOrStdout(), opts, client.Plan, claude.BuildPlanPrompt, client.Implement, claude.BuildImplementPrompt, client.VerifyImplementation, client.AdversarialReview, client.SimplifyFindings, client.ApplySimplifications)
 		},
 	}
 
@@ -125,6 +134,7 @@ or short form (owner/repo#123).`,
 	implementFlags.StringVar(&planEffort, "plan-effort", claude.DefaultPlanEffort, "Reasoning effort for the planning session passed to Claude Code via --effort (low, medium, high, xhigh, max; env: "+envPlanEffort+")")
 	implementFlags.BoolVar(&implementCfg.Verify, "verify", false, "After implementing, run an independent pass that checks the actual diff against the issue's Acceptance Criteria without trusting the implementer's report")
 	implementFlags.BoolVar(&implementCfg.VerifyAdversarial, "verify-adversarial", false, "After implementing, red-team the produced diff for the bugs it introduces using the adversarial-review pass (independent of --verify)")
+	implementFlags.BoolVar(&implementCfg.NoSimplify, "no-simplify", false, "Skip the automatic simplify pass that folds over-engineering removals into the PR before the review phase")
 	implementFlags.StringSliceVar(&implementCfg.PatternDirs, "patterns", nil, "Additional pattern sources: local dirs, github:owner/repo[/sub][@ref], or git+https://...[#ref[:sub]]")
 	implementFlags.BoolVar(&implementCfg.NoRepoPatterns, "no-repo-patterns", false, "Ignore repo-specific patterns under .planwerk/review_patterns/ in the target repo")
 	implementFlags.BoolVar(&implementCfg.NoLocalPatterns, "no-local-patterns", false, "Ignore local patterns from the tool")

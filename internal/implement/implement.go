@@ -101,14 +101,16 @@ type Runner struct {
 }
 
 // NewRunner builds a Runner with the production GitHub backend, the given
-// Claude plan/implement functions, their prompt builders, and the optional
-// acceptance-criteria and adversarial verifiers. The CLI wires claude.Plan /
-// claude.BuildPlanPrompt / claude.Implement / claude.BuildImplementPrompt /
-// claude.VerifyImplementation / claude.AdversarialReview so the import
-// direction stays claude -> implement. A nil planFn disables the planning
-// phase; a nil verifyFn leaves the verification pass disabled; a nil
-// adversarialFn leaves the adversarial pass disabled.
-func NewRunner(planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn, adversarialFn AdversarialFn) *Runner {
+// Claude plan/implement functions, their prompt builders, the optional
+// acceptance-criteria and adversarial verifiers, and the optional simplify
+// finder/applier. The CLI wires claude.Plan / claude.BuildPlanPrompt /
+// claude.Implement / claude.BuildImplementPrompt / claude.VerifyImplementation /
+// claude.AdversarialReview / claude.SimplifyFindings / claude.ApplySimplifications
+// so the import direction stays claude -> implement. A nil planFn disables the
+// planning phase; a nil verifyFn leaves the verification pass disabled; a nil
+// adversarialFn leaves the adversarial pass disabled; a nil simplifyFindFn or
+// simplifyApplyFn leaves the simplify pass disabled.
+func NewRunner(planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn, adversarialFn AdversarialFn, simplifyFindFn SimplifyFindFn, simplifyApplyFn SimplifyApplyFn) *Runner {
 	r := &Runner{
 		Claude:          implementFnAdapter{fn: fn},
 		GitHub:          defaultGitHubClient{},
@@ -124,19 +126,25 @@ func NewRunner(planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build Pro
 	if adversarialFn != nil {
 		r.AdversarialVerifier = adversarialFnAdapter{fn: adversarialFn}
 	}
+	if simplifyFindFn != nil {
+		r.Simplifier = simplifyFindFnAdapter{fn: simplifyFindFn}
+	}
+	if simplifyApplyFn != nil {
+		r.SimplifyApplier = simplifyApplyFnAdapter{fn: simplifyApplyFn}
+	}
 	return r
 }
 
 // Run is a package-level convenience that delegates to NewRunner(...).Run.
-func Run(w io.Writer, opts Options, planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn, adversarialFn AdversarialFn) error {
-	return NewRunner(planFn, buildPlan, fn, build, verifyFn, adversarialFn).Run(w, opts)
+func Run(w io.Writer, opts Options, planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn, adversarialFn AdversarialFn, simplifyFindFn SimplifyFindFn, simplifyApplyFn SimplifyApplyFn) error {
+	return NewRunner(planFn, buildPlan, fn, build, verifyFn, adversarialFn, simplifyFindFn, simplifyApplyFn).Run(w, opts)
 }
 
 // PrintBarePrompt is a package-level convenience that delegates to
 // NewRunner(nil, ...).PrintBarePrompt. The prompt itself is built without
 // invoking Claude, so the functions passed to NewRunner are not used here.
 func PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuildFn) error {
-	return NewRunner(nil, nil, nil, nil, nil, nil).PrintBarePrompt(w, opts, build)
+	return NewRunner(nil, nil, nil, nil, nil, nil, nil, nil).PrintBarePrompt(w, opts, build)
 }
 
 // PrintBarePrompt builds a self-contained ("bare") implement prompt from
