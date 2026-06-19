@@ -419,6 +419,7 @@ planwerk-review implement --no-plan-reuse owner/repo#123
 planwerk-review implement --verify owner/repo#123
 planwerk-review implement --verify-adversarial owner/repo#123
 planwerk-review implement --verify --verify-adversarial owner/repo#123
+planwerk-review implement --no-simplify owner/repo#123
 ```
 
 | Flag | Description | Default |
@@ -435,6 +436,7 @@ planwerk-review implement --verify --verify-adversarial owner/repo#123
 | `--plan-effort` | Reasoning effort for the planning session passed via `--effort` (`low`, `medium`, `high`, `xhigh`, `max`; env: `PLANWERK_PLAN_EFFORT`) | `max` |
 | `--verify` | After implementing, run an independent pass that checks the actual diff against the issue's Acceptance Criteria without trusting the implementer's report | `false` |
 | `--verify-adversarial` | After implementing, red-team the produced diff for the bugs it introduces using the adversarial-review pass (independent of `--verify`) | `false` |
+| `--no-simplify` | Skip the automatic simplify pass that folds over-engineering removals into the PR before the review phase | `false` |
 | `--patterns` | Additional pattern source: local directory, `github:owner/repo[/sub][@ref]`, or `git+https://…[#ref[:sub]]` | - |
 | `--no-repo-patterns` | Ignore repo-specific patterns under `.planwerk/review_patterns/` in the target repo | `false` |
 | `--no-local-patterns` | Ignore local patterns from the tool | `false` |
@@ -453,6 +455,18 @@ reuses the same adversarial-review machinery as `review --thorough` to hunt for
 the bugs the change introduces (injection, race conditions, failure modes).
 Enable either, both, or neither. Both are non-fatal — a finding is reported, it
 does not fail the run.
+
+The simplify pass runs by default once the draft PR is open, before the
+verification passes, so they assess the leaner diff. A read-only ponytail-style
+finder reviews the diff through a YAGNI decision ladder for over-engineering;
+when it finds something, a fresh session folds each removal into the commit it
+belongs to (`git commit --fixup` + `git rebase --autosquash`) and force-pushes
+the leaner branch to the PR head with `git push --force-with-lease` — only
+`--force-with-lease`, only to the PR's own head, never the base branch. It never
+removes validation, error handling, security, or accessibility code and never
+deletes or weakens tests or assertions; its report is posted as a PR comment.
+Nothing to simplify is a clean no-op (no commit, no force-push, no comment), and
+the pass is non-fatal. Disable it with `--no-simplify`.
 
 ## `address`
 
