@@ -321,7 +321,10 @@ func runClaudeWithPermission(dir, prompt, label, permissionMode, model, effort s
 		}
 		return "", fmt.Errorf("claude: %w", err)
 	}
-	text, model := extractText(out)
+	text, model, err := extractText(out)
+	if err != nil {
+		return "", err
+	}
 	// Record the exact model id the envelope reports so the artifact footers
 	// (rendered after this call returns) name the model that produced them,
 	// mirroring the streaming path in runClaudeStream.
@@ -341,11 +344,23 @@ type claudeResponse struct {
 
 // extractText extracts the response text and the resolved model id from
 // Claude's JSON output envelope. When the output is not the expected envelope it
-// falls back to treating the entire output as the response text with no model.
-func extractText(raw []byte) (text, model string) {
+// returns an error wrapping the parse failure and a truncated copy of the raw
+// output. Failing loudly keeps a changed CLI wire format (schema rename, error
+// envelope, OAuth challenge) from being silently treated as the assistant's
+// reply, which would otherwise produce nonsense findings or empty reports.
+func extractText(raw []byte) (text, model string, err error) {
 	var resp claudeResponse
 	if err := json.Unmarshal(raw, &resp); err != nil {
-		return string(raw), ""
+		return "", "", fmt.Errorf("claude: parse output envelope: %w; first 200 bytes: %q", err, head(raw, 200))
 	}
-	return resp.Result, resp.Model
+	return resp.Result, resp.Model, nil
+}
+
+// head returns the first n bytes of b, or all of b when it is shorter. It
+// bounds the raw output embedded in parse-failure errors so logs stay readable.
+func head(b []byte, n int) []byte {
+	if len(b) > n {
+		return b[:n]
+	}
+	return b
 }
