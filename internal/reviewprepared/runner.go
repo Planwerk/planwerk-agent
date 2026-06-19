@@ -113,7 +113,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 			repo.Cleanup()
 			return fmt.Errorf("resolving pattern sources: %w", err)
 		}
-		pats, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{Remote: patterns.RemoteOpts(), NoEmbedded: opts.NoLocalPatterns}, techTags, patternDirs...)
+		pats, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{Remote: opts.Remote, NoEmbedded: opts.NoLocalPatterns}, techTags, patternDirs...)
 		if err != nil {
 			repo.Cleanup()
 			return fmt.Errorf("loading patterns: %w", err)

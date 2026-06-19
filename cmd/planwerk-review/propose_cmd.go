@@ -50,6 +50,7 @@ or short form (owner/repo).`,
 			}
 
 			opts := proposeCfg.ToProposeOptions(deps.version)
+			opts.Remote = deps.remoteOpts
 			return propose.Run(os.Stdout, opts, claude.Propose)
 		},
 	}

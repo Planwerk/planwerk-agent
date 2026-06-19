@@ -67,6 +67,7 @@ or short form (owner/repo#123).`,
 				return fmt.Errorf("--dry-run, --print-prompt, and --print-bare-prompt are mutually exclusive")
 			}
 			opts := addressCfg.ToAddressOptions(deps.version)
+			opts.Remote = deps.remoteOpts
 			if addressCfg.PrintBarePrompt {
 				return address.PrintBarePrompt(cmd.OutOrStdout(), opts, claude.BuildBareAddressPrompt)
 			}

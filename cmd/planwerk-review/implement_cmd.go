@@ -97,6 +97,7 @@ or short form (owner/repo#123).`,
 			claude.SetPlanModel(resolvePlanModel(planModel, cmd.Flags().Changed("plan-model")))
 			claude.SetPlanEffort(resolvePlanEffort(planEffort, cmd.Flags().Changed("plan-effort")))
 			opts := implementCfg.ToImplementOptions(deps.version)
+			opts.Remote = deps.remoteOpts
 			if implementCfg.PrintBarePrompt {
 				return implement.PrintBarePrompt(cmd.OutOrStdout(), opts, claude.BuildBareImplementPrompt)
 			}

@@ -89,6 +89,7 @@ or short form (owner/repo).`,
 			}
 
 			opts := auditCfg.ToAuditOptions(deps.version)
+			opts.Remote = deps.remoteOpts
 			return audit.Run(os.Stdout, opts, claude.Audit)
 		},
 	}

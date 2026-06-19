@@ -59,6 +59,7 @@ or short form (owner/repo).`,
 			}
 
 			opts := gapCfg.ToGapAnalysisOptions(deps.version)
+			opts.Remote = deps.remoteOpts
 			return gapanalysis.Run(os.Stdout, opts, claude.GapAnalysis)
 		},
 	}

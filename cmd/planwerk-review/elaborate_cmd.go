@@ -50,6 +50,7 @@ or short form (owner/repo#123).`,
 			}
 
 			opts := elaborateCfg.ToElaborateOptions(deps.version)
+			opts.Remote = deps.remoteOpts
 			return elaborate.Run(os.Stdout, opts, claude.Elaborate, claude.ReviewElaboration)
 		},
 	}

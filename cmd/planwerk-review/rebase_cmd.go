@@ -66,6 +66,7 @@ or short form (owner/repo#123).`,
 				return fmt.Errorf("--dry-run, --print-prompt, and --print-bare-prompt are mutually exclusive")
 			}
 			opts := rebaseCfg.ToRebaseOptions(deps.version)
+			opts.Remote = deps.remoteOpts
 			if rebaseCfg.PrintBarePrompt {
 				return rebase.PrintBarePrompt(cmd.OutOrStdout(), opts, claude.BuildBareRebasePrompt)
 			}

@@ -36,8 +36,8 @@ func Load(sources ...string) ([]Pattern, error) {
 // LoadFiltered reads patterns from the given sources recursively and
 // returns only those that apply to the detected technology tags.
 // If tags is nil or empty, all patterns are returned (backward compatible).
-// Remote sources are resolved using the package-level remote options
-// configured by SetRemoteOptions; for explicit per-call options use
+// Remote sources are resolved with default RemoteOptions; callers that need
+// explicit remote options (e.g. a configured TTL) use
 // LoadFilteredWithOptions.
 //
 // LoadFiltered loads ONLY the given sources — it does not include the
@@ -46,7 +46,7 @@ func Load(sources ...string) ([]Pattern, error) {
 // that want the embedded fallback (the production subcommands) call
 // LoadFilteredWithOptions with NoEmbedded set from --no-local-patterns.
 func LoadFiltered(tags []string, sources ...string) ([]Pattern, error) {
-	return LoadFilteredWithOptions(LoadOptions{Remote: remoteOpts, NoEmbedded: true}, tags, sources...)
+	return LoadFilteredWithOptions(LoadOptions{NoEmbedded: true}, tags, sources...)
 }
 
 // LoadOptions bundles tunables that influence pattern loading.

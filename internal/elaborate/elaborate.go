@@ -49,6 +49,9 @@ type Options struct {
 	MaxReviewIterations int
 	Local               bool // operate on the current working directory instead of cloning
 	Force               bool // with Local, skip the dirty-working-tree confirmation prompt
+	// Remote configures how remote pattern URIs (--patterns github:..., git+...)
+	// resolve into local directories; carries the --remote-patterns-ttl value.
+	Remote patterns.RemoteOptions
 }
 
 // defaultMaxReviewIterations bounds the reviewer refine loop so a reviewer and
@@ -162,7 +165,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	if err != nil {
 		return fmt.Errorf("resolving pattern sources: %w", err)
 	}
-	pats, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{Remote: patterns.RemoteOpts(), NoEmbedded: opts.NoLocalPatterns}, techTags, patternDirs...)
+	pats, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{Remote: opts.Remote, NoEmbedded: opts.NoLocalPatterns}, techTags, patternDirs...)
 	if err != nil {
 		return fmt.Errorf("loading patterns: %w", err)
 	}

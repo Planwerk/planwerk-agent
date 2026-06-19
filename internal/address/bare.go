@@ -57,7 +57,7 @@ func (r *Runner) PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuil
 	if err != nil {
 		slog.Warn("resolving pattern sources failed; bare prompt will omit them", "err", err)
 	}
-	pats, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{Remote: patterns.RemoteOpts(), NoEmbedded: opts.NoLocalPatterns}, tags, dirs...)
+	pats, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{Remote: opts.Remote, NoEmbedded: opts.NoLocalPatterns}, tags, dirs...)
 	if err != nil {
 		slog.Warn("loading review patterns failed; bare prompt will omit them", "err", err)
 		pats = nil
