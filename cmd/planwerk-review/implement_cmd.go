@@ -14,10 +14,11 @@ import (
 // newImplementCmd builds the "implement" subcommand: take an elaborated GitHub
 // issue, run a read-only Claude Code planning session inside a clone of the
 // target repo (on the dedicated planning model), then run a fresh implement
-// session that executes the plan end-to-end (code + tests + docs) and opens a
-// draft pull request. --print-prompt / --print-plan-prompt /
-// --print-bare-prompt mirror the fix subcommand for users who want to drive
-// the sessions manually.
+// session that executes the plan end-to-end (code + tests + docs) and commits on
+// a feature branch. The simplify and review passes then run over the committed
+// diff, and a finalize session opens the draft pull request last.
+// --print-prompt / --print-plan-prompt / --print-bare-prompt mirror the fix
+// subcommand for users who want to drive the sessions manually.
 func newImplementCmd(deps *runtimeDeps) *cobra.Command {
 	var implementCfg cli.ImplementConfig
 	var planModel string
@@ -30,8 +31,11 @@ func newImplementCmd(deps *runtimeDeps) *cobra.Command {
 subcommand), clone the repository, and run two fresh Claude Code sessions:
 first a read-only planning session that grounds the issue in the actual code
 and produces a detailed implementation plan, then an implement session that
-executes the plan end-to-end: code, tests, documentation, fresh feature
-branch, draft pull request linked to the issue.
+executes the plan end-to-end: code, tests, documentation, committed on a fresh
+feature branch. The implement session does NOT open a pull request — the
+simplify and review passes run over the committed diff first, then a dedicated
+finalize session opens the draft PR so it lands already simplified and
+self-reviewed.
 
 The planning session runs on the dedicated planning model (--plan-model,
 default "` + claude.DefaultPlanModel + `") at the dedicated planning effort (--plan-effort, default
@@ -50,35 +54,40 @@ to the same STATUS check. Use --no-plan-reuse to force a fresh planning session
 when the issue has changed and the posted plan has gone stale.
 
 The implement session runs in Claude Code's auto mode (--permission-mode
-auto) so it can edit files, run the test suite, commit, push the branch, and
-open the draft PR without an interactive confirmation. A background
-classifier still vets each action and blocks anything irreversible or aimed
-outside the repository (force push, pushing to main, data exfiltration).
-Requires Claude Code v2.1.83+.
+auto) so it can edit files, run the test suite, and commit without an
+interactive confirmation. A background classifier still vets each action and
+blocks anything irreversible or aimed outside the repository (force push,
+pushing to main, data exfiltration). Requires Claude Code v2.1.83+.
 
 After the implement session the implementation report is posted back onto the
 source issue as a comment on every run — including runs where nothing was
 implemented or the attempt failed — so the course of the implementation is
 recorded on the issue (use --no-report-comment to skip that).
 
-Once the draft PR is open, a simplify pass runs by default: a read-only
+Once the branch is committed, a simplify pass runs by default: a read-only
 ponytail-style finder reviews the produced diff through a YAGNI decision ladder
 for over-engineering, then a fresh session folds each removal into the commit it
-belongs to (git commit --fixup + git rebase --autosquash) and force-pushes the
-leaner branch to the PR head with --force-with-lease. It never removes
-validation, error handling, security, accessibility, tests, or assertions, posts
-its report as a PR comment, and is non-fatal. Nothing to simplify is a clean
-no-op. Disable it with --no-simplify.
+belongs to (git commit --fixup + git rebase --autosquash) on the local branch —
+no push. It never removes validation, error handling, security, accessibility,
+tests, or assertions, posts its report as a comment on the source issue, and is
+non-fatal. Nothing to simplify is a clean no-op. Disable it with --no-simplify.
 
 After the simplify pass, a review-and-fix pass runs by default: the
 adversarial review machinery flags bugs in the produced diff, then a fresh
-session folds each fix into the commit it belongs to (same fixup/autosquash and
---force-with-lease mechanism as the simplify pass) so the draft PR lands already
-self-reviewed. It posts its report as a PR comment, a STATUS: BLOCKED /
-NEEDS_CONTEXT report stops the pass without retrying, and nothing to fix is a
-clean no-op. The pass is non-fatal — a failed or escalated review never changes
-the run's exit code. Disable it with --no-review. (The read-only --verify /
---verify-adversarial flags remain available for a report-only run.)
+session folds each fix into the commit it belongs to (same fixup/autosquash
+mechanism as the simplify pass, still no push) so the eventual PR lands already
+self-reviewed. It posts its report as a comment on the source issue, a STATUS:
+BLOCKED / NEEDS_CONTEXT report stops the pass without retrying, and nothing to
+fix is a clean no-op. The pass is non-fatal — a failed or escalated review never
+changes the run's exit code. Disable it with --no-review. (The read-only
+--verify / --verify-adversarial flags remain available for a report-only run.)
+
+Finally, once the simplify and review passes are done, a finalize session opens
+the draft pull request: it pushes the feature branch and runs gh pr create with
+a description that walks the reviewer through the commits and links the issue
+with "Closes #N". This is the run's deliverable, so unlike the passes above a
+failure to open the PR is fatal. A branch that carries no commits opens no PR
+(and is not an error).
 
 Use --print-prompt to render the implement prompt (with the issue body
 embedded, without a plan) to stdout without invoking Claude;
@@ -127,7 +136,7 @@ or short form (owner/repo#123).`,
 			if implementCfg.PrintBarePrompt {
 				return implement.PrintBarePrompt(cmd.OutOrStdout(), opts, claude.BuildBareImplementPrompt)
 			}
-			return implement.Run(cmd.OutOrStdout(), opts, client.Plan, claude.BuildPlanPrompt, client.Implement, claude.BuildImplementPrompt, client.VerifyImplementation, client.AdversarialReview, client.SimplifyFindings, client.ApplySimplifications, client.ApplyReview)
+			return implement.Run(cmd.OutOrStdout(), opts, client.Plan, claude.BuildPlanPrompt, client.Implement, claude.BuildImplementPrompt, client.VerifyImplementation, client.AdversarialReview, client.SimplifyFindings, client.ApplySimplifications, client.ApplyReview, client.FinalizePR)
 		},
 	}
 
@@ -144,8 +153,8 @@ or short form (owner/repo#123).`,
 	implementFlags.StringVar(&planEffort, "plan-effort", claude.DefaultPlanEffort, "Reasoning effort for the planning session passed to Claude Code via --effort (low, medium, high, xhigh, max; env: "+envPlanEffort+")")
 	implementFlags.BoolVar(&implementCfg.Verify, "verify", false, "After implementing, run an independent pass that checks the actual diff against the issue's Acceptance Criteria without trusting the implementer's report")
 	implementFlags.BoolVar(&implementCfg.VerifyAdversarial, "verify-adversarial", false, "After implementing, red-team the produced diff for the bugs it introduces using the adversarial-review pass (independent of --verify)")
-	implementFlags.BoolVar(&implementCfg.NoSimplify, "no-simplify", false, "Skip the automatic simplify pass that folds over-engineering removals into the PR before the review phase")
-	implementFlags.BoolVar(&implementCfg.NoReview, "no-review", false, "Skip the automatic review-and-fix pass that folds review findings into the PR after the simplify pass")
+	implementFlags.BoolVar(&implementCfg.NoSimplify, "no-simplify", false, "Skip the automatic simplify pass that folds over-engineering removals into the branch before the review phase")
+	implementFlags.BoolVar(&implementCfg.NoReview, "no-review", false, "Skip the automatic review-and-fix pass that folds review findings into the branch after the simplify pass")
 	implementFlags.StringSliceVar(&implementCfg.PatternDirs, "patterns", nil, "Additional pattern sources: local dirs, github:owner/repo[/sub][@ref], or git+https://...[#ref[:sub]]")
 	implementFlags.BoolVar(&implementCfg.NoRepoPatterns, "no-repo-patterns", false, "Ignore repo-specific patterns under .planwerk/review_patterns/ in the target repo")
 	implementFlags.BoolVar(&implementCfg.NoLocalPatterns, "no-local-patterns", false, "Ignore local patterns from the tool")

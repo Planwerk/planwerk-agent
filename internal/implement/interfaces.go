@@ -166,16 +166,15 @@ func (a adversarialFnAdapter) AdversarialReview(dir, baseBranch string) (*report
 }
 
 // SimplifyApplyContext is the input for the Claude simplify-apply session: the
-// PR the implement session opened, the simplification findings to fold into it,
-// and the pattern catalog so the apply session stays consistent with the same
-// review patterns the implementation honored. The apply session folds each
-// finding into the commit it belongs to and force-pushes the rewritten branch
-// to HeadBranch with --force-with-lease — the findings-driven analog of the
-// fix command's apply step.
+// simplification findings to fold into the local feature branch and the pattern
+// catalog so the apply session stays consistent with the same review patterns
+// the implementation honored. The apply session folds each finding into the
+// commit it belongs to (git commit --fixup + git rebase --autosquash) but does
+// NOT push — it runs before any pull request exists, on the branch the implement
+// session committed; the finalize pass opens the PR afterwards. BaseBranch bounds
+// the fold-rebase to the branch's own commits (the range origin/<base>..HEAD).
 type SimplifyApplyContext struct {
 	RepoFullName string
-	PRNumber     int
-	HeadBranch   string
 	BaseBranch   string
 	Findings     []report.Finding
 	Patterns     []patterns.Pattern
@@ -203,10 +202,10 @@ func (a simplifyFindFnAdapter) SimplifyFindings(dir, baseBranch string) (*report
 }
 
 // SimplifyApplier applies the simplification findings and folds each into the
-// commit it belongs to via fixup/autosquash, then force-pushes the rewritten
-// branch to the PR head with --force-with-lease. It returns the apply report
-// and the resolved Claude model id for the report comment's attribution footer.
-// Optional: wired only when the simplify pass is enabled.
+// commit it belongs to via fixup/autosquash on the local branch (no push). It
+// returns the apply report and the resolved Claude model id for the report
+// comment's attribution footer. Optional: wired only when the simplify pass is
+// enabled.
 type SimplifyApplier interface {
 	ApplySimplifications(dir string, ctx SimplifyApplyContext) (report, model string, err error)
 }
@@ -223,18 +222,18 @@ func (a simplifyApplyFnAdapter) ApplySimplifications(dir string, ctx SimplifyApp
 	return a.fn(dir, ctx)
 }
 
-// ReviewApplyContext is the input for the Claude review-apply session: the PR
-// the implement session opened, the adversarial-review findings to resolve, and
-// the pattern catalog so the apply session stays consistent with the same
-// review patterns the implementation honored. The apply session resolves each
-// finding, folds the fix into the commit it belongs to, and force-pushes the
-// rewritten branch to HeadBranch with --force-with-lease — the findings-driven
-// analog of the fix command's apply step. It mirrors SimplifyApplyContext; the
-// two stay separate types so each pass's prompt can evolve independently.
+// ReviewApplyContext is the input for the Claude review-apply session: the
+// adversarial-review findings to resolve on the local feature branch and the
+// pattern catalog so the apply session stays consistent with the same review
+// patterns the implementation honored. The apply session resolves each finding
+// and folds the fix into the commit it belongs to (git commit --fixup + git
+// rebase --autosquash) but does NOT push — it runs before any pull request
+// exists; the finalize pass opens the PR afterwards. BaseBranch bounds the
+// fold-rebase to the branch's own commits (the range origin/<base>..HEAD). It
+// mirrors SimplifyApplyContext; the two stay separate types so each pass's
+// prompt can evolve independently.
 type ReviewApplyContext struct {
 	RepoFullName string
-	PRNumber     int
-	HeadBranch   string
 	BaseBranch   string
 	Findings     []report.Finding
 	Patterns     []patterns.Pattern
@@ -242,11 +241,10 @@ type ReviewApplyContext struct {
 }
 
 // ReviewApplier resolves the review pass's findings and folds each fix into the
-// commit it belongs to via fixup/autosquash, then force-pushes the rewritten
-// branch to the PR head with --force-with-lease. It returns the apply report and
-// the resolved Claude model id for the report comment's attribution footer.
-// Optional: paired with the AdversarialVerifier finder; nil leaves the
-// review-and-fix pass disabled.
+// commit it belongs to via fixup/autosquash on the local branch (no push). It
+// returns the apply report and the resolved Claude model id for the report
+// comment's attribution footer. Optional: paired with the AdversarialVerifier
+// finder; nil leaves the review-and-fix pass disabled.
 type ReviewApplier interface {
 	ApplyReview(dir string, ctx ReviewApplyContext) (report, model string, err error)
 }
@@ -263,13 +261,51 @@ func (a reviewApplyFnAdapter) ApplyReview(dir string, ctx ReviewApplyContext) (s
 	return a.fn(dir, ctx)
 }
 
+// FinalizeContext is the input for the Claude finalize session that opens the
+// draft pull request once the implement, simplify, and review passes have all
+// run on the local feature branch. The session reads the final diff, writes the
+// PR description (with the mandatory "Closes #N" link to IssueNumber), pushes the
+// branch, and opens the draft PR. It needs only the repository identity and the
+// source issue — it resolves the base/head branches and the change set from git
+// itself, so a non-"main" default branch and an empty change set are handled in
+// the session rather than threaded through here.
+type FinalizeContext struct {
+	RepoFullName string
+	IssueNumber  int
+	IssueTitle   string
+}
+
+// PRFinalizer opens the draft pull request for the implemented + simplified +
+// reviewed branch: it reads the final diff, writes the PR description, pushes the
+// branch, and opens the draft PR linked to the issue. It returns a short report
+// (carrying the PR URL) and the resolved Claude model id. The production
+// implementation is claude.FinalizePR; tests substitute a fake. When there is
+// nothing to ship (no commits on the branch), the session opens no PR and says so
+// in the report rather than erroring.
+type PRFinalizer interface {
+	FinalizePR(dir string, ctx FinalizeContext) (report, model string, err error)
+}
+
+// FinalizeFn is the bare-function form of PRFinalizer. It matches
+// claude.FinalizePR so the CLI can wire it directly.
+type FinalizeFn func(dir string, ctx FinalizeContext) (report, model string, err error)
+
+type finalizeFnAdapter struct {
+	fn FinalizeFn
+}
+
+func (a finalizeFnAdapter) FinalizePR(dir string, ctx FinalizeContext) (string, string, error) {
+	return a.fn(dir, ctx)
+}
+
 // GitHubClient is the subset of github operations the implement command
 // needs: fetching the source issue, listing its comments (to detect and reuse
 // an implementation plan posted on an earlier run), cloning the repository so
-// Claude has a working tree to operate on, posting the finished plan and
-// report back onto the issue as comments, and — for the simplify pass —
-// resolving the PR the implement session opened and posting the simplification
-// report onto it. Each method maps to a single gh CLI invocation under the hood.
+// Claude has a working tree to operate on, posting the plan/report/simplify/
+// review artifacts back onto the issue as comments, and — for the simplify and
+// review passes — resolving the checkout's base branch from git so they can
+// scope their diff before any pull request exists. Each method maps to a single
+// gh or git invocation under the hood.
 type GitHubClient interface {
 	GetIssue(owner, name string, number int) (*github.Issue, error)
 	GetIssueRelations(owner, name string, number int) (*github.IssueRelations, error)
@@ -277,8 +313,7 @@ type GitHubClient interface {
 	CloneRepo(ref string) (*github.Repo, error)
 	CloneRepoLocal(ref string, opts github.LocalOptions) (*github.Repo, error)
 	AddIssueComment(owner, name string, number int, body string) (string, error)
-	CurrentPR(dir string) (*github.PRRef, error)
-	AddPRComment(owner, name string, number int, body string) (string, error)
+	CurrentBranchRef(dir string) (*github.BranchRef, error)
 }
 
 // defaultGitHubClient is the production GitHubClient backed by the github
@@ -309,10 +344,6 @@ func (defaultGitHubClient) AddIssueComment(owner, name string, number int, body 
 	return github.AddIssueComment(owner, name, number, body)
 }
 
-func (defaultGitHubClient) CurrentPR(dir string) (*github.PRRef, error) {
-	return github.CurrentPR(dir)
-}
-
-func (defaultGitHubClient) AddPRComment(owner, name string, number int, body string) (string, error) {
-	return github.AddPRComment(owner, name, number, body)
+func (defaultGitHubClient) CurrentBranchRef(dir string) (*github.BranchRef, error) {
+	return github.CurrentBranchRef(dir)
 }

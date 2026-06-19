@@ -16,12 +16,12 @@ const reviewReportHeading = "## Review Report"
 
 // ApplyReview runs a fresh Claude Code session inside the given checkout to
 // resolve the review pass's findings and fold each fix into the commit it
-// belongs to (git commit --fixup + git rebase --autosquash), then force-push
-// the rewritten branch to the PR head with --force-with-lease. It is the
-// findings-driven analog of Fix: it runs in auto mode so the session can edit
-// files, run tests, commit, and force-push without an interactive confirmation,
-// while the auto-mode classifier still vets each action — including permitting
-// --force-with-lease to the PR's own head branch.
+// belongs to (git commit --fixup + git rebase --autosquash) on the local feature
+// branch. It does NOT push: the pass runs before any pull request exists, and the
+// finalize step opens the PR afterwards. It is the findings-driven analog of Fix:
+// it runs in auto mode so the session can edit files, run tests, and commit
+// without an interactive confirmation, while the auto-mode classifier still vets
+// each action.
 func (c *Client) ApplyReview(dir string, ctx implement.ReviewApplyContext) (string, string, error) {
 	out, model, err := c.runClaudeAuto(dir, BuildReviewApplyPrompt(ctx), "review-apply")
 	if err != nil {
@@ -31,15 +31,15 @@ func (c *Client) ApplyReview(dir string, ctx implement.ReviewApplyContext) (stri
 }
 
 // BuildReviewApplyPrompt assembles the prompt for the review-apply session. It
-// renders the findings as a fix-list, embeds the pattern catalog, and copies the
-// fold/autosquash/--force-with-lease publish shape from the fix and simplify
-// prompts. Unlike the simplify pass, it carries no test-file guardrail: review
-// fixes are allowed — and expected — to add regression tests. Exported so the
-// review path can render the prompt without invoking Claude.
+// renders the findings as a fix-list, embeds the pattern catalog, and folds each
+// fix into the commit it belongs to via fixup/autosquash — without pushing, since
+// no pull request exists yet. Unlike the simplify pass, it carries no test-file
+// guardrail: review fixes are allowed — and expected — to add regression tests.
+// Exported so the review path can render the prompt without invoking Claude.
 func BuildReviewApplyPrompt(ctx implement.ReviewApplyContext) string {
 	var sb strings.Builder
 
-	sb.WriteString(`You are a Staff Engineer resolving the review findings on a just-opened pull request: applying the fixes a read-only review pass surfaced and folding each one into the commit that introduced the issue.
+	sb.WriteString(`You are a Staff Engineer resolving the review findings on a just-implemented feature branch: applying the fixes a read-only review pass surfaced and folding each one into the commit that introduced the issue. No pull request exists yet — you fold your fixes into the branch's local commits, and a later finalize step opens the PR once this pass is done.
 
 `)
 	sb.WriteString(baselineBehavioralPrinciples)
@@ -49,13 +49,13 @@ func BuildReviewApplyPrompt(ctx implement.ReviewApplyContext) string {
 - "Minimal-invasive change." — Touch the smallest surface area that resolves each finding. No drive-by refactors, no reformatting unrelated code, no dependency bumps the finding does not implicate.
 - "Regression guard." — When the fix is in production code and the existing tests did not catch the issue, add or extend a test that fails before your fix and passes after. This pass IS allowed to add tests.
 - "Do not cheat the finding." — Never silence a finding by deleting or weakening a test, an assertion, or a required check, by adding a suppression comment that was not already idiomatic in the file, or by widening a type to Any/interface{}/unknown. Fix the real issue.
-- "Self-review before pushing." — Re-read the diff. The result MUST still build, pass the tests, and satisfy the issue. Remove anything not strictly required.
-- "Stay inside the PR." — The PR has a stated intent. Every fix must serve it. Prefer to touch only files the PR already changes; reaching outside it is a last resort, kept as small as possible and called out in the report.
+- "Self-review before you finish." — Re-read the diff. The result MUST still build, pass the tests, and satisfy the issue. Remove anything not strictly required.
+- "Stay inside the change set." — The branch has a stated intent. Every fix must serve it. Prefer to touch only files the branch already changes; reaching outside it is a last resort, kept as small as possible and called out in the report.
 
 `)
 
-	fmt.Fprintf(&sb, "## Pull Request\n\n- Repository: %s\n- PR #%d\n- Head branch: %s (committed to and force-pushed by you)\n- Base branch: %s — fold fixes into this branch's own commits, the range origin/%[4]s..HEAD\n\n",
-		ctx.RepoFullName, ctx.PRNumber, ctx.HeadBranch, ctx.BaseBranch)
+	fmt.Fprintf(&sb, "## Branch\n\n- Repository: %s\n- Base branch: %s — fold fixes into this branch's own commits, the range origin/%[2]s..HEAD\n- You are on the feature branch the implement session committed. No PR exists yet; do NOT push or open one.\n\n",
+		ctx.RepoFullName, ctx.BaseBranch)
 
 	sb.WriteString("## Review findings to resolve\n\n")
 	sb.WriteString("These are the findings from the read-only review pass over the produced diff. Resolve each one — fix the root cause — unless it is a false positive or no longer applies to the current diff, in which case skip it and say so in the report.\n\n")
@@ -78,9 +78,9 @@ func BuildReviewApplyPrompt(ctx implement.ReviewApplyContext) string {
 4. Verify locally: build the project and run the tests (or the targeted subset covering the touched code). Capture the exact commands and pass/fail in the report. If a command cannot run in this environment, say so explicitly.
 `)
 
-	sb.WriteString(foldAndForcePushSteps(ctx.BaseBranch, ctx.HeadBranch, 5, 6))
+	sb.WriteString(foldSteps(ctx.BaseBranch, 5))
 
-	sb.WriteString(`7. After pushing, output a structured review report in this exact shape:
+	sb.WriteString(`6. After folding, output a structured review report in this exact shape:
 
    ## Review Report
 
@@ -93,18 +93,18 @@ func BuildReviewApplyPrompt(ctx implement.ReviewApplyContext) string {
    - Approx lines added/removed: <+N/-M>
    ### Status
    STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT>
-   (DONE = findings resolved and verified; DONE_WITH_CONCERNS = pushed but with reservations a human should see; BLOCKED = could not make progress; NEEDS_CONTEXT = missing information only a human can supply. The orchestrator reads this line and stops the pass on BLOCKED or NEEDS_CONTEXT.)
+   (DONE = findings resolved and verified; DONE_WITH_CONCERNS = folded but with reservations a human should see; BLOCKED = could not make progress; NEEDS_CONTEXT = missing information only a human can supply. The orchestrator reads this line and stops the pass on BLOCKED or NEEDS_CONTEXT.)
 
 ` + commitTrailerBlock() + `## Hard rules
 
 `)
-	fmt.Fprintf(&sb, "- Force-push ONLY with --force-with-lease, ONLY to the PR's own head branch (%[1]s), and ONLY to publish the autosquash rebase above. NEVER use plain --force. NEVER rebase, reorder, drop, or rewrite commits that already exist on the base branch (origin/%[2]s) — only this branch's own commits (origin/%[2]s..HEAD) may be folded.\n", ctx.HeadBranch, ctx.BaseBranch)
+	fmt.Fprintf(&sb, "- NEVER push and NEVER open a pull request — these passes run on the local branch and the finalize step publishes afterwards. NEVER rebase, reorder, drop, or rewrite commits that already exist on the base branch (origin/%[1]s) — only this branch's own commits (origin/%[1]s..HEAD) may be folded.\n", ctx.BaseBranch)
 	sb.WriteString(`- NEVER silence a finding instead of fixing it: no deleting or weakening tests, assertions, or required checks; no suppression comments that were not already idiomatic in the file; no widening types to Any/interface{}/unknown.
 - NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).
 - NEVER fabricate file paths, line numbers, or symbols — open the file before claiming.
-- PREFER to change only files the PR already touches. Reaching outside it is a last resort; make the smallest out-of-scope change that resolves the finding and call it out in the report.
+- PREFER to change only files the branch already touches. Reaching outside it is a last resort; make the smallest out-of-scope change that resolves the finding and call it out in the report.
 - If a finding is a false positive or no longer applies, SKIP it and record why — do not invent a change to satisfy it.
-- If there is nothing to fix after review, do NOT create an empty commit or force-push; output the report with an empty Resolved list and stop.
+- If there is nothing to fix after review, do NOT create an empty commit; output the report with an empty Resolved list and stop.
 - It is OK to stop and report BLOCKED or NEEDS_CONTEXT. Bad work is worse than no work; escalating is not penalized.
 `)
 

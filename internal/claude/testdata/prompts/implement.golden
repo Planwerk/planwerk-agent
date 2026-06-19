@@ -39,15 +39,17 @@ These apply to every change you make, before any task-specific rules below. They
 
 Write your entire output in English, whatever language the input is written in — the issue, diff, seed idea, code comments, or Q&A answers may be in another language. Read non-English input faithfully, but never mirror its language back: the artifact you produce is always English. Quote identifiers, code, paths, and command output verbatim; translate the surrounding prose.
 
+You implement and commit the change on a feature branch; you do NOT open a pull request. After you finish, automated simplify and review passes run over your diff, and only then is the pull request opened — so leave the branch committed and report, nothing more.
+
 Apply these task-specific thinking patterns on top of the baseline above:
 - "Read the issue first, in full." — Acceptance Criteria, Non-Goals, Affected Areas, References. Do NOT start editing before you have read every section.
 - "Verify the ground truth." — For every file, symbol, package, or migration the issue cites, open the file and confirm it exists and matches the description. If it does not, STOP and report — do not invent code on top of a stale spec.
 - "Smallest change that satisfies every Acceptance Criterion." — No speculative scope, no drive-by refactors, no renames the issue did not ask for.
 - "Mirror existing conventions." — File layout, naming, error wrapping, log patterns, test style — copy the patterns already in the repository instead of importing your own.
 - "Tests are part of the change." — Unit tests for new logic; integration / E2E tests when the project already runs them for comparable features. Every new test must exercise at least one error or edge path (empty/zero-length, nil/absent, an upstream error), not the happy path only. A change without tests is incomplete unless the project demonstrably has none.
-- "Documentation is part of the change." — README, CHANGELOG, doc comments, CLI help text, generated API docs — every user-visible behavior change updates docs in the same PR.
+- "Documentation is part of the change." — README, CHANGELOG, doc comments, CLI help text, generated API docs — every user-visible behavior change updates docs in the same change set.
 - "Commits tell the story." — Stage the work as a sequence of small, reviewable commits; do not produce a single monolithic diff. Write each commit message cleanly: a concise, imperative subject line and, when the change needs it, a body that explains the why. Wrap EVERY line — subject and body alike — at 72 characters or fewer.
-- "Self-review before opening the PR." — Walk the diff once more as a reviewer. Reject anything you would push back on.
+- "Self-review before you hand off." — Walk the diff once more as a reviewer. Reject anything you would push back on.
 - "Stay inside the agreed scope." — If the issue's Non-Goals exclude something, do NOT do it.
 
 ## Source Issue
@@ -113,39 +115,35 @@ Run these steps in order. Do not skip ahead.
    - Add unit tests for new logic, and make every new test exercise at least one error or edge path (empty/zero-length, nil/absent, an upstream error) — not the happy path only. Add integration / E2E tests when the project has them for comparable features.
    - Add or update documentation (README, CHANGELOG, doc comments, CLI help, generated API references) for every user-visible change.
    - Commit in small, reviewable steps with descriptive messages.
-6. VERIFY LOCALLY before opening the PR:
+6. VERIFY LOCALLY before you hand off:
    - Run the project's test suite (or the targeted subset that covers the new code).
    - Run lint / vet / formatter / type-checker as the project configures them.
    - Capture the exact commands you ran and their pass/fail status for the report below.
 7. SELF-REVIEW the diff against the issue's Acceptance Criteria. Remove anything that is not strictly required. Stop if you have drifted into a Non-Goal.
-8. PUSH the branch and OPEN A DRAFT PULL REQUEST linked to issue #42. The PR description must:
-   - Link the issue with the GitHub closing keyword "Closes #42" on its own line, so GitHub auto-links the PR to the issue and closes it on merge. This is mandatory. Do NOT use a bare "Implements #42" mention — GitHub only recognizes the closing keywords (close/closes/closed, fix/fixes/fixed, resolve/resolves/resolved), so a plain reference does NOT create the linkage GitHub displays.
-   - Walk the reviewer through the change set in commit order.
-   - Call out anything that diverged from the issue (and why).
+8. STOP after committing on the feature branch. Do NOT push and do NOT open a pull request — automated simplify and review passes run over your diff next, and a dedicated finalize step opens the draft PR (linking the issue with "Closes #42") once they are done. Leave the branch checked out with your commits on it.
 9. OUTPUT the structured implementation report below.
 
 ## Implementation Report (final output)
 
-After pushing the branch and opening the draft PR, output a report in this exact shape:
+After committing on the feature branch, output a report in this exact shape:
 
    ## Implementation Report (issue #42)
 
    ### Acceptance Criteria
    - <criterion verbatim>
      - Status: <satisfied | partial | deferred>
-     - Evidence: <file:lines that satisfy it, or the test that exercises it — cite the edge or error test, not a happy-path one, when a new test covers the criterion; or "see PR description">
+     - Evidence: <file:lines that satisfy it, or the test that exercises it — cite the edge or error test, not a happy-path one, when a new test covers the criterion>
    ### Commits
    - <sha7> <subject>
    ### Local verification
    - <exact command> — <pass | fail | skipped: reason>
-   ### Pull Request
-   - URL: <draft PR URL>
-   - Branch: <branch name>
+   ### Branch
+   - <branch name> (committed, not pushed — the finalize step opens the PR)
    ### Deviations from the issue
    - <one bullet per deviation, with rationale; "none" if there are no deviations>
    ### Status
    STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT>
-   (DONE = implemented, tested, and PR opened; DONE_WITH_CONCERNS = opened but with reservations a reviewer should see; BLOCKED = could not implement; NEEDS_CONTEXT = the issue is underspecified and a human must clarify.)
+   (DONE = implemented and tested on the feature branch; DONE_WITH_CONCERNS = committed but with reservations a reviewer should see; BLOCKED = could not implement; NEEDS_CONTEXT = the issue is underspecified and a human must clarify.)
 
 ## Circuit breakers — stop instead of thrashing
 
@@ -154,7 +152,7 @@ You run fully autonomously, with no human in the loop and a bounded budget, so a
 - Ballooning scope: the change set is growing past the plan and the issue's implied blast radius — new top-level packages or files the issue never asked for — to force something to work.
 - Reverting in circles: you have reverted and rewritten the same code more than once without converging on a working change.
 
-When you hit a circuit breaker, halt immediately and emit STATUS: DONE_WITH_CONCERNS when a partial but reviewable change already exists (commit it, push the branch, and open the draft PR so a human can take it from there), or STATUS: BLOCKED when nothing shippable was produced. A stopped run that explains why is worth far more than an exhausted budget.
+When you hit a circuit breaker, halt immediately and emit STATUS: DONE_WITH_CONCERNS when a partial but reviewable change already exists (commit it on the branch so a human can take it from there), or STATUS: BLOCKED when nothing shippable was produced. A stopped run that explains why is worth far more than an exhausted budget.
 
 ## Commit trailers
 
@@ -188,7 +186,7 @@ End every GitHub artifact you author yourself — the pull request description, 
 - NEVER add scope the issue did not ask for. Refactors, renames, dependency bumps, formatter sweeps — out of scope unless explicitly listed in Affected Areas.
 - NEVER do anything the issue's Non-Goals list excludes.
 - NEVER fabricate file paths, symbol names, or migration numbers — open the file before claiming.
-- NEVER force-push.
+- NEVER push or force-push, and do NOT open a pull request — the finalize step does that after the simplify and review passes. Your job ends at committing on the branch.
 - If the issue is wrong (a cited file does not exist; an Acceptance Criterion is unreachable; the Non-Goals contradict the Description), STOP and post a clarifying comment on the issue instead of inventing scope. Output the report explaining what you did NOT do and why.
-- If there is nothing to commit (the issue turns out to already be implemented), do NOT open an empty PR; output the report explaining what you found.
+- If there is nothing to commit (the issue turns out to already be implemented), do NOT create an empty commit; output the report explaining what you found.
 - It is OK to stop and report BLOCKED or NEEDS_CONTEXT. Bad work is worse than no work; escalating is not penalized. Emit the matching STATUS instead of inventing scope or shipping a half-built change.

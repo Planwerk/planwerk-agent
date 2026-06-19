@@ -48,14 +48,14 @@ type Options struct {
 	// introduces, reusing the adversarial-review machinery. Independent of
 	// Verify: either, both, or neither may be set.
 	VerifyAdversarial bool
-	// NoSimplify disables the automatic simplify pass that, after the draft PR
-	// is opened, folds removals of over-engineering into the PR's commits and
-	// force-pushes the leaner branch. The pass is on by default.
+	// NoSimplify disables the automatic simplify pass that, after the implement
+	// session commits, folds removals of over-engineering into the branch's
+	// commits on the local feature branch (no push). The pass is on by default.
 	NoSimplify bool
 	// NoReview disables the automatic review-and-fix pass that, after the
 	// simplify pass, runs the adversarial review over the diff and folds each
-	// fix into the commit it belongs to before force-pushing. The pass is on by
-	// default; a full run is implement -> simplify -> review.
+	// fix into the commit it belongs to on the local branch (no push). The pass
+	// is on by default; a full run is implement -> simplify -> review -> finalize.
 	NoReview bool
 	Local    bool // operate on the current working directory instead of cloning
 	Force    bool // with Local, skip the dirty-working-tree confirmation prompt
@@ -100,29 +100,38 @@ type Runner struct {
 	// produced diff. Both it and SimplifyApplier must be non-nil (and
 	// opts.NoSimplify false) for the simplify pass to run.
 	Simplifier SimplifyFinder
-	// SimplifyApplier applies the simplify findings and force-pushes the
-	// leaner branch. Paired with Simplifier; nil leaves the pass disabled.
+	// SimplifyApplier applies the simplify findings and folds each into the
+	// commit it belongs to on the local branch (no push). Paired with Simplifier;
+	// nil leaves the pass disabled.
 	SimplifyApplier SimplifyApplier
-	// ReviewApplier applies the review pass's findings and force-pushes the
-	// fixed branch. The review pass reuses AdversarialVerifier as its finder, so
-	// both that field and this one must be non-nil (and opts.NoReview false) for
-	// the pass to run. Nil leaves the review-and-fix pass disabled.
+	// ReviewApplier applies the review pass's findings and folds each fix into
+	// the commit it belongs to on the local branch. The review pass reuses
+	// AdversarialVerifier as its finder, so both that field and this one must be
+	// non-nil (and opts.NoReview false) for the pass to run. Nil leaves the
+	// review-and-fix pass disabled.
 	ReviewApplier ReviewApplier
+	// Finalizer opens the draft pull request after the simplify and review passes
+	// have run on the local branch (a full run is implement -> simplify -> review
+	// -> finalize). When nil the run stops with the branch committed but no PR
+	// opened. The production wiring always sets it.
+	Finalizer PRFinalizer
 }
 
 // NewRunner builds a Runner with the production GitHub backend, the given
 // Claude plan/implement functions, their prompt builders, the optional
 // acceptance-criteria and adversarial verifiers, the optional simplify
-// finder/applier, and the optional review applier. The CLI wires claude.Plan /
-// claude.BuildPlanPrompt / claude.Implement / claude.BuildImplementPrompt /
-// claude.VerifyImplementation / claude.AdversarialReview / claude.SimplifyFindings /
-// claude.ApplySimplifications / claude.ApplyReview so the import direction stays
+// finder/applier, the optional review applier, and the finalize function. The
+// CLI wires claude.Plan / claude.BuildPlanPrompt / claude.Implement /
+// claude.BuildImplementPrompt / claude.VerifyImplementation /
+// claude.AdversarialReview / claude.SimplifyFindings / claude.ApplySimplifications /
+// claude.ApplyReview / claude.FinalizePR so the import direction stays
 // claude -> implement. A nil planFn disables the planning phase; a nil verifyFn
 // leaves the verification pass disabled; a nil adversarialFn leaves both the
 // adversarial pass and the review-and-fix finder disabled; a nil simplifyFindFn
 // or simplifyApplyFn leaves the simplify pass disabled; a nil reviewApplyFn
-// leaves the review-and-fix pass disabled.
-func NewRunner(planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn, adversarialFn AdversarialFn, simplifyFindFn SimplifyFindFn, simplifyApplyFn SimplifyApplyFn, reviewApplyFn ReviewApplyFn) *Runner {
+// leaves the review-and-fix pass disabled; a nil finalizeFn leaves the run on the
+// committed branch with no PR opened.
+func NewRunner(planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn, adversarialFn AdversarialFn, simplifyFindFn SimplifyFindFn, simplifyApplyFn SimplifyApplyFn, reviewApplyFn ReviewApplyFn, finalizeFn FinalizeFn) *Runner {
 	r := &Runner{
 		Claude:          implementFnAdapter{fn: fn},
 		GitHub:          defaultGitHubClient{},
@@ -147,19 +156,22 @@ func NewRunner(planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build Pro
 	if reviewApplyFn != nil {
 		r.ReviewApplier = reviewApplyFnAdapter{fn: reviewApplyFn}
 	}
+	if finalizeFn != nil {
+		r.Finalizer = finalizeFnAdapter{fn: finalizeFn}
+	}
 	return r
 }
 
 // Run is a package-level convenience that delegates to NewRunner(...).Run.
-func Run(w io.Writer, opts Options, planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn, adversarialFn AdversarialFn, simplifyFindFn SimplifyFindFn, simplifyApplyFn SimplifyApplyFn, reviewApplyFn ReviewApplyFn) error {
-	return NewRunner(planFn, buildPlan, fn, build, verifyFn, adversarialFn, simplifyFindFn, simplifyApplyFn, reviewApplyFn).Run(w, opts)
+func Run(w io.Writer, opts Options, planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn, adversarialFn AdversarialFn, simplifyFindFn SimplifyFindFn, simplifyApplyFn SimplifyApplyFn, reviewApplyFn ReviewApplyFn, finalizeFn FinalizeFn) error {
+	return NewRunner(planFn, buildPlan, fn, build, verifyFn, adversarialFn, simplifyFindFn, simplifyApplyFn, reviewApplyFn, finalizeFn).Run(w, opts)
 }
 
 // PrintBarePrompt is a package-level convenience that delegates to
 // NewRunner(nil, ...).PrintBarePrompt. The prompt itself is built without
 // invoking Claude, so the functions passed to NewRunner are not used here.
 func PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuildFn) error {
-	return NewRunner(nil, nil, nil, nil, nil, nil, nil, nil, nil).PrintBarePrompt(w, opts, build)
+	return NewRunner(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil).PrintBarePrompt(w, opts, build)
 }
 
 // PrintBarePrompt builds a self-contained ("bare") implement prompt from
@@ -259,10 +271,15 @@ func (r *Runner) PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuil
 //     is embedded into the implement context, and a STATUS: BLOCKED /
 //     NEEDS_CONTEXT plan aborts before any code is written.
 //  6. Run a Claude session inside the clone to implement the issue
-//     end-to-end (code + tests + docs) and open a draft PR.
+//     end-to-end (code + tests + docs), committing on a fresh feature branch —
+//     but NOT opening a pull request yet.
 //  7. Post the implementation report back onto the source issue as a comment
 //     (unless --no-report-comment), so every run — including no-op or failed
 //     ones — leaves its course of events recorded on the issue.
+//  8. Run the simplify and review-and-fix passes over the committed diff, on the
+//     local branch, posting their reports onto the source issue.
+//  9. Open the draft pull request last, so it lands already simplified and
+//     self-reviewed (a full run is implement -> simplify -> review -> finalize).
 func (r *Runner) Run(w io.Writer, opts Options) error {
 	if opts.PrintPrompt && r.BuildPrompt == nil {
 		return errors.New("--print-prompt requires a prompt builder; wire claude.BuildImplementPrompt via NewRunner")
@@ -374,20 +391,41 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	}
 	slog.Info("implementation complete", "issue", number)
 
-	// Simplify pass: runs after the draft PR is opened and before the verify
-	// passes, so they assess the leaner diff. On by default; --no-simplify or an
-	// unwired dependency skips it. Non-fatal, like the verify passes.
+	// Simplify pass: runs over the diff the implement session committed, on the
+	// local feature branch before any pull request exists. On by default;
+	// --no-simplify or an unwired dependency skips it. Non-fatal, like the verify
+	// passes.
 	if !opts.NoSimplify && r.Simplifier != nil && r.SimplifyApplier != nil {
-		r.runSimplify(w, repo.Dir, owner, name, ctx)
+		r.runSimplify(w, repo.Dir, owner, name, number, ctx)
 	}
 
 	// Review-and-fix pass: runs after the simplify pass (a full run is
-	// implement -> simplify -> review), reusing the adversarial review as the
-	// finder and folding each fix into the commit it belongs to. On by default;
-	// --no-review or an unwired dependency skips it. Non-fatal, like the verify
-	// and simplify passes.
+	// implement -> simplify -> review -> finalize), reusing the adversarial
+	// review as the finder and folding each fix into the commit it belongs to. On
+	// by default; --no-review or an unwired dependency skips it. Non-fatal, like
+	// the verify and simplify passes.
 	if !opts.NoReview && r.AdversarialVerifier != nil && r.ReviewApplier != nil {
-		r.runReview(w, repo.Dir, owner, name, ctx)
+		r.runReview(w, repo.Dir, owner, name, number, ctx)
+	}
+
+	// Optional read-only verification passes assess the final, simplified and
+	// self-reviewed diff before the PR is opened. Both are non-fatal.
+	if opts.Verify && r.Verifier != nil {
+		r.runVerification(w, repo.Dir, ctx)
+	}
+	if opts.VerifyAdversarial && r.AdversarialVerifier != nil {
+		r.runAdversarialVerification(w, repo.Dir)
+	}
+
+	// Finalize: open the draft pull request last, so it lands already simplified
+	// and self-reviewed. Unlike the passes above this is the run's deliverable, so
+	// a genuine failure to open the PR is fatal — the branch is committed and the
+	// operator must know the PR was not created. (An empty change set is not a
+	// failure: the finalize session opens no PR and says so.)
+	if r.Finalizer != nil {
+		if err := r.runFinalize(w, repo.Dir, ctx); err != nil {
+			return err
+		}
 	}
 
 	if opts.Local {
@@ -396,13 +434,6 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		// the branch name there).
 		_, _ = fmt.Fprintf(w, "\nWorking tree left on the feature branch in %s\n", repo.Dir)
 		slog.Info("operating on local checkout", "dir", repo.Dir)
-	}
-
-	if opts.Verify && r.Verifier != nil {
-		r.runVerification(w, repo.Dir, ctx)
-	}
-	if opts.VerifyAdversarial && r.AdversarialVerifier != nil {
-		r.runAdversarialVerification(w, repo.Dir)
 	}
 	return nil
 }
@@ -728,29 +759,25 @@ func renderAdversarialVerification(w io.Writer, result *report.ReviewResult) {
 }
 
 // runSimplify runs the automatic simplify pass over the diff the implement
-// session produced: a read-only ponytail-style finder yields a delete-list of
+// session committed, on the local feature branch before any pull request
+// exists: a read-only ponytail-style finder yields a delete-list of
 // over-engineering, the guardrail filter drops any finding touching tests or
 // assertions, and — when findings remain — a fresh session applies them and
-// folds each into the commit it belongs to before force-pushing the leaner
-// branch to the PR head. The whole pass is non-fatal: any failure (no PR, finder
-// error, apply error, comment-post failure) is logged and surfaced but never
-// aborts the run, matching the verify passes' contract. No findings is a clean
-// no-op — no commit, no force-push, no PR comment.
-func (r *Runner) runSimplify(w io.Writer, dir, owner, name string, ctx Context) {
+// folds each into the commit it belongs to (no push; the finalize pass opens the
+// PR afterwards). The whole pass is non-fatal: any failure (branch-ref
+// resolution, finder error, apply error, comment-post failure) is logged and
+// surfaced but never aborts the run, matching the verify passes' contract. No
+// findings is a clean no-op — no commit, no issue comment.
+func (r *Runner) runSimplify(w io.Writer, dir, owner, name string, number int, ctx Context) {
 	slog.Info("running simplify pass over the produced diff")
-	pr, err := r.GitHub.CurrentPR(dir)
+	branch, err := r.GitHub.CurrentBranchRef(dir)
 	if err != nil {
-		slog.Warn("could not resolve the PR for the simplify pass; skipping", "err", err)
-		_, _ = fmt.Fprintf(w, "\nSimplify pass skipped: could not resolve the PR for this branch: %v\n", err)
-		return
-	}
-	if pr == nil {
-		slog.Info("no PR associated with the branch; skipping simplify pass")
-		_, _ = fmt.Fprintln(w, "\nSimplify pass skipped: no pull request is associated with this branch.")
+		slog.Warn("could not resolve the branch for the simplify pass; skipping", "err", err)
+		_, _ = fmt.Fprintf(w, "\nSimplify pass skipped: could not resolve the base branch for this checkout: %v\n", err)
 		return
 	}
 
-	result, err := r.Simplifier.SimplifyFindings(dir, pr.BaseBranch)
+	result, err := r.Simplifier.SimplifyFindings(dir, branch.BaseBranch)
 	if err != nil {
 		slog.Warn("simplify finder failed", "err", err)
 		_, _ = fmt.Fprintf(w, "\nSimplify pass could not run: %v\n", err)
@@ -774,9 +801,7 @@ func (r *Runner) runSimplify(w io.Writer, dir, owner, name string, ctx Context) 
 
 	simplifyReport, model, err := r.SimplifyApplier.ApplySimplifications(dir, SimplifyApplyContext{
 		RepoFullName: ctx.RepoFullName,
-		PRNumber:     pr.Number,
-		HeadBranch:   pr.HeadBranch,
-		BaseBranch:   pr.BaseBranch,
+		BaseBranch:   branch.BaseBranch,
 		Findings:     kept,
 		Patterns:     ctx.Patterns,
 		MaxPatterns:  ctx.MaxPatterns,
@@ -789,13 +814,13 @@ func (r *Runner) runSimplify(w io.Writer, dir, owner, name string, ctx Context) 
 	if simplifyReport != "" {
 		_, _ = fmt.Fprintf(w, "\nSimplification report:\n%s\n", simplifyReport)
 		// Post the report before the escalation check so an escalated report
-		// still lands on the PR for the human who must look at it.
-		r.postSimplifyComment(w, owner, name, pr.Number, simplifyReport, model)
+		// still lands on the issue for the human who must look at it.
+		r.postSimplifyComment(w, owner, name, number, simplifyReport, model)
 	}
 	if status := planEscalation(simplifyReport); status != "" {
 		_, _ = fmt.Fprintf(w, "\nClaude reported %s — stopping the simplify pass.\n", status)
 	}
-	slog.Info("simplify pass complete", "pr", pr.Number)
+	slog.Info("simplify pass complete", "issue", number)
 }
 
 // keepSimplifyFindings splits simplify findings into those safe to apply and
@@ -850,29 +875,30 @@ func simplifyCommentFooter(model string) string {
 	return "_Simplification report generated by " + attribution.Tool() + " implement " + attribution.AssistantWith(model) + "_"
 }
 
-// formatSimplifyComment wraps the simplification report in the PR-comment body:
-// the report verbatim (it already carries its own "## Simplification Report"
-// heading) followed by the attribution footer.
+// formatSimplifyComment wraps the simplification report in the issue-comment
+// body: the report verbatim (it already carries its own "## Simplification
+// Report" heading) followed by the attribution footer.
 func formatSimplifyComment(simplifyReport, model string) string {
 	return strings.TrimSpace(simplifyReport) + "\n\n---\n\n" + simplifyCommentFooter(model) + "\n"
 }
 
-// postSimplifyComment posts the simplification report as a comment on the PR the
-// implement session opened, so the record of what the simplify pass folded into
-// the branch lives on the PR itself.
+// postSimplifyComment posts the simplification report as a comment on the source
+// issue, so the record of what the simplify pass folded into the branch lands on
+// the issue alongside the plan and implementation report — the PR does not exist
+// yet when this pass runs.
 //
 // Posting is best-effort: a failure to reach GitHub is logged and surfaced to
-// the operator but never aborts the run — the simplification is already pushed,
-// and its report is on stdout regardless.
+// the operator but never aborts the run — the simplification is already folded
+// into the branch, and its report is on stdout regardless.
 func (r *Runner) postSimplifyComment(w io.Writer, owner, name string, number int, simplifyReport, model string) {
-	url, err := r.GitHub.AddPRComment(owner, name, number, formatSimplifyComment(simplifyReport, model))
+	url, err := r.GitHub.AddIssueComment(owner, name, number, formatSimplifyComment(simplifyReport, model))
 	if err != nil {
-		slog.Warn("posting simplify comment failed", "pr", number, "err", err)
-		_, _ = fmt.Fprintf(w, "\nCould not post the simplification report as a PR comment: %v\n", err)
+		slog.Warn("posting simplify comment failed", "issue", number, "err", err)
+		_, _ = fmt.Fprintf(w, "\nCould not post the simplification report as an issue comment: %v\n", err)
 		return
 	}
-	slog.Info("posted simplification report comment", "pr", number, "url", url)
-	_, _ = fmt.Fprintf(w, "\nPosted the simplification report as a comment on PR #%d", number)
+	slog.Info("posted simplification report comment", "issue", number, "url", url)
+	_, _ = fmt.Fprintf(w, "\nPosted the simplification report as a comment on issue #%d", number)
 	if url != "" {
 		_, _ = fmt.Fprintf(w, " (%s)", url)
 	}
@@ -880,29 +906,26 @@ func (r *Runner) postSimplifyComment(w io.Writer, owner, name string, number int
 }
 
 // runReview runs the automatic review-and-fix pass over the diff the implement
-// session produced: the adversarial review (the same finder --verify-adversarial
-// uses, grounded in the implement pattern catalog via /review) yields structured
+// session committed, on the local feature branch before any pull request
+// exists: the adversarial review (the same finder --verify-adversarial uses,
+// grounded in the implement pattern catalog via /review) yields structured
 // findings, and — when findings remain — a fresh session resolves them and folds
-// each fix into the commit it belongs to before force-pushing the fixed branch
-// to the PR head. The whole pass is non-fatal: any failure (no PR, finder error,
-// apply error, comment-post failure) is logged and surfaced but never aborts the
-// run, matching the simplify and verify passes' contract. No findings is a clean
-// no-op — no commit, no force-push, no PR comment beyond a short stdout note.
-func (r *Runner) runReview(w io.Writer, dir, owner, name string, ctx Context) {
+// each fix into the commit it belongs to (no push; the finalize pass opens the
+// PR afterwards). The whole pass is non-fatal: any failure (branch-ref
+// resolution, finder error, apply error, comment-post failure) is logged and
+// surfaced but never aborts the run, matching the simplify and verify passes'
+// contract. No findings is a clean no-op — no commit, no issue comment beyond a
+// short stdout note.
+func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx Context) {
 	slog.Info("running review-and-fix pass over the produced diff")
-	pr, err := r.GitHub.CurrentPR(dir)
+	branch, err := r.GitHub.CurrentBranchRef(dir)
 	if err != nil {
-		slog.Warn("could not resolve the PR for the review pass; skipping", "err", err)
-		_, _ = fmt.Fprintf(w, "\nReview pass skipped: could not resolve the PR for this branch: %v\n", err)
-		return
-	}
-	if pr == nil {
-		slog.Info("no PR associated with the branch; skipping review pass")
-		_, _ = fmt.Fprintln(w, "\nReview pass skipped: no pull request is associated with this branch.")
+		slog.Warn("could not resolve the branch for the review pass; skipping", "err", err)
+		_, _ = fmt.Fprintf(w, "\nReview pass skipped: could not resolve the base branch for this checkout: %v\n", err)
 		return
 	}
 
-	result, err := r.AdversarialVerifier.AdversarialReview(dir, pr.BaseBranch)
+	result, err := r.AdversarialVerifier.AdversarialReview(dir, branch.BaseBranch)
 	if err != nil {
 		slog.Warn("review finder failed", "err", err)
 		_, _ = fmt.Fprintf(w, "\nReview pass could not run: %v\n", err)
@@ -921,9 +944,7 @@ func (r *Runner) runReview(w io.Writer, dir, owner, name string, ctx Context) {
 
 	reviewReport, model, err := r.ReviewApplier.ApplyReview(dir, ReviewApplyContext{
 		RepoFullName: ctx.RepoFullName,
-		PRNumber:     pr.Number,
-		HeadBranch:   pr.HeadBranch,
-		BaseBranch:   pr.BaseBranch,
+		BaseBranch:   branch.BaseBranch,
 		Findings:     findings,
 		Patterns:     ctx.Patterns,
 		MaxPatterns:  ctx.MaxPatterns,
@@ -936,13 +957,13 @@ func (r *Runner) runReview(w io.Writer, dir, owner, name string, ctx Context) {
 	if reviewReport != "" {
 		_, _ = fmt.Fprintf(w, "\nReview report:\n%s\n", reviewReport)
 		// Post the report before the escalation check so an escalated report
-		// still lands on the PR for the human who must look at it.
-		r.postReviewComment(w, owner, name, pr.Number, reviewReport, model)
+		// still lands on the issue for the human who must look at it.
+		r.postReviewComment(w, owner, name, number, reviewReport, model)
 	}
 	if status := planEscalation(reviewReport); status != "" {
 		_, _ = fmt.Fprintf(w, "\nClaude reported %s — stopping the review pass.\n", status)
 	}
-	slog.Info("review pass complete", "pr", pr.Number)
+	slog.Info("review pass complete", "issue", number)
 }
 
 // reviewCommentFooter attributes the posted review report to planwerk-review,
@@ -953,33 +974,67 @@ func reviewCommentFooter(model string) string {
 	return "_Review report generated by " + attribution.Tool() + " implement " + attribution.AssistantWith(model) + "_"
 }
 
-// formatReviewComment wraps the review report in the PR-comment body: the report
-// verbatim (it already carries its own "## Review Report" heading) followed by
-// the attribution footer.
+// formatReviewComment wraps the review report in the issue-comment body: the
+// report verbatim (it already carries its own "## Review Report" heading)
+// followed by the attribution footer.
 func formatReviewComment(reviewReport, model string) string {
 	return strings.TrimSpace(reviewReport) + "\n\n---\n\n" + reviewCommentFooter(model) + "\n"
 }
 
-// postReviewComment posts the review report as a comment on the PR the implement
-// session opened, so the record of what the review pass folded into the branch
-// lives on the PR itself.
+// postReviewComment posts the review report as a comment on the source issue, so
+// the record of what the review pass folded into the branch lands on the issue
+// alongside the plan, implementation, and simplification reports — the PR does
+// not exist yet when this pass runs.
 //
 // Posting is best-effort: a failure to reach GitHub is logged and surfaced to
-// the operator but never aborts the run — the fixes are already pushed, and the
-// report is on stdout regardless.
+// the operator but never aborts the run — the fixes are already folded into the
+// branch, and the report is on stdout regardless.
 func (r *Runner) postReviewComment(w io.Writer, owner, name string, number int, reviewReport, model string) {
-	url, err := r.GitHub.AddPRComment(owner, name, number, formatReviewComment(reviewReport, model))
+	url, err := r.GitHub.AddIssueComment(owner, name, number, formatReviewComment(reviewReport, model))
 	if err != nil {
-		slog.Warn("posting review comment failed", "pr", number, "err", err)
-		_, _ = fmt.Fprintf(w, "\nCould not post the review report as a PR comment: %v\n", err)
+		slog.Warn("posting review comment failed", "issue", number, "err", err)
+		_, _ = fmt.Fprintf(w, "\nCould not post the review report as an issue comment: %v\n", err)
 		return
 	}
-	slog.Info("posted review report comment", "pr", number, "url", url)
-	_, _ = fmt.Fprintf(w, "\nPosted the review report as a comment on PR #%d", number)
+	slog.Info("posted review report comment", "issue", number, "url", url)
+	_, _ = fmt.Fprintf(w, "\nPosted the review report as a comment on issue #%d", number)
 	if url != "" {
 		_, _ = fmt.Fprintf(w, " (%s)", url)
 	}
 	_, _ = fmt.Fprintln(w)
+}
+
+// runFinalize opens the draft pull request as the final step, once the implement,
+// simplify, and review passes have all run on the local feature branch. A fresh
+// Claude session reads the final diff, writes the PR description (with the
+// mandatory "Closes #N" link), pushes the branch, and opens the draft PR.
+//
+// Unlike the simplify/review passes this is the run's deliverable, so a genuine
+// failure to open the PR is returned to the caller (fatal): the branch is
+// committed but no PR was created, and the operator must know. An empty change
+// set is NOT a failure — the finalize session opens no PR, reports that nothing
+// was shippable, and returns no error, exactly as the implement session does when
+// the issue turns out to be already implemented.
+func (r *Runner) runFinalize(w io.Writer, dir string, ctx Context) error {
+	slog.Info("running finalize pass to open the pull request", "issue", ctx.IssueNumber)
+	// The finalize report carries the PR URL and goes to stdout; the PR is
+	// auto-linked onto the issue by its "Closes #N" body, so the model id (used
+	// elsewhere only to footer issue comments) is not needed here.
+	finalizeReport, _, err := r.Finalizer.FinalizePR(dir, FinalizeContext{
+		RepoFullName: ctx.RepoFullName,
+		IssueNumber:  ctx.IssueNumber,
+		IssueTitle:   ctx.IssueTitle,
+	})
+	if err != nil {
+		slog.Warn("finalize pass failed; no pull request was opened", "issue", ctx.IssueNumber, "err", err)
+		_, _ = fmt.Fprintf(w, "\nThe feature branch is committed, but opening the pull request failed: %v\n", err)
+		return fmt.Errorf("opening the pull request: %w", err)
+	}
+	if finalizeReport != "" {
+		_, _ = fmt.Fprintf(w, "\nPull request:\n%s\n", finalizeReport)
+	}
+	slog.Info("finalize pass complete", "issue", ctx.IssueNumber)
+	return nil
 }
 
 // loadPatterns runs technology detection on the cloned repo and loads the

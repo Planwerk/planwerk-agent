@@ -106,12 +106,12 @@ const simplifyReportHeading = "## Simplification Report"
 
 // ApplySimplifications runs a fresh Claude Code session inside the given checkout
 // to apply the simplify pass's findings and fold each into the commit it belongs
-// to (git commit --fixup + git rebase --autosquash), then force-push the
-// rewritten branch to the PR head with --force-with-lease. It is the
-// findings-driven analog of Fix: it runs in auto mode so the session can edit
-// files, run tests, commit, and force-push without an interactive confirmation,
-// while the auto-mode classifier still vets each action — including permitting
-// --force-with-lease to the PR's own head branch.
+// to (git commit --fixup + git rebase --autosquash) on the local feature branch.
+// It does NOT push: the pass runs before any pull request exists, and the
+// finalize step opens the PR afterwards. It is the findings-driven analog of Fix:
+// it runs in auto mode so the session can edit files, run tests, and commit
+// without an interactive confirmation, while the auto-mode classifier still vets
+// each action.
 func (c *Client) ApplySimplifications(dir string, ctx implement.SimplifyApplyContext) (string, string, error) {
 	out, model, err := c.runClaudeAuto(dir, BuildSimplifyApplyPrompt(ctx), "simplify-apply")
 	if err != nil {
@@ -122,13 +122,13 @@ func (c *Client) ApplySimplifications(dir string, ctx implement.SimplifyApplyCon
 
 // BuildSimplifyApplyPrompt assembles the prompt for the simplify-apply session.
 // It renders the findings as a delete-list, embeds the pattern catalog, repeats
-// the hard guardrail, and copies the fold/autosquash/--force-with-lease publish
-// shape from the fix prompt. Exported so the simplify path can render the prompt
-// without invoking Claude.
+// the hard guardrail, and folds each change into the commit it belongs to via
+// fixup/autosquash — without pushing, since no pull request exists yet.
+// Exported so the simplify path can render the prompt without invoking Claude.
 func BuildSimplifyApplyPrompt(ctx implement.SimplifyApplyContext) string {
 	var sb strings.Builder
 
-	sb.WriteString(`You are a Staff Engineer simplifying a just-opened pull request: removing the over-engineering and unnecessary complexity a prior implementation session introduced, WITHOUT changing behavior.
+	sb.WriteString(`You are a Staff Engineer simplifying a just-implemented feature branch: removing the over-engineering and unnecessary complexity a prior implementation session introduced, WITHOUT changing behavior. No pull request exists yet — you fold your simplifications into the branch's local commits, and a later finalize step opens the PR once this and the review pass are done.
 
 `)
 	sb.WriteString(baselineBehavioralPrinciples)
@@ -137,12 +137,12 @@ func BuildSimplifyApplyPrompt(ctx implement.SimplifyApplyContext) string {
 - "Decision ladder." — For every piece of complexity, prefer the simplest rung that still does the job: not building it (YAGNI) -> the standard library -> a platform/framework-native feature -> a dependency already present -> a one-liner -> only then the minimum new code. Collapse toward the top.
 - "Delete, do not redesign." — Simplification removes accidental complexity. It is NOT a refactor, an API redesign, or a behavior change. If a change alters observable behavior, it is out of scope — leave it.
 - "Each removal folds into the commit that introduced it." — A simplification to code an earlier commit added belongs IN that commit, not in a new commit stacked on top.
-- "Self-review before pushing." — Re-read the diff. The result MUST still build, pass the tests, and satisfy the issue. Remove anything not strictly required.
+- "Self-review before you finish." — Re-read the diff. The result MUST still build, pass the tests, and satisfy the issue. Remove anything not strictly required.
 
 `)
 
-	fmt.Fprintf(&sb, "## Pull Request\n\n- Repository: %s\n- PR #%d\n- Head branch: %s (committed to and force-pushed by you)\n- Base branch: %s — fold simplifications into this branch's own commits, the range origin/%[4]s..HEAD\n\n",
-		ctx.RepoFullName, ctx.PRNumber, ctx.HeadBranch, ctx.BaseBranch)
+	fmt.Fprintf(&sb, "## Branch\n\n- Repository: %s\n- Base branch: %s — fold simplifications into this branch's own commits, the range origin/%[2]s..HEAD\n- You are on the feature branch the implement session committed. No PR exists yet; do NOT push or open one.\n\n",
+		ctx.RepoFullName, ctx.BaseBranch)
 
 	sb.WriteString("## Simplifications to apply\n\n")
 	sb.WriteString("These are the over-engineering findings from the read-only simplify pass. Apply each one — remove or collapse the complexity to the simpler form named — unless doing so would change behavior or touch the guardrail areas below, in which case skip it and say so in the report.\n\n")
@@ -174,9 +174,9 @@ If applying a finding would touch any of these, SKIP that finding and record why
 3. Verify locally: build the project and run the tests (or the targeted subset covering the touched code). Capture the exact commands and pass/fail in the report. If a command cannot run in this environment, say so explicitly.
 `)
 
-	sb.WriteString(foldAndForcePushSteps(ctx.BaseBranch, ctx.HeadBranch, 4, 5))
+	sb.WriteString(foldSteps(ctx.BaseBranch, 4))
 
-	sb.WriteString(`6. After pushing, output a structured simplification report in this exact shape:
+	sb.WriteString(`5. After folding, output a structured simplification report in this exact shape:
 
    ## Simplification Report
 
@@ -189,19 +189,19 @@ If applying a finding would touch any of these, SKIP that finding and record why
    - Approx lines added/removed: <+N/-M>
    ### Status
    STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT>
-   (DONE = simplifications applied and verified; DONE_WITH_CONCERNS = pushed but with reservations a human should see; BLOCKED = could not make progress; NEEDS_CONTEXT = missing information only a human can supply. The orchestrator reads this line and stops the pass on BLOCKED or NEEDS_CONTEXT.)
+   (DONE = simplifications applied and verified; DONE_WITH_CONCERNS = folded but with reservations a human should see; BLOCKED = could not make progress; NEEDS_CONTEXT = missing information only a human can supply. The orchestrator reads this line and stops the pass on BLOCKED or NEEDS_CONTEXT.)
 
 ` + commitTrailerBlock() + `## Hard rules
 
 `)
-	fmt.Fprintf(&sb, "- Force-push ONLY with --force-with-lease, ONLY to the PR's own head branch (%[1]s), and ONLY to publish the autosquash rebase above. NEVER use plain --force. NEVER rebase, reorder, drop, or rewrite commits that already exist on the base branch (origin/%[2]s) — only this branch's own commits (origin/%[2]s..HEAD) may be folded.\n", ctx.HeadBranch, ctx.BaseBranch)
+	fmt.Fprintf(&sb, "- NEVER push and NEVER open a pull request — these passes run on the local branch and the finalize step publishes afterwards. NEVER rebase, reorder, drop, or rewrite commits that already exist on the base branch (origin/%[1]s) — only this branch's own commits (origin/%[1]s..HEAD) may be folded.\n", ctx.BaseBranch)
 	sb.WriteString(`- NEVER remove or weaken validation, error handling, security controls, or accessibility code — those are essential behavior, not accidental complexity.
 - NEVER delete, skip, or weaken a test, an assertion, or a required check to shrink the diff.
 - NEVER change observable behavior. This pass removes complexity; it is not a refactor or a redesign.
 - NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).
 - NEVER fabricate file paths, line numbers, or symbols — open the file before claiming.
 - If a finding no longer applies, would change behavior, or touches a guardrail area, SKIP it and record why — do not force it.
-- If there is nothing to simplify after review, do NOT create an empty commit or force-push; output the report with an empty Applied list and stop.
+- If there is nothing to simplify after review, do NOT create an empty commit; output the report with an empty Applied list and stop.
 - It is OK to stop and report BLOCKED or NEEDS_CONTEXT. Bad work is worse than no work; escalating is not penalized.
 `)
 
@@ -235,22 +235,21 @@ func renderSimplifyFindings(findings []report.Finding) string {
 	return sb.String()
 }
 
-// foldAndForcePushSteps renders the fold-via-autosquash and force-with-lease
-// publish instructions shared by the findings-driven apply prompts: each change
-// is folded into the branch commit it belongs to (git commit --fixup + git
-// rebase --autosquash bounded to the merge-base), then the rewritten branch is
-// published with git push --force-with-lease to the PR head. baseBranch bounds
-// the rebase to the branch's own commits; headBranch is the push target.
-// foldStep and publishStep are the step numbers so the caller can place the
-// block within its own numbered workflow.
-func foldAndForcePushSteps(baseBranch, headBranch string, foldStep, publishStep int) string {
+// foldSteps renders the fold-via-autosquash instructions shared by the
+// findings-driven apply prompts: each change is folded into the branch commit it
+// belongs to (git commit --fixup + git rebase --autosquash bounded to the
+// merge-base). It does NOT push — these passes run on the local feature branch
+// before any pull request exists; the finalize step opens the PR afterwards.
+// baseBranch bounds the rebase to the branch's own commits; foldStep is the step
+// number so the caller can place the block within its own numbered workflow.
+func foldSteps(baseBranch string, foldStep int) string {
 	return fmt.Sprintf(`%[1]d. Fold each change into the commit it belongs to. This branch may carry more
    than one commit, and a removal of code that an earlier commit introduced
    belongs IN that commit — not in a new commit stacked on top.
 
    a. List the branch's own commits (oldest first):
 
-      git log --oneline --reverse origin/%[3]s..HEAD
+      git log --oneline --reverse origin/%[2]s..HEAD
 
    b. For each distinct change, find the commit that introduced the code you
       are simplifying — use `+"`git blame <file>`, `git log -p -- <file>`, or `git log -S<symbol>`"+`.
@@ -265,15 +264,11 @@ func foldAndForcePushSteps(baseBranch, headBranch string, foldStep, publishStep 
       own commits are folded and the branch is never silently advanced onto a
       moved base:
 
-      GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash "$(git merge-base origin/%[3]s HEAD)"
+      GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash "$(git merge-base origin/%[2]s HEAD)"
 
-%[2]d. Publish the rewritten branch:
+   Do NOT push and do NOT open a pull request. Leave the rewritten commits on the
+   local branch — the finalize step opens the PR once the simplify and review
+   passes are done.
 
-      git push --force-with-lease origin HEAD:%[4]s
-
-   The autosquash rebase rewrote the branch's commit SHAs, so a plain push is
-   rejected. Use --force-with-lease (never plain --force): it publishes the
-   fold while refusing to clobber commits you have not seen.
-
-`, foldStep, publishStep, baseBranch, headBranch)
+`, foldStep, baseBranch)
 }

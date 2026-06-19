@@ -47,8 +47,9 @@ needs to execute without further questions.
 ## 3. Implement it
 
 Hand the elaborated issue to the implement command. It runs a planning session,
-implements the change end to end (code, tests, docs), and opens a draft pull
-request linked to the issue:
+implements the change end to end (code, tests, docs) on a feature branch, cleans
+the diff up with automatic simplify and review passes, and then opens a draft
+pull request linked to the issue:
 
 ```bash
 planwerk-review implement owner/repo#42

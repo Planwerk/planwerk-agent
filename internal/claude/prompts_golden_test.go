@@ -366,8 +366,6 @@ func TestBuildSimplifyFindPrompt_Golden(t *testing.T) {
 func goldenSimplifyApplyContext() implement.SimplifyApplyContext {
 	return implement.SimplifyApplyContext{
 		RepoFullName: "planwerk/planwerk-review",
-		PRNumber:     42,
-		HeadBranch:   "feat/snapshot-tests",
 		BaseBranch:   "main",
 		Findings: []report.Finding{
 			{
@@ -385,8 +383,8 @@ func goldenSimplifyApplyContext() implement.SimplifyApplyContext {
 }
 
 // TestBuildSimplifyApplyPrompt_Golden locks the apply prompt: the findings
-// delete-list, the hard guardrail, and the fold/autosquash/--force-with-lease
-// publish steps that fold each removal into the commit it belongs to.
+// delete-list, the hard guardrail, and the fold/autosquash steps that fold each
+// removal into the commit it belongs to on the local branch (no push).
 func TestBuildSimplifyApplyPrompt_Golden(t *testing.T) {
 	assertGoldenPrompt(t, "simplify_apply", BuildSimplifyApplyPrompt(goldenSimplifyApplyContext()))
 }
@@ -394,8 +392,6 @@ func TestBuildSimplifyApplyPrompt_Golden(t *testing.T) {
 func goldenReviewApplyContext() implement.ReviewApplyContext {
 	return implement.ReviewApplyContext{
 		RepoFullName: "planwerk/planwerk-review",
-		PRNumber:     42,
-		HeadBranch:   "feat/snapshot-tests",
 		BaseBranch:   "main",
 		Findings: []report.Finding{
 			{
@@ -413,11 +409,26 @@ func goldenReviewApplyContext() implement.ReviewApplyContext {
 }
 
 // TestBuildReviewApplyPrompt_Golden locks the review-apply prompt: the findings
-// fix-list, the regression-test requirement, and the
-// fold/autosquash/--force-with-lease publish steps that fold each fix into the
-// commit it belongs to.
+// fix-list, the regression-test requirement, and the fold/autosquash steps that
+// fold each fix into the commit it belongs to on the local branch (no push).
 func TestBuildReviewApplyPrompt_Golden(t *testing.T) {
 	assertGoldenPrompt(t, "review_apply", BuildReviewApplyPrompt(goldenReviewApplyContext()))
+}
+
+func goldenFinalizeContext() implement.FinalizeContext {
+	return implement.FinalizeContext{
+		RepoFullName: "planwerk/planwerk-review",
+		IssueNumber:  42,
+		IssueTitle:   "Add snapshot tests for prompt builders",
+	}
+}
+
+// TestBuildFinalizePrompt_Golden locks the finalize prompt: the session resolves
+// the base branch and change set itself, pushes the branch, and opens the draft
+// PR with the mandatory "Closes #N" link — and opens nothing when the branch
+// carries no commits.
+func TestBuildFinalizePrompt_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "finalize", BuildFinalizePrompt(goldenFinalizeContext()))
 }
 
 func goldenFixContext() fix.Context {

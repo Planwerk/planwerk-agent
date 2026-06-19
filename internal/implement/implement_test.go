@@ -80,6 +80,22 @@ func (f *fakeReviewApplier) ApplyReview(dir string, ctx ReviewApplyContext) (str
 	return f.report, f.model, f.err
 }
 
+type fakeFinalizer struct {
+	called atomic.Int32
+	dir    string
+	ctx    FinalizeContext
+	report string
+	model  string
+	err    error
+}
+
+func (f *fakeFinalizer) FinalizePR(dir string, ctx FinalizeContext) (string, string, error) {
+	f.called.Add(1)
+	f.dir = dir
+	f.ctx = ctx
+	return f.report, f.model, f.err
+}
+
 type fakePlanner struct {
 	called atomic.Int32
 	dir    string
@@ -814,11 +830,11 @@ func oneSimplifyFinding(file string) *report.ReviewResult {
 
 func TestRun_SimplifyDefaultOnAppliesFindings(t *testing.T) {
 	gh := &fakeGitHub{
-		issue:    sampleIssue(),
-		cloneDir: t.TempDir(),
-		pr:       &github.PRRef{Number: 7, BaseBranch: "main", HeadBranch: "feat/x"},
+		issue:     sampleIssue(),
+		cloneDir:  t.TempDir(),
+		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
-	cl := &fakeClaude{report: "PR opened"}
+	cl := &fakeClaude{} // empty report: the only issue comment is the simplify report
 	sf := &fakeSimplifyFinder{result: oneSimplifyFinding("internal/foo/foo.go")}
 	sa := &fakeSimplifyApplier{report: "## Simplification Report\n\nSTATUS: DONE"}
 	r := simplifyRunner(gh, cl, sf, sa)
@@ -831,38 +847,38 @@ func TestRun_SimplifyDefaultOnAppliesFindings(t *testing.T) {
 		t.Errorf("finder called %d times, want 1 — the simplify pass is on by default", sf.called.Load())
 	}
 	if sf.base != "main" {
-		t.Errorf("finder got base %q, want main from CurrentPR", sf.base)
+		t.Errorf("finder got base %q, want main from CurrentBranchRef", sf.base)
 	}
 	if sa.called.Load() != 1 {
 		t.Fatalf("applier called %d times, want 1", sa.called.Load())
 	}
-	if sa.ctx.PRNumber != 7 || sa.ctx.BaseBranch != "main" || sa.ctx.HeadBranch != "feat/x" {
-		t.Errorf("applier got ctx %+v, want PR #7 base main head feat/x threaded from CurrentPR", sa.ctx)
+	if sa.ctx.BaseBranch != "main" {
+		t.Errorf("applier got ctx %+v, want base main threaded from CurrentBranchRef", sa.ctx)
 	}
 	if len(sa.ctx.Findings) != 1 || sa.ctx.Findings[0].File != "internal/foo/foo.go" {
 		t.Errorf("applier got findings %+v, want the single kept finding", sa.ctx.Findings)
 	}
-	if gh.prCommentCalls.Load() != 1 {
-		t.Fatalf("AddPRComment called %d times, want 1 (the simplify report)", gh.prCommentCalls.Load())
+	if gh.commentCalls.Load() != 1 {
+		t.Fatalf("AddIssueComment called %d times, want 1 (the simplify report)", gh.commentCalls.Load())
 	}
-	if !strings.Contains(gh.prCommentBodies[0], "## Simplification Report") {
-		t.Errorf("PR comment does not carry the report:\n%s", gh.prCommentBodies[0])
+	if !strings.Contains(gh.commentBodies[0], "## Simplification Report") {
+		t.Errorf("issue comment does not carry the report:\n%s", gh.commentBodies[0])
 	}
-	if !strings.Contains(gh.prCommentBodies[0], simplifyCommentFooter("")) {
-		t.Errorf("PR comment is missing the attribution footer:\n%s", gh.prCommentBodies[0])
+	if !strings.Contains(gh.commentBodies[0], simplifyCommentFooter("")) {
+		t.Errorf("issue comment is missing the attribution footer:\n%s", gh.commentBodies[0])
 	}
-	if !strings.Contains(buf.String(), "Posted the simplification report as a comment on PR #7") {
+	if !strings.Contains(buf.String(), "Posted the simplification report as a comment on issue #42") {
 		t.Errorf("missing simplify-comment confirmation in output:\n%s", buf.String())
 	}
 }
 
 func TestRun_NoSimplifySkipsPass(t *testing.T) {
 	gh := &fakeGitHub{
-		issue:    sampleIssue(),
-		cloneDir: t.TempDir(),
-		pr:       &github.PRRef{Number: 7, BaseBranch: "main", HeadBranch: "feat/x"},
+		issue:     sampleIssue(),
+		cloneDir:  t.TempDir(),
+		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
-	cl := &fakeClaude{report: "PR opened"}
+	cl := &fakeClaude{}
 	sf := &fakeSimplifyFinder{result: oneSimplifyFinding("internal/foo/foo.go")}
 	sa := &fakeSimplifyApplier{report: "## Simplification Report\n\nSTATUS: DONE"}
 	r := simplifyRunner(gh, cl, sf, sa)
@@ -870,24 +886,21 @@ func TestRun_NoSimplifySkipsPass(t *testing.T) {
 	if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42", NoSimplify: true}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
-	if gh.currentPRCalls.Load() != 0 {
-		t.Errorf("CurrentPR called %d times, want 0 with --no-simplify", gh.currentPRCalls.Load())
-	}
 	if sf.called.Load() != 0 || sa.called.Load() != 0 {
 		t.Errorf("finder/applier called (%d/%d), want 0/0 with --no-simplify", sf.called.Load(), sa.called.Load())
 	}
-	if gh.prCommentCalls.Load() != 0 {
-		t.Errorf("AddPRComment called %d times, want 0 with --no-simplify", gh.prCommentCalls.Load())
+	if gh.commentCalls.Load() != 0 {
+		t.Errorf("AddIssueComment called %d times, want 0 with --no-simplify (empty implement report posts nothing)", gh.commentCalls.Load())
 	}
 }
 
 func TestRun_SimplifyNoFindingsNoOp(t *testing.T) {
 	gh := &fakeGitHub{
-		issue:    sampleIssue(),
-		cloneDir: t.TempDir(),
-		pr:       &github.PRRef{Number: 7, BaseBranch: "main", HeadBranch: "feat/x"},
+		issue:     sampleIssue(),
+		cloneDir:  t.TempDir(),
+		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
-	cl := &fakeClaude{report: "PR opened"}
+	cl := &fakeClaude{}
 	sf := &fakeSimplifyFinder{result: &report.ReviewResult{}}
 	sa := &fakeSimplifyApplier{report: "unused"}
 	r := simplifyRunner(gh, cl, sf, sa)
@@ -902,8 +915,8 @@ func TestRun_SimplifyNoFindingsNoOp(t *testing.T) {
 	if sa.called.Load() != 0 {
 		t.Errorf("applier called %d times, want 0 — no findings is a clean no-op", sa.called.Load())
 	}
-	if gh.prCommentCalls.Load() != 0 {
-		t.Errorf("AddPRComment called %d times, want 0 — no findings posts no PR comment", gh.prCommentCalls.Load())
+	if gh.commentCalls.Load() != 0 {
+		t.Errorf("AddIssueComment called %d times, want 0 — no findings posts no issue comment", gh.commentCalls.Load())
 	}
 	if !strings.Contains(buf.String(), "Nothing to simplify.") {
 		t.Errorf("missing the no-op note in output:\n%s", buf.String())
@@ -912,11 +925,11 @@ func TestRun_SimplifyNoFindingsNoOp(t *testing.T) {
 
 func TestRun_SimplifyGuardrailRejectsTestFinding(t *testing.T) {
 	gh := &fakeGitHub{
-		issue:    sampleIssue(),
-		cloneDir: t.TempDir(),
-		pr:       &github.PRRef{Number: 7, BaseBranch: "main", HeadBranch: "feat/x"},
+		issue:     sampleIssue(),
+		cloneDir:  t.TempDir(),
+		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
-	cl := &fakeClaude{report: "PR opened"}
+	cl := &fakeClaude{}
 	sf := &fakeSimplifyFinder{result: &report.ReviewResult{Findings: []report.Finding{
 		{Severity: report.SeverityWarning, Title: "Redundant assertion", File: "internal/foo/foo_test.go", Problem: "x", Action: "drop"},
 		{Severity: report.SeverityWarning, Title: "Single-impl interface", File: "internal/foo/foo.go", Problem: "y", Action: "drop"},
@@ -943,11 +956,11 @@ func TestRun_SimplifyEscalationStops(t *testing.T) {
 	for _, status := range []string{"BLOCKED", "NEEDS_CONTEXT"} {
 		t.Run(status, func(t *testing.T) {
 			gh := &fakeGitHub{
-				issue:    sampleIssue(),
-				cloneDir: t.TempDir(),
-				pr:       &github.PRRef{Number: 7, BaseBranch: "main", HeadBranch: "feat/x"},
+				issue:     sampleIssue(),
+				cloneDir:  t.TempDir(),
+				branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 			}
-			cl := &fakeClaude{report: "PR opened"}
+			cl := &fakeClaude{}
 			sf := &fakeSimplifyFinder{result: oneSimplifyFinding("internal/foo/foo.go")}
 			sa := &fakeSimplifyApplier{report: "## Simplification Report\n\nSTATUS: " + status}
 			r := simplifyRunner(gh, cl, sf, sa)
@@ -956,8 +969,8 @@ func TestRun_SimplifyEscalationStops(t *testing.T) {
 			if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
 				t.Fatalf("Run returned %v, want nil — the simplify pass is non-fatal", err)
 			}
-			if gh.prCommentCalls.Load() != 1 {
-				t.Errorf("AddPRComment called %d times, want 1 — an escalated report must still post", gh.prCommentCalls.Load())
+			if gh.commentCalls.Load() != 1 {
+				t.Errorf("AddIssueComment called %d times, want 1 — an escalated report must still post", gh.commentCalls.Load())
 			}
 			if !strings.Contains(buf.String(), "Claude reported "+status+" — stopping the simplify pass") {
 				t.Errorf("missing the escalation/stop note in output:\n%s", buf.String())
@@ -968,19 +981,19 @@ func TestRun_SimplifyEscalationStops(t *testing.T) {
 
 func TestRun_SimplifyCommentFailureIsNonFatal(t *testing.T) {
 	gh := &fakeGitHub{
-		issue:        sampleIssue(),
-		cloneDir:     t.TempDir(),
-		pr:           &github.PRRef{Number: 7, BaseBranch: "main", HeadBranch: "feat/x"},
-		prCommentErr: errors.New("github down"),
+		issue:      sampleIssue(),
+		cloneDir:   t.TempDir(),
+		branchRef:  &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+		commentErr: errors.New("github down"),
 	}
-	cl := &fakeClaude{report: "PR opened"}
+	cl := &fakeClaude{}
 	sf := &fakeSimplifyFinder{result: oneSimplifyFinding("internal/foo/foo.go")}
 	sa := &fakeSimplifyApplier{report: "## Simplification Report\n\nSTATUS: DONE"}
 	r := simplifyRunner(gh, cl, sf, sa)
 
 	var buf bytes.Buffer
 	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
-		t.Fatalf("Run returned %v, want nil despite the PR-comment failure", err)
+		t.Fatalf("Run returned %v, want nil despite the issue-comment failure", err)
 	}
 	if sa.called.Load() != 1 {
 		t.Errorf("applier called %d times, want 1 — a failed comment post must not abort the run", sa.called.Load())
@@ -990,11 +1003,11 @@ func TestRun_SimplifyCommentFailureIsNonFatal(t *testing.T) {
 	}
 }
 
-func TestRun_SimplifyNoPRSkips(t *testing.T) {
-	// gh.pr is nil, so CurrentPR returns (nil, nil): no PR is associated with
-	// the branch and the pass skips cleanly.
-	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
-	cl := &fakeClaude{report: "PR opened"}
+func TestRun_SimplifyBranchRefErrorSkips(t *testing.T) {
+	// branchRefErr is set, so CurrentBranchRef errors: the base branch cannot be
+	// resolved and the pass skips cleanly without running the finder/applier.
+	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir(), branchRefErr: errors.New("no origin/HEAD")}
+	cl := &fakeClaude{}
 	sf := &fakeSimplifyFinder{result: oneSimplifyFinding("internal/foo/foo.go")}
 	sa := &fakeSimplifyApplier{report: "unused"}
 	r := simplifyRunner(gh, cl, sf, sa)
@@ -1003,24 +1016,24 @@ func TestRun_SimplifyNoPRSkips(t *testing.T) {
 	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
-	if gh.currentPRCalls.Load() != 1 {
-		t.Errorf("CurrentPR called %d times, want 1", gh.currentPRCalls.Load())
+	if gh.branchRefCalls.Load() == 0 {
+		t.Errorf("CurrentBranchRef called %d times, want at least 1", gh.branchRefCalls.Load())
 	}
 	if sf.called.Load() != 0 || sa.called.Load() != 0 {
-		t.Errorf("finder/applier called (%d/%d), want 0/0 when no PR is associated", sf.called.Load(), sa.called.Load())
+		t.Errorf("finder/applier called (%d/%d), want 0/0 when the base branch cannot be resolved", sf.called.Load(), sa.called.Load())
 	}
-	if !strings.Contains(buf.String(), "no pull request is associated with this branch") {
-		t.Errorf("missing the no-PR skip note in output:\n%s", buf.String())
+	if !strings.Contains(buf.String(), "could not resolve the base branch") {
+		t.Errorf("missing the branch-resolution skip note in output:\n%s", buf.String())
 	}
 }
 
 func TestRun_SimplifyFinderErrorIsNonFatal(t *testing.T) {
 	gh := &fakeGitHub{
-		issue:    sampleIssue(),
-		cloneDir: t.TempDir(),
-		pr:       &github.PRRef{Number: 7, BaseBranch: "main", HeadBranch: "feat/x"},
+		issue:     sampleIssue(),
+		cloneDir:  t.TempDir(),
+		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
-	cl := &fakeClaude{report: "PR opened"}
+	cl := &fakeClaude{}
 	sf := &fakeSimplifyFinder{err: errors.New("finder exploded")}
 	sa := &fakeSimplifyApplier{report: "unused"}
 	r := simplifyRunner(gh, cl, sf, sa)
@@ -1096,11 +1109,11 @@ const (
 
 func TestRun_ReviewDefaultOnAppliesFindings(t *testing.T) {
 	gh := &fakeGitHub{
-		issue:    sampleIssue(),
-		cloneDir: t.TempDir(),
-		pr:       &github.PRRef{Number: 7, BaseBranch: "main", HeadBranch: "feat/x"},
+		issue:     sampleIssue(),
+		cloneDir:  t.TempDir(),
+		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
-	cl := &fakeClaude{report: "PR opened"}
+	cl := &fakeClaude{} // empty report: the only issue comment is the review report
 	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
 	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
 	r := reviewRunner(gh, cl, av, ra)
@@ -1113,38 +1126,38 @@ func TestRun_ReviewDefaultOnAppliesFindings(t *testing.T) {
 		t.Errorf("finder called %d times, want 1 — the review pass is on by default", av.called.Load())
 	}
 	if av.base != reviewTestBase {
-		t.Errorf("finder got base %q, want main from CurrentPR", av.base)
+		t.Errorf("finder got base %q, want main from CurrentBranchRef", av.base)
 	}
 	if ra.called.Load() != 1 {
 		t.Fatalf("applier called %d times, want 1", ra.called.Load())
 	}
-	if ra.ctx.PRNumber != 7 || ra.ctx.BaseBranch != reviewTestBase || ra.ctx.HeadBranch != "feat/x" {
-		t.Errorf("applier got ctx %+v, want PR #7 base main head feat/x threaded from CurrentPR", ra.ctx)
+	if ra.ctx.BaseBranch != reviewTestBase {
+		t.Errorf("applier got ctx %+v, want base main threaded from CurrentBranchRef", ra.ctx)
 	}
 	if len(ra.ctx.Findings) != 1 || ra.ctx.Findings[0].File != reviewTestProdFile {
 		t.Errorf("applier got findings %+v, want the single finding from the finder", ra.ctx.Findings)
 	}
-	if gh.prCommentCalls.Load() != 1 {
-		t.Fatalf("AddPRComment called %d times, want 1 (the review report)", gh.prCommentCalls.Load())
+	if gh.commentCalls.Load() != 1 {
+		t.Fatalf("AddIssueComment called %d times, want 1 (the review report)", gh.commentCalls.Load())
 	}
-	if !strings.Contains(gh.prCommentBodies[0], "## Review Report") {
-		t.Errorf("PR comment does not carry the report:\n%s", gh.prCommentBodies[0])
+	if !strings.Contains(gh.commentBodies[0], "## Review Report") {
+		t.Errorf("issue comment does not carry the report:\n%s", gh.commentBodies[0])
 	}
-	if !strings.Contains(gh.prCommentBodies[0], reviewCommentFooter("")) {
-		t.Errorf("PR comment is missing the attribution footer:\n%s", gh.prCommentBodies[0])
+	if !strings.Contains(gh.commentBodies[0], reviewCommentFooter("")) {
+		t.Errorf("issue comment is missing the attribution footer:\n%s", gh.commentBodies[0])
 	}
-	if !strings.Contains(buf.String(), "Posted the review report as a comment on PR #7") {
+	if !strings.Contains(buf.String(), "Posted the review report as a comment on issue #42") {
 		t.Errorf("missing review-comment confirmation in output:\n%s", buf.String())
 	}
 }
 
 func TestRun_NoReviewSkipsPass(t *testing.T) {
 	gh := &fakeGitHub{
-		issue:    sampleIssue(),
-		cloneDir: t.TempDir(),
-		pr:       &github.PRRef{Number: 7, BaseBranch: "main", HeadBranch: "feat/x"},
+		issue:     sampleIssue(),
+		cloneDir:  t.TempDir(),
+		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
-	cl := &fakeClaude{report: "PR opened"}
+	cl := &fakeClaude{}
 	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
 	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
 	r := reviewRunner(gh, cl, av, ra)
@@ -1152,24 +1165,21 @@ func TestRun_NoReviewSkipsPass(t *testing.T) {
 	if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42", NoReview: true}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
-	if gh.currentPRCalls.Load() != 0 {
-		t.Errorf("CurrentPR called %d times, want 0 with --no-review", gh.currentPRCalls.Load())
-	}
 	if av.called.Load() != 0 || ra.called.Load() != 0 {
 		t.Errorf("finder/applier called (%d/%d), want 0/0 with --no-review", av.called.Load(), ra.called.Load())
 	}
-	if gh.prCommentCalls.Load() != 0 {
-		t.Errorf("AddPRComment called %d times, want 0 with --no-review", gh.prCommentCalls.Load())
+	if gh.commentCalls.Load() != 0 {
+		t.Errorf("AddIssueComment called %d times, want 0 with --no-review (empty implement report posts nothing)", gh.commentCalls.Load())
 	}
 }
 
 func TestRun_ReviewNoFindingsNoOp(t *testing.T) {
 	gh := &fakeGitHub{
-		issue:    sampleIssue(),
-		cloneDir: t.TempDir(),
-		pr:       &github.PRRef{Number: 7, BaseBranch: "main", HeadBranch: "feat/x"},
+		issue:     sampleIssue(),
+		cloneDir:  t.TempDir(),
+		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
-	cl := &fakeClaude{report: "PR opened"}
+	cl := &fakeClaude{}
 	av := &fakeAdversarialVerifier{result: &report.ReviewResult{}}
 	ra := &fakeReviewApplier{report: "unused"}
 	r := reviewRunner(gh, cl, av, ra)
@@ -1184,8 +1194,8 @@ func TestRun_ReviewNoFindingsNoOp(t *testing.T) {
 	if ra.called.Load() != 0 {
 		t.Errorf("applier called %d times, want 0 — no findings is a clean no-op", ra.called.Load())
 	}
-	if gh.prCommentCalls.Load() != 0 {
-		t.Errorf("AddPRComment called %d times, want 0 — no findings posts no PR comment", gh.prCommentCalls.Load())
+	if gh.commentCalls.Load() != 0 {
+		t.Errorf("AddIssueComment called %d times, want 0 — no findings posts no issue comment", gh.commentCalls.Load())
 	}
 	if !strings.Contains(buf.String(), "Review found nothing to fix.") {
 		t.Errorf("missing the no-op note in output:\n%s", buf.String())
@@ -1196,11 +1206,11 @@ func TestRun_ReviewEscalationStops(t *testing.T) {
 	for _, status := range []string{"BLOCKED", "NEEDS_CONTEXT"} {
 		t.Run(status, func(t *testing.T) {
 			gh := &fakeGitHub{
-				issue:    sampleIssue(),
-				cloneDir: t.TempDir(),
-				pr:       &github.PRRef{Number: 7, BaseBranch: "main", HeadBranch: "feat/x"},
+				issue:     sampleIssue(),
+				cloneDir:  t.TempDir(),
+				branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 			}
-			cl := &fakeClaude{report: "PR opened"}
+			cl := &fakeClaude{}
 			av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
 			ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: " + status}
 			r := reviewRunner(gh, cl, av, ra)
@@ -1209,8 +1219,8 @@ func TestRun_ReviewEscalationStops(t *testing.T) {
 			if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
 				t.Fatalf("Run returned %v, want nil — the review pass is non-fatal", err)
 			}
-			if gh.prCommentCalls.Load() != 1 {
-				t.Errorf("AddPRComment called %d times, want 1 — an escalated report must still post", gh.prCommentCalls.Load())
+			if gh.commentCalls.Load() != 1 {
+				t.Errorf("AddIssueComment called %d times, want 1 — an escalated report must still post", gh.commentCalls.Load())
 			}
 			if !strings.Contains(buf.String(), "Claude reported "+status+" — stopping the review pass") {
 				t.Errorf("missing the escalation/stop note in output:\n%s", buf.String())
@@ -1221,19 +1231,19 @@ func TestRun_ReviewEscalationStops(t *testing.T) {
 
 func TestRun_ReviewCommentFailureIsNonFatal(t *testing.T) {
 	gh := &fakeGitHub{
-		issue:        sampleIssue(),
-		cloneDir:     t.TempDir(),
-		pr:           &github.PRRef{Number: 7, BaseBranch: "main", HeadBranch: "feat/x"},
-		prCommentErr: errors.New("github down"),
+		issue:      sampleIssue(),
+		cloneDir:   t.TempDir(),
+		branchRef:  &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+		commentErr: errors.New("github down"),
 	}
-	cl := &fakeClaude{report: "PR opened"}
+	cl := &fakeClaude{}
 	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
 	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
 	r := reviewRunner(gh, cl, av, ra)
 
 	var buf bytes.Buffer
 	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
-		t.Fatalf("Run returned %v, want nil despite the PR-comment failure", err)
+		t.Fatalf("Run returned %v, want nil despite the issue-comment failure", err)
 	}
 	if ra.called.Load() != 1 {
 		t.Errorf("applier called %d times, want 1 — a failed comment post must not abort the run", ra.called.Load())
@@ -1243,11 +1253,11 @@ func TestRun_ReviewCommentFailureIsNonFatal(t *testing.T) {
 	}
 }
 
-func TestRun_ReviewNoPRSkips(t *testing.T) {
-	// gh.pr is nil, so CurrentPR returns (nil, nil): no PR is associated with
-	// the branch and the pass skips cleanly.
-	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
-	cl := &fakeClaude{report: "PR opened"}
+func TestRun_ReviewBranchRefErrorSkips(t *testing.T) {
+	// branchRefErr is set, so CurrentBranchRef errors: the base branch cannot be
+	// resolved and the pass skips cleanly without running the finder/applier.
+	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir(), branchRefErr: errors.New("no origin/HEAD")}
+	cl := &fakeClaude{}
 	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
 	ra := &fakeReviewApplier{report: "unused"}
 	r := reviewRunner(gh, cl, av, ra)
@@ -1256,24 +1266,24 @@ func TestRun_ReviewNoPRSkips(t *testing.T) {
 	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
-	if gh.currentPRCalls.Load() != 1 {
-		t.Errorf("CurrentPR called %d times, want 1", gh.currentPRCalls.Load())
+	if gh.branchRefCalls.Load() == 0 {
+		t.Errorf("CurrentBranchRef called %d times, want at least 1", gh.branchRefCalls.Load())
 	}
 	if av.called.Load() != 0 || ra.called.Load() != 0 {
-		t.Errorf("finder/applier called (%d/%d), want 0/0 when no PR is associated", av.called.Load(), ra.called.Load())
+		t.Errorf("finder/applier called (%d/%d), want 0/0 when the base branch cannot be resolved", av.called.Load(), ra.called.Load())
 	}
-	if !strings.Contains(buf.String(), "no pull request is associated with this branch") {
-		t.Errorf("missing the no-PR skip note in output:\n%s", buf.String())
+	if !strings.Contains(buf.String(), "could not resolve the base branch") {
+		t.Errorf("missing the branch-resolution skip note in output:\n%s", buf.String())
 	}
 }
 
 func TestRun_ReviewFinderErrorIsNonFatal(t *testing.T) {
 	gh := &fakeGitHub{
-		issue:    sampleIssue(),
-		cloneDir: t.TempDir(),
-		pr:       &github.PRRef{Number: 7, BaseBranch: "main", HeadBranch: "feat/x"},
+		issue:     sampleIssue(),
+		cloneDir:  t.TempDir(),
+		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
-	cl := &fakeClaude{report: "PR opened"}
+	cl := &fakeClaude{}
 	av := &fakeAdversarialVerifier{err: errors.New("finder exploded")}
 	ra := &fakeReviewApplier{report: "unused"}
 	r := reviewRunner(gh, cl, av, ra)
@@ -1287,6 +1297,51 @@ func TestRun_ReviewFinderErrorIsNonFatal(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "Review pass could not run") {
 		t.Errorf("expected a non-fatal warning about the finder failure, got:\n%s", buf.String())
+	}
+}
+
+func TestRun_FinalizeOpensPR(t *testing.T) {
+	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+	cl := &fakeClaude{report: "PR opened"}
+	ff := &fakeFinalizer{report: "## Pull Request\n\n- URL: https://github.com/owner/repo/pull/9\n\nSTATUS: DONE"}
+	r := newRunner(gh, cl)
+	r.Finalizer = ff
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if ff.called.Load() != 1 {
+		t.Fatalf("finalizer called %d times, want 1 — the PR is opened last", ff.called.Load())
+	}
+	if ff.dir != gh.cloneDir {
+		t.Errorf("finalizer ran in %q, want clone dir %q", ff.dir, gh.cloneDir)
+	}
+	if ff.ctx.RepoFullName != testRepoFullName || ff.ctx.IssueNumber != 42 || ff.ctx.IssueTitle != "Add foo widget" {
+		t.Errorf("finalizer got ctx %+v, want repo owner/repo issue #42 titled \"Add foo widget\"", ff.ctx)
+	}
+	if !strings.Contains(buf.String(), "Pull request:") || !strings.Contains(buf.String(), "pull/9") {
+		t.Errorf("missing the finalize report in output:\n%s", buf.String())
+	}
+}
+
+func TestRun_FinalizeErrorIsFatal(t *testing.T) {
+	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+	cl := &fakeClaude{report: "PR opened"}
+	ff := &fakeFinalizer{err: errors.New("gh pr create failed")}
+	r := newRunner(gh, cl)
+	r.Finalizer = ff
+
+	var buf bytes.Buffer
+	err := r.Run(&buf, Options{IssueRef: "owner/repo#42"})
+	if err == nil || !strings.Contains(err.Error(), "opening the pull request") {
+		t.Fatalf("Run returned %v, want a fatal opening-the-pull-request error", err)
+	}
+	if ff.called.Load() != 1 {
+		t.Errorf("finalizer called %d times, want 1", ff.called.Load())
+	}
+	if !strings.Contains(buf.String(), "opening the pull request failed") {
+		t.Errorf("missing the finalize-failure note in output:\n%s", buf.String())
 	}
 }
 
@@ -1314,13 +1369,9 @@ type fakeGitHub struct {
 	commentCalls  atomic.Int32
 	commentBodies []string
 
-	pr             *github.PRRef
-	prErr          error
-	currentPRCalls atomic.Int32
-
-	prCommentErr    error
-	prCommentCalls  atomic.Int32
-	prCommentBodies []string
+	branchRef      *github.BranchRef
+	branchRefErr   error
+	branchRefCalls atomic.Int32
 }
 
 func (f *fakeGitHub) GetIssue(owner, name string, number int) (*github.Issue, error) {
@@ -1384,27 +1435,18 @@ func (f *fakeGitHub) AddIssueComment(owner, name string, number int, body string
 	return fmt.Sprintf("https://github.com/%s/%s/issues/%d#issuecomment-1", owner, name, number), nil
 }
 
-// CurrentPR returns the canned PR ref for the simplify pass, unless prErr is
-// set to simulate a gh failure. The default zero value (nil pr, nil err) means
-// "no PR associated with the branch", so the simplify pass skips cleanly.
-func (f *fakeGitHub) CurrentPR(_ string) (*github.PRRef, error) {
-	f.currentPRCalls.Add(1)
-	if f.prErr != nil {
-		return nil, f.prErr
+// CurrentBranchRef returns the canned branch ref for the simplify and review
+// passes (so they can scope their diff against the base branch), unless
+// branchRefErr is set to simulate a git failure, in which case the passes skip
+// cleanly. Production CurrentBranchRef never returns (nil, nil); tests that drive
+// a pass to completion set branchRef, and tests that exercise the skip path set
+// branchRefErr.
+func (f *fakeGitHub) CurrentBranchRef(_ string) (*github.BranchRef, error) {
+	f.branchRefCalls.Add(1)
+	if f.branchRefErr != nil {
+		return nil, f.branchRefErr
 	}
-	return f.pr, nil
-}
-
-// AddPRComment records each posted PR-comment body in order and returns a canned
-// URL, unless prCommentErr is set to simulate a GitHub failure. The simplify
-// pass posts its report here.
-func (f *fakeGitHub) AddPRComment(owner, name string, number int, body string) (string, error) {
-	f.prCommentCalls.Add(1)
-	if f.prCommentErr != nil {
-		return "", f.prCommentErr
-	}
-	f.prCommentBodies = append(f.prCommentBodies, body)
-	return fmt.Sprintf("https://github.com/%s/%s/pull/%d#issuecomment-1", owner, name, number), nil
+	return f.branchRef, nil
 }
 
 // CloneRepoLocal mirrors github.UseLocalRepo: it returns a Local repo so
@@ -1437,6 +1479,10 @@ func (f *fakeClaude) Implement(dir string, ctx Context) (string, string, error) 
 	return f.report, f.model, f.err
 }
 
+// testRepoFullName is the "owner/repo" slug the tests parse out of the
+// "owner/repo#42" issue refs; resolved-context assertions compare against it.
+const testRepoFullName = "owner/repo"
+
 func sampleIssue() *github.Issue {
 	return &github.Issue{
 		Title: "Add foo widget",
@@ -1446,8 +1492,16 @@ func sampleIssue() *github.Issue {
 	}
 }
 
+// defaultFinalizeReport is the canned PR report the default finalizer returns,
+// so every full Run exercises the finalize step (which opens the PR last)
+// without each test having to wire its own finalizer.
+const defaultFinalizeReport = "## Pull Request\n\n- URL: https://github.com/owner/repo/pull/9\n- Branch: implement/issue-42\n\nSTATUS: DONE"
+
+// newRunner wires a default no-op finalizer so the full Run path — which now ends
+// by opening the PR — completes in tests that do not exercise finalize directly.
+// Finalize-specific tests replace r.Finalizer with their own fake.
 func newRunner(gh *fakeGitHub, cl *fakeClaude) *Runner {
-	return &Runner{Claude: cl, GitHub: gh}
+	return &Runner{Claude: cl, GitHub: gh, Finalizer: &fakeFinalizer{report: defaultFinalizeReport}}
 }
 
 func TestRun_HappyPath(t *testing.T) {
@@ -1465,7 +1519,7 @@ func TestRun_HappyPath(t *testing.T) {
 	if cl.dir != "/tmp/clone" {
 		t.Errorf("Claude got dir %q, want /tmp/clone", cl.dir)
 	}
-	if cl.ctx.IssueNumber != 42 || cl.ctx.RepoFullName != "owner/repo" {
+	if cl.ctx.IssueNumber != 42 || cl.ctx.RepoFullName != testRepoFullName {
 		t.Errorf("Claude got ctx %+v, want #42 in owner/repo", cl.ctx)
 	}
 	if cl.ctx.IssueTitle != "Add foo widget" {
@@ -1622,7 +1676,7 @@ func TestPrintBarePrompt_AcceptsShortForm(t *testing.T) {
 	if err := r.PrintBarePrompt(io.Discard, Options{IssueRef: "owner/repo#7"}, build); err != nil {
 		t.Fatalf("PrintBarePrompt returned %v, want nil", err)
 	}
-	if got.RepoFullName != "owner/repo" || got.IssueNumber != 7 {
+	if got.RepoFullName != testRepoFullName || got.IssueNumber != 7 {
 		t.Errorf("builder got repo=%q issue=%d, want owner/repo / 7", got.RepoFullName, got.IssueNumber)
 	}
 }

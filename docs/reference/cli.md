@@ -403,9 +403,12 @@ The conflict resolution and the apply step run in Claude Code's auto mode.
 
 Take an elaborated GitHub issue, run a read-only Claude Code planning session,
 then a fresh implement session that executes the plan end to end (code, tests,
-docs) and opens a draft pull request. The implementation report is posted back
-onto the source issue as a comment on every run (use `--no-report-comment` to
-skip that), so the course of each implementation is recorded on the issue.
+docs) and commits on a feature branch. The simplify and review passes then run
+over the committed diff, and a finalize session opens the draft pull request
+last — so it lands already simplified and self-reviewed. The implementation
+report is posted back onto the source issue as a comment on every run (use
+`--no-report-comment` to skip that), so the course of each implementation is
+recorded on the issue.
 
 A plan planwerk-review already posted on the issue (from an earlier run that
 planned but was aborted before implementing) is reused by default: the planning
@@ -437,8 +440,8 @@ planwerk-review implement --no-review owner/repo#123
 | `--plan-effort` | Reasoning effort for the planning session passed via `--effort` (`low`, `medium`, `high`, `xhigh`, `max`; env: `PLANWERK_PLAN_EFFORT`) | `max` |
 | `--verify` | After implementing, run an independent pass that checks the actual diff against the issue's Acceptance Criteria without trusting the implementer's report | `false` |
 | `--verify-adversarial` | After implementing, red-team the produced diff for the bugs it introduces using the adversarial-review pass (independent of `--verify`) | `false` |
-| `--no-simplify` | Skip the automatic simplify pass that folds over-engineering removals into the PR before the review phase | `false` |
-| `--no-review` | Skip the automatic review-and-fix pass that folds review findings into the PR after the simplify pass | `false` |
+| `--no-simplify` | Skip the automatic simplify pass that folds over-engineering removals into the branch before the review phase | `false` |
+| `--no-review` | Skip the automatic review-and-fix pass that folds review findings into the branch after the simplify pass | `false` |
 | `--patterns` | Additional pattern source: local directory, `github:owner/repo[/sub][@ref]`, or `git+https://…[#ref[:sub]]` | - |
 | `--no-repo-patterns` | Ignore repo-specific patterns under `.planwerk/review_patterns/` in the target repo | `false` |
 | `--no-local-patterns` | Ignore local patterns from the tool | `false` |
@@ -458,34 +461,39 @@ the bugs the change introduces (injection, race conditions, failure modes).
 Enable either, both, or neither. Both are non-fatal — a finding is reported, it
 does not fail the run.
 
-The simplify pass runs by default once the draft PR is open, before the
+The simplify pass runs by default once the branch is committed, before the
 review-and-fix and verification passes, so they assess the leaner diff. A
 read-only ponytail-style finder reviews the diff through a YAGNI decision ladder
 for over-engineering; when it finds something, a fresh session folds each removal
 into the commit it belongs to (`git commit --fixup` + `git rebase --autosquash`)
-and force-pushes the leaner branch to the PR head with `git push
---force-with-lease` — only `--force-with-lease`, only to the PR's own head, never
-the base branch. It never removes validation, error handling, security, or
-accessibility code and never deletes or weakens tests or assertions; its report
-is posted as a PR comment. Nothing to simplify is a clean no-op (no commit, no
-force-push, no comment), and the pass is non-fatal. Disable it with
-`--no-simplify`.
+on the local branch — no push, since no pull request exists yet, and never
+touching commits already on the base branch. It never removes validation, error
+handling, security, or accessibility code and never deletes or weakens tests or
+assertions; its report is posted as a comment on the source issue. Nothing to
+simplify is a clean no-op (no commit, no issue comment), and the pass is
+non-fatal. Disable it with `--no-simplify`.
 
 The review-and-fix pass runs by default after the simplify pass — a full run is
-**implement → simplify → review**. The same adversarial-review machinery that
-`--verify-adversarial` uses runs read-only over the produced diff; when it finds
-something, a fresh session resolves each finding and folds the fix into the
-commit it belongs to (`git commit --fixup` + `git rebase --autosquash`), then
-force-pushes the fixed branch to the PR head with `git push --force-with-lease` —
-only `--force-with-lease`, only to the PR's own head, never the base branch.
-Unlike the simplify pass, it is allowed to add regression tests. Its report is
-posted as a PR comment (best-effort), and a `STATUS: BLOCKED` / `NEEDS_CONTEXT`
-report stops the pass without retrying. Nothing to fix is a clean no-op (no
-commit, no force-push, no comment beyond a short stdout note). The pass is
-non-fatal — a failed or escalated review never changes the run's exit code, which
-reflects only the implement session. The read-only `--verify` /
-`--verify-adversarial` flags remain available for a report-only run. Disable the
-apply behavior with `--no-review`.
+**implement → simplify → review → finalize**. The same adversarial-review
+machinery that `--verify-adversarial` uses runs read-only over the produced diff;
+when it finds something, a fresh session resolves each finding and folds the fix
+into the commit it belongs to (`git commit --fixup` + `git rebase --autosquash`)
+on the local branch — no push, since no pull request exists yet. Unlike the
+simplify pass, it is allowed to add regression tests. Its report is posted as a
+comment on the source issue (best-effort), and a `STATUS: BLOCKED` /
+`NEEDS_CONTEXT` report stops the pass without retrying. Nothing to fix is a clean
+no-op (no commit, no issue comment beyond a short stdout note). The pass is
+non-fatal — a failed or escalated review never changes the run's exit code. The
+read-only `--verify` / `--verify-adversarial` flags remain available for a
+report-only run. Disable the apply behavior with `--no-review`.
+
+Once the simplify and review passes are done, a finalize session opens the draft
+pull request last: it resolves the base branch from `origin/HEAD`, pushes the
+feature branch, and runs `gh pr create --draft` with a description that walks the
+reviewer through the commits and links the issue with `Closes #N`. This is the
+run's deliverable, so — unlike the passes above — a failure to push or open the
+PR is fatal. A branch that carries no commits over the base opens no PR and is
+not an error.
 
 ## `address`
 

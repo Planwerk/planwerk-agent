@@ -240,51 +240,63 @@ func TestDiffNames(t *testing.T) {
 	})
 }
 
-func TestParsePRRef(t *testing.T) {
-	t.Run("valid payload", func(t *testing.T) {
-		ref, err := parsePRRef([]byte(`{"number":42,"baseRefName":"main","headRefName":"feat/x"}`))
-		if err != nil {
-			t.Fatalf("parsePRRef returned error: %v", err)
-		}
-		if ref.Number != 42 || ref.BaseBranch != "main" || ref.HeadBranch != "feat/x" {
-			t.Errorf("parsePRRef = %+v, want {42 main feat/x}", ref)
-		}
-	})
-
-	t.Run("garbage is an error", func(t *testing.T) {
-		ref, err := parsePRRef([]byte("not json"))
-		if err == nil {
-			t.Fatalf("parsePRRef(garbage) = %+v, want error", ref)
-		}
-		if ref != nil {
-			t.Errorf("parsePRRef returned %+v on error, want nil", ref)
-		}
-	})
-
-	t.Run("empty input is an error", func(t *testing.T) {
-		if _, err := parsePRRef(nil); err == nil {
-			t.Error("parsePRRef(nil) = nil error, want error")
-		}
-	})
-}
-
-func TestNoPRForBranch(t *testing.T) {
+func TestParseDefaultBranch(t *testing.T) {
 	cases := []struct {
-		name   string
-		stderr string
-		want   bool
+		name string
+		in   string
+		want string
 	}{
-		{"gh no-pr message", `no pull requests found for branch "feat/x"`, true},
-		{"mixed case", "No Pull Requests Found for branch", true},
-		{"auth failure is not a missing PR", "error: gh auth login required", false},
-		{"empty stderr", "", false},
+		{"origin-prefixed", "origin/main", "main"},
+		{"master", "origin/master", "master"},
+		{"slash in branch name", "origin/feature/x", "feature/x"},
+		{"trailing whitespace trimmed", "origin/main\n", "main"},
+		{"no prefix returned as-is", "main", "main"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := noPRForBranch(tc.stderr); got != tc.want {
-				t.Errorf("noPRForBranch(%q) = %v, want %v", tc.stderr, got, tc.want)
+			if got := parseDefaultBranch(tc.in); got != tc.want {
+				t.Errorf("parseDefaultBranch(%q) = %q, want %q", tc.in, got, tc.want)
 			}
 		})
+	}
+}
+
+// TestCurrentBranchRef builds an offline git repo with origin/HEAD pointing at
+// origin/main and a feature branch checked out, so CurrentBranchRef resolves the
+// base (from origin/HEAD) and head (the current branch) without a real remote.
+func TestCurrentBranchRef(t *testing.T) {
+	dir := initGitRepoForDiff(t)
+	run := func(args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	// origin/main already exists (from initGitRepoForDiff); point origin/HEAD at
+	// it and move onto a feature branch so head != base.
+	run("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+	run("checkout", "-q", "-b", "implement/issue-42-foo")
+
+	ref, err := CurrentBranchRef(dir)
+	if err != nil {
+		t.Fatalf("CurrentBranchRef returned error: %v", err)
+	}
+	if ref.BaseBranch != "main" {
+		t.Errorf("BaseBranch = %q, want main (from origin/HEAD)", ref.BaseBranch)
+	}
+	if ref.HeadBranch != "implement/issue-42-foo" {
+		t.Errorf("HeadBranch = %q, want implement/issue-42-foo", ref.HeadBranch)
+	}
+}
+
+// TestCurrentBranchRefMissingOriginHEAD locks that a checkout whose
+// origin/HEAD is unset surfaces an error (rather than a bogus base branch), so
+// the implement passes can skip cleanly instead of folding against the wrong base.
+func TestCurrentBranchRefMissingOriginHEAD(t *testing.T) {
+	dir := initGitRepoForDiff(t) // sets origin/main but not origin/HEAD
+	if _, err := CurrentBranchRef(dir); err == nil {
+		t.Fatal("expected an error when origin/HEAD is unset, got nil")
 	}
 }
 

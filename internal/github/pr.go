@@ -39,61 +39,69 @@ type PR struct {
 	Local bool
 }
 
-// PRRef identifies the open pull request associated with a checkout's current
-// branch: its number plus the base and head branch names. It is the minimal
-// slice of PR metadata the implement command's simplify pass needs to fold its
-// findings into the PR the implement session just opened and force-push to the
-// PR head.
-type PRRef struct {
-	Number     int
-	BaseBranch string
-	HeadBranch string
+// BranchRef identifies a checkout's current (head) branch and the repository's
+// default (base) branch, resolved from git alone — no pull request required. It
+// is the no-PR analog of the PR metadata the implement command's simplify,
+// review, and finalize passes need: they scope the diff and the fold-rebase
+// range against the base branch before any pull request exists (the finalize
+// pass opens the PR last, once those passes have run on the local branch).
+type BranchRef struct {
+	BaseBranch string // repository default branch (e.g. "main"), read from origin/HEAD
+	HeadBranch string // currently checked-out branch (e.g. "implement/issue-42-foo")
 }
 
-// CurrentPR resolves the open pull request associated with the branch currently
-// checked out in dir — the one the implement session opened. It runs
-// `gh pr view` with no number so gh resolves the PR from the current branch, and
-// returns (nil, nil) when no pull request is associated with the branch so
-// callers can cleanly skip rather than treat the absence as an error.
-func CurrentPR(dir string) (*PRRef, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
+// CurrentBranchRef resolves the checkout's current branch and the repository's
+// default branch from git in dir, without consulting GitHub. The head branch
+// comes from `git rev-parse --abbrev-ref HEAD`; the base branch is read from
+// refs/remotes/origin/HEAD (the default branch the remote HEAD points at, set
+// by clone). It is the no-PR replacement for the old CurrentPR: the implement
+// command now runs its simplify and review passes on the local feature branch
+// before any pull request exists, so it cannot ask gh for a PR's base/head.
+func CurrentBranchRef(dir string) (*BranchRef, error) {
+	head, err := gitOutput(dir, "rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return nil, fmt.Errorf("resolving current branch: %w", err)
+	}
+	base, err := defaultBranch(dir)
+	if err != nil {
+		return nil, err
+	}
+	return &BranchRef{BaseBranch: base, HeadBranch: head}, nil
+}
+
+// defaultBranch resolves the repository's default branch name (e.g. "main" or
+// "master") for the checkout in dir from refs/remotes/origin/HEAD, which clone
+// points at the remote's default branch. The symbolic ref reads back as
+// "origin/<branch>"; stripParseDefaultBranch trims the remote prefix.
+func defaultBranch(dir string) (string, error) {
+	out, err := gitOutput(dir, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+	if err != nil {
+		return "", fmt.Errorf("resolving default branch from origin/HEAD: %w", err)
+	}
+	return parseDefaultBranch(out), nil
+}
+
+// parseDefaultBranch turns the `git symbolic-ref --short refs/remotes/origin/HEAD`
+// output (e.g. "origin/main") into the bare branch name ("main"). Split out so
+// the prefix stripping is unit-testable without a git subprocess.
+func parseDefaultBranch(symbolicRef string) string {
+	return strings.TrimPrefix(strings.TrimSpace(symbolicRef), "origin/")
+}
+
+// gitOutput runs a git command in dir and returns its trimmed stdout, wrapping
+// any failure with the command and git's stderr so callers can log the cause.
+func gitOutput(dir string, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), gitRemoteTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "gh", "pr", "view",
-		"--json", "number,baseRefName,headRefName")
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		if noPRForBranch(stderr.String()) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("gh pr view: %w: %s", err, strings.TrimSpace(stderr.String()))
+		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
 	}
-	return parsePRRef(out)
-}
-
-// noPRForBranch reports whether gh's stderr indicates the current branch simply
-// has no associated pull request (versus a genuine failure such as an auth error
-// or an unreachable remote). gh prints "no pull requests found for branch ..."
-// in that case; matching it lets CurrentPR return (nil, nil) instead of an error.
-func noPRForBranch(stderr string) bool {
-	return strings.Contains(strings.ToLower(stderr), "no pull requests found")
-}
-
-// parsePRRef decodes the `gh pr view --json number,baseRefName,headRefName`
-// payload into a PRRef. Split out from CurrentPR so the JSON shape can be unit
-// tested without invoking the gh subprocess.
-func parsePRRef(data []byte) (*PRRef, error) {
-	var raw struct {
-		Number      int    `json:"number"`
-		BaseRefName string `json:"baseRefName"`
-		HeadRefName string `json:"headRefName"`
-	}
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return nil, fmt.Errorf("parsing gh pr view output: %w", err)
-	}
-	return &PRRef{Number: raw.Number, BaseBranch: raw.BaseRefName, HeadBranch: raw.HeadRefName}, nil
+	return strings.TrimSpace(string(out)), nil
 }
 
 // FetchAndCheckout retrieves PR metadata and checks out the PR locally into a temp directory.
