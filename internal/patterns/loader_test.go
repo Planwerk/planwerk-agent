@@ -249,6 +249,33 @@ func TestFormatGroupedForPrompt_Empty(t *testing.T) {
 	}
 }
 
+func TestCountByCategory(t *testing.T) {
+	pats := []Pattern{
+		{Name: "Go Errors", Category: "technology"},
+		{Name: "Docker Pinning", Category: "technology"},
+		{Name: "YAGNI", Category: "design-principle"},
+		{Name: "Legacy", Category: ""},
+	}
+
+	design, technology, general := CountByCategory(pats)
+	if design != 1 {
+		t.Errorf("design = %d, want 1", design)
+	}
+	if technology != 2 {
+		t.Errorf("technology = %d, want 2", technology)
+	}
+	if general != 1 {
+		t.Errorf("general = %d, want 1", general)
+	}
+}
+
+func TestCountByCategory_Empty(t *testing.T) {
+	design, technology, general := CountByCategory(nil)
+	if design != 0 || technology != 0 || general != 0 {
+		t.Errorf("empty input should count all zero, got design=%d technology=%d general=%d", design, technology, general)
+	}
+}
+
 func TestTruncatePatterns(t *testing.T) {
 	// Create more than the limit: 5 BLOCKING, 10 CRITICAL, rest INFO
 	const limit = 50

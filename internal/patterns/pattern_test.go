@@ -5,6 +5,8 @@ import (
 	"testing"
 )
 
+const catTechnology = "technology"
+
 func TestParse(t *testing.T) {
 	input := `# Review Pattern: Test Pattern
 
@@ -64,8 +66,8 @@ Wrap errors with context.
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if p.Category != "technology" {
-		t.Errorf("Category = %q, want %q", p.Category, "technology")
+	if p.Category != catTechnology {
+		t.Errorf("Category = %q, want %q", p.Category, catTechnology)
 	}
 	if len(p.AppliesWhen) != 1 || p.AppliesWhen[0] != "go" {
 		t.Errorf("AppliesWhen = %v, want [go]", p.AppliesWhen)
@@ -206,7 +208,7 @@ func TestAppliesTo(t *testing.T) {
 func TestFormatForPrompt_WithNewFields(t *testing.T) {
 	p := Pattern{
 		Name:          "Go Error Wrapping",
-		Category:      "technology",
+		Category:      catTechnology,
 		ReviewArea:    "quality",
 		DetectionHint: "bare error returns",
 		Severity:      "WARNING",

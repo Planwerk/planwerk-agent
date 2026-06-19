@@ -232,6 +232,26 @@ func FormatGroupedForPrompt(pats []Pattern, maxPatterns int) string {
 	return sb.String()
 }
 
+// CountByCategory tallies patterns by their Category field, mirroring the
+// grouping FormatGroupedForPrompt uses for prompt injection. It lets callers
+// log a loaded catalog broken down by kind — design-principle patterns (which
+// always apply) versus technology patterns (filtered by detected tags) versus
+// uncategorized project patterns — instead of a single opaque total that hides
+// whether the design principles made it in.
+func CountByCategory(pats []Pattern) (design, technology, general int) {
+	for _, p := range pats {
+		switch p.Category {
+		case "technology":
+			technology++
+		case "design-principle":
+			design++
+		default:
+			general++
+		}
+	}
+	return design, technology, general
+}
+
 // truncatePatterns limits the number of patterns to maxPatterns,
 // prioritizing by severity (BLOCKING > CRITICAL > WARNING > INFO).
 // A maxPatterns value <= 0 disables truncation and returns pats unchanged.
