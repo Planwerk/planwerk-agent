@@ -355,6 +355,42 @@ func TestBuildPlanPrompt_Meta_Golden(t *testing.T) {
 	assertGoldenPrompt(t, "plan_meta", BuildPlanPrompt(goldenPlanMetaContext()))
 }
 
+// TestBuildSimplifyFindPrompt_Golden locks the read-only ponytail-style finder
+// prompt: the decision ladder, the delete-list framing, and the hard guardrail
+// that keeps validation/error-handling/security/accessibility/tests off the
+// flag list.
+func TestBuildSimplifyFindPrompt_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "simplify_find", buildSimplifyFindPrompt("develop"))
+}
+
+func goldenSimplifyApplyContext() implement.SimplifyApplyContext {
+	return implement.SimplifyApplyContext{
+		RepoFullName: "planwerk/planwerk-review",
+		PRNumber:     42,
+		HeadBranch:   "feat/snapshot-tests",
+		BaseBranch:   "main",
+		Findings: []report.Finding{
+			{
+				Severity:    report.SeverityWarning,
+				Title:       "Single-implementation interface adds indirection",
+				File:        "internal/claude/runner.go",
+				Problem:     "Runner is an interface with one implementation and no test mocks.",
+				Action:      "Drop the interface; call the concrete *Client directly.",
+				CodeSnippet: "type Runner interface {\n\tRun(dir string) error\n}",
+			},
+		},
+		Patterns:    goldenPatterns(),
+		MaxPatterns: 0,
+	}
+}
+
+// TestBuildSimplifyApplyPrompt_Golden locks the apply prompt: the findings
+// delete-list, the hard guardrail, and the fold/autosquash/--force-with-lease
+// publish steps that fold each removal into the commit it belongs to.
+func TestBuildSimplifyApplyPrompt_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "simplify_apply", BuildSimplifyApplyPrompt(goldenSimplifyApplyContext()))
+}
+
 func goldenFixContext() fix.Context {
 	return fix.Context{
 		RepoFullName:  "planwerk/planwerk-review",
