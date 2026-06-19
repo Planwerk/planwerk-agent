@@ -66,6 +66,20 @@ func (f *fakeSimplifyApplier) ApplySimplifications(dir string, ctx SimplifyApply
 	return f.report, f.model, f.err
 }
 
+type fakeReviewApplier struct {
+	called atomic.Int32
+	ctx    ReviewApplyContext
+	report string
+	model  string
+	err    error
+}
+
+func (f *fakeReviewApplier) ApplyReview(dir string, ctx ReviewApplyContext) (string, string, error) {
+	f.called.Add(1)
+	f.ctx = ctx
+	return f.report, f.model, f.err
+}
+
 type fakePlanner struct {
 	called atomic.Int32
 	dir    string
@@ -1053,6 +1067,226 @@ func TestKeepSimplifyFindings(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// reviewRunner wires the review-and-fix deps onto a fresh Runner alongside the
+// shared GitHub/Claude fakes: the adversarial verifier doubles as the finder and
+// the review applier folds the fixes. It deliberately leaves the simplify deps
+// unset, so each review test reads as just its finder/applier setup.
+func reviewRunner(gh *fakeGitHub, cl *fakeClaude, av *fakeAdversarialVerifier, ra *fakeReviewApplier) *Runner {
+	r := newRunner(gh, cl)
+	r.AdversarialVerifier = av
+	r.ReviewApplier = ra
+	return r
+}
+
+func oneReviewFinding(file string) *report.ReviewResult {
+	return &report.ReviewResult{Findings: []report.Finding{
+		{Severity: report.SeverityCritical, Title: "SQL injection in new query", File: file, Problem: "unescaped user input", SuggestedFix: "use a parameterized query"},
+	}}
+}
+
+// Shared literals for the review-pass assertions, extracted so the repeated
+// base-branch and production-file strings stay under the goconst threshold.
+const (
+	reviewTestBase     = "main"
+	reviewTestProdFile = "internal/foo/foo.go"
+)
+
+func TestRun_ReviewDefaultOnAppliesFindings(t *testing.T) {
+	gh := &fakeGitHub{
+		issue:    sampleIssue(),
+		cloneDir: t.TempDir(),
+		pr:       &github.PRRef{Number: 7, BaseBranch: "main", HeadBranch: "feat/x"},
+	}
+	cl := &fakeClaude{report: "PR opened"}
+	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
+	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
+	r := reviewRunner(gh, cl, av, ra)
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if av.called.Load() != 1 {
+		t.Errorf("finder called %d times, want 1 — the review pass is on by default", av.called.Load())
+	}
+	if av.base != reviewTestBase {
+		t.Errorf("finder got base %q, want main from CurrentPR", av.base)
+	}
+	if ra.called.Load() != 1 {
+		t.Fatalf("applier called %d times, want 1", ra.called.Load())
+	}
+	if ra.ctx.PRNumber != 7 || ra.ctx.BaseBranch != reviewTestBase || ra.ctx.HeadBranch != "feat/x" {
+		t.Errorf("applier got ctx %+v, want PR #7 base main head feat/x threaded from CurrentPR", ra.ctx)
+	}
+	if len(ra.ctx.Findings) != 1 || ra.ctx.Findings[0].File != reviewTestProdFile {
+		t.Errorf("applier got findings %+v, want the single finding from the finder", ra.ctx.Findings)
+	}
+	if gh.prCommentCalls.Load() != 1 {
+		t.Fatalf("AddPRComment called %d times, want 1 (the review report)", gh.prCommentCalls.Load())
+	}
+	if !strings.Contains(gh.prCommentBodies[0], "## Review Report") {
+		t.Errorf("PR comment does not carry the report:\n%s", gh.prCommentBodies[0])
+	}
+	if !strings.Contains(gh.prCommentBodies[0], reviewCommentFooter("")) {
+		t.Errorf("PR comment is missing the attribution footer:\n%s", gh.prCommentBodies[0])
+	}
+	if !strings.Contains(buf.String(), "Posted the review report as a comment on PR #7") {
+		t.Errorf("missing review-comment confirmation in output:\n%s", buf.String())
+	}
+}
+
+func TestRun_NoReviewSkipsPass(t *testing.T) {
+	gh := &fakeGitHub{
+		issue:    sampleIssue(),
+		cloneDir: t.TempDir(),
+		pr:       &github.PRRef{Number: 7, BaseBranch: "main", HeadBranch: "feat/x"},
+	}
+	cl := &fakeClaude{report: "PR opened"}
+	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
+	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
+	r := reviewRunner(gh, cl, av, ra)
+
+	if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42", NoReview: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if gh.currentPRCalls.Load() != 0 {
+		t.Errorf("CurrentPR called %d times, want 0 with --no-review", gh.currentPRCalls.Load())
+	}
+	if av.called.Load() != 0 || ra.called.Load() != 0 {
+		t.Errorf("finder/applier called (%d/%d), want 0/0 with --no-review", av.called.Load(), ra.called.Load())
+	}
+	if gh.prCommentCalls.Load() != 0 {
+		t.Errorf("AddPRComment called %d times, want 0 with --no-review", gh.prCommentCalls.Load())
+	}
+}
+
+func TestRun_ReviewNoFindingsNoOp(t *testing.T) {
+	gh := &fakeGitHub{
+		issue:    sampleIssue(),
+		cloneDir: t.TempDir(),
+		pr:       &github.PRRef{Number: 7, BaseBranch: "main", HeadBranch: "feat/x"},
+	}
+	cl := &fakeClaude{report: "PR opened"}
+	av := &fakeAdversarialVerifier{result: &report.ReviewResult{}}
+	ra := &fakeReviewApplier{report: "unused"}
+	r := reviewRunner(gh, cl, av, ra)
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if av.called.Load() != 1 {
+		t.Errorf("finder called %d times, want 1", av.called.Load())
+	}
+	if ra.called.Load() != 0 {
+		t.Errorf("applier called %d times, want 0 — no findings is a clean no-op", ra.called.Load())
+	}
+	if gh.prCommentCalls.Load() != 0 {
+		t.Errorf("AddPRComment called %d times, want 0 — no findings posts no PR comment", gh.prCommentCalls.Load())
+	}
+	if !strings.Contains(buf.String(), "Review found nothing to fix.") {
+		t.Errorf("missing the no-op note in output:\n%s", buf.String())
+	}
+}
+
+func TestRun_ReviewEscalationStops(t *testing.T) {
+	for _, status := range []string{"BLOCKED", "NEEDS_CONTEXT"} {
+		t.Run(status, func(t *testing.T) {
+			gh := &fakeGitHub{
+				issue:    sampleIssue(),
+				cloneDir: t.TempDir(),
+				pr:       &github.PRRef{Number: 7, BaseBranch: "main", HeadBranch: "feat/x"},
+			}
+			cl := &fakeClaude{report: "PR opened"}
+			av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
+			ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: " + status}
+			r := reviewRunner(gh, cl, av, ra)
+
+			var buf bytes.Buffer
+			if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
+				t.Fatalf("Run returned %v, want nil — the review pass is non-fatal", err)
+			}
+			if gh.prCommentCalls.Load() != 1 {
+				t.Errorf("AddPRComment called %d times, want 1 — an escalated report must still post", gh.prCommentCalls.Load())
+			}
+			if !strings.Contains(buf.String(), "Claude reported "+status+" — stopping the review pass") {
+				t.Errorf("missing the escalation/stop note in output:\n%s", buf.String())
+			}
+		})
+	}
+}
+
+func TestRun_ReviewCommentFailureIsNonFatal(t *testing.T) {
+	gh := &fakeGitHub{
+		issue:        sampleIssue(),
+		cloneDir:     t.TempDir(),
+		pr:           &github.PRRef{Number: 7, BaseBranch: "main", HeadBranch: "feat/x"},
+		prCommentErr: errors.New("github down"),
+	}
+	cl := &fakeClaude{report: "PR opened"}
+	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
+	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
+	r := reviewRunner(gh, cl, av, ra)
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
+		t.Fatalf("Run returned %v, want nil despite the PR-comment failure", err)
+	}
+	if ra.called.Load() != 1 {
+		t.Errorf("applier called %d times, want 1 — a failed comment post must not abort the run", ra.called.Load())
+	}
+	if !strings.Contains(buf.String(), "Could not post the review report") {
+		t.Errorf("expected a non-fatal warning about the failed comment post, got:\n%s", buf.String())
+	}
+}
+
+func TestRun_ReviewNoPRSkips(t *testing.T) {
+	// gh.pr is nil, so CurrentPR returns (nil, nil): no PR is associated with
+	// the branch and the pass skips cleanly.
+	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+	cl := &fakeClaude{report: "PR opened"}
+	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
+	ra := &fakeReviewApplier{report: "unused"}
+	r := reviewRunner(gh, cl, av, ra)
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if gh.currentPRCalls.Load() != 1 {
+		t.Errorf("CurrentPR called %d times, want 1", gh.currentPRCalls.Load())
+	}
+	if av.called.Load() != 0 || ra.called.Load() != 0 {
+		t.Errorf("finder/applier called (%d/%d), want 0/0 when no PR is associated", av.called.Load(), ra.called.Load())
+	}
+	if !strings.Contains(buf.String(), "no pull request is associated with this branch") {
+		t.Errorf("missing the no-PR skip note in output:\n%s", buf.String())
+	}
+}
+
+func TestRun_ReviewFinderErrorIsNonFatal(t *testing.T) {
+	gh := &fakeGitHub{
+		issue:    sampleIssue(),
+		cloneDir: t.TempDir(),
+		pr:       &github.PRRef{Number: 7, BaseBranch: "main", HeadBranch: "feat/x"},
+	}
+	cl := &fakeClaude{report: "PR opened"}
+	av := &fakeAdversarialVerifier{err: errors.New("finder exploded")}
+	ra := &fakeReviewApplier{report: "unused"}
+	r := reviewRunner(gh, cl, av, ra)
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
+		t.Fatalf("Run returned %v, want nil despite the finder error", err)
+	}
+	if ra.called.Load() != 0 {
+		t.Errorf("applier called %d times, want 0 after a finder error", ra.called.Load())
+	}
+	if !strings.Contains(buf.String(), "Review pass could not run") {
+		t.Errorf("expected a non-fatal warning about the finder failure, got:\n%s", buf.String())
 	}
 }
 
