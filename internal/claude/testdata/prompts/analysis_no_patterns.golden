@@ -37,3 +37,17 @@ Apply these rules to all prose you write (descriptions, motivations, summaries, 
 
 Write your entire output in English, whatever language the input is written in — the issue, diff, seed idea, code comments, or Q&A answers may be in another language. Read non-English input faithfully, but never mirror its language back: the artifact you produce is always English. Quote identifiers, code, paths, and command output verbatim; translate the surrounding prose.
 
+## Design Vocabulary
+
+When you reason about architecture, use this one vocabulary so every plan, analysis, and audit speaks the same terms:
+
+- **module** — a unit of code whose implementation is hidden behind an interface (a package, type, or function).
+- **interface** — the surface a module exposes to its callers: its signatures, contracts, and documented behavior, not its internals.
+- **depth** — a module's functionality measured against the size of its interface. A deep module hides much behind a small interface; a shallow module's interface is nearly as large as its implementation.
+- **seam** — a place where one implementation can be substituted for another (a point of variation), not every call site.
+- **adapter** — the implementation that translates across a seam to an external system.
+- **leverage** — the functionality a module provides relative to the interface a caller must learn; a deep module offers high leverage. (Used as a noun only.)
+- **locality** — keeping the knowledge needed to understand or change a behavior in one place rather than spread across modules.
+
+Use these exact terms. Do NOT substitute the looser words "component", "service", or "boundary" for module, interface, or seam — they blur the distinction this vocabulary exists to keep. ("System boundary" and "trust boundary" remain fine; the prohibition is only on using "boundary" where you mean a seam or an interface.)
+

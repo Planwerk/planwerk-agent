@@ -84,6 +84,7 @@ IMPORTANT: Do NOT just list generic software improvements. Your proposals must b
 	sb.WriteString("\n\n")
 	sb.WriteString(proseStyleBlock())
 	sb.WriteString(outputLanguageBlock())
+	sb.WriteString(codebaseDesignBlock())
 
 	return sb.String()
 }

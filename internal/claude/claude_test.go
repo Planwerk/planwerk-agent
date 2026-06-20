@@ -635,6 +635,48 @@ func TestBuildPlanPrompt_ContainsOverScopeGate(t *testing.T) {
 	}
 }
 
+// assertContainsDesignVocabulary checks that a built prompt carries the shared
+// design-vocabulary block (issue #114): the block itself confirms the wiring,
+// and the seven pinned terms plus the component/service/boundary prohibition are
+// the intent that must survive golden regeneration.
+func assertContainsDesignVocabulary(t *testing.T, builder, prompt string) {
+	t.Helper()
+	if !strings.Contains(prompt, codebaseDesignBlock()) {
+		t.Errorf("%s prompt should embed the shared design-vocabulary block", builder)
+	}
+	for _, term := range []string{"**module**", "**interface**", "**depth**", "**seam**", "**adapter**", "**leverage**", "**locality**"} {
+		if !strings.Contains(prompt, term) {
+			t.Errorf("%s prompt design vocabulary missing pinned term %q", builder, term)
+		}
+	}
+	for _, forbidden := range []string{`"component"`, `"service"`, `"boundary"`} {
+		if !strings.Contains(prompt, forbidden) {
+			t.Errorf("%s prompt should forbid drift into %s", builder, forbidden)
+		}
+	}
+}
+
+// TestBuildPlanPrompt_ContainsDesignVocabulary locks the design vocabulary into
+// the plan prompt so plan, propose, and audit all speak one architecture
+// vocabulary (issue #114).
+func TestBuildPlanPrompt_ContainsDesignVocabulary(t *testing.T) {
+	assertContainsDesignVocabulary(t, "plan", BuildPlanPrompt(goldenImplementContext()))
+}
+
+// TestBuildAuditPrompt_ContainsDesignVocabulary locks the design vocabulary into
+// the audit prompt (issue #114).
+func TestBuildAuditPrompt_ContainsDesignVocabulary(t *testing.T) {
+	assertContainsDesignVocabulary(t, "audit", buildAuditPrompt(goldenAuditContext()))
+}
+
+// TestBuildAnalysisPrompt_ContainsDesignVocabulary locks the design vocabulary
+// into the propose analysis prompt (issue #114). The block is independent of the
+// pattern catalog — the analysis_no_patterns golden proves it renders even with
+// no patterns loaded.
+func TestBuildAnalysisPrompt_ContainsDesignVocabulary(t *testing.T) {
+	assertContainsDesignVocabulary(t, "analysis", buildAnalysisPrompt(goldenAnalysisContext()))
+}
+
 // TestBuildImplementPrompt_ContainsCircuitBreakers locks the circuit-breaker
 // stop conditions (issue #89, I1): the auto-mode implement session must halt
 // and emit DONE_WITH_CONCERNS or BLOCKED instead of grinding through a thrash

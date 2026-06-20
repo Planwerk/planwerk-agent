@@ -116,6 +116,37 @@ Write your entire output in English, whatever language the input is written in �
 `
 }
 
+// codebaseDesignBlock returns the "## Design Vocabulary" section shared by the
+// plan, propose (analysis), and audit prompts so all three speak one precise
+// architecture vocabulary instead of drifting into looser synonyms. It pins the
+// seven terms the `Deep Modules` review pattern is written in — module,
+// interface, depth, seam, adapter, leverage, locality — each with a one-line
+// definition, and forbids substituting the vaguer "component / service /
+// boundary" for them.
+//
+// The prohibition is scoped on purpose: it bans those three words only as
+// substitutes for the pinned terms, not outright — "system boundary" and
+// "trust boundary" stay legitimate (the audit prompt and the security patterns
+// rely on them). "leverage" is pinned as a noun only, since bannedVocabularyLine()
+// — active in the propose and audit prompts — bans it as a verb.
+func codebaseDesignBlock() string {
+	return `## Design Vocabulary
+
+When you reason about architecture, use this one vocabulary so every plan, analysis, and audit speaks the same terms:
+
+- **module** — a unit of code whose implementation is hidden behind an interface (a package, type, or function).
+- **interface** — the surface a module exposes to its callers: its signatures, contracts, and documented behavior, not its internals.
+- **depth** — a module's functionality measured against the size of its interface. A deep module hides much behind a small interface; a shallow module's interface is nearly as large as its implementation.
+- **seam** — a place where one implementation can be substituted for another (a point of variation), not every call site.
+- **adapter** — the implementation that translates across a seam to an external system.
+- **leverage** — the functionality a module provides relative to the interface a caller must learn; a deep module offers high leverage. (Used as a noun only.)
+- **locality** — keeping the knowledge needed to understand or change a behavior in one place rather than spread across modules.
+
+Use these exact terms. Do NOT substitute the looser words "component", "service", or "boundary" for module, interface, or seam — they blur the distinction this vocabulary exists to keep. ("System boundary" and "trust boundary" remain fine; the prohibition is only on using "boundary" where you mean a seam or an interface.)
+
+`
+}
+
 // bannedVocabularyLine returns the shared AI-slop vocabulary ban, used by both
 // the prose-style block (narrative builders) and the communication-style block
 // (review findings) so the list has a single source. It combines the gstack

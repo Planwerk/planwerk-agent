@@ -124,6 +124,7 @@ These rules are MANDATORY. Violating them produces a misleading audit.
 	// Anti-sycophancy (shared with review/adversarial/compliance)
 	sb.WriteString(communicationStyleBlock())
 	sb.WriteString(outputLanguageBlock())
+	sb.WriteString(codebaseDesignBlock())
 
 	// Finding enrichment
 	sb.WriteString(`## Finding Enrichment
