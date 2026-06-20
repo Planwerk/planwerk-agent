@@ -342,3 +342,4 @@ Cross-cutting application-security sources. Language- and platform-specific entr
 | A | Design Patterns | - | Gamma et al. (Gang of Four): classic OOP patterns |
 | A | Agile Software Development: Principles, Patterns, and Practices | - | Robert C. Martin: SOLID deep dive |
 | A | A Behavioral Notion of Subtyping | - | Barbara Liskov, Jeannette Wing: original LSP paper |
+| A | A Philosophy of Software Design | - | John Ousterhout: deep vs. shallow modules, module depth, information hiding, the deletion test |

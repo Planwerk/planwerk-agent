@@ -9,6 +9,11 @@ import (
 	"github.com/planwerk/planwerk-review/internal/patterns"
 )
 
+// designPrincipleCategory is the Category value the cross-cutting pattern
+// identity tests below assert against. Hoisting it to one constant keeps the
+// shared value in a single place as more identity tests are added.
+const designPrincipleCategory = "design-principle"
+
 func projectRoot() string {
 	_, file, _, _ := runtime.Caller(0)
 	return filepath.Join(filepath.Dir(file), "..", "..")
@@ -33,7 +38,7 @@ func TestLoadShippedPatterns(t *testing.T) {
 		switch p.Category {
 		case "technology":
 			tech++
-		case "design-principle":
+		case designPrincipleCategory:
 			design++
 		}
 	}
@@ -102,7 +107,7 @@ func TestLoadShippedPatterns_DocumentationDiataxis(t *testing.T) {
 	if doc == nil {
 		t.Fatal("missing pattern: Documentation Structure (Diátaxis)")
 	}
-	if doc.Category != "design-principle" {
+	if doc.Category != designPrincipleCategory {
 		t.Errorf("category = %q, want design-principle (cross-cutting)", doc.Category)
 	}
 	if len(doc.AppliesWhen) != 0 {
@@ -116,6 +121,48 @@ func TestLoadShippedPatterns_DocumentationDiataxis(t *testing.T) {
 	for _, mode := range []string{"Tutorial", "How-To", "Reference", "Explanation"} {
 		if !strings.Contains(doc.Body, mode) {
 			t.Errorf("pattern body missing Diátaxis mode %q", mode)
+		}
+	}
+}
+
+// TestLoadShippedPatterns_DeepModules pins the deep-modules design pattern's
+// identity so renames or an accidental Applies-When tag (which would scope it
+// away from non-matching projects) surface immediately. Like the Diátaxis
+// pattern it is cross-cutting: it must apply to every project.
+func TestLoadShippedPatterns_DeepModules(t *testing.T) {
+	root := projectRoot()
+	patsDir := filepath.Join(root, "internal", "patterns", "patterns")
+
+	all, err := patterns.Load(patsDir)
+	if err != nil {
+		t.Fatalf("loading shipped patterns: %v", err)
+	}
+
+	var deep *patterns.Pattern
+	for i := range all {
+		if all[i].Name == "Deep Modules" {
+			deep = &all[i]
+			break
+		}
+	}
+	if deep == nil {
+		t.Fatal("missing pattern: Deep Modules")
+	}
+	if deep.Category != designPrincipleCategory {
+		t.Errorf("category = %q, want design-principle (cross-cutting)", deep.Category)
+	}
+	if len(deep.AppliesWhen) != 0 {
+		t.Errorf("AppliesWhen = %v, want empty (must apply to every project)", deep.AppliesWhen)
+	}
+	if deep.Severity == "" {
+		t.Error("Severity must be set")
+	}
+	// Sanity: the body must carry the vocabulary the issue asked for so the
+	// prompt-injected pattern actually covers depth, the deletion test, the
+	// seam rule, and the interface-as-test-surface idea.
+	for _, term := range []string{"deletion", "seam", "shallow", "interface"} {
+		if !strings.Contains(deep.Body, term) {
+			t.Errorf("pattern body missing expected term %q", term)
 		}
 	}
 }
