@@ -15,6 +15,7 @@ import (
 	"github.com/planwerk/planwerk-review/internal/fix"
 	"github.com/planwerk/planwerk-review/internal/gapanalysis"
 	"github.com/planwerk/planwerk-review/internal/github"
+	"github.com/planwerk/planwerk-review/internal/glossary"
 	"github.com/planwerk/planwerk-review/internal/implement"
 	"github.com/planwerk/planwerk-review/internal/meta"
 	"github.com/planwerk/planwerk-review/internal/patterns"
@@ -355,6 +356,14 @@ func TestBuildAnalysisPrompt_Glossary(t *testing.T) {
 	ctx := goldenAnalysisContext()
 	ctx.Glossary = goldenGlossary()
 	assertGoldenPrompt(t, "analysis_glossary", buildAnalysisPrompt(ctx))
+}
+
+// TestBuildGlossaryPrompt_Golden locks the EMIT-stage glossary-generation
+// prompt: the CONTEXT-FORMAT schema, the inclusion rules (be opinionated, only
+// context-specific terms), and the "output the Markdown only" tail.
+func TestBuildGlossaryPrompt_Golden(t *testing.T) {
+	ctx := glossary.GenerateContext{RepoName: "planwerk/planwerk-review"}
+	assertGoldenPrompt(t, "glossary_prompt", buildGlossaryPrompt(ctx))
 }
 
 func TestBuildAdversarialPrompt_Golden(t *testing.T) {

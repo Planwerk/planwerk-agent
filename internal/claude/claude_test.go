@@ -551,6 +551,47 @@ func TestSanitizeFixReport(t *testing.T) {
 	}
 }
 
+func TestSanitizeGlossary(t *testing.T) {
+	const doc = "# Billing\n\nThe billing context.\n\n## Language\n\n**Invoice**: a finalized statement.\n_Avoid_: bill"
+
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "already clean is unchanged",
+			input: doc,
+			want:  doc,
+		},
+		{
+			name:  "chatty preamble before the top-level heading is dropped",
+			input: "Here is the CONTEXT.md for the repo:\n\n" + doc,
+			want:  doc,
+		},
+		{
+			name:  "wrapping markdown fence is stripped",
+			input: "```markdown\n" + doc + "\n```",
+			want:  doc,
+		},
+		{
+			name: "a ## subheading is not mistaken for the top-level anchor",
+			// No "# " heading at all: sanitizeReport must return the de-fenced
+			// text intact rather than anchoring on "## Language".
+			input: "## Language\n\n**Invoice**: a finalized statement.",
+			want:  "## Language\n\n**Invoice**: a finalized statement.",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := sanitizeGlossary(tt.input); got != tt.want {
+				t.Errorf("sanitizeGlossary() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestSanitizeImplementationReport(t *testing.T) {
 	const report = "## Implementation Report (issue #7)\n\n### Acceptance Criteria\n- Did the thing.\n### Status\nSTATUS: DONE"
 
