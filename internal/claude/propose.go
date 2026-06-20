@@ -75,7 +75,9 @@ For each area, think about:
 Be specific and concrete in your analysis. Reference actual files, functions, and code patterns you observe.
 Provide a detailed, structured analysis covering all the areas above.
 
-IMPORTANT: Do NOT just list generic software improvements. Your proposals must be specific to THIS codebase and grounded in what you actually observe in the code.`)
+IMPORTANT: Do NOT just list generic software improvements. Your proposals must be specific to THIS codebase and grounded in what you actually observe in the code.
+
+For feature proposals, prefer a vertical slice: one that cuts end-to-end through the layers it touches and is demoable on its own, not a horizontal layer that delivers nothing until a later proposal lands. When a feature proposal depends on another, state an honest "Blocked by" note naming that proposal so independent proposals stay grabbable in parallel. This applies to feature work — a refactoring, testing, or documentation proposal need not be demoable end-to-end.`)
 
 	if len(ctx.Patterns) > 0 {
 		sb.WriteString("\n\nWhen a proposal is motivated by a review pattern above, name that pattern in the proposal's description or motivation so the trail from pattern catalog to proposed work is explicit.")
@@ -146,6 +148,7 @@ Scope:
 
 Leave the "id" field as an empty string — it will be assigned automatically.
 Each proposal should be specific and actionable, referencing actual code areas.
+When the analysis says a feature proposal is blocked by another, carry that "Blocked by" dependency in the proposal's "description" prose — the schema has no separate field for it.
 Generate between 5 and 20 proposals, depending on the size and complexity of the codebase.
 
 <analysis-output>

@@ -22,6 +22,8 @@ Provide a detailed, structured analysis covering all the areas above.
 
 IMPORTANT: Do NOT just list generic software improvements. Your proposals must be specific to THIS codebase and grounded in what you actually observe in the code.
 
+For feature proposals, prefer a vertical slice: one that cuts end-to-end through the layers it touches and is demoable on its own, not a horizontal layer that delivers nothing until a later proposal lands. When a feature proposal depends on another, state an honest "Blocked by" note naming that proposal so independent proposals stay grabbable in parallel. This applies to feature work — a refactoring, testing, or documentation proposal need not be demoable end-to-end.
+
 ## Prose Style
 
 Apply these rules to all prose you write (descriptions, motivations, summaries, issue bodies):
