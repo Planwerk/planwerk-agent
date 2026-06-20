@@ -186,7 +186,7 @@ or short form (owner/repo#123).`,
 	flags.BoolVar(&cfg.NoLocalPatterns, "no-local-patterns", false, "Ignore local patterns from the tool")
 	flags.BoolVar(&cfg.NoCache, "no-cache", false, "Ignore cache, force a fresh review")
 	flags.BoolVar(&cfg.ClearCache, "clear-cache", false, "Clear cached reviews and exit (honors --clear-cache-scope)")
-	flags.StringVar(&cfg.ClearCacheScope, "clear-cache-scope", "", "Restrict --clear-cache to a single command (review, propose, audit, elaborate, gap-analysis, review-prepared)")
+	flags.StringVar(&cfg.ClearCacheScope, "clear-cache-scope", "", "Restrict --clear-cache to a single command (review, propose, audit, glossary, elaborate, gap-analysis, review-prepared)")
 	flags.BoolVar(&cfg.CacheStats, "cache-stats", false, "Show cache size, age distribution, and per-command breakdown, then exit")
 	flags.StringVar(&cfg.CacheInspect, "cache-inspect", "", "Print the metadata and payload for the given cache key, then exit")
 	flags.DurationVar(&cfg.CacheMaxAge, "cache-max-age", cache.DefaultMaxAge, "Reject cached entries older than this duration (0 disables the TTL)")

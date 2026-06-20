@@ -26,12 +26,13 @@ func validateCacheScope(scope string) error {
 		cache.CommandReview,
 		cache.CommandPropose,
 		cache.CommandAudit,
+		cache.CommandGlossary,
 		elaborate.CommandElaborate,
 		gapanalysis.CommandGapAnalysis,
 		reviewprepared.CommandReviewPrepared:
 		return nil
 	default:
-		return fmt.Errorf("unknown cache scope %q, supported: review, propose, audit, elaborate, gap-analysis, review-prepared", scope)
+		return fmt.Errorf("unknown cache scope %q, supported: review, propose, audit, glossary, elaborate, gap-analysis, review-prepared", scope)
 	}
 }
 

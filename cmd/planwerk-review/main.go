@@ -34,6 +34,7 @@ func main() {
 	rootCmd.AddCommand(
 		newProposeCmd(deps),
 		newAuditCmd(deps),
+		newGlossaryCmd(deps),
 		newGapAnalysisCmd(deps),
 		newReviewPreparedCmd(deps),
 		newElaborateCmd(deps),

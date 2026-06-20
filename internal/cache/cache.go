@@ -16,9 +16,10 @@ import (
 
 // Command names used to scope cache operations and identify envelope origin.
 const (
-	CommandReview  = "review"
-	CommandPropose = "propose"
-	CommandAudit   = "audit"
+	CommandReview   = "review"
+	CommandPropose  = "propose"
+	CommandAudit    = "audit"
+	CommandGlossary = "glossary"
 )
 
 // DefaultMaxAge is the default TTL for cached entries. Older entries are
@@ -118,6 +119,15 @@ func Key(owner, repo string, number int, headSHA string, flags ...string) string
 // It includes the HEAD SHA so the cache invalidates when the repo changes.
 func RepoKey(owner, repo, headSHA string) string {
 	h := sha256.Sum256([]byte(fmt.Sprintf("propose:%s/%s@%s", owner, repo, headSHA)))
+	return fmt.Sprintf("%x", h[:16])
+}
+
+// GlossaryKey generates a cache key for a generated domain glossary. It
+// includes the default-branch HEAD SHA so the cache invalidates when the repo
+// changes. The "glossary:" prefix keeps it disjoint from RepoKey's "propose:"
+// space so a propose and a glossary run on the same repo+SHA never collide.
+func GlossaryKey(owner, repo, headSHA string) string {
+	h := sha256.Sum256([]byte(fmt.Sprintf("glossary:%s/%s@%s", owner, repo, headSHA)))
 	return fmt.Sprintf("%x", h[:16])
 }
 
