@@ -1,0 +1,30 @@
+Convert the following elaborated issue plan into structured JSON.
+
+Output ONLY valid JSON matching this exact schema (no markdown fences, no surrounding text):
+
+{
+  "title": "Issue title — keep the source title verbatim unless the elaboration explicitly proposes a sharper one",
+  "description": "Full Description section as Markdown (preserve formatting, lists, numbered subsections, code references)",
+  "motivation": "Full Motivation section as Markdown",
+  "affected_areas": ["path/to/file.go (what changes)", "package/name (what changes)"],
+  "acceptance_criteria": ["Observable check 1", "Observable check 2"],
+  "non_goals": ["Out-of-scope item 1 with one-sentence reason", "Out-of-scope item 2 with reason"],
+  "references": ["README section name (path/file.md:line)", "Related issue #N", "External spec URL"]
+}
+
+Field rules:
+- "title": If the elaboration does not change the title, copy this exact source title: "Add snapshot tests for prompt builders".
+- "description" and "motivation": Preserve the Markdown structure (bold subheadings, bullet lists, numbered items, inline code) so the issue body renders the same way the example does.
+- "affected_areas", "acceptance_criteria", "non_goals", "references": Plain strings, one per array entry. No leading bullets — the renderer adds them.
+- Do NOT invent fields beyond the schema.
+
+<elaboration-output>
+**Description:**
+
+Add golden files for every prompt builder.
+
+**Acceptance Criteria:**
+
+- [ ] A golden file exists for every builder
+
+</elaboration-output>

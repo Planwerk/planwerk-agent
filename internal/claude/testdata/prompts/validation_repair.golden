@@ -1,0 +1,14 @@
+The following JSON is valid JSON but violates the finding schema. The validator reported this error:
+
+finding 0: "title" must be a non-empty string
+
+Fix the offending finding so every finding satisfies these rules:
+- "title" must be a non-empty string.
+- "severity" must be one of BLOCKING, CRITICAL, WARNING, INFO.
+- "confidence" must be one of verified, likely, uncertain.
+
+Do not invent new findings or drop existing ones. Output ONLY the corrected JSON, nothing else.
+
+<invalid-json>
+{"findings":[{"title":"","severity":"WARNING","confidence":"likely"}]}
+</invalid-json>

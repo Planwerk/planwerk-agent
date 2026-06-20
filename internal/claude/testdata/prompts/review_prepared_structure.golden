@@ -1,0 +1,46 @@
+Convert the following review-prepared report into structured JSON. Extract every finding, grouped by feature_id.
+
+Output ONLY valid JSON matching this exact schema (no markdown fences, no surrounding text):
+
+{
+  "repo": "owner/name",
+  "overview": "2-4 sentence overall summary: how many features were reviewed, headline themes, and the 1-2 most important findings.",
+  "features": [
+    {
+      "feature_id": "PX-0028",
+      "feature_file": "PX-0028-...json",
+      "title": "Feature title from the spec",
+      "summary": "1-3 sentence verdict for this specific feature.",
+      "improved_json": { "...": "the full rewritten feature JSON content as a JSON OBJECT (not a string). Required when present in the analysis. Preserve every top-level key from the original." },
+      "findings": [
+        {
+          "id": "",
+          "feature_id": "PX-0028",
+          "feature_file": "PX-0028-...json",
+          "category": "stories|requirements|tasks|tests|review_criteria|implementation_notes|other",
+          "severity": "CRITICAL|WARNING|INFO",
+          "title": "Short, specific finding title (no severity prefix, no brackets)",
+          "description": "What is wrong and why it matters. 1-3 sentences.",
+          "suggestion": "Concrete edit text. Copy-paste-ready when possible.",
+          "spec_pointer": "JSON-pointer-ish path inside the spec, e.g. stories[2].criteria[1] or requirements[REQ-005].scenarios[0]",
+          "confidence": "verified|likely|uncertain"
+        }
+      ]
+    }
+  ]
+}
+
+Field rules:
+- "id": leave as empty string — it is assigned automatically.
+- "category": exactly one of the values above.
+- "severity": uppercase, never BLOCKING.
+- "feature_id" / "feature_file": copy from the surrounding feature block.
+- "spec_pointer": MUST point to a real path in the original JSON. If the finding is about a missing field, point to the parent (e.g. "stories[1]" for a story missing criteria).
+- "suggestion": describe the change as a concrete edit. When proposing new text, write the exact wording.
+- If a feature has no findings, include it with an empty findings array and a positive summary.
+- "improved_json": ALWAYS include for every feature — emit the full rewritten feature JSON as a nested JSON object (NOT a string). Preserve feature_id, slug, status, status_history, execution_history exactly as the input.
+
+<review-report>
+Feature CC-0042: stories[0].criteria[0] uses the vague verb "handle".
+
+</review-report>

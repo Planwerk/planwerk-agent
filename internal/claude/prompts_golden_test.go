@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"errors"
 	"flag"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"github.com/planwerk/planwerk-review/internal/draft"
 	"github.com/planwerk/planwerk-review/internal/elaborate"
 	"github.com/planwerk/planwerk-review/internal/fix"
+	"github.com/planwerk/planwerk-review/internal/gapanalysis"
 	"github.com/planwerk/planwerk-review/internal/github"
 	"github.com/planwerk/planwerk-review/internal/implement"
 	"github.com/planwerk/planwerk-review/internal/meta"
@@ -20,6 +22,7 @@ import (
 	"github.com/planwerk/planwerk-review/internal/propose"
 	"github.com/planwerk/planwerk-review/internal/rebase"
 	"github.com/planwerk/planwerk-review/internal/report"
+	"github.com/planwerk/planwerk-review/internal/reviewprepared"
 )
 
 // updateGolden regenerates the prompt golden files under testdata/prompts/.
@@ -674,4 +677,157 @@ func TestBuildRebaseApplyPrompt_Golden(t *testing.T) {
 // TestBuildBareRebasePrompt_Golden locks the portable self-contained prompt.
 func TestBuildBareRebasePrompt_Golden(t *testing.T) {
 	assertGoldenPrompt(t, "rebase_bare", BuildBareRebasePrompt(goldenBareRebaseContext()))
+}
+
+// The remaining goldens net the prompt builders that previously had no
+// snapshot, so the prompt-design audit has a safety net across every builder
+// (see docs/explanation/prompt-design.md).
+
+// TestBuildStructurePrompt_Golden locks the review-structuring prompt: the
+// finding JSON schema, the severity/actionability/confidence enums, and the
+// "extract only findings actually present, invent none" rule.
+func TestBuildStructurePrompt_Golden(t *testing.T) {
+	raw := "## Findings\n\n- W: runner.go:42 — single-implementation interface adds indirection.\n"
+	assertGoldenPrompt(t, "structure", buildStructurePrompt(raw))
+}
+
+// TestBuildProposalStructurePrompt_Golden locks the propose-structuring prompt:
+// the proposal JSON schema, the priority/category/scope vocabularies, and the
+// 5-20 proposal budget.
+func TestBuildProposalStructurePrompt_Golden(t *testing.T) {
+	raw := "The repo is a Go CLI. Suggestion: add golden tests for the prompt builders.\n"
+	assertGoldenPrompt(t, "proposal_structure", buildProposalStructurePrompt(raw))
+}
+
+// TestBuildElaborateStructurePrompt_Golden locks the elaborate-structuring
+// prompt, including the verbatim source title pinned into the field rules.
+func TestBuildElaborateStructurePrompt_Golden(t *testing.T) {
+	raw := "**Description:**\n\nAdd golden files for every prompt builder.\n\n**Acceptance Criteria:**\n\n- [ ] A golden file exists for every builder\n"
+	assertGoldenPrompt(t, "elaborate_structure", buildElaborateStructurePrompt(raw, goldenElaborateContext()))
+}
+
+// TestBuildRepairPrompt_Golden locks the malformed-JSON repair prompt: the
+// parse error is fed back verbatim and the model is told to output only the
+// corrected JSON.
+func TestBuildRepairPrompt_Golden(t *testing.T) {
+	parseErr := errors.New("invalid character ']' looking for beginning of value")
+	malformed := `{"findings": [}`
+	assertGoldenPrompt(t, "repair", buildRepairPrompt(malformed, parseErr))
+}
+
+// TestBuildValidationRepairPrompt_Golden locks the schema-repair prompt: the
+// validation error is fed back and the finding-schema rules are restated so the
+// model fixes the offending finding without inventing or dropping findings.
+func TestBuildValidationRepairPrompt_Golden(t *testing.T) {
+	validationErr := errors.New(`finding 0: "title" must be a non-empty string`)
+	invalid := `{"findings":[{"title":"","severity":"WARNING","confidence":"likely"}]}`
+	assertGoldenPrompt(t, "validation_repair", buildValidationRepairPrompt(invalid, validationErr))
+}
+
+// TestBuildSpecialistPrompt_Golden locks the fan-out specialist prompt for the
+// security domain: the domain-scoped framing, the shared communication/output
+// blocks, and the finding-enrichment tail.
+func TestBuildSpecialistPrompt_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "specialist_security", buildSpecialistPrompt("develop", Specialists[0].Key, Specialists[0].Focus))
+}
+
+// TestBuildVerifyImplementationPrompt_Golden locks the independent
+// implementation-verification prompt: the "do NOT trust the implementation"
+// framing, the change-set discovery steps, and the per-criterion classification.
+func TestBuildVerifyImplementationPrompt_Golden(t *testing.T) {
+	ctx := goldenImplementContext()
+	assertGoldenPrompt(t, "verify_implementation", buildVerifyImplementationPrompt(ctx.IssueTitle, ctx.IssueBody))
+}
+
+func goldenBareImplementContext() implement.BareContext {
+	return implement.BareContext{
+		RepoFullName: "planwerk/planwerk-review",
+		IssueNumber:  42,
+		TechTags:     []string{"go"},
+		PatternCatalog: []patterns.CatalogReference{
+			{
+				Name:       "Hardcoded secrets",
+				Severity:   "CRITICAL",
+				Category:   "design-principle",
+				ReviewArea: "security",
+				URL:        "https://raw.githubusercontent.com/planwerk/planwerk-review/main/internal/patterns/patterns/hardcoded-secrets.md",
+			},
+		},
+		BundledURLBase: "https://raw.githubusercontent.com/planwerk/planwerk-review/main/internal/patterns/patterns",
+	}
+}
+
+// TestBuildBareImplementPrompt_Golden locks the portable self-contained
+// implement prompt: it fetches the issue itself, implements, pushes a branch,
+// opens a draft PR, and reports.
+func TestBuildBareImplementPrompt_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "implement_bare", BuildBareImplementPrompt(goldenBareImplementContext()))
+}
+
+func goldenGapAnalysisContext() gapanalysis.AnalysisContext {
+	f := goldenFeature()
+	f.FilePath = ".planwerk/completed/CC-0042-prompt-snapshot-tests.json"
+	return gapanalysis.AnalysisContext{
+		Features:    []*planwerk.Feature{f},
+		Patterns:    goldenPatterns(),
+		MaxPatterns: 0,
+		RepoName:    "planwerk/planwerk-review",
+	}
+}
+
+// TestBuildGapAnalysisPrompt_Golden locks the spec-vs-code gap analysis prompt:
+// the four gap-type checks, the severity mapping, and the mandatory
+// evidence-citation rules.
+func TestBuildGapAnalysisPrompt_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "gap_analysis", buildGapAnalysisPrompt(goldenGapAnalysisContext()))
+}
+
+// TestBuildGapStructurePrompt_Golden locks the gap-structuring prompt: the
+// per-feature gap JSON schema and the "never BLOCKING" severity rule.
+func TestBuildGapStructurePrompt_Golden(t *testing.T) {
+	raw := "Feature CC-0042: missing_test for TestBuildReviewPrompt_Golden — no such test found.\n"
+	assertGoldenPrompt(t, "gap_structure", buildGapStructurePrompt(raw))
+}
+
+func goldenReviewPreparedContext(includeImproved bool) reviewprepared.AnalysisContext {
+	f := goldenFeature()
+	f.FilePath = ".planwerk/prepared/CC-0042-prompt-snapshot-tests.json"
+	return reviewprepared.AnalysisContext{
+		Features: []reviewprepared.PreparedFeature{
+			{
+				Feature: f,
+				Raw:     []byte(`{"feature_id":"CC-0042","title":"Snapshot tests for prompt builders","status":"prepared"}`),
+			},
+		},
+		Patterns:        goldenPatterns(),
+		MaxPatterns:     0,
+		RepoName:        "planwerk/planwerk-review",
+		IncludeImproved: includeImproved,
+	}
+}
+
+// TestBuildReviewPreparedPrompt_Golden locks the prepared-spec review prompt
+// with the improved-JSON rewrite block enabled.
+func TestBuildReviewPreparedPrompt_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "review_prepared", buildReviewPreparedPrompt(goldenReviewPreparedContext(true)))
+}
+
+// TestBuildReviewPreparedPrompt_NoImproved_Golden locks the fallback shape used
+// when IncludeImproved is false: the "## Improved JSON" rewrite block is omitted.
+func TestBuildReviewPreparedPrompt_NoImproved_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "review_prepared_no_improved", buildReviewPreparedPrompt(goldenReviewPreparedContext(false)))
+}
+
+// TestBuildReviewPreparedStructurePrompt_Golden locks the prepared-review
+// structuring prompt with the improved_json schema field present.
+func TestBuildReviewPreparedStructurePrompt_Golden(t *testing.T) {
+	raw := "Feature CC-0042: stories[0].criteria[0] uses the vague verb \"handle\".\n"
+	assertGoldenPrompt(t, "review_prepared_structure", buildReviewPreparedStructurePrompt(raw, true))
+}
+
+// TestBuildReviewPreparedStructurePrompt_NoImproved_Golden locks the structuring
+// prompt when improved_json is not requested.
+func TestBuildReviewPreparedStructurePrompt_NoImproved_Golden(t *testing.T) {
+	raw := "Feature CC-0042: stories[0].criteria[0] uses the vague verb \"handle\".\n"
+	assertGoldenPrompt(t, "review_prepared_structure_no_improved", buildReviewPreparedStructurePrompt(raw, false))
 }

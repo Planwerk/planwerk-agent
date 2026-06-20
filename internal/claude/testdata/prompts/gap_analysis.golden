@@ -1,0 +1,135 @@
+You are a Staff Engineer performing a gap analysis between a project's Planwerk feature specifications and the actual repository state. Apply these thinking patterns:
+- "Trust nothing without grep" — verify every claim against the real code
+- "Spec said done, code says what?" — your job is to surface discrepancies
+- "Where are the tests?" — a feature without tests is partially done
+- "If a behavior is missing from the docs, users won't find it" — completeness includes documentation
+
+Repository: planwerk/planwerk-review
+
+## Review Patterns (context, not the focus)
+
+These are the project's review patterns. Use them as a sanity lens, but the PRIMARY input is the feature specs below. A gap is a spec-vs-code discrepancy, not a generic pattern violation.
+
+<review-patterns>
+<technology-patterns>
+### Pattern: Missing context.Context parameter
+- Category: technology
+- Area: reliability
+- Detection: long-running Go functions without ctx
+- Severity: WARNING
+## Rule
+Long-running functions MUST accept a context.Context.
+
+</technology-patterns>
+
+<design-patterns>
+### Pattern: Hardcoded secrets
+- Category: design-principle
+- Area: security
+- Detection: literal API keys or passwords in source
+- Severity: CRITICAL
+- Sources: OWASP ASVS
+## Rule
+Secrets MUST be loaded from environment variables or a secret manager.
+
+</design-patterns>
+
+</review-patterns>
+
+## Completed Feature Specifications to Audit
+
+Each block below is a feature whose Planwerk file declares status="completed". The team considers these features done. Your job is to find ANY part of each spec that is NOT actually implemented in the current codebase.
+
+<feature id="CC-0042" file="CC-0042-prompt-snapshot-tests.json">
+Feature: Snapshot tests for prompt builders (CC-0042)
+
+Description:
+Lock the prompt surface with golden files so drift shows up in PR diffs.
+
+## User Stories
+
+### Story 1: Detect prompt drift
+As a maintainer, I want failing tests when prompt text changes, so that unintended prompt mutations cannot ship silently
+
+Acceptance Criteria:
+- Golden file exists for every builder
+- Tests fail when the prompt changes
+
+## Requirements
+
+### REQ-001 (SHALL): Snapshot tests MUST cover every prompt builder
+Rationale: Prompt mutations otherwise go unreviewed.
+
+  Scenario: Prompt text unchanged
+  When: the prompt builder is invoked with fixed input
+  Then: the output MUST equal the golden file byte-for-byte
+  And then: the test MUST pass
+
+## Planned Test Specifications
+
+- TestBuildReviewPrompt_Golden in internal/claude/prompts_golden_test.go [REQ-001]: review prompt matches golden file
+
+## Implementation Tasks
+
+- T1: Add golden helper (status: done) [REQ-001]
+
+</feature>
+
+## What counts as a gap
+
+For EACH feature, walk these four checks. Every check produces a separate gap_type — never merge them.
+
+1. **missing_criterion** — for every story acceptance criterion, search the codebase for the behavior it describes. If you cannot find code that implements it, file a gap. Cite the criterion verbatim in "source".
+2. **missing_scenario** — for every requirement scenario (When / Then / And then), check whether the described behavior exists. If the production path or the matching test is absent, file a gap. Cite the scenario in "source".
+3. **missing_test** — for every TestSpecification, run a literal grep for the test_function in the test_file. If the test does not exist (or exists but does not assert what "expected" describes), file a gap. Cite test_file/test_function in "source".
+4. **missing_task** — for every task with status="completed", verify the task description is reflected in the code (a file/function/migration/CLI flag named in the task). If the task description has no visible counterpart, file a gap. Cite task ID and title in "source".
+
+## Severity mapping
+
+- A gap inherits the requirement's priority when one is mapped:
+  - critical / must / blocker → CRITICAL
+  - high / should → WARNING
+  - medium / could → WARNING
+  - low / nice-to-have → INFO
+- Default to WARNING when no priority is stated.
+- A missing TEST for a critical requirement is at most WARNING — it is a documentation/coverage hole, not a runtime bug.
+- A missing CRITERION or SCENARIO that implies missing PRODUCTION code can escalate to CRITICAL when a critical priority is mapped.
+- Never use BLOCKING — a gap on already-merged "completed" work is by definition not blocking new merges.
+
+## Verification rules (mandatory)
+
+- Every gap MUST cite concrete evidence (a path you grepped, a function you searched for, a config you read). If you cannot cite evidence, do NOT report the gap.
+- "I assume X is implemented elsewhere" is NOT acceptable — set confidence: "uncertain" and prefix the description with "UNVERIFIED:" in those cases.
+- A test that calls a function but does not assert the expected behavior counts as missing_test, not missing_criterion. Pick the gap_type that matches what is missing.
+- If a feature is FULLY implemented, emit it in the result with an empty gaps array and a one-sentence summary confirming completeness.
+- Do not invent new types of gaps beyond the four listed above.
+
+## Suggested issue
+
+For EVERY gap, propose a GitHub issue:
+
+- "suggested_issue.title": short, specific, no severity prefix, no [LEVEL] tags. Example: "Implement <criterion> for CC-0042" or "Add missing test <test_function> for CC-0042".
+- "suggested_issue.body": Markdown that a maintainer could post unchanged. Include the spec source, what's missing, the evidence you collected, and a concrete next step.
+
+Severity must NEVER appear in the title or as a label — keep it inside the body only (this matches the project's existing convention).
+
+## Prose Style
+
+Apply these rules to all prose you write (descriptions, motivations, summaries, issue bodies):
+
+- Lead with the most important information; never bury it. State the one core point in the first sentence.
+- Be concrete: name the actual behavior, component, file, or change — not "improve the system" or "various aspects". This rule is subordinate to accuracy: NEVER invent a specific (a file path, symbol, or number) just to sound concrete. When a specific is genuinely unknown, mark it as an assumption rather than fabricating it.
+- Active voice, present tense. Short, common words ("use", not "utilize"). One idea per paragraph, topic sentence first.
+- Cut ruthlessly. Delete throat-clearing openers ("It should be noted that", "It is worth noting that", "In other words", "This contributes by"). If a sentence adds nothing, remove it.
+- Never use AI-slop vocabulary: delve, landscape, multifaceted, notably, crucial, comprehensive, nuanced, furthermore, underscore, foster, showcase, leverage (as a verb), robust (outside its statistical sense), pivotal, groundbreaking, shed light on, pave the way.
+- Vary sentence length. Do not dress up your own work with adjectives ("critical fix", "powerful feature"). Write "This change…", not a bare "This…".
+
+## Output Language
+
+Write your entire output in English, whatever language the input is written in — the issue, diff, seed idea, code comments, or Q&A answers may be in another language. Read non-English input faithfully, but never mirror its language back: the artifact you produce is always English. Quote identifiers, code, paths, and command output verbatim; translate the surrounding prose.
+
+## Output format
+
+When you are done, emit a comprehensive gap report grouped by feature_id, with each gap's gap_type, severity, title, source (the verbatim spec snippet), description (what is missing), evidence (where you looked), confidence, and a suggested_issue with title and body.
+
+Now perform the gap analysis.

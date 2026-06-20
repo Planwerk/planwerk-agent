@@ -1,0 +1,48 @@
+Convert the following codebase analysis into structured JSON feature proposals. Extract every concrete, actionable proposal mentioned.
+
+Output ONLY valid JSON matching this exact schema (no markdown fences, no surrounding text):
+
+{
+  "repository_overview": "A concise summary of what this repository is, its tech stack, architecture, and current state of maturity (3-5 sentences).",
+  "proposals": [
+    {
+      "id": "",
+      "priority": "HIGH|MEDIUM|LOW",
+      "category": "feature|improvement|refactoring|testing|documentation|security|performance",
+      "title": "Short, descriptive title suitable as GitHub issue title",
+      "description": "Detailed description of what should be implemented or changed. Be specific about the technical approach.",
+      "motivation": "Why this proposal matters. What problem does it solve? What value does it add?",
+      "scope": "Small|Medium|Large",
+      "affected_areas": ["path/to/relevant/file.go", "package/name", "subsystem"],
+      "acceptance_criteria": ["Criterion 1", "Criterion 2"]
+    }
+  ]
+}
+
+Priority levels:
+- HIGH: Critical for production readiness, security, or core functionality — should be addressed soon
+- MEDIUM: Valuable improvements that enhance quality, DX, or capabilities — plan for next iterations
+- LOW: Nice-to-have improvements, minor enhancements — consider when time allows
+
+Categories:
+- feature: New user-facing functionality
+- improvement: Enhancement to existing functionality
+- refactoring: Internal code quality improvement
+- testing: Test coverage or test infrastructure
+- documentation: Documentation improvements
+- security: Security hardening
+- performance: Performance optimization
+
+Scope:
+- Small: < 1 day of work, single file or function changes
+- Medium: 1-3 days of work, multiple files or a new module
+- Large: > 3 days of work, significant new functionality or architectural changes
+
+Leave the "id" field as an empty string — it will be assigned automatically.
+Each proposal should be specific and actionable, referencing actual code areas.
+Generate between 5 and 20 proposals, depending on the size and complexity of the codebase.
+
+<analysis-output>
+The repo is a Go CLI. Suggestion: add golden tests for the prompt builders.
+
+</analysis-output>

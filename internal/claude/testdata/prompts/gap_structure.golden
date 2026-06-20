@@ -1,0 +1,49 @@
+Convert the following gap-analysis report into structured JSON. Extract every gap mentioned, grouped by feature_id.
+
+Output ONLY valid JSON matching this exact schema (no markdown fences, no surrounding text):
+
+{
+  "repo": "owner/name",
+  "overview": "2-4 sentence overall summary of the gap analysis: how many features were checked, headline themes, and the 1-2 most important gaps to fix first.",
+  "features": [
+    {
+      "feature_id": "CC-0042",
+      "feature_file": "CC-0042-...json",
+      "title": "Feature title from the spec",
+      "summary": "1-3 sentence verdict for this specific feature.",
+      "gaps": [
+        {
+          "id": "",
+          "feature_id": "CC-0042",
+          "feature_file": "CC-0042-...json",
+          "type": "missing_criterion|missing_scenario|missing_test|missing_task",
+          "severity": "CRITICAL|WARNING|INFO",
+          "title": "Short, specific gap title (no severity prefix, no brackets)",
+          "description": "What is missing and why it matters. 1-3 sentences.",
+          "evidence": "Concrete file paths, grep results, or 'searched X, found nothing'.",
+          "source": "The verbatim spec snippet this gap maps to (criterion text, scenario When/Then, task title, or test_function name).",
+          "confidence": "verified|likely|uncertain",
+          "suggested_issue": {
+            "title": "Issue title — no severity prefix, no [LEVEL] tag.",
+            "body": "Markdown body suitable to post as a GitHub issue."
+          }
+        }
+      ]
+    }
+  ]
+}
+
+Field rules:
+- "id": leave as empty string — it is assigned automatically.
+- "type": one of the four values above. Pick the type that matches WHAT IS MISSING.
+- "severity": uppercase, never BLOCKING (gap analysis runs on already-merged work).
+- "feature_id" / "feature_file": copy from the surrounding feature block.
+- "source": include the verbatim text from the spec — criterion, scenario, task, or test name.
+- "evidence": cite paths or grep results. "checked X, did not find Y" is acceptable.
+- "suggested_issue.title": never start with "[CRITICAL]", "Severity:", or any other level marker.
+- If a feature has no gaps, still include it with an empty "gaps" array and a positive summary.
+
+<gap-analysis-report>
+Feature CC-0042: missing_test for TestBuildReviewPrompt_Golden — no such test found.
+
+</gap-analysis-report>
