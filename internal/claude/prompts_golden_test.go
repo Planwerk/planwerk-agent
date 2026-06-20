@@ -320,6 +320,43 @@ func TestBuildAnalysisPrompt_OutOfScope(t *testing.T) {
 	assertGoldenPrompt(t, "analysis_out_of_scope", buildAnalysisPrompt(ctx))
 }
 
+// goldenGlossary returns a representative CONTEXT.md body — a context heading,
+// a "## Language" section, and one "**Term**:" / "_Avoid_:" entry — so the
+// domain-glossary block snapshots cover the rendered shape, including the
+// untrusted-data framing and the <domain-glossary> wrapper.
+func goldenGlossary() string {
+	return "# Billing\n\n" +
+		"The vocabulary for the billing context.\n\n" +
+		"## Language\n\n" +
+		"**Invoice**: a finalized, immutable statement of charges issued to a customer.\n" +
+		"_Avoid_: bill, statement\n"
+}
+
+// TestBuildReviewPrompt_Glossary locks the "## Domain Glossary" block injected
+// into the review prompt when the target repo carries a CONTEXT.md. The empty
+// branch stays covered by review.golden.
+func TestBuildReviewPrompt_Glossary(t *testing.T) {
+	ctx := goldenReviewContext()
+	ctx.Glossary = goldenGlossary()
+	assertGoldenPrompt(t, "review_glossary", buildReviewPrompt(ctx))
+}
+
+// TestBuildElaboratePrompt_Glossary locks the domain-glossary block in the
+// elaborate prompt. The empty branch stays covered by elaborate.golden.
+func TestBuildElaboratePrompt_Glossary(t *testing.T) {
+	ctx := goldenElaborateContext()
+	ctx.Glossary = goldenGlossary()
+	assertGoldenPrompt(t, "elaborate_glossary", buildElaboratePrompt(ctx))
+}
+
+// TestBuildAnalysisPrompt_Glossary locks the domain-glossary block in the
+// propose analysis prompt. The empty branch stays covered by analysis.golden.
+func TestBuildAnalysisPrompt_Glossary(t *testing.T) {
+	ctx := goldenAnalysisContext()
+	ctx.Glossary = goldenGlossary()
+	assertGoldenPrompt(t, "analysis_glossary", buildAnalysisPrompt(ctx))
+}
+
 func TestBuildAdversarialPrompt_Golden(t *testing.T) {
 	assertGoldenPrompt(t, "adversarial", buildAdversarialPrompt("develop"))
 }

@@ -32,6 +32,10 @@ type Context struct {
 	MetaIssue     *github.Issue
 	SiblingIssues []github.Issue
 	ChildIssues   []github.Issue
+	// Glossary is the target repo's domain vocabulary loaded from its
+	// CONTEXT.md / .planwerk/context.md so the elaborated issue uses the repo's
+	// own terms. Empty when the repo carries no glossary.
+	Glossary string
 }
 
 // ReviewResult is the verdict of the optional reviewer pass over an

@@ -25,6 +25,7 @@ type ReviewContext struct {
 	StaleDocs   []doccheck.StaleDocHint   // documentation files that may need updating
 	NewFeatures []doccheck.NewFeatureHint // new files that may need documentation
 	TodoContent string                    // content of TODOS.md if present
+	Glossary    string                    // repo domain glossary from CONTEXT.md / .planwerk/context.md; empty when absent
 }
 
 // Review invokes `claude /review` in the given directory and returns structured findings.

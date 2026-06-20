@@ -142,6 +142,7 @@ Be direct. State what IS, not what "could be considered". Match the density and 
 	sb.WriteString("\n")
 	sb.WriteString(proseStyleBlock())
 	sb.WriteString(outputLanguageBlock())
+	sb.WriteString(domainGlossaryBlock(ctx.Glossary))
 
 	sb.WriteString(`## Self-Review (run before emitting the plan)
 

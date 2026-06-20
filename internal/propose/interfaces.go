@@ -16,6 +16,11 @@ type AnalysisContext struct {
 	// .planwerk/out-of-scope/ knowledge base so the analysis stops
 	// re-suggesting them.
 	OutOfScope []OutOfScopeEntry
+	// Glossary is the target repo's domain vocabulary loaded from its
+	// CONTEXT.md / .planwerk/context.md so proposals use the repo's own terms.
+	// Populated only by propose; the other commands sharing AnalysisContext
+	// leave it empty (like OutOfScope), so their prompts are unaffected.
+	Glossary string
 }
 
 // ClaudeAnalyzer performs the Claude-backed codebase analysis that produces
