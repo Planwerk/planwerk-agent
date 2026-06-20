@@ -473,6 +473,71 @@ func TestProposeRun_LoadsPatternsIntoAnalysisContext(t *testing.T) {
 	}
 }
 
+func TestProposeRun_LoadsOutOfScopeIntoAnalysisContext(t *testing.T) {
+	// Proposer.Run must load the rejected-idea knowledge base from the
+	// checkout and forward it into AnalysisContext so the analysis prompt can
+	// tell Claude not to re-propose those ideas.
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	repo := fakeRepo(t, "acme", "widgets")
+	oos := filepath.Join(repo.Dir, ".planwerk", "out-of-scope")
+	if err := os.MkdirAll(oos, 0o755); err != nil {
+		t.Fatalf("creating out-of-scope dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(oos, "plugins.md"), []byte("# Plugin system\n\nRejected: the catalog is compiled in on purpose."), 0o644); err != nil {
+		t.Fatalf("writing out-of-scope entry: %v", err)
+	}
+
+	gh := &fakeGitHub{
+		cloneRepo:         func(ref string) (*github.Repo, error) { return repo, nil },
+		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-oos", nil },
+	}
+	claudeMock := &fakeClaude{}
+	runner := &Runner{Claude: claudeMock, GitHub: gh}
+
+	opts := baseProposeOpts()
+	opts.NoLocalPatterns = true
+	opts.NoRepoPatterns = true
+
+	var out bytes.Buffer
+	if err := runner.Run(&out, opts); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if len(claudeMock.lastCtx.OutOfScope) != 1 {
+		t.Fatalf("AnalysisContext.OutOfScope len = %d, want 1", len(claudeMock.lastCtx.OutOfScope))
+	}
+	if got := claudeMock.lastCtx.OutOfScope[0].Name; got != "Plugin system" {
+		t.Errorf("OutOfScope[0].Name = %q, want %q", got, "Plugin system")
+	}
+}
+
+func TestProposeRun_NoOutOfScopeLeavesContextEmpty(t *testing.T) {
+	// A repo without a .planwerk/out-of-scope/ directory must run unchanged,
+	// leaving AnalysisContext.OutOfScope empty rather than failing the run.
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	gh := &fakeGitHub{
+		cloneRepo:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
+		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-no-oos", nil },
+	}
+	claudeMock := &fakeClaude{}
+	runner := &Runner{Claude: claudeMock, GitHub: gh}
+
+	opts := baseProposeOpts()
+	opts.NoLocalPatterns = true
+	opts.NoRepoPatterns = true
+
+	var out bytes.Buffer
+	if err := runner.Run(&out, opts); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if len(claudeMock.lastCtx.OutOfScope) != 0 {
+		t.Errorf("expected no out-of-scope entries, got %d", len(claudeMock.lastCtx.OutOfScope))
+	}
+}
+
 func TestProposeRun_NoPatternsIsNonFatal(t *testing.T) {
 	// Missing patterns must not fail the pipeline — propose should still run
 	// with an empty Patterns slice, logging a warning.

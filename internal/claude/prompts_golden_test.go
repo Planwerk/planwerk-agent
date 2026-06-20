@@ -301,6 +301,25 @@ func TestBuildAnalysisPrompt_NoPatterns(t *testing.T) {
 	assertGoldenPrompt(t, "analysis_no_patterns", buildAnalysisPrompt(propose.AnalysisContext{}))
 }
 
+// goldenOutOfScopeEntries returns two rejected-idea entries so the out-of-scope
+// block snapshot covers the multi-entry shape and the name-from-heading
+// derivation.
+func goldenOutOfScopeEntries() []propose.OutOfScopeEntry {
+	return []propose.OutOfScopeEntry{
+		{Name: "Plugin system", Body: "# Plugin system\n\nA runtime plugin loader was rejected: the pattern catalog is compiled in on purpose."},
+		{Name: "Hosted web dashboard", Body: "# Hosted web dashboard\n\nplanwerk-review is a CLI; a hosted web UI is out of scope."},
+	}
+}
+
+// TestBuildAnalysisPrompt_OutOfScope locks the "## Out of Scope" block injected
+// when the target repo carries a .planwerk/out-of-scope/ knowledge base. The
+// empty branch stays covered by analysis.golden.
+func TestBuildAnalysisPrompt_OutOfScope(t *testing.T) {
+	ctx := goldenAnalysisContext()
+	ctx.OutOfScope = goldenOutOfScopeEntries()
+	assertGoldenPrompt(t, "analysis_out_of_scope", buildAnalysisPrompt(ctx))
+}
+
 func TestBuildAdversarialPrompt_Golden(t *testing.T) {
 	assertGoldenPrompt(t, "adversarial", buildAdversarialPrompt("develop"))
 }

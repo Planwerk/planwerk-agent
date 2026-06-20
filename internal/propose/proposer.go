@@ -122,11 +122,25 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		slog.Warn("no review patterns loaded — proposals will not be grounded in the pattern catalog")
 	}
 
+	// Load the rejected-idea knowledge base from the checkout. It needs no
+	// cache-key change: propose only ever sees committed files, so editing
+	// .planwerk/out-of-scope/ moves the default-branch HEAD and busts the
+	// cache naturally. An unreadable KB logs a warning and proceeds rather
+	// than failing the run, mirroring the issue-dedupe error posture.
+	outOfScope, err := LoadOutOfScope(repo.Dir)
+	if err != nil {
+		slog.Warn("could not load out-of-scope knowledge base, proceeding without it", "err", err)
+	}
+	if len(outOfScope) > 0 {
+		slog.Info("loaded out-of-scope entries", "count", len(outOfScope))
+	}
+
 	slog.Info("analyzing codebase with Claude")
 	result, err := r.Claude.Analyze(repo.Dir, AnalysisContext{
 		Patterns:    pats,
 		MaxPatterns: opts.MaxPatterns,
 		RepoName:    repo.FullName(),
+		OutOfScope:  outOfScope,
 	})
 	if err != nil {
 		return fmt.Errorf("claude analysis: %w", err)

@@ -12,6 +12,10 @@ type AnalysisContext struct {
 	Patterns    []patterns.Pattern
 	MaxPatterns int
 	RepoName    string // "owner/repo" for context in the prompt
+	// OutOfScope carries rejected ideas loaded from the target repo's
+	// .planwerk/out-of-scope/ knowledge base so the analysis stops
+	// re-suggesting them.
+	OutOfScope []OutOfScopeEntry
 }
 
 // ClaudeAnalyzer performs the Claude-backed codebase analysis that produces
