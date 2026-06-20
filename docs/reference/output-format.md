@@ -122,6 +122,44 @@ Verdict values: `HOLD` (blockers/criticals present), `REVIEW` (warnings only),
 Recommendations use GitHub Alert syntax (`[!CAUTION]`, `[!WARNING]`, `[!TIP]`,
 `[!IMPORTANT]`) for native rendering.
 
+## Claude Usage Totals
+
+Every command aggregates the token usage and estimated cost of all the Claude
+Code calls it makes in a single Run and surfaces the totals two ways.
+
+On completion, a one-line summary is printed to **stderr**:
+
+```text
+claude usage: 13.4k in / 4.2k out across 6 calls, est. $0.42
+```
+
+`in`/`out` are the summed input/output tokens (rendered compactly as `k`/`M`),
+`calls` is the number of Claude invocations, and the estimate is the sum of
+Claude Code's own reported per-call cost. The line is omitted when a Run made no
+Claude call (for example `--version`, a dry run, or `--print-prompt`).
+
+When a review is posted (`--post-review` / `--inline`), the same totals are
+embedded in the `<!-- planwerk-review-data ... -->` comment as a `usage` object
+for CI extraction, alongside the findings:
+
+```json
+{
+  "commit_sha": "abc123",
+  "findings": [],
+  "usage": {
+    "calls": 6,
+    "input_tokens": 13400,
+    "output_tokens": 4200,
+    "cache_read_input_tokens": 15626,
+    "cache_creation_input_tokens": 2464,
+    "est_cost_usd": 0.42
+  }
+}
+```
+
+`est_cost_usd` is the literal estimate Claude Code reports, summed across calls —
+not a recomputed tokens × price figure.
+
 ## JSON Schema
 
 The `--format json` output of every command is described by a JSON Schema

@@ -34,4 +34,7 @@ and outputs; for a working workflow, see
 
 Counts are extracted by parsing the `<!-- planwerk-review-data ... -->` JSON
 block embedded in the posted PR review/comment, so they reflect the same set of
-findings the reviewer sees on the PR.
+findings the reviewer sees on the PR. The same block also carries a `usage`
+object with the Run's Claude token totals and estimated cost — see
+[Claude Usage Totals](/reference/output-format#claude-usage-totals) — available
+for extraction the same way.
