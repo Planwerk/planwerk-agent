@@ -123,6 +123,10 @@ export default defineConfig({
               text: 'Design decisions',
               link: '/explanation/design-decisions',
             },
+            {
+              text: 'Prompt-design doctrine',
+              link: '/explanation/prompt-design',
+            },
             { text: 'Roadmap', link: '/explanation/roadmap' },
           ],
         },

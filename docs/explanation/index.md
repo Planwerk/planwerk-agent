@@ -12,6 +12,8 @@ not to perform a task.
   repeated analysis.
 - [Design decisions](/explanation/design-decisions) — the choices behind the
   tool and their rationale.
+- [Prompt-design doctrine](/explanation/prompt-design) — the authoring
+  discipline behind the prompt builders, and the failure modes the audit hunts.
 - [Roadmap](/explanation/roadmap) — planned future extensions.
 
 For step-by-step instructions, start with the [Tutorials](/tutorials/) or the
