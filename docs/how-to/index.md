@@ -6,6 +6,7 @@ solves one specific problem.
 - [Review a pull request](/how-to/review-a-pr)
 - [Analyze a repository and generate proposals](/how-to/analyze-a-repository)
 - [Audit a codebase against all patterns](/how-to/audit-a-codebase)
+- [Provide a domain glossary](/how-to/provide-a-domain-glossary)
 - [Check completed features for gaps](/how-to/check-feature-gaps)
 - [Draft an issue](/how-to/draft-an-issue)
 - [Elaborate an issue](/how-to/elaborate-an-issue)

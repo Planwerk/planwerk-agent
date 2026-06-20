@@ -12,8 +12,8 @@ omitted. Shell completions and man pages are produced by the built-in
 ## Global flags
 
 These persistent flags apply to every command (`review`, `propose`, `audit`,
-`gap-analysis`, `review-prepared`, `draft`, `elaborate`, `meta`, `prompt`,
-`fix`, `rebase`, `address`, `implement`, `cache`, `schema`).
+`glossary`, `gap-analysis`, `review-prepared`, `draft`, `elaborate`, `meta`,
+`prompt`, `fix`, `rebase`, `address`, `implement`, `cache`, `schema`).
 
 | Flag | Description | Default |
 |------|-------------|---------|
@@ -56,7 +56,7 @@ planwerk-review owner/repo#123 > review.md
 | `--no-local-patterns` | Ignore local patterns from the tool | `false` |
 | `--no-cache` | Ignore cache, force a fresh review | `false` |
 | `--clear-cache` | Clear cached reviews and exit (honors `--clear-cache-scope`) | `false` |
-| `--clear-cache-scope` | Restrict `--clear-cache` to a single command (`review`, `propose`, `audit`, `elaborate`, `gap-analysis`, `review-prepared`) | - |
+| `--clear-cache-scope` | Restrict `--clear-cache` to a single command (`review`, `propose`, `audit`, `glossary`, `elaborate`, `gap-analysis`, `review-prepared`) | - |
 | `--cache-stats` | Show cache size, age distribution, and per-command breakdown, then exit | `false` |
 | `--cache-inspect` | Print the metadata and payload for the given cache key, then exit | - |
 | `--cache-max-age` | Reject cached entries older than this duration (`0` disables the TTL) | `720h` |
@@ -121,6 +121,30 @@ planwerk-review audit --format json owner/repo
 | `--create-issues` | Interactively create GitHub issues from audit findings | `false` |
 | `--issue-min-severity` | Minimum severity for issue creation | `warning` |
 | `--no-issue-dedupe` | Do not filter findings whose title matches an existing GitHub issue | `false` |
+| `--local` | Operate on the current working directory instead of cloning into a temp dir (see [Use local mode](/how-to/use-local-mode)). The repository reference may be omitted — it is inferred from the `origin` remote. | `false` |
+| `--force` | With `--local`, skip the confirmation prompt when the working tree is dirty | `false` |
+
+## `glossary`
+
+Generate a starter domain glossary (`CONTEXT.md`) for a codebase and print it to
+stdout. The glossary captures the repository's own domain vocabulary so that
+`review`, `elaborate`, and `propose` phrase their output in the repo's terms
+once it is committed as `CONTEXT.md`. See
+[Provide a domain glossary](/how-to/provide-a-domain-glossary) for the schema and
+how the commands read it back.
+
+```bash
+planwerk-review glossary owner/repo > CONTEXT.md
+planwerk-review glossary --local
+```
+
+The output is a starter — review and edit it before committing. The command
+prints to stdout and never writes into the repo.
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--no-cache` | Ignore cache, force a fresh glossary | `false` |
+| `--cache-max-age` | Reject cached entries older than this duration (`0` disables the TTL) | `720h` |
 | `--local` | Operate on the current working directory instead of cloning into a temp dir (see [Use local mode](/how-to/use-local-mode)). The repository reference may be omitted — it is inferred from the `origin` remote. | `false` |
 | `--force` | With `--local`, skip the confirmation prompt when the working tree is dirty | `false` |
 
@@ -545,8 +569,9 @@ The address session runs in Claude Code's auto mode.
 
 ## `cache`
 
-Inspect the on-disk cache shared by `review`, `propose`, `audit`, `elaborate`,
-and `gap-analysis`. See [Caching model](/explanation/caching) for background.
+Inspect the on-disk cache shared by `review`, `propose`, `audit`, `glossary`,
+`elaborate`, and `gap-analysis`. See [Caching model](/explanation/caching) for
+background.
 
 ```bash
 # Show total entries, size, age distribution, and per-command breakdown
