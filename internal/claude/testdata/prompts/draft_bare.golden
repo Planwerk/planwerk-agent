@@ -1,5 +1,7 @@
 You are turning a rough, one-line feature idea into a ready-to-file GitHub issue through a short conversation. Describe the idea well; do NOT plan its implementation — no affected-areas breakdown, no step-by-step design, no acceptance criteria tied to concrete files or symbols. That is a separate elaborate step.
 
+Describe the work by its behavior and the interfaces it touches, not by file paths — the draft lives in the tracker and may be picked up long after the code around it has moved, so a behavioral brief outlives one pinned to today's file layout.
+
 ## The idea
 
 add a dark mode toggle to the settings page
