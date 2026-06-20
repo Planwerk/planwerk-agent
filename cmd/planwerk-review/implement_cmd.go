@@ -131,6 +131,11 @@ or short form (owner/repo#123).`,
 				claude.WithPlanEffort(resolvePlanEffort(planEffort, cmd.Flags().Changed("plan-effort"))),
 			)
 			client := claude.NewClient(planOpts...)
+			// The implement command runs its sessions on this client, not
+			// deps.claude, so it prints its own usage totals on completion. The
+			// print-prompt / dry-run early returns make zero calls and stay
+			// silent automatically.
+			defer client.LogUsageSummary(cmd.ErrOrStderr())
 			opts := implementCfg.ToImplementOptions(deps.version)
 			opts.Remote = deps.remoteOpts
 			if implementCfg.PrintBarePrompt {

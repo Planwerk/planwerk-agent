@@ -49,7 +49,20 @@ func main() {
 		newGenManCmd(deps),
 	)
 
-	if err := rootCmd.Execute(); err != nil {
+	err := rootCmd.Execute()
+
+	// Print the Run's Claude token usage and estimated cost on completion —
+	// on success and failure alike, since a command that failed partway still
+	// spent tokens. The nil guard covers --help / parse-error paths where
+	// PersistentPreRunE never built the client; the summary itself stays silent
+	// when no Claude call was made (e.g. cache-maintenance flags). The implement
+	// command builds its own client and prints its own summary, so deps.claude
+	// is empty (zero calls) and silent for that command.
+	if deps.claude != nil {
+		deps.claude.LogUsageSummary(os.Stderr)
+	}
+
+	if err != nil {
 		// Route the final error through slog so it honors --log-format.
 		slog.Error(err.Error())
 		os.Exit(1)
