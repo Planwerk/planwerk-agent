@@ -18,6 +18,7 @@ import (
 	"github.com/planwerk/planwerk-review/internal/detect"
 	"github.com/planwerk/planwerk-review/internal/doccheck"
 	"github.com/planwerk/planwerk-review/internal/github"
+	"github.com/planwerk/planwerk-review/internal/glossary"
 	"github.com/planwerk/planwerk-review/internal/patterns"
 	"github.com/planwerk/planwerk-review/internal/planwerk"
 	"github.com/planwerk/planwerk-review/internal/redact"
@@ -147,6 +148,14 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// 5. Load checklist
 	checklistContent := checklist.Load(pr.Dir)
 
+	// 5b. Load the repo's domain glossary (CONTEXT.md / .planwerk/context.md)
+	// from the base ref, NOT pr.Dir (the PR head checkout). Reading origin/<base>
+	// keeps the glossary maintainer-controlled: a PR cannot inject or rewrite a
+	// CONTEXT.md to smuggle instructions into the reviewer's prompt. Best-effort,
+	// mirroring the out-of-scope load: an unreadable glossary proceeds rather
+	// than failing the review.
+	glossaryBody := glossary.LoadBodyFromRef(pr.Dir, "origin/"+pr.BaseBranch)
+
 	// 6. Fetch commit log for scope drift detection
 	commitLog, err := getCommitLog(pr.Dir, pr.BaseBranch)
 	if err != nil {
@@ -204,6 +213,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		StaleDocs:   staleDocs,
 		NewFeatures: newFeatures,
 		TodoContent: todoContent,
+		Glossary:    glossaryBody,
 	}
 
 	var (

@@ -11,6 +11,7 @@ import (
 	"github.com/planwerk/planwerk-review/internal/cache"
 	"github.com/planwerk/planwerk-review/internal/detect"
 	"github.com/planwerk/planwerk-review/internal/github"
+	"github.com/planwerk/planwerk-review/internal/glossary"
 	"github.com/planwerk/planwerk-review/internal/patterns"
 	"github.com/planwerk/planwerk-review/internal/workspace"
 )
@@ -175,6 +176,10 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		slog.Warn("no review patterns loaded — elaboration will not be grounded in the pattern catalog")
 	}
 
+	// Load the repo's domain glossary (CONTEXT.md / .planwerk/context.md).
+	// Best-effort: an unreadable glossary warns and proceeds.
+	glossaryBody := glossary.LoadBody(repo.Dir)
+
 	slog.Info("elaborating issue with Claude")
 	baseCtx := Context{
 		Patterns:      pats,
@@ -184,6 +189,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		MetaIssue:     relations.Parent,
 		SiblingIssues: relations.Siblings,
 		ChildIssues:   relations.Children,
+		Glossary:      glossaryBody,
 	}
 	result, err := r.Claude.Elaborate(repo.Dir, baseCtx)
 	if err != nil {

@@ -11,6 +11,7 @@ import (
 	"github.com/planwerk/planwerk-review/internal/cache"
 	"github.com/planwerk/planwerk-review/internal/detect"
 	"github.com/planwerk/planwerk-review/internal/github"
+	"github.com/planwerk/planwerk-review/internal/glossary"
 	"github.com/planwerk/planwerk-review/internal/patterns"
 	"github.com/planwerk/planwerk-review/internal/workspace"
 )
@@ -135,12 +136,18 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		slog.Info("loaded out-of-scope entries", "count", len(outOfScope))
 	}
 
+	// Load the repo's domain glossary so proposals use the repo's own terms.
+	// Same best-effort posture as the out-of-scope load above; needs no
+	// cache-key change for the same reason (committed files move HEAD).
+	glossaryBody := glossary.LoadBody(repo.Dir)
+
 	slog.Info("analyzing codebase with Claude")
 	result, err := r.Claude.Analyze(repo.Dir, AnalysisContext{
 		Patterns:    pats,
 		MaxPatterns: opts.MaxPatterns,
 		RepoName:    repo.FullName(),
 		OutOfScope:  outOfScope,
+		Glossary:    glossaryBody,
 	})
 	if err != nil {
 		return fmt.Errorf("claude analysis: %w", err)

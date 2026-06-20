@@ -8,11 +8,14 @@
 package glossary
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // maxGlossaryBytes caps the glossary file read into a prompt. The CONTEXT.md
@@ -21,6 +24,10 @@ import (
 // OOM the process or balloon the prompt and its API cost. An oversized file is
 // treated as absent.
 const maxGlossaryBytes = 64 * 1024
+
+// gitShowTimeout bounds each `git show` LoadBodyFromRef runs to read a glossary
+// blob from a committed ref.
+const gitShowTimeout = 30 * time.Second
 
 // glossaryLocations lists the repo-relative paths probed for a domain
 // glossary, in precedence order. The root CONTEXT.md wins over
@@ -99,4 +106,56 @@ func LoadBody(repoDir string) string {
 	}
 	slog.Info("loaded domain glossary", "source", g.Source)
 	return g.Body
+}
+
+// LoadBodyFromRef returns the domain-glossary body committed at the given git
+// ref (e.g. "origin/main") within repoDir, or "" when that ref carries no
+// glossary. It mirrors LoadBody's precedence (CONTEXT.md, then
+// .planwerk/context.md) and its best-effort posture, but reads each file from a
+// maintainer-controlled ref via `git show` rather than from the working tree —
+// so reviewing a pull request uses the base branch's glossary, never one the PR
+// itself introduces or rewrites in its head checkout.
+//
+// `git show ref:path` emits a committed symlink's target text instead of
+// following it, so the symlink guard Load relies on is unnecessary here. A blob
+// exceeding maxGlossaryBytes is treated as absent, matching Load.
+func LoadBodyFromRef(repoDir, ref string) string {
+	if ref == "" {
+		return ""
+	}
+	for _, rel := range glossaryLocations {
+		body, ok := showGlossaryBlob(repoDir, ref, rel)
+		if !ok {
+			continue
+		}
+		body = strings.TrimSpace(body)
+		if body == "" {
+			continue
+		}
+		slog.Info("loaded domain glossary from base ref", "ref", ref, "source", rel)
+		return body
+	}
+	return ""
+}
+
+// showGlossaryBlob reads the blob at rel from ref via `git show`. ok is false
+// when the path is absent at that ref, the git invocation fails, or the blob
+// exceeds maxGlossaryBytes — every case the caller treats as "no glossary here"
+// and proceeds to the next location.
+func showGlossaryBlob(repoDir, ref, rel string) (string, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), gitShowTimeout)
+	defer cancel()
+	// git addresses paths with forward slashes regardless of the host OS.
+	cmd := exec.CommandContext(ctx, "git", "show", ref+":"+filepath.ToSlash(rel))
+	cmd.Dir = repoDir
+	out, err := cmd.Output()
+	if err != nil {
+		// Missing path at ref (git exits 128) or any other git failure: absent.
+		return "", false
+	}
+	if len(out) > maxGlossaryBytes {
+		slog.Warn("skipping oversized glossary blob from base ref", "ref", ref, "path", rel, "size", len(out))
+		return "", false
+	}
+	return string(out), true
 }
