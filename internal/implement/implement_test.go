@@ -114,7 +114,7 @@ func (f *fakePlanner) Plan(dir string, ctx Context) (string, string, error) {
 
 func TestRun_PlanFeedsImplement(t *testing.T) {
 	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
-	cl := &fakeClaude{report: "PR opened"}
+	cl := &fakeClaude{report: validImplReport}
 	fp := &fakePlanner{plan: "## Implementation Plan (issue #42)\n\nSTATUS: PLAN_READY"}
 	r := newRunner(gh, cl)
 	r.Planner = fp
@@ -167,7 +167,7 @@ func TestRun_RelationsFeedPlanner(t *testing.T) {
 			Siblings: []github.Issue{{Number: 7, Title: "Sibling", Body: "Sibling body", State: "open"}},
 		},
 	}
-	cl := &fakeClaude{report: "PR opened"}
+	cl := &fakeClaude{report: validImplReport}
 	fp := &fakePlanner{plan: "## Implementation Plan (issue #42)\n\nSTATUS: PLAN_READY"}
 	r := newRunner(gh, cl)
 	r.Planner = fp
@@ -186,7 +186,7 @@ func TestRun_RelationsFeedPlanner(t *testing.T) {
 
 func TestRun_NoPlanCommentSkipsComment(t *testing.T) {
 	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
-	cl := &fakeClaude{report: "PR opened"}
+	cl := &fakeClaude{report: validImplReport}
 	fp := &fakePlanner{plan: "## Implementation Plan (issue #42)\n\nSTATUS: PLAN_READY"}
 	r := newRunner(gh, cl)
 	r.Planner = fp
@@ -210,7 +210,7 @@ func TestRun_NoPlanCommentSkipsComment(t *testing.T) {
 
 func TestRun_PlanCommentFailureIsNonFatal(t *testing.T) {
 	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir(), commentErr: errors.New("github down")}
-	cl := &fakeClaude{report: "PR opened"}
+	cl := &fakeClaude{report: validImplReport}
 	fp := &fakePlanner{plan: "## Implementation Plan (issue #42)\n\nSTATUS: PLAN_READY"}
 	r := newRunner(gh, cl)
 	r.Planner = fp
@@ -229,7 +229,7 @@ func TestRun_PlanCommentFailureIsNonFatal(t *testing.T) {
 
 func TestRun_PostsReportComment(t *testing.T) {
 	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
-	cl := &fakeClaude{report: "## Implementation Report (issue #42)\n\nPR opened"}
+	cl := &fakeClaude{report: validImplReport}
 	r := newRunner(gh, cl)
 
 	var buf bytes.Buffer
@@ -252,7 +252,7 @@ func TestRun_PostsReportComment(t *testing.T) {
 
 func TestRun_ReportCommentFailureIsNonFatal(t *testing.T) {
 	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir(), commentErr: errors.New("github down")}
-	cl := &fakeClaude{report: "PR opened"}
+	cl := &fakeClaude{report: validImplReport}
 	r := newRunner(gh, cl)
 
 	var buf bytes.Buffer
@@ -267,22 +267,81 @@ func TestRun_ReportCommentFailureIsNonFatal(t *testing.T) {
 	}
 }
 
-func TestRun_EmptyReportSkipsReportComment(t *testing.T) {
-	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
-	cl := &fakeClaude{report: ""}
-	r := newRunner(gh, cl)
-
-	if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42"}); err != nil {
-		t.Fatalf("Run returned %v, want nil", err)
+// TestRun_AbortsOnInvalidImplementReport locks the guard that a one-shot
+// implement session must return a COMPLETE report (the mandated heading AND a
+// terminal STATUS line). A session that yields mid-work — e.g. backgrounding its
+// tests to be "notified" later, impossible in a headless run — returns prose
+// with neither, and Run must treat that as a failed implementation: no report
+// posted onto the issue, and no PR opened on a half-built branch.
+func TestRun_AbortsOnInvalidImplementReport(t *testing.T) {
+	cases := []struct {
+		name   string
+		report string
+	}{
+		{"empty", ""},
+		{"prose with neither heading nor status", "Both the background go test job and the Monitor will notify me when the integration tests finish. Waiting for that result before committing Commit 2."},
+		{"heading but no status line", "## Implementation Report (issue #42)\n\n### Commits\n- abc1234 wip"},
+		{"status line but no heading", "Did the work.\n\nSTATUS: DONE"},
 	}
-	if gh.commentCalls.Load() != 0 {
-		t.Errorf("AddIssueComment called %d times, want 0 — an empty report posts no comment", gh.commentCalls.Load())
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+			cl := &fakeClaude{report: tc.report}
+			ff := &fakeFinalizer{report: defaultFinalizeReport}
+			r := newRunner(gh, cl)
+			r.Finalizer = ff
+
+			err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42"})
+			if err == nil || !strings.Contains(err.Error(), "complete implementation report") {
+				t.Fatalf("Run returned %v, want an incomplete-report error", err)
+			}
+			if cl.called.Load() != 1 {
+				t.Errorf("implement called %d times, want 1", cl.called.Load())
+			}
+			if ff.called.Load() != 0 {
+				t.Errorf("finalizer called %d times, want 0 — no PR on an unfinished implementation", ff.called.Load())
+			}
+			if gh.commentCalls.Load() != 0 {
+				t.Errorf("AddIssueComment called %d times, want 0 — a non-report must not be posted as one", gh.commentCalls.Load())
+			}
+		})
+	}
+}
+
+// TestRun_AbortsOnImplementEscalation locks that a BLOCKED / NEEDS_CONTEXT
+// implementation report stops the run before the simplify/review/finalize
+// passes: the session could not finish the work, so no PR is opened — but the
+// report IS posted so the human who must intervene sees it on the issue.
+func TestRun_AbortsOnImplementEscalation(t *testing.T) {
+	for _, status := range []string{"BLOCKED", "NEEDS_CONTEXT"} {
+		t.Run(status, func(t *testing.T) {
+			gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+			cl := &fakeClaude{report: "## Implementation Report (issue #42)\n\nSTATUS: " + status}
+			ff := &fakeFinalizer{report: defaultFinalizeReport}
+			r := newRunner(gh, cl)
+			r.Finalizer = ff
+
+			var buf bytes.Buffer
+			err := r.Run(&buf, Options{IssueRef: "owner/repo#42"})
+			if err == nil || !strings.Contains(err.Error(), status) {
+				t.Fatalf("Run returned %v, want a %s escalation error", err, status)
+			}
+			if ff.called.Load() != 0 {
+				t.Errorf("finalizer called %d times, want 0 after a %s report", ff.called.Load(), status)
+			}
+			if gh.commentCalls.Load() != 1 {
+				t.Errorf("AddIssueComment called %d times, want 1 — an escalated report must still post", gh.commentCalls.Load())
+			}
+			if !strings.Contains(buf.String(), "STATUS: "+status) {
+				t.Errorf("escalating report not printed for review:\n%s", buf.String())
+			}
+		})
 	}
 }
 
 func TestRun_NoReportCommentSkipsReportComment(t *testing.T) {
 	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
-	cl := &fakeClaude{report: "PR opened"}
+	cl := &fakeClaude{report: validImplReport}
 	r := newRunner(gh, cl)
 
 	if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
@@ -298,7 +357,7 @@ func TestRun_NoReportCommentSkipsReportComment(t *testing.T) {
 
 func TestRun_NoPlanSkipsPlanner(t *testing.T) {
 	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
-	cl := &fakeClaude{report: "PR opened"}
+	cl := &fakeClaude{report: validImplReport}
 	fp := &fakePlanner{plan: "unused"}
 	r := newRunner(gh, cl)
 	r.Planner = fp
@@ -316,7 +375,7 @@ func TestRun_NoPlanSkipsPlanner(t *testing.T) {
 
 func TestRun_NilPlannerImplementsDirectly(t *testing.T) {
 	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
-	cl := &fakeClaude{report: "PR opened"}
+	cl := &fakeClaude{report: validImplReport}
 	r := newRunner(gh, cl)
 
 	if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42"}); err != nil {
@@ -407,6 +466,35 @@ func TestPlanEscalation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := planEscalation(tc.plan); got != tc.want {
 				t.Errorf("planEscalation() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestImplementReportStatus(t *testing.T) {
+	const header = "## Implementation Report (issue #42)\n\n"
+	cases := []struct {
+		name   string
+		report string
+		want   string
+	}{
+		{"done", header + "STATUS: DONE", "DONE"},
+		{"done with concerns", header + "STATUS: DONE_WITH_CONCERNS", "DONE_WITH_CONCERNS"},
+		{"blocked", header + "STATUS: BLOCKED", "BLOCKED"},
+		{"needs context", header + "STATUS: NEEDS_CONTEXT", "NEEDS_CONTEXT"},
+		{"no status line", header + "### Commits\n- abc1234 wip", ""},
+		{"empty", "", ""},
+		{"yielded mid-work blurb", "Waiting for the background test job before committing Commit 2.", ""},
+		{"bold decoration", "**STATUS: DONE**", "DONE"},
+		{"list marker", "- STATUS: BLOCKED", "BLOCKED"},
+		{"trailing reason after verdict", "STATUS: DONE_WITH_CONCERNS — flaky test left skipped", "DONE_WITH_CONCERNS"},
+		{"terminal verdict wins over earlier line", "STATUS: BLOCKED\n\n(revised)\n\nSTATUS: DONE", "DONE"},
+		{"unrecognized value ignored", "STATUS: MAYBE", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := implementReportStatus(tc.report); got != tc.want {
+				t.Errorf("implementReportStatus() = %q, want %q", got, tc.want)
 			}
 		})
 	}
@@ -516,7 +604,7 @@ func TestRun_ReusesExistingPlan(t *testing.T) {
 		cloneDir: t.TempDir(),
 		comments: []github.IssueComment{{Body: formatPlanComment(plan, "")}},
 	}
-	cl := &fakeClaude{report: "PR opened"}
+	cl := &fakeClaude{report: validImplReport}
 	fp := &fakePlanner{plan: "FRESH PLAN should not be used"}
 	r := newRunner(gh, cl)
 	r.Planner = fp
@@ -555,7 +643,7 @@ func TestRun_NoPlanReuseForcesFreshPlan(t *testing.T) {
 		cloneDir: t.TempDir(),
 		comments: []github.IssueComment{{Body: formatPlanComment(posted, "")}},
 	}
-	cl := &fakeClaude{report: "PR opened"}
+	cl := &fakeClaude{report: validImplReport}
 	fp := &fakePlanner{plan: "## Implementation Plan (issue #42)\n\nfresh\n\nSTATUS: PLAN_READY"}
 	r := newRunner(gh, cl)
 	r.Planner = fp
@@ -619,7 +707,7 @@ func TestRun_NoPlanBeatsReuse(t *testing.T) {
 		cloneDir: t.TempDir(),
 		comments: []github.IssueComment{{Body: formatPlanComment(posted, "")}},
 	}
-	cl := &fakeClaude{report: "PR opened"}
+	cl := &fakeClaude{report: validImplReport}
 	fp := &fakePlanner{plan: "unused"}
 	r := newRunner(gh, cl)
 	r.Planner = fp
@@ -701,7 +789,7 @@ func TestRun_PrintPlanPromptRequiresBuilder(t *testing.T) {
 
 func TestRun_VerifyReportsUnmetCriteria(t *testing.T) {
 	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
-	cl := &fakeClaude{report: "PR opened"}
+	cl := &fakeClaude{report: validImplReport}
 	fv := &fakeVerifier{result: &report.ReviewResult{
 		Findings: []report.Finding{
 			{Severity: report.SeverityCritical, Title: "foo() not implemented", File: "foo.go", Problem: "no foo() in diff"},
@@ -725,7 +813,7 @@ func TestRun_VerifyReportsUnmetCriteria(t *testing.T) {
 
 func TestRun_VerifyCleanPass(t *testing.T) {
 	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
-	cl := &fakeClaude{report: "PR opened"}
+	cl := &fakeClaude{report: validImplReport}
 	fv := &fakeVerifier{result: &report.ReviewResult{}}
 	r := newRunner(gh, cl)
 	r.Verifier = fv
@@ -741,7 +829,7 @@ func TestRun_VerifyCleanPass(t *testing.T) {
 
 func TestRun_VerifyDisabledByDefault(t *testing.T) {
 	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
-	cl := &fakeClaude{report: "PR opened"}
+	cl := &fakeClaude{report: validImplReport}
 	fv := &fakeVerifier{}
 	r := newRunner(gh, cl)
 	r.Verifier = fv
@@ -756,7 +844,7 @@ func TestRun_VerifyDisabledByDefault(t *testing.T) {
 
 func TestRun_VerifyAdversarialReportsFindings(t *testing.T) {
 	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
-	cl := &fakeClaude{report: "PR opened"}
+	cl := &fakeClaude{report: validImplReport}
 	av := &fakeAdversarialVerifier{result: &report.ReviewResult{
 		Findings: []report.Finding{
 			{Severity: report.SeverityCritical, Title: "SQL injection in new query", File: "db.go", Problem: "unescaped user input"},
@@ -783,7 +871,7 @@ func TestRun_VerifyAdversarialReportsFindings(t *testing.T) {
 
 func TestRun_VerifyAdversarialCleanPass(t *testing.T) {
 	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
-	cl := &fakeClaude{report: "PR opened"}
+	cl := &fakeClaude{report: validImplReport}
 	av := &fakeAdversarialVerifier{result: &report.ReviewResult{}}
 	r := newRunner(gh, cl)
 	r.AdversarialVerifier = av
@@ -799,7 +887,7 @@ func TestRun_VerifyAdversarialCleanPass(t *testing.T) {
 
 func TestRun_VerifyAdversarialDisabledByDefault(t *testing.T) {
 	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
-	cl := &fakeClaude{report: "PR opened"}
+	cl := &fakeClaude{report: validImplReport}
 	av := &fakeAdversarialVerifier{}
 	r := newRunner(gh, cl)
 	r.AdversarialVerifier = av
@@ -812,10 +900,22 @@ func TestRun_VerifyAdversarialDisabledByDefault(t *testing.T) {
 	}
 }
 
+// ensureValidReport gives a pass test's implement fake a well-formed report
+// when it has none, so Run's implement guard (which aborts on a missing or
+// incomplete report) does not short-circuit the simplify/review pass the test
+// actually exercises. Tests that assert on the implement report itself set
+// cl.report explicitly and keep it.
+func ensureValidReport(cl *fakeClaude) {
+	if cl.report == "" {
+		cl.report = validImplReport
+	}
+}
+
 // simplifyRunner wires the simplify deps onto a fresh Runner alongside the
 // shared GitHub/Claude fakes, so each simplify test reads as just its
 // finder/applier setup.
 func simplifyRunner(gh *fakeGitHub, cl *fakeClaude, sf *fakeSimplifyFinder, sa *fakeSimplifyApplier) *Runner {
+	ensureValidReport(cl)
 	r := newRunner(gh, cl)
 	r.Simplifier = sf
 	r.SimplifyApplier = sa
@@ -834,13 +934,13 @@ func TestRun_SimplifyDefaultOnAppliesFindings(t *testing.T) {
 		cloneDir:  t.TempDir(),
 		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
-	cl := &fakeClaude{} // empty report: the only issue comment is the simplify report
+	cl := &fakeClaude{} // helper fills a valid report; --no-report-comment keeps the only comment the simplify report
 	sf := &fakeSimplifyFinder{result: oneSimplifyFinding("internal/foo/foo.go")}
 	sa := &fakeSimplifyApplier{report: "## Simplification Report\n\nSTATUS: DONE"}
 	r := simplifyRunner(gh, cl, sf, sa)
 
 	var buf bytes.Buffer
-	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
 	if sf.called.Load() != 1 {
@@ -883,14 +983,14 @@ func TestRun_NoSimplifySkipsPass(t *testing.T) {
 	sa := &fakeSimplifyApplier{report: "## Simplification Report\n\nSTATUS: DONE"}
 	r := simplifyRunner(gh, cl, sf, sa)
 
-	if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42", NoSimplify: true}); err != nil {
+	if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42", NoSimplify: true, NoReportComment: true}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
 	if sf.called.Load() != 0 || sa.called.Load() != 0 {
 		t.Errorf("finder/applier called (%d/%d), want 0/0 with --no-simplify", sf.called.Load(), sa.called.Load())
 	}
 	if gh.commentCalls.Load() != 0 {
-		t.Errorf("AddIssueComment called %d times, want 0 with --no-simplify (empty implement report posts nothing)", gh.commentCalls.Load())
+		t.Errorf("AddIssueComment called %d times, want 0 with --no-simplify (--no-report-comment suppresses the implement report)", gh.commentCalls.Load())
 	}
 }
 
@@ -906,7 +1006,7 @@ func TestRun_SimplifyNoFindingsNoOp(t *testing.T) {
 	r := simplifyRunner(gh, cl, sf, sa)
 
 	var buf bytes.Buffer
-	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
 	if sf.called.Load() != 1 {
@@ -966,7 +1066,7 @@ func TestRun_SimplifyEscalationStops(t *testing.T) {
 			r := simplifyRunner(gh, cl, sf, sa)
 
 			var buf bytes.Buffer
-			if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
+			if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
 				t.Fatalf("Run returned %v, want nil — the simplify pass is non-fatal", err)
 			}
 			if gh.commentCalls.Load() != 1 {
@@ -1088,6 +1188,7 @@ func TestKeepSimplifyFindings(t *testing.T) {
 // the review applier folds the fixes. It deliberately leaves the simplify deps
 // unset, so each review test reads as just its finder/applier setup.
 func reviewRunner(gh *fakeGitHub, cl *fakeClaude, av *fakeAdversarialVerifier, ra *fakeReviewApplier) *Runner {
+	ensureValidReport(cl)
 	r := newRunner(gh, cl)
 	r.AdversarialVerifier = av
 	r.ReviewApplier = ra
@@ -1113,13 +1214,13 @@ func TestRun_ReviewDefaultOnAppliesFindings(t *testing.T) {
 		cloneDir:  t.TempDir(),
 		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
-	cl := &fakeClaude{} // empty report: the only issue comment is the review report
+	cl := &fakeClaude{} // helper fills a valid report; --no-report-comment keeps the only comment the review report
 	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
 	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
 	r := reviewRunner(gh, cl, av, ra)
 
 	var buf bytes.Buffer
-	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
 	if av.called.Load() != 1 {
@@ -1162,14 +1263,14 @@ func TestRun_NoReviewSkipsPass(t *testing.T) {
 	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
 	r := reviewRunner(gh, cl, av, ra)
 
-	if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42", NoReview: true}); err != nil {
+	if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42", NoReview: true, NoReportComment: true}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
 	if av.called.Load() != 0 || ra.called.Load() != 0 {
 		t.Errorf("finder/applier called (%d/%d), want 0/0 with --no-review", av.called.Load(), ra.called.Load())
 	}
 	if gh.commentCalls.Load() != 0 {
-		t.Errorf("AddIssueComment called %d times, want 0 with --no-review (empty implement report posts nothing)", gh.commentCalls.Load())
+		t.Errorf("AddIssueComment called %d times, want 0 with --no-review (--no-report-comment suppresses the implement report)", gh.commentCalls.Load())
 	}
 }
 
@@ -1185,7 +1286,7 @@ func TestRun_ReviewNoFindingsNoOp(t *testing.T) {
 	r := reviewRunner(gh, cl, av, ra)
 
 	var buf bytes.Buffer
-	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
 	if av.called.Load() != 1 {
@@ -1216,7 +1317,7 @@ func TestRun_ReviewEscalationStops(t *testing.T) {
 			r := reviewRunner(gh, cl, av, ra)
 
 			var buf bytes.Buffer
-			if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
+			if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
 				t.Fatalf("Run returned %v, want nil — the review pass is non-fatal", err)
 			}
 			if gh.commentCalls.Load() != 1 {
@@ -1302,7 +1403,7 @@ func TestRun_ReviewFinderErrorIsNonFatal(t *testing.T) {
 
 func TestRun_FinalizeOpensPR(t *testing.T) {
 	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
-	cl := &fakeClaude{report: "PR opened"}
+	cl := &fakeClaude{report: validImplReport}
 	ff := &fakeFinalizer{report: "## Pull Request\n\n- URL: https://github.com/owner/repo/pull/9\n\nSTATUS: DONE"}
 	r := newRunner(gh, cl)
 	r.Finalizer = ff
@@ -1327,7 +1428,7 @@ func TestRun_FinalizeOpensPR(t *testing.T) {
 
 func TestRun_FinalizeErrorIsFatal(t *testing.T) {
 	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
-	cl := &fakeClaude{report: "PR opened"}
+	cl := &fakeClaude{report: validImplReport}
 	ff := &fakeFinalizer{err: errors.New("gh pr create failed")}
 	r := newRunner(gh, cl)
 	r.Finalizer = ff
@@ -1497,6 +1598,12 @@ func sampleIssue() *github.Issue {
 // without each test having to wire its own finalizer.
 const defaultFinalizeReport = "## Pull Request\n\n- URL: https://github.com/owner/repo/pull/9\n- Branch: implement/issue-42\n\nSTATUS: DONE"
 
+// validImplReport is a minimal but well-formed implementation report — the
+// mandated heading plus a terminal STATUS line — that Run's implement guard
+// accepts. Tests that drive a successful Run past the implement step use it so
+// the guard does not (correctly) abort on a missing or incomplete report.
+const validImplReport = "## Implementation Report (issue #42)\n\nSTATUS: DONE"
+
 // newRunner wires a default no-op finalizer so the full Run path — which now ends
 // by opening the PR — completes in tests that do not exercise finalize directly.
 // Finalize-specific tests replace r.Finalizer with their own fake.
@@ -1506,7 +1613,7 @@ func newRunner(gh *fakeGitHub, cl *fakeClaude) *Runner {
 
 func TestRun_HappyPath(t *testing.T) {
 	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: "/tmp/clone"}
-	cl := &fakeClaude{report: "PR opened"}
+	cl := &fakeClaude{report: validImplReport}
 	r := newRunner(gh, cl)
 
 	var buf bytes.Buffer
@@ -1528,7 +1635,7 @@ func TestRun_HappyPath(t *testing.T) {
 	if !strings.Contains(buf.String(), "Claude implementation report") {
 		t.Errorf("missing report header: %s", buf.String())
 	}
-	if !strings.Contains(buf.String(), "PR opened") {
+	if !strings.Contains(buf.String(), "STATUS: DONE") {
 		t.Errorf("missing report body: %s", buf.String())
 	}
 }
@@ -1760,7 +1867,7 @@ Wired patterns must reach the implement Context.
 	}
 
 	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
-	cl := &fakeClaude{report: "ok"}
+	cl := &fakeClaude{report: validImplReport}
 	r := newRunner(gh, cl)
 
 	opts := Options{
@@ -1783,7 +1890,7 @@ Wired patterns must reach the implement Context.
 func TestRun_LocalNoClone(t *testing.T) {
 	dir := t.TempDir()
 	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: dir}
-	cl := &fakeClaude{report: "PR opened"}
+	cl := &fakeClaude{report: validImplReport}
 	r := newRunner(gh, cl)
 
 	var buf bytes.Buffer

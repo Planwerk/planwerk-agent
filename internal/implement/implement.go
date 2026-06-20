@@ -385,9 +385,35 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	if err != nil {
 		return fmt.Errorf("claude implement: %w", err)
 	}
-	if implReport != "" {
-		_, _ = fmt.Fprintf(w, "\nClaude implementation report:\n%s\n", implReport)
-		r.postReportComment(w, opts, owner, name, number, implReport, model)
+
+	// Guard the run on a complete implementation report. A one-shot, headless
+	// implement session has no follow-up turn, so a session that yields mid-work
+	// — backgrounding its tests to be "notified" later, or deferring a commit to
+	// a turn that never comes — returns prose with neither the report heading nor
+	// a terminal STATUS line. That is an unfinished implementation: do NOT post it
+	// as a report, and do NOT run the simplify/review/finalize passes (which open
+	// the pull request) on a half-built branch. The session's raw output still
+	// goes to stdout so the operator can see what came back.
+	status := implementReportStatus(implReport)
+	if !strings.Contains(implReport, reportHeading) || status == "" {
+		if strings.TrimSpace(implReport) != "" {
+			_, _ = fmt.Fprintf(w, "\nClaude returned no valid implementation report:\n%s\n", implReport)
+		}
+		return fmt.Errorf("the implement session did not produce a complete implementation report (missing the %q heading or a terminal STATUS line); the implementation did not finish and no pull request was opened", reportHeading)
+	}
+
+	_, _ = fmt.Fprintf(w, "\nClaude implementation report:\n%s\n", implReport)
+	r.postReportComment(w, opts, owner, name, number, implReport, model)
+
+	// A BLOCKED / NEEDS_CONTEXT report means the session stopped before finishing
+	// the work (a wrong issue, an unreachable criterion). The report is already
+	// posted for the human who must intervene; stop here rather than open a PR on
+	// an incomplete branch, mirroring the planning phase's escalation handling.
+	if status == statusBlocked || status == statusNeedsContext {
+		return fmt.Errorf("the implement session reported %s; the implementation did not finish and no pull request was opened — review the report above and clarify the issue", status)
+	}
+	if status == statusDoneWithConcerns {
+		slog.Warn("implement session reported DONE_WITH_CONCERNS", "issue", number)
 	}
 	slog.Info("implementation complete", "issue", number)
 
@@ -460,6 +486,15 @@ func (r *Runner) openRepo(opts Options, fullName string) (*github.Repo, error) {
 // implement cannot reach into the claude package. mostRecentPlanComment uses it
 // (together with planCommentFooter) to recognize a comment as a posted plan.
 const planHeading = "## Implementation Plan"
+
+// reportHeading is the first line every implementation report carries
+// ("## Implementation Report (issue #N)"). It mirrors
+// claude.implementReportHeading; the constant is duplicated here rather than
+// imported because the import direction is claude -> implement, so implement
+// cannot reach into the claude package. Run uses it, together with
+// implementReportStatus, to confirm the implement session returned an actual
+// completed report and not a bailed-session blurb.
+const reportHeading = "## Implementation Report"
 
 // preparePlan supplies the implement context with its plan. By default it first
 // looks for an implementation plan planwerk-review already posted on the source
@@ -650,6 +685,17 @@ func formatReportComment(report, model string) string {
 	return report + "\n\n---\n\n" + reportCommentFooter(model) + "\n"
 }
 
+// Terminal STATUS markers a plan or implementation report can carry. They are
+// shared by planEscalation and implementReportStatus rather than imported from
+// internal/fix, keeping the import direction claude -> implement intact — the
+// same reason planHeading/reportHeading are duplicated here.
+const (
+	statusDone             = "DONE"
+	statusDoneWithConcerns = "DONE_WITH_CONCERNS"
+	statusBlocked          = "BLOCKED"
+	statusNeedsContext     = "NEEDS_CONTEXT"
+)
+
 // planEscalation extracts the plan's terminal STATUS verdict and returns it
 // when the plan is non-executable (BLOCKED or NEEDS_CONTEXT), or "" when the
 // plan is executable (PLAN_READY, or a free-form plan with no STATUS line).
@@ -676,14 +722,45 @@ func planEscalation(plan string) string {
 			continue
 		}
 		switch fields[0] {
-		case "PLAN_READY", "BLOCKED", "NEEDS_CONTEXT":
+		case "PLAN_READY", statusBlocked, statusNeedsContext:
 			verdict = fields[0]
 		}
 	}
-	if verdict == "BLOCKED" || verdict == "NEEDS_CONTEXT" {
+	if verdict == statusBlocked || verdict == statusNeedsContext {
 		return verdict
 	}
 	return ""
+}
+
+// implementReportStatus returns the implement report's terminal STATUS verdict
+// (DONE, DONE_WITH_CONCERNS, BLOCKED, or NEEDS_CONTEXT), or "" when the report
+// carries no recognized STATUS line. Like planEscalation it scans line-anchored
+// and lets the last standalone verdict win, so a mid-sentence mention of a
+// status value is not mistaken for the verdict; it additionally tolerates the
+// markdown decoration a model sometimes adds (a leading list marker or heading,
+// surrounding bold/backticks) and a trailing reason after the verdict word.
+//
+// Run keys the implement guard on it: an empty result means the session
+// produced no terminal status — what a session that yielded mid-work returns —
+// so the implementation did not finish and the run must abort rather than open
+// a pull request on a half-built branch.
+func implementReportStatus(report string) string {
+	verdict := ""
+	for _, raw := range strings.Split(report, "\n") {
+		line := strings.TrimLeft(strings.TrimSpace(raw), "-*#> \t")
+		if !strings.HasPrefix(strings.ToUpper(line), "STATUS:") {
+			continue
+		}
+		fields := strings.Fields(strings.TrimSpace(line[len("STATUS:"):]))
+		if len(fields) == 0 {
+			continue
+		}
+		switch word := strings.ToUpper(strings.Trim(fields[0], "*`_")); word {
+		case statusDone, statusDoneWithConcerns, statusBlocked, statusNeedsContext:
+			verdict = word
+		}
+	}
+	return verdict
 }
 
 // runVerification runs the independent verification pass against the change set
