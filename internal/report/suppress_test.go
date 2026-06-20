@@ -6,7 +6,7 @@ func TestParseDataBlock(t *testing.T) {
 	full := ReviewResult{Findings: []Finding{
 		{ID: "C-001", Severity: SeverityCritical, Title: "SQLi", File: "db.go", Line: 10},
 	}}
-	body := "## Review\n\nsome text\n" + RenderDataBlock(full, "abc123")
+	body := "## Review\n\nsome text\n" + RenderDataBlock(full, "abc123", Usage{})
 
 	sha, findings, ok := ParseDataBlock(body)
 	if !ok {

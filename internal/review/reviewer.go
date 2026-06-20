@@ -402,7 +402,7 @@ func (r *Runner) renderResult(w io.Writer, result *report.ReviewResult, pr *gith
 		slog.Info("posting review as PR comment (will update existing if found)")
 		// Append data block for machine consumption — always the FULL result so
 		// the next re-review sees every finding, including the suppressed ones.
-		dataBlock := report.RenderDataBlock(*result, pr.HeadSHA)
+		dataBlock := report.RenderDataBlock(*result, pr.HeadSHA, r.Claude.UsageTotals())
 		body := buf.String() + dataBlock
 		postResult, err := r.GitHub.PostPRComment(pr.Owner, pr.Repo, pr.Number, body)
 		if err != nil {
@@ -455,7 +455,7 @@ func (r *Runner) postInlineReview(displayResult, fullResult *report.ReviewResult
 	}
 
 	// 4. Build the review summary body with data block (full result).
-	dataBlock := report.RenderDataBlock(*fullResult, pr.HeadSHA)
+	dataBlock := report.RenderDataBlock(*fullResult, pr.HeadSHA, r.Claude.UsageTotals())
 	summaryBody := summaryBuf.String() + dataBlock
 
 	// 5. Submit the review

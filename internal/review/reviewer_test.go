@@ -79,6 +79,10 @@ func (mockClaude) SpecialistReview(dir, baseBranch, key, focus string) (*report.
 	panic("mockClaude.SpecialistReview called unexpectedly")
 }
 
+func (mockClaude) UsageTotals() report.Usage {
+	return report.Usage{}
+}
+
 func newTestRunner(gh *mockGitHub) *Runner {
 	return &Runner{
 		Claude: mockClaude{},

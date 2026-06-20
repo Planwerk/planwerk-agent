@@ -127,6 +127,7 @@ type configurableClaude struct {
 	coverage          func(dir, baseBranch string) (*report.CoverageResult, error)
 	featureCompliance func(dir, baseBranch string, feature *planwerk.Feature) (*report.ReviewResult, error)
 	specialist        func(dir, baseBranch, key, focus string) (*report.ReviewResult, error)
+	usage             report.Usage
 
 	reviewCalls            int32
 	adversarialCalls       int32
@@ -173,6 +174,10 @@ func (c *configurableClaude) SpecialistReview(dir, baseBranch, key, focus string
 		return &report.ReviewResult{}, nil
 	}
 	return c.specialist(dir, baseBranch, key, focus)
+}
+
+func (c *configurableClaude) UsageTotals() report.Usage {
+	return c.usage
 }
 
 // fakePR builds a *github.PR whose Dir is a fresh temp directory the caller
@@ -483,15 +488,17 @@ func TestRun_SkipSuppressionDropsUnchangedRepeats(t *testing.T) {
 		{Title: "Nit A", File: "unchanged.go", Line: 5, Severity: report.SeverityWarning},
 		{Title: "Bug B", File: "changed.go", Line: 9, Severity: report.SeverityWarning},
 	}}
-	priorComment := "## Previous review\n" + report.RenderDataBlock(prior, firstSHA)
+	priorComment := "## Previous review\n" + report.RenderDataBlock(prior, firstSHA, report.Usage{})
 
-	claudeMock := &configurableClaude{review: func(dir string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
-		return &report.ReviewResult{Summary: "S", Findings: []report.Finding{
-			{ID: "W-001", Title: "Nit A", File: "unchanged.go", Line: 5, Severity: report.SeverityWarning, Confidence: report.ConfidenceVerified, Problem: "p", Action: "a"},
-			{ID: "W-002", Title: "Bug B", File: "changed.go", Line: 9, Severity: report.SeverityWarning, Confidence: report.ConfidenceVerified, Problem: "p", Action: "a"},
-			{ID: "W-003", Title: "New finding", File: "new.go", Line: 1, Severity: report.SeverityWarning, Confidence: report.ConfidenceVerified, Problem: "p", Action: "a"},
-		}}, nil
-	}}
+	claudeMock := &configurableClaude{
+		usage: report.Usage{Calls: 3, InputTokens: 13400, OutputTokens: 4200, CostUSD: 0.42},
+		review: func(dir string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
+			return &report.ReviewResult{Summary: "S", Findings: []report.Finding{
+				{ID: "W-001", Title: "Nit A", File: "unchanged.go", Line: 5, Severity: report.SeverityWarning, Confidence: report.ConfidenceVerified, Problem: "p", Action: "a"},
+				{ID: "W-002", Title: "Bug B", File: "changed.go", Line: 9, Severity: report.SeverityWarning, Confidence: report.ConfidenceVerified, Problem: "p", Action: "a"},
+				{ID: "W-003", Title: "New finding", File: "new.go", Line: 1, Severity: report.SeverityWarning, Confidence: report.ConfidenceVerified, Problem: "p", Action: "a"},
+			}}, nil
+		}}
 	var postedBody string
 	gh := &mockGitHub{
 		fetchAndCheckout:   func(ref string) (*github.PR, error) { return pr, nil },
@@ -530,6 +537,11 @@ func TestRun_SkipSuppressionDropsUnchangedRepeats(t *testing.T) {
 	// re-review can compare again.
 	if !strings.Contains(postedBody, "planwerk-review-data") {
 		t.Error("posted comment must include the machine-readable data block")
+	}
+	// The data block also carries the per-Run Claude usage totals for CI
+	// extraction (issue #46, AC#3).
+	if !strings.Contains(postedBody, `"usage":{"calls":3,"input_tokens":13400`) {
+		t.Errorf("posted data block must embed the Claude usage totals; got %q", postedBody)
 	}
 }
 

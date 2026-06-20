@@ -318,14 +318,17 @@ type Usage struct {
 type dataBlockPayload struct {
 	CommitSHA string    `json:"commit_sha"`
 	Findings  []Finding `json:"findings"`
+	Usage     Usage     `json:"usage"`
 }
 
-// RenderDataBlock returns an HTML comment containing the JSON-encoded findings
-// and metadata for machine consumption by tools like Claude Code.
-func RenderDataBlock(result ReviewResult, commitSHA string) string {
+// RenderDataBlock returns an HTML comment containing the JSON-encoded findings,
+// the per-Run Claude token usage totals, and metadata for machine consumption
+// by tools like Claude Code and CI scripts.
+func RenderDataBlock(result ReviewResult, commitSHA string, usage Usage) string {
 	payload := dataBlockPayload{
 		CommitSHA: commitSHA,
 		Findings:  result.Findings,
+		Usage:     usage,
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {

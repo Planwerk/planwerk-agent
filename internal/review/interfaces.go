@@ -18,6 +18,9 @@ type ClaudeRunner interface {
 	CoverageMap(dir, baseBranch string) (*report.CoverageResult, error)
 	FeatureCompliance(dir, baseBranch string, feature *planwerk.Feature) (*report.ReviewResult, error)
 	SpecialistReview(dir, baseBranch, key, focus string) (*report.ReviewResult, error)
+	// UsageTotals reports the per-Run Claude token usage and estimated cost
+	// accumulated across this runner's calls, for embedding in the data block.
+	UsageTotals() report.Usage
 }
 
 // GitHubClient wraps the GitHub operations the review pipeline needs:
@@ -58,6 +61,10 @@ func (r defaultClaudeRunner) SpecialistReview(dir, baseBranch, key, focus string
 
 func (r defaultClaudeRunner) FeatureCompliance(dir, baseBranch string, feature *planwerk.Feature) (*report.ReviewResult, error) {
 	return r.client.FeatureCompliance(dir, baseBranch, feature)
+}
+
+func (r defaultClaudeRunner) UsageTotals() report.Usage {
+	return r.client.UsageTotals()
 }
 
 // defaultGitHubClient is the production GitHubClient backed by the github package.
