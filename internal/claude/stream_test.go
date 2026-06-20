@@ -41,7 +41,7 @@ func TestReadStream_DispatchesAssistantTextAndCapturesResult(t *testing.T) {
 {"type":"result","subtype":"success","result":"final review text"}
 `
 	sink := &recordingSink{}
-	final, acc, _, err := readStream(strings.NewReader(stream), "review", sink)
+	final, acc, _, _, _, err := readStream(strings.NewReader(stream), "review", sink)
 	if err != nil {
 		t.Fatalf("readStream: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestReadStream_CapturesResolvedModelFromInitEvent(t *testing.T) {
 {"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}
 {"type":"result","result":"ok"}
 `
-	_, _, model, err := readStream(strings.NewReader(stream), "review", &recordingSink{})
+	_, _, model, _, _, err := readStream(strings.NewReader(stream), "review", &recordingSink{})
 	if err != nil {
 		t.Fatalf("readStream: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestReadStream_ResolvedModelEmptyWhenInitOmitsIt(t *testing.T) {
 	const stream = `{"type":"system","subtype":"init"}
 {"type":"result","result":"ok"}
 `
-	_, _, model, err := readStream(strings.NewReader(stream), "review", &recordingSink{})
+	_, _, model, _, _, err := readStream(strings.NewReader(stream), "review", &recordingSink{})
 	if err != nil {
 		t.Fatalf("readStream: %v", err)
 	}
@@ -96,11 +96,70 @@ func TestReadStream_ResolvedModelEmptyWhenInitOmitsIt(t *testing.T) {
 	}
 }
 
+func TestReadStream_CapturesUsageFromResultEvent(t *testing.T) {
+	const stream = `{"type":"system","subtype":"init"}
+{"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}
+{"type":"result","subtype":"success","result":"ok","usage":{"input_tokens":3180,"output_tokens":4,"cache_read_input_tokens":18090,"cache_creation_input_tokens":0},"total_cost_usd":0.025612}
+`
+	_, _, _, usage, cost, err := readStream(strings.NewReader(stream), "review", &recordingSink{})
+	if err != nil {
+		t.Fatalf("readStream: %v", err)
+	}
+	want := tokenUsage{InputTokens: 3180, OutputTokens: 4, CacheReadTokens: 18090, CacheCreationTokens: 0}
+	if usage != want {
+		t.Errorf("usage = %+v, want %+v", usage, want)
+	}
+	if cost != 0.025612 {
+		t.Errorf("cost = %v, want 0.025612", cost)
+	}
+}
+
+func TestReadStream_UsageZeroWhenResultEventOmitsIt(t *testing.T) {
+	// A result event without a usage object must leave the totals at zero
+	// rather than fail — older or newer CLI versions may not emit usage.
+	const stream = `{"type":"result","result":"ok"}
+`
+	_, _, _, usage, cost, err := readStream(strings.NewReader(stream), "review", &recordingSink{})
+	if err != nil {
+		t.Fatalf("readStream: %v", err)
+	}
+	if (usage != tokenUsage{}) {
+		t.Errorf("usage = %+v, want zero", usage)
+	}
+	if cost != 0 {
+		t.Errorf("cost = %v, want 0", cost)
+	}
+}
+
+// TestReadStream_UsageDriftDoesNotDropResultText locks in that a usage-schema
+// change on the result event — here a usage object reshaped into an array and a
+// cost emitted as a string — does not make the line unparseable. The result text
+// shares that line and must survive; usage and cost degrade to zero. Before usage
+// and cost were decoded raw and best-effort, the typed fields made the whole line
+// fail to parse, so it was skipped as malformed and the result text was lost.
+func TestReadStream_UsageDriftDoesNotDropResultText(t *testing.T) {
+	const stream = `{"type":"result","result":"final review text","usage":[1,2,3],"total_cost_usd":"oops"}
+`
+	final, _, _, usage, cost, err := readStream(strings.NewReader(stream), "review", &recordingSink{})
+	if err != nil {
+		t.Fatalf("readStream: %v", err)
+	}
+	if final != "final review text" {
+		t.Errorf("final = %q, want %q", final, "final review text")
+	}
+	if (usage != tokenUsage{}) {
+		t.Errorf("usage = %+v, want zero", usage)
+	}
+	if cost != 0 {
+		t.Errorf("cost = %v, want 0", cost)
+	}
+}
+
 func TestReadStream_FallsBackToAccumulatedTextWhenNoResultEvent(t *testing.T) {
 	const stream = `{"type":"assistant","message":{"content":[{"type":"text","text":"partial"}]}}
 `
 	sink := &recordingSink{}
-	final, acc, _, err := readStream(strings.NewReader(stream), "review", sink)
+	final, acc, _, _, _, err := readStream(strings.NewReader(stream), "review", sink)
 	if err != nil {
 		t.Fatalf("readStream: %v", err)
 	}
@@ -119,7 +178,7 @@ func TestReadStream_TolerantOfMalformedAndUnknownLines(t *testing.T) {
 {"type":"result","result":"ok"}
 `
 	sink := &recordingSink{}
-	final, _, _, err := readStream(strings.NewReader(stream), "review", sink)
+	final, _, _, _, _, err := readStream(strings.NewReader(stream), "review", sink)
 	if err != nil {
 		t.Fatalf("readStream should not fail on malformed/unknown lines: %v", err)
 	}
@@ -136,7 +195,7 @@ func TestReadStream_LaterResultEventOverwritesEarlier(t *testing.T) {
 	const stream = `{"type":"result","result":"first"}
 {"type":"result","result":"second"}
 `
-	final, _, _, err := readStream(strings.NewReader(stream), "review", &recordingSink{})
+	final, _, _, _, _, err := readStream(strings.NewReader(stream), "review", &recordingSink{})
 	if err != nil {
 		t.Fatalf("readStream: %v", err)
 	}
@@ -148,8 +207,8 @@ func TestReadStream_LaterResultEventOverwritesEarlier(t *testing.T) {
 func TestHandleStreamLine_EmptyAndWhitespaceLinesAreIgnored(t *testing.T) {
 	sink := &recordingSink{}
 	var acc, final strings.Builder
-	handleStreamLine([]byte(""), "review", sink, &acc, &final, nil)
-	handleStreamLine([]byte("   \t  "), "review", sink, &acc, &final, nil)
+	handleStreamLine([]byte(""), "review", sink, &acc, &final, nil, nil, nil)
+	handleStreamLine([]byte("   \t  "), "review", sink, &acc, &final, nil, nil, nil)
 	if acc.Len() != 0 || final.Len() != 0 {
 		t.Errorf("blank lines should not modify buffers (acc=%q, final=%q)", acc.String(), final.String())
 	}
@@ -162,7 +221,7 @@ func TestHandleStreamLine_SkipsAssistantTextWithEmptyString(t *testing.T) {
 	sink := &recordingSink{}
 	var acc, final strings.Builder
 	const line = `{"type":"assistant","message":{"content":[{"type":"text","text":""}]}}`
-	handleStreamLine([]byte(line), "review", sink, &acc, &final, nil)
+	handleStreamLine([]byte(line), "review", sink, &acc, &final, nil, nil, nil)
 	if acc.Len() != 0 {
 		t.Errorf("empty assistant text must not be accumulated, got %q", acc.String())
 	}

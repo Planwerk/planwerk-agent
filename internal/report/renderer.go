@@ -300,6 +300,20 @@ func (r *Renderer) renderAuditVerdict(cf CategorizedFindings) {
 	}
 }
 
+// Usage is the aggregated Claude Code token usage and estimated cost for a
+// single Run. It is surfaced two ways: a one-line stderr summary on completion
+// and, embedded in the report data block, a machine-readable totals object for
+// CI extraction. CostUSD is the sum of Claude Code's own per-call
+// total_cost_usd, the literal estimate (not a recomputed tokens×price figure).
+type Usage struct {
+	Calls               int     `json:"calls"`
+	InputTokens         int64   `json:"input_tokens"`
+	OutputTokens        int64   `json:"output_tokens"`
+	CacheReadTokens     int64   `json:"cache_read_input_tokens"`
+	CacheCreationTokens int64   `json:"cache_creation_input_tokens"`
+	CostUSD             float64 `json:"est_cost_usd"`
+}
+
 // dataBlockPayload is the JSON structure embedded in the HTML comment for machine consumption.
 type dataBlockPayload struct {
 	CommitSHA string    `json:"commit_sha"`

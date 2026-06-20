@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/planwerk/planwerk-review/internal/report"
 )
 
 const (
@@ -115,6 +118,13 @@ type Client struct {
 	effort     string
 	planEffort string
 	showOutput bool
+
+	// usageMu guards the per-Run usage accumulator. The review fan-out runs
+	// several Claude calls concurrently on one shared Client (errgroup over
+	// Review/AdversarialReview/CoverageMap/…), so addUsage must be safe to call
+	// from multiple goroutines.
+	usageMu sync.Mutex
+	usage   report.Usage
 }
 
 // Option configures a Client. Pass any number of options to NewClient; later
@@ -278,10 +288,11 @@ func (c *Client) runClaudeWithPermission(dir, prompt, label, permissionMode, mod
 	// The returned model is the exact id the envelope reports (e.g.
 	// "claude-opus-4-8"); the caller threads it per-run into the artifact
 	// footers instead of a package-level global, mirroring runClaudeStream.
-	text, resolvedModel, err := extractText(out)
+	text, resolvedModel, usage, cost, err := extractText(out)
 	if err != nil {
 		return "", "", err
 	}
+	c.addUsage(usage, cost)
 	return text, resolvedModel, nil
 }
 
@@ -291,20 +302,35 @@ type claudeResponse struct {
 	// (e.g. "claude-opus-4-8"). It is the non-streaming counterpart of the
 	// streamEvent init model and feeds the attribution footers.
 	Model string `json:"model,omitempty"`
+	// Usage and TotalCostUSD carry the per-call cumulative token counts and the
+	// CLI's own estimated cost; they feed the per-Run usage accumulator. Both are
+	// captured raw and decoded best-effort in extractText, decoupled from the
+	// result/model decode above: a usage-schema change — a reshaped usage object,
+	// a stringified cost, a token count past int64 — must degrade these figures to
+	// zero, not fail the envelope and discard a result the call carried fine.
+	Usage        json.RawMessage `json:"usage"`
+	TotalCostUSD json.RawMessage `json:"total_cost_usd"`
 }
 
-// extractText extracts the response text and the resolved model id from
-// Claude's JSON output envelope. When the output is not the expected envelope it
-// returns an error wrapping the parse failure and a truncated copy of the raw
-// output. Failing loudly keeps a changed CLI wire format (schema rename, error
-// envelope, OAuth challenge) from being silently treated as the assistant's
-// reply, which would otherwise produce nonsense findings or empty reports.
-func extractText(raw []byte) (text, model string, err error) {
+// extractText extracts the response text, the resolved model id, and the
+// per-call token usage and estimated cost from Claude's JSON output envelope.
+// When the output is not the expected envelope it returns an error wrapping the
+// parse failure and a truncated copy of the raw output. Failing loudly keeps a
+// changed CLI wire format (schema rename, error envelope, OAuth challenge) from
+// being silently treated as the assistant's reply, which would otherwise
+// produce nonsense findings or empty reports.
+func extractText(raw []byte) (text, model string, usage tokenUsage, cost float64, err error) {
 	var resp claudeResponse
 	if err := json.Unmarshal(raw, &resp); err != nil {
-		return "", "", fmt.Errorf("claude: parse output envelope: %w; first 200 bytes: %q", err, head(raw, 200))
+		return "", "", tokenUsage{}, 0, fmt.Errorf("claude: parse output envelope: %w; first 200 bytes: %q", err, head(raw, 200))
 	}
-	return resp.Result, resp.Model, nil
+	// Decode usage and cost best-effort, independently of the result/model decode
+	// above. A malformed, reshaped, or absent block leaves the figures at zero
+	// instead of failing the whole call — usage-schema drift must never cost a
+	// result the envelope carried fine.
+	_ = json.Unmarshal(resp.Usage, &usage)
+	_ = json.Unmarshal(resp.TotalCostUSD, &cost)
+	return resp.Result, resp.Model, usage, cost, nil
 }
 
 // head returns the first n bytes of b, or all of b when it is shorter. It

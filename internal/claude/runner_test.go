@@ -51,6 +51,8 @@ func TestExtractText(t *testing.T) {
 		raw       string
 		wantText  string
 		wantModel string
+		wantUsage tokenUsage
+		wantCost  float64
 		wantErr   bool
 	}{
 		{
@@ -60,11 +62,55 @@ func TestExtractText(t *testing.T) {
 			wantModel: "claude-opus-4-8",
 		},
 		{
+			// The full envelope carries usage and cost; all four token fields
+			// and the cost must parse.
+			name: "valid envelope with usage and cost",
+			raw: `{"result":"the answer","usage":{"input_tokens":3180,"output_tokens":4,` +
+				`"cache_read_input_tokens":15626,"cache_creation_input_tokens":2464},"total_cost_usd":0.049015}`,
+			wantText: "the answer",
+			wantUsage: tokenUsage{
+				InputTokens:         3180,
+				OutputTokens:        4,
+				CacheReadTokens:     15626,
+				CacheCreationTokens: 2464,
+			},
+			wantCost: 0.049015,
+		},
+		{
 			// A missing model must stay a successful parse with an empty model,
 			// not an error — the envelope legitimately omits it.
 			name:     "valid envelope omits model",
 			raw:      `{"result":"just text"}`,
 			wantText: "just text",
+		},
+		{
+			// An envelope that omits usage/cost must decode them to zero, not
+			// fail — older or newer CLI versions may not emit them.
+			name:      "valid envelope omits usage and cost",
+			raw:       `{"result":"just text"}`,
+			wantText:  "just text",
+			wantUsage: tokenUsage{},
+			wantCost:  0,
+		},
+		{
+			// Usage-schema drift must not fail the call: a usage object reshaped
+			// into an array can no longer decode into tokenUsage, but the result
+			// the envelope carried must still come through with usage at zero.
+			name:      "reshaped usage does not fail result extraction",
+			raw:       `{"result":"the answer","usage":[1,2,3],"total_cost_usd":0.5}`,
+			wantText:  "the answer",
+			wantUsage: tokenUsage{},
+			wantCost:  0.5,
+		},
+		{
+			// A cost emitted as a string can no longer decode into float64, but it
+			// must degrade to zero rather than fail the whole envelope; usage still
+			// decodes independently.
+			name:      "stringified cost does not fail result extraction",
+			raw:       `{"result":"the answer","usage":{"input_tokens":10},"total_cost_usd":"0.42"}`,
+			wantText:  "the answer",
+			wantUsage: tokenUsage{InputTokens: 10},
+			wantCost:  0,
 		},
 		{
 			// Empty input is not a valid envelope; json.Unmarshal rejects it.
@@ -88,7 +134,7 @@ func TestExtractText(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			text, model, err := extractText([]byte(tc.raw))
+			text, model, usage, cost, err := extractText([]byte(tc.raw))
 			if tc.wantErr {
 				if err == nil {
 					t.Fatalf("extractText(%q) = nil error, want an error", tc.raw)
@@ -104,6 +150,12 @@ func TestExtractText(t *testing.T) {
 			if model != tc.wantModel {
 				t.Errorf("model = %q, want %q", model, tc.wantModel)
 			}
+			if usage != tc.wantUsage {
+				t.Errorf("usage = %+v, want %+v", usage, tc.wantUsage)
+			}
+			if cost != tc.wantCost {
+				t.Errorf("cost = %v, want %v", cost, tc.wantCost)
+			}
 		})
 	}
 }
@@ -114,7 +166,7 @@ func TestExtractText(t *testing.T) {
 // in full.
 func TestExtractText_ErrorIncludesTruncatedRaw(t *testing.T) {
 	raw := []byte(strings.Repeat("x", 300))
-	_, _, err := extractText(raw)
+	_, _, _, _, err := extractText(raw)
 	if err == nil {
 		t.Fatal("extractText on invalid JSON = nil error, want an error")
 	}

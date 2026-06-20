@@ -40,6 +40,15 @@ type streamEvent struct {
 		} `json:"content"`
 	} `json:"message,omitempty"`
 	Result string `json:"result,omitempty"`
+	// Usage and TotalCostUSD are carried on the `result` event (the streaming
+	// counterpart of the buffered envelope's top-level fields) and hold the
+	// run's cumulative token counts and the CLI's own estimated cost. Both are
+	// captured raw and decoded best-effort in handleStreamLine so a usage-schema
+	// change on the result event — a reshaped usage object, a stringified cost —
+	// never makes the line unparseable and discards the result text it shares. An
+	// absent block stays nil, so a non-`result` event contributes nothing.
+	Usage        json.RawMessage `json:"usage,omitempty"`
+	TotalCostUSD json.RawMessage `json:"total_cost_usd,omitempty"`
 }
 
 // streamSink decides where streamed events are surfaced. Implementations
@@ -174,7 +183,7 @@ func (c *Client) runClaudeStream(dir, prompt, label, permissionMode, model, effo
 	// resolvedModel is the exact id the session reported on its init event;
 	// it is returned so the caller threads it per-run into the artifact footers
 	// instead of a package-level global, not the alias passed via --model.
-	finalResult, accText, resolvedModel, scanErr := readStream(stdout, label, sink)
+	finalResult, accText, resolvedModel, usage, cost, scanErr := readStream(stdout, label, sink)
 
 	waitErr := cmd.Wait()
 	wg.Wait()
@@ -185,6 +194,11 @@ func (c *Client) runClaudeStream(dir, prompt, label, permissionMode, model, effo
 	if waitErr != nil {
 		return "", "", fmt.Errorf("claude: %w\nstderr: %s", waitErr, stderrBuf.String())
 	}
+
+	// Count the call once the stream read cleanly, before the empty-result
+	// check, so it mirrors the buffered path (which counts on a successful
+	// envelope parse regardless of whether the result text is empty).
+	c.addUsage(usage, cost)
 
 	if finalResult != "" {
 		return finalResult, resolvedModel, nil
@@ -199,8 +213,10 @@ func (c *Client) runClaudeStream(dir, prompt, label, permissionMode, model, effo
 // sink as they arrive. It returns the final result string captured from
 // a "result" event, the accumulated assistant text as a defensive
 // fallback for schema drift, the resolved model id reported on the init
-// event (empty if the stream never announced one), and any read error.
-func readStream(r io.Reader, label string, sink streamSink) (final, acc, model string, err error) {
+// event (empty if the stream never announced one), the cumulative token
+// usage and estimated cost from the "result" event (zero if it carried
+// none), and any read error.
+func readStream(r io.Reader, label string, sink streamSink) (final, acc, model string, usage tokenUsage, cost float64, err error) {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), streamMaxLineBytes)
 
@@ -209,20 +225,22 @@ func readStream(r io.Reader, label string, sink streamSink) (final, acc, model s
 		accBuf   strings.Builder
 	)
 	for scanner.Scan() {
-		handleStreamLine(scanner.Bytes(), label, sink, &accBuf, &finalBuf, &model)
+		handleStreamLine(scanner.Bytes(), label, sink, &accBuf, &finalBuf, &model, &usage, &cost)
 	}
 	if err := scanner.Err(); err != nil {
-		return finalBuf.String(), accBuf.String(), model, err
+		return finalBuf.String(), accBuf.String(), model, usage, cost, err
 	}
-	return finalBuf.String(), accBuf.String(), model, nil
+	return finalBuf.String(), accBuf.String(), model, usage, cost, nil
 }
 
 // handleStreamLine parses one NDJSON line and dispatches its events to
 // the sink. Malformed lines are logged at debug level and skipped so a
 // single bad line does not abort the stream. When the line carries the
 // resolved model id (the `system`/`init` event), it is recorded in *model so
-// the caller can stamp the attribution footers with the exact model.
-func handleStreamLine(line []byte, label string, sink streamSink, accBuf, finalBuf *strings.Builder, model *string) {
+// the caller can stamp the attribution footers with the exact model. The
+// `result` event's cumulative token usage and estimated cost are recorded in
+// *usage and *cost when those pointers are non-nil.
+func handleStreamLine(line []byte, label string, sink streamSink, accBuf, finalBuf *strings.Builder, model *string, usage *tokenUsage, cost *float64) {
 	if len(bytes.TrimSpace(line)) == 0 {
 		return
 	}
@@ -266,6 +284,21 @@ func handleStreamLine(line []byte, label string, sink streamSink, accBuf, finalB
 		if ev.Result != "" {
 			finalBuf.Reset()
 			finalBuf.WriteString(ev.Result)
+		}
+		// Decode usage and cost best-effort so a reshaped or stringified block on
+		// the result event degrades the figures to zero rather than aborting the
+		// line and dropping the result text captured just above.
+		if usage != nil && ev.Usage != nil {
+			var u tokenUsage
+			if json.Unmarshal(ev.Usage, &u) == nil {
+				*usage = u
+			}
+		}
+		if cost != nil && ev.TotalCostUSD != nil {
+			var v float64
+			if json.Unmarshal(ev.TotalCostUSD, &v) == nil {
+				*cost = v
+			}
 		}
 	default:
 		slog.Debug("claude stream unknown event", "label", label, "type", ev.Type)

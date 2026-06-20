@@ -2,6 +2,7 @@ package claude
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/planwerk/planwerk-review/internal/doccheck"
 	"github.com/planwerk/planwerk-review/internal/patterns"
@@ -52,4 +53,70 @@ func (c *Client) Review(dir string, ctx ReviewContext) (*report.ReviewResult, er
 // /review command, returning the raw review text and the resolved model id.
 func (c *Client) runReview(dir string, rctx ReviewContext) (text, model string, err error) {
 	return c.runClaude(dir, buildReviewPrompt(rctx), "review")
+}
+
+// tokenUsage is a tolerant view over the per-call token counts Claude Code
+// reports on its JSON envelope (`--output-format json`) and on the streaming
+// `result` event. Absent fields decode to zero, so an older or newer CLI that
+// omits any of them degrades to a partial count rather than a parse error. The
+// counts are cumulative for the call, so they are summed directly across calls.
+type tokenUsage struct {
+	InputTokens         int64 `json:"input_tokens"`
+	OutputTokens        int64 `json:"output_tokens"`
+	CacheReadTokens     int64 `json:"cache_read_input_tokens"`
+	CacheCreationTokens int64 `json:"cache_creation_input_tokens"`
+}
+
+// addUsage folds one Claude call's token counts and estimated cost into the
+// Client's per-Run accumulator and increments the call counter. It is safe to
+// call concurrently: the review fan-out runs several calls on one shared
+// Client. costUSD is the call's own total_cost_usd as Claude Code reports it;
+// the summed value is the "estimated cost" surfaced on completion, which avoids
+// a drift-prone per-model pricing table.
+func (c *Client) addUsage(u tokenUsage, costUSD float64) {
+	c.usageMu.Lock()
+	defer c.usageMu.Unlock()
+	c.usage.Calls++
+	c.usage.InputTokens += u.InputTokens
+	c.usage.OutputTokens += u.OutputTokens
+	c.usage.CacheReadTokens += u.CacheReadTokens
+	c.usage.CacheCreationTokens += u.CacheCreationTokens
+	c.usage.CostUSD += costUSD
+}
+
+// UsageTotals returns a snapshot of the per-Run token usage and estimated cost
+// accumulated so far. The returned value is a copy, safe to read without the
+// lock.
+func (c *Client) UsageTotals() report.Usage {
+	c.usageMu.Lock()
+	defer c.usageMu.Unlock()
+	return c.usage
+}
+
+// LogUsageSummary writes a one-line totals summary of the Run's Claude token
+// usage and estimated cost to w (typically os.Stderr), e.g. "claude usage:
+// 13.4k in / 4.2k out across 6 calls, est. $0.42". It writes nothing when no
+// Claude call was made, so commands that exit early (--help, dry runs,
+// print-prompt) stay silent.
+func (c *Client) LogUsageSummary(w io.Writer) {
+	u := c.UsageTotals()
+	if u.Calls == 0 {
+		return
+	}
+	_, _ = fmt.Fprintf(w, "claude usage: %s in / %s out across %d calls, est. $%.2f\n",
+		humanizeTokens(u.InputTokens), humanizeTokens(u.OutputTokens), u.Calls, u.CostUSD)
+}
+
+// humanizeTokens renders a token count compactly: "1.2M" for millions, "13.4k"
+// for thousands, and the bare integer below 1000, matching the totals-summary
+// format in the issue.
+func humanizeTokens(n int64) string {
+	switch {
+	case n >= 1_000_000:
+		return fmt.Sprintf("%.1fM", float64(n)/1_000_000)
+	case n >= 1_000:
+		return fmt.Sprintf("%.1fk", float64(n)/1_000)
+	default:
+		return fmt.Sprintf("%d", n)
+	}
 }
