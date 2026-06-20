@@ -12,6 +12,8 @@ Make the breakdown autonomously. Do NOT ask the author what to split or how — 
 
 Each Sub Issue is a draft, not a plan. Turning a Sub Issue into a file-level engineering plan is the job of the separate elaborate and implement commands, run per Sub Issue when the author is ready. If you catch yourself writing acceptance criteria, an affected-areas list, or implementation steps, stop — that belongs to a later step.
 
+Describe each Sub Issue by the behavior and interfaces it changes — what users and callers see — because a Sub Issue sits in the tracker and may be carved off and picked up long after the surrounding code has moved; a behavioral brief outlives one pinned to today's file layout.
+
 ## Source Issue
 
 **Issue #78**: Restructure the documentation site

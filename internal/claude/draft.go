@@ -84,6 +84,8 @@ Your job is to DESCRIBE the idea well, not to plan its implementation. This is t
 
 If you catch yourself writing an "Affected Areas" list, "Acceptance Criteria", or implementation steps, stop — that belongs to the separate elaborate step, not here. Any mention of scope is a rough sizing, never a design.
 
+Describe the work by its behavior and the interfaces it touches — what changes for the people who use or call it — because this draft lives in the tracker and may be picked up long after the surrounding code has moved; a behavioral brief outlives one pinned to today's file layout.
+
 `)
 
 	fmt.Fprintf(&sb, "## The idea\n\n<idea>\n%s\n</idea>\n\n", strings.TrimSpace(ctx.Seed))
@@ -143,6 +145,8 @@ func BuildBareDraftPrompt(seed string) string {
 	var sb strings.Builder
 
 	sb.WriteString(`You are turning a rough, one-line feature idea into a ready-to-file GitHub issue through a short conversation. Describe the idea well; do NOT plan its implementation — no affected-areas breakdown, no step-by-step design, no acceptance criteria tied to concrete files or symbols. That is a separate elaborate step.
+
+Describe the work by its behavior and the interfaces it touches, not by file paths — the draft lives in the tracker and may be picked up long after the code around it has moved, so a behavioral brief outlives one pinned to today's file layout.
 
 `)
 
