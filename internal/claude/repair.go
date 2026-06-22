@@ -33,7 +33,7 @@ var repairInvalidJSON = func(c *Client, invalid string, validationErr error, lab
 // review-prepared. The common case (valid JSON) never triggers a repair call.
 func (c *Client) decodeJSONWithRepair(text, label string, v any) error {
 	text = stripMarkdownFences(text)
-	err := json.Unmarshal([]byte(text), v)
+	err := unmarshalJSON(text, v)
 	if err == nil {
 		return nil
 	}
@@ -42,10 +42,73 @@ func (c *Client) decodeJSONWithRepair(text, label string, v any) error {
 		return fmt.Errorf("parsing %s as JSON: %w\nraw output:\n%s", label, err, text)
 	}
 	retry = stripMarkdownFences(retry)
-	if err2 := json.Unmarshal([]byte(retry), v); err2 != nil {
+	if err2 := unmarshalJSON(retry, v); err2 != nil {
 		return fmt.Errorf("parsing %s as JSON (after retry): %w\nraw output:\n%s", label, err2, retry)
 	}
 	return nil
+}
+
+// unmarshalJSON unmarshals text into v, first as-is and — only if that fails —
+// after recovering the JSON value embedded in any surrounding prose. Models
+// occasionally prepend a sentence before the object ("Removing the preamble
+// yields valid JSON:") or trail commentary after it; stripMarkdownFences only
+// handles a fence wrapping the whole string, so otherwise the preamble reaches
+// the parser as 'T...' and fails with "invalid character 'T'". Valid JSON takes
+// the fast path and never pays for extraction.
+func unmarshalJSON(text string, v any) error {
+	err := json.Unmarshal([]byte(text), v)
+	if err == nil {
+		return nil
+	}
+	if extracted := extractJSONValue(text); extracted != text {
+		if err2 := json.Unmarshal([]byte(extracted), v); err2 == nil {
+			return nil
+		}
+	}
+	// Report the original error: it describes the payload the caller actually
+	// produced and is the most useful message to feed back to the repair call.
+	return err
+}
+
+// extractJSONValue returns the first balanced JSON object or array embedded in s,
+// scanning past a prose preamble (and ignoring trailing commentary, including a
+// closing markdown fence) that a model wrapped around it. It is string- and
+// escape-aware so braces inside string literals never throw off the depth count.
+// When s holds no balanced value it is returned unchanged, so a genuinely
+// malformed payload still reaches the repair path rather than being altered.
+func extractJSONValue(s string) string {
+	start := strings.IndexAny(s, "{[")
+	if start == -1 {
+		return s
+	}
+	opener := s[start]
+	closer := byte('}')
+	if opener == '[' {
+		closer = ']'
+	}
+	depth := 0
+	inString := false
+	escaped := false
+	for i := start; i < len(s); i++ {
+		switch ch := s[i]; {
+		case escaped:
+			escaped = false
+		case inString && ch == '\\':
+			escaped = true
+		case ch == '"':
+			inString = !inString
+		case inString:
+			// Other characters inside a string literal are not delimiters.
+		case ch == opener:
+			depth++
+		case ch == closer:
+			depth--
+			if depth == 0 {
+				return s[start : i+1]
+			}
+		}
+	}
+	return s
 }
 
 // buildRepairPrompt asks Claude to fix malformed JSON using the parse error.

@@ -80,6 +80,75 @@ func TestDecodeJSONWithRepair_RepairStillInvalid(t *testing.T) {
 	}
 }
 
+// A model that prepends a sentence before a fenced JSON block is recovered
+// locally — the embedded value is extracted, so no repair call is needed.
+func TestDecodeJSONWithRepair_PreambleNoRepair(t *testing.T) {
+	called := false
+	restore := repairJSON
+	repairJSON = func(*Client, string, error, string) (string, error) {
+		called = true
+		return "", errors.New("repair must not be called when the value is recoverable")
+	}
+	t.Cleanup(func() { repairJSON = restore })
+
+	preamble := "Removing the prose preamble yields valid JSON:\n\n```json\n{\"a\":5,\"b\":\"x\"}\n```"
+	var got sample
+	if err := (&Client{}).decodeJSONWithRepair(preamble, "test", &got); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if called {
+		t.Error("repair was called for a recoverable preamble")
+	}
+	if got.A != 5 || got.B != "x" {
+		t.Errorf("decoded %+v, want {A:5 B:x}", got)
+	}
+}
+
+// The exact production failure: the initial parse fails, the repair call's
+// output itself carries a prose preamble before the fenced JSON ("The error is
+// caused by the prose preamble ... Removing it yields valid JSON:"). The retry
+// parse must still recover the embedded object instead of choking on 'T'.
+func TestDecodeJSONWithRepair_RetryPreamble(t *testing.T) {
+	restore := repairJSON
+	repairJSON = func(*Client, string, error, string) (string, error) {
+		return "The error is caused by the prose preamble before the JSON object. " +
+			"Removing it yields valid JSON:\n\n```json\n{\"a\":7,\"b\":\"fixed\"}\n```", nil
+	}
+	t.Cleanup(func() { repairJSON = restore })
+
+	var got sample
+	if err := (&Client{}).decodeJSONWithRepair(`{"a":7,"b":"fixed"`, "test", &got); err != nil {
+		t.Fatalf("expected the retry preamble to be recovered, got: %v", err)
+	}
+	if got.A != 7 || got.B != "fixed" {
+		t.Errorf("decoded %+v after retry, want {A:7 B:fixed}", got)
+	}
+}
+
+func TestExtractJSONValue(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"plain object", `{"a":1}`, `{"a":1}`},
+		{"prose preamble + fence", "note:\n```json\n{\"a\":1}\n```", `{"a":1}`},
+		{"trailing commentary", `{"a":1}` + "\nThat is the answer.", `{"a":1}`},
+		{"brace inside string", `{"k":"a}b{c"}`, `{"k":"a}b{c"}`},
+		{"escaped quote inside string", `{"k":"he said \"hi}\""}`, `{"k":"he said \"hi}\""}`},
+		{"array of objects", `prefix [{"a":1},{"b":2}] suffix`, `[{"a":1},{"b":2}]`},
+		{"no json value", `just prose, nothing structured`, `just prose, nothing structured`},
+		{"unbalanced left untouched", `{"a":1`, `{"a":1`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := extractJSONValue(tc.in); got != tc.want {
+				t.Errorf("extractJSONValue(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
 func validFinding() report.Finding {
 	return report.Finding{
 		Title:      "Missing error wrapping",
