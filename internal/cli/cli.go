@@ -7,6 +7,7 @@ import (
 	"github.com/planwerk/planwerk-review/internal/audit"
 	"github.com/planwerk/planwerk-review/internal/draft"
 	"github.com/planwerk/planwerk-review/internal/elaborate"
+	"github.com/planwerk/planwerk-review/internal/extract"
 	"github.com/planwerk/planwerk-review/internal/fix"
 	"github.com/planwerk/planwerk-review/internal/gapanalysis"
 	"github.com/planwerk/planwerk-review/internal/implement"
@@ -195,6 +196,32 @@ func (c DraftConfig) ToDraftOptions(version string) draft.Options {
 		PrintPrompt:     c.PrintPrompt,
 		PrintBarePrompt: c.PrintBarePrompt,
 		Version:         version,
+	}
+}
+
+// ExtractConfig holds configuration for the extract command.
+type ExtractConfig struct {
+	RepoRef   string
+	All       bool
+	Patterns  []string
+	ToCatalog bool
+	Local     bool
+	Force     bool
+	Overwrite bool
+}
+
+// ToExtractOptions maps the CLI config to extract.Options. The Wiki and Remote
+// options are filled in by the cmd layer after this conversion.
+func (c ExtractConfig) ToExtractOptions(version string) extract.Options {
+	return extract.Options{
+		RepoRef:   c.RepoRef,
+		All:       c.All,
+		Patterns:  c.Patterns,
+		ToCatalog: c.ToCatalog,
+		Local:     c.Local,
+		Force:     c.Force,
+		Overwrite: c.Overwrite,
+		Version:   version,
 	}
 }
 
