@@ -158,7 +158,7 @@ Scope:
 Leave the "id" field as an empty string — it will be assigned automatically.
 Each proposal should be specific and actionable, referencing actual code areas.
 When the analysis says a feature proposal is blocked by another, carry that "Blocked by" dependency in the proposal's "description" prose — the schema has no separate field for it.
-Generate between 5 and 20 proposals, depending on the size and complexity of the codebase.
+Emit one proposal per concrete, actionable item the analysis surfaced — typically 5 to 20 for a codebase of real size. Never invent proposals to reach a count: if the analysis yields fewer, emit only those.
 
 <analysis-output>
 ` + rawAnalysis + `

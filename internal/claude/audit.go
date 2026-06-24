@@ -156,7 +156,7 @@ Keep it balanced and constructive.
 
 `)
 
-	sb.WriteString("Now perform the audit. When you are done, emit a comprehensive list of findings with the enrichment fields above, followed by the audit summary.\n")
+	sb.WriteString("Now perform the audit. When you are done, emit the findings with the enrichment fields above, followed by the audit summary. If a pattern yields no violations, report nothing for it rather than inventing a weak finding; if the whole codebase is clean, emit an empty findings list and say so in the summary.\n")
 
 	return sb.String()
 }
