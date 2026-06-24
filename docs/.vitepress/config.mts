@@ -78,6 +78,10 @@ export default defineConfig({
               link: '/how-to/write-review-patterns',
             },
             {
+              text: 'Use the GitHub Wiki',
+              link: '/how-to/use-the-github-wiki',
+            },
+            {
               text: 'Configure the project',
               link: '/how-to/configure-the-project',
             },
