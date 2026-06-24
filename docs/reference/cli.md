@@ -24,6 +24,7 @@ These persistent flags apply to every command (`review`, `propose`, `audit`,
 | `--show-claude-output` | Stream Claude Code's live output to stderr while a run is in flight, instead of only the periodic heartbeat. Env: `PLANWERK_SHOW_CLAUDE_OUTPUT` (truthy: `1`, `true`, `yes`, `on`). | `false` |
 | `--claude-model` | Model passed to Claude Code via `--model` for every Claude call. Accepts a short alias (`opus`, `fable`, `sonnet`) or a full model ID (`claude-fable-5`). Env: `PLANWERK_CLAUDE_MODEL`. | `opus` |
 | `--claude-effort` | Reasoning effort passed to Claude Code via `--effort`: one of `low`, `medium`, `high`, `xhigh`, `max`. Env: `PLANWERK_CLAUDE_EFFORT`. | `xhigh` |
+| `--claude-inherit-user-config` | Let orchestrated Claude sessions inherit your user-global `~/.claude` settings and MCP servers. Off by default: every session runs hermetically (`--setting-sources project --strict-mcp-config`) so a review is reproducible across machines. Enable only if your `claude` authentication lives in a user-global setting (e.g. `apiKeyHelper`). Env: `PLANWERK_CLAUDE_INHERIT_USER_CONFIG` (truthy: `1`, `true`, `yes`, `on`). See [design decisions #45–#46](/explanation/design-decisions) for the reproducibility rationale. | `false` |
 
 Logs are written to stderr; when stderr is not a terminal, Claude-invocation
 heartbeats are still emitted at INFO level so long-running runs are visible in

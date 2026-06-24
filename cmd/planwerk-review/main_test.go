@@ -165,6 +165,35 @@ func TestResolveShowClaudeOutputEnvVariants(t *testing.T) {
 	}
 }
 
+func TestResolveClaudeInheritUserConfigFlagWins(t *testing.T) {
+	t.Setenv(envClaudeInheritUserConfig, "1")
+	if resolveClaudeInheritUserConfig(false, true) != false {
+		t.Fatalf("explicit --claude-inherit-user-config=false must beat env var")
+	}
+	if resolveClaudeInheritUserConfig(true, true) != true {
+		t.Fatalf("explicit --claude-inherit-user-config=true must take effect")
+	}
+}
+
+func TestResolveClaudeInheritUserConfigEnvVariants(t *testing.T) {
+	for _, raw := range []string{"1", "true", "TRUE", "yes", "On", " 1 "} {
+		t.Run("enabled-"+raw, func(t *testing.T) {
+			t.Setenv(envClaudeInheritUserConfig, raw)
+			if !resolveClaudeInheritUserConfig(false, false) {
+				t.Errorf("env=%q should enable inheritance", raw)
+			}
+		})
+	}
+	for _, raw := range []string{"0", "false", "no", "off", "", "garbage"} {
+		t.Run("disabled-"+raw, func(t *testing.T) {
+			t.Setenv(envClaudeInheritUserConfig, raw)
+			if resolveClaudeInheritUserConfig(false, false) {
+				t.Errorf("env=%q should leave the session hermetic", raw)
+			}
+		})
+	}
+}
+
 func TestResolveClaudeTimeoutFlagWins(t *testing.T) {
 	t.Setenv(envClaudeTimeout, "30m")
 	got, err := resolveClaudeTimeout(20*time.Minute, true)

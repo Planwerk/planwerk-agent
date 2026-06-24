@@ -50,6 +50,13 @@ const envPlanModel = "PLANWERK_PLAN_MODEL"
 // --plan-effort CLI flag takes precedence when explicitly set.
 const envPlanEffort = "PLANWERK_PLAN_EFFORT"
 
+// envClaudeInheritUserConfig opts orchestrated Claude sessions out of hermetic
+// mode, letting them load the invoking user's global ~/.claude settings and
+// MCP servers. Any truthy value (1, true, yes, on; case-insensitive) enables
+// inheritance; the --claude-inherit-user-config CLI flag takes precedence when
+// explicitly set. Off by default so reviews stay reproducible across machines.
+const envClaudeInheritUserConfig = "PLANWERK_CLAUDE_INHERIT_USER_CONFIG"
+
 // Output format identifiers accepted by the --format flag.
 const (
 	formatMarkdown = "markdown"
@@ -65,6 +72,24 @@ func resolveShowClaudeOutput(flagValue, flagSet bool) bool {
 		return flagValue
 	}
 	if raw, ok := os.LookupEnv(envShowClaudeOutput); ok && raw != "" {
+		switch strings.ToLower(strings.TrimSpace(raw)) {
+		case "1", "true", "yes", "on":
+			return true
+		}
+	}
+	return false
+}
+
+// resolveClaudeInheritUserConfig returns whether orchestrated Claude sessions
+// should inherit the invoking user's global ~/.claude settings and MCP servers.
+// Precedence: explicit CLI flag, then PLANWERK_CLAUDE_INHERIT_USER_CONFIG, then
+// off by default (hermetic, for reproducible output). It mirrors the truthy
+// parsing of resolveShowClaudeOutput.
+func resolveClaudeInheritUserConfig(flagValue, flagSet bool) bool {
+	if flagSet {
+		return flagValue
+	}
+	if raw, ok := os.LookupEnv(envClaudeInheritUserConfig); ok && raw != "" {
 		switch strings.ToLower(strings.TrimSpace(raw)) {
 		case "1", "true", "yes", "on":
 			return true

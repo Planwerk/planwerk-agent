@@ -33,6 +33,7 @@ func newRootCmd(deps *runtimeDeps) *cobra.Command {
 	var claudeTimeout time.Duration
 	var claudeModel string
 	var claudeEffort string
+	var claudeInheritUserConfig bool
 
 	rootCmd := &cobra.Command{
 		Use:   "planwerk-review <pr-ref>",
@@ -84,6 +85,7 @@ or short form (owner/repo#123).`,
 				claude.WithShowOutput(resolveShowClaudeOutput(showClaudeOutput, cmd.Flags().Changed("show-claude-output"))),
 				claude.WithModel(resolveClaudeModel(claudeModel, cmd.Flags().Changed("claude-model"))),
 				claude.WithEffort(resolveClaudeEffort(claudeEffort, cmd.Flags().Changed("claude-effort"))),
+				claude.WithInheritUserConfig(resolveClaudeInheritUserConfig(claudeInheritUserConfig, cmd.Flags().Changed("claude-inherit-user-config"))),
 			}
 			deps.claude = claude.NewClient(deps.claudeOpts...)
 
@@ -177,6 +179,7 @@ or short form (owner/repo#123).`,
 	persistent.BoolVar(&showClaudeOutput, "show-claude-output", false, "Stream Claude Code's live output to stderr while running (env: "+envShowClaudeOutput+")")
 	persistent.StringVar(&claudeModel, "claude-model", claude.DefaultClaudeModel, "Model passed to Claude Code via --model (e.g. opus, fable, sonnet; env: "+envClaudeModel+")")
 	persistent.StringVar(&claudeEffort, "claude-effort", claude.DefaultClaudeEffort, "Reasoning effort passed to Claude Code via --effort (low, medium, high, xhigh, max; env: "+envClaudeEffort+")")
+	persistent.BoolVar(&claudeInheritUserConfig, "claude-inherit-user-config", false, "Let orchestrated Claude sessions inherit your user-global ~/.claude settings and MCP servers (default: isolated for reproducible output; env: "+envClaudeInheritUserConfig+")")
 
 	flags := rootCmd.Flags()
 	flags.StringSliceVar(&cfg.PatternDirs, "patterns", nil, "Additional pattern sources: local dirs, github:owner/repo[/sub][@ref], or git+https://...[#ref[:sub]]")

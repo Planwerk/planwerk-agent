@@ -45,6 +45,95 @@ func TestWithAllowedTools_NoFlagWhenEmpty(t *testing.T) {
 	}
 }
 
+// TestWithReadOnlyDenied_DeniesWriteTools locks in the harness-level guarantee
+// the read-only analysis passes depend on: when readOnly is true the write
+// tools are removed from the model's context via --disallowed-tools, so a pass
+// whose contract is to analyze (never mutate) the checkout cannot edit a file
+// even if steered into trying.
+func TestWithReadOnlyDenied_DeniesWriteTools(t *testing.T) {
+	got := withReadOnlyDenied([]string{"-p", "--model", "opus"}, true)
+
+	idx := slices.Index(got, "--disallowed-tools")
+	if idx == -1 {
+		t.Fatalf("withReadOnlyDenied did not append --disallowed-tools; got %v", got)
+	}
+	tools := got[idx+1:]
+	for _, want := range []string{"Edit", "Write", "NotebookEdit"} {
+		if !slices.Contains(tools, want) {
+			t.Errorf("disallowed tools = %v, want them to include %s", tools, want)
+		}
+	}
+}
+
+// TestWithReadOnlyDenied_NoFlagWhenMutating documents that the mutating sessions
+// (implement, fix, address, rebase, finalize) pass readOnly=false and so keep
+// the write tools — the flag must not be emitted for them.
+func TestWithReadOnlyDenied_NoFlagWhenMutating(t *testing.T) {
+	base := []string{"-p", "--model", "opus"}
+	got := withReadOnlyDenied(base, false)
+	if slices.Contains(got, "--disallowed-tools") {
+		t.Errorf("withReadOnlyDenied emitted the flag for a mutating session; got %v", got)
+	}
+	if len(got) != len(base) {
+		t.Errorf("withReadOnlyDenied changed args for a mutating session; got %v, want %v", got, base)
+	}
+}
+
+// TestWithReadOnlyDenied_PrecedesAllowedTools verifies the ordering invariant:
+// --disallowed-tools is appended before --allowed-tools so the latter stays the
+// trailing variadic flag. The --allowed-tools token must terminate the
+// --disallowed-tools value list, so no allowed tool leaks into the denied set.
+func TestWithReadOnlyDenied_PrecedesAllowedTools(t *testing.T) {
+	args := withReadOnlyDenied([]string{"-p", "--model", "opus"}, true)
+	args = withAllowedTools(args)
+
+	denyIdx := slices.Index(args, "--disallowed-tools")
+	allowIdx := slices.Index(args, "--allowed-tools")
+	if denyIdx == -1 || allowIdx == -1 {
+		t.Fatalf("expected both --disallowed-tools and --allowed-tools; got %v", args)
+	}
+	if denyIdx > allowIdx {
+		t.Fatalf("--disallowed-tools must precede --allowed-tools; got %v", args)
+	}
+	denied := args[denyIdx+1 : allowIdx]
+	if slices.Contains(denied, "WebSearch") || slices.Contains(denied, "WebFetch") {
+		t.Errorf("allowed web tools leaked into the denied set %v", denied)
+	}
+}
+
+// TestHermeticArgs_IsolatesUserConfig locks in the default-on isolation: a
+// Client built with the compiled-in defaults appends --setting-sources project
+// and --strict-mcp-config so orchestrated sessions ignore the invoking user's
+// global ~/.claude settings and MCP servers, keeping reviews reproducible.
+func TestHermeticArgs_IsolatesUserConfig(t *testing.T) {
+	c := NewClient()
+	got := c.hermeticArgs([]string{"-p", "--model", "opus"})
+
+	idx := slices.Index(got, "--setting-sources")
+	if idx == -1 || idx+1 >= len(got) || got[idx+1] != "project" {
+		t.Errorf("hermeticArgs did not append --setting-sources project; got %v", got)
+	}
+	if !slices.Contains(got, "--strict-mcp-config") {
+		t.Errorf("hermeticArgs did not append --strict-mcp-config; got %v", got)
+	}
+}
+
+// TestHermeticArgs_InheritWhenEnabled documents the escape hatch: a Client built
+// with WithInheritUserConfig(true) leaves the args untouched so a session can
+// load user-global config (for an environment whose claude auth depends on it).
+func TestHermeticArgs_InheritWhenEnabled(t *testing.T) {
+	c := NewClient(WithInheritUserConfig(true))
+	base := []string{"-p", "--model", "opus"}
+	got := c.hermeticArgs(base)
+
+	if slices.Contains(got, "--setting-sources") || slices.Contains(got, "--strict-mcp-config") {
+		t.Errorf("hermeticArgs emitted isolation flags despite WithInheritUserConfig(true); got %v", got)
+	}
+	if len(got) != len(base) {
+		t.Errorf("hermeticArgs changed args when inheriting; got %v, want %v", got, base)
+	}
+}
+
 func TestExtractText(t *testing.T) {
 	tests := []struct {
 		name      string

@@ -106,6 +106,61 @@ func withAllowedTools(args []string) []string {
 	return append(args, claudeAllowedTools...)
 }
 
+// claudeReadOnlyDeniedTools are removed from the model's context on the
+// read-only analysis passes (review, audit, propose, elaborate, the specialist
+// and adversarial fan-out, and every structuring/repair call) via
+// --disallowed-tools. A bare tool name removes the tool entirely — a
+// harness-level guarantee, not a prompt-level request — so a pass whose
+// contract is to analyze the checkout and never mutate it cannot edit a file
+// even if the model is steered into trying. The mutating sessions (implement,
+// fix, address, rebase, finalize) keep these tools and pass readOnly=false.
+// NotebookEdit is denied for completeness even though the reviewed repos are
+// Go: a future caller reusing this path on a notebook repo inherits the same
+// guarantee for free.
+var claudeReadOnlyDeniedTools = []string{"Edit", "Write", "NotebookEdit"}
+
+// withReadOnlyDenied appends --disallowed-tools followed by every entry in
+// claudeReadOnlyDeniedTools when readOnly is true (a no-op when readOnly is
+// false or the list is empty). It must be appended before withAllowedTools so
+// --allowed-tools stays the trailing variadic flag: --disallowed-tools is a
+// variadic flag too, but the following --allowed-tools token terminates its
+// value list, and the prompt is fed on stdin so no positional can be swallowed.
+func withReadOnlyDenied(args []string, readOnly bool) []string {
+	if !readOnly || len(claudeReadOnlyDeniedTools) == 0 {
+		return args
+	}
+	args = append(args, "--disallowed-tools")
+	return append(args, claudeReadOnlyDeniedTools...)
+}
+
+// hermeticArgs appends the flags that isolate an orchestrated `claude -p`
+// session from the invoking user's global configuration so the same input
+// yields the same output across machines and CI — the predictability the
+// prompt-design doctrine treats as the root virtue. --setting-sources project
+// drops the user-global ~/.claude/settings.json (and settings.local.json),
+// keeping only the reviewed repo's committed .claude/settings.json, which
+// travels with the repo and so is reproducible by construction; the CLI flags
+// this runner passes (--model, --permission-mode, the tool flags) outrank
+// project settings, so a reviewed repo cannot override them. --strict-mcp-config
+// with no --mcp-config loads zero MCP servers, dropping any the user configured
+// globally — none of the prompts need one. Both runner paths route through this
+// helper so the JSON and streaming runners cannot drift on isolation.
+//
+// It deliberately does NOT suppress a user-global ~/.claude/CLAUDE.md: Claude
+// Code loads memory independently of --setting-sources, and the only switch
+// that drops it (--bare) also strips Read/Grep/Glob and the /review skill the
+// analysis passes depend on. In CI — the primary use case — no user-global
+// CLAUDE.md exists, so that residual is a local-run caveat (see design decision
+// #45 and the configuration reference). WithInheritUserConfig(true) opts out of
+// hermetic mode entirely for an environment whose claude authentication lives
+// in user-global settings (e.g. apiKeyHelper).
+func (c *Client) hermeticArgs(args []string) []string {
+	if c.inheritUserConfig {
+		return args
+	}
+	return append(args, "--setting-sources", "project", "--strict-mcp-config")
+}
+
 // Client runs Claude Code sessions with a fixed configuration. Each Client
 // owns its own timeout, model, and effort settings, so independent runners can
 // execute concurrently without sharing mutable state — the injectable
@@ -118,6 +173,14 @@ type Client struct {
 	effort     string
 	planEffort string
 	showOutput bool
+
+	// inheritUserConfig, when true, lets orchestrated `claude -p` sessions
+	// load the invoking user's global ~/.claude settings and MCP servers. It
+	// defaults to false: hermeticArgs isolates every session
+	// (--setting-sources project --strict-mcp-config) so a review is
+	// reproducible across machines and CI rather than varying with whoever's
+	// ~/.claude happens to be present. Set via WithInheritUserConfig.
+	inheritUserConfig bool
 
 	// usageMu guards the per-Run usage accumulator. The review fan-out runs
 	// several Claude calls concurrently on one shared Client (errgroup over
@@ -208,12 +271,22 @@ func WithShowOutput(b bool) Option {
 	return func(c *Client) { c.showOutput = b }
 }
 
+// WithInheritUserConfig controls whether orchestrated `claude -p` sessions
+// inherit the invoking user's global ~/.claude settings and MCP servers. The
+// default (false) runs every session hermetically — see hermeticArgs — so the
+// same input yields the same output across machines and CI. Pass true only when
+// claude's authentication depends on user-global configuration that hermetic
+// mode would drop (e.g. an apiKeyHelper defined in ~/.claude/settings.json).
+func WithInheritUserConfig(b bool) Option {
+	return func(c *Client) { c.inheritUserConfig = b }
+}
+
 // runClaude invokes claude in the given directory on its default permission
 // mode and returns the extracted text response along with the resolved model
 // id the session reported. Use it for the read-only analysis steps (review,
 // audit, structure, repair, …) that do not mutate the checkout.
 func (c *Client) runClaude(dir, prompt, label string) (text, model string, err error) {
-	return c.runClaudeWithPermission(dir, prompt, label, "", c.model, c.effort)
+	return c.runClaudeWithPermission(dir, prompt, label, "", c.model, c.effort, true)
 }
 
 // runClaudePlan is runClaude on the dedicated planning model (planModel,
@@ -224,7 +297,7 @@ func (c *Client) runClaude(dir, prompt, label string) (text, model string, err e
 // thinks at the largest budget — the one session where that depth steers the
 // whole implementation.
 func (c *Client) runClaudePlan(dir, prompt, label string) (text, model string, err error) {
-	return c.runClaudeWithPermission(dir, prompt, label, "", c.planModel, c.planEffort)
+	return c.runClaudeWithPermission(dir, prompt, label, "", c.planModel, c.planEffort, true)
 }
 
 // runClaudeAuto is runClaude with claudeAutoPermissionMode, letting the
@@ -234,7 +307,7 @@ func (c *Client) runClaudePlan(dir, prompt, label string) (text, model string, e
 // push a feature branch, and open a PR without a human confirming each
 // step. The auto-mode classifier still vets every action.
 func (c *Client) runClaudeAuto(dir, prompt, label string) (text, model string, err error) {
-	return c.runClaudeWithPermission(dir, prompt, label, claudeAutoPermissionMode, c.model, c.effort)
+	return c.runClaudeWithPermission(dir, prompt, label, claudeAutoPermissionMode, c.model, c.effort, false)
 }
 
 // runClaudeWithPermission is the shared implementation behind runClaude,
@@ -242,7 +315,10 @@ func (c *Client) runClaudeAuto(dir, prompt, label string) (text, model string, e
 // passed to claude as --permission-mode; an empty value leaves claude on
 // its default mode. model is the --model value and effort the --effort value
 // (callers pass c.model/c.effort, or c.planModel/c.planEffort for the
-// planning session). Every invocation also pre-approves claudeAllowedTools via
+// planning session). readOnly is true for the analysis passes (runClaude,
+// runClaudePlan): it denies the write tools via withReadOnlyDenied so the
+// session cannot mutate the checkout. Every invocation is also isolated from
+// user-global config via hermeticArgs and pre-approves claudeAllowedTools via
 // --allowed-tools (see withAllowedTools). The label tags elapsed-time progress
 // updates (or per-line stream prefixes when streaming is enabled).
 //
@@ -251,9 +327,9 @@ func (c *Client) runClaudeAuto(dir, prompt, label string) (text, model string, e
 // runClaudeStream, which uses --output-format stream-json --verbose and
 // surfaces output incrementally; the periodic heartbeat is skipped in that
 // mode because the stream itself is the heartbeat.
-func (c *Client) runClaudeWithPermission(dir, prompt, label, permissionMode, model, effort string) (string, string, error) {
+func (c *Client) runClaudeWithPermission(dir, prompt, label, permissionMode, model, effort string, readOnly bool) (string, string, error) {
 	if c.showOutput {
-		return c.runClaudeStream(dir, prompt, label, permissionMode, model, effort)
+		return c.runClaudeStream(dir, prompt, label, permissionMode, model, effort, readOnly)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
@@ -271,6 +347,8 @@ func (c *Client) runClaudeWithPermission(dir, prompt, label, permissionMode, mod
 	if permissionMode != "" {
 		args = append(args, "--permission-mode", permissionMode)
 	}
+	args = c.hermeticArgs(args)
+	args = withReadOnlyDenied(args, readOnly)
 	args = withAllowedTools(args)
 	cmd := exec.CommandContext(ctx, "claude", args...)
 	if dir != "" {
