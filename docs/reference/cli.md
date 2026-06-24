@@ -56,6 +56,9 @@ planwerk-review owner/repo#123 > review.md
 | `--no-repo-patterns` | Ignore repo-specific patterns | `false` |
 | `--no-local-patterns` | Ignore local patterns from the tool | `false` |
 | `--no-cache` | Ignore cache, force a fresh review | `false` |
+| `--wiki` | Use the target repo's GitHub Wiki as a knowledge source (off by default — enabling trusts the wiki's unreviewed editors; review patterns + project memory; env: `PLANWERK_WIKI`). See [GitHub Wiki](/reference/review-patterns#github-wiki). | `false` |
+| `--no-wiki` | Do not use the target repo's GitHub Wiki (overrides `--wiki`) | `false` |
+| `--wiki-ref` | Pin the wiki to a branch, tag, or commit (env: `PLANWERK_WIKI_REF`) | - |
 | `--clear-cache` | Clear cached reviews and exit (honors `--clear-cache-scope`) | `false` |
 | `--clear-cache-scope` | Restrict `--clear-cache` to a single command (`review`, `propose`, `audit`, `glossary`, `elaborate`, `gap-analysis`, `review-prepared`) | - |
 | `--cache-stats` | Show cache size, age distribution, and per-command breakdown, then exit | `false` |
@@ -89,6 +92,9 @@ planwerk-review propose --create-issues owner/repo
 | `--no-repo-patterns` | Ignore repo-specific patterns | `false` |
 | `--no-local-patterns` | Ignore local patterns from the tool | `false` |
 | `--no-cache` | Ignore cache, force a fresh analysis | `false` |
+| `--wiki` | Use the target repo's GitHub Wiki as a knowledge source (off by default — enabling trusts the wiki's unreviewed editors; review patterns + project memory; env: `PLANWERK_WIKI`). See [GitHub Wiki](/reference/review-patterns#github-wiki). | `false` |
+| `--no-wiki` | Do not use the target repo's GitHub Wiki (overrides `--wiki`) | `false` |
+| `--wiki-ref` | Pin the wiki to a branch, tag, or commit (env: `PLANWERK_WIKI_REF`) | - |
 | `--cache-max-age` | Reject cached entries older than this duration (`0` disables the TTL) | `720h` |
 | `--format` | Output format (`markdown`, `json`, `issues`) | `markdown` |
 | `--max-patterns` | Max review patterns injected into the prompt (`<=0` disables truncation; env: `PLANWERK_MAX_PATTERNS`) | `0` (unlimited) |
@@ -115,6 +121,9 @@ planwerk-review audit --format json owner/repo
 | `--no-repo-patterns` | Ignore repo-specific patterns | `false` |
 | `--no-local-patterns` | Ignore local patterns from the tool | `false` |
 | `--no-cache` | Ignore cache, force a fresh audit | `false` |
+| `--wiki` | Use the target repo's GitHub Wiki as a knowledge source (off by default — enabling trusts the wiki's unreviewed editors; review patterns + project memory; env: `PLANWERK_WIKI`). See [GitHub Wiki](/reference/review-patterns#github-wiki). | `false` |
+| `--no-wiki` | Do not use the target repo's GitHub Wiki (overrides `--wiki`) | `false` |
+| `--wiki-ref` | Pin the wiki to a branch, tag, or commit (env: `PLANWERK_WIKI_REF`) | - |
 | `--cache-max-age` | Reject cached entries older than this duration (`0` disables the TTL) | `720h` |
 | `--format` | Output format (`markdown`, `json`) | `markdown` |
 | `--max-patterns` | Max review patterns injected into the prompt (`<=0` disables truncation; env: `PLANWERK_MAX_PATTERNS`) | `0` (unlimited) |
@@ -471,6 +480,9 @@ planwerk-review implement --no-review owner/repo#123
 | `--no-repo-patterns` | Ignore repo-specific patterns under `.planwerk/review_patterns/` in the target repo | `false` |
 | `--no-local-patterns` | Ignore local patterns from the tool | `false` |
 | `--max-patterns` | Max review patterns injected into the prompt (`<=0` disables truncation; env: `PLANWERK_MAX_PATTERNS`) | `0` (unlimited) |
+| `--wiki` | Use the target repo's GitHub Wiki as a knowledge source (off by default — enabling trusts the wiki's unreviewed editors; review patterns flow into the plan step's pattern catalog + project memory into the planning prompt; env: `PLANWERK_WIKI`). See [GitHub Wiki](/reference/review-patterns#github-wiki). | `false` |
+| `--no-wiki` | Do not use the target repo's GitHub Wiki (overrides `--wiki`) | `false` |
+| `--wiki-ref` | Pin the wiki to a branch, tag, or commit (env: `PLANWERK_WIKI_REF`) | - |
 | `--local` | Operate on the current working directory instead of cloning into a temp dir | `false` |
 | `--force` | With `--local`, skip the confirmation prompt when the working tree is dirty | `false` |
 

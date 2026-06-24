@@ -47,7 +47,19 @@ audit:
   max-findings: 50
   format: markdown             # markdown | json
   patterns: []
+
+wiki:                          # GitHub Wiki knowledge source (review + audit + propose + implement)
+  enabled: true                # opt the wiki in (default: off); false is the same as --no-wiki
+  repo: owner/repo             # override the wiki source; default: the target repo's own wiki
+  ref: main                    # pin to a branch/tag/commit; default: the wiki's default branch
 ```
+
+The `wiki:` section is top-level (not per-command) because the same wiki backs
+`review`, `audit`, `propose`, and the `implement` plan step. See
+[GitHub Wiki](/reference/review-patterns#github-wiki) for the page convention.
+`enabled` and `ref` are overridden by the `--wiki`/`--no-wiki`/`--wiki-ref`
+flags and the `PLANWERK_WIKI`/`PLANWERK_WIKI_REF` environment variables; `repo`
+is config-only.
 
 All keys are optional. Flags beyond `--min-severity`, `--max-patterns`,
 `--max-findings`, `--format`, and `--patterns` (the high-churn ones) remain

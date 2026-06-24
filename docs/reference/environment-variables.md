@@ -18,6 +18,8 @@ full resolution order.
 | `PLANWERK_CLAUDE_INHERIT_USER_CONFIG` | `--claude-inherit-user-config` | Truthy values let sessions inherit user-global `~/.claude` config: `1`, `true`, `yes`, `on` (case-insensitive). Off by default (hermetic). |
 | `PLANWERK_PLAN_MODEL` | `--plan-model` (`implement`) | Model for the planning session. |
 | `PLANWERK_PLAN_EFFORT` | `--plan-effort` (`implement`) | Reasoning effort for the planning session. |
+| `PLANWERK_WIKI` | `--wiki` / `--no-wiki` | Truthy values (`1`, `true`, `yes`, `on`) enable the GitHub Wiki knowledge source; falsy values (`0`, `false`, `no`, `off`) disable it. Config-file `wiki.enabled` takes precedence over this variable; the flags take precedence over both. |
+| `PLANWERK_WIKI_REF` | `--wiki-ref` | Pins the wiki to a branch, tag, or commit. Empty uses the wiki's default branch. |
 
 ### Credentials
 
