@@ -84,6 +84,45 @@ audit:
 	}
 }
 
+func TestLoadFileConfigWiki(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	body := `
+wiki:
+  enabled: false
+  repo: acme/widgets
+  ref: v2
+`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, present, err := LoadFileConfig(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !present {
+		t.Fatalf("present = false, want true")
+	}
+	if cfg.Wiki.Enabled == nil || *cfg.Wiki.Enabled {
+		t.Fatalf("wiki.enabled = %v, want explicit false", cfg.Wiki.Enabled)
+	}
+	if got := deref(cfg.Wiki.Repo); got != "acme/widgets" {
+		t.Fatalf("wiki.repo = %q, want acme/widgets", got)
+	}
+	if got := deref(cfg.Wiki.Ref); got != "v2" {
+		t.Fatalf("wiki.ref = %q, want v2", got)
+	}
+}
+
+func TestLoadFileConfigWikiUnknownKey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("wiki:\n  bogus-field: 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := LoadFileConfig(path); err == nil {
+		t.Fatalf("expected error for unknown wiki key, got nil")
+	}
+}
+
 func TestLoadFileConfigMalformedYAML(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(path, []byte("review:\n  max-patterns: : :\n"), 0o600); err != nil {

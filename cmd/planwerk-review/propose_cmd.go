@@ -17,6 +17,8 @@ import (
 // Markdown suitable for GitHub issues.
 func newProposeCmd(deps *runtimeDeps) *cobra.Command {
 	var proposeCfg cli.ProposeConfig
+	var wikiEnable, wikiDisable bool
+	var wikiRef string
 
 	proposeCmd := &cobra.Command{
 		Use:   "propose <repo-ref>",
@@ -50,6 +52,7 @@ or short form (owner/repo).`,
 
 			opts := proposeCfg.ToProposeOptions(deps.version)
 			opts.Remote = deps.remoteOpts
+			opts.Wiki = resolveWikiOptions(wikiEnable, wikiDisable, cmd.Flags().Changed("wiki"), cmd.Flags().Changed("no-wiki"), wikiRef, cmd.Flags().Changed("wiki-ref"), deps.fileCfg.Wiki)
 			return propose.Run(os.Stdout, opts, deps.claude.Propose)
 		},
 	}
@@ -66,6 +69,7 @@ or short form (owner/repo).`,
 	proposeFlags.BoolVar(&proposeCfg.NoIssueDedupe, "no-issue-dedupe", false, "Do not filter proposals whose title matches an existing GitHub issue")
 	proposeFlags.BoolVar(&proposeCfg.Local, "local", false, "Operate on the current working directory instead of cloning into a temp dir")
 	proposeFlags.BoolVar(&proposeCfg.Force, "force", false, "With --local, skip the confirmation prompt when the working tree is dirty")
+	addWikiFlags(proposeFlags, &wikiEnable, &wikiDisable, &wikiRef)
 
 	return proposeCmd
 }

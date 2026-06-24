@@ -39,6 +39,10 @@ type Options struct {
 	// Remote configures how remote pattern URIs (--patterns github:..., git+...)
 	// resolve into local directories; carries the --remote-patterns-ttl value.
 	Remote patterns.RemoteOptions
+	// Wiki configures the target repo's GitHub Wiki as a knowledge source
+	// (review patterns + project memory); carries the --wiki/--no-wiki/--wiki-ref
+	// values.
+	Wiki patterns.WikiOptions
 }
 
 // AuditFn performs the Claude-backed codebase audit for a cloned repo.

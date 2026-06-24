@@ -21,6 +21,8 @@ func newAuditCmd(deps *runtimeDeps) *cobra.Command {
 	var auditMinSeverity string
 	var auditMinConfidence string
 	var auditIssueMinSeverity string
+	var wikiEnable, wikiDisable bool
+	var wikiRef string
 
 	auditCmd := &cobra.Command{
 		Use:   "audit <repo-ref>",
@@ -89,6 +91,7 @@ or short form (owner/repo).`,
 
 			opts := auditCfg.ToAuditOptions(deps.version)
 			opts.Remote = deps.remoteOpts
+			opts.Wiki = resolveWikiOptions(wikiEnable, wikiDisable, cmd.Flags().Changed("wiki"), cmd.Flags().Changed("no-wiki"), wikiRef, cmd.Flags().Changed("wiki-ref"), deps.fileCfg.Wiki)
 			return audit.Run(os.Stdout, opts, deps.claude.Audit)
 		},
 	}
@@ -109,6 +112,7 @@ or short form (owner/repo).`,
 	auditFlags.BoolVar(&auditCfg.NoIssueDedupe, "no-issue-dedupe", false, "Do not filter findings whose title matches an existing GitHub issue")
 	auditFlags.BoolVar(&auditCfg.Local, "local", false, "Operate on the current working directory instead of cloning into a temp dir")
 	auditFlags.BoolVar(&auditCfg.Force, "force", false, "With --local, skip the confirmation prompt when the working tree is dirty")
+	addWikiFlags(auditFlags, &wikiEnable, &wikiDisable, &wikiRef)
 
 	return auditCmd
 }
