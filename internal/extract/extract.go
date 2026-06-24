@@ -50,9 +50,8 @@ type Options struct {
 	// refused, so a wiki author cannot clobber a trusted file (a bundled catalog
 	// pattern, or an existing repo pattern) by naming a pattern to match it.
 	Overwrite bool
-	// Version is the planwerk-review build version, threaded through for parity
-	// with the other commands; the PR footer reads it from the attribution
-	// package's process-wide record.
+	// Version is the planwerk-review build version, named in the PR footer's
+	// attribution clause.
 	Version string
 	// Remote configures how the wiki clone resolves through the remote-cache
 	// machinery (carries the --remote-patterns-ttl value).
@@ -204,7 +203,7 @@ func (r *Runner) openPR(w io.Writer, opts Options, selected []entry, wiki patter
 	url, err := r.GitHub.OpenImprovementPR(repo, github.ImprovementPROptions{
 		Branch: DefaultPRBranch,
 		Title:  prTitle(selected),
-		Body:   prBody(selected, wiki),
+		Body:   prBody(selected, wiki, opts.Version),
 		Commit: prCommit(selected, wiki),
 		Files:  files,
 	})
