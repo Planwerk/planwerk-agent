@@ -358,6 +358,50 @@ func TestBuildAnalysisPrompt_Glossary(t *testing.T) {
 	assertGoldenPrompt(t, "analysis_glossary", buildAnalysisPrompt(ctx))
 }
 
+// goldenMemory returns a representative project-memory block — the shape
+// patterns.LoadMemory produces from a wiki's memory/ pages — so the
+// project-memory block snapshots cover the rendered shape, including the
+// untrusted-data framing and the <project-memory> wrapper.
+func goldenMemory() string {
+	return "### Decisions\n\n" +
+		"We pin every dependency and never float a version range.\n\n" +
+		"### Conventions\n\n" +
+		"All HTTP errors use the Problem Details format.\n"
+}
+
+// TestBuildReviewPrompt_Memory locks the "## Project Memory" block injected into
+// the review prompt when the target repo's wiki carries memory pages. The empty
+// branch stays covered by review.golden.
+func TestBuildReviewPrompt_Memory(t *testing.T) {
+	ctx := goldenReviewContext()
+	ctx.Memory = goldenMemory()
+	assertGoldenPrompt(t, "review_memory", buildReviewPrompt(ctx))
+}
+
+// TestBuildAuditPrompt_Memory locks the project-memory block in the audit
+// prompt. The empty branch stays covered by audit.golden.
+func TestBuildAuditPrompt_Memory(t *testing.T) {
+	ctx := goldenAuditContext()
+	ctx.Memory = goldenMemory()
+	assertGoldenPrompt(t, "audit_memory", buildAuditPrompt(ctx))
+}
+
+// TestBuildAnalysisPrompt_Memory locks the project-memory block in the propose
+// analysis prompt. The empty branch stays covered by analysis.golden.
+func TestBuildAnalysisPrompt_Memory(t *testing.T) {
+	ctx := goldenAnalysisContext()
+	ctx.Memory = goldenMemory()
+	assertGoldenPrompt(t, "analysis_memory", buildAnalysisPrompt(ctx))
+}
+
+// TestBuildPlanPrompt_Memory locks the project-memory block in the planning
+// prompt. The empty branch stays covered by plan.golden.
+func TestBuildPlanPrompt_Memory(t *testing.T) {
+	ctx := goldenImplementContext()
+	ctx.Memory = goldenMemory()
+	assertGoldenPrompt(t, "plan_memory", BuildPlanPrompt(ctx))
+}
+
 // TestBuildGlossaryPrompt_Golden locks the EMIT-stage glossary-generation
 // prompt: the CONTEXT-FORMAT schema, the inclusion rules (be opinionated, only
 // context-specific terms), and the "output the Markdown only" tail.

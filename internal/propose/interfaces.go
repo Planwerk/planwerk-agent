@@ -21,6 +21,10 @@ type AnalysisContext struct {
 	// Populated only by propose; the other commands sharing AnalysisContext
 	// leave it empty (like OutOfScope), so their prompts are unaffected.
 	Glossary string
+	// Memory is the target repo's project memory from its GitHub Wiki, injected
+	// into the analysis prompt. Populated only by propose; the other commands
+	// sharing AnalysisContext leave it empty, so their prompts are unaffected.
+	Memory string
 }
 
 // ClaudeAnalyzer performs the Claude-backed codebase analysis that produces

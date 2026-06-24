@@ -26,6 +26,7 @@ type ReviewContext struct {
 	NewFeatures []doccheck.NewFeatureHint // new files that may need documentation
 	TodoContent string                    // content of TODOS.md if present
 	Glossary    string                    // repo domain glossary from CONTEXT.md / .planwerk/context.md; empty when absent
+	Memory      string                    // project memory from the repo's GitHub Wiki; empty when absent
 }
 
 // Review invokes `claude /review` in the given directory and returns structured findings.

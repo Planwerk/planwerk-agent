@@ -88,6 +88,10 @@ func BuildPlanPrompt(ctx implement.Context) string {
 		sb.WriteString("</review-patterns>\n\n")
 	}
 
+	// Project memory from the repo's GitHub Wiki (no-op when the wiki carries
+	// no memory pages)
+	sb.WriteString(projectMemoryBlock(ctx.Memory))
+
 	sb.WriteString(`## Planning Workflow
 
 Run these steps in order. Do not skip ahead.

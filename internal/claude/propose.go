@@ -95,6 +95,7 @@ For feature proposals, prefer a vertical slice: one that cuts end-to-end through
 	sb.WriteString(proseStyleBlock())
 	sb.WriteString(outputLanguageBlock())
 	sb.WriteString(domainGlossaryBlock(ctx.Glossary))
+	sb.WriteString(projectMemoryBlock(ctx.Memory))
 	sb.WriteString(codebaseDesignBlock())
 
 	return sb.String()
