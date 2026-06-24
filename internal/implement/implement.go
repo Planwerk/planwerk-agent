@@ -224,8 +224,8 @@ func (r *Runner) PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuil
 		pats = nil
 	}
 	if len(pats) > 0 {
-		design, technology, general := patterns.CountByCategory(pats)
-		slog.Info("loaded patterns for bare prompt", "count", len(pats), "design", design, "technology", technology, "general", general)
+		design, technology, review, general := patterns.CountByCategory(pats)
+		slog.Info("loaded patterns for bare prompt", "count", len(pats), "design", design, "technology", technology, "review", review, "general", general)
 	}
 
 	catalog := patterns.BuildCatalogReferences(pats, patterns.CatalogRefOptions{
@@ -1156,8 +1156,8 @@ func loadPatterns(opts Options, repoDir, wikiPatternsDir string) []patterns.Patt
 		return nil
 	}
 	if len(pats) > 0 {
-		design, technology, general := patterns.CountByCategory(pats)
-		slog.Info("loaded patterns", "count", len(pats), "design", design, "technology", technology, "general", general)
+		design, technology, review, general := patterns.CountByCategory(pats)
+		slog.Info("loaded patterns", "count", len(pats), "design", design, "technology", technology, "review", review, "general", general)
 	}
 	return pats
 }

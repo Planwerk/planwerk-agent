@@ -16,6 +16,11 @@ import (
 // A value <= 0 disables truncation.
 const DefaultMaxPatternsInPrompt = 0
 
+// reviewCategory is the Category value for patterns about the review process
+// itself. They group under a dedicated <review-patterns> prompt block and are
+// tallied separately by CountByCategory.
+const reviewCategory = "review"
+
 // severityOrder maps severity strings to priority (lower = higher priority for truncation).
 var severityOrder = map[string]int{
 	"BLOCKING": 0,
@@ -188,13 +193,15 @@ func FormatGroupedForPrompt(pats []Pattern, maxPatterns int) string {
 	pats = truncatePatterns(pats, maxPatterns)
 
 	// Group by category
-	var technology, design, general []Pattern
+	var technology, design, review, general []Pattern
 	for _, p := range pats {
 		switch p.Category {
 		case "technology":
 			technology = append(technology, p)
 		case "design-principle":
 			design = append(design, p)
+		case reviewCategory:
+			review = append(review, p)
 		default:
 			general = append(general, p)
 		}
@@ -220,6 +227,15 @@ func FormatGroupedForPrompt(pats []Pattern, maxPatterns int) string {
 		sb.WriteString("</design-patterns>\n\n")
 	}
 
+	if len(review) > 0 {
+		sb.WriteString("<review-patterns>\n")
+		for _, p := range review {
+			sb.WriteString(p.FormatForPrompt())
+			sb.WriteString("\n")
+		}
+		sb.WriteString("</review-patterns>\n\n")
+	}
+
 	if len(general) > 0 {
 		sb.WriteString("<project-patterns>\n")
 		for _, p := range general {
@@ -236,20 +252,22 @@ func FormatGroupedForPrompt(pats []Pattern, maxPatterns int) string {
 // grouping FormatGroupedForPrompt uses for prompt injection. It lets callers
 // log a loaded catalog broken down by kind — design-principle patterns (which
 // always apply) versus technology patterns (filtered by detected tags) versus
-// uncategorized project patterns — instead of a single opaque total that hides
-// whether the design principles made it in.
-func CountByCategory(pats []Pattern) (design, technology, general int) {
+// review patterns versus uncategorized project patterns — instead of a single
+// opaque total that hides whether the design principles made it in.
+func CountByCategory(pats []Pattern) (design, technology, review, general int) {
 	for _, p := range pats {
 		switch p.Category {
 		case "technology":
 			technology++
 		case "design-principle":
 			design++
+		case reviewCategory:
+			review++
 		default:
 			general++
 		}
 	}
-	return design, technology, general
+	return design, technology, review, general
 }
 
 // truncatePatterns limits the number of patterns to maxPatterns,

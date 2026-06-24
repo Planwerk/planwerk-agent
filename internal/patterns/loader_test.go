@@ -66,6 +66,18 @@ const legacyPattern = `# Review Pattern: Legacy Check
 Check stuff.
 `
 
+const reviewPattern = `# Review Pattern: Review Depth
+
+**Review-Area**: workflow
+**Detection-Hint**: shallow reviews
+**Severity**: WARNING
+**Category**: review
+
+## What to check
+
+Review thoroughly.
+`
+
 func TestLoad_Recursive(t *testing.T) {
 	dir := t.TempDir()
 	writePattern(t, filepath.Join(dir, "technology", "go"), "go-errors.md", goPattern)
@@ -88,6 +100,46 @@ func TestLoad_Recursive(t *testing.T) {
 	}
 	if !names["YAGNI"] {
 		t.Error("missing YAGNI pattern")
+	}
+}
+
+func TestLoad_ReviewCategory(t *testing.T) {
+	dir := t.TempDir()
+	writePattern(t, filepath.Join(dir, "review"), "review-depth.md", reviewPattern)
+
+	pats, err := Load(dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(pats) != 1 {
+		t.Fatalf("expected 1 pattern, got %d", len(pats))
+	}
+	if pats[0].Category != "review" {
+		t.Errorf("Category = %q, want review", pats[0].Category)
+	}
+
+	out := FormatGroupedForPrompt(pats, DefaultMaxPatternsInPrompt)
+	if !strings.Contains(out, "<review-patterns>") {
+		t.Error("review pattern should be emitted under a <review-patterns> block")
+	}
+	if !strings.Contains(out, "Review Depth") {
+		t.Error("output should contain the review pattern name")
+	}
+	// A review pattern must get its own block, not fall into the generic
+	// project bucket.
+	if strings.Contains(out, "<project-patterns>") {
+		t.Error("review pattern leaked into the <project-patterns> block")
+	}
+
+	design, technology, review, general := CountByCategory(pats)
+	if review != 1 {
+		t.Errorf("review = %d, want 1", review)
+	}
+	if general != 0 {
+		t.Errorf("general = %d, want 0 (review must not count as general)", general)
+	}
+	if design != 0 || technology != 0 {
+		t.Errorf("design = %d, technology = %d, want 0 each", design, technology)
 	}
 }
 
@@ -220,6 +272,7 @@ func TestFormatGroupedForPrompt(t *testing.T) {
 	pats := []Pattern{
 		{Name: "Go Errors", Category: "technology", ReviewArea: "quality", DetectionHint: "check", Severity: "WARNING", Body: "## Check\nWrap."},
 		{Name: "YAGNI", Category: "design-principle", ReviewArea: "architecture", DetectionHint: "check", Severity: "INFO", Body: "## Check\nDon't."},
+		{Name: "Review Depth", Category: "review", ReviewArea: "workflow", DetectionHint: "check", Severity: "WARNING", Body: "## Check\nReview."},
 		{Name: "Legacy", Category: "", ReviewArea: "quality", DetectionHint: "check", Severity: "INFO", Body: "## Check\nStuff."},
 	}
 
@@ -230,6 +283,9 @@ func TestFormatGroupedForPrompt(t *testing.T) {
 	}
 	if !strings.Contains(out, "<design-patterns>") {
 		t.Error("should contain design-patterns tag")
+	}
+	if !strings.Contains(out, "<review-patterns>") {
+		t.Error("should contain review-patterns tag")
 	}
 	if !strings.Contains(out, "<project-patterns>") {
 		t.Error("should contain project-patterns tag")
@@ -254,15 +310,19 @@ func TestCountByCategory(t *testing.T) {
 		{Name: "Go Errors", Category: "technology"},
 		{Name: "Docker Pinning", Category: "technology"},
 		{Name: "YAGNI", Category: "design-principle"},
+		{Name: "Review Depth", Category: "review"},
 		{Name: "Legacy", Category: ""},
 	}
 
-	design, technology, general := CountByCategory(pats)
+	design, technology, review, general := CountByCategory(pats)
 	if design != 1 {
 		t.Errorf("design = %d, want 1", design)
 	}
 	if technology != 2 {
 		t.Errorf("technology = %d, want 2", technology)
+	}
+	if review != 1 {
+		t.Errorf("review = %d, want 1", review)
 	}
 	if general != 1 {
 		t.Errorf("general = %d, want 1", general)
@@ -270,9 +330,9 @@ func TestCountByCategory(t *testing.T) {
 }
 
 func TestCountByCategory_Empty(t *testing.T) {
-	design, technology, general := CountByCategory(nil)
-	if design != 0 || technology != 0 || general != 0 {
-		t.Errorf("empty input should count all zero, got design=%d technology=%d general=%d", design, technology, general)
+	design, technology, review, general := CountByCategory(nil)
+	if design != 0 || technology != 0 || review != 0 || general != 0 {
+		t.Errorf("empty input should count all zero, got design=%d technology=%d review=%d general=%d", design, technology, review, general)
 	}
 }
 

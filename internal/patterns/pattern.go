@@ -18,7 +18,7 @@ type Pattern struct {
 	ReviewArea    string
 	DetectionHint string
 	Severity      string
-	Category      string   // "technology", "design-principle", or "" (general/legacy)
+	Category      string   // "technology", "design-principle", "review", or "" (general/legacy)
 	AppliesWhen   []string // technology tags; empty = always applies
 	Sources       []Source
 	Body          string
@@ -59,7 +59,11 @@ func Parse(content string) (Pattern, error) {
 				continue
 			}
 			if strings.HasPrefix(line, "**Category**:") {
-				p.Category = extractValue(line, "**Category**:")
+				// Normalize to lower case so the category grouping switch and
+				// CountByCategory match regardless of how the markdown was
+				// capitalized (e.g. "Review" or "REVIEW" must still bucket as
+				// the canonical lowercase "review").
+				p.Category = strings.ToLower(extractValue(line, "**Category**:"))
 				continue
 			}
 			if strings.HasPrefix(line, "**Applies-When**:") {

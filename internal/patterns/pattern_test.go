@@ -86,6 +86,41 @@ Wrap errors with context.
 	}
 }
 
+func TestParse_CategoryNormalizedToLowerCase(t *testing.T) {
+	// A miscased category must still bucket as its canonical lowercase form so
+	// the grouping switch in FormatGroupedForPrompt and CountByCategory match
+	// regardless of how the markdown was capitalized.
+	tests := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{"title case review", "Review", "review"},
+		{"upper case review", "REVIEW", "review"},
+		{"title case technology", "Technology", "technology"},
+		{"title case design-principle", "Design-Principle", "design-principle"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := "# Review Pattern: Cased\n\n" +
+				"**Review-Area**: workflow\n" +
+				"**Detection-Hint**: shallow reviews\n" +
+				"**Severity**: WARNING\n" +
+				"**Category**: " + tt.raw + "\n\n" +
+				"## What to check\n\nReview thoroughly.\n"
+
+			p, err := Parse(input)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if p.Category != tt.want {
+				t.Errorf("Category = %q, want %q", p.Category, tt.want)
+			}
+		})
+	}
+}
+
 func TestParse_MultipleAppliesWhen(t *testing.T) {
 	input := `# Review Pattern: Container Security
 
