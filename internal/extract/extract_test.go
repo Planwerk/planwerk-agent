@@ -61,7 +61,7 @@ func TestRun_DefaultModeOpensPR(t *testing.T) {
 	r := &Runner{GitHub: gh, ResolveWiki: resolve, IsTTY: func() bool { return false }}
 
 	var w bytes.Buffer
-	if err := r.Run(&w, Options{RepoRef: "acme/widgets", All: true}); err != nil {
+	if err := r.Run(&w, Options{RepoRef: "acme/widgets", All: true, Version: "v1.2.3"}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	if gh.prCalls != 1 {
@@ -79,6 +79,9 @@ func TestRun_DefaultModeOpensPR(t *testing.T) {
 	}
 	if !strings.Contains(opts.Body, "acme/widgets.wiki @ 0123456") {
 		t.Errorf("PR body missing wiki provenance:\n%s", opts.Body)
+	}
+	if !strings.Contains(opts.Body, "v1.2.3") {
+		t.Errorf("PR body missing build version in footer:\n%s", opts.Body)
 	}
 }
 
