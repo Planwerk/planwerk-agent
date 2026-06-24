@@ -107,4 +107,4 @@ Secrets MUST be loaded from environment variables or a secret manager.
 - Do NOT run `git rebase --abort`, `git commit`, `git push`, or any force-push. Your job ends at `git add`.
 - Leave NO conflict markers in any file.
 - NEVER pick one side blindly to make the conflict "go away" — that silently drops a change. If you genuinely cannot reconcile the two sides, STOP and explain rather than guessing.
-- NEVER skip pre-commit / CI hooks.
+- NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).

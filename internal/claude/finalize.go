@@ -90,8 +90,7 @@ After opening the draft PR, output a report in this exact shape:
 
 - NEVER edit code, amend commits, rebase, or change the branch's history — the diff is final. You only push and open the PR.
 - NEVER force-push. The branch is new on the remote; a plain push is correct.
-- NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).
-- NEVER open an empty pull request. If the branch carries no commits over the base, open nothing and report it.
+` + noSkipHooksLine() + `- NEVER open an empty pull request. If the branch carries no commits over the base, open nothing and report it.
 - If pushing or opening the PR fails, STOP and report BLOCKED with the exact error — do not retry blindly or invent a workaround.
 `)
 

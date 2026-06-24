@@ -33,7 +33,7 @@ func buildCoveragePrompt(baseBranch string) string {
 	}
 	return outputLanguageBlock() + fmt.Sprintf(`Analyze test coverage for every function and method that was changed in the current branch compared to origin/%s.
 
-First, run: git diff origin/%s --name-only
+First run: git diff origin/%s --name-only
 Then for each changed file, identify all functions/methods that were added or modified.
 
 For each changed function, determine:
@@ -53,7 +53,7 @@ Rate each function's test coverage:
 - "★"   = Only indirectly tested or only trivial assertion (e.g. "it doesn't panic")
 - "GAP" = No test coverage found
 
-Output ONLY valid JSON matching this exact schema (no markdown fences, no surrounding text):
+`+jsonSchemaOnlyLine()+`
 
 {
   "entries": [

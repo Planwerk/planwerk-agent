@@ -224,7 +224,7 @@ func buildReviewPreparedStructurePrompt(rawAnalysis string, includeImproved bool
 	}
 	return `Convert the following review-prepared report into structured JSON. Extract every finding, grouped by feature_id.
 
-Output ONLY valid JSON matching this exact schema (no markdown fences, no surrounding text):
+` + jsonSchemaOnlyLine() + `
 
 {
   "repo": "owner/name",

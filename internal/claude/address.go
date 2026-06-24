@@ -128,8 +128,7 @@ Field rules:
 
 - Address ONLY the threads listed above. Do NOT touch unrelated code.
 - Do NOT push. Do NOT force-push. The orchestrator publishes the branch separately.
-- NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).
-- NEVER fabricate file paths or line numbers — open the file before claiming.
+` + noSkipHooksLine() + `- NEVER fabricate file paths or line numbers — open the file before claiming.
 - If there is nothing to commit (every thread was BLOCKED/NEEDS_CONTEXT), do NOT create an empty commit; emit the JSON and stop.
 `)
 
@@ -218,8 +217,9 @@ Skip threads that are already resolved (isResolved: true) and any thread whose f
 
 - Address ONLY the reviewers' comments. Do NOT touch unrelated code.
 - Do NOT force-push. Follow-up commits push cleanly with a plain ` + "`git push origin HEAD`" + `.
-- NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).
-- NEVER fabricate file paths or line numbers — open the file before claiming.
+`)
+	sb.WriteString(noSkipHooksLine())
+	sb.WriteString(`- NEVER fabricate file paths or line numbers — open the file before claiming.
 - If a comment is ambiguous or references code that no longer exists, leave it untouched and report it — do not guess.
 `)
 

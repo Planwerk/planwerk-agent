@@ -251,8 +251,7 @@ When you hit a circuit breaker, halt immediately and emit STATUS: DONE_WITH_CONC
 
 ` + commitTrailerBlock() + attributionFooterBlock("Implemented by") + `## Hard rules
 
-- NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).
-- NEVER weaken or delete tests to make the suite green; fix the root cause.
+` + noSkipHooksLine() + `- NEVER weaken or delete tests to make the suite green; fix the root cause.
 - NEVER widen types to Any/interface{}/unknown to silence the type-checker.
 - NEVER suppress lint findings with // nolint, # noqa, # type: ignore, @ts-ignore, etc. unless that suppression is already idiomatic in the same file.
 - NEVER add scope the issue did not ask for. Refactors, renames, dependency bumps, formatter sweeps — out of scope unless explicitly listed in Affected Areas.
@@ -383,8 +382,7 @@ After pushing the branch and opening the draft PR, output a report in this exact
 
 ` + commitTrailerBlock() + attributionFooterBlock("Implemented by") + `## Hard rules
 
-- NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).
-- NEVER weaken or delete tests to make the suite green; fix the root cause.
+` + noSkipHooksLine() + `- NEVER weaken or delete tests to make the suite green; fix the root cause.
 - NEVER widen types to Any/interface{}/unknown to silence the type-checker.
 - NEVER suppress lint findings with // nolint, # noqa, # type: ignore, @ts-ignore, etc. unless that suppression is already idiomatic in the same file.
 - NEVER add scope the issue did not ask for. Refactors, renames, dependency bumps, formatter sweeps — out of scope unless explicitly listed in Affected Areas.

@@ -109,8 +109,8 @@ func BuildRebaseConflictPrompt(ctx rebase.ConflictContext) string {
 - Do NOT run ` + "`git rebase --abort`, `git commit`, `git push`" + `, or any force-push. Your job ends at ` + "`git add`" + `.
 - Leave NO conflict markers in any file.
 - NEVER pick one side blindly to make the conflict "go away" — that silently drops a change. If you genuinely cannot reconcile the two sides, STOP and explain rather than guessing.
-- NEVER skip pre-commit / CI hooks.
 `)
+	sb.WriteString(noSkipHooksLine())
 
 	return sb.String()
 }
@@ -156,7 +156,7 @@ For EACH rebased commit above:
 
 Open the actual files; do not guess. Report only adjustments you can ground in the diff.
 
-Output ONLY valid JSON matching this exact schema (no markdown fences, no surrounding text):
+` + jsonSchemaOnlyLine() + `
 
 {
   "commits": [
@@ -245,8 +245,8 @@ func BuildRebaseApplyPrompt(ctx rebase.ApplyContext) string {
 - Do NOT push. Do NOT force-push. The orchestrator publishes the branch separately, only when --push is given.
 - NEVER rebase, reorder, drop, or rewrite commits that already exist on origin/%[1]s — only this branch's own commits (origin/%[1]s..HEAD) may be folded.
 - If there is nothing to apply, do NOT create an empty commit; say so and stop.
-- NEVER skip pre-commit / CI hooks.
 `, ctx.Onto)
+	sb.WriteString(noSkipHooksLine())
 
 	return sb.String()
 }
@@ -304,8 +304,8 @@ func BuildBareRebasePrompt(ctx rebase.BareContext) string {
 - Preserve individual commits — do NOT squash.
 - Do NOT force-push unless explicitly asked. A rebase rewrites SHAs, so publishing needs `+"`git push --force-with-lease`"+` — only run it if the human asked you to publish.
 - NEVER blind-pick a conflict side to make it go away.
-- NEVER skip pre-commit / CI hooks.
 `, ctx.Onto)
+	sb.WriteString(noSkipHooksLine())
 
 	return sb.String()
 }

@@ -117,7 +117,7 @@ func (c *Client) structureProposals(rawAnalysis string) (*propose.ProposalResult
 func buildProposalStructurePrompt(rawAnalysis string) string {
 	return `Convert the following codebase analysis into structured JSON feature proposals. Extract every concrete, actionable proposal mentioned.
 
-Output ONLY valid JSON matching this exact schema (no markdown fences, no surrounding text):
+` + jsonSchemaOnlyLine() + `
 
 {
   "repository_overview": "A concise summary of what this repository is, its tech stack, architecture, and current state of maturity (3-5 sentences).",

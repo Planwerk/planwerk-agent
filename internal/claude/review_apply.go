@@ -98,10 +98,11 @@ func BuildReviewApplyPrompt(ctx implement.ReviewApplyContext) string {
 ` + commitTrailerBlock() + `## Hard rules
 
 `)
-	fmt.Fprintf(&sb, "- NEVER push and NEVER open a pull request — these passes run on the local branch and the finalize step publishes afterwards. NEVER rebase, reorder, drop, or rewrite commits that already exist on the base branch (origin/%[1]s) — only this branch's own commits (origin/%[1]s..HEAD) may be folded.\n", ctx.BaseBranch)
+	sb.WriteString(foldDisciplineRule(ctx.BaseBranch))
 	sb.WriteString(`- NEVER silence a finding instead of fixing it: no deleting or weakening tests, assertions, or required checks; no suppression comments that were not already idiomatic in the file; no widening types to Any/interface{}/unknown.
-- NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).
-- NEVER fabricate file paths, line numbers, or symbols — open the file before claiming.
+`)
+	sb.WriteString(noSkipHooksLine())
+	sb.WriteString(`- NEVER fabricate file paths, line numbers, or symbols — open the file before claiming.
 - PREFER to change only files the branch already touches. Reaching outside it is a last resort; make the smallest out-of-scope change that resolves the finding and call it out in the report.
 - If a finding is a false positive or no longer applies, SKIP it and record why — do not invent a change to satisfy it.
 - If there is nothing to fix after review, do NOT create an empty commit; output the report with an empty Resolved list and stop.

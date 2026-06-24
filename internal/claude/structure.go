@@ -63,7 +63,7 @@ func (c *Client) repairInvalidReview(result *report.ReviewResult) error {
 func buildStructurePrompt(rawReview string) string {
 	return `Convert the following code review output into structured JSON. Extract every finding mentioned.
 
-Output ONLY valid JSON matching this exact schema (no markdown fences, no surrounding text):
+` + jsonSchemaOnlyLine() + `
 
 {
   "findings": [

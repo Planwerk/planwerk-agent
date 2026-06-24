@@ -119,4 +119,4 @@ Secrets MUST be loaded from environment variables or a secret manager.
 - Do NOT push. Do NOT force-push. The orchestrator publishes the branch separately, only when --push is given.
 - NEVER rebase, reorder, drop, or rewrite commits that already exist on origin/main — only this branch's own commits (origin/main..HEAD) may be folded.
 - If there is nothing to apply, do NOT create an empty commit; say so and stop.
-- NEVER skip pre-commit / CI hooks.
+- NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).

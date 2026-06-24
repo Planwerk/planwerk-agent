@@ -226,8 +226,9 @@ Run these steps for EACH failing check above before editing any code:
 
 	sb.WriteString(`- PREFER to change only files on the failure surface. Reaching outside it is a last resort, reserved for the worst case where the failing check genuinely cannot be fixed any other way — then make the smallest out-of-scope change that works and call it out explicitly in the report. NEVER reach outside for convenience, drive-by cleanups, or unrelated improvements.
 - NEVER skip, weaken, or suppress the failing check (see the "Do not cheat the check." pattern above for the explicit forbidden list).
-- NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).
-- NEVER bump dependencies that the failure log does not directly implicate.
+`)
+	sb.WriteString(noSkipHooksLine())
+	sb.WriteString(`- NEVER bump dependencies that the failure log does not directly implicate.
 - NEVER fabricate file paths, line numbers, or error messages — open the file before claiming.
 - NEVER claim "fixed" without either local verification (step 6) or an explicit "not reproducible locally" note in the report.
 - If you cannot diagnose a failure from the logs (truncation, infra flake, expired secret, third-party check without logs), STOP and explain — do not invent a fix.
@@ -433,8 +434,9 @@ Run these steps for EACH failing check before editing any code:
 
 	sb.WriteString(`- PREFER to change only files on the failure surface. Reaching outside it is a last resort, reserved for the worst case where the failing check genuinely cannot be fixed any other way — then make the smallest out-of-scope change that works and call it out explicitly in the report. NEVER reach outside for convenience, drive-by cleanups, or unrelated improvements.
 - NEVER skip, weaken, or suppress the failing check (see the "Do not cheat the check." pattern above for the explicit forbidden list).
-- NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).
-- NEVER bump dependencies that the failure log does not directly implicate.
+`)
+	sb.WriteString(noSkipHooksLine())
+	sb.WriteString(`- NEVER bump dependencies that the failure log does not directly implicate.
 - NEVER fabricate file paths, line numbers, or error messages — open the file before claiming.
 - NEVER claim "fixed" without either local verification (step 6) or an explicit "not reproducible locally" note in the report.
 - If you cannot diagnose a failure from the logs (truncation, infra flake, expired secret, third-party check without logs), STOP and explain — do not invent a fix.

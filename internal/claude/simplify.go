@@ -192,12 +192,13 @@ If applying a finding would touch any of these, SKIP that finding and record why
 ` + commitTrailerBlock() + `## Hard rules
 
 `)
-	fmt.Fprintf(&sb, "- NEVER push and NEVER open a pull request — these passes run on the local branch and the finalize step publishes afterwards. NEVER rebase, reorder, drop, or rewrite commits that already exist on the base branch (origin/%[1]s) — only this branch's own commits (origin/%[1]s..HEAD) may be folded.\n", ctx.BaseBranch)
+	sb.WriteString(foldDisciplineRule(ctx.BaseBranch))
 	sb.WriteString(`- NEVER remove or weaken validation, error handling, security controls, or accessibility code — those are essential behavior, not accidental complexity.
 - NEVER delete, skip, or weaken a test, an assertion, or a required check to shrink the diff.
 - NEVER change observable behavior. This pass removes complexity; it is not a refactor or a redesign.
-- NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).
-- NEVER fabricate file paths, line numbers, or symbols — open the file before claiming.
+`)
+	sb.WriteString(noSkipHooksLine())
+	sb.WriteString(`- NEVER fabricate file paths, line numbers, or symbols — open the file before claiming.
 - If a finding no longer applies, would change behavior, or touches a guardrail area, SKIP it and record why — do not force it.
 - If there is nothing to simplify after review, do NOT create an empty commit; output the report with an empty Applied list and stop.
 - It is OK to stop and report BLOCKED or NEEDS_CONTEXT. Bad work is worse than no work; escalating is not penalized.

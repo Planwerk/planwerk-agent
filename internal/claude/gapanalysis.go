@@ -197,7 +197,7 @@ func reconcileFeatures(result *gapanalysis.Result, features []*planwerk.Feature)
 func buildGapStructurePrompt(rawAnalysis string) string {
 	return `Convert the following gap-analysis report into structured JSON. Extract every gap mentioned, grouped by feature_id.
 
-Output ONLY valid JSON matching this exact schema (no markdown fences, no surrounding text):
+` + jsonSchemaOnlyLine() + `
 
 {
   "repo": "owner/name",

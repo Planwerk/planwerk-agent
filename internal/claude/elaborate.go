@@ -179,7 +179,7 @@ func buildElaborateStructurePrompt(rawElaboration string, ctx elaborate.Context)
 	}
 	return `Convert the following elaborated issue plan into structured JSON.
 
-Output ONLY valid JSON matching this exact schema (no markdown fences, no surrounding text):
+` + jsonSchemaOnlyLine() + `
 
 {
   "title": "Issue title — keep the source title verbatim unless the elaboration explicitly proposes a sharper one",

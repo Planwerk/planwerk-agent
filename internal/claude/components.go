@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/planwerk/planwerk-review/internal/attribution"
@@ -234,6 +235,42 @@ Be direct and decisive in your findings. Do NOT hedge:
 // drift, so they are not collapsed here.
 func planwerkIgnoreLine() string {
 	return "IMPORTANT: Completely ignore all changes in the .planwerk/ directory.\n\n"
+}
+
+// noSkipHooksLine returns the single "## Hard rules" bullet that forbids
+// bypassing pre-commit / CI hooks, shared by every builder whose session
+// commits (implement, fix, address, finalize, simplify, review_apply, rebase,
+// and their variants). It is extracted to one source because the copies had
+// already drifted: the rebase builders carried a shorter "NEVER skip pre-commit
+// / CI hooks." without the "(no --no-verify, no --no-gpg-sign)" qualifier that
+// every other builder spells out. The bullet carries its own trailing newline
+// so callers splice it between two other bullets without juggling separators.
+func noSkipHooksLine() string {
+	return "- NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).\n"
+}
+
+// foldDisciplineRule returns the "## Hard rules" bullet that forbids pushing,
+// opening a PR, or rewriting base-branch commits in the local fold-only passes
+// (simplify and review-apply, which both end before the finalize step
+// publishes). The two builders carried a byte-identical copy of this rule next
+// to the shared foldSteps(); extracting it keeps that fold discipline in one
+// place. baseBranch fills both origin/<base> references; the bullet carries its
+// own trailing newline.
+func foldDisciplineRule(baseBranch string) string {
+	return fmt.Sprintf("- NEVER push and NEVER open a pull request — these passes run on the local branch and the finalize step publishes afterwards. NEVER rebase, reorder, drop, or rewrite commits that already exist on the base branch (origin/%[1]s) — only this branch's own commits (origin/%[1]s..HEAD) may be folded.\n", baseBranch)
+}
+
+// jsonSchemaOnlyLine returns the one-line directive that precedes an inline JSON
+// schema in every structuring builder (structure, propose, elaborate,
+// gapanalysis, reviewprepared, coverage, rebase analysis) — the second Claude
+// call that converts a builder's prose output into the strict JSON its decoder
+// expects. The wording was copied verbatim into eight builders, free to drift;
+// one source keeps them aligned. The address/draft/meta variants word it
+// differently on purpose ("no prose before or after") and are left alone. The
+// line carries no surrounding newlines so each caller keeps its own spacing
+// around the schema block.
+func jsonSchemaOnlyLine() string {
+	return "Output ONLY valid JSON matching this exact schema (no markdown fences, no surrounding text):"
 }
 
 // commitTrailerBlock returns the "## Commit trailers" section shared by every

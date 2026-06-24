@@ -4,7 +4,7 @@ Write your entire output in English, whatever language the input is written in â
 
 Analyze test coverage for every function and method that was changed in the current branch compared to origin/develop.
 
-First, run: git diff origin/develop --name-only
+First run: git diff origin/develop --name-only
 Then for each changed file, identify all functions/methods that were added or modified.
 
 For each changed function, determine:
