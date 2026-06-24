@@ -33,6 +33,10 @@ const (
 	prefixWiki     = "wiki:"
 )
 
+// schemeWiki is the parsedURI.scheme for a wiki: source, named because it is
+// referenced from parsing, fetching, and tests.
+const schemeWiki = "wiki"
+
 // DefaultRemoteTTL is the default age at which a cached remote pattern
 // repository is refreshed. It is exposed so the CLI can reference the same
 // constant when defining its flag default.
@@ -257,7 +261,7 @@ func parseWikiURI(uri string) (parsedURI, error) {
 	repo = strings.TrimSuffix(repo, ".git")
 	return parsedURI{
 		raw:      uri,
-		scheme:   "wiki",
+		scheme:   schemeWiki,
 		cloneURL: "https://github.com/" + owner + "/" + repo + ".wiki.git",
 		ref:      ref,
 		subpath:  subpath,
@@ -320,7 +324,7 @@ var fetchRemote = func(p parsedURI, dest string) error {
 	case "github":
 		args := []string{"repo", "clone", p.cloneURL, dest, "--", "--filter=blob:none"}
 		cmd = exec.CommandContext(ctx, "gh", args...)
-	case "wiki":
+	case schemeWiki:
 		// A repo's wiki is a standalone .wiki.git clone that `gh repo clone`
 		// cannot fetch, so it goes through plain `git clone`. A private wiki
 		// needs auth: pass a GitHub token (best-effort, via `gh auth token`) as

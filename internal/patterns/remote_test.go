@@ -214,7 +214,7 @@ func TestParseWikiURI(t *testing.T) {
 			if err != nil {
 				t.Fatalf("parseRemoteURI(%q) error: %v", tc.in, err)
 			}
-			if p.scheme != "wiki" {
+			if p.scheme != schemeWiki {
 				t.Errorf("scheme = %q, want wiki", p.scheme)
 			}
 			if p.cloneURL != tc.wantClone {
@@ -243,7 +243,7 @@ func TestResolveRemote_WikiSchemeReachesFetch(t *testing.T) {
 	if _, err := ResolveRemote("wiki:planwerk/planwerk-review", RemoteOptions{CacheDir: cacheDir}); err != nil {
 		t.Fatalf("ResolveRemote: %v", err)
 	}
-	if gotScheme != "wiki" {
+	if gotScheme != schemeWiki {
 		t.Errorf("fetch scheme = %q, want wiki", gotScheme)
 	}
 	if want := "https://github.com/planwerk/planwerk-review.wiki.git"; gotURL != want {

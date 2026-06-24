@@ -97,13 +97,8 @@ func resolveShowClaudeOutput(flagValue, flagSet bool) bool {
 	if flagSet {
 		return flagValue
 	}
-	if raw, ok := os.LookupEnv(envShowClaudeOutput); ok && raw != "" {
-		switch strings.ToLower(strings.TrimSpace(raw)) {
-		case "1", "true", "yes", "on":
-			return true
-		}
-	}
-	return false
+	v, _ := lookupBoolEnv(envShowClaudeOutput)
+	return v
 }
 
 // resolveClaudeInheritUserConfig returns whether orchestrated Claude sessions
@@ -115,13 +110,8 @@ func resolveClaudeInheritUserConfig(flagValue, flagSet bool) bool {
 	if flagSet {
 		return flagValue
 	}
-	if raw, ok := os.LookupEnv(envClaudeInheritUserConfig); ok && raw != "" {
-		switch strings.ToLower(strings.TrimSpace(raw)) {
-		case "1", "true", "yes", "on":
-			return true
-		}
-	}
-	return false
+	v, _ := lookupBoolEnv(envClaudeInheritUserConfig)
+	return v
 }
 
 // resolveClaudeTimeout returns the effective per-invocation Claude Code
