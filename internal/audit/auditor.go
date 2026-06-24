@@ -52,6 +52,9 @@ type AuditContext struct {
 	MaxPatterns int
 	MaxFindings int
 	RepoName    string // "owner/repo" for context in the prompt
+	// Memory is the target repo's project memory from its GitHub Wiki; empty
+	// when the repo has no wiki memory.
+	Memory string
 }
 
 // Runner executes the audit pipeline using injected Claude and GitHub

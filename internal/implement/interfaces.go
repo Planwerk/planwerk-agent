@@ -28,6 +28,11 @@ type Context struct {
 	// implement prompt; empty means the implement session plans for
 	// itself (--no-plan, or no planner wired).
 	Plan string
+	// Memory is the target repo's project memory from its GitHub Wiki. It is
+	// injected into the planning prompt (the implement prompt itself stays
+	// unchanged — the plan carries any memory-derived context forward). Empty
+	// when the repo has no wiki memory.
+	Memory string
 	// MetaIssue, SiblingIssues, and ChildIssues place the source issue in its
 	// Meta/Sub-Issue neighborhood so the planning session grounds a Sub Issue in
 	// its larger effort instead of in isolation. They feed BuildPlanPrompt (the

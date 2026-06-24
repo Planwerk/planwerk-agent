@@ -56,6 +56,10 @@ func buildAuditPrompt(ctx audit.AuditContext) string {
 	sb.WriteString(patterns.FormatGroupedForPrompt(ctx.Patterns, ctx.MaxPatterns))
 	sb.WriteString("</review-patterns>\n\n")
 
+	// Project memory from the repo's GitHub Wiki (no-op when the wiki carries
+	// no memory pages)
+	sb.WriteString(projectMemoryBlock(ctx.Memory))
+
 	// Audit methodology
 	sb.WriteString(`## Audit Methodology
 
