@@ -21,6 +21,12 @@ type ProposalResult struct {
 	// produced this result. It is threaded per-run to the attribution footer
 	// and excluded from the serialized payload.
 	Model string `json:"-"`
+	// WikiRepo and WikiCommit record the target repo's GitHub Wiki and the
+	// concrete commit its knowledge was resolved to, surfaced in the report
+	// header for run-to-run reproducibility. Both are empty when no wiki was
+	// used; threaded per-run and excluded from the cached payload.
+	WikiRepo   string `json:"-"`
+	WikiCommit string `json:"-"`
 }
 
 // CategorizedProposals groups proposals by priority.

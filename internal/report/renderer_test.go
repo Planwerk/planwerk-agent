@@ -1,9 +1,67 @@
 package report
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 )
+
+// TestRenderMarkdown_WikiProvenance verifies the review header carries the
+// resolved wiki commit when one was used, and omits the line otherwise so
+// wiki-less reviews render unchanged.
+func TestRenderMarkdown_WikiProvenance(t *testing.T) {
+	pr := PRInfo{Owner: "acme", Repo: "widgets", Number: 7, Title: "PR"}
+
+	t.Run("renders the wiki line when a commit was recorded", func(t *testing.T) {
+		result := ReviewResult{
+			Summary:    "ok",
+			WikiRepo:   "acme/widgets",
+			WikiCommit: "abc1234def5678",
+		}
+		var buf bytes.Buffer
+		NewRenderer(&buf).RenderMarkdown(result, pr, SeverityInfo, "", "v1")
+		if !strings.Contains(buf.String(), "> Wiki: acme/widgets.wiki @ abc1234\n") {
+			t.Errorf("expected the abbreviated wiki provenance line, got:\n%s", buf.String())
+		}
+	})
+
+	t.Run("omits the wiki line when no commit was recorded", func(t *testing.T) {
+		var buf bytes.Buffer
+		NewRenderer(&buf).RenderMarkdown(ReviewResult{Summary: "ok"}, pr, SeverityInfo, "", "v1")
+		if strings.Contains(buf.String(), "Wiki:") {
+			t.Errorf("wiki-less review must not render a Wiki line, got:\n%s", buf.String())
+		}
+	})
+}
+
+// TestRenderAuditMarkdown_WikiProvenance verifies the audit header carries the
+// resolved wiki commit when one was used.
+func TestRenderAuditMarkdown_WikiProvenance(t *testing.T) {
+	result := ReviewResult{Summary: "ok", WikiRepo: "acme/widgets", WikiCommit: "0123456789abcdef"}
+	var buf bytes.Buffer
+	NewRenderer(&buf).RenderAuditMarkdown(result, RepoInfo{Owner: "acme", Name: "widgets"}, SeverityInfo, "", "v1")
+	if !strings.Contains(buf.String(), "> Wiki: acme/widgets.wiki @ 0123456\n") {
+		t.Errorf("expected the abbreviated wiki provenance line in the audit header, got:\n%s", buf.String())
+	}
+}
+
+// TestRenderDataBlock_WikiCommit verifies the resolved wiki commit is attached to
+// the machine-readable data block and that the field is omitted when absent.
+func TestRenderDataBlock_WikiCommit(t *testing.T) {
+	t.Run("present when set", func(t *testing.T) {
+		block := RenderDataBlock(ReviewResult{WikiCommit: "abc1234"}, "headsha", Usage{})
+		if !strings.Contains(block, `"wiki_commit":"abc1234"`) {
+			t.Errorf("data block missing wiki_commit; got %q", block)
+		}
+	})
+
+	t.Run("omitted when empty", func(t *testing.T) {
+		block := RenderDataBlock(ReviewResult{}, "headsha", Usage{})
+		if strings.Contains(block, "wiki_commit") {
+			t.Errorf("data block should omit wiki_commit when unset; got %q", block)
+		}
+	})
+}
 
 // TestRenderDataBlock_IncludesUsage verifies the per-Run Claude usage totals are
 // embedded in the data block as a machine-readable object (issue #46, AC#3) and

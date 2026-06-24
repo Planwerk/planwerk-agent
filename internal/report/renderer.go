@@ -42,7 +42,9 @@ func (r *Renderer) RenderMarkdown(result ReviewResult, pr PRInfo, minSeverity Se
 
 	_, _ = fmt.Fprintf(r.w, "# Review: %s/%s#%d\n\n", pr.Owner, pr.Repo, pr.Number)
 	_, _ = fmt.Fprintf(r.w, "> *%s*  \n", pr.Title)
-	_, _ = fmt.Fprintf(r.w, "> Reviewed by %s %s\n\n", attribution.ToolWithVersion(version), attribution.AssistantWith(result.Model))
+	_, _ = fmt.Fprintf(r.w, "> Reviewed by %s %s\n", attribution.ToolWithVersion(version), attribution.AssistantWith(result.Model))
+	RenderWikiProvenance(r.w, result.WikiRepo, result.WikiCommit)
+	_, _ = fmt.Fprintln(r.w)
 
 	// Machine-readable summary for tooling (Claude Code, CI scripts, etc.)
 	_, _ = fmt.Fprintf(r.w, "<!-- planwerk-review: blocking=%d critical=%d warning=%d info=%d unverified=%d recommendation=%s -->\n\n",
@@ -57,6 +59,21 @@ func (r *Renderer) RenderMarkdown(result ReviewResult, pr PRInfo, minSeverity Se
 
 	r.renderSummary(cf, result.Summary)
 	r.renderRecommendation(cf, result.Recommendation)
+}
+
+// RenderWikiProvenance emits the "> Wiki: <repo>.wiki @ <short-sha>" header line
+// identifying the target repo's GitHub Wiki commit a result was pinned to. It is
+// shared by the review, audit, and proposal renderers and writes nothing when
+// commit is empty, leaving wiki-less output unchanged.
+func RenderWikiProvenance(w io.Writer, repo, commit string) {
+	if commit == "" {
+		return
+	}
+	if repo != "" {
+		_, _ = fmt.Fprintf(w, "> Wiki: %s.wiki @ %s\n", repo, shortRebaseSHA(commit))
+		return
+	}
+	_, _ = fmt.Fprintf(w, "> Wiki: %s\n", shortRebaseSHA(commit))
 }
 
 // recommendationKey returns a short machine-readable verdict for the HTML comment.
@@ -254,7 +271,9 @@ func (r *Renderer) RenderAuditMarkdown(result ReviewResult, repo RepoInfo, minSe
 	cf := Categorize(result.Findings, minSeverity, minConfidence)
 
 	_, _ = fmt.Fprintf(r.w, "# Audit: %s/%s\n\n", repo.Owner, repo.Name)
-	_, _ = fmt.Fprintf(r.w, "> Audited by %s %s\n\n", attribution.ToolWithVersion(version), attribution.AssistantWith(result.Model))
+	_, _ = fmt.Fprintf(r.w, "> Audited by %s %s\n", attribution.ToolWithVersion(version), attribution.AssistantWith(result.Model))
+	RenderWikiProvenance(r.w, result.WikiRepo, result.WikiCommit)
+	_, _ = fmt.Fprintln(r.w)
 
 	_, _ = fmt.Fprintf(r.w, "<!-- planwerk-audit: blocking=%d critical=%d warning=%d info=%d unverified=%d verdict=%s -->\n\n",
 		len(cf.Blocking), len(cf.Critical), len(cf.Warning), len(cf.Info), len(cf.Unverified),
@@ -316,9 +335,10 @@ type Usage struct {
 
 // dataBlockPayload is the JSON structure embedded in the HTML comment for machine consumption.
 type dataBlockPayload struct {
-	CommitSHA string    `json:"commit_sha"`
-	Findings  []Finding `json:"findings"`
-	Usage     Usage     `json:"usage"`
+	CommitSHA  string    `json:"commit_sha"`
+	WikiCommit string    `json:"wiki_commit,omitempty"`
+	Findings   []Finding `json:"findings"`
+	Usage      Usage     `json:"usage"`
 }
 
 // RenderDataBlock returns an HTML comment containing the JSON-encoded findings,
@@ -326,9 +346,10 @@ type dataBlockPayload struct {
 // by tools like Claude Code and CI scripts.
 func RenderDataBlock(result ReviewResult, commitSHA string, usage Usage) string {
 	payload := dataBlockPayload{
-		CommitSHA: commitSHA,
-		Findings:  result.Findings,
-		Usage:     usage,
+		CommitSHA:  commitSHA,
+		WikiCommit: result.WikiCommit,
+		Findings:   result.Findings,
+		Usage:      usage,
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {

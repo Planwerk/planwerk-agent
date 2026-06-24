@@ -208,4 +208,12 @@ type ReviewResult struct {
 	// produced this result. It is threaded per-run to the attribution footer
 	// and excluded from the serialized payload.
 	Model string `json:"-"`
+	// WikiRepo and WikiCommit record the target repo's GitHub Wiki and the
+	// concrete commit its knowledge was resolved to, surfaced in the report
+	// header so a review is reproducible against a fixed wiki state rather than
+	// drifting with a moving wiki. Both are empty when no wiki was used. They
+	// are threaded per-run from the resolved wiki and excluded from the cached
+	// payload; WikiCommit is re-attached to the machine-readable data block.
+	WikiRepo   string `json:"-"`
+	WikiCommit string `json:"-"`
 }

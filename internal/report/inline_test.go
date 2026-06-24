@@ -64,13 +64,13 @@ func TestFormatInlineComment_AutoFix(t *testing.T) {
 
 func TestFormatInlineComment_FixOptions(t *testing.T) {
 	f := Finding{
-		ID:                      "W-003",
-		Severity:                SeverityWarning,
-		Title:                   "Broad catch swallows specific failures",
-		Actionability:           ActionabilityNeedsDiscussion,
-		FixClass:                FixClassAsk,
-		Problem:                 "catch-all hides distinct error classes",
-		Action:                  "narrow or re-raise",
+		ID:            "W-003",
+		Severity:      SeverityWarning,
+		Title:         "Broad catch swallows specific failures",
+		Actionability: ActionabilityNeedsDiscussion,
+		FixClass:      FixClassAsk,
+		Problem:       "catch-all hides distinct error classes",
+		Action:        "narrow or re-raise",
 		FixOptions: []FixOption{
 			{ID: "A", Approach: "Catch specific types", Pros: "precise", Cons: "more code", Effort: "MED", RiskIfSkipped: "real bugs hidden"},
 			{ID: "B", Approach: "Re-raise after logging", Pros: "loud", Cons: "caller handles", Effort: "LOW", RiskIfSkipped: "silent corruption"},
