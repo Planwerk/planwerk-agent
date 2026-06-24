@@ -1,8 +1,10 @@
 package patterns
 
 import (
+	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -17,6 +19,8 @@ func TestIsRemote(t *testing.T) {
 	}{
 		{"github:owner/repo", true},
 		{"github:owner/repo/sub@v1", true},
+		{"wiki:owner/repo", true},
+		{"wiki:owner/repo@main", true},
 		{"git+https://example.com/x.git", true},
 		{"git+http://example.com/x.git", true},
 		{"./patterns", false},
@@ -109,9 +113,9 @@ func TestParseRemoteURI(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "git empty url",
-			in:      "git+https://",
-			wantErr: false, // trims to https:// — caller's clone will fail loudly
+			name:       "git empty url",
+			in:         "git+https://",
+			wantErr:    false, // trims to https:// — caller's clone will fail loudly
 			wantScheme: "git",
 			wantClone:  "https://",
 		},
@@ -146,6 +150,116 @@ func TestParseRemoteURI(t *testing.T) {
 				t.Errorf("subpath = %q, want %q", p.subpath, tc.wantSubpath)
 			}
 		})
+	}
+}
+
+func TestParseWikiURI(t *testing.T) {
+	cases := []struct {
+		name        string
+		in          string
+		wantClone   string
+		wantRef     string
+		wantSubpath string
+		wantErr     bool
+	}{
+		{
+			name:      "basic owner/repo derives .wiki.git",
+			in:        "wiki:planwerk/planwerk-review",
+			wantClone: "https://github.com/planwerk/planwerk-review.wiki.git",
+		},
+		{
+			name:      "trailing .git on repo is stripped before deriving",
+			in:        "wiki:planwerk/planwerk-review.git",
+			wantClone: "https://github.com/planwerk/planwerk-review.wiki.git",
+		},
+		{
+			name:      "owner and repo casing is preserved",
+			in:        "wiki:Planwerk/Planwerk-Review",
+			wantClone: "https://github.com/Planwerk/Planwerk-Review.wiki.git",
+		},
+		{
+			name:      "ref after @",
+			in:        "wiki:planwerk/planwerk-review@v1.2.3",
+			wantClone: "https://github.com/planwerk/planwerk-review.wiki.git",
+			wantRef:   "v1.2.3",
+		},
+		{
+			name:        "subpath inside the wiki",
+			in:          "wiki:planwerk/planwerk-review/review_patterns",
+			wantClone:   "https://github.com/planwerk/planwerk-review.wiki.git",
+			wantSubpath: "review_patterns",
+		},
+		{
+			name:        "subpath and ref together",
+			in:          "wiki:planwerk/planwerk-review/review_patterns@main",
+			wantClone:   "https://github.com/planwerk/planwerk-review.wiki.git",
+			wantRef:     "main",
+			wantSubpath: "review_patterns",
+		},
+		{
+			name:    "missing repo segment is rejected",
+			in:      "wiki:not-a-repo",
+			wantErr: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p, err := parseRemoteURI(tc.in)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("parseRemoteURI(%q) = no error, want error", tc.in)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseRemoteURI(%q) error: %v", tc.in, err)
+			}
+			if p.scheme != "wiki" {
+				t.Errorf("scheme = %q, want wiki", p.scheme)
+			}
+			if p.cloneURL != tc.wantClone {
+				t.Errorf("cloneURL = %q, want %q", p.cloneURL, tc.wantClone)
+			}
+			if p.ref != tc.wantRef {
+				t.Errorf("ref = %q, want %q", p.ref, tc.wantRef)
+			}
+			if p.subpath != tc.wantSubpath {
+				t.Errorf("subpath = %q, want %q", p.subpath, tc.wantSubpath)
+			}
+		})
+	}
+}
+
+func TestResolveRemote_WikiSchemeReachesFetch(t *testing.T) {
+	cacheDir := t.TempDir()
+	var gotScheme, gotURL string
+	restore := stubFetch(func(p parsedURI, dest string) error {
+		gotScheme = p.scheme
+		gotURL = p.cloneURL
+		return os.MkdirAll(dest, 0o700)
+	})
+	defer restore()
+
+	if _, err := ResolveRemote("wiki:planwerk/planwerk-review", RemoteOptions{CacheDir: cacheDir}); err != nil {
+		t.Fatalf("ResolveRemote: %v", err)
+	}
+	if gotScheme != "wiki" {
+		t.Errorf("fetch scheme = %q, want wiki", gotScheme)
+	}
+	if want := "https://github.com/planwerk/planwerk-review.wiki.git"; gotURL != want {
+		t.Errorf("fetch cloneURL = %q, want %q", gotURL, want)
+	}
+}
+
+func TestWikiAuthHeader(t *testing.T) {
+	got := wikiAuthHeader("tok-123")
+	// base64("x-access-token:tok-123")
+	want := "Authorization: Basic eC1hY2Nlc3MtdG9rZW46dG9rLTEyMw=="
+	if got != want {
+		t.Errorf("wikiAuthHeader = %q, want %q", got, want)
+	}
+	if strings.Contains(got, "tok-123") {
+		t.Error("auth header must not embed the raw token in cleartext")
 	}
 }
 
@@ -300,4 +414,88 @@ func stubFetch(fn func(p parsedURI, dest string) error) func() {
 	old := fetchRemote
 	fetchRemote = fn
 	return func() { fetchRemote = old }
+}
+
+// TestWikiCloneCmd_TokenStaysOutOfArgv proves the wiki clone passes its auth
+// token through the environment, not the process command line — argv is
+// world-readable via `ps`/`/proc/<pid>/cmdline` on a shared host, so a token
+// there would leak to any local user during the clone window.
+func TestWikiCloneCmd_TokenStaysOutOfArgv(t *testing.T) {
+	const token = "ghs_supersecrettoken"
+	header := wikiAuthHeader(token) // "Authorization: Basic <base64(x-access-token:token)>"
+	cmd := wikiCloneCmd(context.Background(), "https://github.com/o/r.wiki.git", "/tmp/dest", token)
+
+	for _, a := range cmd.Args {
+		if strings.Contains(a, token) || strings.Contains(a, header) || strings.Contains(a, "extraHeader") {
+			t.Errorf("token/header leaked into argv: %q", a)
+		}
+	}
+
+	var valueSet, countSet, keySet bool
+	for _, e := range cmd.Env {
+		switch e {
+		case "GIT_CONFIG_VALUE_0=" + header:
+			valueSet = true
+		case "GIT_CONFIG_COUNT=1":
+			countSet = true
+		case "GIT_CONFIG_KEY_0=http.extraHeader":
+			keySet = true
+		}
+	}
+	if !countSet || !keySet || !valueSet {
+		t.Errorf("token must be injected via GIT_CONFIG_COUNT/KEY_0/VALUE_0 env; count=%v key=%v value=%v", countSet, keySet, valueSet)
+	}
+}
+
+// TestWikiCloneCmd_NoTokenLeavesEnvUntouched checks the anonymous (public-wiki)
+// path adds no GIT_CONFIG_* plumbing.
+func TestWikiCloneCmd_NoTokenLeavesEnvUntouched(t *testing.T) {
+	cmd := wikiCloneCmd(context.Background(), "https://github.com/o/r.wiki.git", "/tmp/dest", "")
+	if cmd.Env != nil {
+		t.Errorf("no token should leave Env nil (inherited), got %v", cmd.Env)
+	}
+}
+
+// TestGitCheckout_RefIsNotParsedAsOption proves the --end-of-options guard: a
+// ref beginning with '-' (an attacker-controlled wiki.ref / URI fragment) is
+// rejected as a revision rather than executed as a git option, while a
+// legitimate ref still checks out.
+func TestGitCheckout_RefIsNotParsedAsOption(t *testing.T) {
+	dir := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	git("init", "-q")
+	git("config", "user.email", "t@example.com")
+	git("config", "user.name", "tester")
+	git("commit", "-q", "-m", "c1", "--allow-empty")
+	git("branch", "feature")
+
+	headBefore := func() string {
+		t.Helper()
+		cmd := exec.Command("git", "-C", dir, "symbolic-ref", "-q", "HEAD")
+		out, _ := cmd.Output()
+		return strings.TrimSpace(string(out))
+	}
+	before := headBefore()
+
+	// "--detach" is a real git checkout option that, unguarded, would succeed and
+	// detach HEAD. With the guard it must be treated as a (non-existent) revision
+	// and error, leaving HEAD on its branch.
+	if err := gitCheckout(context.Background(), dir, "--detach"); err == nil {
+		t.Error("a ref beginning with '-' must not be accepted as a git option")
+	}
+	if now := headBefore(); now != before {
+		t.Errorf("HEAD moved despite the rejected option-like ref: %q -> %q", before, now)
+	}
+
+	// A legitimate ref still checks out through the same guard.
+	if err := gitCheckout(context.Background(), dir, "feature"); err != nil {
+		t.Fatalf("legitimate ref checkout failed under the guard: %v", err)
+	}
 }

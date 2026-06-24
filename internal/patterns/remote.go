@@ -3,6 +3,7 @@ package patterns
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,17 +16,21 @@ import (
 	"time"
 )
 
-// Remote pattern source URIs come in two flavors:
+// Remote pattern source URIs come in three flavors:
 //
 //	git+https://example.com/repo.git[#ref[:subpath]]
 //	github:owner/repo[/subpath][@ref]
+//	wiki:owner/repo[/subpath][@ref]
 //
-// Anything that does not start with a known prefix is treated as a local
-// directory path so existing call sites keep working unchanged.
+// The wiki: form points at a GitHub repository's standalone wiki clone
+// (<owner>/<repo>.wiki.git), distinct from cloning the code repo. Anything that
+// does not start with a known prefix is treated as a local directory path so
+// existing call sites keep working unchanged.
 const (
 	prefixGitHTTPS = "git+https://"
 	prefixGitHTTP  = "git+http://"
 	prefixGitHub   = "github:"
+	prefixWiki     = "wiki:"
 )
 
 // DefaultRemoteTTL is the default age at which a cached remote pattern
@@ -53,17 +58,18 @@ type RemoteOptions struct {
 func IsRemote(src string) bool {
 	return strings.HasPrefix(src, prefixGitHTTPS) ||
 		strings.HasPrefix(src, prefixGitHTTP) ||
-		strings.HasPrefix(src, prefixGitHub)
+		strings.HasPrefix(src, prefixGitHub) ||
+		strings.HasPrefix(src, prefixWiki)
 }
 
 // parsedURI is the internal representation of a remote pattern URI after
 // env-var expansion and parsing.
 type parsedURI struct {
-	raw     string // original URI as the user typed it (post env-var expansion)
-	scheme  string // "github" or "git"
-	cloneURL string // URL passed to git/gh
-	ref     string // branch/tag/sha to check out, or "" for default
-	subpath string // path inside the repo to load patterns from, or "" for root
+	raw      string // original URI as the user typed it (post env-var expansion)
+	scheme   string // "github", "git", or "wiki"
+	cloneURL string // URL passed to git/gh (never carries a token; see fetchRemote)
+	ref      string // branch/tag/sha to check out, or "" for default
+	subpath  string // path inside the repo to load patterns from, or "" for root
 }
 
 // fingerprint returns a stable short hash of the cache-affecting portions of
@@ -165,6 +171,8 @@ func parseRemoteURI(uri string) (parsedURI, error) {
 		return parseGitURI(uri)
 	case strings.HasPrefix(uri, prefixGitHub):
 		return parseGitHubURI(uri)
+	case strings.HasPrefix(uri, prefixWiki):
+		return parseWikiURI(uri)
 	default:
 		return parsedURI{}, fmt.Errorf("unrecognized remote pattern URI: %q", uri)
 	}
@@ -202,23 +210,55 @@ func parseGitURI(uri string) (parsedURI, error) {
 // no leading/trailing slash.
 var githubRepoRe = regexp.MustCompile(`^([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)/([A-Za-z0-9._-]+)`)
 
-func parseGitHubURI(uri string) (parsedURI, error) {
-	body := strings.TrimPrefix(uri, prefixGitHub)
-	var ref string
+// parseOwnerRepoURI splits the body of a github:/wiki: URI (everything after the
+// scheme prefix) into its owner, repo, subpath, and ref. ok is false when the
+// body does not start with a valid owner/repo, leaving each caller to build its
+// own scheme-specific error.
+func parseOwnerRepoURI(body string) (owner, repo, subpath, ref string, ok bool) {
 	if i := strings.Index(body, "@"); i >= 0 {
 		ref = body[i+1:]
 		body = body[:i]
 	}
 	m := githubRepoRe.FindStringSubmatch(body)
 	if m == nil {
+		return "", "", "", "", false
+	}
+	owner, repo = m[1], m[2]
+	subpath = strings.TrimPrefix(body[len(m[0]):], "/")
+	return owner, repo, subpath, ref, true
+}
+
+func parseGitHubURI(uri string) (parsedURI, error) {
+	owner, repo, subpath, ref, ok := parseOwnerRepoURI(strings.TrimPrefix(uri, prefixGitHub))
+	if !ok {
 		return parsedURI{}, fmt.Errorf("invalid github: pattern URI %q (expected github:owner/repo[/subpath][@ref])", uri)
 	}
-	owner, repo := m[1], m[2]
-	subpath := strings.TrimPrefix(body[len(m[0]):], "/")
 	return parsedURI{
 		raw:      uri,
 		scheme:   "github",
 		cloneURL: owner + "/" + repo,
+		ref:      ref,
+		subpath:  subpath,
+	}, nil
+}
+
+// parseWikiURI parses a wiki:owner/repo[/subpath][@ref] URI into a clone of the
+// repository's standalone GitHub wiki (https://github.com/owner/repo.wiki.git),
+// which is a separate git repository from the code repo. It mirrors
+// parseGitHubURI's owner/repo parsing but derives the .wiki.git clone URL and
+// uses the "wiki" scheme so fetchRemote knows to authenticate it with a GitHub
+// token. A trailing ".git" on the repo segment (wiki:owner/repo.git) is stripped
+// so the derived URL never becomes "repo.git.wiki.git".
+func parseWikiURI(uri string) (parsedURI, error) {
+	owner, repo, subpath, ref, ok := parseOwnerRepoURI(strings.TrimPrefix(uri, prefixWiki))
+	if !ok {
+		return parsedURI{}, fmt.Errorf("invalid wiki: pattern URI %q (expected wiki:owner/repo[/subpath][@ref])", uri)
+	}
+	repo = strings.TrimSuffix(repo, ".git")
+	return parsedURI{
+		raw:      uri,
+		scheme:   "wiki",
+		cloneURL: "https://github.com/" + owner + "/" + repo + ".wiki.git",
 		ref:      ref,
 		subpath:  subpath,
 	}, nil
@@ -280,6 +320,18 @@ var fetchRemote = func(p parsedURI, dest string) error {
 	case "github":
 		args := []string{"repo", "clone", p.cloneURL, dest, "--", "--filter=blob:none"}
 		cmd = exec.CommandContext(ctx, "gh", args...)
+	case "wiki":
+		// A repo's wiki is a standalone .wiki.git clone that `gh repo clone`
+		// cannot fetch, so it goes through plain `git clone`. A private wiki
+		// needs auth: pass a GitHub token (best-effort, via `gh auth token`) as
+		// a one-shot http.extraHeader through the GIT_CONFIG_* environment (see
+		// wikiCloneCmd) so it never lands in the process command line, the cloned
+		// repo's .git/config, or git's stderr — the clone URL itself stays
+		// tokenless. A full clone (no blob:none filter) keeps every ref's objects
+		// local so a later `git checkout <wiki-ref>` needs no second authenticated
+		// fetch. When no token is available the clone proceeds anonymously, which
+		// still works for a public wiki.
+		cmd = wikiCloneCmd(ctx, p.cloneURL, dest, ghAuthToken(ctx))
 	default:
 		args := []string{"clone", "--filter=blob:none", p.cloneURL, dest}
 		cmd = exec.CommandContext(ctx, "git", args...)
@@ -292,13 +344,46 @@ var fetchRemote = func(p parsedURI, dest string) error {
 	if p.ref != "" {
 		coCtx, coCancel := context.WithTimeout(context.Background(), remoteCheckoutTimeout)
 		defer coCancel()
-		co := exec.CommandContext(coCtx, "git", "-C", dest, "checkout", p.ref)
-		co.Stderr = os.Stderr
-		if err := co.Run(); err != nil {
+		if err := gitCheckout(coCtx, dest, p.ref); err != nil {
 			return fmt.Errorf("checkout %s: %w", p.ref, err)
 		}
 	}
 	return nil
+}
+
+// wikiCloneCmd builds the `git clone` command for a wiki source. When a token is
+// supplied it is passed as an http.extraHeader through the GIT_CONFIG_*
+// environment, NOT a `-c http.extraHeader=...` argv entry: a process's argv is
+// world-readable on a shared host (`ps auxww`, /proc/<pid>/cmdline), so a token
+// there would leak to any local user for the whole clone window, whereas the
+// environment is readable only by the process owner. GIT_CONFIG_COUNT /
+// GIT_CONFIG_KEY_0 / GIT_CONFIG_VALUE_0 is git's supported way to inject one-shot
+// config without writing it to the clone's .git/config.
+func wikiCloneCmd(ctx context.Context, cloneURL, dest, token string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, "git", "clone", cloneURL, dest)
+	if token != "" {
+		cmd.Env = append(os.Environ(),
+			"GIT_CONFIG_COUNT=1",
+			"GIT_CONFIG_KEY_0=http.extraHeader",
+			"GIT_CONFIG_VALUE_0="+wikiAuthHeader(token),
+		)
+	}
+	return cmd
+}
+
+// gitCheckout checks out ref in the repository at dest. ref is treated strictly
+// as a revision: the --end-of-options guard stops git from parsing a ref that
+// begins with '-' as an option. p.ref is unvalidated and can reach here from an
+// attacker-controlled wiki.ref / config / URI fragment (e.g. "--orphan" or
+// "--detach"); without the guard git would execute it as a command-line option.
+// A plain `--` separator is the wrong tool — git reads the token after it as a
+// pathspec and fails to switch — so --end-of-options, which ends option parsing
+// without entering pathspec mode, is the correct guard. It is applied uniformly
+// to the github/git/wiki checkout paths, all of which take an unvalidated ref.
+func gitCheckout(ctx context.Context, dest, ref string) error {
+	cmd := exec.CommandContext(ctx, "git", "-C", dest, "checkout", "--end-of-options", ref)
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
 
 const (
@@ -306,7 +391,31 @@ const (
 	remoteCheckoutTimeout = 30 * time.Second
 	remoteLockTimeout     = 5 * time.Minute
 	remoteLockPoll        = 100 * time.Millisecond
+	ghAuthTokenTimeout    = 10 * time.Second
 )
+
+// ghAuthToken returns a GitHub token for authenticating a private wiki clone, or
+// "" when none is available. It shells out to `gh auth token`; any failure (gh
+// missing, not logged in, no token) yields "" so a public wiki still clones
+// anonymously rather than the run aborting. The token is never logged.
+func ghAuthToken(parent context.Context) string {
+	ctx, cancel := context.WithTimeout(parent, ghAuthTokenTimeout)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "gh", "auth", "token").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// wikiAuthHeader builds the HTTP Basic Authorization header value git sends when
+// cloning a private wiki over https. GitHub accepts a personal/installation
+// token as the password with any username; "x-access-token" is the conventional
+// username for token auth.
+func wikiAuthHeader(token string) string {
+	cred := base64.StdEncoding.EncodeToString([]byte("x-access-token:" + token))
+	return "Authorization: Basic " + cred
+}
 
 // acquireLock takes an exclusive lock on the cache entry directory by
 // creating a sentinel file with O_CREATE|O_EXCL. Concurrent processes spin
