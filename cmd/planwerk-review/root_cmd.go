@@ -34,6 +34,8 @@ func newRootCmd(deps *runtimeDeps) *cobra.Command {
 	var claudeModel string
 	var claudeEffort string
 	var claudeInheritUserConfig bool
+	var wikiEnable, wikiDisable bool
+	var wikiRef string
 
 	rootCmd := &cobra.Command{
 		Use:   "planwerk-review <pr-ref>",
@@ -167,6 +169,7 @@ or short form (owner/repo#123).`,
 
 			opts := cfg.ToReviewOptions(deps.version)
 			opts.Remote = deps.remoteOpts
+			opts.Wiki = resolveWikiOptions(wikiEnable, wikiDisable, cmd.Flags().Changed("wiki"), cmd.Flags().Changed("no-wiki"), wikiRef, cmd.Flags().Changed("wiki-ref"), deps.fileCfg.Wiki)
 			return review.Run(os.Stdout, opts, deps.claude)
 		},
 	}
@@ -203,6 +206,7 @@ or short form (owner/repo#123).`,
 	flags.IntVar(&cfg.MaxFindings, "max-findings", 0, "Cap on findings returned (<=0 disables cap)")
 	flags.BoolVar(&cfg.Local, "local", false, "Operate on the current working directory instead of cloning into a temp dir")
 	flags.BoolVar(&cfg.Force, "force", false, "With --local, skip the confirmation prompt when the working tree is dirty")
+	addWikiFlags(flags, &wikiEnable, &wikiDisable, &wikiRef)
 	flags.BoolVar(&showVersion, "version", false, "Show version information and exit")
 
 	return rootCmd

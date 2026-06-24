@@ -23,6 +23,8 @@ func newImplementCmd(deps *runtimeDeps) *cobra.Command {
 	var implementCfg cli.ImplementConfig
 	var planModel string
 	var planEffort string
+	var wikiEnable, wikiDisable bool
+	var wikiRef string
 
 	implementCmd := &cobra.Command{
 		Use:   "implement <issue-ref>",
@@ -138,6 +140,7 @@ or short form (owner/repo#123).`,
 			defer client.LogUsageSummary(cmd.ErrOrStderr())
 			opts := implementCfg.ToImplementOptions(deps.version)
 			opts.Remote = deps.remoteOpts
+			opts.Wiki = resolveWikiOptions(wikiEnable, wikiDisable, cmd.Flags().Changed("wiki"), cmd.Flags().Changed("no-wiki"), wikiRef, cmd.Flags().Changed("wiki-ref"), deps.fileCfg.Wiki)
 			if implementCfg.PrintBarePrompt {
 				return implement.PrintBarePrompt(cmd.OutOrStdout(), opts, claude.BuildBareImplementPrompt)
 			}
@@ -166,6 +169,7 @@ or short form (owner/repo#123).`,
 	implementFlags.IntVar(&implementCfg.MaxPatterns, "max-patterns", patterns.DefaultMaxPatternsInPrompt, "Max review patterns injected into the prompt (<=0 disables truncation, env: "+envMaxPatterns+")")
 	implementFlags.BoolVar(&implementCfg.Local, "local", false, "Operate on the current working directory instead of cloning into a temp dir")
 	implementFlags.BoolVar(&implementCfg.Force, "force", false, "With --local, skip the confirmation prompt when the working tree is dirty")
+	addWikiFlags(implementFlags, &wikiEnable, &wikiDisable, &wikiRef)
 
 	return implementCmd
 }

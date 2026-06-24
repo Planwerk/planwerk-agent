@@ -7,9 +7,26 @@ import (
 	"strings"
 	"time"
 
+	"github.com/spf13/pflag"
+
 	"github.com/planwerk/planwerk-review/internal/claude"
+	"github.com/planwerk/planwerk-review/internal/cli"
 	"github.com/planwerk/planwerk-review/internal/patterns"
 )
+
+// addWikiFlags registers the --wiki / --no-wiki / --wiki-ref flags on a
+// subcommand's flag set, binding them to the given variables. It is shared by
+// the review, audit, propose, and implement commands so the flag names, default
+// (wiki off), and help text cannot drift between them. The wiki is off by
+// default and requires an explicit per-repo opt-in: a GitHub Wiki is a separate
+// permission surface (often world-editable, never gated by branch protection or
+// PR review), so enabling it grants its unreviewed editors influence over the
+// agent's prompts.
+func addWikiFlags(flags *pflag.FlagSet, enable, disable *bool, ref *string) {
+	flags.BoolVar(enable, "wiki", false, "Use the target repo's GitHub Wiki as a knowledge source (review patterns + project memory; off by default — enabling trusts the wiki's unreviewed editors; env: "+envWiki+")")
+	flags.BoolVar(disable, "no-wiki", false, "Do not use the target repo's GitHub Wiki (overrides --wiki)")
+	flags.StringVar(ref, "wiki-ref", "", "Pin the wiki to a branch, tag, or commit (env: "+envWikiRef+"; empty uses the wiki's default branch)")
+}
 
 // envMaxPatterns is the environment variable used to override the default
 // maximum number of review patterns injected into the prompt.
@@ -18,6 +35,15 @@ const envMaxPatterns = "PLANWERK_MAX_PATTERNS"
 // envRemotePatternsTTL is the environment variable used to override the
 // default refresh TTL for remotely-fetched pattern sources.
 const envRemotePatternsTTL = "PLANWERK_REMOTE_PATTERNS_TTL"
+
+// envWiki toggles using the target repo's GitHub Wiki as a knowledge source.
+// Any truthy value (1, true, yes, on) enables it and any falsy value (0, false,
+// no, off) disables it; the --wiki/--no-wiki CLI flags take precedence.
+const envWiki = "PLANWERK_WIKI"
+
+// envWikiRef pins the wiki to a branch, tag, or commit. The --wiki-ref CLI flag
+// takes precedence when explicitly set.
+const envWikiRef = "PLANWERK_WIKI_REF"
 
 // envShowClaudeOutput toggles live streaming of Claude Code output. Any
 // truthy value (1, true, yes, on; case-insensitive) enables it; the CLI
@@ -208,6 +234,66 @@ func resolveRemotePatternsTTL(flagValue time.Duration, flagSet bool) (time.Durat
 		return v, nil
 	}
 	return patterns.DefaultRemoteTTL, nil
+}
+
+// lookupBoolEnv parses a truthy/falsy boolean from the named environment
+// variable. ok is false when the variable is unset, empty, or holds an
+// unrecognized value, so the caller falls through to the next precedence tier.
+// Truthy: 1/true/yes/on; falsy: 0/false/no/off (case-insensitive).
+func lookupBoolEnv(name string) (value, ok bool) {
+	raw, present := os.LookupEnv(name)
+	if !present {
+		return false, false
+	}
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "1", "true", "yes", "on":
+		return true, true
+	case "0", "false", "no", "off":
+		return false, true
+	default:
+		return false, false
+	}
+}
+
+// resolveWikiOptions assembles the effective WikiOptions for the target repo's
+// GitHub Wiki knowledge source. Enabled precedence (highest first): --no-wiki
+// (overrides --wiki), an explicit --wiki, PLANWERK_WIKI, the config file, then
+// the default-off behavior. The wiki is off by default and must be opted into
+// per repo, because it is a separate, often world-editable permission surface.
+// Ref precedence: --wiki-ref, PLANWERK_WIKI_REF, then the config file. The repo
+// override comes from the config file only — the issue defines no flag for it.
+func resolveWikiOptions(enable, disable, enableChanged, disableChanged bool, refFlag string, refChanged bool, fc cli.WikiFileConfig) patterns.WikiOptions {
+	enabled := false
+	switch {
+	case disableChanged && disable:
+		enabled = false
+	case enableChanged:
+		enabled = enable
+	default:
+		if v, ok := lookupBoolEnv(envWiki); ok {
+			enabled = v
+		} else if fc.Enabled != nil {
+			enabled = *fc.Enabled
+		}
+	}
+
+	var ref string
+	switch {
+	case refChanged:
+		ref = refFlag
+	default:
+		if v := strings.TrimSpace(os.Getenv(envWikiRef)); v != "" {
+			ref = v
+		} else if fc.Ref != nil {
+			ref = *fc.Ref
+		}
+	}
+
+	opts := patterns.WikiOptions{Enabled: enabled, Ref: ref}
+	if fc.Repo != nil {
+		opts.Repo = *fc.Repo
+	}
+	return opts
 }
 
 // resolveMaxPatterns returns the effective max-patterns limit. Precedence:

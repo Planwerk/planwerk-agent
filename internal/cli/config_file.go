@@ -22,6 +22,18 @@ type FileConfig struct {
 	Review  ReviewFileConfig  `yaml:"review"`
 	Propose ProposeFileConfig `yaml:"propose"`
 	Audit   AuditFileConfig   `yaml:"audit"`
+	Wiki    WikiFileConfig    `yaml:"wiki"`
+}
+
+// WikiFileConfig is the top-level `wiki:` section of .planwerk/config.yaml. It
+// configures the target repo's GitHub Wiki as a knowledge source for review,
+// audit, propose, and the implement plan step. Pointer fields distinguish
+// "absent" (nil) from "set", which matters for Enabled where the resolver must
+// honor an explicit true or false over the default-off behavior.
+type WikiFileConfig struct {
+	Enabled *bool   `yaml:"enabled"`
+	Repo    *string `yaml:"repo"`
+	Ref     *string `yaml:"ref"`
 }
 
 type ReviewFileConfig struct {
