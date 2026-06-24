@@ -545,6 +545,37 @@ func TestRun_SkipSuppressionDropsUnchangedRepeats(t *testing.T) {
 	}
 }
 
+func TestRun_WikiDisabledLeavesRunUnchanged(t *testing.T) {
+	// With the wiki disabled (the default), ResolveWiki short-circuits without
+	// touching the network: no project memory is injected into the review
+	// context and no wiki provenance line is rendered, so the run is unchanged.
+	// Not t.Parallel(): cache.SetDir mutates a package-level variable.
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	pr := fakePR(t, "acme", "widgets", 77, "sha-wiki-off")
+	var gotMemory string
+	claudeMock := &configurableClaude{
+		review: func(dir string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
+			gotMemory = ctx.Memory
+			return &report.ReviewResult{Summary: "ok"}, nil
+		},
+	}
+	gh := &mockGitHub{fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil }}
+	runner := &Runner{Claude: claudeMock, GitHub: gh}
+
+	var out bytes.Buffer
+	if err := runner.Run(&out, baseOpts()); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if gotMemory != "" {
+		t.Errorf("a disabled wiki must leave ReviewContext.Memory empty, got %q", gotMemory)
+	}
+	if strings.Contains(out.String(), "Wiki:") {
+		t.Errorf("a wiki-disabled review must not render a Wiki provenance line, got:\n%s", out.String())
+	}
+}
+
 func TestRun_AdversarialErrorDoesNotFailRun(t *testing.T) {
 	// Secondary passes (adversarial, coverage, compliance) log warnings on
 	// failure but must not abort the review — the primary result is still

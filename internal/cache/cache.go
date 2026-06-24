@@ -116,9 +116,15 @@ func Key(owner, repo string, number int, headSHA string, flags ...string) string
 }
 
 // RepoKey generates a cache key for repository analysis.
-// It includes the HEAD SHA so the cache invalidates when the repo changes.
-func RepoKey(owner, repo, headSHA string) string {
-	h := sha256.Sum256([]byte(fmt.Sprintf("propose:%s/%s@%s", owner, repo, headSHA)))
+// It includes the HEAD SHA so the cache invalidates when the repo changes,
+// plus any flags that alter the analysis output (e.g. the resolved wiki commit)
+// so a moving wiki busts the cache rather than serving a stale proposal.
+func RepoKey(owner, repo, headSHA string, flags ...string) string {
+	input := fmt.Sprintf("propose:%s/%s@%s", owner, repo, headSHA)
+	for _, f := range flags {
+		input += "+" + f
+	}
+	h := sha256.Sum256([]byte(input))
 	return fmt.Sprintf("%x", h[:16])
 }
 

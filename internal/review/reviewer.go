@@ -104,6 +104,13 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		slog.Info("working tree left on PR branch", "branch", pr.HeadBranch, "dir", pr.Dir)
 	}
 
+	// 1b. Resolve the target repo's GitHub Wiki (best-effort) before the cache
+	// key, so the resolved wiki commit folds into the key — a wiki edit then
+	// busts the cache instead of being silently ignored on a cache hit — and so
+	// the same commit can be recorded in the report header. An absent, disabled,
+	// or offline wiki returns the zero value and leaves the run unchanged.
+	wiki := patterns.ResolveWiki(pr.Owner, pr.Repo, opts.Wiki, opts.Remote)
+
 	// 2. Check cache (include flags that affect output in the cache key)
 	var cacheFlags []string
 	if opts.Thorough {
@@ -115,10 +122,15 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	if opts.CoverageMap {
 		cacheFlags = append(cacheFlags, "coverage-map")
 	}
+	if wiki.CommitSHA != "" {
+		cacheFlags = append(cacheFlags, "wiki="+wiki.CommitSHA)
+	}
 	cacheKey := cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA, cacheFlags...)
 	if !opts.NoCache {
 		if result, ok := cache.Get(cacheKey, opts.CacheMaxAge); ok {
 			slog.Info("using cached review result")
+			result.WikiRepo = wiki.Repo
+			result.WikiCommit = wiki.CommitSHA
 			return r.renderResult(w, result, pr, opts, nil)
 		}
 	}
@@ -134,6 +146,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		NoLocal: opts.NoLocalPatterns,
 		NoRepo:  opts.NoRepoPatterns,
 		RepoDir: pr.Dir,
+		Wiki:    wiki.PatternsDir,
 		Extra:   opts.PatternDirs,
 	})
 	if err != nil {
@@ -218,6 +231,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		NewFeatures: newFeatures,
 		TodoContent: todoContent,
 		Glossary:    glossaryBody,
+		Memory:      wiki.Memory,
 	}
 
 	var (
@@ -338,7 +352,10 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		}
 	}
 
-	// 13. Render
+	// 13. Render. Record the resolved wiki provenance on the result (excluded
+	// from the cached payload, so it is re-attached on a cache hit too).
+	result.WikiRepo = wiki.Repo
+	result.WikiCommit = wiki.CommitSHA
 	slog.Info("review complete")
 	return r.renderResult(w, result, pr, opts, coverageResult)
 }

@@ -82,12 +82,24 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		headSHA = ""
 	}
 
-	cacheKey := cache.RepoKey(owner, name, headSHA)
+	// Resolve the target repo's GitHub Wiki (best-effort) before the cache key,
+	// so the resolved wiki commit folds into the key and can be recorded in the
+	// report header. An absent, disabled, or offline wiki returns the zero value
+	// and leaves the run unchanged.
+	wiki := patterns.ResolveWiki(owner, name, opts.Wiki, opts.Remote)
+
+	var repoKeyFlags []string
+	if wiki.CommitSHA != "" {
+		repoKeyFlags = append(repoKeyFlags, "wiki="+wiki.CommitSHA)
+	}
+	cacheKey := cache.RepoKey(owner, name, headSHA, repoKeyFlags...)
 	if !opts.NoCache && headSHA != "" {
 		if data, ok := cache.GetRaw(cacheKey, opts.CacheMaxAge); ok {
 			var result ProposalResult
 			if err := json.Unmarshal(data, &result); err == nil {
 				slog.Info("using cached proposal result — skipping clone", "repo", opts.RepoRef)
+				result.WikiRepo = wiki.Repo
+				result.WikiCommit = wiki.CommitSHA
 				r.applyIssueDedupe(&result, owner, name, opts)
 				return renderProposals(w, &result, &github.Repo{Owner: owner, Name: name}, opts)
 			}
@@ -112,6 +124,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		NoLocal: opts.NoLocalPatterns,
 		NoRepo:  opts.NoRepoPatterns,
 		RepoDir: repo.Dir,
+		Wiki:    wiki.PatternsDir,
 		Extra:   opts.PatternDirs,
 	})
 	if err != nil {
@@ -152,10 +165,13 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		RepoName:    repo.FullName(),
 		OutOfScope:  outOfScope,
 		Glossary:    glossaryBody,
+		Memory:      wiki.Memory,
 	})
 	if err != nil {
 		return fmt.Errorf("claude analysis: %w", err)
 	}
+	result.WikiRepo = wiki.Repo
+	result.WikiCommit = wiki.CommitSHA
 
 	if !opts.NoCache && headSHA != "" {
 		if data, err := json.Marshal(result); err == nil {

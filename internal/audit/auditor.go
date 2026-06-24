@@ -104,10 +104,19 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		headSHA = ""
 	}
 
+	// Resolve the target repo's GitHub Wiki (best-effort) before the cache key,
+	// so the resolved wiki commit folds into the key and can be recorded in the
+	// report header. An absent, disabled, or offline wiki returns the zero value
+	// and leaves the run unchanged.
+	wiki := patterns.ResolveWiki(owner, name, opts.Wiki, opts.Remote)
+
 	// Build cache key (includes min-severity so filtered caches don't leak).
 	var cacheFlags []string
 	if opts.MinSeverity != "" {
 		cacheFlags = append(cacheFlags, "min="+string(opts.MinSeverity))
+	}
+	if wiki.CommitSHA != "" {
+		cacheFlags = append(cacheFlags, "wiki="+wiki.CommitSHA)
 	}
 	cacheKey := cache.AuditKey(owner, name, headSHA, cacheFlags...)
 
@@ -116,6 +125,8 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 			var result report.ReviewResult
 			if err := json.Unmarshal(data, &result); err == nil {
 				slog.Info("using cached audit result — skipping clone", "repo", opts.RepoRef)
+				result.WikiRepo = wiki.Repo
+				result.WikiCommit = wiki.CommitSHA
 				r.applyIssueDedupe(&result, owner, name, opts)
 				return renderAudit(w, &result, &github.Repo{Owner: owner, Name: name}, opts)
 			}
@@ -140,6 +151,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		NoLocal: opts.NoLocalPatterns,
 		NoRepo:  opts.NoRepoPatterns,
 		RepoDir: repo.Dir,
+		Wiki:    wiki.PatternsDir,
 		Extra:   opts.PatternDirs,
 	})
 	if err != nil {
@@ -160,10 +172,13 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		MaxPatterns: opts.MaxPatterns,
 		MaxFindings: opts.MaxFindings,
 		RepoName:    repo.FullName(),
+		Memory:      wiki.Memory,
 	})
 	if err != nil {
 		return fmt.Errorf("claude audit: %w", err)
 	}
+	result.WikiRepo = wiki.Repo
+	result.WikiCommit = wiki.CommitSHA
 
 	if !opts.NoCache && headSHA != "" {
 		if data, err := json.Marshal(result); err == nil {

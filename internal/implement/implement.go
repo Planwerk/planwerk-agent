@@ -377,7 +377,16 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	defer repo.Cleanup()
 	slog.Info("cloned repository", "dir", repo.Dir)
 
-	ctx.Patterns = loadPatterns(opts, repo.Dir)
+	// Resolve the target repo's GitHub Wiki (best-effort): its review patterns
+	// flow into the implement prompt through the shared pattern catalog, and its
+	// project memory is injected into the planning prompt. An absent, disabled,
+	// or offline wiki returns the zero value and leaves the run unchanged.
+	wiki := patterns.ResolveWiki(owner, name, opts.Wiki, opts.Remote)
+	if wiki.CommitSHA != "" {
+		slog.Info("resolved wiki", "repo", wiki.Repo, "commit", wiki.CommitSHA)
+	}
+	ctx.Patterns = loadPatterns(opts, repo.Dir, wiki.PatternsDir)
+	ctx.Memory = wiki.Memory
 
 	if planEnabled {
 		if err := r.preparePlan(w, opts, owner, name, repo.Dir, &ctx); err != nil {
@@ -1126,7 +1135,7 @@ func (r *Runner) runFinalize(w io.Writer, dir string, ctx Context) error {
 //
 // Failures are non-fatal: we fall back to running without patterns rather
 // than blocking the implementation on a corrupt pattern source.
-func loadPatterns(opts Options, repoDir string) []patterns.Pattern {
+func loadPatterns(opts Options, repoDir, wikiPatternsDir string) []patterns.Pattern {
 	tags := detect.Technologies(repoDir)
 	if len(tags) > 0 {
 		slog.Info("detected technologies", "technologies", strings.Join(tags, ", "))
@@ -1135,6 +1144,7 @@ func loadPatterns(opts Options, repoDir string) []patterns.Pattern {
 		NoLocal: opts.NoLocalPatterns,
 		NoRepo:  opts.NoRepoPatterns,
 		RepoDir: repoDir,
+		Wiki:    wikiPatternsDir,
 		Extra:   opts.PatternDirs,
 	})
 	if err != nil {
