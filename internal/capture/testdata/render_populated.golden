@@ -1,0 +1,55 @@
+# Captured Knowledge: planwerk/planwerk-review
+
+> Proposed by [planwerk-review](https://github.com/planwerk/planwerk-review) e1efd0d with Claude:claude-opus-4-8
+> Wiki: planwerk/planwerk-review.wiki @ abc1234
+
+## Proposed review patterns (1)
+
+Candidate review_patterns/ pages, deduplicated against the wiki and the pattern catalog.
+
+### `review_patterns/escape-untrusted-fences.md` (new)
+
+**Escape untrusted fences before injecting into prompts**
+
+The same fence-escaping fix recurred across the sync and capture prompt builders. [confidence: likely]
+
+```markdown
+<!-- planwerk-review: captured from planwerk/planwerk-review#138 -->
+
+# Review Pattern: Escape untrusted fences
+
+**Review-Area**: security
+**Severity**: WARNING
+
+## What to check
+
+Untrusted bodies injected into a fenced prompt block must have the closing delimiter escaped.
+
+## Why it matters
+
+A crafted body can close the fence early and smuggle instructions to the model.
+```
+
+## Proposed memory pages (1)
+
+Candidate memory/ pages, deduplicated against the wiki and the pattern catalog.
+
+### `memory/capture-is-propose-only.md` (update)
+
+**Capture is propose-only**
+
+Durable design decision drawn from the plan and the implementation report.
+
+```markdown
+<!-- planwerk-review: captured from planwerk/planwerk-review#138 -->
+
+The capture pass authors candidate wiki pages but never pushes them; the gated write-back is a separate step.
+```
+
+## Summary
+
+**Proposed**: 2 (1 patterns, 1 memory)
+
+> [!NOTE]
+> These are propose-only suggestions — nothing was written to the wiki.
+> Review them and add the ones worth keeping by hand.
