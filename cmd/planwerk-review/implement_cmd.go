@@ -84,6 +84,15 @@ fix is a clean no-op. The pass is non-fatal — a failed or escalated review nev
 changes the run's exit code. Disable it with --no-review. (The read-only
 --verify / --verify-adversarial flags remain available for a report-only run.)
 
+When the run uses --wiki, a read-only capture pass then proposes new project
+knowledge for the wiki: generalizable review findings become candidate review
+patterns, durable rationale from the plan and the implementation report becomes
+candidate memory pages, and every candidate is deduplicated against the wiki's
+existing entries and the bundled pattern catalog. It is propose-only — the
+suggestions surface in the run report and as an issue comment, and nothing is
+written to the wiki. The pass is non-fatal, is a clean no-op when nothing clears
+the bar, and is skipped without --wiki. Disable it with --no-capture.
+
 Finally, once the simplify and review passes are done, a finalize session opens
 the draft pull request: it pushes the feature branch and runs gh pr create with
 a description that walks the reviewer through the commits and links the issue
@@ -144,7 +153,7 @@ or short form (owner/repo#123).`,
 			if implementCfg.PrintBarePrompt {
 				return implement.PrintBarePrompt(cmd.OutOrStdout(), opts, claude.BuildBareImplementPrompt)
 			}
-			return implement.Run(cmd.OutOrStdout(), opts, client.Plan, claude.BuildPlanPrompt, client.Implement, claude.BuildImplementPrompt, client.VerifyImplementation, client.AdversarialReview, client.SimplifyFindings, client.ApplySimplifications, client.ApplyReview, client.FinalizePR)
+			return implement.Run(cmd.OutOrStdout(), opts, client.Plan, claude.BuildPlanPrompt, client.Implement, claude.BuildImplementPrompt, client.VerifyImplementation, client.AdversarialReview, client.SimplifyFindings, client.ApplySimplifications, client.ApplyReview, client.Capture, client.FinalizePR)
 		},
 	}
 
@@ -163,6 +172,7 @@ or short form (owner/repo#123).`,
 	implementFlags.BoolVar(&implementCfg.VerifyAdversarial, "verify-adversarial", false, "After implementing, red-team the produced diff for the bugs it introduces using the adversarial-review pass (independent of --verify)")
 	implementFlags.BoolVar(&implementCfg.NoSimplify, "no-simplify", false, "Skip the automatic simplify pass that folds over-engineering removals into the branch before the review phase")
 	implementFlags.BoolVar(&implementCfg.NoReview, "no-review", false, "Skip the automatic review-and-fix pass that folds review findings into the branch after the simplify pass")
+	implementFlags.BoolVar(&implementCfg.NoCapture, "no-capture", false, "Skip the read-only capture pass that proposes new wiki review patterns and memory pages (only runs with --wiki; writes nothing)")
 	implementFlags.StringSliceVar(&implementCfg.PatternDirs, "patterns", nil, "Additional pattern sources: local dirs, github:owner/repo[/sub][@ref], or git+https://...[#ref[:sub]]")
 	implementFlags.BoolVar(&implementCfg.NoRepoPatterns, "no-repo-patterns", false, "Ignore repo-specific patterns under .planwerk/review_patterns/ in the target repo")
 	implementFlags.BoolVar(&implementCfg.NoLocalPatterns, "no-local-patterns", false, "Ignore local patterns from the tool")
