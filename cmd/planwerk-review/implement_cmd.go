@@ -93,6 +93,17 @@ suggestions surface in the run report and as an issue comment, and nothing is
 written to the wiki. The pass is non-fatal, is a clean no-op when nothing clears
 the bar, and is skipped without --wiki. Disable it with --no-capture.
 
+By default the capture pass is propose-only — it writes nothing. Pass
+--capture-wiki to turn the accepted proposals into real wiki growth: a separate,
+mechanical write phase pushes the pages (each carrying its provenance marker)
+under the pinned tool identity, creating the wiki's first commit when it is still
+uninitialized. The write is gated to match the rest of the wiki surface — it
+confirms interactively first and refuses a non-TTY run without --yes. Claude
+never pushes: it authored the page bytes in the read-only proposal pass, and
+this phase performs the push. The write-back is non-fatal like the surrounding
+passes, so a refusal or push failure degrades back to propose-only without
+failing the run (env: PLANWERK_CAPTURE_WIKI, config: capture.wiki).
+
 Finally, once the simplify and review passes are done, a finalize session opens
 the draft pull request: it pushes the feature branch and runs gh pr create with
 a description that walks the reviewer through the commits and links the issue
@@ -147,6 +158,7 @@ or short form (owner/repo#123).`,
 			// print-prompt / dry-run early returns make zero calls and stay
 			// silent automatically.
 			defer client.LogUsageSummary(cmd.ErrOrStderr())
+			implementCfg.CaptureWiki = resolveCaptureWiki(implementCfg.CaptureWiki, cmd.Flags().Changed("capture-wiki"), deps.fileCfg.Capture)
 			opts := implementCfg.ToImplementOptions(deps.version)
 			opts.Remote = deps.remoteOpts
 			opts.Wiki = resolveWikiOptions(wikiEnable, wikiDisable, cmd.Flags().Changed("wiki"), cmd.Flags().Changed("no-wiki"), wikiRef, cmd.Flags().Changed("wiki-ref"), deps.fileCfg.Wiki)
@@ -173,6 +185,8 @@ or short form (owner/repo#123).`,
 	implementFlags.BoolVar(&implementCfg.NoSimplify, "no-simplify", false, "Skip the automatic simplify pass that folds over-engineering removals into the branch before the review phase")
 	implementFlags.BoolVar(&implementCfg.NoReview, "no-review", false, "Skip the automatic review-and-fix pass that folds review findings into the branch after the simplify pass")
 	implementFlags.BoolVar(&implementCfg.NoCapture, "no-capture", false, "Skip the read-only capture pass that proposes new wiki review patterns and memory pages (only runs with --wiki; writes nothing)")
+	implementFlags.BoolVar(&implementCfg.CaptureWiki, "capture-wiki", false, "Push the accepted capture pages to the wiki instead of only proposing them (off by default — a normal run is propose-only; confirms first, refuses a non-TTY run without --yes; env: "+envCaptureWiki+")")
+	implementFlags.BoolVar(&implementCfg.Yes, "yes", false, "Skip the --capture-wiki write confirmation prompt (for a non-interactive write)")
 	implementFlags.StringSliceVar(&implementCfg.PatternDirs, "patterns", nil, "Additional pattern sources: local dirs, github:owner/repo[/sub][@ref], or git+https://...[#ref[:sub]]")
 	implementFlags.BoolVar(&implementCfg.NoRepoPatterns, "no-repo-patterns", false, "Ignore repo-specific patterns under .planwerk/review_patterns/ in the target repo")
 	implementFlags.BoolVar(&implementCfg.NoLocalPatterns, "no-local-patterns", false, "Ignore local patterns from the tool")

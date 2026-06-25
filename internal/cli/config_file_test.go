@@ -113,6 +113,49 @@ wiki:
 	}
 }
 
+func TestLoadFileConfigCapture(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("capture:\n  wiki: true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, present, err := LoadFileConfig(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !present {
+		t.Fatalf("present = false, want true")
+	}
+	if cfg.Capture.Wiki == nil || !*cfg.Capture.Wiki {
+		t.Fatalf("capture.wiki = %v, want explicit true", cfg.Capture.Wiki)
+	}
+}
+
+// TestLoadFileConfigCaptureAbsent proves the edge: with no capture section the
+// pointer stays nil, so the resolver can tell "absent" from an explicit false.
+func TestLoadFileConfigCaptureAbsent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("wiki:\n  enabled: true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, _, err := LoadFileConfig(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Capture.Wiki != nil {
+		t.Fatalf("capture.wiki = %v, want nil when the section is absent", cfg.Capture.Wiki)
+	}
+}
+
+func TestLoadFileConfigCaptureUnknownKey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("capture:\n  bogus-field: 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := LoadFileConfig(path); err == nil {
+		t.Fatalf("expected error for unknown capture key, got nil")
+	}
+}
+
 func TestLoadFileConfigWikiUnknownKey(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(path, []byte("wiki:\n  bogus-field: 1\n"), 0o600); err != nil {

@@ -422,6 +422,8 @@ type ImplementConfig struct {
 	NoSimplify        bool
 	NoReview          bool
 	NoCapture         bool
+	CaptureWiki       bool
+	Yes               bool
 
 	PatternDirs     []string
 	NoRepoPatterns  bool
@@ -447,6 +449,8 @@ func (c ImplementConfig) ToImplementOptions(version string) implement.Options {
 		NoSimplify:        c.NoSimplify,
 		NoReview:          c.NoReview,
 		NoCapture:         c.NoCapture,
+		CaptureWiki:       c.CaptureWiki,
+		Yes:               c.Yes,
 		Version:           version,
 		PatternDirs:       c.PatternDirs,
 		NoRepoPatterns:    c.NoRepoPatterns,

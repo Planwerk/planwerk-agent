@@ -23,6 +23,7 @@ type FileConfig struct {
 	Propose ProposeFileConfig `yaml:"propose"`
 	Audit   AuditFileConfig   `yaml:"audit"`
 	Wiki    WikiFileConfig    `yaml:"wiki"`
+	Capture CaptureFileConfig `yaml:"capture"`
 }
 
 // WikiFileConfig is the top-level `wiki:` section of .planwerk/config.yaml. It
@@ -34,6 +35,15 @@ type WikiFileConfig struct {
 	Enabled *bool   `yaml:"enabled"`
 	Repo    *string `yaml:"repo"`
 	Ref     *string `yaml:"ref"`
+}
+
+// CaptureFileConfig is the top-level `capture:` section of
+// .planwerk/config.yaml. It gates the implement command's capture write-back —
+// whether the accepted proposal pages are pushed to the wiki — separate from the
+// read-only `wiki:` knobs. Wiki is a pointer so the resolver can distinguish
+// "absent" (nil) from an explicit true or false over the default-off behavior.
+type CaptureFileConfig struct {
+	Wiki *bool `yaml:"wiki"`
 }
 
 type ReviewFileConfig struct {

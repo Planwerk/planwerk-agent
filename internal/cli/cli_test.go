@@ -87,6 +87,18 @@ func TestToImplementOptions_VerifyFlags(t *testing.T) {
 			t.Errorf("NoCapture=%v, want false by default", opts.NoCapture)
 		}
 	})
+
+	t.Run("capture-wiki and yes map through", func(t *testing.T) {
+		opts := ImplementConfig{CaptureWiki: true, Yes: true}.ToImplementOptions("v1")
+		if !opts.CaptureWiki || !opts.Yes {
+			t.Errorf("CaptureWiki=%v Yes=%v, want true/true", opts.CaptureWiki, opts.Yes)
+		}
+		// The write-back is off by default, so the zero config keeps a run
+		// propose-only.
+		if opts := (ImplementConfig{}).ToImplementOptions("v1"); opts.CaptureWiki || opts.Yes {
+			t.Errorf("CaptureWiki=%v Yes=%v, want false/false by default", opts.CaptureWiki, opts.Yes)
+		}
+	})
 }
 
 // TestToAddressOptions guards the reply reconciliation (the only non-trivial

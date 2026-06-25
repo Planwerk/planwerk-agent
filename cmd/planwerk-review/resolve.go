@@ -45,6 +45,12 @@ const envWiki = "PLANWERK_WIKI"
 // takes precedence when explicitly set.
 const envWikiRef = "PLANWERK_WIKI_REF"
 
+// envCaptureWiki gates the implement command's capture write-back: whether the
+// accepted proposal pages are pushed to the wiki. Any truthy value (1, true,
+// yes, on) enables it and any falsy value (0, false, no, off) disables it; the
+// --capture-wiki CLI flag takes precedence.
+const envCaptureWiki = "PLANWERK_CAPTURE_WIKI"
+
 // envShowClaudeOutput toggles live streaming of Claude Code output. Any
 // truthy value (1, true, yes, on; case-insensitive) enables it; the CLI
 // flag --show-claude-output takes precedence when explicitly set.
@@ -284,6 +290,25 @@ func resolveWikiOptions(enable, disable, enableChanged, disableChanged bool, ref
 		opts.Repo = *fc.Repo
 	}
 	return opts
+}
+
+// resolveCaptureWiki returns whether the implement capture pass should push the
+// accepted proposal pages to the wiki. Precedence (highest first): an explicit
+// --capture-wiki flag, PLANWERK_CAPTURE_WIKI, the config file's capture.wiki,
+// then the default-off behavior. Default off keeps a run propose-only: the
+// write-back is an additive, outward-facing surface that must be opted into,
+// mirroring the Enabled branch of resolveWikiOptions.
+func resolveCaptureWiki(flagValue, flagChanged bool, fc cli.CaptureFileConfig) bool {
+	if flagChanged {
+		return flagValue
+	}
+	if v, ok := lookupBoolEnv(envCaptureWiki); ok {
+		return v
+	}
+	if fc.Wiki != nil {
+		return *fc.Wiki
+	}
+	return false
 }
 
 // resolveMaxPatterns returns the effective max-patterns limit. Precedence:
