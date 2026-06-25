@@ -189,6 +189,49 @@ The destination filename is the wiki-controlled pattern stem, so `--local` and
 author cannot silently clobber a trusted repo or catalog pattern); pass
 `--overwrite` to replace it deliberately.
 
+## `sync`
+
+Reconcile a target repository's [GitHub Wiki](/reference/review-patterns#github-wiki)
+knowledge — its review patterns and project-memory pages — against the current
+state of the code. The repo and its wiki are cloned and a read-only Claude pass
+flags entries that are **stale** (they reference code that no longer exists) or
+**redundant** (duplicated or superseded by another entry), then reports them.
+
+`--dry-run` is the default and reports only. `--prune` (or its alias `--apply`)
+runs a separate write phase that deletes the flagged entries on the wiki and
+pushes — never inside the read-only analysis. The write phase asks for
+confirmation first; pass `--yes` to confirm a non-interactive prune. It clones
+the wiki fresh, deletes only the flagged entries that still exist (reporting any
+that already vanished and noting a wiki that moved since analysis), commits, and
+pushes to the wiki's default branch.
+
+The wiki is always read — reconciling it is the command's whole purpose — so
+there is no `--wiki`/`--no-wiki` here, only `--wiki-ref` to pin it. `sync` is
+scoped to whole-entry deletion; it does not edit entry contents.
+
+```bash
+planwerk-review sync owner/repo                  # dry run: report only
+planwerk-review sync owner/repo --format json    # machine-readable report
+planwerk-review sync owner/repo --prune          # delete flagged entries (confirms first)
+planwerk-review sync owner/repo --prune --yes    # prune without the prompt (CI)
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--dry-run` | Report stale and redundant entries without changing the wiki (the default) | `true` |
+| `--prune` | Delete the flagged entries on the wiki and push (the write phase) | `false` |
+| `--apply` | Alias of `--prune` | `false` |
+| `--yes` | Skip the write-phase confirmation prompt (for a non-interactive prune) | `false` |
+| `--format` | Output format (`markdown`, `json`) | `markdown` |
+| `--wiki-ref` | Pin the wiki to a branch, tag, or commit (env: `PLANWERK_WIKI_REF`) | - |
+
+`--dry-run` and `--prune`/`--apply` are mutually exclusive when both are set
+explicitly. A `--prune` run without `--yes` requires a TTY to confirm; in a
+non-interactive context it refuses rather than pruning unprompted.
+
+See [Sync the wiki](/how-to/sync-the-wiki) for the workflow and the GitHub
+Action auth requirements.
+
 ## `glossary`
 
 Generate a starter domain glossary (`CONTEXT.md`) for a codebase and print it to

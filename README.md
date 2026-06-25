@@ -10,6 +10,7 @@ AI-powered code review and codebase analysis tool for GitHub repositories. Uses 
 - **Review** a pull request and produce a structured, severity-categorized report
 - **Propose** feature work by analyzing an entire repository
 - **Audit** a codebase against every known review pattern
+- **Sync** the GitHub Wiki against the code, flagging stale and redundant knowledge
 - **Gap-analysis** of completed features against the actual code
 - **Draft** a one-line feature idea into a ready-to-file GitHub issue
 - **Elaborate** a high-level issue into a detailed engineering plan
