@@ -1,8 +1,8 @@
 name: Lint
 
+# Lint is deterministic over identical code, so it runs on PRs only — the
+# post-merge result on main would just repeat the PR run.
 on:
-  push:
-    branches: [main]
   pull_request:
 
 jobs:

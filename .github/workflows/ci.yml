@@ -1,5 +1,9 @@
 name: CI
 
+# On main (post-merge) only the coverage baseline is rebuilt; everything else
+# already ran on the PR against identical code, so it is not run again. The test
+# job is therefore the only job that triggers on push to main, and only its
+# ubuntu leg (the one that uploads coverage to Codecov / the README badge).
 on:
   push:
     branches: [main]
@@ -7,9 +11,11 @@ on:
 
 jobs:
   test:
+    # PRs run the full matrix; main runs ubuntu only, since that is the single
+    # leg that uploads coverage to Codecov.
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest", "macos-latest"]') || fromJSON('["ubuntu-latest"]') }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -27,6 +33,7 @@ jobs:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   build:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,6 +43,7 @@ jobs:
       - run: go build ./cmd/planwerk-agent/
 
   fuzz:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -47,6 +55,7 @@ jobs:
       - run: go test -run=^$ -fuzz=FuzzStripMarkdownFences -fuzztime=30s ./internal/claude/
 
   vet:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -56,6 +65,7 @@ jobs:
       - run: go vet ./...
 
   govulncheck:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -67,6 +77,7 @@ jobs:
           go-version-file: go.mod
 
   gosec:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
