@@ -24,6 +24,7 @@ import (
 	"github.com/planwerk/planwerk-review/internal/rebase"
 	"github.com/planwerk/planwerk-review/internal/report"
 	"github.com/planwerk/planwerk-review/internal/reviewprepared"
+	"github.com/planwerk/planwerk-review/internal/sync"
 )
 
 // updateGolden regenerates the prompt golden files under testdata/prompts/.
@@ -110,6 +111,16 @@ func goldenAnalysisContext() propose.AnalysisContext {
 		Patterns:    goldenPatterns(),
 		MaxPatterns: 0,
 		RepoName:    "planwerk/planwerk-review",
+	}
+}
+
+func goldenSyncContext() sync.SyncContext {
+	return sync.SyncContext{
+		RepoName: "planwerk/planwerk-review",
+		Entries: []sync.Entry{
+			{Path: "review_patterns/no-raw-sql.md", Kind: sync.KindPattern, Raw: "# Review Pattern: No raw SQL\n\n**Severity**: WARNING\n"},
+			{Path: "memory/decisions.md", Kind: sync.KindMemory, Raw: "We pin every dependency and never float a version range.\n"},
+		},
 	}
 }
 
@@ -293,6 +304,17 @@ func TestBuildAuditPrompt_Golden(t *testing.T) {
 
 func TestBuildAnalysisPrompt_Golden(t *testing.T) {
 	assertGoldenPrompt(t, "analysis", buildAnalysisPrompt(goldenAnalysisContext()))
+}
+
+func TestBuildSyncPrompt_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "sync", buildSyncPrompt(goldenSyncContext()))
+}
+
+// TestBuildSyncStructurePrompt_Golden locks the sync-structuring prompt: the
+// stale/redundant JSON schema and the analysis fence.
+func TestBuildSyncStructurePrompt_Golden(t *testing.T) {
+	raw := "Entry review_patterns/old.md references internal/db/legacy.go, which no longer exists.\n"
+	assertGoldenPrompt(t, "sync_structure", buildSyncStructurePrompt(raw))
 }
 
 // TestBuildAnalysisPrompt_NoPatterns locks the fallback shape used when no
