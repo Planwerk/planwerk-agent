@@ -33,6 +33,11 @@ type LinkedPR struct {
 	URL     string
 	State   string // lowercased PR state; always "open" for what GetIssueRelations surfaces
 	IsDraft bool
+	// Author is the login of the account that opened the PR (empty when the
+	// author account is deleted). ship verifies this against the authenticated
+	// account before merging, so an attacker-opened PR that merely references the
+	// Sub Issue with a closing keyword cannot be picked up and merged.
+	Author string
 }
 
 // IssueRelations is the Meta/Sub-Issue neighborhood of an issue, used by
@@ -46,6 +51,10 @@ type IssueRelations struct {
 	Parent   *Issue
 	Siblings []Issue
 	Children []Issue
+	// Viewer is the login of the account gh is authenticated as (GraphQL
+	// `viewer`). ship matches a Sub Issue's linked PRs against it so only a PR
+	// the authenticated account opened is eligible to be marked ready and merged.
+	Viewer string
 }
 
 // relationsQuery is the GraphQL query that fetches an issue's parent (with the
@@ -59,14 +68,15 @@ type IssueRelations struct {
 // own. Page sizes are interpolated from maxRelatedSubIssues and
 // maxLinkedPRsPerSubIssue so each cap has one source.
 var relationsQuery = fmt.Sprintf(`query($owner: String!, $name: String!, $number: Int!) {
+  viewer { login }
   repository(owner: $owner, name: $name) {
     issue(number: $number) {
       number
       parent {
         number title body url state
-        subIssues(first: %[1]d) { totalCount nodes { number title body url state closedByPullRequestsReferences(first: %[2]d, includeClosedPrs: false) { totalCount nodes { number title url state isDraft } } } }
+        subIssues(first: %[1]d) { totalCount nodes { number title body url state closedByPullRequestsReferences(first: %[2]d, includeClosedPrs: false) { totalCount nodes { number title url state isDraft author { login } } } } }
       }
-      subIssues(first: %[1]d) { totalCount nodes { number title body url state closedByPullRequestsReferences(first: %[2]d, includeClosedPrs: false) { totalCount nodes { number title url state isDraft } } } }
+      subIssues(first: %[1]d) { totalCount nodes { number title body url state closedByPullRequestsReferences(first: %[2]d, includeClosedPrs: false) { totalCount nodes { number title url state isDraft author { login } } } } }
     }
   }
 }`, maxRelatedSubIssues, maxLinkedPRsPerSubIssue)
@@ -112,6 +122,9 @@ type graphqlLinkedPRNode struct {
 	URL     string `json:"url"`
 	State   string `json:"state"`
 	IsDraft bool   `json:"isDraft"`
+	Author  struct {
+		Login string `json:"login"`
+	} `json:"author"`
 }
 
 // graphqlLinkedPRs is the connection wrapper around a sub-issue's linked PR
@@ -134,6 +147,9 @@ type graphqlSubIssues struct {
 // to nil rather than a zero-valued issue.
 type graphqlRelationsResponse struct {
 	Data struct {
+		Viewer struct {
+			Login string `json:"login"`
+		} `json:"viewer"`
 		Repository struct {
 			Issue struct {
 				Number int `json:"number"`
@@ -161,7 +177,7 @@ func parseIssueRelations(out []byte, owner, name string, number int) (*IssueRela
 	}
 
 	issue := resp.Data.Repository.Issue
-	rel := &IssueRelations{}
+	rel := &IssueRelations{Viewer: resp.Data.Viewer.Login}
 
 	if p := issue.Parent; p != nil {
 		parent := toIssue(p.graphqlIssueNode, owner, name)
@@ -227,6 +243,7 @@ func nodeLinkedPRs(n graphqlIssueNode) []LinkedPR {
 			URL:     p.URL,
 			State:   strings.ToLower(p.State),
 			IsDraft: p.IsDraft,
+			Author:  p.Author.Login,
 		})
 	}
 	return prs

@@ -214,6 +214,36 @@ func TestParseIssueRelations_LinkedPRsLowercasesState(t *testing.T) {
 	}
 }
 
+// TestParseIssueRelations_ViewerAndPRAuthor confirms the authenticated account
+// (GraphQL viewer) and each linked PR's author login are decoded — ship gates an
+// autonomous merge on the PR being authored by the authenticated account.
+func TestParseIssueRelations_ViewerAndPRAuthor(t *testing.T) {
+	const env = `{"data":{
+      "viewer":{"login":"planwerk-bot"},
+      "repository":{"issue":{
+        "number":1,"parent":null,
+        "subIssues":{"totalCount":1,"nodes":[
+          {"number":2,"title":"Sub","body":"b","url":"https://example.com/2","state":"OPEN",
+            "closedByPullRequestsReferences":{"totalCount":1,"nodes":[
+              {"number":5,"title":"PR","url":"https://example.com/pull/5","state":"OPEN","isDraft":false,"author":{"login":"planwerk-bot"}}
+            ]}}
+      ]}
+    }}}}`
+	rel, err := parseIssueRelations([]byte(env), relOwner, relRepo, 1)
+	if err != nil {
+		t.Fatalf("parseIssueRelations() error = %v", err)
+	}
+	if rel.Viewer != "planwerk-bot" {
+		t.Errorf("Viewer = %q, want %q", rel.Viewer, "planwerk-bot")
+	}
+	if len(rel.Children) != 1 || len(rel.Children[0].LinkedPRs) != 1 {
+		t.Fatalf("Children = %+v, want one child with one linked PR", rel.Children)
+	}
+	if got := rel.Children[0].LinkedPRs[0].Author; got != "planwerk-bot" {
+		t.Errorf("LinkedPR.Author = %q, want %q", got, "planwerk-bot")
+	}
+}
+
 func TestParseIssueRelations_InvalidJSON(t *testing.T) {
 	if _, err := parseIssueRelations([]byte("not json"), relOwner, relRepo, 1); err == nil {
 		t.Fatal("parseIssueRelations() error = nil, want a decode error")
