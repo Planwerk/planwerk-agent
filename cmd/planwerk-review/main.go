@@ -35,6 +35,7 @@ func main() {
 		newProposeCmd(deps),
 		newAuditCmd(deps),
 		newExtractCmd(deps),
+		newSyncCmd(deps),
 		newGlossaryCmd(deps),
 		newGapAnalysisCmd(deps),
 		newReviewPreparedCmd(deps),

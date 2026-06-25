@@ -14,7 +14,7 @@ func sampleResult() SyncResult {
 		Model:      "claude-opus-4-8",
 		Entries: []FlaggedEntry{
 			{
-				Path:           "review_patterns/no-raw-sql.md",
+				Path:           wikiPatternPath,
 				Kind:           KindPattern,
 				Classification: ClassStale,
 				Reason:         "references internal/db/legacy.go which no longer exists",
@@ -41,7 +41,7 @@ func TestRenderMarkdown_HeaderSectionsAndPruneHint(t *testing.T) {
 		"# Wiki Sync: acme/widgets",
 		"acme/widgets.wiki @ 0123456", // provenance header line
 		"## Stale (1)",
-		"review_patterns/no-raw-sql.md",
+		wikiPatternPath,
 		"references internal/db/legacy.go which no longer exists",
 		"## Redundant (1)",
 		"memory/old-decision.md",
@@ -79,7 +79,7 @@ func TestRenderJSON_RoundTrips(t *testing.T) {
 	if len(got.Entries) != 2 {
 		t.Fatalf("round-trip entries = %d, want 2", len(got.Entries))
 	}
-	if got.Entries[0].Path != "review_patterns/no-raw-sql.md" || got.Entries[0].Classification != ClassStale {
+	if got.Entries[0].Path != wikiPatternPath || got.Entries[0].Classification != ClassStale {
 		t.Errorf("first entry did not round-trip: %+v", got.Entries[0])
 	}
 	// Provenance and model are threaded per-run, not serialized.
@@ -92,7 +92,7 @@ func TestSyncResult_PartitionersAndDeletionPaths(t *testing.T) {
 	r := sampleResult()
 	// A duplicate path (same entry flagged twice) must collapse to one deletion.
 	r.Entries = append(r.Entries, FlaggedEntry{
-		Path:           "review_patterns/no-raw-sql.md",
+		Path:           wikiPatternPath,
 		Kind:           KindPattern,
 		Classification: ClassRedundant,
 		Reason:         "also superseded",

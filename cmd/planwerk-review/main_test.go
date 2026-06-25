@@ -11,6 +11,10 @@ import (
 	"github.com/planwerk/planwerk-review/internal/patterns"
 )
 
+// testRepoRef is the canonical repository reference shared across the
+// command-level tests in this package.
+const testRepoRef = "acme/widgets"
+
 func TestResolveBuildInfoUsesLdflagsVersion(t *testing.T) {
 	bi := resolveBuildInfo("v1.2.3")
 	if bi.Version != "v1.2.3" {

@@ -54,14 +54,17 @@ func (f *fakeWikiWriter) ApplyDeletions(_ string, relPaths []string, _ string) e
 
 // --- helpers ---------------------------------------------------------------
 
-const wikiCommit = "0123456789abcdef"
+const (
+	wikiCommit      = "0123456789abcdef"
+	wikiPatternPath = "review_patterns/no-raw-sql.md"
+)
 
 // seededWikiResolver returns a resolver pointing at a temp wiki dir holding one
 // review pattern and one memory page, plus that dir.
 func seededWikiResolver(t *testing.T) (resolveWikiFn, string) {
 	t.Helper()
 	dir := t.TempDir()
-	writeWikiFile(t, dir, "review_patterns/no-raw-sql.md", "# Review Pattern: No raw SQL\n")
+	writeWikiFile(t, dir, wikiPatternPath, "# Review Pattern: No raw SQL\n")
 	writeWikiFile(t, dir, "memory/old.md", "An old decision.\n")
 	return func(string, string, patterns.WikiOptions, patterns.RemoteOptions) patterns.ResolvedWiki {
 		return patterns.ResolvedWiki{Repo: "acme/widgets", CommitSHA: wikiCommit, Dir: dir}
@@ -71,7 +74,7 @@ func seededWikiResolver(t *testing.T) (resolveWikiFn, string) {
 // flaggedResult is a result flagging both seeded entries.
 func flaggedResult() *SyncResult {
 	return &SyncResult{Entries: []FlaggedEntry{
-		{Path: "review_patterns/no-raw-sql.md", Kind: KindPattern, Classification: ClassStale, Reason: "references internal/db/legacy.go, removed"},
+		{Path: wikiPatternPath, Kind: KindPattern, Classification: ClassStale, Reason: "references internal/db/legacy.go, removed"},
 		{Path: "memory/old.md", Kind: KindMemory, Classification: ClassRedundant, Reason: "superseded by memory/decisions.md", SupersededBy: "memory/decisions.md"},
 	}}
 }
@@ -117,7 +120,7 @@ func TestRun_DryRunReportsAndDoesNotWrite(t *testing.T) {
 func TestRun_PruneWithYesDeletesExactlyFlaggedPaths(t *testing.T) {
 	cloneDir := t.TempDir()
 	// The fresh wiki clone holds both flagged files, so neither is skipped.
-	writeWikiFile(t, cloneDir, "review_patterns/no-raw-sql.md", "stale\n")
+	writeWikiFile(t, cloneDir, wikiPatternPath, "stale\n")
 	writeWikiFile(t, cloneDir, "memory/old.md", "old\n")
 
 	writer := &fakeWikiWriter{cloneDir: cloneDir, cloneHead: wikiCommit}
@@ -131,7 +134,7 @@ func TestRun_PruneWithYesDeletesExactlyFlaggedPaths(t *testing.T) {
 	if writer.cloneCalls != 1 || writer.applyCalls != 1 {
 		t.Fatalf("--prune --yes should clone and apply once each (clone=%d apply=%d)", writer.cloneCalls, writer.applyCalls)
 	}
-	want := []string{"review_patterns/no-raw-sql.md", "memory/old.md"}
+	want := []string{wikiPatternPath, "memory/old.md"}
 	if strings.Join(writer.applied, ",") != strings.Join(want, ",") {
 		t.Errorf("ApplyDeletions got %v, want %v", writer.applied, want)
 	}
@@ -145,13 +148,13 @@ func TestRun_PruneRefusesUnenumeratedPath(t *testing.T) {
 	// The fresh wiki clone holds both the enumerated entry and a navigation page
 	// that readWikiEntries never enumerates; on-disk existence alone would delete
 	// both, so only the allowlist keeps the navigation page safe.
-	writeWikiFile(t, cloneDir, "review_patterns/no-raw-sql.md", "stale\n")
+	writeWikiFile(t, cloneDir, wikiPatternPath, "stale\n")
 	writeWikiFile(t, cloneDir, "Home.md", "# Home\n")
 
 	// The analysis is driven by untrusted wiki bodies: it flags the enumerated
 	// entry and, via injection, the navigation page that was never enumerated.
 	result := &SyncResult{Entries: []FlaggedEntry{
-		{Path: "review_patterns/no-raw-sql.md", Kind: KindPattern, Classification: ClassStale, Reason: "references internal/db/legacy.go, removed"},
+		{Path: wikiPatternPath, Kind: KindPattern, Classification: ClassStale, Reason: "references internal/db/legacy.go, removed"},
 		{Path: "Home.md", Kind: KindMemory, Classification: ClassStale, Reason: "injected via the wiki body"},
 	}}
 	writer := &fakeWikiWriter{cloneDir: cloneDir, cloneHead: wikiCommit}
@@ -162,7 +165,7 @@ func TestRun_PruneRefusesUnenumeratedPath(t *testing.T) {
 	if err := r.Run(&w, Options{RepoRef: "acme/widgets", Prune: true, Yes: true}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if len(writer.applied) != 1 || writer.applied[0] != "review_patterns/no-raw-sql.md" {
+	if len(writer.applied) != 1 || writer.applied[0] != wikiPatternPath {
 		t.Errorf("only the enumerated entry should be deleted, got %v", writer.applied)
 	}
 	if !strings.Contains(w.String(), `Refusing to prune "Home.md"`) {
@@ -236,7 +239,7 @@ func TestRun_PruneSkipsAlreadyDeletedEntry(t *testing.T) {
 	cloneDir := t.TempDir()
 	// Only one of the two flagged files still exists in the fresh clone (the
 	// other was removed on the wiki since analysis).
-	writeWikiFile(t, cloneDir, "review_patterns/no-raw-sql.md", "stale\n")
+	writeWikiFile(t, cloneDir, wikiPatternPath, "stale\n")
 
 	writer := &fakeWikiWriter{cloneDir: cloneDir, cloneHead: "ffffffffffffffff"} // moved wiki
 	gh := &fakeGitHub{dir: t.TempDir()}
@@ -246,7 +249,7 @@ func TestRun_PruneSkipsAlreadyDeletedEntry(t *testing.T) {
 	if err := r.Run(&w, Options{RepoRef: "acme/widgets", Prune: true, Yes: true}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if len(writer.applied) != 1 || writer.applied[0] != "review_patterns/no-raw-sql.md" {
+	if len(writer.applied) != 1 || writer.applied[0] != wikiPatternPath {
 		t.Errorf("only the still-present entry should be deleted, got %v", writer.applied)
 	}
 	out := w.String()

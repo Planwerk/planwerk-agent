@@ -23,14 +23,14 @@ func runExtractCmd(t *testing.T, args ...string) ([]byte, error) {
 }
 
 func TestExtractCmd_ToCatalogAndLocalMutuallyExclusive(t *testing.T) {
-	_, err := runExtractCmd(t, "--to-catalog", "--local", "acme/widgets")
+	_, err := runExtractCmd(t, "--to-catalog", "--local", testRepoRef)
 	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
 		t.Fatalf("expected a mutually-exclusive error, got %v", err)
 	}
 }
 
 func TestExtractCmd_AllAndPatternMutuallyExclusive(t *testing.T) {
-	_, err := runExtractCmd(t, "--all", "--pattern", "foo", "acme/widgets")
+	_, err := runExtractCmd(t, "--all", "--pattern", "foo", testRepoRef)
 	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
 		t.Fatalf("expected a mutually-exclusive error, got %v", err)
 	}
@@ -52,11 +52,11 @@ func TestExtractCmd_ToCatalogRequiresExplicitRepoRef(t *testing.T) {
 
 func TestExtractConfig_ToExtractOptionsCarriesSelection(t *testing.T) {
 	opts := cli.ExtractConfig{
-		RepoRef:   "acme/widgets",
+		RepoRef:   testRepoRef,
 		Patterns:  []string{"alpha"},
 		ToCatalog: true,
 	}.ToExtractOptions("test")
-	if opts.RepoRef != "acme/widgets" || !opts.ToCatalog || len(opts.Patterns) != 1 {
+	if opts.RepoRef != testRepoRef || !opts.ToCatalog || len(opts.Patterns) != 1 {
 		t.Fatalf("ToExtractOptions dropped fields: %+v", opts)
 	}
 }

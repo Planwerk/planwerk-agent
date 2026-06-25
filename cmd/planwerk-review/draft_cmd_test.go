@@ -22,7 +22,7 @@ func runDraftCmd(t *testing.T, args ...string) ([]byte, error) {
 }
 
 func TestDraftCmd_UnknownFormat(t *testing.T) {
-	_, err := runDraftCmd(t, "--format", "yaml", "acme/widgets", "an idea")
+	_, err := runDraftCmd(t, "--format", "yaml", testRepoRef, "an idea")
 	if err == nil || !strings.Contains(err.Error(), "unknown format") {
 		t.Fatalf("expected an unknown-format error, got %v", err)
 	}
@@ -45,7 +45,7 @@ func TestDraftCmd_NonLocalRequiresRepoRef(t *testing.T) {
 func TestDraftCmd_NonInteractiveWithoutSeedAborts(t *testing.T) {
 	// A repo-ref but no idea, with --no-interactive: there is no way to obtain
 	// a seed, so the run must abort before drafting. TTY-independent.
-	_, err := runDraftCmd(t, "--no-interactive", "acme/widgets")
+	_, err := runDraftCmd(t, "--no-interactive", testRepoRef)
 	if err == nil || !strings.Contains(err.Error(), "--no-interactive") {
 		t.Fatalf("expected a --no-interactive seed abort, got %v", err)
 	}
@@ -66,7 +66,7 @@ func TestDraftCmd_NoSeedNonTTYAborts(t *testing.T) {
 		_ = w.Close()
 	})
 
-	_, err = runDraftCmd(t, "acme/widgets")
+	_, err = runDraftCmd(t, testRepoRef)
 	if err == nil || !strings.Contains(err.Error(), "stdin is not a TTY") {
 		t.Fatalf("expected a non-TTY seed abort, got %v", err)
 	}

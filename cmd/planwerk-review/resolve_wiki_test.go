@@ -82,9 +82,9 @@ func TestResolveWikiOptions_RefPrecedence(t *testing.T) {
 }
 
 func TestResolveWikiOptions_RepoFromConfig(t *testing.T) {
-	fc := cli.WikiFileConfig{Repo: strPtr("acme/widgets")}
+	fc := cli.WikiFileConfig{Repo: strPtr(testRepoRef)}
 	got := resolveWikiOptions(true, false, false, false, "", false, fc)
-	if got.Repo != "acme/widgets" {
+	if got.Repo != testRepoRef {
 		t.Errorf("Repo = %q, want acme/widgets", got.Repo)
 	}
 }

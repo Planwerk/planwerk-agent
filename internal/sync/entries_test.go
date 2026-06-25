@@ -23,7 +23,7 @@ func writeWikiFile(t *testing.T, root, rel, content string) string {
 
 func TestReadWikiEntries_EnumeratesBothKinds(t *testing.T) {
 	root := t.TempDir()
-	writeWikiFile(t, root, "review_patterns/no-raw-sql.md", "# Review Pattern: No raw SQL\n")
+	writeWikiFile(t, root, wikiPatternPath, "# Review Pattern: No raw SQL\n")
 	writeWikiFile(t, root, "review_patterns/bounded-retries.md", "# Review Pattern: Bounded retries\n")
 	writeWikiFile(t, root, "memory/decisions.md", "We pin every dependency.\n")
 	// Navigation and non-markdown pages must be skipped.
@@ -43,7 +43,7 @@ func TestReadWikiEntries_EnumeratesBothKinds(t *testing.T) {
 	want := map[string]string{
 		"memory/decisions.md":                KindMemory,
 		"review_patterns/bounded-retries.md": KindPattern,
-		"review_patterns/no-raw-sql.md":      KindPattern,
+		wikiPatternPath:                      KindPattern,
 	}
 	if len(gotKind) != len(want) {
 		t.Fatalf("enumerated %d entries, want %d: %+v", len(gotKind), len(want), entries)

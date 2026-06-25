@@ -18,6 +18,7 @@ import (
 	"github.com/planwerk/planwerk-review/internal/report"
 	"github.com/planwerk/planwerk-review/internal/review"
 	"github.com/planwerk/planwerk-review/internal/reviewprepared"
+	"github.com/planwerk/planwerk-review/internal/sync"
 )
 
 // Config holds configuration for the review command.
@@ -222,6 +223,28 @@ func (c ExtractConfig) ToExtractOptions(version string) extract.Options {
 		Force:     c.Force,
 		Overwrite: c.Overwrite,
 		Version:   version,
+	}
+}
+
+// SyncConfig holds configuration for the sync command.
+type SyncConfig struct {
+	RepoRef string
+	Prune   bool
+	Apply   bool
+	Yes     bool
+	Format  string // "markdown" or "json"
+}
+
+// ToSyncOptions maps the CLI config to sync.Options. --apply is an alias of
+// --prune, so either one enables the write phase. The Wiki and Remote options
+// are filled in by the cmd layer after this conversion.
+func (c SyncConfig) ToSyncOptions(version string) sync.Options {
+	return sync.Options{
+		RepoRef: c.RepoRef,
+		Prune:   c.Prune || c.Apply,
+		Yes:     c.Yes,
+		Format:  c.Format,
+		Version: version,
 	}
 }
 
