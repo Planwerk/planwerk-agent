@@ -472,6 +472,14 @@ created and the failure is reported so it can be linked by hand. The Meta Issue
 body is back-filled only when every reference resolves, so it is never left with
 a dangling placeholder.
 
+`meta` also records each Sub Issue's dependency ordering as a native GitHub
+"blocked by" relationship — the structured form of "which siblings this package
+waits on" the split decides. The relationship renders in GitHub's issue UI and is
+what [`ship`](#ship) reads back to drive the Sub Issues in dependency order.
+Setting a relationship is best-effort like sub-issue linking: a failure is
+reported, not fatal, so a target whose GitHub does not expose issue dependencies
+degrades to "all Sub Issues independent".
+
 ## `prompt`
 
 Deterministically render a copy-paste-ready Claude Code prompt for an existing
@@ -691,6 +699,74 @@ reviewer through the commits and links the issue with `Closes #N`. This is the
 run's deliverable, so — unlike the passes above — a failure to push or open the
 PR is fatal. A branch that carries no commits over the base opens no PR and is
 not an error.
+
+## `ship`
+
+Take a Meta Issue — the kind [`meta`](#meta) produces — and drive every one of
+its Sub Issues to merged on the default branch, in dependency order, without a
+human in the loop. Where `implement` is supervised and deliberately stops at a
+draft pull request, `ship` makes those decisions itself: for each Sub Issue it
+runs the full `implement` pipeline, marks the opened PR ready, waits for CI,
+fixes red CI itself (reusing the [`fix`](#fix) loop), and merges when green, then
+advances to the next ready Sub Issue.
+
+Sub Issues are processed in the order their dependencies allow. `ship` reads the
+native "blocked by" relationships `meta` records and works them topologically, so
+a Sub Issue becomes eligible only once every Sub Issue it is blocked by has
+merged; independent Sub Issues stay independently shippable. When a Sub Issue
+cannot be finished autonomously — `implement` reports `BLOCKED` / `NEEDS_CONTEXT`,
+CI stays red past the fix budget, or the PR will not merge — `ship` skips it and
+everything transitively blocked by it, then continues with any remaining Sub Issue
+whose blockers have all merged. The failed Sub Issue's PR is left open with its
+report for a human to pick up.
+
+`ship` narrates its progress on the Meta Issue and posts a final summary. Because
+state lives in GitHub (closed Sub Issues, merged PRs), a re-run resumes naturally
+— a Sub Issue already merged is recognized and skipped — so an interrupted run can
+simply be invoked again. When every Sub Issue has merged, the Meta Issue is
+closed.
+
+```bash
+planwerk-agent ship owner/repo#123
+planwerk-agent ship --dry-run owner/repo#123
+planwerk-agent ship --no-merge owner/repo#123
+planwerk-agent ship --merge-method squash owner/repo#123
+planwerk-agent ship --start-at 456 owner/repo#123
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--dry-run` | Report the planned order of Sub Issues without cloning, calling Claude, or merging | `false` |
+| `--no-merge` | Run the whole pipeline but stop at green CI, leaving the merges to a human | `false` |
+| `--merge-method` | Merge method for each PR (`rebase`, `squash`, `merge`) | `rebase` |
+| `--start-at` | Begin from a specific Sub Issue number (`0` = from the top of the dependency order) | `0` |
+| `--max-fix-iterations` | CI self-heal budget per PR before the Sub Issue is skipped | `5` |
+| `--interval` | Polling interval between CI check-status queries | `1m` |
+| `--no-simplify` | Skip the automatic simplify pass in each per–Sub Issue implement run | `false` |
+| `--no-review` | Skip the automatic review-and-fix pass in each per–Sub Issue implement run | `false` |
+| `--verify` | In each implement run, check the produced diff against the Sub Issue's Acceptance Criteria | `false` |
+| `--verify-adversarial` | In each implement run, red-team the produced diff for the bugs it introduces | `false` |
+| `--no-plan` | Skip the planning session in each per–Sub Issue implement run | `false` |
+| `--no-plan-reuse` | Always run a fresh planning session; do not reuse a plan already posted on the Sub Issue | `false` |
+| `--no-plan-comment` | Do not post the generated implementation plan as a comment on each Sub Issue | `false` |
+| `--plan-model` | Model for the planning session passed to Claude Code via `--model` (env: `PLANWERK_PLAN_MODEL`) | `fable` |
+| `--plan-effort` | Reasoning effort for the planning session passed via `--effort` (env: `PLANWERK_PLAN_EFFORT`) | `max` |
+| `--patterns` | Additional pattern source: local directory, `github:owner/repo[/sub][@ref]`, or `git+https://…[#ref[:sub]]` | - |
+| `--no-repo-patterns` | Ignore repo-specific patterns under `.planwerk/review_patterns/` in the target repo | `false` |
+| `--no-local-patterns` | Ignore local patterns from the tool | `false` |
+| `--max-patterns` | Max review patterns injected into the prompt (`<=0` disables truncation; env: `PLANWERK_MAX_PATTERNS`) | `0` (unlimited) |
+
+Autonomy and merge safety: `ship` merges to the default branch unattended, so it
+honors branch protection — it refuses to merge (skipping the Sub Issue) when a
+required check or review would block, or when the PR has a conflict, and **never
+force-merges past a protection rule**. `--no-merge` is the escape hatch from full
+autonomy: it stops the pipeline at green CI for every Sub Issue (so nothing merges
+and, by construction, only the initially-unblocked Sub Issues run). `--start-at`
+resumes from a chosen Sub Issue, treating Sub Issues ordered before it as
+already-handled unless they are still open. The per–Sub Issue implement runs honor
+the same `--no-simplify` / `--no-review` switches as `implement`, so each diff is
+cleaned and self-reviewed before CI ever sees it. `ship` does not create Sub
+Issues — that stays the job of `meta`.
 
 ## `address`
 

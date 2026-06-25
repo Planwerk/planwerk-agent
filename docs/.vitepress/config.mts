@@ -59,6 +59,7 @@ export default defineConfig({
             { text: 'Split a Meta Issue', link: '/how-to/split-a-meta-issue' },
             { text: 'Generate a prompt', link: '/how-to/generate-a-prompt' },
             { text: 'Implement an issue', link: '/how-to/implement-an-issue' },
+            { text: 'Ship a Meta Issue', link: '/how-to/ship-a-meta-issue' },
             { text: 'Rebase a PR', link: '/how-to/rebase-a-pr' },
             {
               text: 'Address review comments',
