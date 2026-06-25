@@ -84,7 +84,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		return fmt.Errorf("no wiki to reconcile for %s/%s: the wiki is missing, uninitialized, or offline", owner, name)
 	}
 
-	entries, err := readWikiEntries(wiki.Dir)
+	entries, err := ReadWikiEntries(wiki.Dir)
 	if err != nil {
 		return fmt.Errorf("reading wiki entries: %w", err)
 	}
@@ -120,7 +120,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		// bodies, so a crafted page could steer the analysis to flag — and --prune
 		// to delete — a page that was never enumerated (Home.md, _Sidebar.md, any
 		// tracked wiki file). The allowlist confines the write to the
-		// review_patterns/ and memory/ entries readWikiEntries surfaced.
+		// review_patterns/ and memory/ entries ReadWikiEntries surfaced.
 		allowed := make(map[string]bool, len(entries))
 		for _, e := range entries {
 			allowed[e.Path] = true

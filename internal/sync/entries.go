@@ -20,7 +20,7 @@ const mdExt = ".md"
 const maxEntryBytes = 64 * 1024
 
 // errEntryTooLarge marks a wiki page that exceeds maxEntryBytes on its own, so
-// readWikiEntries can warn about it specifically rather than treating it like an
+// ReadWikiEntries can warn about it specifically rather than treating it like an
 // unreadable file.
 var errEntryTooLarge = errors.New("wiki entry exceeds size cap")
 
@@ -47,14 +47,15 @@ type Entry struct {
 	Raw  string
 }
 
-// readWikiEntries enumerates the wiki's review_patterns/ and memory/ pages from
+// ReadWikiEntries enumerates the wiki's review_patterns/ and memory/ pages from
 // the clone root and returns one Entry per page, sorted by path for a stable
 // order. An absent subdirectory is skipped (a wiki may carry only patterns or
 // only memory). Directories, symlinks, non-markdown files, the standard wiki
 // navigation pages (Home, _Sidebar, _Footer), and the SOURCES catalog are
 // skipped, so a normal wiki holding both navigation and knowledge enumerates only
-// the knowledge.
-func readWikiEntries(wikiDir string) ([]Entry, error) {
+// the knowledge. It is exported so the capture pass can deduplicate its
+// proposals against the same enumerated entries the sync pass reconciles.
+func ReadWikiEntries(wikiDir string) ([]Entry, error) {
 	var entries []Entry
 	for _, sub := range wikiSubdirs {
 		dir := filepath.Join(wikiDir, sub.name)

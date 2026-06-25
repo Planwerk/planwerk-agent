@@ -16,7 +16,7 @@ import (
 // and pushes. It runs only after the read-only analysis and report, never inside
 // them, so a destructive change is always gated behind an explicit confirmation.
 //
-// allowed is the set of wiki-relative paths readWikiEntries actually enumerated.
+// allowed is the set of wiki-relative paths ReadWikiEntries actually enumerated.
 // A flagged path outside it is refused, never deleted: result.DeletionPaths() is
 // model output derived from untrusted, world-editable wiki bodies, so without
 // this gate a crafted page could steer the analysis to flag — and an unattended

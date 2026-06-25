@@ -146,7 +146,7 @@ func TestRun_PruneWithYesDeletesExactlyFlaggedPaths(t *testing.T) {
 func TestRun_PruneRefusesUnenumeratedPath(t *testing.T) {
 	cloneDir := t.TempDir()
 	// The fresh wiki clone holds both the enumerated entry and a navigation page
-	// that readWikiEntries never enumerates; on-disk existence alone would delete
+	// that ReadWikiEntries never enumerates; on-disk existence alone would delete
 	// both, so only the allowlist keeps the navigation page safe.
 	writeWikiFile(t, cloneDir, wikiPatternPath, "stale\n")
 	writeWikiFile(t, cloneDir, "Home.md", "# Home\n")
@@ -174,7 +174,7 @@ func TestRun_PruneRefusesUnenumeratedPath(t *testing.T) {
 }
 
 func TestRun_PruneAllUnenumeratedDeletesNothing(t *testing.T) {
-	// Every flagged path is a page readWikiEntries never enumerated, so none is in
+	// Every flagged path is a page ReadWikiEntries never enumerated, so none is in
 	// the allowlist and the write phase must not clone or delete anything.
 	result := &SyncResult{Entries: []FlaggedEntry{
 		{Path: "Home.md", Kind: KindMemory, Classification: ClassStale, Reason: "injected"},
