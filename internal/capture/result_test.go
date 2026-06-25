@@ -1,6 +1,7 @@
 package capture
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/planwerk/planwerk-review/internal/sync"
@@ -64,4 +65,32 @@ func TestMarkUpdates(t *testing.T) {
 // panic, so a failed structuring step that returns nil cannot crash the pass.
 func TestMarkUpdates_NilResult(t *testing.T) {
 	MarkUpdates(nil, []sync.Entry{{Path: "memory/a.md"}})
+}
+
+// TestAllPages_PatternsThenMemory proves AllPages flattens the result in a
+// stable order — patterns first, then memory — so the write phase pushes a
+// deterministic page list. The empty case returns an empty slice, not nil-panic.
+func TestAllPages_PatternsThenMemory(t *testing.T) {
+	result := CaptureResult{
+		Patterns: []ProposedPage{
+			{Path: "review_patterns/a.md", Kind: KindPattern},
+			{Path: "review_patterns/b.md", Kind: KindPattern},
+		},
+		Memory: []ProposedPage{
+			{Path: "memory/c.md", Kind: KindMemory},
+		},
+	}
+	pages := result.AllPages()
+	gotPaths := make([]string, len(pages))
+	for i, p := range pages {
+		gotPaths[i] = p.Path
+	}
+	want := []string{"review_patterns/a.md", "review_patterns/b.md", "memory/c.md"}
+	if strings.Join(gotPaths, ",") != strings.Join(want, ",") {
+		t.Errorf("AllPages order = %v, want %v", gotPaths, want)
+	}
+
+	if got := (CaptureResult{}).AllPages(); len(got) != 0 {
+		t.Errorf("AllPages of an empty result = %v, want empty", got)
+	}
 }

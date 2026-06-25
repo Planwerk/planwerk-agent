@@ -54,6 +54,16 @@ func (r CaptureResult) HasProposals() bool {
 	return len(r.Patterns) > 0 || len(r.Memory) > 0
 }
 
+// AllPages returns every accepted page the write phase pushes — the proposed
+// patterns followed by the proposed memory pages — in a single slice. The order
+// is stable (patterns, then memory) so a re-run produces the same commit.
+func (r CaptureResult) AllPages() []ProposedPage {
+	pages := make([]ProposedPage, 0, len(r.Patterns)+len(r.Memory))
+	pages = append(pages, r.Patterns...)
+	pages = append(pages, r.Memory...)
+	return pages
+}
+
 // MarkUpdates sets IsUpdate on every proposed page whose Path matches an
 // existing wiki entry, so the report can tell a fresh page from an update to an
 // existing one. The match is computed from the authoritatively enumerated
