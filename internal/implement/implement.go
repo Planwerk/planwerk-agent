@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"strings"
 
 	"github.com/planwerk/planwerk-review/internal/attribution"
@@ -66,9 +67,18 @@ type Options struct {
 	// nothing. The pass is on by default but runs only when a wiki is resolved
 	// (i.e. with --wiki); without one it is a no-op regardless of this flag.
 	NoCapture bool
-	Local     bool // operate on the current working directory instead of cloning
-	Force     bool // with Local, skip the dirty-working-tree confirmation prompt
-	Version   string
+	// CaptureWiki gates the capture write-back: with it set, the capture pass
+	// pushes the accepted proposal pages to the wiki after posting the proposal
+	// comment. Default off keeps a run propose-only — Claude authors the page
+	// bytes in the read-only proposal pass and a separate, confirmed write phase
+	// performs the mechanical push.
+	CaptureWiki bool
+	// Yes skips the capture write-back's interactive confirmation, for a
+	// non-interactive (CI) --capture-wiki run.
+	Yes     bool
+	Local   bool // operate on the current working directory instead of cloning
+	Force   bool // with Local, skip the dirty-working-tree confirmation prompt
+	Version string
 
 	// Pattern loading mirrors review/audit/elaborate so the implementation
 	// is grounded in the same review catalog and any project-specific
@@ -137,6 +147,18 @@ type Runner struct {
 	// patterns.ResolveWiki; a Runner seam so the capture pass can be exercised
 	// against a temp wiki without cloning a real one.
 	ResolveWiki resolveWikiFn
+	// CaptureWriter performs the gated capture write-back: a fresh authenticated
+	// clone of the wiki and the addition+push of the accepted pages. Defaults to
+	// capture.DefaultWikiWriter; a Runner seam so the write-back can be exercised
+	// without cloning or pushing a real wiki.
+	CaptureWriter capture.WikiWriter
+	// In is the stream the capture write-back's confirmation reads from. Defaults
+	// to os.Stdin.
+	In io.Reader
+	// IsTTY reports whether the capture write-back may prompt interactively. When
+	// it returns false a --capture-wiki run without --yes refuses rather than
+	// failing open. Defaults to workspace.IsStdinTTY.
+	IsTTY func() bool
 }
 
 // NewRunner builds a Runner with the production GitHub backend, the given
@@ -481,7 +503,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// without one). Non-fatal, like the surrounding passes. Capture still runs
 	// (memory-only) when --no-review left the findings empty.
 	if !opts.NoCapture && r.Capturer != nil && wiki.Dir != "" {
-		r.runCapture(w, repo.Dir, owner, name, number, ctx, opts.Version, implReport, reviewFindings, wiki)
+		r.runCapture(w, repo.Dir, owner, name, number, ctx, opts, implReport, reviewFindings, wiki)
 	}
 
 	// Optional read-only verification passes assess the final, simplified and
@@ -1148,8 +1170,10 @@ func (r *Runner) postReviewComment(w io.Writer, owner, name string, number int, 
 // The whole pass is non-fatal: any failure (reading the wiki, the Claude call,
 // the comment post) is logged and surfaced but never aborts the run, matching
 // the simplify and review passes' contract. No proposals is a clean no-op beyond
-// a short stdout note. version names the build in the rendered report's footer.
-func (r *Runner) runCapture(w io.Writer, dir, owner, name string, number int, ctx Context, version, implReport string, findings []report.Finding, wiki patterns.ResolvedWiki) {
+// a short stdout note. opts.Version names the build in the rendered report's
+// footer; with opts.CaptureWiki the proposals are also pushed to the wiki by the
+// gated write-back below — default off keeps the pass propose-only.
+func (r *Runner) runCapture(w io.Writer, dir, owner, name string, number int, ctx Context, opts Options, implReport string, findings []report.Finding, wiki patterns.ResolvedWiki) {
 	slog.Info("running capture pass over the review findings, plan, and report", "issue", number)
 
 	entries, err := sync.ReadWikiEntries(wiki.Dir)
@@ -1202,12 +1226,48 @@ func (r *Runner) runCapture(w io.Writer, dir, owner, name string, number int, ct
 
 	prov := capture.Provenance{Repo: ctx.RepoFullName, Issue: number}
 	var rendered bytes.Buffer
-	capture.NewRenderer(&rendered).RenderMarkdown(*result, prov, version)
+	capture.NewRenderer(&rendered).RenderMarkdown(*result, prov, opts.Version)
 	_, _ = fmt.Fprintf(w, "\nCaptured knowledge proposals:\n%s\n", rendered.String())
 	// Post the proposals as an issue comment so they surface alongside the plan,
-	// implementation, and review reports — the wiki was not touched.
+	// implementation, and review reports — propose-only, the wiki was not touched.
 	r.postCaptureComment(w, owner, name, number, rendered.String(), result.Model)
+	// Gated write-back: under --capture-wiki, push the accepted pages to the wiki.
+	// Default off leaves the run propose-only.
+	if opts.CaptureWiki {
+		r.runCaptureWrite(w, opts, result, prov)
+	}
 	slog.Info("capture pass complete", "issue", number)
+}
+
+// runCaptureWrite performs the gated, opt-in write half of the capture pass:
+// under --capture-wiki it pushes the accepted proposal pages to the wiki,
+// authored by the read-only proposal pass. Claude never pushes — it authored the
+// page bytes in the read-only harness, and this separate phase performs the
+// mechanical add+commit+push, preserving the read-only-author / write-phase
+// separation.
+//
+// Like the rest of the capture pass it is non-fatal: a write failure — or a
+// non-TTY refusal without --yes — is logged and surfaced but never aborts the
+// run. The proposals are already posted as an issue comment, and the
+// implementation and PR work are done, so a failed push degrades gracefully to
+// the propose-only outcome rather than failing the run.
+func (r *Runner) runCaptureWrite(w io.Writer, opts Options, result *capture.CaptureResult, prov capture.Provenance) {
+	writer := r.CaptureWriter
+	if writer == nil {
+		writer = capture.DefaultWikiWriter{}
+	}
+	in := r.In
+	if in == nil {
+		in = os.Stdin
+	}
+	isTTY := r.IsTTY
+	if isTTY == nil {
+		isTTY = workspace.IsStdinTTY
+	}
+	if err := capture.WritePhase(w, in, isTTY, opts.Yes, writer, result, prov, opts.Wiki.Ref); err != nil {
+		slog.Warn("capture write-back failed", "issue", prov.Issue, "err", err)
+		_, _ = fmt.Fprintf(w, "\nCapture write-back could not run: %v\n", err)
+	}
 }
 
 // captureCommentFooter attributes the posted capture proposals to

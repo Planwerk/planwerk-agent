@@ -95,6 +95,31 @@ func (f *fakeCapturer) Capture(dir string, ctx capture.CaptureContext) (*capture
 	return f.result, f.err
 }
 
+// fakeCaptureWriter is an offline capture.WikiWriter: it records the clone
+// target and the rendered pages handed to ApplyAdditions so the capture
+// write-back tests can assert what would be pushed, without touching git.
+type fakeCaptureWriter struct {
+	cloneCalls atomic.Int32
+	cloneRepo  string
+	cloneRef   string
+	applyCalls atomic.Int32
+	applyFiles []patterns.WikiFile
+	applyMsg   string
+	applyErr   error
+}
+
+func (f *fakeCaptureWriter) Clone(repo, ref string) (string, string, func(), error) {
+	f.cloneCalls.Add(1)
+	f.cloneRepo, f.cloneRef = repo, ref
+	return "/tmp/capture-wiki", "abc1234def", func() {}, nil
+}
+
+func (f *fakeCaptureWriter) ApplyAdditions(dir string, files []patterns.WikiFile, msg string) error {
+	f.applyCalls.Add(1)
+	f.applyFiles, f.applyMsg = files, msg
+	return f.applyErr
+}
+
 type fakeFinalizer struct {
 	called atomic.Int32
 	dir    string
@@ -1635,6 +1660,113 @@ func TestRun_CaptureRunsMemoryOnlyWithoutReview(t *testing.T) {
 	}
 	if gh.commentCalls.Load() != 1 {
 		t.Errorf("AddIssueComment called %d times, want 1 (the capture comment only)", gh.commentCalls.Load())
+	}
+}
+
+// TestRun_CaptureWritePushesAcceptedPages proves --capture-wiki (with --yes for
+// the non-interactive run) pushes the accepted proposal pages: the write-back
+// renders each page with its provenance marker and hands it to the writer, after
+// the proposal comment is posted and before finalize opens the PR.
+func TestRun_CaptureWritePushesAcceptedPages(t *testing.T) {
+	gh := &fakeGitHub{
+		issue:     sampleIssue(),
+		cloneDir:  t.TempDir(),
+		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	}
+	cl := &fakeClaude{}
+	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
+	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
+	cp := &fakeCapturer{result: onePatternProposal()}
+	r := captureRunner(t, gh, cl, av, ra, cp)
+	cw := &fakeCaptureWriter{}
+	r.CaptureWriter = cw
+	ff := &fakeFinalizer{report: defaultFinalizeReport}
+	r.Finalizer = ff
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", CaptureWiki: true, Yes: true, NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if cw.applyCalls.Load() != 1 {
+		t.Fatalf("ApplyAdditions called %d times, want 1 under --capture-wiki", cw.applyCalls.Load())
+	}
+	if len(cw.applyFiles) != 1 || cw.applyFiles[0].Path != "review_patterns/escape-untrusted-fences.md" {
+		t.Errorf("wrote files %+v, want the one accepted pattern page", cw.applyFiles)
+	}
+	prov := capture.Provenance{Repo: testRepoFullName, Issue: 42}
+	if !strings.HasPrefix(cw.applyFiles[0].Content, prov.Marker()) {
+		t.Errorf("written page must carry the provenance marker, got:\n%s", cw.applyFiles[0].Content)
+	}
+	if cw.cloneRepo != "owner/repo.wiki" {
+		t.Errorf("Clone got repo %q, want the resolved wiki repo", cw.cloneRepo)
+	}
+	if ff.called.Load() != 1 {
+		t.Errorf("finalizer called %d times, want 1 — the write-back precedes finalize", ff.called.Load())
+	}
+}
+
+// TestRun_CaptureDefaultWritesNothing locks the central gate: a default run
+// (no --capture-wiki) stays propose-only — the proposals are posted but the
+// writer is never touched.
+func TestRun_CaptureDefaultWritesNothing(t *testing.T) {
+	gh := &fakeGitHub{
+		issue:     sampleIssue(),
+		cloneDir:  t.TempDir(),
+		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	}
+	cl := &fakeClaude{}
+	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
+	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
+	cp := &fakeCapturer{result: onePatternProposal()}
+	r := captureRunner(t, gh, cl, av, ra, cp)
+	cw := &fakeCaptureWriter{}
+	r.CaptureWriter = cw
+
+	if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if cp.called.Load() != 1 {
+		t.Errorf("capturer called %d times, want 1 — capture still proposes by default", cp.called.Load())
+	}
+	if cw.cloneCalls.Load() != 0 || cw.applyCalls.Load() != 0 {
+		t.Errorf("a default run must write nothing: clone=%d apply=%d", cw.cloneCalls.Load(), cw.applyCalls.Load())
+	}
+}
+
+// TestRun_CaptureWriteRefusesNonTTYWithoutYes proves the non-TTY guard is
+// non-fatal in implement: --capture-wiki without --yes on a non-TTY refuses to
+// write, surfaces the refusal, and lets the run finish (the PR still opens) —
+// unlike sync, where pruning is the deliverable and the refusal is fatal.
+func TestRun_CaptureWriteRefusesNonTTYWithoutYes(t *testing.T) {
+	gh := &fakeGitHub{
+		issue:     sampleIssue(),
+		cloneDir:  t.TempDir(),
+		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	}
+	cl := &fakeClaude{}
+	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
+	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
+	cp := &fakeCapturer{result: onePatternProposal()}
+	r := captureRunner(t, gh, cl, av, ra, cp)
+	cw := &fakeCaptureWriter{}
+	r.CaptureWriter = cw
+	r.IsTTY = func() bool { return false }
+	r.In = strings.NewReader("")
+	ff := &fakeFinalizer{report: defaultFinalizeReport}
+	r.Finalizer = ff
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", CaptureWiki: true, NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil — a non-TTY refusal must be non-fatal", err)
+	}
+	if cw.applyCalls.Load() != 0 {
+		t.Errorf("nothing must be written when the non-TTY guard refuses, apply=%d", cw.applyCalls.Load())
+	}
+	if ff.called.Load() != 1 {
+		t.Errorf("finalizer called %d times, want 1 — a refused write must not block the PR", ff.called.Load())
+	}
+	if !strings.Contains(buf.String(), "Capture write-back could not run") {
+		t.Errorf("the refusal should be surfaced on stdout, got:\n%s", buf.String())
 	}
 }
 
