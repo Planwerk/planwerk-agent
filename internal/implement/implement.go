@@ -10,12 +10,10 @@
 package implement
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
-	"os"
 	"strings"
 
 	"github.com/planwerk/planwerk-review/internal/attribution"
@@ -24,7 +22,6 @@ import (
 	"github.com/planwerk/planwerk-review/internal/github"
 	"github.com/planwerk/planwerk-review/internal/patterns"
 	"github.com/planwerk/planwerk-review/internal/report"
-	"github.com/planwerk/planwerk-review/internal/sync"
 	"github.com/planwerk/planwerk-review/internal/workspace"
 )
 
@@ -1159,32 +1156,19 @@ func (r *Runner) postReviewComment(w io.Writer, owner, name string, number int, 
 }
 
 // runCapture runs the read-only capture pass after the review pass and before
-// finalizing: it enumerates the wiki's existing entries, pre-filters the review
-// findings to those that match no existing pattern (capture.CandidateFindings),
-// and runs the Claude proposal pass that authors candidate review patterns and
-// memory pages from those findings, the plan, and the implementation report —
-// deduplicated against the entries and the catalog, and writing nothing. When
-// the pass proposes something it renders the proposals to stdout and posts them
-// as an issue comment.
+// finalizing: it mines the review findings, the plan, and the implementation
+// report for generalizable review patterns and durable memory pages and proposes
+// them as new wiki pages, deduplicated against the wiki and the catalog, writing
+// nothing by default. The proposals go to stdout and are posted as an issue
+// comment; under --capture-wiki the accepted pages are pushed to the wiki. The
+// shared capture.Pass drives the propose-then-optionally-write mechanism so
+// implement, review, and audit share one implementation.
 //
 // The whole pass is non-fatal: any failure (reading the wiki, the Claude call,
-// the comment post) is logged and surfaced but never aborts the run, matching
-// the simplify and review passes' contract. No proposals is a clean no-op beyond
-// a short stdout note. opts.Version names the build in the rendered report's
-// footer; with opts.CaptureWiki the proposals are also pushed to the wiki by the
-// gated write-back below — default off keeps the pass propose-only.
+// the comment post, the push) is logged and surfaced but never aborts the run,
+// matching the simplify and review passes' contract. The caller gates it on a
+// resolved wiki and a wired Capturer (and not opts.NoCapture).
 func (r *Runner) runCapture(w io.Writer, dir, owner, name string, number int, ctx Context, opts Options, implReport string, findings []report.Finding, wiki patterns.ResolvedWiki) {
-	slog.Info("running capture pass over the review findings, plan, and report", "issue", number)
-
-	entries, err := sync.ReadWikiEntries(wiki.Dir)
-	if err != nil {
-		slog.Warn("capture could not read wiki entries; skipping", "err", err)
-		_, _ = fmt.Fprintf(w, "\nCapture pass skipped: could not read the wiki entries: %v\n", err)
-		return
-	}
-
-	candidates := capture.CandidateFindings(findings, ctx.Patterns)
-
 	// The base branch only scopes the diff the proposal prompt reasons about, so
 	// a failure to resolve it degrades to the default branch rather than skipping.
 	baseBranch := ""
@@ -1192,118 +1176,38 @@ func (r *Runner) runCapture(w io.Writer, dir, owner, name string, number int, ct
 		baseBranch = branch.BaseBranch
 	}
 
-	result, err := r.Capturer.Capture(dir, capture.CaptureContext{
-		RepoName:        ctx.RepoFullName,
-		IssueNumber:     number,
-		BaseBranch:      baseBranch,
-		Findings:        candidates,
-		Plan:            ctx.Plan,
-		ImplementReport: implReport,
-		Entries:         entries,
-		Patterns:        ctx.Patterns,
+	pass := capture.Pass{
+		Propose: r.Capturer,
+		// Post the proposals as a comment on the source issue so they surface
+		// alongside the plan, implementation, and review reports.
+		PostComment: func(body string) (string, error) {
+			return r.GitHub.AddIssueComment(owner, name, number, body)
+		},
+		Writer: r.CaptureWriter,
+		In:     r.In,
+		IsTTY:  r.IsTTY,
+	}
+	// The write-back's error return is deliberately discarded here: implement's
+	// capture runs before the finalize pass that opens the pull request (the run's
+	// deliverable), so a wiki-push failure is logged and surfaced to w but must not
+	// abort the run and block the PR — matching this pass's non-fatal contract. The
+	// terminal review/audit capture passes propagate it instead.
+	_ = pass.Run(w, capture.Request{
+		Dir:         dir,
+		Command:     "implement",
+		Repo:        ctx.RepoFullName,
+		Number:      number,
+		BaseBranch:  baseBranch,
+		Findings:    findings,
+		Plan:        ctx.Plan,
+		Report:      implReport,
+		Patterns:    ctx.Patterns,
+		Wiki:        wiki,
+		WikiRef:     opts.Wiki.Ref,
+		CaptureWiki: opts.CaptureWiki,
+		Yes:         opts.Yes,
+		Version:     opts.Version,
 	})
-	if err != nil {
-		slog.Warn("capture pass failed", "err", err)
-		_, _ = fmt.Fprintf(w, "\nCapture pass could not run: %v\n", err)
-		return
-	}
-	// The ClaudeCapturer contract permits (nil, nil) — production never returns
-	// it, but a stubbed or future seam might, and dereferencing it below would
-	// crash the whole run after the implementation and PR work are done.
-	if result == nil {
-		slog.Warn("capture returned no result; skipping", "issue", number)
-		_, _ = fmt.Fprintln(w, "\nCapture proposed no new review patterns or memory pages.")
-		return
-	}
-	result.WikiRepo = wiki.Repo
-	result.WikiCommit = wiki.CommitSHA
-
-	if !result.HasProposals() {
-		slog.Info("capture proposed nothing", "issue", number)
-		_, _ = fmt.Fprintln(w, "\nCapture proposed no new review patterns or memory pages.")
-		return
-	}
-
-	prov := capture.Provenance{Repo: ctx.RepoFullName, Issue: number}
-	var rendered bytes.Buffer
-	capture.NewRenderer(&rendered).RenderMarkdown(*result, prov, opts.Version)
-	_, _ = fmt.Fprintf(w, "\nCaptured knowledge proposals:\n%s\n", rendered.String())
-	// Post the proposals as an issue comment so they surface alongside the plan,
-	// implementation, and review reports — propose-only, the wiki was not touched.
-	r.postCaptureComment(w, owner, name, number, rendered.String(), result.Model)
-	// Gated write-back: under --capture-wiki, push the accepted pages to the wiki.
-	// Default off leaves the run propose-only.
-	if opts.CaptureWiki {
-		r.runCaptureWrite(w, opts, result, prov)
-	}
-	slog.Info("capture pass complete", "issue", number)
-}
-
-// runCaptureWrite performs the gated, opt-in write half of the capture pass:
-// under --capture-wiki it pushes the accepted proposal pages to the wiki,
-// authored by the read-only proposal pass. Claude never pushes — it authored the
-// page bytes in the read-only harness, and this separate phase performs the
-// mechanical add+commit+push, preserving the read-only-author / write-phase
-// separation.
-//
-// Like the rest of the capture pass it is non-fatal: a write failure — or a
-// non-TTY refusal without --yes — is logged and surfaced but never aborts the
-// run. The proposals are already posted as an issue comment, and the
-// implementation and PR work are done, so a failed push degrades gracefully to
-// the propose-only outcome rather than failing the run.
-func (r *Runner) runCaptureWrite(w io.Writer, opts Options, result *capture.CaptureResult, prov capture.Provenance) {
-	writer := r.CaptureWriter
-	if writer == nil {
-		writer = capture.DefaultWikiWriter{}
-	}
-	in := r.In
-	if in == nil {
-		in = os.Stdin
-	}
-	isTTY := r.IsTTY
-	if isTTY == nil {
-		isTTY = workspace.IsStdinTTY
-	}
-	if err := capture.WritePhase(w, in, isTTY, opts.Yes, writer, result, prov, opts.Wiki.Ref); err != nil {
-		slog.Warn("capture write-back failed", "issue", prov.Issue, "err", err)
-		_, _ = fmt.Fprintf(w, "\nCapture write-back could not run: %v\n", err)
-	}
-}
-
-// captureCommentFooter attributes the posted capture proposals to
-// planwerk-review, naming the model that produced them and matching the footer
-// the implement command's plan/report/simplify/review comments append.
-func captureCommentFooter(model string) string {
-	return "_Capture proposals generated by " + attribution.Tool() + " implement " + attribution.AssistantWith(model) + "_"
-}
-
-// formatCaptureComment wraps the rendered capture proposals in the issue-comment
-// body: the report verbatim (it already carries its own "# Captured Knowledge"
-// heading) followed by the attribution footer.
-func formatCaptureComment(reportBody, model string) string {
-	return strings.TrimSpace(reportBody) + "\n\n---\n\n" + captureCommentFooter(model) + "\n"
-}
-
-// postCaptureComment posts the capture proposals as a comment on the source
-// issue, so the suggested wiki knowledge lands on the issue alongside the other
-// reports — nothing was written to the wiki, so the comment is the only durable
-// record of the proposals.
-//
-// Posting is best-effort: a failure to reach GitHub is logged and surfaced to
-// the operator but never aborts the run — the proposals are already on stdout.
-func (r *Runner) postCaptureComment(w io.Writer, owner, name string, number int, reportBody, model string) {
-	url, err := r.GitHub.AddIssueComment(owner, name, number, formatCaptureComment(reportBody, model))
-	if err != nil {
-		slog.Warn("posting capture comment failed", "issue", number, "err", err)
-		_, _ = fmt.Fprintf(w, "\nCould not post the capture proposals as an issue comment: %v\n", err)
-		return
-	}
-	slog.Info("posted capture proposals comment", "issue", number, "url", url)
-	_, _ = fmt.Fprintf(w, "\nPosted the capture proposals as a comment on issue #%d", number)
-	if url != "" {
-		_, _ = fmt.Fprintf(w, " (%s)", url)
-	}
-	_, _ = fmt.Fprintln(w)
 }
 
 // runFinalize opens the draft pull request as the final step, once the implement,
