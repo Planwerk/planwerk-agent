@@ -106,5 +106,12 @@ folded into the cache key, so editing the wiki re-runs the review rather than
 serving a stale cached result, and two runs against the same wiki commit produce
 the same review.
 
+## Keep the wiki trustworthy
+
+Wiki knowledge drifts as the code changes, so the highest-priority source quietly
+rots. Run [`sync`](/how-to/sync-the-wiki) to flag entries that reference code that
+no longer exists (stale) or that duplicate another entry (redundant), and to prune
+them after confirmation — keeping the wiki worth reading.
+
 See the [Review patterns reference](/reference/review-patterns#github-wiki) for
 the precedence model and the [CLI reference](/reference/cli) for every flag.

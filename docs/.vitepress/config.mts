@@ -86,6 +86,10 @@ export default defineConfig({
               link: '/how-to/extract-review-patterns',
             },
             {
+              text: 'Sync the wiki',
+              link: '/how-to/sync-the-wiki',
+            },
+            {
               text: 'Configure the project',
               link: '/how-to/configure-the-project',
             },
