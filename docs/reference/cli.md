@@ -558,6 +558,8 @@ planwerk-review implement --no-simplify owner/repo#123
 planwerk-review implement --no-review owner/repo#123
 planwerk-review implement --wiki owner/repo#123
 planwerk-review implement --wiki --no-capture owner/repo#123
+planwerk-review implement --wiki --capture-wiki owner/repo#123
+planwerk-review implement --wiki --capture-wiki --yes owner/repo#123
 ```
 
 | Flag | Description | Default |
@@ -577,6 +579,8 @@ planwerk-review implement --wiki --no-capture owner/repo#123
 | `--no-simplify` | Skip the automatic simplify pass that folds over-engineering removals into the branch before the review phase | `false` |
 | `--no-review` | Skip the automatic review-and-fix pass that folds review findings into the branch after the simplify pass | `false` |
 | `--no-capture` | Skip the read-only capture pass that proposes new wiki review patterns and memory pages (only runs with `--wiki`; writes nothing) | `false` |
+| `--capture-wiki` | Push the accepted capture pages to the wiki instead of only proposing them (off by default — a normal run is propose-only; confirms first, refuses a non-TTY run without `--yes`; env: `PLANWERK_CAPTURE_WIKI`, config: `capture.wiki`) | `false` |
+| `--yes` | Skip the `--capture-wiki` write confirmation prompt (for a non-interactive write) | `false` |
 | `--patterns` | Additional pattern source: local directory, `github:owner/repo[/sub][@ref]`, or `git+https://…[#ref[:sub]]` | - |
 | `--no-repo-patterns` | Ignore repo-specific patterns under `.planwerk/review_patterns/` in the target repo | `false` |
 | `--no-local-patterns` | Ignore local patterns from the tool | `false` |
@@ -635,6 +639,18 @@ the source issue, and nothing is written to the wiki. The pass is non-fatal, is 
 clean no-op when nothing clears the bar, and is skipped without a resolved wiki.
 Disable it with `--no-capture`. See [Use the GitHub Wiki](/how-to/use-the-github-wiki#capture-knowledge-from-an-implement-run-propose-only)
 for the memory write convention it follows.
+
+By default the capture pass is propose-only — it writes nothing. Pass
+`--capture-wiki` to push the accepted pages to the wiki: a separate, mechanical
+write phase clones the wiki fresh, writes each page (provenance marker included)
+under the pinned tool identity, and pushes — creating the wiki's first commit
+when it is still uninitialized. Claude never pushes; it authored the page bytes
+in the read-only proposal pass, and this phase performs the push. The write is
+gated like the rest of the wiki surface: it confirms interactively and refuses a
+non-TTY run without `--yes`. The write-back is non-fatal — a refusal or push
+failure degrades back to propose-only without failing the run. The gate is also
+settable via `PLANWERK_CAPTURE_WIKI` or a `capture.wiki` config key (flag → env →
+config → off).
 
 Once the simplify and review passes are done, a finalize session opens the draft
 pull request last: it resolves the base branch from `origin/HEAD`, pushes the

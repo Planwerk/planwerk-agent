@@ -135,6 +135,30 @@ maintain by hand or by a later automated write-back:
   tool-authored (rather than hand-authored) and names the issue it came from. The
   marker is fixed for a given source, so a re-run does not churn the page.
 
+### Push accepted pages to the wiki (opt-in)
+
+By default the capture pass writes nothing — it only proposes. Pass
+`--capture-wiki` to turn the accepted pages into real wiki growth: a separate,
+mechanical write phase clones the wiki fresh, writes each page (provenance marker
+included) under the pinned `planwerk-review` identity, and pushes. When the wiki
+has never been initialized, the first page creates its initial commit.
+
+```bash
+planwerk-review implement --wiki --capture-wiki owner/repo#123          # confirms, then pushes
+planwerk-review implement --wiki --capture-wiki --yes owner/repo#123    # non-interactive (CI)
+```
+
+The write is gated to match the rest of the wiki surface. Claude never pushes: it
+authored the page bytes in the read-only proposal pass, and this phase performs
+the push, preserving the read-only-author / write-phase separation. The phase
+confirms interactively first and **refuses a non-TTY run without `--yes`**. The
+gate is also settable per repo via the `PLANWERK_CAPTURE_WIKI` environment
+variable or a `capture.wiki: true` config key (flag → env → config → off). The
+write-back is non-fatal: a refusal or push failure degrades back to propose-only
+rather than failing the run. The push authenticates a private wiki exactly as
+[`sync`](/how-to/sync-the-wiki) does — see its write-phase note for the auth
+details.
+
 ## Keep the wiki trustworthy
 
 Wiki knowledge drifts as the code changes, so the highest-priority source quietly

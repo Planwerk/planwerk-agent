@@ -20,6 +20,7 @@ full resolution order.
 | `PLANWERK_PLAN_EFFORT` | `--plan-effort` (`implement`) | Reasoning effort for the planning session. |
 | `PLANWERK_WIKI` | `--wiki` / `--no-wiki` | Truthy values (`1`, `true`, `yes`, `on`) enable the GitHub Wiki knowledge source; falsy values (`0`, `false`, `no`, `off`) disable it. Config-file `wiki.enabled` takes precedence over this variable; the flags take precedence over both. |
 | `PLANWERK_WIKI_REF` | `--wiki-ref` | Pins the wiki to a branch, tag, or commit. Empty uses the wiki's default branch. |
+| `PLANWERK_CAPTURE_WIKI` | `--capture-wiki` (`implement`) | Truthy values (`1`, `true`, `yes`, `on`) push the accepted capture pages to the wiki; falsy values (`0`, `false`, `no`, `off`) keep the run propose-only. Config-file `capture.wiki` takes precedence over this variable; the flag takes precedence over both. Off by default. |
 
 ### Credentials
 
