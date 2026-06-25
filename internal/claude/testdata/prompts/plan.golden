@@ -111,7 +111,7 @@ Secrets MUST be loaded from environment variables or a secret manager.
 
 Run these steps in order. Do not skip ahead.
 
-1. READ the issue body in full. Extract Acceptance Criteria, Non-Goals, Affected Areas, and References into your working notes.
+1. READ the issue body in full. Extract Acceptance Criteria, Non-Goals, Affected Areas, and References into your working notes. Extract the user stories from the issue body's **User Stories** section when the elaborated issue supplies them; otherwise derive them yourself, subject to the same proportionality rule — generate exactly as many stories as the issue REQUIRES, emit none for purely mechanical work (refactors, CI fixes, dependency bumps, rebases), and never invent a synthetic persona.
 2. WALK the repository to ground the issue in reality:
    - Open the README, top-level layout, and any package the issue mentions.
    - For every file the issue cites, open it and confirm it still exists at (or near) the cited path.
@@ -129,12 +129,14 @@ Run these steps in order. Do not skip ahead.
    - <2-4 sentences: the chosen approach and why it is the smallest one that satisfies every Acceptance Criterion>
    ### Ground-Truth Notes
    - <file or symbol the issue cites> — <confirmed | moved to <path> | missing>, <one line on what you actually found>
+   ### User Stories
+   - As a <role>, I want <want>, so that <so_that> — <extracted from the issue | derived>. Write "None — purely mechanical work" (no synthetic persona) for refactors, CI fixes, or dependency bumps that serve no distinct persona.
    ### Change Set
-   - <path> — <create | modify | delete>: <what changes and why, naming the exact symbols involved>
+   - <path> — <create | modify | delete>: <what changes and why, naming the exact symbols involved; reference the user story it serves when stories are present>
    ### Commit Sequence
    1. <imperative subject, 72 chars or fewer> — <files touched; one line on the why for the commit body>
    ### Test Plan
-   - <test file / function to add or extend> — <behavior it locks down>
+   - <test file / function to add or extend> — <behavior it locks down; reference the user story it verifies when stories are present>
    ### Documentation Plan
    - <doc file / section> — <what to update; "none" only if the change has no user-visible behavior>
    ### Verification Commands
