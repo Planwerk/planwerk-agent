@@ -391,7 +391,7 @@ func renderPlan(w io.Writer, fullName string, metaNumber int, opts Options, orde
 // postSummary prints and posts the final per–Sub Issue summary on the Meta Issue.
 func (r *Runner) postSummary(w io.Writer, owner, name string, number int, opts Options, results []subResult) {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("## Ship summary for Meta Issue #%d\n\n", number))
+	fmt.Fprintf(&b, "## Ship summary for Meta Issue #%d\n\n", number)
 	for _, res := range results {
 		fmt.Fprintf(&b, "- #%d %s — **%s**", res.number, res.title, res.status)
 		if res.detail != "" {
