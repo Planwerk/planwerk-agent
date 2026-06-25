@@ -129,6 +129,9 @@ type AuditConfig struct {
 	CacheMaxAge      time.Duration
 	Local            bool
 	Force            bool
+	NoCapture        bool
+	CaptureWiki      bool
+	Yes              bool
 }
 
 // ElaborateConfig holds configuration for the elaborate command.
@@ -592,5 +595,8 @@ func (c AuditConfig) ToAuditOptions(version string) audit.Options {
 		CacheMaxAge:      c.CacheMaxAge,
 		Local:            c.Local,
 		Force:            c.Force,
+		NoCapture:        c.NoCapture,
+		CaptureWiki:      c.CaptureWiki,
+		Yes:              c.Yes,
 	}
 }

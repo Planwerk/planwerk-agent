@@ -89,10 +89,21 @@ or short form (owner/repo).`,
 				return fmt.Errorf("--create-issues cannot be used with --format json")
 			}
 
+			auditCfg.CaptureWiki = resolveCaptureWiki(auditCfg.CaptureWiki, cmd.Flags().Changed("capture-wiki"), deps.fileCfg.Capture)
+
+			// Under --format json the capture render — including the interactive
+			// write confirmation — is discarded so stdout stays valid JSON. An
+			// interactive --capture-wiki run would then block on an invisible
+			// prompt. Require --yes (which skips the prompt) for the non-interactive
+			// CI combination, mirroring the --create-issues guard above.
+			if auditCfg.CaptureWiki && auditCfg.Format == formatJSON && !auditCfg.Yes {
+				return fmt.Errorf("--capture-wiki cannot be used with --format json without --yes: the wiki write confirmation cannot be shown alongside JSON output")
+			}
+
 			opts := auditCfg.ToAuditOptions(deps.version)
 			opts.Remote = deps.remoteOpts
 			opts.Wiki = resolveWikiOptions(wikiEnable, wikiDisable, cmd.Flags().Changed("wiki"), cmd.Flags().Changed("no-wiki"), wikiRef, cmd.Flags().Changed("wiki-ref"), deps.fileCfg.Wiki)
-			return audit.Run(os.Stdout, opts, deps.claude.Audit)
+			return audit.Run(os.Stdout, opts, deps.claude.Audit, deps.claude)
 		},
 	}
 
@@ -112,6 +123,9 @@ or short form (owner/repo).`,
 	auditFlags.BoolVar(&auditCfg.NoIssueDedupe, "no-issue-dedupe", false, "Do not filter findings whose title matches an existing GitHub issue")
 	auditFlags.BoolVar(&auditCfg.Local, "local", false, "Operate on the current working directory instead of cloning into a temp dir")
 	auditFlags.BoolVar(&auditCfg.Force, "force", false, "With --local, skip the confirmation prompt when the working tree is dirty")
+	auditFlags.BoolVar(&auditCfg.NoCapture, "no-capture", false, "Skip the read-only capture pass that proposes new wiki review patterns from the audit findings (only runs with --wiki; writes nothing)")
+	auditFlags.BoolVar(&auditCfg.CaptureWiki, "capture-wiki", false, "Push the accepted capture pages to the wiki instead of only proposing them (off by default — a normal run is propose-only; confirms first, refuses a non-TTY run without --yes; env: "+envCaptureWiki+")")
+	auditFlags.BoolVar(&auditCfg.Yes, "yes", false, "Skip the --capture-wiki write confirmation prompt (for a non-interactive write)")
 	addWikiFlags(auditFlags, &wikiEnable, &wikiDisable, &wikiRef)
 
 	return auditCmd
