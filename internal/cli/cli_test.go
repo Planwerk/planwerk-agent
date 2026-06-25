@@ -76,6 +76,17 @@ func TestToImplementOptions_VerifyFlags(t *testing.T) {
 			t.Errorf("NoSimplify=%v, want false by default", opts.NoSimplify)
 		}
 	})
+
+	t.Run("no-capture maps through", func(t *testing.T) {
+		if opts := (ImplementConfig{NoCapture: true}).ToImplementOptions("v1"); !opts.NoCapture {
+			t.Errorf("NoCapture=%v, want true", opts.NoCapture)
+		}
+		// The capture pass is on by default (gated on a resolved wiki), so the
+		// zero config leaves the flag off.
+		if opts := (ImplementConfig{}).ToImplementOptions("v1"); opts.NoCapture {
+			t.Errorf("NoCapture=%v, want false by default", opts.NoCapture)
+		}
+	})
 }
 
 // TestToAddressOptions guards the reply reconciliation (the only non-trivial
