@@ -11,7 +11,9 @@ import (
 	"testing"
 
 	"github.com/planwerk/planwerk-review/internal/attribution"
+	"github.com/planwerk/planwerk-review/internal/capture"
 	"github.com/planwerk/planwerk-review/internal/github"
+	"github.com/planwerk/planwerk-review/internal/patterns"
 	"github.com/planwerk/planwerk-review/internal/report"
 )
 
@@ -78,6 +80,19 @@ func (f *fakeReviewApplier) ApplyReview(dir string, ctx ReviewApplyContext) (str
 	f.called.Add(1)
 	f.ctx = ctx
 	return f.report, f.model, f.err
+}
+
+type fakeCapturer struct {
+	called atomic.Int32
+	ctx    capture.CaptureContext
+	result *capture.CaptureResult
+	err    error
+}
+
+func (f *fakeCapturer) Capture(dir string, ctx capture.CaptureContext) (*capture.CaptureResult, error) {
+	f.called.Add(1)
+	f.ctx = ctx
+	return f.result, f.err
 }
 
 type fakeFinalizer struct {
@@ -1398,6 +1413,228 @@ func TestRun_ReviewFinderErrorIsNonFatal(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "Review pass could not run") {
 		t.Errorf("expected a non-fatal warning about the finder failure, got:\n%s", buf.String())
+	}
+}
+
+// captureRunner wires the capture pass onto a fresh Runner alongside the review
+// deps and a ResolveWiki seam that resolves to a temp wiki dir (so the capture
+// gate's wiki.Dir != "" check passes without cloning a real wiki). The review
+// deps are wired so the pass produces findings that flow into capture; tests
+// that exercise the memory-only path leave NoReview set.
+func captureRunner(t *testing.T, gh *fakeGitHub, cl *fakeClaude, av *fakeAdversarialVerifier, ra *fakeReviewApplier, cp *fakeCapturer) *Runner {
+	t.Helper()
+	ensureValidReport(cl)
+	r := newRunner(gh, cl)
+	r.AdversarialVerifier = av
+	r.ReviewApplier = ra
+	r.Capturer = cp
+	wikiDir := t.TempDir()
+	r.ResolveWiki = func(_, _ string, _ patterns.WikiOptions, _ patterns.RemoteOptions) patterns.ResolvedWiki {
+		return patterns.ResolvedWiki{Repo: "owner/repo.wiki", CommitSHA: "abc1234def", Dir: wikiDir}
+	}
+	return r
+}
+
+func onePatternProposal() *capture.CaptureResult {
+	return &capture.CaptureResult{
+		Patterns: []capture.ProposedPage{
+			{
+				Path:      "review_patterns/escape-untrusted-fences.md",
+				Kind:      capture.KindPattern,
+				Title:     "Escape untrusted fences",
+				Body:      "# Review Pattern: Escape untrusted fences\n\n## What to check\n...",
+				Rationale: "The fence-escaping fix recurs across builders.",
+			},
+		},
+	}
+}
+
+func TestRun_CaptureProposesAndPostsComment(t *testing.T) {
+	gh := &fakeGitHub{
+		issue:     sampleIssue(),
+		cloneDir:  t.TempDir(),
+		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	}
+	cl := &fakeClaude{}
+	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
+	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
+	cp := &fakeCapturer{result: onePatternProposal()}
+	r := captureRunner(t, gh, cl, av, ra, cp)
+
+	var buf bytes.Buffer
+	// --no-report-comment leaves only the review and capture comments, so the
+	// comment count and bodies isolate the capture pass.
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if cp.called.Load() != 1 {
+		t.Fatalf("capturer called %d times, want 1 — the capture pass is on by default with a wiki", cp.called.Load())
+	}
+	// Capture received the review finding as a candidate (review ran first) and
+	// the implementation report — proving it runs after the implement and review
+	// passes.
+	if len(cp.ctx.Findings) != 1 || cp.ctx.Findings[0].File != reviewTestProdFile {
+		t.Errorf("capturer got findings %+v, want the single review finding as a candidate", cp.ctx.Findings)
+	}
+	if cp.ctx.IssueNumber != 42 || cp.ctx.RepoName != testRepoFullName {
+		t.Errorf("capturer got ctx repo=%q issue=%d, want owner/repo / 42", cp.ctx.RepoName, cp.ctx.IssueNumber)
+	}
+	if cp.ctx.ImplementReport == "" {
+		t.Errorf("capturer got an empty implementation report, want the implement session's report")
+	}
+	if gh.commentCalls.Load() != 2 {
+		t.Fatalf("AddIssueComment called %d times, want 2 (review then capture)", gh.commentCalls.Load())
+	}
+	if !strings.Contains(gh.commentBodies[1], captureCommentFooter("")) {
+		t.Errorf("the capture comment is missing its attribution footer:\n%s", gh.commentBodies[1])
+	}
+	if !strings.Contains(gh.commentBodies[1], "review_patterns/escape-untrusted-fences.md") {
+		t.Errorf("the capture comment does not carry the proposal:\n%s", gh.commentBodies[1])
+	}
+	if !strings.Contains(buf.String(), "Captured knowledge proposals:") {
+		t.Errorf("missing the capture proposals on stdout:\n%s", buf.String())
+	}
+}
+
+func TestRun_CaptureErrorIsNonFatal(t *testing.T) {
+	gh := &fakeGitHub{
+		issue:     sampleIssue(),
+		cloneDir:  t.TempDir(),
+		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	}
+	cl := &fakeClaude{}
+	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
+	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
+	cp := &fakeCapturer{err: errors.New("capture exploded")}
+	r := captureRunner(t, gh, cl, av, ra, cp)
+	ff := &fakeFinalizer{report: defaultFinalizeReport}
+	r.Finalizer = ff
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil despite the capture error", err)
+	}
+	if cp.called.Load() != 1 {
+		t.Errorf("capturer called %d times, want 1", cp.called.Load())
+	}
+	if ff.called.Load() != 1 {
+		t.Errorf("finalizer called %d times, want 1 — a capture error must not block the PR", ff.called.Load())
+	}
+	if !strings.Contains(buf.String(), "Capture pass could not run") {
+		t.Errorf("expected a non-fatal warning about the capture failure, got:\n%s", buf.String())
+	}
+}
+
+// TestRun_CaptureNilResultIsNonFatal proves a capturer that returns (nil, nil)
+// — which the ClaudeCapturer contract permits — is skipped gracefully instead of
+// panicking on a nil dereference after the implementation and PR work are done.
+func TestRun_CaptureNilResultIsNonFatal(t *testing.T) {
+	gh := &fakeGitHub{
+		issue:     sampleIssue(),
+		cloneDir:  t.TempDir(),
+		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	}
+	cl := &fakeClaude{}
+	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
+	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
+	cp := &fakeCapturer{result: nil}
+	r := captureRunner(t, gh, cl, av, ra, cp)
+	ff := &fakeFinalizer{report: defaultFinalizeReport}
+	r.Finalizer = ff
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil despite the nil capture result", err)
+	}
+	if cp.called.Load() != 1 {
+		t.Errorf("capturer called %d times, want 1", cp.called.Load())
+	}
+	if ff.called.Load() != 1 {
+		t.Errorf("finalizer called %d times, want 1 — a nil capture result must not block the PR", ff.called.Load())
+	}
+	if !strings.Contains(buf.String(), "Capture proposed no new review patterns or memory pages.") {
+		t.Errorf("expected the no-proposals note for a nil capture result, got:\n%s", buf.String())
+	}
+}
+
+func TestRun_CaptureSkippedWithoutWiki(t *testing.T) {
+	gh := &fakeGitHub{
+		issue:     sampleIssue(),
+		cloneDir:  t.TempDir(),
+		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	}
+	cl := &fakeClaude{}
+	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
+	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
+	cp := &fakeCapturer{result: onePatternProposal()}
+	r := captureRunner(t, gh, cl, av, ra, cp)
+	// A wiki that did not resolve (no --wiki): capture has nowhere to propose to.
+	r.ResolveWiki = func(_, _ string, _ patterns.WikiOptions, _ patterns.RemoteOptions) patterns.ResolvedWiki {
+		return patterns.ResolvedWiki{}
+	}
+
+	if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if cp.called.Load() != 0 {
+		t.Errorf("capturer called %d times, want 0 — capture is skipped without a resolved wiki", cp.called.Load())
+	}
+}
+
+func TestRun_CaptureSkippedByNoCapture(t *testing.T) {
+	gh := &fakeGitHub{
+		issue:     sampleIssue(),
+		cloneDir:  t.TempDir(),
+		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	}
+	cl := &fakeClaude{}
+	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
+	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
+	cp := &fakeCapturer{result: onePatternProposal()}
+	r := captureRunner(t, gh, cl, av, ra, cp)
+
+	if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42", NoCapture: true, NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if cp.called.Load() != 0 {
+		t.Errorf("capturer called %d times, want 0 with --no-capture", cp.called.Load())
+	}
+}
+
+// TestRun_CaptureRunsMemoryOnlyWithoutReview proves capture still runs when
+// --no-review left no findings: it proposes memory pages from the plan and report
+// alone, receiving an empty candidate list.
+func TestRun_CaptureRunsMemoryOnlyWithoutReview(t *testing.T) {
+	gh := &fakeGitHub{
+		issue:     sampleIssue(),
+		cloneDir:  t.TempDir(),
+		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	}
+	cl := &fakeClaude{}
+	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
+	ra := &fakeReviewApplier{report: "unused"}
+	cp := &fakeCapturer{result: &capture.CaptureResult{
+		Memory: []capture.ProposedPage{
+			{Path: "memory/capture-is-propose-only.md", Kind: capture.KindMemory, Title: "Propose only", Body: "Capture never pushes."},
+		},
+	}}
+	r := captureRunner(t, gh, cl, av, ra, cp)
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReview: true, NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if av.called.Load() != 0 {
+		t.Errorf("review finder called %d times, want 0 with --no-review", av.called.Load())
+	}
+	if cp.called.Load() != 1 {
+		t.Fatalf("capturer called %d times, want 1 — capture runs memory-only without review", cp.called.Load())
+	}
+	if len(cp.ctx.Findings) != 0 {
+		t.Errorf("capturer got findings %+v, want none when review was skipped", cp.ctx.Findings)
+	}
+	if gh.commentCalls.Load() != 1 {
+		t.Errorf("AddIssueComment called %d times, want 1 (the capture comment only)", gh.commentCalls.Load())
 	}
 }
 

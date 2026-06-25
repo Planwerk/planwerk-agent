@@ -1,6 +1,7 @@
 package implement
 
 import (
+	"github.com/planwerk/planwerk-review/internal/capture"
 	"github.com/planwerk/planwerk-review/internal/github"
 	"github.com/planwerk/planwerk-review/internal/patterns"
 	"github.com/planwerk/planwerk-review/internal/report"
@@ -265,6 +266,34 @@ type reviewApplyFnAdapter struct {
 func (a reviewApplyFnAdapter) ApplyReview(dir string, ctx ReviewApplyContext) (string, string, error) {
 	return a.fn(dir, ctx)
 }
+
+// ClaudeCapturer runs the read-only knowledge-proposal pass after the review
+// pass: it mines the review findings, plan, and implementation report for
+// candidate review patterns and memory pages, deduplicated against the wiki and
+// the catalog, and authors them without writing anything. The production
+// implementation is claude.Capture; tests substitute a fake. Optional — nil (or
+// a wiki that did not resolve) leaves the capture pass disabled.
+type ClaudeCapturer interface {
+	Capture(dir string, ctx capture.CaptureContext) (*capture.CaptureResult, error)
+}
+
+// CaptureFn is the bare-function form of ClaudeCapturer. It matches
+// claude.Capture so the CLI can wire it directly.
+type CaptureFn func(dir string, ctx capture.CaptureContext) (*capture.CaptureResult, error)
+
+type captureFnAdapter struct {
+	fn CaptureFn
+}
+
+func (a captureFnAdapter) Capture(dir string, ctx capture.CaptureContext) (*capture.CaptureResult, error) {
+	return a.fn(dir, ctx)
+}
+
+// resolveWikiFn resolves the target repo's wiki to its clone root, review
+// patterns, memory, and commit. It matches patterns.ResolveWiki and is a Runner
+// seam (defaulting to patterns.ResolveWiki) so the capture pass can be exercised
+// against a temp wiki without cloning a real one. Mirrors sync.resolveWikiFn.
+type resolveWikiFn func(owner, name string, wopts patterns.WikiOptions, ropts patterns.RemoteOptions) patterns.ResolvedWiki
 
 // FinalizeContext is the input for the Claude finalize session that opens the
 // draft pull request once the implement, simplify, and review passes have all

@@ -10,6 +10,7 @@
 package implement
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -17,10 +18,12 @@ import (
 	"strings"
 
 	"github.com/planwerk/planwerk-review/internal/attribution"
+	"github.com/planwerk/planwerk-review/internal/capture"
 	"github.com/planwerk/planwerk-review/internal/detect"
 	"github.com/planwerk/planwerk-review/internal/github"
 	"github.com/planwerk/planwerk-review/internal/patterns"
 	"github.com/planwerk/planwerk-review/internal/report"
+	"github.com/planwerk/planwerk-review/internal/sync"
 	"github.com/planwerk/planwerk-review/internal/workspace"
 )
 
@@ -57,9 +60,15 @@ type Options struct {
 	// fix into the commit it belongs to on the local branch (no push). The pass
 	// is on by default; a full run is implement -> simplify -> review -> finalize.
 	NoReview bool
-	Local    bool // operate on the current working directory instead of cloning
-	Force    bool // with Local, skip the dirty-working-tree confirmation prompt
-	Version  string
+	// NoCapture disables the read-only capture pass that, after the review pass
+	// and before finalizing, proposes new wiki review patterns and memory pages
+	// from the review findings, plan, and implementation report — writing
+	// nothing. The pass is on by default but runs only when a wiki is resolved
+	// (i.e. with --wiki); without one it is a no-op regardless of this flag.
+	NoCapture bool
+	Local     bool // operate on the current working directory instead of cloning
+	Force     bool // with Local, skip the dirty-working-tree confirmation prompt
+	Version   string
 
 	// Pattern loading mirrors review/audit/elaborate so the implementation
 	// is grounded in the same review catalog and any project-specific
@@ -114,11 +123,20 @@ type Runner struct {
 	// non-nil (and opts.NoReview false) for the pass to run. Nil leaves the
 	// review-and-fix pass disabled.
 	ReviewApplier ReviewApplier
+	// Capturer runs the read-only capture pass after the review pass: it proposes
+	// new wiki review patterns and memory pages from the review findings, plan,
+	// and implementation report, writing nothing. Nil (or a wiki that did not
+	// resolve, or opts.NoCapture) leaves the pass disabled.
+	Capturer ClaudeCapturer
 	// Finalizer opens the draft pull request after the simplify and review passes
 	// have run on the local branch (a full run is implement -> simplify -> review
 	// -> finalize). When nil the run stops with the branch committed but no PR
 	// opened. The production wiring always sets it.
 	Finalizer PRFinalizer
+	// ResolveWiki resolves the target repo's wiki. Defaults to
+	// patterns.ResolveWiki; a Runner seam so the capture pass can be exercised
+	// against a temp wiki without cloning a real one.
+	ResolveWiki resolveWikiFn
 }
 
 // NewRunner builds a Runner with the production GitHub backend, the given
@@ -128,14 +146,15 @@ type Runner struct {
 // CLI wires claude.Plan / claude.BuildPlanPrompt / claude.Implement /
 // claude.BuildImplementPrompt / claude.VerifyImplementation /
 // claude.AdversarialReview / claude.SimplifyFindings / claude.ApplySimplifications /
-// claude.ApplyReview / claude.FinalizePR so the import direction stays
-// claude -> implement. A nil planFn disables the planning phase; a nil verifyFn
-// leaves the verification pass disabled; a nil adversarialFn leaves both the
-// adversarial pass and the review-and-fix finder disabled; a nil simplifyFindFn
-// or simplifyApplyFn leaves the simplify pass disabled; a nil reviewApplyFn
-// leaves the review-and-fix pass disabled; a nil finalizeFn leaves the run on the
-// committed branch with no PR opened.
-func NewRunner(planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn, adversarialFn AdversarialFn, simplifyFindFn SimplifyFindFn, simplifyApplyFn SimplifyApplyFn, reviewApplyFn ReviewApplyFn, finalizeFn FinalizeFn) *Runner {
+// claude.ApplyReview / claude.Capture / claude.FinalizePR so the import direction
+// stays claude -> implement. A nil planFn disables the planning phase; a nil
+// verifyFn leaves the verification pass disabled; a nil adversarialFn leaves both
+// the adversarial pass and the review-and-fix finder disabled; a nil
+// simplifyFindFn or simplifyApplyFn leaves the simplify pass disabled; a nil
+// reviewApplyFn leaves the review-and-fix pass disabled; a nil captureFn leaves
+// the capture pass disabled; a nil finalizeFn leaves the run on the committed
+// branch with no PR opened.
+func NewRunner(planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn, adversarialFn AdversarialFn, simplifyFindFn SimplifyFindFn, simplifyApplyFn SimplifyApplyFn, reviewApplyFn ReviewApplyFn, captureFn CaptureFn, finalizeFn FinalizeFn) *Runner {
 	r := &Runner{
 		Claude:          implementFnAdapter{fn: fn},
 		GitHub:          defaultGitHubClient{},
@@ -160,6 +179,9 @@ func NewRunner(planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build Pro
 	if reviewApplyFn != nil {
 		r.ReviewApplier = reviewApplyFnAdapter{fn: reviewApplyFn}
 	}
+	if captureFn != nil {
+		r.Capturer = captureFnAdapter{fn: captureFn}
+	}
 	if finalizeFn != nil {
 		r.Finalizer = finalizeFnAdapter{fn: finalizeFn}
 	}
@@ -167,15 +189,15 @@ func NewRunner(planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build Pro
 }
 
 // Run is a package-level convenience that delegates to NewRunner(...).Run.
-func Run(w io.Writer, opts Options, planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn, adversarialFn AdversarialFn, simplifyFindFn SimplifyFindFn, simplifyApplyFn SimplifyApplyFn, reviewApplyFn ReviewApplyFn, finalizeFn FinalizeFn) error {
-	return NewRunner(planFn, buildPlan, fn, build, verifyFn, adversarialFn, simplifyFindFn, simplifyApplyFn, reviewApplyFn, finalizeFn).Run(w, opts)
+func Run(w io.Writer, opts Options, planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn, adversarialFn AdversarialFn, simplifyFindFn SimplifyFindFn, simplifyApplyFn SimplifyApplyFn, reviewApplyFn ReviewApplyFn, captureFn CaptureFn, finalizeFn FinalizeFn) error {
+	return NewRunner(planFn, buildPlan, fn, build, verifyFn, adversarialFn, simplifyFindFn, simplifyApplyFn, reviewApplyFn, captureFn, finalizeFn).Run(w, opts)
 }
 
 // PrintBarePrompt is a package-level convenience that delegates to
 // NewRunner(nil, ...).PrintBarePrompt. The prompt itself is built without
 // invoking Claude, so the functions passed to NewRunner are not used here.
 func PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuildFn) error {
-	return NewRunner(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil).PrintBarePrompt(w, opts, build)
+	return NewRunner(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil).PrintBarePrompt(w, opts, build)
 }
 
 // PrintBarePrompt builds a self-contained ("bare") implement prompt from
@@ -381,7 +403,11 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// flow into the implement prompt through the shared pattern catalog, and its
 	// project memory is injected into the planning prompt. An absent, disabled,
 	// or offline wiki returns the zero value and leaves the run unchanged.
-	wiki := patterns.ResolveWiki(owner, name, opts.Wiki, opts.Remote)
+	resolveWiki := r.ResolveWiki
+	if resolveWiki == nil {
+		resolveWiki = patterns.ResolveWiki
+	}
+	wiki := resolveWiki(owner, name, opts.Wiki, opts.Remote)
 	if wiki.CommitSHA != "" {
 		slog.Info("resolved wiki", "repo", wiki.Repo, "commit", wiki.CommitSHA)
 	}
@@ -442,9 +468,20 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// implement -> simplify -> review -> finalize), reusing the adversarial
 	// review as the finder and folding each fix into the commit it belongs to. On
 	// by default; --no-review or an unwired dependency skips it. Non-fatal, like
-	// the verify and simplify passes.
+	// the verify and simplify passes. Its findings feed the capture pass below.
+	var reviewFindings []report.Finding
 	if !opts.NoReview && r.AdversarialVerifier != nil && r.ReviewApplier != nil {
-		r.runReview(w, repo.Dir, owner, name, number, ctx)
+		reviewFindings = r.runReview(w, repo.Dir, owner, name, number, ctx)
+	}
+
+	// Capture pass: read-only proposal of new wiki review patterns and memory
+	// pages from the review findings, the plan, and the implementation report —
+	// writing nothing. Runs after the review pass and before finalizing, on by
+	// default, but only when a wiki resolved (proposing wiki pages is pointless
+	// without one). Non-fatal, like the surrounding passes. Capture still runs
+	// (memory-only) when --no-review left the findings empty.
+	if !opts.NoCapture && r.Capturer != nil && wiki.Dir != "" {
+		r.runCapture(w, repo.Dir, owner, name, number, ctx, opts.Version, implReport, reviewFindings, wiki)
 	}
 
 	// Optional read-only verification passes assess the final, simplified and
@@ -1006,20 +1043,24 @@ func (r *Runner) postSimplifyComment(w io.Writer, owner, name string, number int
 // surfaced but never aborts the run, matching the simplify and verify passes'
 // contract. No findings is a clean no-op — no commit, no issue comment beyond a
 // short stdout note.
-func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx Context) {
+//
+// It returns the findings the finder produced (even after they are folded in),
+// so the capture pass can mine them for generalizable review patterns. A skipped
+// or failed pass, and a pass that found nothing, return nil.
+func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx Context) []report.Finding {
 	slog.Info("running review-and-fix pass over the produced diff")
 	branch, err := r.GitHub.CurrentBranchRef(dir)
 	if err != nil {
 		slog.Warn("could not resolve the branch for the review pass; skipping", "err", err)
 		_, _ = fmt.Fprintf(w, "\nReview pass skipped: could not resolve the base branch for this checkout: %v\n", err)
-		return
+		return nil
 	}
 
 	result, err := r.AdversarialVerifier.AdversarialReview(dir, branch.BaseBranch)
 	if err != nil {
 		slog.Warn("review finder failed", "err", err)
 		_, _ = fmt.Fprintf(w, "\nReview pass could not run: %v\n", err)
-		return
+		return nil
 	}
 
 	var findings []report.Finding
@@ -1029,7 +1070,7 @@ func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx
 	if len(findings) == 0 {
 		slog.Info("review pass found nothing to fix")
 		_, _ = fmt.Fprintln(w, "\nReview found nothing to fix.")
-		return
+		return nil
 	}
 
 	reviewReport, model, err := r.ReviewApplier.ApplyReview(dir, ReviewApplyContext{
@@ -1042,7 +1083,7 @@ func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx
 	if err != nil {
 		slog.Warn("review apply failed", "err", err)
 		_, _ = fmt.Fprintf(w, "\nReview apply could not run: %v\n", err)
-		return
+		return findings
 	}
 	if reviewReport != "" {
 		_, _ = fmt.Fprintf(w, "\nReview report:\n%s\n", reviewReport)
@@ -1054,6 +1095,7 @@ func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx
 		_, _ = fmt.Fprintf(w, "\nClaude reported %s — stopping the review pass.\n", status)
 	}
 	slog.Info("review pass complete", "issue", number)
+	return findings
 }
 
 // reviewCommentFooter attributes the posted review report to planwerk-review,
@@ -1088,6 +1130,116 @@ func (r *Runner) postReviewComment(w io.Writer, owner, name string, number int, 
 	}
 	slog.Info("posted review report comment", "issue", number, "url", url)
 	_, _ = fmt.Fprintf(w, "\nPosted the review report as a comment on issue #%d", number)
+	if url != "" {
+		_, _ = fmt.Fprintf(w, " (%s)", url)
+	}
+	_, _ = fmt.Fprintln(w)
+}
+
+// runCapture runs the read-only capture pass after the review pass and before
+// finalizing: it enumerates the wiki's existing entries, pre-filters the review
+// findings to those that match no existing pattern (capture.CandidateFindings),
+// and runs the Claude proposal pass that authors candidate review patterns and
+// memory pages from those findings, the plan, and the implementation report —
+// deduplicated against the entries and the catalog, and writing nothing. When
+// the pass proposes something it renders the proposals to stdout and posts them
+// as an issue comment.
+//
+// The whole pass is non-fatal: any failure (reading the wiki, the Claude call,
+// the comment post) is logged and surfaced but never aborts the run, matching
+// the simplify and review passes' contract. No proposals is a clean no-op beyond
+// a short stdout note. version names the build in the rendered report's footer.
+func (r *Runner) runCapture(w io.Writer, dir, owner, name string, number int, ctx Context, version, implReport string, findings []report.Finding, wiki patterns.ResolvedWiki) {
+	slog.Info("running capture pass over the review findings, plan, and report", "issue", number)
+
+	entries, err := sync.ReadWikiEntries(wiki.Dir)
+	if err != nil {
+		slog.Warn("capture could not read wiki entries; skipping", "err", err)
+		_, _ = fmt.Fprintf(w, "\nCapture pass skipped: could not read the wiki entries: %v\n", err)
+		return
+	}
+
+	candidates := capture.CandidateFindings(findings, ctx.Patterns)
+
+	// The base branch only scopes the diff the proposal prompt reasons about, so
+	// a failure to resolve it degrades to the default branch rather than skipping.
+	baseBranch := ""
+	if branch, err := r.GitHub.CurrentBranchRef(dir); err == nil && branch != nil {
+		baseBranch = branch.BaseBranch
+	}
+
+	result, err := r.Capturer.Capture(dir, capture.CaptureContext{
+		RepoName:        ctx.RepoFullName,
+		IssueNumber:     number,
+		BaseBranch:      baseBranch,
+		Findings:        candidates,
+		Plan:            ctx.Plan,
+		ImplementReport: implReport,
+		Entries:         entries,
+		Patterns:        ctx.Patterns,
+	})
+	if err != nil {
+		slog.Warn("capture pass failed", "err", err)
+		_, _ = fmt.Fprintf(w, "\nCapture pass could not run: %v\n", err)
+		return
+	}
+	// The ClaudeCapturer contract permits (nil, nil) — production never returns
+	// it, but a stubbed or future seam might, and dereferencing it below would
+	// crash the whole run after the implementation and PR work are done.
+	if result == nil {
+		slog.Warn("capture returned no result; skipping", "issue", number)
+		_, _ = fmt.Fprintln(w, "\nCapture proposed no new review patterns or memory pages.")
+		return
+	}
+	result.WikiRepo = wiki.Repo
+	result.WikiCommit = wiki.CommitSHA
+
+	if !result.HasProposals() {
+		slog.Info("capture proposed nothing", "issue", number)
+		_, _ = fmt.Fprintln(w, "\nCapture proposed no new review patterns or memory pages.")
+		return
+	}
+
+	prov := capture.Provenance{Repo: ctx.RepoFullName, Issue: number}
+	var rendered bytes.Buffer
+	capture.NewRenderer(&rendered).RenderMarkdown(*result, prov, version)
+	_, _ = fmt.Fprintf(w, "\nCaptured knowledge proposals:\n%s\n", rendered.String())
+	// Post the proposals as an issue comment so they surface alongside the plan,
+	// implementation, and review reports — the wiki was not touched.
+	r.postCaptureComment(w, owner, name, number, rendered.String(), result.Model)
+	slog.Info("capture pass complete", "issue", number)
+}
+
+// captureCommentFooter attributes the posted capture proposals to
+// planwerk-review, naming the model that produced them and matching the footer
+// the implement command's plan/report/simplify/review comments append.
+func captureCommentFooter(model string) string {
+	return "_Capture proposals generated by " + attribution.Tool() + " implement " + attribution.AssistantWith(model) + "_"
+}
+
+// formatCaptureComment wraps the rendered capture proposals in the issue-comment
+// body: the report verbatim (it already carries its own "# Captured Knowledge"
+// heading) followed by the attribution footer.
+func formatCaptureComment(reportBody, model string) string {
+	return strings.TrimSpace(reportBody) + "\n\n---\n\n" + captureCommentFooter(model) + "\n"
+}
+
+// postCaptureComment posts the capture proposals as a comment on the source
+// issue, so the suggested wiki knowledge lands on the issue alongside the other
+// reports — nothing was written to the wiki, so the comment is the only durable
+// record of the proposals.
+//
+// Posting is best-effort: a failure to reach GitHub is logged and surfaced to
+// the operator but never aborts the run — the proposals are already on stdout.
+func (r *Runner) postCaptureComment(w io.Writer, owner, name string, number int, reportBody, model string) {
+	url, err := r.GitHub.AddIssueComment(owner, name, number, formatCaptureComment(reportBody, model))
+	if err != nil {
+		slog.Warn("posting capture comment failed", "issue", number, "err", err)
+		_, _ = fmt.Fprintf(w, "\nCould not post the capture proposals as an issue comment: %v\n", err)
+		return
+	}
+	slog.Info("posted capture proposals comment", "issue", number, "url", url)
+	_, _ = fmt.Fprintf(w, "\nPosted the capture proposals as a comment on issue #%d", number)
 	if url != "" {
 		_, _ = fmt.Fprintf(w, " (%s)", url)
 	}
