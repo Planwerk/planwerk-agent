@@ -556,6 +556,8 @@ planwerk-review implement --verify-adversarial owner/repo#123
 planwerk-review implement --verify --verify-adversarial owner/repo#123
 planwerk-review implement --no-simplify owner/repo#123
 planwerk-review implement --no-review owner/repo#123
+planwerk-review implement --wiki owner/repo#123
+planwerk-review implement --wiki --no-capture owner/repo#123
 ```
 
 | Flag | Description | Default |
@@ -574,6 +576,7 @@ planwerk-review implement --no-review owner/repo#123
 | `--verify-adversarial` | After implementing, red-team the produced diff for the bugs it introduces using the adversarial-review pass (independent of `--verify`) | `false` |
 | `--no-simplify` | Skip the automatic simplify pass that folds over-engineering removals into the branch before the review phase | `false` |
 | `--no-review` | Skip the automatic review-and-fix pass that folds review findings into the branch after the simplify pass | `false` |
+| `--no-capture` | Skip the read-only capture pass that proposes new wiki review patterns and memory pages (only runs with `--wiki`; writes nothing) | `false` |
 | `--patterns` | Additional pattern source: local directory, `github:owner/repo[/sub][@ref]`, or `git+https://…[#ref[:sub]]` | - |
 | `--no-repo-patterns` | Ignore repo-specific patterns under `.planwerk/review_patterns/` in the target repo | `false` |
 | `--no-local-patterns` | Ignore local patterns from the tool | `false` |
@@ -621,6 +624,17 @@ no-op (no commit, no issue comment beyond a short stdout note). The pass is
 non-fatal — a failed or escalated review never changes the run's exit code. The
 read-only `--verify` / `--verify-adversarial` flags remain available for a
 report-only run. Disable the apply behavior with `--no-review`.
+
+When the run uses `--wiki`, a read-only capture pass then proposes new project
+knowledge for the wiki: generalizable review findings become candidate
+`review_patterns/` pages, durable rationale from the plan and the implementation
+report becomes candidate `memory/` pages, and every candidate is deduplicated
+against the wiki's existing entries and the bundled pattern catalog. It is
+**propose-only** — the suggestions surface in the run report and as a comment on
+the source issue, and nothing is written to the wiki. The pass is non-fatal, is a
+clean no-op when nothing clears the bar, and is skipped without a resolved wiki.
+Disable it with `--no-capture`. See [Use the GitHub Wiki](/how-to/use-the-github-wiki#capture-knowledge-from-an-implement-run-propose-only)
+for the memory write convention it follows.
 
 Once the simplify and review passes are done, a finalize session opens the draft
 pull request last: it resolves the base branch from `origin/HEAD`, pushes the

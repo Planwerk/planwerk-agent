@@ -106,6 +106,35 @@ folded into the cache key, so editing the wiki re-runs the review rather than
 serving a stale cached result, and two runs against the same wiki commit produce
 the same review.
 
+## Capture knowledge from an implement run (propose-only)
+
+When `implement` runs with `--wiki`, a read-only **capture** pass proposes new
+wiki pages once the review pass is done — so the wiki grows from the work, not
+only by hand. Generalizable review findings become candidate `review_patterns/`
+pages; durable rationale from the plan and the implementation report becomes
+candidate `memory/` pages. Every candidate is deduplicated against the wiki's
+existing entries and the bundled pattern catalog, so capture does not re-propose
+what is already recorded.
+
+The pass is **propose-only**: the suggestions surface in the run report and as a
+comment on the source issue, and **nothing is written to the wiki**. Review them
+and add the ones worth keeping. It is on by default whenever a wiki is resolved;
+disable it with `--no-capture`.
+
+The proposed `memory/` pages follow a small write convention so they stay easy to
+maintain by hand or by a later automated write-back:
+
+- **One page per durable decision.** A memory page records a single "why" — a
+  non-obvious choice, a constraint to honor, a trade-off that was weighed — not a
+  catch-all log.
+- **A stable, descriptive slug.** Re-running capture on the same decision reuses
+  the same `memory/<slug>.md` path, so it **updates the page in place** rather
+  than appending a near-duplicate.
+- **A provenance marker.** Each proposed page begins with an HTML comment —
+  `<!-- planwerk-review: captured from owner/repo#123 -->` — that marks it as
+  tool-authored (rather than hand-authored) and names the issue it came from. The
+  marker is fixed for a given source, so a re-run does not churn the page.
+
 ## Keep the wiki trustworthy
 
 Wiki knowledge drifts as the code changes, so the highest-priority source quietly
