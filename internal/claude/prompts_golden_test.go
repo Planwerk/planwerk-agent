@@ -9,6 +9,7 @@ import (
 
 	"github.com/planwerk/planwerk-review/internal/address"
 	"github.com/planwerk/planwerk-review/internal/audit"
+	"github.com/planwerk/planwerk-review/internal/capture"
 	"github.com/planwerk/planwerk-review/internal/doccheck"
 	"github.com/planwerk/planwerk-review/internal/draft"
 	"github.com/planwerk/planwerk-review/internal/elaborate"
@@ -315,6 +316,46 @@ func TestBuildSyncPrompt_Golden(t *testing.T) {
 func TestBuildSyncStructurePrompt_Golden(t *testing.T) {
 	raw := "Entry review_patterns/old.md references internal/db/legacy.go, which no longer exists.\n"
 	assertGoldenPrompt(t, "sync_structure", buildSyncStructurePrompt(raw))
+}
+
+func goldenCaptureContext() capture.CaptureContext {
+	return capture.CaptureContext{
+		RepoName:    "planwerk/planwerk-review",
+		IssueNumber: 138,
+		BaseBranch:  "main",
+		Findings: []report.Finding{
+			{
+				Title:       "Unescaped untrusted fence",
+				Severity:    report.SeverityWarning,
+				Pattern:     "adversarial-review",
+				File:        "internal/claude/prompt.go",
+				Problem:     "An untrusted body can close the fenced block early and smuggle instructions.",
+				Action:      "Escape the closing delimiter before injecting the body.",
+				CodeSnippet: "fmt.Fprintf(&sb, \"<x>\\n%s\\n</x>\", body)",
+			},
+		},
+		Plan:            "## Implementation Plan (issue #138)\n\n### Summary\n- Escape untrusted fences before injecting them into prompts.",
+		ImplementReport: "## Implementation Report (issue #138)\n\n### Deviations from the issue\n- none\n\nSTATUS: DONE",
+		Entries: []sync.Entry{
+			{Path: "memory/decisions.md", Kind: sync.KindMemory, Raw: "We pin every dependency and never float a version range.\n"},
+		},
+		Patterns: goldenPatterns(),
+	}
+}
+
+// TestBuildCapturePrompt_Golden locks the read-only proposal prompt: the two
+// knowledge kinds, the quality bar, the dedup-against-entries-and-catalog
+// instruction, the "# Review Pattern:" format spec, and the injected
+// findings/plan/report/entries as fenced untrusted data.
+func TestBuildCapturePrompt_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "capture", buildCapturePrompt(goldenCaptureContext()))
+}
+
+// TestBuildCaptureStructurePrompt_Golden locks the capture-structuring prompt:
+// the patterns/memory JSON schema and the analysis fence.
+func TestBuildCaptureStructurePrompt_Golden(t *testing.T) {
+	raw := "Propose review_patterns/escape-untrusted-fences.md: the fence-escaping fix recurs.\n"
+	assertGoldenPrompt(t, "capture_structure", buildCaptureStructurePrompt(raw))
 }
 
 // TestBuildAnalysisPrompt_NoPatterns locks the fallback shape used when no
