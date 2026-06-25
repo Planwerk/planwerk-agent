@@ -37,6 +37,14 @@ func TestCreateIssueArgs(t *testing.T) {
 	}
 }
 
+func TestCloseIssueArgs(t *testing.T) {
+	got := closeIssueArgs("acme", "widgets", 99)
+	want := []string{"issue", "close", "99", "--repo", "acme/widgets"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("closeIssueArgs() = %v, want %v", got, want)
+	}
+}
+
 func TestParseIssueComments(t *testing.T) {
 	cases := []struct {
 		name    string

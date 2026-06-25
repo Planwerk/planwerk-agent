@@ -203,6 +203,27 @@ func EditIssueBody(owner, name string, number int, body string) error {
 	return nil
 }
 
+// CloseIssue closes an issue via gh. The ship command uses it to close a Meta
+// Issue once every one of its Sub Issues has merged.
+func CloseIssue(owner, name string, number int) error {
+	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "gh", closeIssueArgs(owner, name, number)...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("gh issue close: %s: %w", strings.TrimSpace(string(out)), err)
+	}
+	return nil
+}
+
+// closeIssueArgs builds the gh argv that closes an issue. Kept separate so the
+// argument assembly is unit-testable without invoking gh.
+func closeIssueArgs(owner, name string, number int) []string {
+	return []string{"issue", "close", strconv.Itoa(number),
+		"--repo", fmt.Sprintf("%s/%s", owner, name),
+	}
+}
+
 // AddIssueComment posts a new comment on an issue. The body is passed via
 // stdin so it is not subject to argv length limits or shell quoting.
 func AddIssueComment(owner, name string, number int, body string) (string, error) {

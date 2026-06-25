@@ -5,11 +5,11 @@ import (
 	"testing"
 )
 
-func TestChildIssueDatabaseIDArgs(t *testing.T) {
-	got := childIssueDatabaseIDArgs("acme", "widgets", 7)
+func TestIssueDatabaseIDArgs(t *testing.T) {
+	got := issueDatabaseIDArgs("acme", "widgets", 7)
 	want := []string{"api", "repos/acme/widgets/issues/7", "--jq", ".id"}
 	if !slices.Equal(got, want) {
-		t.Fatalf("childIssueDatabaseIDArgs() = %v, want %v", got, want)
+		t.Fatalf("issueDatabaseIDArgs() = %v, want %v", got, want)
 	}
 }
 

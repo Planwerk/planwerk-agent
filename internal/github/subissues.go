@@ -18,7 +18,7 @@ import (
 // POST /repos/{owner}/{repo}/issues/{issue_number}/sub_issues with a
 // sub_issue_id body field carrying the child's database id.
 func AddSubIssue(owner, name string, parentNumber, childNumber int) error {
-	childID, err := childIssueDatabaseID(owner, name, childNumber)
+	childID, err := issueDatabaseID(owner, name, childNumber)
 	if err != nil {
 		return err
 	}
@@ -33,30 +33,31 @@ func AddSubIssue(owner, name string, parentNumber, childNumber int) error {
 	return nil
 }
 
-// childIssueDatabaseID resolves the integer database id of an issue from its
-// number via the REST API. The sub-issues endpoint needs the database id (the
-// issue's `.id`), which differs from the human-facing issue number.
-func childIssueDatabaseID(owner, name string, childNumber int) (int, error) {
+// issueDatabaseID resolves the integer database id of an issue from its number
+// via the REST API. The sub-issues and issue-dependency endpoints both key the
+// linked issue by its database id (the issue's `.id`), which differs from the
+// human-facing issue number.
+func issueDatabaseID(owner, name string, number int) (int, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "gh", childIssueDatabaseIDArgs(owner, name, childNumber)...)
+	cmd := exec.CommandContext(ctx, "gh", issueDatabaseIDArgs(owner, name, number)...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return 0, fmt.Errorf("gh api issues/%d: %s: %w", childNumber, strings.TrimSpace(string(out)), err)
+		return 0, fmt.Errorf("gh api issues/%d: %s: %w", number, strings.TrimSpace(string(out)), err)
 	}
 	id, err := strconv.Atoi(strings.TrimSpace(string(out)))
 	if err != nil {
-		return 0, fmt.Errorf("parsing issue %d database id: %w", childNumber, err)
+		return 0, fmt.Errorf("parsing issue %d database id: %w", number, err)
 	}
 	return id, nil
 }
 
-// childIssueDatabaseIDArgs builds the gh argv that reads an issue's database id
+// issueDatabaseIDArgs builds the gh argv that reads an issue's database id
 // (`.id`) from the REST API. Kept separate so the argument assembly is
 // unit-testable without invoking gh.
-func childIssueDatabaseIDArgs(owner, name string, childNumber int) []string {
+func issueDatabaseIDArgs(owner, name string, number int) []string {
 	return []string{"api",
-		fmt.Sprintf("repos/%s/%s/issues/%d", owner, name, childNumber),
+		fmt.Sprintf("repos/%s/%s/issues/%d", owner, name, number),
 		"--jq", ".id",
 	}
 }
