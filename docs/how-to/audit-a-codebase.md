@@ -44,3 +44,29 @@ review finding schema, so findings render the same way — see
 When creating issues with `--create-issues`, the same
 [existing-issue dedupe](/how-to/analyze-a-repository#existing-issue-dedupe)
 applies as for `propose`.
+
+## Capture knowledge to the wiki
+
+When the audit runs with `--wiki`, a read-only **capture pass** mines the audit
+findings for generalizable `review_patterns/` pages worth recording on the
+target repo's GitHub Wiki, so the wiki grows from whole-codebase audits too. Like
+review, a standalone audit has no plan or implementation report, so it proposes
+**patterns only**, never `memory/` pages.
+
+The pass is **propose-only** by default: an audit has no PR or issue to comment
+on, so the suggestions go to `stdout`; nothing is written to the wiki. It runs on
+a cache miss only, is non-fatal, and is a clean no-op when nothing clears the bar.
+
+```bash
+# Propose patterns from the audit (default with --wiki)
+planwerk-review audit --wiki owner/repo
+
+# Skip the capture pass
+planwerk-review audit --wiki --no-capture owner/repo
+
+# Push the accepted pages to the wiki (confirms first; --yes for CI)
+planwerk-review audit --wiki --capture-wiki owner/repo
+```
+
+See [Use the GitHub Wiki](/how-to/use-the-github-wiki#capture-knowledge-from-a-findings-producing-run-propose-only)
+for the page conventions and the gated write-back.

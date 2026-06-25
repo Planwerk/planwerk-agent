@@ -106,20 +106,23 @@ folded into the cache key, so editing the wiki re-runs the review rather than
 serving a stale cached result, and two runs against the same wiki commit produce
 the same review.
 
-## Capture knowledge from an implement run (propose-only)
+## Capture knowledge from a findings-producing run (propose-only)
 
-When `implement` runs with `--wiki`, a read-only **capture** pass proposes new
-wiki pages once the review pass is done — so the wiki grows from the work, not
-only by hand. Generalizable review findings become candidate `review_patterns/`
-pages; durable rationale from the plan and the implementation report becomes
-candidate `memory/` pages. Every candidate is deduplicated against the wiki's
+When `implement`, `review`, or `audit` runs with `--wiki`, a read-only
+**capture** pass proposes new wiki pages from the findings — so the wiki grows
+from every findings-producing run, not only by hand. Generalizable review
+findings become candidate `review_patterns/` pages; under `implement`, durable
+rationale from the plan and the implementation report also becomes candidate
+`memory/` pages. (A standalone `review` or `audit` has no plan or report, so it
+proposes patterns only.) Every candidate is deduplicated against the wiki's
 existing entries and the bundled pattern catalog, so capture does not re-propose
 what is already recorded.
 
-The pass is **propose-only**: the suggestions surface in the run report and as a
-comment on the source issue, and **nothing is written to the wiki**. Review them
-and add the ones worth keeping. It is on by default whenever a wiki is resolved;
-disable it with `--no-capture`.
+The pass is **propose-only**: the suggestions surface in the run report — and as
+a comment on the source issue (`implement`) or PR (`review --post-review`) — and
+**nothing is written to the wiki**. Review them and add the ones worth keeping.
+It is on by default whenever a wiki is resolved; disable it with `--no-capture`.
+It runs on a cache miss only, so a cached `review`/`audit` proposes nothing.
 
 The proposed `memory/` pages follow a small write convention so they stay easy to
 maintain by hand or by a later automated write-back:
@@ -143,9 +146,18 @@ mechanical write phase clones the wiki fresh, writes each page (provenance marke
 included) under the pinned `planwerk-review` identity, and pushes. When the wiki
 has never been initialized, the first page creates its initial commit.
 
+The write-back is available only from a **trusted source** — `implement` (your own
+branch) and `audit` (your own repo). **`review` ignores `--capture-wiki` and is
+always propose-only**: a review analyzes an untrusted pull request and the proposal
+pass reads attacker-controlled source, so auto-pushing its free-form pages would let
+an external contributor poison the shared knowledge base via indirect prompt
+injection. Capture patterns from a review by reading its proposals and adding the
+ones worth keeping by hand.
+
 ```bash
 planwerk-review implement --wiki --capture-wiki owner/repo#123          # confirms, then pushes
 planwerk-review implement --wiki --capture-wiki --yes owner/repo#123    # non-interactive (CI)
+planwerk-review audit --wiki --capture-wiki owner/repo                  # from a standalone audit
 ```
 
 The write is gated to match the rest of the wiki surface. Claude never pushes: it

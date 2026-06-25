@@ -74,7 +74,26 @@ planwerk-review owner/repo#123 > review.md
 | `--max-findings` | Cap on findings returned (`<=0` disables cap) | `0` |
 | `--local` | Operate on the current working directory instead of cloning into a temp dir (see [Use local mode](/how-to/use-local-mode)). The PR reference may be omitted — it is inferred from the current branch. | `false` |
 | `--force` | With `--local`, skip the confirmation prompt when the working tree is dirty | `false` |
+| `--no-capture` | Skip the read-only capture pass that proposes new wiki review patterns from the review findings (only runs with `--wiki`; writes nothing) | `false` |
+| `--capture-wiki` | Ignored by review — a review analyzes an untrusted pull request, so its capture pass is always propose-only and never pushes to the wiki. Capture pattern pages from a trusted source instead (`implement` or `audit`; env: `PLANWERK_CAPTURE_WIKI`). | `false` |
+| `--yes` | Skip the `--capture-wiki` write confirmation prompt (for a non-interactive write); has no effect on review, which never writes | `false` |
 | `--version` | Show version information and exit | `false` |
+
+When the review uses `--wiki`, a read-only **capture pass** then proposes new
+project knowledge for the wiki: generalizable review findings become candidate
+`review_patterns/` pages, deduplicated against the wiki's existing entries and
+the bundled pattern catalog. It is always **propose-only** — the suggestions
+surface on stdout, and (only with `--post-review`) as a PR comment; nothing is ever
+written to the wiki. Unlike `implement` and `audit`, review never pushes the
+accepted pages, even under `--capture-wiki`: it analyzes an untrusted pull request
+and the proposal pass reads attacker-controlled source, so auto-pushing its
+free-form pages would let an external contributor poison the shared knowledge base.
+A standalone review has no plan or implementation report, so it proposes patterns
+only, never `memory/` pages. The pass runs on a cache miss only, is non-fatal, is a
+clean no-op when nothing clears the bar, and is skipped without a resolved wiki.
+Disable it with `--no-capture`. To grow the wiki from captured patterns, run the
+write-back from a trusted source — `implement` or `audit`. See
+[Use the GitHub Wiki](/how-to/use-the-github-wiki#capture-knowledge-from-a-findings-producing-run-propose-only).
 
 ## `propose`
 
@@ -133,6 +152,19 @@ planwerk-review audit --format json owner/repo
 | `--no-issue-dedupe` | Do not filter findings whose title matches an existing GitHub issue | `false` |
 | `--local` | Operate on the current working directory instead of cloning into a temp dir (see [Use local mode](/how-to/use-local-mode)). The repository reference may be omitted — it is inferred from the `origin` remote. | `false` |
 | `--force` | With `--local`, skip the confirmation prompt when the working tree is dirty | `false` |
+| `--no-capture` | Skip the read-only capture pass that proposes new wiki review patterns from the audit findings (only runs with `--wiki`; writes nothing) | `false` |
+| `--capture-wiki` | Push the accepted capture pages to the wiki instead of only proposing them (off by default — a normal run is propose-only; confirms first, refuses a non-TTY run without `--yes`; env: `PLANWERK_CAPTURE_WIKI`, config: `capture.wiki`) | `false` |
+| `--yes` | Skip the `--capture-wiki` write confirmation prompt (for a non-interactive write) | `false` |
+
+When the audit uses `--wiki`, the same read-only **capture pass** proposes new
+`review_patterns/` pages from the audit findings, deduplicated against the wiki
+and the catalog. It is **propose-only** by default — the suggestions go to stdout
+(an audit has no PR or issue to comment on); nothing is written to the wiki. Like
+review it proposes patterns only (no plan or report ⇒ no `memory/` pages), runs
+on a cache miss only, is non-fatal, and is skipped without a resolved wiki.
+Disable it with `--no-capture`; push the accepted pages with `--capture-wiki`
+(`--yes` to skip the confirmation). See
+[Use the GitHub Wiki](/how-to/use-the-github-wiki#capture-knowledge-from-a-findings-producing-run-propose-only).
 
 ## `extract`
 
@@ -637,7 +669,7 @@ against the wiki's existing entries and the bundled pattern catalog. It is
 **propose-only** — the suggestions surface in the run report and as a comment on
 the source issue, and nothing is written to the wiki. The pass is non-fatal, is a
 clean no-op when nothing clears the bar, and is skipped without a resolved wiki.
-Disable it with `--no-capture`. See [Use the GitHub Wiki](/how-to/use-the-github-wiki#capture-knowledge-from-an-implement-run-propose-only)
+Disable it with `--no-capture`. See [Use the GitHub Wiki](/how-to/use-the-github-wiki#capture-knowledge-from-a-findings-producing-run-propose-only)
 for the memory write convention it follows.
 
 By default the capture pass is propose-only — it writes nothing. Pass

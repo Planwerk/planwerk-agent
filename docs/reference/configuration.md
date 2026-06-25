@@ -53,7 +53,7 @@ wiki:                          # GitHub Wiki knowledge source (review + audit + 
   repo: owner/repo             # override the wiki source; default: the target repo's own wiki
   ref: main                    # pin to a branch/tag/commit; default: the wiki's default branch
 
-capture:                       # implement capture write-back gate
+capture:                       # capture write-back gate (implement + review + audit)
   wiki: true                   # push accepted capture pages to the wiki (default: off — propose-only)
 ```
 
@@ -65,11 +65,13 @@ flags and the `PLANWERK_WIKI`/`PLANWERK_WIKI_REF` environment variables; `repo`
 is config-only.
 
 The separate `capture:` section gates the *write*: `capture.wiki` controls
-whether `implement`'s capture pass pushes the accepted pages to the wiki (the
-`--capture-wiki` opt-in) instead of only proposing them. It is kept apart from
+whether the capture pass pushes the accepted pages to the wiki (the
+`--capture-wiki` opt-in) instead of only proposing them. The write-back runs only
+from a trusted source — `implement` and `audit`; `review` ignores it and is always
+propose-only, because it analyzes an untrusted pull request. It is kept apart from
 the read-only `wiki:` knobs so read and write config stay distinct, and is
-overridden by the `--capture-wiki` flag and `PLANWERK_CAPTURE_WIKI` (flag → env →
-config → off). Off by default keeps a run propose-only.
+overridden by the `--capture-wiki` flag and `PLANWERK_CAPTURE_WIKI`
+(flag → env → config → off). Off by default keeps a run propose-only.
 
 All keys are optional. Flags beyond `--min-severity`, `--max-patterns`,
 `--max-findings`, `--format`, and `--patterns` (the high-churn ones) remain
