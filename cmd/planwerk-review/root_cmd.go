@@ -167,6 +167,7 @@ or short form (owner/repo#123).`,
 				return fmt.Errorf("--inline cannot be used with --format json")
 			}
 
+			cfg.CaptureWiki = resolveCaptureWiki(cfg.CaptureWiki, cmd.Flags().Changed("capture-wiki"), deps.fileCfg.Capture)
 			opts := cfg.ToReviewOptions(deps.version)
 			opts.Remote = deps.remoteOpts
 			opts.Wiki = resolveWikiOptions(wikiEnable, wikiDisable, cmd.Flags().Changed("wiki"), cmd.Flags().Changed("no-wiki"), wikiRef, cmd.Flags().Changed("wiki-ref"), deps.fileCfg.Wiki)
@@ -206,6 +207,9 @@ or short form (owner/repo#123).`,
 	flags.IntVar(&cfg.MaxFindings, "max-findings", 0, "Cap on findings returned (<=0 disables cap)")
 	flags.BoolVar(&cfg.Local, "local", false, "Operate on the current working directory instead of cloning into a temp dir")
 	flags.BoolVar(&cfg.Force, "force", false, "With --local, skip the confirmation prompt when the working tree is dirty")
+	flags.BoolVar(&cfg.NoCapture, "no-capture", false, "Skip the read-only capture pass that proposes new wiki review patterns from the review findings (only runs with --wiki; writes nothing)")
+	flags.BoolVar(&cfg.CaptureWiki, "capture-wiki", false, "Ignored by review: a review analyzes an untrusted pull request, so its capture pass is always propose-only and never pushes to the wiki. Capture pattern pages from a trusted source instead (implement or audit; env: "+envCaptureWiki+")")
+	flags.BoolVar(&cfg.Yes, "yes", false, "Skip the --capture-wiki write confirmation prompt (for a non-interactive write)")
 	addWikiFlags(flags, &wikiEnable, &wikiDisable, &wikiRef)
 	flags.BoolVar(&showVersion, "version", false, "Show version information and exit")
 

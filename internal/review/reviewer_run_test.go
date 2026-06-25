@@ -13,8 +13,10 @@ import (
 	"testing"
 
 	"github.com/planwerk/planwerk-review/internal/cache"
+	"github.com/planwerk/planwerk-review/internal/capture"
 	"github.com/planwerk/planwerk-review/internal/claude"
 	"github.com/planwerk/planwerk-review/internal/github"
+	"github.com/planwerk/planwerk-review/internal/patterns"
 	"github.com/planwerk/planwerk-review/internal/planwerk"
 	"github.com/planwerk/planwerk-review/internal/report"
 )
@@ -691,6 +693,229 @@ func TestRun_CoverageMapRunsConcurrentlyAndRenders(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "main.go") {
 		t.Errorf("coverage map not rendered, got:\n%s", out.String())
+	}
+}
+
+// fakeCapturer is a recording review.capture.Proposer: it counts calls and
+// captures the context it was handed so a test can assert the review findings
+// flowed into the proposal pass, without invoking Claude.
+type fakeCapturer struct {
+	calls  atomic.Int32
+	ctx    capture.CaptureContext
+	result *capture.CaptureResult
+	err    error
+}
+
+func (f *fakeCapturer) Capture(dir string, ctx capture.CaptureContext) (*capture.CaptureResult, error) {
+	f.calls.Add(1)
+	f.ctx = ctx
+	return f.result, f.err
+}
+
+// captureRunner wires a Runner with the capturer and a ResolveWiki seam that
+// resolves to a temp wiki dir (so the gate's wiki.Dir != "" check passes without
+// cloning a real wiki).
+func captureRunner(t *testing.T, gh *mockGitHub, cl *configurableClaude, cp *fakeCapturer) *Runner {
+	t.Helper()
+	r := &Runner{Claude: cl, GitHub: gh, Capturer: cp}
+	wikiDir := t.TempDir()
+	r.ResolveWiki = func(_, _ string, _ patterns.WikiOptions, _ patterns.RemoteOptions) patterns.ResolvedWiki {
+		return patterns.ResolvedWiki{Repo: "acme/widgets.wiki", CommitSHA: "wikisha", Dir: wikiDir}
+	}
+	return r
+}
+
+// reviewFindingClaude returns a configurableClaude whose primary review yields a
+// single finding (empty Pattern, so it survives the capture pre-filter).
+func reviewFindingClaude() *configurableClaude {
+	return &configurableClaude{
+		review: func(dir string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
+			return &report.ReviewResult{
+				Summary:  "Review summary",
+				Findings: []report.Finding{{ID: "W-1", Severity: report.SeverityWarning, Title: "raw SQL", File: "db.go", Line: 3, Problem: "p", Action: "a"}},
+			}, nil
+		},
+	}
+}
+
+func onePatternProposal() *capture.CaptureResult {
+	return &capture.CaptureResult{
+		Patterns: []capture.ProposedPage{
+			{Path: "review_patterns/escape-untrusted-fences.md", Kind: capture.KindPattern, Title: "Escape untrusted fences", Body: "# Review Pattern: Escape untrusted fences\n\n## What to check\n...", Rationale: "recurs"},
+		},
+	}
+}
+
+func TestRun_CaptureProposesOnReview(t *testing.T) {
+	// Not t.Parallel(): cache.SetDir mutates a package-level variable.
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	pr := fakePR(t, "acme", "widgets", 51, "sha-capture")
+	gh := &mockGitHub{fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil }}
+	cl := reviewFindingClaude()
+	cp := &fakeCapturer{result: onePatternProposal()}
+	runner := captureRunner(t, gh, cl, cp)
+
+	var out bytes.Buffer
+	if err := runner.Run(&out, baseOpts()); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if cp.calls.Load() != 1 {
+		t.Fatalf("capturer called %d times, want 1 — capture is on by default with a wiki", cp.calls.Load())
+	}
+	// The review finding (empty Pattern) survives CandidateFindings and reaches
+	// the proposal pass as a candidate.
+	if len(cp.ctx.Findings) != 1 || cp.ctx.Findings[0].File != "db.go" {
+		t.Errorf("capturer got findings %+v, want the single review finding", cp.ctx.Findings)
+	}
+	if cp.ctx.RepoName != "acme/widgets" || cp.ctx.IssueNumber != 51 {
+		t.Errorf("capturer got repo=%q number=%d, want acme/widgets / 51", cp.ctx.RepoName, cp.ctx.IssueNumber)
+	}
+	if !strings.Contains(out.String(), "Captured knowledge proposals:") {
+		t.Errorf("missing the capture proposals on stdout:\n%s", out.String())
+	}
+}
+
+func TestRun_CaptureNoCommentWithoutPostReview(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	pr := fakePR(t, "acme", "widgets", 52, "sha-nocomment")
+	// postPRComment is left nil: a plain `review --wiki` must not post a PR
+	// comment, so calling it would nil-panic and fail the test loudly.
+	gh := &mockGitHub{fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil }}
+	cl := reviewFindingClaude()
+	cp := &fakeCapturer{result: onePatternProposal()}
+	runner := captureRunner(t, gh, cl, cp)
+
+	var out bytes.Buffer
+	if err := runner.Run(&out, baseOpts()); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if cp.calls.Load() != 1 {
+		t.Fatalf("capturer called %d times, want 1", cp.calls.Load())
+	}
+}
+
+func TestRun_CapturePostsCommentWithPostReview(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	pr := fakePR(t, "acme", "widgets", 53, "sha-comment")
+	var bodies []string
+	gh := &mockGitHub{
+		fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil },
+		postPRComment: func(owner, repo string, number int, body string) (string, error) {
+			bodies = append(bodies, body)
+			return "url", nil
+		},
+	}
+	cl := reviewFindingClaude()
+	cp := &fakeCapturer{result: onePatternProposal()}
+	runner := captureRunner(t, gh, cl, cp)
+
+	opts := baseOpts()
+	opts.PostReview = true
+
+	var out bytes.Buffer
+	if err := runner.Run(&out, opts); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	// With --post-review the review comment and the capture comment are both
+	// posted; assert one of them carries the capture proposal and its footer.
+	var captureComment string
+	for _, b := range bodies {
+		if strings.Contains(b, "review_patterns/escape-untrusted-fences.md") {
+			captureComment = b
+		}
+	}
+	if captureComment == "" {
+		t.Fatalf("no posted comment carried the capture proposal; bodies=%v", bodies)
+	}
+	if !strings.Contains(captureComment, "Capture proposals generated by") {
+		t.Errorf("capture comment missing its attribution footer:\n%s", captureComment)
+	}
+}
+
+func TestRun_CaptureSkippedWithoutWiki(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	pr := fakePR(t, "acme", "widgets", 54, "sha-nowiki")
+	gh := &mockGitHub{fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil }}
+	cl := reviewFindingClaude()
+	cp := &fakeCapturer{result: onePatternProposal()}
+	runner := captureRunner(t, gh, cl, cp)
+	// A wiki that did not resolve (no --wiki): capture has nowhere to propose to.
+	runner.ResolveWiki = func(_, _ string, _ patterns.WikiOptions, _ patterns.RemoteOptions) patterns.ResolvedWiki {
+		return patterns.ResolvedWiki{}
+	}
+
+	if err := runner.Run(&bytes.Buffer{}, baseOpts()); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if cp.calls.Load() != 0 {
+		t.Errorf("capturer called %d times, want 0 without a resolved wiki", cp.calls.Load())
+	}
+}
+
+func TestRun_CaptureSkippedByNoCapture(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	pr := fakePR(t, "acme", "widgets", 55, "sha-nocap")
+	gh := &mockGitHub{fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil }}
+	cl := reviewFindingClaude()
+	cp := &fakeCapturer{result: onePatternProposal()}
+	runner := captureRunner(t, gh, cl, cp)
+
+	opts := baseOpts()
+	opts.NoCapture = true
+
+	if err := runner.Run(&bytes.Buffer{}, opts); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if cp.calls.Load() != 0 {
+		t.Errorf("capturer called %d times, want 0 with --no-capture", cp.calls.Load())
+	}
+}
+
+func TestRun_CaptureWikiNeverPushesForReview(t *testing.T) {
+	// review analyzes an untrusted PR head and its proposal pass reads
+	// attacker-controlled source, so its capture pass is propose-only: even under
+	// --capture-wiki --yes it must never push the (free-form, injectable) proposal
+	// pages to the wiki. The supported way to grow the wiki is to capture from a
+	// trusted source (implement or audit).
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	pr := fakePR(t, "acme", "widgets", 56, "sha-write")
+	gh := &mockGitHub{fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil }}
+	cl := reviewFindingClaude()
+	cp := &fakeCapturer{result: onePatternProposal()}
+	runner := captureRunner(t, gh, cl, cp)
+
+	opts := baseOpts()
+	opts.CaptureWiki = true
+	opts.Yes = true
+
+	var out bytes.Buffer
+	if err := runner.Run(&out, opts); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	// The propose-only pass still runs and surfaces its proposals...
+	if cp.calls.Load() != 1 {
+		t.Fatalf("capturer called %d times, want 1 — review still proposes", cp.calls.Load())
+	}
+	body := out.String()
+	if !strings.Contains(body, "review ignores --capture-wiki") {
+		t.Errorf("review must surface the propose-only downgrade note, got:\n%s", body)
+	}
+	// ...but it never writes to or pushes the wiki. A push attempt would clone via
+	// the default writer and surface "Wrote ..." / "Capture write-back ..." on out.
+	if strings.Contains(body, "Wrote ") || strings.Contains(body, "Capture write-back") {
+		t.Errorf("review must never push to the wiki under --capture-wiki, got:\n%s", body)
 	}
 }
 
