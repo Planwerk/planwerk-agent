@@ -101,6 +101,32 @@ func TestToImplementOptions_VerifyFlags(t *testing.T) {
 	})
 }
 
+// TestToReviewOptions_CaptureFlags guards that the capture flags thread through
+// to review.Options — a missing copy would silently disable capture on review
+// with no compile error.
+func TestToReviewOptions_CaptureFlags(t *testing.T) {
+	opts := Config{NoCapture: true, CaptureWiki: true, Yes: true}.ToReviewOptions("v1")
+	if !opts.NoCapture || !opts.CaptureWiki || !opts.Yes {
+		t.Errorf("NoCapture=%v CaptureWiki=%v Yes=%v, want true/true/true", opts.NoCapture, opts.CaptureWiki, opts.Yes)
+	}
+	// Capture is on by default (gated on a resolved wiki) and the write-back is
+	// off, so the zero config leaves all three flags off.
+	if d := (Config{}).ToReviewOptions("v1"); d.NoCapture || d.CaptureWiki || d.Yes {
+		t.Errorf("defaults NoCapture=%v CaptureWiki=%v Yes=%v, want false/false/false", d.NoCapture, d.CaptureWiki, d.Yes)
+	}
+}
+
+// TestToAuditOptions_CaptureFlags guards the same threading for audit.Options.
+func TestToAuditOptions_CaptureFlags(t *testing.T) {
+	opts := AuditConfig{NoCapture: true, CaptureWiki: true, Yes: true}.ToAuditOptions("v1")
+	if !opts.NoCapture || !opts.CaptureWiki || !opts.Yes {
+		t.Errorf("NoCapture=%v CaptureWiki=%v Yes=%v, want true/true/true", opts.NoCapture, opts.CaptureWiki, opts.Yes)
+	}
+	if d := (AuditConfig{}).ToAuditOptions("v1"); d.NoCapture || d.CaptureWiki || d.Yes {
+		t.Errorf("defaults NoCapture=%v CaptureWiki=%v Yes=%v, want false/false/false", d.NoCapture, d.CaptureWiki, d.Yes)
+	}
+}
+
 // TestToAddressOptions guards the reply reconciliation (the only non-trivial
 // mapping) and that the flags thread through. A missing copy in
 // ToAddressOptions would silently drop a flag with no compile error.

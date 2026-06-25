@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/planwerk/planwerk-review/internal/cache"
+	"github.com/planwerk/planwerk-review/internal/capture"
 	"github.com/planwerk/planwerk-review/internal/detect"
 	"github.com/planwerk/planwerk-review/internal/github"
 	"github.com/planwerk/planwerk-review/internal/patterns"
@@ -43,6 +44,18 @@ type Options struct {
 	// (review patterns + project memory); carries the --wiki/--no-wiki/--wiki-ref
 	// values.
 	Wiki patterns.WikiOptions
+	// NoCapture disables the read-only capture pass that, after the audit,
+	// proposes new wiki review patterns from the audit findings — writing
+	// nothing. On by default but only when a wiki is resolved (i.e. with --wiki);
+	// without one it is a no-op regardless of this flag.
+	NoCapture bool
+	// CaptureWiki gates the capture write-back: with it set, the capture pass
+	// pushes the accepted proposal pages to the wiki. Default off keeps a run
+	// propose-only.
+	CaptureWiki bool
+	// Yes skips the capture write-back's interactive confirmation, for a
+	// non-interactive (CI) --capture-wiki run.
+	Yes bool
 }
 
 // AuditFn performs the Claude-backed codebase audit for a cloned repo.
@@ -67,22 +80,49 @@ type AuditContext struct {
 type Runner struct {
 	Claude ClaudeAuditor
 	GitHub GitHubClient
+	// Capturer runs the read-only capture pass after the audit: it proposes new
+	// wiki review patterns from the audit findings, writing nothing. Set by
+	// NewRunner; nil (or a wiki that did not resolve, or opts.NoCapture) leaves
+	// the pass disabled.
+	Capturer capture.Proposer
+	// ResolveWiki resolves the target repo's wiki. Defaults to
+	// patterns.ResolveWiki; a Runner seam so the capture pass can be exercised
+	// against a temp wiki without cloning a real one.
+	ResolveWiki resolveWikiFn
+	// CaptureWriter performs the gated capture write-back. Defaults to
+	// capture.DefaultWikiWriter; a Runner seam so the write-back can be exercised
+	// without cloning or pushing a real wiki.
+	CaptureWriter capture.WikiWriter
+	// In is the stream the capture write-back's confirmation reads from. Defaults
+	// to os.Stdin.
+	In io.Reader
+	// IsTTY reports whether the capture write-back may prompt interactively.
+	// Defaults to workspace.IsStdinTTY.
+	IsTTY func() bool
 }
 
+// resolveWikiFn resolves the target repo's wiki. A Runner seam so the capture
+// pass can be exercised against a temp wiki without cloning a real one. Mirrors
+// implement.resolveWikiFn.
+type resolveWikiFn func(owner, name string, wopts patterns.WikiOptions, ropts patterns.RemoteOptions) patterns.ResolvedWiki
+
 // NewRunner returns a Runner wired with the production GitHub (git/gh CLI)
-// backend and the given Claude audit function.
-func NewRunner(auditFn AuditFn) *Runner {
+// backend, the given Claude audit function, and the proposer that backs the
+// read-only capture pass (the Claude client). A nil proposer leaves capture
+// disabled.
+func NewRunner(auditFn AuditFn, proposer capture.Proposer) *Runner {
 	return &Runner{
-		Claude: auditFnAdapter{fn: auditFn},
-		GitHub: defaultGitHubClient{},
+		Claude:   auditFnAdapter{fn: auditFn},
+		GitHub:   defaultGitHubClient{},
+		Capturer: proposer,
 	}
 }
 
-// Run is a package-level convenience that delegates to NewRunner(auditFn).Run.
-// Callers that need to inject alternative Claude or GitHub backends should
-// construct a Runner directly.
-func Run(w io.Writer, opts Options, auditFn AuditFn) error {
-	return NewRunner(auditFn).Run(w, opts)
+// Run is a package-level convenience that delegates to
+// NewRunner(auditFn, proposer).Run. Callers that need to inject alternative
+// Claude or GitHub backends should construct a Runner directly.
+func Run(w io.Writer, opts Options, auditFn AuditFn, proposer capture.Proposer) error {
+	return NewRunner(auditFn, proposer).Run(w, opts)
 }
 
 // Run executes the full audit pipeline: resolve HEAD SHA, check cache, and on
@@ -107,8 +147,14 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// Resolve the target repo's GitHub Wiki (best-effort) before the cache key,
 	// so the resolved wiki commit folds into the key and can be recorded in the
 	// report header. An absent, disabled, or offline wiki returns the zero value
-	// and leaves the run unchanged.
-	wiki := patterns.ResolveWiki(owner, name, opts.Wiki, opts.Remote)
+	// and leaves the run unchanged. The seam (defaulting to patterns.ResolveWiki)
+	// lets the capture pass be exercised against a temp wiki without cloning a
+	// real one.
+	resolveWiki := r.ResolveWiki
+	if resolveWiki == nil {
+		resolveWiki = patterns.ResolveWiki
+	}
+	wiki := resolveWiki(owner, name, opts.Wiki, opts.Remote)
 
 	// Build cache key (includes min-severity so filtered caches don't leak).
 	var cacheFlags []string
@@ -120,7 +166,15 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	}
 	cacheKey := cache.AuditKey(owner, name, headSHA, cacheFlags...)
 
-	if !opts.NoCache && headSHA != "" {
+	// A --capture-wiki run must reach the write-back, but capture runs only on a
+	// cache miss (a cache hit returns before runCapture) and the capture-gating
+	// flags are not part of the cache key. So an otherwise-identical earlier run
+	// would hit the cache, return early, and silently skip the write — leaving the
+	// wiki unchanged while the build goes green. Bypass the cache hit when the
+	// capture will actually write so the requested push is never a silent no-op.
+	captureWillWrite := opts.CaptureWiki && !opts.NoCapture && wiki.Dir != ""
+
+	if !opts.NoCache && headSHA != "" && !captureWillWrite {
 		if data, ok := cache.GetRaw(cacheKey, opts.CacheMaxAge); ok {
 			var result report.ReviewResult
 			if err := json.Unmarshal(data, &result); err == nil {
@@ -190,7 +244,61 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 
 	slog.Info("audit complete")
 	r.applyIssueDedupe(result, repo.Owner, repo.Name, opts)
-	return renderAudit(w, result, repo, opts)
+	if err := renderAudit(w, result, repo, opts); err != nil {
+		return err
+	}
+
+	// Capture pass: read-only proposal of new wiki review patterns from the audit
+	// findings — writing nothing by default. Runs on a cache miss only (a cache hit
+	// returned above before the catalog was loaded), and only when a wiki resolved.
+	// An explicitly-requested --capture-wiki push that fails is returned (fatal) so
+	// a CI write that left the wiki unchanged surfaces as a non-zero exit.
+	return r.runCapture(w, repo, opts, result, pats, wiki)
+}
+
+// runCapture runs the read-only capture pass after the audit renders: it mines
+// the audit findings for generalizable review patterns and proposes them as new
+// wiki pages, deduplicated against the wiki and the catalog, writing nothing by
+// default. Gated on a resolved wiki and a wired Capturer (and not opts.NoCapture).
+//
+// Unlike review there is no PR or issue to comment on, so the proposals go to
+// stdout only; under --capture-wiki the accepted pages are pushed to the wiki.
+// Audit clones the repo's own default branch, a trusted source, so unlike review
+// it may push. The propose half is non-fatal — a failure is surfaced but never
+// fails the audit, which is already rendered — but an explicitly-requested
+// --capture-wiki push that fails is returned so the operator sees a non-zero exit
+// rather than a green build that left the wiki unchanged.
+func (r *Runner) runCapture(w io.Writer, repo *github.Repo, opts Options, result *report.ReviewResult, pats []patterns.Pattern, wiki patterns.ResolvedWiki) error {
+	if opts.NoCapture || r.Capturer == nil || wiki.Dir == "" {
+		return nil
+	}
+
+	// Under --format json the human-readable capture render would corrupt the JSON
+	// on stdout, so discard it; the gated write still occurs.
+	out := w
+	if opts.Format == "json" {
+		out = io.Discard
+	}
+
+	pass := capture.Pass{
+		Propose: r.Capturer,
+		Writer:  r.CaptureWriter,
+		In:      r.In,
+		IsTTY:   r.IsTTY,
+		// PostComment nil: an audit has no PR or issue to post the proposals to.
+	}
+	return pass.Run(out, capture.Request{
+		Dir:         repo.Dir,
+		Command:     "audit",
+		Repo:        repo.FullName(),
+		Findings:    result.Findings,
+		Patterns:    pats,
+		Wiki:        wiki,
+		WikiRef:     opts.Wiki.Ref,
+		CaptureWiki: opts.CaptureWiki,
+		Yes:         opts.Yes,
+		Version:     opts.Version,
+	})
 }
 
 // openRepo returns the working tree to audit: the user's cwd when --local is

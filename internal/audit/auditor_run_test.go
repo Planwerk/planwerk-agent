@@ -10,7 +10,9 @@ import (
 	"testing"
 
 	"github.com/planwerk/planwerk-review/internal/cache"
+	"github.com/planwerk/planwerk-review/internal/capture"
 	"github.com/planwerk/planwerk-review/internal/github"
+	"github.com/planwerk/planwerk-review/internal/patterns"
 	"github.com/planwerk/planwerk-review/internal/report"
 )
 
@@ -492,6 +494,271 @@ func TestAuditRun_EmptyPatternsIsError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "no review patterns") {
 		t.Errorf("error should mention missing patterns, got: %v", err)
+	}
+}
+
+// fakeCapturer is a recording capture.Proposer: it counts calls and captures the
+// context handed to the proposal pass, without invoking Claude.
+type fakeCapturer struct {
+	calls  atomic.Int32
+	ctx    capture.CaptureContext
+	result *capture.CaptureResult
+	err    error
+}
+
+func (f *fakeCapturer) Capture(dir string, ctx capture.CaptureContext) (*capture.CaptureResult, error) {
+	f.calls.Add(1)
+	f.ctx = ctx
+	return f.result, f.err
+}
+
+// fakeCaptureWriter is an offline capture.WikiWriter recording what the gated
+// write-back would push, without touching git. A non-nil applyErr simulates a
+// failed push (auth, non-fast-forward, network).
+type fakeCaptureWriter struct {
+	applyCalls atomic.Int32
+	applyFiles []patterns.WikiFile
+	applyErr   error
+}
+
+func (f *fakeCaptureWriter) Clone(repo, ref string) (string, string, func(), error) {
+	return "/tmp/wiki-clone", "wikisha", func() {}, nil
+}
+
+func (f *fakeCaptureWriter) ApplyAdditions(dir string, files []patterns.WikiFile, msg string) error {
+	f.applyCalls.Add(1)
+	f.applyFiles = files
+	return f.applyErr
+}
+
+// captureAuditRunner wires a Runner with the capturer and a ResolveWiki seam that
+// resolves to a temp wiki dir (so the gate's wiki.Dir != "" check passes without
+// cloning a real wiki). The fake Clone's HEAD matches the seam's commit so the
+// write-back never treats the wiki as diverged.
+func captureAuditRunner(t *testing.T, gh *fakeGitHub, cl *fakeClaude, cp *fakeCapturer) *Runner {
+	t.Helper()
+	r := &Runner{Claude: cl, GitHub: gh, Capturer: cp}
+	wikiDir := t.TempDir()
+	r.ResolveWiki = func(_, _ string, _ patterns.WikiOptions, _ patterns.RemoteOptions) patterns.ResolvedWiki {
+		return patterns.ResolvedWiki{Repo: "acme/widgets.wiki", CommitSHA: "wikisha", Dir: wikiDir}
+	}
+	return r
+}
+
+func onePatternProposal() *capture.CaptureResult {
+	return &capture.CaptureResult{
+		Patterns: []capture.ProposedPage{
+			{Path: "review_patterns/escape-untrusted-fences.md", Kind: capture.KindPattern, Title: "Escape untrusted fences", Body: "# Review Pattern: Escape untrusted fences\n\n## What to check\n...", Rationale: "recurs"},
+		},
+	}
+}
+
+func findingAuditClaude() *fakeClaude {
+	return &fakeClaude{
+		fn: func(dir string, ctx AuditContext) (*report.ReviewResult, error) {
+			// Empty Pattern so the finding survives CandidateFindings.
+			return &report.ReviewResult{Summary: "s", Findings: []report.Finding{
+				{ID: "W-1", Severity: report.SeverityWarning, Title: "raw SQL", File: "db.go", Line: 3, Problem: "p", Action: "a"},
+			}}, nil
+		},
+	}
+}
+
+func TestAuditRun_CaptureProposes(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	patternDir := seedPatternDir(t)
+	gh := &fakeGitHub{
+		cloneRepo:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
+		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-cap-propose", nil },
+	}
+	cl := findingAuditClaude()
+	cp := &fakeCapturer{result: onePatternProposal()}
+	runner := captureAuditRunner(t, gh, cl, cp)
+
+	var out bytes.Buffer
+	if err := runner.Run(&out, baseAuditOpts(patternDir)); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if cp.calls.Load() != 1 {
+		t.Fatalf("capturer called %d times, want 1 — capture is on by default with a wiki", cp.calls.Load())
+	}
+	if len(cp.ctx.Findings) != 1 || cp.ctx.Findings[0].File != "db.go" {
+		t.Errorf("capturer got findings %+v, want the single audit finding", cp.ctx.Findings)
+	}
+	if cp.ctx.RepoName != "acme/widgets" {
+		t.Errorf("capturer got repo=%q, want acme/widgets", cp.ctx.RepoName)
+	}
+	if !strings.Contains(out.String(), "Captured knowledge proposals:") {
+		t.Errorf("missing the capture proposals on stdout:\n%s", out.String())
+	}
+}
+
+func TestAuditRun_CaptureSkippedWithoutWiki(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	patternDir := seedPatternDir(t)
+	gh := &fakeGitHub{
+		cloneRepo:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
+		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-cap-nowiki", nil },
+	}
+	cl := findingAuditClaude()
+	cp := &fakeCapturer{result: onePatternProposal()}
+	runner := captureAuditRunner(t, gh, cl, cp)
+	// A wiki that did not resolve (no --wiki): capture has nowhere to propose to.
+	runner.ResolveWiki = func(_, _ string, _ patterns.WikiOptions, _ patterns.RemoteOptions) patterns.ResolvedWiki {
+		return patterns.ResolvedWiki{}
+	}
+
+	if err := runner.Run(&bytes.Buffer{}, baseAuditOpts(patternDir)); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if cp.calls.Load() != 0 {
+		t.Errorf("capturer called %d times, want 0 without a resolved wiki", cp.calls.Load())
+	}
+}
+
+func TestAuditRun_CaptureSkippedByNoCapture(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	patternDir := seedPatternDir(t)
+	gh := &fakeGitHub{
+		cloneRepo:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
+		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-cap-nocap", nil },
+	}
+	cl := findingAuditClaude()
+	cp := &fakeCapturer{result: onePatternProposal()}
+	runner := captureAuditRunner(t, gh, cl, cp)
+
+	opts := baseAuditOpts(patternDir)
+	opts.NoCapture = true
+
+	if err := runner.Run(&bytes.Buffer{}, opts); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if cp.calls.Load() != 0 {
+		t.Errorf("capturer called %d times, want 0 with --no-capture", cp.calls.Load())
+	}
+}
+
+func TestAuditRun_CaptureWikiRoutesAcceptedPages(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	patternDir := seedPatternDir(t)
+	gh := &fakeGitHub{
+		cloneRepo:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
+		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-cap-write", nil },
+	}
+	cl := findingAuditClaude()
+	cp := &fakeCapturer{result: onePatternProposal()}
+	runner := captureAuditRunner(t, gh, cl, cp)
+	writer := &fakeCaptureWriter{}
+	runner.CaptureWriter = writer
+	runner.In = strings.NewReader("")
+	runner.IsTTY = func() bool { return false }
+
+	opts := baseAuditOpts(patternDir)
+	opts.CaptureWiki = true
+	opts.Yes = true // skip the confirmation in a non-interactive test
+
+	var out bytes.Buffer
+	if err := runner.Run(&out, opts); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if writer.applyCalls.Load() != 1 {
+		t.Fatalf("ApplyAdditions called %d times, want 1 under --capture-wiki", writer.applyCalls.Load())
+	}
+	if len(writer.applyFiles) != 1 || writer.applyFiles[0].Path != "review_patterns/escape-untrusted-fences.md" {
+		t.Errorf("write-back routed the wrong pages: %+v", writer.applyFiles)
+	}
+}
+
+func TestAuditRun_CaptureWikiBypassesCacheToWrite(t *testing.T) {
+	// A --capture-wiki run must reach the write-back even when an identical earlier
+	// result is cached. The capture-gating flags are not part of the cache key, so
+	// without the bypass a second run would hit the cache, return before runCapture,
+	// and silently skip the write — leaving the wiki unchanged while the build goes
+	// green (issue #2).
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	patternDir := seedPatternDir(t)
+	gh := &fakeGitHub{
+		cloneRepo:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
+		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-cap-cachewrite", nil },
+	}
+
+	// First run: a plain audit with a resolved wiki populates the cache for this
+	// commit + wiki commit.
+	cl1 := findingAuditClaude()
+	runner1 := captureAuditRunner(t, gh, cl1, &fakeCapturer{result: onePatternProposal()})
+	if err := runner1.Run(&bytes.Buffer{}, baseAuditOpts(patternDir)); err != nil {
+		t.Fatalf("seeding run returned error: %v", err)
+	}
+	if cl1.calls != 1 {
+		t.Fatalf("seeding run Audit calls = %d, want 1", cl1.calls)
+	}
+
+	// Second run: same commit and wiki, now with --capture-wiki. Assert the cache
+	// is bypassed (Claude re-runs) and the page is actually pushed.
+	cl2 := findingAuditClaude()
+	runner2 := captureAuditRunner(t, gh, cl2, &fakeCapturer{result: onePatternProposal()})
+	writer := &fakeCaptureWriter{}
+	runner2.CaptureWriter = writer
+	runner2.In = strings.NewReader("")
+	runner2.IsTTY = func() bool { return false }
+
+	opts := baseAuditOpts(patternDir)
+	opts.CaptureWiki = true
+	opts.Yes = true
+
+	if err := runner2.Run(&bytes.Buffer{}, opts); err != nil {
+		t.Fatalf("capture-wiki run returned error: %v", err)
+	}
+	if cl2.calls != 1 {
+		t.Errorf("Audit calls = %d, want 1 — --capture-wiki must bypass the cache hit and re-run", cl2.calls)
+	}
+	if writer.applyCalls.Load() != 1 {
+		t.Fatalf("ApplyAdditions called %d times, want 1 — the write-back must be reached despite a populated cache", writer.applyCalls.Load())
+	}
+}
+
+func TestAuditRun_CaptureWikiPushFailureIsFatal(t *testing.T) {
+	// An explicitly-requested --capture-wiki push that fails must make audit return
+	// a non-nil error (non-zero exit), not a green build with the wiki unchanged
+	// (issue #4).
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	patternDir := seedPatternDir(t)
+	gh := &fakeGitHub{
+		cloneRepo:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
+		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-cap-pushfail", nil },
+	}
+	cl := findingAuditClaude()
+	runner := captureAuditRunner(t, gh, cl, &fakeCapturer{result: onePatternProposal()})
+	writer := &fakeCaptureWriter{applyErr: errors.New("push rejected")}
+	runner.CaptureWriter = writer
+	runner.In = strings.NewReader("")
+	runner.IsTTY = func() bool { return false }
+
+	opts := baseAuditOpts(patternDir)
+	opts.CaptureWiki = true
+	opts.Yes = true
+
+	err := runner.Run(&bytes.Buffer{}, opts)
+	if err == nil {
+		t.Fatal("a failed --capture-wiki push must make audit return a non-nil error, got nil")
+	}
+	if !strings.Contains(err.Error(), "push rejected") {
+		t.Errorf("error should wrap the push failure, got: %v", err)
+	}
+	if writer.applyCalls.Load() != 1 {
+		t.Errorf("the write-back must have attempted the push: apply=%d", writer.applyCalls.Load())
 	}
 }
 
