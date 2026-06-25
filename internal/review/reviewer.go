@@ -13,6 +13,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/planwerk/planwerk-review/internal/cache"
+	"github.com/planwerk/planwerk-review/internal/capture"
 	"github.com/planwerk/planwerk-review/internal/checklist"
 	"github.com/planwerk/planwerk-review/internal/claude"
 	"github.com/planwerk/planwerk-review/internal/detect"
@@ -54,6 +55,18 @@ type Options struct {
 	// (review patterns + project memory); carries the --wiki/--no-wiki/--wiki-ref
 	// values.
 	Wiki patterns.WikiOptions
+	// NoCapture disables the read-only capture pass that, after the review,
+	// proposes new wiki review patterns from the review findings — writing
+	// nothing. On by default but only when a wiki is resolved (i.e. with --wiki);
+	// without one it is a no-op regardless of this flag.
+	NoCapture bool
+	// CaptureWiki gates the capture write-back: with it set, the capture pass
+	// pushes the accepted proposal pages to the wiki. Default off keeps a run
+	// propose-only.
+	CaptureWiki bool
+	// Yes skips the capture write-back's interactive confirmation, for a
+	// non-interactive (CI) --capture-wiki run.
+	Yes bool
 }
 
 // Runner executes the review pipeline using injected Claude and GitHub
@@ -62,14 +75,30 @@ type Options struct {
 type Runner struct {
 	Claude ClaudeRunner
 	GitHub GitHubClient
+	// Capturer runs the read-only capture pass after the review: it proposes new
+	// wiki review patterns from the review findings, writing nothing. Set to the
+	// Claude client by NewRunner; nil (or a wiki that did not resolve, or
+	// opts.NoCapture) leaves the pass disabled.
+	Capturer capture.Proposer
+	// ResolveWiki resolves the target repo's wiki. Defaults to
+	// patterns.ResolveWiki; a Runner seam so the capture pass can be exercised
+	// against a temp wiki without cloning a real one.
+	ResolveWiki resolveWikiFn
 }
 
+// resolveWikiFn resolves the target repo's wiki. A Runner seam so the capture
+// pass can be exercised against a temp wiki without cloning a real one. Mirrors
+// implement.resolveWikiFn.
+type resolveWikiFn func(owner, name string, wopts patterns.WikiOptions, ropts patterns.RemoteOptions) patterns.ResolvedWiki
+
 // NewRunner returns a Runner wired with the production Claude Code (driven by
-// the given client) and GitHub (gh CLI) backends.
+// the given client) and GitHub (gh CLI) backends. The same client backs the
+// capture pass's read-only proposal call.
 func NewRunner(client *claude.Client) *Runner {
 	return &Runner{
-		Claude: defaultClaudeRunner{client: client},
-		GitHub: defaultGitHubClient{},
+		Claude:   defaultClaudeRunner{client: client},
+		GitHub:   defaultGitHubClient{},
+		Capturer: client,
 	}
 }
 
@@ -108,8 +137,14 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// key, so the resolved wiki commit folds into the key — a wiki edit then
 	// busts the cache instead of being silently ignored on a cache hit — and so
 	// the same commit can be recorded in the report header. An absent, disabled,
-	// or offline wiki returns the zero value and leaves the run unchanged.
-	wiki := patterns.ResolveWiki(pr.Owner, pr.Repo, opts.Wiki, opts.Remote)
+	// or offline wiki returns the zero value and leaves the run unchanged. The
+	// seam (defaulting to patterns.ResolveWiki) lets the capture pass be exercised
+	// against a temp wiki without cloning a real one.
+	resolveWiki := r.ResolveWiki
+	if resolveWiki == nil {
+		resolveWiki = patterns.ResolveWiki
+	}
+	wiki := resolveWiki(pr.Owner, pr.Repo, opts.Wiki, opts.Remote)
 
 	// 2. Check cache (include flags that affect output in the cache key)
 	var cacheFlags []string
@@ -357,7 +392,82 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	result.WikiRepo = wiki.Repo
 	result.WikiCommit = wiki.CommitSHA
 	slog.Info("review complete")
-	return r.renderResult(w, result, pr, opts, coverageResult)
+	if err := r.renderResult(w, result, pr, opts, coverageResult); err != nil {
+		return err
+	}
+
+	// Capture pass: read-only proposal of new wiki review patterns from the review
+	// findings — writing nothing by default. Runs on a cache miss only (a cache hit
+	// returned above before the catalog was loaded), and only when a wiki resolved.
+	r.runCapture(w, pr, opts, result, pats, wiki)
+	return nil
+}
+
+// runCapture runs the read-only capture pass after the review renders: it mines
+// the review findings for generalizable review patterns and proposes them as new
+// wiki pages, deduplicated against the wiki and the catalog, writing nothing by
+// default. Gated on a resolved wiki and a wired Capturer (and not opts.NoCapture).
+//
+// The proposals always go to stdout. A PR comment is posted only with
+// --post-review, so a plain `review --wiki` stays stdout-only. Unlike implement and
+// audit, review is propose-only: it analyzes an untrusted pull-request head and the
+// proposal pass reads attacker-controlled source, so it never pushes the (free-form,
+// indirect-prompt-injectable) proposal pages to the wiki — doing so under
+// --capture-wiki --yes in CI would let an external contributor poison the shared
+// knowledge base. --capture-wiki is therefore ignored here (with a surfaced note);
+// capture pattern pages from a trusted source instead (implement or audit). The pass
+// is non-fatal throughout — a failure is surfaced but never fails the review, which
+// is already rendered.
+func (r *Runner) runCapture(w io.Writer, pr *github.PR, opts Options, result *report.ReviewResult, pats []patterns.Pattern, wiki patterns.ResolvedWiki) {
+	if opts.NoCapture || r.Capturer == nil || wiki.Dir == "" {
+		return
+	}
+
+	// Post the proposals as a PR comment only when the review itself is posted, so
+	// a plain `review --wiki` does not comment on the PR. nil otherwise skips it.
+	var poster capture.CommentPoster
+	if opts.PostReview {
+		poster = func(body string) (string, error) {
+			return r.GitHub.PostPRComment(pr.Owner, pr.Repo, pr.Number, body)
+		}
+	}
+
+	// Under --format json the human-readable capture render would corrupt the JSON
+	// on stdout, so discard it; the PR comment still occurs.
+	out := w
+	if opts.Format == "json" {
+		out = io.Discard
+	}
+
+	// review is propose-only: never push to the wiki even under --capture-wiki, as
+	// the proposal pages are influenced by the untrusted PR head. Surface the
+	// downgrade so an operator who asked for a push is not misled into thinking one
+	// happened (the slog.Warn keeps it visible under --format json, where out is
+	// discarded).
+	if opts.CaptureWiki {
+		slog.Warn("review ignores --capture-wiki: it analyzes an untrusted pull request, so its capture pass is propose-only and never pushes to the wiki")
+		_, _ = fmt.Fprintln(out, "\nNote: review ignores --capture-wiki — it analyzes an untrusted pull request, so its capture pass is propose-only and never pushes attacker-influenced pages to the wiki. Capture pattern pages from a trusted source instead (implement or audit).")
+	}
+
+	pass := capture.Pass{
+		Propose:     r.Capturer,
+		PostComment: poster,
+	}
+	// The returned error is always nil here — review forces propose-only below, so
+	// the write-back (the only fatal path) never runs.
+	_ = pass.Run(out, capture.Request{
+		Dir:         pr.Dir,
+		Command:     "review",
+		Repo:        pr.Owner + "/" + pr.Repo,
+		Number:      pr.Number,
+		BaseBranch:  pr.BaseBranch,
+		Findings:    result.Findings,
+		Patterns:    pats,
+		Wiki:        wiki,
+		WikiRef:     opts.Wiki.Ref,
+		CaptureWiki: false, // propose-only: see the doc comment above
+		Version:     opts.Version,
+	})
 }
 
 func (r *Runner) renderResult(w io.Writer, result *report.ReviewResult, pr *github.PR, opts Options, coverage *report.CoverageResult) error {
