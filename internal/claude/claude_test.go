@@ -676,6 +676,20 @@ func TestBuildPlanPrompt_ContainsOverScopeGate(t *testing.T) {
 	}
 }
 
+// TestBuildPlanPrompt_ContainsAutolinkHygiene locks the autolink-hygiene rule
+// (issue #149): the plan prompt must forbid bare #<number> enumerations like
+// "AC #1" — GitHub auto-links them to unrelated issues in the target repo — and
+// reserve #<number> for genuine cross-references. The anchors survive golden
+// regeneration so the rule cannot be dropped silently.
+func TestBuildPlanPrompt_ContainsAutolinkHygiene(t *testing.T) {
+	prompt := BuildPlanPrompt(goldenImplementContext())
+	for _, want := range []string{"auto-links every #<number>", "AC 1", "genuine issue/PR cross-references"} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("plan prompt should forbid bare #<number> enumerations; missing %q", want)
+		}
+	}
+}
+
 // assertContainsDesignVocabulary checks that a built prompt carries the shared
 // design-vocabulary block (issue #114): the block itself confirms the wiring,
 // and the seven pinned terms plus the component/service/boundary prohibition are
