@@ -22,14 +22,16 @@ Lock the prompt surface with golden files so drift shows up in PR diffs.
 
 ## Your task
 
-Extract EVERY Acceptance Criterion from the issue body. For each one:
+First, if the issue decomposes the work into multiple parts — a "Work breakdown" / "Work packages" / "Work items" section, numbered items (1., 2., 3. or ### 1 / ### 2), lettered workstreams, tiered phases, or a checkbox task list — enumerate EVERY part. For each, search the diff for the code, tests, and docs that deliver it. A listed work package with no implementation in the diff is a BLOCKING finding: a multi-part issue is not done until every part is, and a single-package subset shipped as if it closes the issue is exactly what this pass exists to catch.
+
+Then extract EVERY Acceptance Criterion from the issue body. For each one:
 1. Search the diff for the concrete code, test, or doc that satisfies it. Cite file:line.
 2. Classify it: satisfied (evidence found), partial (some but not all), or missing (no evidence in the diff).
 3. Report a finding for every criterion that is NOT fully satisfied. A criterion the implementer would claim is "done" but that you cannot verify in the actual diff is exactly the kind of finding this pass exists to catch.
 
 ## Severity
 
-- BLOCKING: a core Acceptance Criterion is missing or contradicted by the implementation.
+- BLOCKING: a core Acceptance Criterion is missing or contradicted by the implementation, or a listed work package is entirely absent from the diff.
 - CRITICAL: a criterion is only partially met in a way that breaks its stated goal.
 - WARNING: a minor criterion gap, or missing tests/docs for an otherwise-implemented criterion.
 - INFO: a positive deviation, or a cosmetic mismatch with the spec.

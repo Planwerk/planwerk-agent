@@ -298,15 +298,23 @@ type resolveWikiFn func(owner, name string, wopts patterns.WikiOptions, ropts pa
 // FinalizeContext is the input for the Claude finalize session that opens the
 // draft pull request once the implement, simplify, and review passes have all
 // run on the local feature branch. The session reads the final diff, writes the
-// PR description (with the mandatory "Closes #N" link to IssueNumber), pushes the
-// branch, and opens the draft PR. It needs only the repository identity and the
-// source issue — it resolves the base/head branches and the change set from git
-// itself, so a non-"main" default branch and an empty change set are handled in
-// the session rather than threaded through here.
+// PR description (with the link to IssueNumber), pushes the branch, and opens the
+// draft PR. It needs only the repository identity and the source issue — it
+// resolves the base/head branches and the change set from git itself, so a
+// non-"main" default branch and an empty change set are handled in the session
+// rather than threaded through here.
+//
+// Closing selects how the PR links the issue. When true (a complete
+// implementation — STATUS: DONE or DONE_WITH_CONCERNS), the PR links with the
+// GitHub closing keyword "Closes #N" so merging closes the issue. When false (a
+// PARTIAL implementation — at least one work package is unfinished), the PR links
+// with a non-closing "Refs #N" instead, so the issue stays open for the remaining
+// work packages and a merge does not falsely close it.
 type FinalizeContext struct {
 	RepoFullName string
 	IssueNumber  int
 	IssueTitle   string
+	Closing      bool
 }
 
 // PRFinalizer opens the draft pull request for the implemented + simplified +

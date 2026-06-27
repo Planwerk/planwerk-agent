@@ -520,6 +520,7 @@ func TestImplementReportStatus(t *testing.T) {
 	}{
 		{"done", header + "STATUS: DONE", "DONE"},
 		{"done with concerns", header + "STATUS: DONE_WITH_CONCERNS", "DONE_WITH_CONCERNS"},
+		{"partial", header + "STATUS: PARTIAL", "PARTIAL"},
 		{"blocked", header + "STATUS: BLOCKED", "BLOCKED"},
 		{"needs context", header + "STATUS: NEEDS_CONTEXT", "NEEDS_CONTEXT"},
 		{"no status line", header + "### Commits\n- abc1234 wip", ""},
@@ -1793,6 +1794,43 @@ func TestRun_FinalizeOpensPR(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "Pull request:") || !strings.Contains(buf.String(), "pull/9") {
 		t.Errorf("missing the finalize report in output:\n%s", buf.String())
+	}
+}
+
+// TestRun_FinalizeClosingByStatus locks how the implement report's terminal
+// STATUS drives the issue link the finalize session uses. A complete
+// implementation (DONE / DONE_WITH_CONCERNS) opens a closing PR
+// (FinalizeContext.Closing == true → "Closes #N"); a PARTIAL one — a reviewable
+// subset that did not finish every work package — still opens a PR but a
+// non-closing one (Closing == false → "Refs #N") so the issue stays open. None of
+// these abort the run.
+func TestRun_FinalizeClosingByStatus(t *testing.T) {
+	cases := []struct {
+		status      string
+		wantClosing bool
+	}{
+		{"DONE", true},
+		{"DONE_WITH_CONCERNS", true},
+		{"PARTIAL", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.status, func(t *testing.T) {
+			gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+			cl := &fakeClaude{report: "## Implementation Report (issue #42)\n\nSTATUS: " + tc.status}
+			ff := &fakeFinalizer{report: defaultFinalizeReport}
+			r := newRunner(gh, cl)
+			r.Finalizer = ff
+
+			if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42"}); err != nil {
+				t.Fatalf("Run returned %v, want nil for a %s report", err, tc.status)
+			}
+			if ff.called.Load() != 1 {
+				t.Fatalf("finalizer called %d times, want 1 — a %s report still opens a PR", ff.called.Load(), tc.status)
+			}
+			if ff.ctx.Closing != tc.wantClosing {
+				t.Errorf("finalizer got Closing=%v for STATUS: %s, want %v", ff.ctx.Closing, tc.status, tc.wantClosing)
+			}
+		})
 	}
 }
 

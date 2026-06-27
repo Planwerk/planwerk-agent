@@ -470,10 +470,22 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	if status == statusBlocked || status == statusNeedsContext {
 		return fmt.Errorf("the implement session reported %s; the implementation did not finish and no pull request was opened — review the report above and clarify the issue", status)
 	}
-	if status == statusDoneWithConcerns {
+
+	// Completeness drives how the finalize session links the issue. DONE and
+	// DONE_WITH_CONCERNS are complete implementations of every work package — the
+	// PR links with "Closes #N" so merging closes the issue. PARTIAL means the
+	// session implemented a reviewable subset but left at least one work package
+	// unfinished: the work still ships as a draft PR, but linked with a
+	// non-closing "Refs #N" so the issue stays open for the remaining packages
+	// rather than being falsely closed on merge.
+	closing := status != statusPartial
+	switch status {
+	case statusDoneWithConcerns:
 		slog.Warn("implement session reported DONE_WITH_CONCERNS", "issue", number)
+	case statusPartial:
+		slog.Warn("implement session reported PARTIAL; opening a non-closing draft PR so the issue stays open for the remaining work packages", "issue", number)
 	}
-	slog.Info("implementation complete", "issue", number)
+	slog.Info("implementation complete", "issue", number, "closing", closing)
 
 	// Simplify pass: runs over the diff the implement session committed, on the
 	// local feature branch before any pull request exists. On by default;
@@ -518,7 +530,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// operator must know the PR was not created. (An empty change set is not a
 	// failure: the finalize session opens no PR and says so.)
 	if r.Finalizer != nil {
-		if err := r.runFinalize(w, repo.Dir, ctx); err != nil {
+		if err := r.runFinalize(w, repo.Dir, ctx, closing); err != nil {
 			return err
 		}
 	}
@@ -761,6 +773,7 @@ func formatReportComment(report, model string) string {
 const (
 	statusDone             = "DONE"
 	statusDoneWithConcerns = "DONE_WITH_CONCERNS"
+	statusPartial          = "PARTIAL"
 	statusBlocked          = "BLOCKED"
 	statusNeedsContext     = "NEEDS_CONTEXT"
 )
@@ -802,8 +815,8 @@ func planEscalation(plan string) string {
 }
 
 // implementReportStatus returns the implement report's terminal STATUS verdict
-// (DONE, DONE_WITH_CONCERNS, BLOCKED, or NEEDS_CONTEXT), or "" when the report
-// carries no recognized STATUS line. Like planEscalation it scans line-anchored
+// (DONE, DONE_WITH_CONCERNS, PARTIAL, BLOCKED, or NEEDS_CONTEXT), or "" when the
+// report carries no recognized STATUS line. Like planEscalation it scans line-anchored
 // and lets the last standalone verdict win, so a mid-sentence mention of a
 // status value is not mistaken for the verdict; it additionally tolerates the
 // markdown decoration a model sometimes adds (a leading list marker or heading,
@@ -825,7 +838,7 @@ func implementReportStatus(report string) string {
 			continue
 		}
 		switch word := strings.ToUpper(strings.Trim(fields[0], "*`_")); word {
-		case statusDone, statusDoneWithConcerns, statusBlocked, statusNeedsContext:
+		case statusDone, statusDoneWithConcerns, statusPartial, statusBlocked, statusNeedsContext:
 			verdict = word
 		}
 	}
@@ -1221,15 +1234,18 @@ func (r *Runner) runCapture(w io.Writer, dir, owner, name string, number int, ct
 // set is NOT a failure — the finalize session opens no PR, reports that nothing
 // was shippable, and returns no error, exactly as the implement session does when
 // the issue turns out to be already implemented.
-func (r *Runner) runFinalize(w io.Writer, dir string, ctx Context) error {
-	slog.Info("running finalize pass to open the pull request", "issue", ctx.IssueNumber)
+func (r *Runner) runFinalize(w io.Writer, dir string, ctx Context, closing bool) error {
+	slog.Info("running finalize pass to open the pull request", "issue", ctx.IssueNumber, "closing", closing)
 	// The finalize report carries the PR URL and goes to stdout; the PR is
-	// auto-linked onto the issue by its "Closes #N" body, so the model id (used
-	// elsewhere only to footer issue comments) is not needed here.
+	// auto-linked onto the issue by its issue-reference body, so the model id (used
+	// elsewhere only to footer issue comments) is not needed here. closing selects
+	// the closing "Closes #N" link for a complete implementation or the non-closing
+	// "Refs #N" link for a PARTIAL one (see FinalizeContext.Closing).
 	finalizeReport, _, err := r.Finalizer.FinalizePR(dir, FinalizeContext{
 		RepoFullName: ctx.RepoFullName,
 		IssueNumber:  ctx.IssueNumber,
 		IssueTitle:   ctx.IssueTitle,
+		Closing:      closing,
 	})
 	if err != nil {
 		slog.Warn("finalize pass failed; no pull request was opened", "issue", ctx.IssueNumber, "err", err)
