@@ -212,6 +212,7 @@ func TestBuildStructurePrompt_ContainsNewFields(t *testing.T) {
 		`"fix_options"`,
 		`"recommended_option"`,
 		`"recommendation_reasoning"`,
+		`"source_finding_count"`,
 		"Confidence levels:",
 		"Field rules:",
 	}
@@ -370,11 +371,17 @@ func TestNewClient_DefaultsFromConsts(t *testing.T) {
 	if c.planModel != DefaultPlanModel {
 		t.Errorf("planModel = %q, want default %q", c.planModel, DefaultPlanModel)
 	}
+	if c.structureModel != DefaultStructureModel {
+		t.Errorf("structureModel = %q, want default %q", c.structureModel, DefaultStructureModel)
+	}
 	if c.effort != DefaultClaudeEffort {
 		t.Errorf("effort = %q, want default %q", c.effort, DefaultClaudeEffort)
 	}
 	if c.planEffort != DefaultPlanEffort {
 		t.Errorf("planEffort = %q, want default %q", c.planEffort, DefaultPlanEffort)
+	}
+	if c.structureEffort != DefaultStructureEffort {
+		t.Errorf("structureEffort = %q, want default %q", c.structureEffort, DefaultStructureEffort)
 	}
 	if c.showOutput {
 		t.Errorf("showOutput = true, want default false")
@@ -386,8 +393,10 @@ func TestNewClient_AppliesOptions(t *testing.T) {
 		WithTimeout(42*time.Minute),
 		WithModel("fable"),
 		WithPlanModel("opus"),
+		WithStructureModel("opus"),
 		WithEffort("max"),
 		WithPlanEffort("high"),
+		WithStructureEffort("xhigh"),
 		WithShowOutput(true),
 	)
 	if c.timeout != 42*time.Minute {
@@ -399,11 +408,17 @@ func TestNewClient_AppliesOptions(t *testing.T) {
 	if c.planModel != "opus" {
 		t.Errorf("planModel = %q, want \"opus\"", c.planModel)
 	}
+	if c.structureModel != "opus" {
+		t.Errorf("structureModel = %q, want \"opus\"", c.structureModel)
+	}
 	if c.effort != "max" {
 		t.Errorf("effort = %q, want \"max\"", c.effort)
 	}
 	if c.planEffort != "high" {
 		t.Errorf("planEffort = %q, want \"high\"", c.planEffort)
+	}
+	if c.structureEffort != "xhigh" {
+		t.Errorf("structureEffort = %q, want \"xhigh\"", c.structureEffort)
 	}
 	if !c.showOutput {
 		t.Errorf("showOutput = false, want true")
@@ -420,8 +435,10 @@ func TestNewClient_OptionsIgnoreBadValues(t *testing.T) {
 		WithTimeout(-5*time.Minute),
 		WithModel(""),
 		WithPlanModel(""),
+		WithStructureModel(""),
 		WithEffort(""),
 		WithPlanEffort(""),
+		WithStructureEffort(""),
 	)
 	if c.timeout != DefaultClaudeTimeout {
 		t.Errorf("non-positive WithTimeout must be ignored; timeout = %s, want %s", c.timeout, DefaultClaudeTimeout)
@@ -432,11 +449,17 @@ func TestNewClient_OptionsIgnoreBadValues(t *testing.T) {
 	if c.planModel != DefaultPlanModel {
 		t.Errorf("empty WithPlanModel must be ignored; planModel = %q, want %q", c.planModel, DefaultPlanModel)
 	}
+	if c.structureModel != DefaultStructureModel {
+		t.Errorf("empty WithStructureModel must be ignored; structureModel = %q, want %q", c.structureModel, DefaultStructureModel)
+	}
 	if c.effort != DefaultClaudeEffort {
 		t.Errorf("empty WithEffort must be ignored; effort = %q, want %q", c.effort, DefaultClaudeEffort)
 	}
 	if c.planEffort != DefaultPlanEffort {
 		t.Errorf("empty WithPlanEffort must be ignored; planEffort = %q, want %q", c.planEffort, DefaultPlanEffort)
+	}
+	if c.structureEffort != DefaultStructureEffort {
+		t.Errorf("empty WithStructureEffort must be ignored; structureEffort = %q, want %q", c.structureEffort, DefaultStructureEffort)
 	}
 }
 

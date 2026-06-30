@@ -3,29 +3,63 @@ package claude
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
+// structuredReview is the structuring pass's decode target: the report schema
+// plus source_finding_count, the structuring model's own count of distinct
+// findings it read in the source review. The count drives warnOnDroppedFindings
+// and is not part of the report.ReviewResult payload itself.
+type structuredReview struct {
+	report.ReviewResult
+	SourceFindingCount int `json:"source_finding_count"`
+}
+
 // structureReview calls Claude to convert unstructured review text into JSON.
 // If the first attempt produces invalid JSON, decodeJSONWithRepair retries once
 // with the parse error included so Claude can correct the output.
 func (c *Client) structureReview(rawReview string) (*report.ReviewResult, error) {
-	// The structuring pass reuses the same model as the primary review call;
-	// the entry point carries that model out, so discard it here.
-	text, _, err := c.runClaude("", buildStructurePrompt(rawReview), "structure")
+	// The structuring pass runs on the dedicated structure tier
+	// (structureModel/structureEffort), independent of the upstream review
+	// model, so the discarded model return is not the attribution model.
+	text, _, err := c.runClaudeStructure(buildStructurePrompt(rawReview), "structure")
 	if err != nil {
 		return nil, err
 	}
-	var result report.ReviewResult
-	if err := c.decodeJSONWithRepair(text, "structured review", &result); err != nil {
+	var sr structuredReview
+	if err := c.decodeJSONWithRepair(text, "structured review", &sr); err != nil {
 		return nil, err
 	}
+	result := sr.ReviewResult
 	if err := c.repairInvalidReview(&result); err != nil {
 		return nil, err
 	}
+	warnOnDroppedFindings(sr.SourceFindingCount, len(result.Findings))
 	return &result, nil
+}
+
+// slogWarnFn is the warn-logging seam (mirrors progress.go's slogInfoFn) so the
+// reconciliation guard can be asserted in tests without parsing global slog
+// output.
+var slogWarnFn = slog.Warn
+
+// warnOnDroppedFindings surfaces a likely silent finding drop by the structuring
+// pass. That pass now defaults to a cheaper model than the upstream reasoning
+// call (DefaultStructureModel), so a long transcription can omit a finding under
+// token pressure — and a dropped finding never reaches the PR comment at all,
+// unlike a still-present severity downgrade. When the model's own
+// source_finding_count exceeds the findings it actually emitted, log a warning
+// rather than fail: re-running would discard the expensive upstream reasoning
+// for an unprovable gain. A non-positive sourceCount means the model reported
+// none, so there is nothing to reconcile.
+func warnOnDroppedFindings(sourceCount, emitted int) {
+	if sourceCount > 0 && emitted < sourceCount {
+		slogWarnFn("structuring emitted fewer findings than the source review reported; a finding may have been dropped in transcription",
+			"source_finding_count", sourceCount, "structured_findings", emitted)
+	}
 }
 
 // repairInvalidReview validates result against the finding schema. When a
@@ -97,7 +131,8 @@ func buildStructurePrompt(rawReview string) string {
     }
   ],
   "summary": "Overall summary: what was done well, key issues found, and overall quality assessment (2-4 sentences, balanced and constructive)",
-  "recommendation": "Whether the PR should be merged and under what conditions"
+  "recommendation": "Whether the PR should be merged and under what conditions",
+  "source_finding_count": 0
 }
 
 Severity levels:
@@ -128,6 +163,7 @@ Field rules:
 - "related_to": Include titles of other findings in this review that are related. Use an empty array if none.
 - Extract ONLY findings actually present in the review output below. Do NOT invent new findings, and do NOT re-introduce any issue the review text explicitly suppressed or chose not to flag.
 - If there are no findings, return an empty findings array.
+- "source_finding_count": count the distinct findings in the <review-output> below from your reading of the source, and report that integer here. The "findings" array MUST then contain exactly that many entries — if it ends up shorter you dropped a finding during transcription, so recount the source and add the missing one back.
 
 <review-output>
 ` + rawReview + `

@@ -149,6 +149,34 @@ func TestExtractJSONValue(t *testing.T) {
 	}
 }
 
+func TestWarnOnDroppedFindings(t *testing.T) {
+	cases := []struct {
+		name        string
+		sourceCount int
+		emitted     int
+		wantWarn    bool
+	}{
+		{"drop is flagged", 5, 4, true},
+		{"exact match is silent", 3, 3, false},
+		{"more emitted than reported is silent", 2, 3, false},
+		{"no reported count is silent", 0, 0, false},
+		{"negative count is silent", -1, 2, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			warned := false
+			restore := slogWarnFn
+			slogWarnFn = func(string, ...any) { warned = true }
+			t.Cleanup(func() { slogWarnFn = restore })
+
+			warnOnDroppedFindings(tc.sourceCount, tc.emitted)
+			if warned != tc.wantWarn {
+				t.Errorf("warnOnDroppedFindings(%d, %d) warned=%v, want %v", tc.sourceCount, tc.emitted, warned, tc.wantWarn)
+			}
+		})
+	}
+}
+
 func validFinding() report.Finding {
 	return report.Finding{
 		Title:      "Missing error wrapping",

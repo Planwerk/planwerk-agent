@@ -86,7 +86,7 @@ Each <wiki-entry> below is one wiki page. Its path and kind are in the tag attri
 }
 
 func (c *Client) structureSync(rawAnalysis string) (*sync.SyncResult, error) {
-	text, _, err := c.runClaude("", buildSyncStructurePrompt(rawAnalysis), "sync-entries")
+	text, _, err := c.runClaudeStructure(buildSyncStructurePrompt(rawAnalysis), "sync-entries")
 	if err != nil {
 		return nil, err
 	}

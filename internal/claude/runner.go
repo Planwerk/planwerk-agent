@@ -55,6 +55,29 @@ const (
 	// with SetPlanEffort (driven by the implement command's --plan-effort
 	// flag / PLANWERK_PLAN_EFFORT env var).
 	DefaultPlanEffort = "max"
+	// DefaultStructureModel is the compiled-in default model for the mechanical
+	// JSON-structuring passes — the secondary `claude -p` calls that cast an
+	// upstream reasoning call's already-reasoned prose into the report schema
+	// (review findings, proposals, elaborations, gap analyses, sync entries,
+	// capture proposals, review-prepared). The "sonnet" alias runs the latest
+	// Sonnet release: structuring is bounded extraction-to-schema, not
+	// reasoning, so the heavy DefaultClaudeModel is wasted there. It is
+	// deliberately independent of c.model — like DefaultPlanModel, this is a
+	// dedicated cheap tier, not a derivation of the main model — and the
+	// decodeJSONWithRepair backstop catches any malformed output. Override
+	// with WithStructureModel (driven by the --structure-model flag /
+	// PLANWERK_STRUCTURE_MODEL env var); pass "opus" to reproduce the former
+	// behavior of structuring on the main model.
+	DefaultStructureModel = "sonnet"
+	// DefaultStructureEffort is the compiled-in default reasoning effort for the
+	// structuring passes. "medium" is enough to transcribe already-reasoned
+	// prose into JSON: the classification (severity / actionability /
+	// confidence) was decided in the upstream reasoning call, so a near-max
+	// thinking budget buys nothing here. The model swap is the primary cost
+	// lever; this is the secondary tunable. Override with WithStructureEffort
+	// (driven by the --structure-effort flag / PLANWERK_STRUCTURE_EFFORT env
+	// var).
+	DefaultStructureEffort = "medium"
 	// claudeAutoPermissionMode is the --permission-mode value the implement
 	// command passes to its orchestrated `claude -p` session so tool calls
 	// run without an interactive confirmation. "auto" is Claude Code's auto
@@ -167,12 +190,14 @@ func (c *Client) hermeticArgs(args []string) []string {
 // counterpart to the package-level configuration this type replaces. Construct
 // one with NewClient and thread it through the runners.
 type Client struct {
-	timeout    time.Duration
-	model      string
-	planModel  string
-	effort     string
-	planEffort string
-	showOutput bool
+	timeout         time.Duration
+	model           string
+	planModel       string
+	structureModel  string
+	effort          string
+	planEffort      string
+	structureEffort string
+	showOutput      bool
 
 	// inheritUserConfig, when true, lets orchestrated `claude -p` sessions
 	// load the invoking user's global ~/.claude settings and MCP servers. It
@@ -199,11 +224,13 @@ type Option func(*Client)
 // opts. With no options it behaves exactly as the historical package defaults.
 func NewClient(opts ...Option) *Client {
 	c := &Client{
-		timeout:    DefaultClaudeTimeout,
-		model:      DefaultClaudeModel,
-		planModel:  DefaultPlanModel,
-		effort:     DefaultClaudeEffort,
-		planEffort: DefaultPlanEffort,
+		timeout:         DefaultClaudeTimeout,
+		model:           DefaultClaudeModel,
+		planModel:       DefaultPlanModel,
+		structureModel:  DefaultStructureModel,
+		effort:          DefaultClaudeEffort,
+		planEffort:      DefaultPlanEffort,
+		structureEffort: DefaultStructureEffort,
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -242,6 +269,17 @@ func WithPlanModel(m string) Option {
 	}
 }
 
+// WithStructureModel sets the model used by the JSON-structuring passes (the
+// secondary `claude -p` calls that cast reasoned prose into the report schema).
+// An empty m is ignored so a misconfigured flag cannot select an empty model.
+func WithStructureModel(m string) Option {
+	return func(c *Client) {
+		if m != "" {
+			c.structureModel = m
+		}
+	}
+}
+
 // WithEffort sets the reasoning effort passed to Claude Code via --effort. An
 // empty e is ignored so a misconfigured flag cannot select an empty effort.
 func WithEffort(e string) Option {
@@ -258,6 +296,17 @@ func WithPlanEffort(e string) Option {
 	return func(c *Client) {
 		if e != "" {
 			c.planEffort = e
+		}
+	}
+}
+
+// WithStructureEffort sets the reasoning effort used by the JSON-structuring
+// passes. An empty e is ignored so a misconfigured flag cannot select an empty
+// effort.
+func WithStructureEffort(e string) Option {
+	return func(c *Client) {
+		if e != "" {
+			c.structureEffort = e
 		}
 	}
 }
@@ -284,7 +333,8 @@ func WithInheritUserConfig(b bool) Option {
 // runClaude invokes claude in the given directory on its default permission
 // mode and returns the extracted text response along with the resolved model
 // id the session reported. Use it for the read-only analysis steps (review,
-// audit, structure, repair, …) that do not mutate the checkout.
+// audit, repair, …) that do not mutate the checkout; the JSON-structuring
+// passes use runClaudeStructure for the dedicated cheap tier instead.
 func (c *Client) runClaude(dir, prompt, label string) (text, model string, err error) {
 	return c.runClaudeWithPermission(dir, prompt, label, "", c.model, c.effort, true)
 }
@@ -298,6 +348,17 @@ func (c *Client) runClaude(dir, prompt, label string) (text, model string, err e
 // whole implementation.
 func (c *Client) runClaudePlan(dir, prompt, label string) (text, model string, err error) {
 	return c.runClaudeWithPermission(dir, prompt, label, "", c.planModel, c.planEffort, true)
+}
+
+// runClaudeStructure is runClaude on the dedicated structuring tier
+// (structureModel/structureEffort, defaults "sonnet"/"medium"). The JSON
+// structuring passes use it: a structuring call only reads upstream prose and
+// transcribes it into the report schema (it passes dir="" — no checkout — and
+// keeps the read-only permission mode), so it runs on the cheap mechanical tier
+// rather than the heavy reasoning model the upstream call used. The
+// decodeJSONWithRepair backstop guards malformed output.
+func (c *Client) runClaudeStructure(prompt, label string) (text, model string, err error) {
+	return c.runClaudeWithPermission("", prompt, label, "", c.structureModel, c.structureEffort, true)
 }
 
 // runClaudeAuto is runClaude with claudeAutoPermissionMode, letting the
