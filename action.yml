@@ -34,6 +34,14 @@ inputs:
     description: 'Run the additional adversarial review pass.'
     required: false
     default: 'false'
+  structure-model:
+    description: 'Model for the mechanical JSON-structuring passes, independent of the main review model (env: PLANWERK_STRUCTURE_MODEL). Empty keeps the compiled-in default (sonnet).'
+    required: false
+    default: ''
+  structure-effort:
+    description: 'Reasoning effort for the JSON-structuring passes: low, medium, high, xhigh, max (env: PLANWERK_STRUCTURE_EFFORT). Empty keeps the compiled-in default (medium).'
+    required: false
+    default: ''
   local:
     description: 'Operate on the repository already checked out by actions/checkout (passes --local) instead of cloning it a second time into a temp dir. Skips the redundant clone — the runner workspace already holds the repo. Requires an authenticated gh and a clean working tree.'
     required: false
@@ -142,6 +150,8 @@ runs:
         MAX_FINDINGS: ${{ inputs.max-findings }}
         POST_INLINE: ${{ inputs.post-inline }}
         THOROUGH: ${{ inputs.thorough }}
+        STRUCTURE_MODEL: ${{ inputs.structure-model }}
+        STRUCTURE_EFFORT: ${{ inputs.structure-effort }}
         PATTERNS: ${{ inputs.patterns }}
         LOCAL: ${{ inputs.local }}
       run: |
@@ -170,6 +180,14 @@ runs:
         fi
         if [ "$THOROUGH" = "true" ]; then
           args+=(--thorough)
+        fi
+        # Empty inputs keep the compiled-in structure-tier defaults, so the
+        # behavior is identical to today unless a caller sets them.
+        if [ -n "$STRUCTURE_MODEL" ]; then
+          args+=(--structure-model "$STRUCTURE_MODEL")
+        fi
+        if [ -n "$STRUCTURE_EFFORT" ]; then
+          args+=(--structure-effort "$STRUCTURE_EFFORT")
         fi
         if [ "$MAX_FINDINGS" != "0" ] && [ -n "$MAX_FINDINGS" ]; then
           args+=(--max-findings "$MAX_FINDINGS")

@@ -15,6 +15,8 @@ full resolution order.
 | `PLANWERK_CLAUDE_TIMEOUT` | `--claude-timeout` | Duration (e.g. `20m`, `1h30m`); must be `> 0`. |
 | `PLANWERK_CLAUDE_MODEL` | `--claude-model` | Model alias or full ID passed to Claude Code via `--model`. |
 | `PLANWERK_CLAUDE_EFFORT` | `--claude-effort` | One of `low`, `medium`, `high`, `xhigh`, `max`. |
+| `PLANWERK_STRUCTURE_MODEL` | `--structure-model` | Model alias or full ID for the JSON-structuring passes. Independent of `PLANWERK_CLAUDE_MODEL`. |
+| `PLANWERK_STRUCTURE_EFFORT` | `--structure-effort` | Reasoning effort for the JSON-structuring passes: one of `low`, `medium`, `high`, `xhigh`, `max`. |
 | `PLANWERK_CLAUDE_INHERIT_USER_CONFIG` | `--claude-inherit-user-config` | Truthy values let sessions inherit user-global `~/.claude` config: `1`, `true`, `yes`, `on` (case-insensitive). Off by default (hermetic). |
 | `PLANWERK_PLAN_MODEL` | `--plan-model` (`implement`) | Model for the planning session. |
 | `PLANWERK_PLAN_EFFORT` | `--plan-effort` (`implement`) | Reasoning effort for the planning session. |

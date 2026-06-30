@@ -16,6 +16,8 @@ and outputs; for a working workflow, see
 | `max-findings` | Cap on findings returned (`0` disables cap) | `0` |
 | `post-inline` | Post inline review comments and a summary via the GitHub Review API | `true` |
 | `thorough` | Run the additional adversarial review pass | `false` |
+| `structure-model` | Model for the mechanical JSON-structuring passes, independent of the main review model (env: `PLANWERK_STRUCTURE_MODEL`). Empty keeps the compiled-in default (`sonnet`). | `""` |
+| `structure-effort` | Reasoning effort for the JSON-structuring passes (`low`, `medium`, `high`, `xhigh`, `max`; env: `PLANWERK_STRUCTURE_EFFORT`). Empty keeps the compiled-in default (`medium`). | `""` |
 | `local` | Review the repository `actions/checkout` already placed in the runner workspace (passes `--local`) instead of cloning it a second time. See [Local mode in CI](/how-to/use-the-github-action#local-mode-in-ci). | `false` |
 | `version` | planwerk-agent release tag to install (`latest` resolves to the most recent release) | `latest` |
 | `binary-path` | Path to a pre-built binary; skips the download step (used by the in-repo smoke test) | `""` |
