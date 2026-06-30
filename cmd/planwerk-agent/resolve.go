@@ -82,6 +82,16 @@ const envPlanModel = "PLANWERK_PLAN_MODEL"
 // --plan-effort CLI flag takes precedence when explicitly set.
 const envPlanEffort = "PLANWERK_PLAN_EFFORT"
 
+// envStructureModel overrides the model used by the JSON-structuring passes
+// for every subcommand (e.g. "sonnet", "opus"). The --structure-model CLI
+// flag takes precedence when explicitly set.
+const envStructureModel = "PLANWERK_STRUCTURE_MODEL"
+
+// envStructureEffort overrides the reasoning effort used by the
+// JSON-structuring passes for every subcommand (low, medium, high, xhigh,
+// max). The --structure-effort CLI flag takes precedence when explicitly set.
+const envStructureEffort = "PLANWERK_STRUCTURE_EFFORT"
+
 // envClaudeInheritUserConfig opts orchestrated Claude sessions out of hermetic
 // mode, letting them load the invoking user's global ~/.claude settings and
 // MCP servers. Any truthy value (1, true, yes, on; case-insensitive) enables
@@ -213,6 +223,51 @@ func resolvePlanEffort(flagValue string, flagSet bool) string {
 		}
 	}
 	return claude.DefaultPlanEffort
+}
+
+// resolveStructureModel returns the effective model for the JSON-structuring
+// passes. Precedence: explicit CLI flag, then PLANWERK_STRUCTURE_MODEL, then
+// the compiled-in default. The value is passed through verbatim — model names
+// are validated by Claude Code itself, so an unknown name surfaces as a claude
+// error rather than being rejected here.
+func resolveStructureModel(flagValue string, flagSet bool) string {
+	if flagSet && flagValue != "" {
+		return flagValue
+	}
+	if raw, ok := os.LookupEnv(envStructureModel); ok {
+		if v := strings.TrimSpace(raw); v != "" {
+			return v
+		}
+	}
+	return claude.DefaultStructureModel
+}
+
+// validEfforts is the closed set of reasoning-effort levels Claude Code accepts.
+var validEfforts = map[string]bool{"low": true, "medium": true, "high": true, "xhigh": true, "max": true}
+
+// resolveStructureEffort returns the effective reasoning effort for the
+// JSON-structuring passes. Precedence: explicit CLI flag, then
+// PLANWERK_STRUCTURE_EFFORT, then the compiled-in default. Unlike
+// --claude-effort — which governs the first, cheap call so a typo surfaces on
+// the very first invocation — the structuring effort governs only the late
+// structuring call that runs AFTER the expensive upstream reasoning pass. A
+// typo there ("maximum") would let the opus review reason and burn its full
+// token cost before claude rejects the bad effort, discarding the result. So
+// the resolved value is validated against the closed effort set here, in
+// PersistentPreRunE before any claude call, and a bad value is rejected fast.
+func resolveStructureEffort(flagValue string, flagSet bool) (string, error) {
+	effort := claude.DefaultStructureEffort
+	if flagSet && flagValue != "" {
+		effort = flagValue
+	} else if raw, ok := os.LookupEnv(envStructureEffort); ok {
+		if v := strings.TrimSpace(raw); v != "" {
+			effort = v
+		}
+	}
+	if !validEfforts[effort] {
+		return "", fmt.Errorf("invalid --structure-effort %q: must be one of low, medium, high, xhigh, max (env: %s)", effort, envStructureEffort)
+	}
+	return effort, nil
 }
 
 // resolveRemotePatternsTTL returns the effective remote-patterns TTL.

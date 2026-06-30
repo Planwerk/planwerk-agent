@@ -15,6 +15,14 @@ import (
 // command-level tests in this package.
 const testRepoRef = "acme/widgets"
 
+// Repeated effort and model literals used across the resolve* tests,
+// extracted into constants so they live in one place (and to satisfy
+// goconst, which flags strings that recur three or more times).
+const (
+	effortHigh = "high"
+	modelOpus  = "opus"
+)
+
 func TestResolveBuildInfoUsesLdflagsVersion(t *testing.T) {
 	bi := resolveBuildInfo("v1.2.3")
 	if bi.Version != "v1.2.3" {
@@ -279,7 +287,7 @@ func TestResolveClaudeModelDefault(t *testing.T) {
 }
 
 func TestResolveClaudeEffortFlagWins(t *testing.T) {
-	t.Setenv(envClaudeEffort, "high")
+	t.Setenv(envClaudeEffort, effortHigh)
 	if got := resolveClaudeEffort("xhigh", true); got != "xhigh" {
 		t.Fatalf("got %q, want flag value %q", got, "xhigh")
 	}
@@ -287,8 +295,8 @@ func TestResolveClaudeEffortFlagWins(t *testing.T) {
 
 func TestResolveClaudeEffortEnvBeatsDefault(t *testing.T) {
 	t.Setenv(envClaudeEffort, "  high  ")
-	if got := resolveClaudeEffort("", false); got != "high" {
-		t.Fatalf("got %q, want trimmed env value %q", got, "high")
+	if got := resolveClaudeEffort("", false); got != effortHigh {
+		t.Fatalf("got %q, want trimmed env value %q", got, effortHigh)
 	}
 }
 
@@ -301,15 +309,15 @@ func TestResolveClaudeEffortDefault(t *testing.T) {
 
 func TestResolvePlanModelFlagWins(t *testing.T) {
 	t.Setenv(envPlanModel, "sonnet")
-	if got := resolvePlanModel("opus", true); got != "opus" {
-		t.Fatalf("got %q, want flag value %q", got, "opus")
+	if got := resolvePlanModel(modelOpus, true); got != modelOpus {
+		t.Fatalf("got %q, want flag value %q", got, modelOpus)
 	}
 }
 
 func TestResolvePlanModelEnvBeatsDefault(t *testing.T) {
 	t.Setenv(envPlanModel, "  opus  ")
-	if got := resolvePlanModel("", false); got != "opus" {
-		t.Fatalf("got %q, want trimmed env value %q", got, "opus")
+	if got := resolvePlanModel("", false); got != modelOpus {
+		t.Fatalf("got %q, want trimmed env value %q", got, modelOpus)
 	}
 }
 
@@ -325,7 +333,7 @@ func TestResolvePlanModelDefault(t *testing.T) {
 }
 
 func TestResolvePlanEffortFlagWins(t *testing.T) {
-	t.Setenv(envPlanEffort, "high")
+	t.Setenv(envPlanEffort, effortHigh)
 	if got := resolvePlanEffort("max", true); got != "max" {
 		t.Fatalf("got %q, want flag value %q", got, "max")
 	}
@@ -333,8 +341,8 @@ func TestResolvePlanEffortFlagWins(t *testing.T) {
 
 func TestResolvePlanEffortEnvBeatsDefault(t *testing.T) {
 	t.Setenv(envPlanEffort, "  high  ")
-	if got := resolvePlanEffort("", false); got != "high" {
-		t.Fatalf("got %q, want trimmed env value %q", got, "high")
+	if got := resolvePlanEffort("", false); got != effortHigh {
+		t.Fatalf("got %q, want trimmed env value %q", got, effortHigh)
 	}
 }
 
@@ -346,6 +354,88 @@ func TestResolvePlanEffortDefault(t *testing.T) {
 	// An explicitly-set-but-empty flag falls through to the default too.
 	if got := resolvePlanEffort("", true); got != claude.DefaultPlanEffort {
 		t.Fatalf("got %q for empty flag, want default %q", got, claude.DefaultPlanEffort)
+	}
+}
+
+func TestResolveStructureModelFlagWins(t *testing.T) {
+	t.Setenv(envStructureModel, modelOpus)
+	if got := resolveStructureModel("sonnet", true); got != "sonnet" {
+		t.Fatalf("got %q, want flag value %q", got, "sonnet")
+	}
+}
+
+func TestResolveStructureModelEnvBeatsDefault(t *testing.T) {
+	t.Setenv(envStructureModel, "  opus  ")
+	if got := resolveStructureModel("", false); got != modelOpus {
+		t.Fatalf("got %q, want trimmed env value %q", got, modelOpus)
+	}
+}
+
+func TestResolveStructureModelDefault(t *testing.T) {
+	t.Setenv(envStructureModel, "")
+	if got := resolveStructureModel("", false); got != claude.DefaultStructureModel {
+		t.Fatalf("got %q, want default %q", got, claude.DefaultStructureModel)
+	}
+	// An explicitly-set-but-empty flag falls through to the default too.
+	if got := resolveStructureModel("", true); got != claude.DefaultStructureModel {
+		t.Fatalf("got %q for empty flag, want default %q", got, claude.DefaultStructureModel)
+	}
+}
+
+func TestResolveStructureEffortFlagWins(t *testing.T) {
+	t.Setenv(envStructureEffort, "medium")
+	got, err := resolveStructureEffort("xhigh", true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "xhigh" {
+		t.Fatalf("got %q, want flag value %q", got, "xhigh")
+	}
+}
+
+func TestResolveStructureEffortEnvBeatsDefault(t *testing.T) {
+	t.Setenv(envStructureEffort, "  high  ")
+	got, err := resolveStructureEffort("", false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != effortHigh {
+		t.Fatalf("got %q, want trimmed env value %q", got, effortHigh)
+	}
+}
+
+func TestResolveStructureEffortDefault(t *testing.T) {
+	t.Setenv(envStructureEffort, "")
+	got, err := resolveStructureEffort("", false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != claude.DefaultStructureEffort {
+		t.Fatalf("got %q, want default %q", got, claude.DefaultStructureEffort)
+	}
+	// An explicitly-set-but-empty flag falls through to the default too.
+	got, err = resolveStructureEffort("", true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != claude.DefaultStructureEffort {
+		t.Fatalf("got %q for empty flag, want default %q", got, claude.DefaultStructureEffort)
+	}
+}
+
+// TestResolveStructureEffortRejectsInvalid pins the fail-fast guard: an
+// off-vocabulary effort from the flag or the env is rejected up front, before
+// any claude call, instead of passing through to fail only after the expensive
+// upstream reasoning pass.
+func TestResolveStructureEffortRejectsInvalid(t *testing.T) {
+	t.Setenv(envStructureEffort, "")
+	if _, err := resolveStructureEffort("maximum", true); err == nil {
+		t.Fatal("expected an error for an invalid --structure-effort flag value")
+	}
+
+	t.Setenv(envStructureEffort, "maximum")
+	if _, err := resolveStructureEffort("", false); err == nil {
+		t.Fatal("expected an error for an invalid PLANWERK_STRUCTURE_EFFORT value")
 	}
 }
 

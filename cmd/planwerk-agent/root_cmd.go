@@ -33,6 +33,8 @@ func newRootCmd(deps *runtimeDeps) *cobra.Command {
 	var claudeTimeout time.Duration
 	var claudeModel string
 	var claudeEffort string
+	var structureModel string
+	var structureEffort string
 	var claudeInheritUserConfig bool
 	var wikiEnable, wikiDisable bool
 	var wikiRef string
@@ -79,6 +81,14 @@ or short form (owner/repo#123).`,
 				return err
 			}
 
+			// Validate the structuring effort up front: it gates only the late
+			// structuring call, so a typo must be rejected here (before any
+			// claude call) rather than after the expensive reasoning pass.
+			structEffort, err := resolveStructureEffort(structureEffort, cmd.Flags().Changed("structure-effort"))
+			if err != nil {
+				return err
+			}
+
 			// Build the Claude Code client once from the resolved --claude-*
 			// flags and share it with every subcommand via deps. The implement
 			// command appends its --plan-* options to deps.claudeOpts.
@@ -87,6 +97,8 @@ or short form (owner/repo#123).`,
 				claude.WithShowOutput(resolveShowClaudeOutput(showClaudeOutput, cmd.Flags().Changed("show-claude-output"))),
 				claude.WithModel(resolveClaudeModel(claudeModel, cmd.Flags().Changed("claude-model"))),
 				claude.WithEffort(resolveClaudeEffort(claudeEffort, cmd.Flags().Changed("claude-effort"))),
+				claude.WithStructureModel(resolveStructureModel(structureModel, cmd.Flags().Changed("structure-model"))),
+				claude.WithStructureEffort(structEffort),
 				claude.WithInheritUserConfig(resolveClaudeInheritUserConfig(claudeInheritUserConfig, cmd.Flags().Changed("claude-inherit-user-config"))),
 			}
 			deps.claude = claude.NewClient(deps.claudeOpts...)
@@ -183,6 +195,8 @@ or short form (owner/repo#123).`,
 	persistent.BoolVar(&showClaudeOutput, "show-claude-output", false, "Stream Claude Code's live output to stderr while running (env: "+envShowClaudeOutput+")")
 	persistent.StringVar(&claudeModel, "claude-model", claude.DefaultClaudeModel, "Model passed to Claude Code via --model (e.g. opus, fable, sonnet; env: "+envClaudeModel+")")
 	persistent.StringVar(&claudeEffort, "claude-effort", claude.DefaultClaudeEffort, "Reasoning effort passed to Claude Code via --effort (low, medium, high, xhigh, max; env: "+envClaudeEffort+")")
+	persistent.StringVar(&structureModel, "structure-model", claude.DefaultStructureModel, "Model for the mechanical JSON-structuring passes (independent of --claude-model; the cheap tier that transcribes reasoned prose into the report schema; env: "+envStructureModel+")")
+	persistent.StringVar(&structureEffort, "structure-effort", claude.DefaultStructureEffort, "Reasoning effort for the JSON-structuring passes (low, medium, high, xhigh, max; env: "+envStructureEffort+")")
 	persistent.BoolVar(&claudeInheritUserConfig, "claude-inherit-user-config", false, "Let orchestrated Claude sessions inherit your user-global ~/.claude settings and MCP servers (default: isolated for reproducible output; env: "+envClaudeInheritUserConfig+")")
 
 	flags := rootCmd.Flags()
