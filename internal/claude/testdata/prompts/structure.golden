@@ -34,7 +34,8 @@ Output ONLY valid JSON matching this exact schema (no markdown fences, no surrou
     }
   ],
   "summary": "Overall summary: what was done well, key issues found, and overall quality assessment (2-4 sentences, balanced and constructive)",
-  "recommendation": "Whether the PR should be merged and under what conditions"
+  "recommendation": "Whether the PR should be merged and under what conditions",
+  "source_finding_count": 0
 }
 
 Severity levels:
@@ -65,6 +66,7 @@ Field rules:
 - "related_to": Include titles of other findings in this review that are related. Use an empty array if none.
 - Extract ONLY findings actually present in the review output below. Do NOT invent new findings, and do NOT re-introduce any issue the review text explicitly suppressed or chose not to flag.
 - If there are no findings, return an empty findings array.
+- "source_finding_count": count the distinct findings in the <review-output> below from your reading of the source, and report that integer here. The "findings" array MUST then contain exactly that many entries — if it ends up shorter you dropped a finding during transcription, so recount the source and add the missing one back.
 
 <review-output>
 ## Findings

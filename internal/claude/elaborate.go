@@ -160,9 +160,10 @@ Before you output the elaborated issue, review your own draft and fix what you f
 }
 
 func (c *Client) structureElaboration(rawElaboration string, ctx elaborate.Context) (*elaborate.Result, error) {
-	// The structuring pass reuses the same model as the elaboration call above,
-	// which already carries the model out; discard it here.
-	text, _, err := c.runClaude("", buildElaborateStructurePrompt(rawElaboration, ctx), "elaborate-structure")
+	// The structuring pass runs on the dedicated structure tier
+	// (structureModel/structureEffort), independent of the upstream elaboration
+	// model, so the discarded model return is not the attribution model.
+	text, _, err := c.runClaudeStructure(buildElaborateStructurePrompt(rawElaboration, ctx), "elaborate-structure")
 	if err != nil {
 		return nil, err
 	}

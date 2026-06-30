@@ -169,7 +169,7 @@ func formatCaptureFinding(f report.Finding) string {
 }
 
 func (c *Client) structureCapture(rawAnalysis string) (*capture.CaptureResult, error) {
-	text, _, err := c.runClaude("", buildCaptureStructurePrompt(rawAnalysis), "capture-structure")
+	text, _, err := c.runClaudeStructure(buildCaptureStructurePrompt(rawAnalysis), "capture-structure")
 	if err != nil {
 		return nil, err
 	}

@@ -127,9 +127,10 @@ Now perform the gap analysis.
 // reconciled against the input feature list so the result has one entry per
 // audited feature even if the model dropped a fully-implemented feature.
 func (c *Client) structureGapResult(rawAnalysis string, ctx gapanalysis.AnalysisContext) (*gapanalysis.Result, error) {
-	// The structuring pass reuses the same model as the analysis call above,
-	// which already carries the model out; discard it here.
-	text, _, err := c.runClaude("", buildGapStructurePrompt(rawAnalysis), "gap-structure")
+	// The structuring pass runs on the dedicated structure tier
+	// (structureModel/structureEffort), independent of the upstream analysis
+	// model, so the discarded model return is not the attribution model.
+	text, _, err := c.runClaudeStructure(buildGapStructurePrompt(rawAnalysis), "gap-structure")
 	if err != nil {
 		return nil, err
 	}

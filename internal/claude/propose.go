@@ -102,9 +102,10 @@ For feature proposals, prefer a vertical slice: one that cuts end-to-end through
 }
 
 func (c *Client) structureProposals(rawAnalysis string) (*propose.ProposalResult, error) {
-	// The structuring pass reuses the same model as the analysis call above,
-	// which already carries the model out; discard it here.
-	text, _, err := c.runClaude("", buildProposalStructurePrompt(rawAnalysis), "proposals")
+	// The structuring pass runs on the dedicated structure tier
+	// (structureModel/structureEffort), independent of the upstream analysis
+	// model, so the discarded model return is not the attribution model.
+	text, _, err := c.runClaudeStructure(buildProposalStructurePrompt(rawAnalysis), "proposals")
 	if err != nil {
 		return nil, err
 	}
