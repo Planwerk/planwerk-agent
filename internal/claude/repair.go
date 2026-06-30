@@ -8,20 +8,22 @@ import (
 
 // repairJSON asks Claude to fix malformed JSON, feeding the parse error back so
 // the model can correct it. It is a package variable so tests can substitute a
-// deterministic repair without invoking the claude CLI; the *Client carries the
-// session configuration the repair call runs under.
+// deterministic repair without invoking the claude CLI. The call runs on the
+// *Client's structure tier (structureModel/structureEffort) via
+// runClaudeStructure, matching the structuring pass it backstops.
 var repairJSON = func(c *Client, malformed string, parseErr error, label string) (string, error) {
-	text, _, err := c.runClaude("", buildRepairPrompt(malformed, parseErr), label+"-repair")
+	text, _, err := c.runClaudeStructure(buildRepairPrompt(malformed, parseErr), label+"-repair")
 	return text, err
 }
 
 // repairInvalidJSON asks Claude to fix JSON that parsed cleanly but failed
 // schema validation, feeding the validation error back so the model can correct
 // the offending fields. It is a package variable so tests can substitute a
-// deterministic repair without invoking the claude CLI; the *Client carries the
-// session configuration the repair call runs under.
+// deterministic repair without invoking the claude CLI. The call runs on the
+// *Client's structure tier (structureModel/structureEffort) via
+// runClaudeStructure, matching the structuring pass it backstops.
 var repairInvalidJSON = func(c *Client, invalid string, validationErr error, label string) (string, error) {
-	text, _, err := c.runClaude("", buildValidationRepairPrompt(invalid, validationErr), label+"-schema-repair")
+	text, _, err := c.runClaudeStructure(buildValidationRepairPrompt(invalid, validationErr), label+"-schema-repair")
 	return text, err
 }
 

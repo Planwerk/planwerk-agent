@@ -333,8 +333,9 @@ func WithInheritUserConfig(b bool) Option {
 // runClaude invokes claude in the given directory on its default permission
 // mode and returns the extracted text response along with the resolved model
 // id the session reported. Use it for the read-only analysis steps (review,
-// audit, repair, …) that do not mutate the checkout; the JSON-structuring
-// passes use runClaudeStructure for the dedicated cheap tier instead.
+// audit, …) that do not mutate the checkout; the JSON-structuring passes —
+// and their repair recovery — use runClaudeStructure for the dedicated cheap
+// tier instead.
 func (c *Client) runClaude(dir, prompt, label string) (text, model string, err error) {
 	return c.runClaudeWithPermission(dir, prompt, label, "", c.model, c.effort, true)
 }
