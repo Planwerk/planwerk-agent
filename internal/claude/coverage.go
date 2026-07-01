@@ -1,7 +1,6 @@
 package claude
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"github.com/planwerk/planwerk-agent/internal/report"
@@ -17,13 +16,27 @@ func (c *Client) CoverageMap(dir, baseBranch string) (*report.CoverageResult, er
 		return nil, err
 	}
 
-	text = stripMarkdownFences(text)
+	return c.decodeCoverage(text)
+}
 
+// decodeCoverage decodes a coverage-map payload and fails loud when it carries
+// no "entries" field. decodeJSONWithRepair recovers a JSON value from
+// surrounding prose via extractJSONValue, which returns the FIRST balanced
+// object in the output; if a model prepends an unrelated object (a status or
+// summary blob) before the real payload, that object decodes cleanly into a
+// CoverageResult whose Entries stay nil. CoverageResult has no required fields,
+// so nothing else catches it and the pass would silently report empty coverage.
+// A missing "entries" field is treated as a decode failure. An entries-present
+// but empty payload ({"entries": []}, a diff with no changed functions)
+// unmarshals to a non-nil empty slice and is a legitimate result.
+func (c *Client) decodeCoverage(text string) (*report.CoverageResult, error) {
 	var result report.CoverageResult
-	if err := json.Unmarshal([]byte(text), &result); err != nil {
-		return nil, fmt.Errorf("parsing coverage map as JSON: %w\nraw output:\n%s", err, text)
+	if err := c.decodeJSONWithRepair(text, "coverage map", &result); err != nil {
+		return nil, err
 	}
-
+	if result.Entries == nil {
+		return nil, fmt.Errorf("parsing coverage map as JSON: output has no \"entries\" field\nraw output:\n%s", text)
+	}
 	return &result, nil
 }
 
