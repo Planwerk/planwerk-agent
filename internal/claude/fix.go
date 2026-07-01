@@ -408,7 +408,7 @@ Run these steps for EACH failing check before editing any code:
      - Root cause: <one sentence>
      - Fix: <files touched + one-sentence description of the change>
      - Local verification: <exact command run + pass/fail, OR "not reproducible in this environment — relying on CI">
-     - Regression test: <added/extended test name, OR "n/a — <reason from step 7 above>">
+     - Regression test: <added/extended test name, OR "n/a — <reason from the diagnosis workflow above>">
    ### Diff summary
    - Files: <comma-separated list>
    - Approx lines added/removed: <+N/-M>
