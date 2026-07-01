@@ -61,7 +61,7 @@ This is NOT a pull-request review — there is no diff. Audit the ENTIRE current
 1. First, walk the repository structure to understand the project (language, layout, entry points, tests, docs).
 2. For EACH review pattern above, scan the codebase for violations. Reference the pattern by name in the "pattern" field of each finding.
 3. Beyond the patterns, also report any CRITICAL or BLOCKING issues you encounter (security holes, data-loss risks, missing error handling on hot paths) even if no pattern covers them.
-4. Cite concrete file paths and line numbers for every finding. If you cannot cite a line, do not report it.
+4. Cite concrete file paths and line numbers for every finding, following the citation rule under "Verification of Claims" below; a finding that cannot satisfy that rule must not be reported.
 5. Group duplicate violations: if the same pattern is violated in many places, pick the 3-5 most representative instances and list the remaining files in the "action" field rather than creating dozens of near-identical findings.
 
 ## Test & Documentation Completeness
