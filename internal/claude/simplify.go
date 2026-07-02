@@ -82,6 +82,8 @@ DO NOT comment on:
 - Code style, naming, or formatting.
 - Anything whose removal would change observable behavior.
 
+A clean diff is a valid outcome: if you find no over-engineering, return an empty findings array — do NOT manufacture a finding.
+
 ` + planwerkIgnoreLine() + communicationStyleBlock() + outputLanguageBlock() + findingLabelsBlock() + "/review"
 }
 

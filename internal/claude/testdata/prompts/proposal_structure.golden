@@ -40,7 +40,7 @@ Scope:
 
 "id": leave as empty string — it is assigned automatically.
 When the analysis says a feature proposal is blocked by another, carry that "Blocked by" dependency in the proposal's "description" prose — the schema has no separate field for it.
-Emit one proposal per concrete, actionable item the analysis surfaced — typically 5 to 20 for a codebase of real size. Never invent proposals to reach a count: if the analysis yields fewer, emit only those.
+Emit one proposal per concrete, actionable item the analysis surfaced — typically 5 to 20 for a codebase of real size. Never invent proposals to reach a count: if the analysis yields fewer, emit only those; if it yields none, return an empty proposals array.
 
 <analysis-output>
 The repo is a Go CLI. Suggestion: add golden tests for the prompt builders.
