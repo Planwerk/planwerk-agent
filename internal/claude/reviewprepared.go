@@ -41,10 +41,10 @@ func buildReviewPreparedPrompt(ctx reviewprepared.AnalysisContext) string {
 
 Apply these thinking patterns:
 - "Could a new engineer build this from the spec alone?" — if the answer is no, the spec needs improvement
-- "Every SHALL must have a TestSpecification declared in the spec" — judged purely against the spec text
+- "Every SHALL must have a TestSpecification declared in the spec"
 - "Every story criterion must be verifiable as written" — vague verbs (handle, support, work) are findings
-- "Implementation_notes is a contract, not prose" — concrete file paths, function names, pitfalls; quality is judged by the spec, not by checking whether they exist yet
-- "Internal consistency over external truth" — every cross-reference (REQ-IDs in stories/tasks/tests) must resolve INSIDE this spec; do not look outside
+- "Implementation_notes is a contract, not prose" — concrete file paths, function names, pitfalls
+- "Internal consistency over external truth" — every cross-reference (REQ-IDs in stories/tasks/tests) must resolve INSIDE this spec
 
 `)
 
@@ -54,7 +54,7 @@ Apply these thinking patterns:
 
 	if len(ctx.Patterns) > 0 {
 		sb.WriteString("## Review Patterns (context, not the focus)\n\n")
-		sb.WriteString("These are the project's review patterns. Use them as a sanity lens to judge whether the SPEC anticipates them — for example, if a pattern says 'every public API needs docs' and the spec lacks a docs task, that's a finding. Do NOT check whether the patterns are followed in the existing codebase; that is not this command's scope.\n\n")
+		sb.WriteString("These are the project's review patterns. Use them as a sanity lens to judge whether the SPEC anticipates them — for example, if a pattern says 'every public API needs docs' and the spec lacks a docs task, that's a finding.\n\n")
 		sb.WriteString("<review-patterns>\n")
 		sb.WriteString(patterns.FormatGroupedForPrompt(ctx.Patterns, ctx.MaxPatterns))
 		sb.WriteString("</review-patterns>\n\n")
@@ -62,8 +62,6 @@ Apply these thinking patterns:
 
 	sb.WriteString("## Prepared Feature Specifications to Review\n\n")
 	sb.WriteString(`Each block below is a feature whose Planwerk file declares status="prepared". The team has finished drafting it; the next step is implementation. Your job is to find ANY weakness in the spec TEXT that would make implementation slower, more ambiguous, or more error-prone.
-
-This review covers ONLY the spec content. Whether the described behaviour is implemented in the repository is irrelevant — for "prepared" status it almost never is, and that's expected. Findings like "this endpoint does not exist in the code" or "no test file matches yet" are out of scope and must not be reported.
 
 For each feature you receive BOTH a structured rendering (the same prompt format the implementer would see) AND the raw JSON. Use the raw JSON to identify exact JSON pointers for findings.
 
@@ -81,14 +79,14 @@ For each feature you receive BOTH a structured rendering (the same prompt format
 
 	sb.WriteString(`## What to look for
 
-Walk EVERY feature through these seven categories. Each category produces one finding per issue. EVERY judgment is made against the SPEC TEXT, never against the codebase.
+Walk EVERY feature through these seven categories. Each category produces one finding per issue.
 
 1. **stories** — Every story has a clear role, want, so_that. Each acceptance criterion is verifiable as written (asserts a concrete output, status code, side-effect, or measurable property). Vague verbs ("handle", "support", "work correctly") without a measurable assertion are findings. Missing edge cases the spec itself implies (failure modes, authorisation, idempotency) are findings.
 2. **requirements** — Each requirement has an ID, priority, rationale, and at least one Scenario. Priority must map to a known severity vocabulary (must/should/could). Scenarios use When/Then/AndThen with concrete inputs and outputs. Requirements that are not referenced by any story criterion are findings (this is internal traceability, judged inside the spec).
 3. **tasks** — Tasks are ordered, sized for a single PR, and each carries a list of Requirements they fulfil. A task whose description is too coarse ("Implement endpoint") is a finding. Tasks must cover every requirement; missing tasks for documented behaviour are findings.
-4. **tests** — Every requirement has at least one TestSpecification declared in the spec. Every TestSpecification cites a concrete test_file and test_function and explains the expected assertion. Do NOT verify whether those test files actually exist on disk — that is gap-analysis territory; judge purely whether the spec is internally complete and specific.
+4. **tests** — Every requirement has at least one TestSpecification declared in the spec. Every TestSpecification cites a concrete test_file and test_function and explains the expected assertion.
 5. **review_criteria** — review_criteria covers every SHALL requirement and every error path the spec mentions. Missing review criteria for documented invariants are findings.
-6. **implementation_notes** — implementation_notes carries concrete file paths, package layouts, and at least one pattern reference per major architectural decision. Hand-wavy phrases ("similar to existing code", "TBD") are findings. Concreteness is judged from the spec wording; do NOT verify whether the referenced files exist.
+6. **implementation_notes** — implementation_notes carries concrete file paths, package layouts, and at least one pattern reference per major architectural decision. Hand-wavy phrases ("similar to existing code", "TBD") are findings.
 7. **other** — Cross-cutting issues that don't fit a single category: empty summary, ambiguous slug, contradictions between description and stories, broken internal cross-references (a story criterion that cites REQ-XYZ which is not in requirements[]; a TestSpecification.requirement_id missing from requirements[]; a task.requirements naming a missing requirement ID).
 
 For each finding, include:
@@ -114,7 +112,6 @@ For each finding, include:
 
 ## Verification rules (mandatory)
 - Every finding MUST cite the exact spec_pointer and a 1-2 sentence description.
-- The spec is the only source of truth — do NOT speculate about what the codebase does.
 - If a feature is in great shape, emit it with an empty findings array and a positive 1-sentence summary.
 
 `)
@@ -255,7 +252,7 @@ func buildReviewPreparedStructurePrompt(rawAnalysis string, includeImproved bool
 }
 
 Field rules:
-- "id": leave as empty string — it is assigned automatically.
+- ` + emptyIDLine() + `
 - "category": exactly one of the values above.
 - "severity": uppercase, never BLOCKING.
 - "feature_id" / "feature_file": copy from the surrounding feature block.

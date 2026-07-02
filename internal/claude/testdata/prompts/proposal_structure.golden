@@ -38,8 +38,7 @@ Scope:
 - Medium: 1-3 days of work, multiple files or a new module
 - Large: > 3 days of work, significant new functionality or architectural changes
 
-Leave the "id" field as an empty string — it will be assigned automatically.
-Each proposal should be specific and actionable, referencing actual code areas.
+"id": leave as empty string — it is assigned automatically.
 When the analysis says a feature proposal is blocked by another, carry that "Blocked by" dependency in the proposal's "description" prose — the schema has no separate field for it.
 Emit one proposal per concrete, actionable item the analysis surfaced — typically 5 to 20 for a codebase of real size. Never invent proposals to reach a count: if the analysis yields fewer, emit only those.
 

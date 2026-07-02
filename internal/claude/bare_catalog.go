@@ -27,7 +27,7 @@ No prebuilt pattern catalog was attached to this prompt. Before editing any file
 2. If a top-level ` + "`patterns/`" + ` directory exists in this checkout (and looks like a planwerk-agent pattern catalog — files starting with ` + "`# Review Pattern:`" + `), read those too.
 3. If neither directory is present, skip this section.
 
-Your work MUST stay consistent with whichever patterns you find. Do not introduce changes that would itself be flagged by one of these patterns.
+Your work MUST stay consistent with whichever patterns you find. Do not introduce changes that would themselves be flagged by one of these patterns.
 
 `
 	}

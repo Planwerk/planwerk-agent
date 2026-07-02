@@ -48,6 +48,21 @@ Review the FULL pull request diff — every commit between origin/%s and HEAD mu
 		sb.WriteString("</review-patterns>\n\n")
 	}
 
+	// Verification of claims — anti-hallucination rules
+	sb.WriteString(`## Verification of Claims
+
+These rules are MANDATORY. Violating them produces a misleading review.
+
+- QUOTE-OR-DEMOTE: every finding MUST quote the exact triggering line(s) verbatim from the diff in its code snippet. If you cannot quote the line, set confidence to "uncertain" — NEVER invent, paraphrase, or reconstruct a snippet to make a finding look verified. Unverifiable findings are downgraded automatically; fabricating a snippet defeats the gate.
+- NEVER say "this is probably tested" — name the specific test file and test function, or flag as "test coverage unknown"
+- NEVER say "this is handled elsewhere" — cite the exact file and line that handles it, or say "not verified"
+- NEVER say "the caller validates this" — name the caller and the validation, or say "unverified assumption"
+- NEVER assume error handling exists unless you can see it in the diff or trace it in the codebase
+- If you are uncertain whether something is a real issue, say "UNVERIFIED: [claim]" rather than presenting it as fact
+- When referencing code outside the diff, always prefix with the file path (e.g. "In cmd/main.go:42, ...")
+
+`)
+
 	// Scope Drift Detection
 	if ctx.PRTitle != "" || ctx.PRBody != "" || ctx.CommitLog != "" {
 		sb.WriteString("## Scope Analysis (run FIRST, before code quality review)\n\n")
@@ -92,13 +107,12 @@ For every NEW or SIGNIFICANTLY MODIFIED function/method/class in the diff:
    - E2E tests: e2e/, tests/e2e/, chainsaw/, .chainsaw/, chainsaw-test.yaml
    - Kubernetes/Infrastructure E2E: Chainsaw test manifests (chainsaw-test.yaml with apiVersion: chainsaw.kyverno.io), Helm chart tests (tests/), kuttl tests
 2. Check whether the PR includes corresponding test additions or modifications FOR EACH test type the project uses
-3. If the project already has unit tests, integration tests, or E2E tests, new code must include matching test types — as comprehensively as the project already does. This is CRITICAL: if a project has Chainsaw E2E tests for existing features, new features MUST also have Chainsaw tests.
+3. If the project already has unit tests, integration tests, or E2E tests, new code must include matching test types — as comprehensively as the project already does.
 4. Actively search for test directories: look for chainsaw/, e2e/, tests/, test/ directories in the repository. If they exist and contain tests for similar features, flag missing tests for the new code.
 5. If no test exists for new code:
    - If the project has tests elsewhere: flag as WARNING with title "Missing Tests: <function/file>"
    - If the project has E2E tests elsewhere but none for new code: flag as WARNING with title "Missing E2E Tests: <feature/component>"
    - If the project has no test convention at all: flag as INFO with title "No Test Convention Detected"
-6. Do NOT flag: trivial getters/setters, simple delegation methods, or configuration constants
 
 ### Documentation Completeness
 For every NEW public API, CLI flag, configuration option, or user-facing behavior change:
@@ -106,7 +120,6 @@ For every NEW public API, CLI flag, configuration option, or user-facing behavio
 2. If new public API is exported but not documented: flag as WARNING with title "Missing Documentation: <item>"
 3. If a CLI flag or config option is added without being documented: flag as WARNING with title "Undocumented Flag/Config: <name>"
 4. If existing documentation references changed behavior but was not updated: flag as WARNING with title "Stale Documentation: <file>"
-5. Do NOT flag: internal/private API changes, refactoring that preserves existing behavior
 
 `)
 
@@ -178,21 +191,6 @@ When the diff introduces ANY new dependency, you MUST verify its freshness and m
 	// False-positive suppressions (shared with audit/compliance via suppressionsBlock)
 	sb.WriteString(suppressionsBlock(scopeDiff))
 
-	// Verification of claims — anti-hallucination rules
-	sb.WriteString(`## Verification of Claims
-
-These rules are MANDATORY. Violating them produces a misleading review.
-
-- QUOTE-OR-DEMOTE: every finding MUST quote the exact triggering line(s) verbatim from the diff in its code snippet. If you cannot quote the line, set confidence to "uncertain" — NEVER invent, paraphrase, or reconstruct a snippet to make a finding look verified. Unverifiable findings are downgraded automatically; fabricating a snippet defeats the gate.
-- NEVER say "this is probably tested" — name the specific test file and test function, or flag as "test coverage unknown"
-- NEVER say "this is handled elsewhere" — cite the exact file and line that handles it, or say "not verified"
-- NEVER say "the caller validates this" — name the caller and the validation, or say "unverified assumption"
-- NEVER assume error handling exists unless you can see it in the diff or trace it in the codebase
-- If you are uncertain whether something is a real issue, say "UNVERIFIED: [claim]" rather than presenting it as fact
-- When referencing code outside the diff, always prefix with the file path (e.g. "In cmd/main.go:42, ...")
-
-`)
-
 	// Anti-sycophancy rules (shared with audit/adversarial/compliance)
 	sb.WriteString(communicationStyleBlock())
 	sb.WriteString(outputLanguageBlock())
@@ -234,9 +232,7 @@ For EVERY finding you report, you MUST include:
 `)
 
 	// Finding limit
-	if ctx.MaxFindings > 0 {
-		fmt.Fprintf(&sb, "## Finding Budget\n\nReport at most %d findings. Prioritize BLOCKING > CRITICAL > WARNING > INFO. If more exist, keep the highest-severity and most representative ones.\n\n", ctx.MaxFindings)
-	}
+	sb.WriteString(findingBudgetBlock(ctx.MaxFindings))
 
 	// Review Summary instructions
 	sb.WriteString(`## Review Summary

@@ -73,15 +73,10 @@ For each area, think about:
 - What is achievable with reasonable effort?
 
 Reference actual files, functions, and code patterns you observe.
-Provide a detailed, structured analysis covering all the areas above.
 
 IMPORTANT: Do NOT just list generic software improvements. Your proposals must be specific to THIS codebase and grounded in what you actually observe in the code.
 
 For feature proposals, prefer a vertical slice: one that cuts end-to-end through the layers it touches and is demoable on its own, not a horizontal layer that delivers nothing until a later proposal lands. When a feature proposal depends on another, state an honest "Blocked by" note naming that proposal so independent proposals stay grabbable in parallel. This applies to feature work — a refactoring, testing, or documentation proposal need not be demoable end-to-end.`)
-
-	if len(ctx.Patterns) > 0 {
-		sb.WriteString("\n\nWhen a proposal is motivated by a review pattern above, name that pattern in the proposal's description or motivation so the trail from pattern catalog to proposed work is explicit.")
-	}
 
 	if len(ctx.OutOfScope) > 0 {
 		sb.WriteString("\n\n## Out of Scope — DO NOT propose these\n\n")
@@ -157,8 +152,7 @@ Scope:
 - Medium: 1-3 days of work, multiple files or a new module
 - Large: > 3 days of work, significant new functionality or architectural changes
 
-Leave the "id" field as an empty string — it will be assigned automatically.
-Each proposal should be specific and actionable, referencing actual code areas.
+` + emptyIDLine() + `
 When the analysis says a feature proposal is blocked by another, carry that "Blocked by" dependency in the proposal's "description" prose — the schema has no separate field for it.
 Emit one proposal per concrete, actionable item the analysis surfaced — typically 5 to 20 for a codebase of real size. Never invent proposals to reach a count: if the analysis yields fewer, emit only those.
 

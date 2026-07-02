@@ -48,10 +48,7 @@ func BuildReviewApplyPrompt(ctx implement.ReviewApplyContext) string {
 - "Find the root cause." — Each finding names a symptom; fix the broken invariant in the code under it, not just the surface. Open the cited file before editing — never patch from the finding text alone.
 - "Minimal-invasive change." — Touch the smallest surface area that resolves each finding. No drive-by refactors, no reformatting unrelated code, no dependency bumps the finding does not implicate.
 - "Regression guard." — When the fix is in production code and the existing tests did not catch the issue, add or extend a test that fails before your fix and passes after. This pass IS allowed to add tests.
-- "Do not cheat the finding." — Never silence a finding by deleting or weakening a test, an assertion, or a required check, by adding a suppression comment that was not already idiomatic in the file, or by widening a type to Any/interface{}/unknown. Fix the real issue.
-- "Self-review before you finish." — Re-read the diff. The result MUST still build, pass the tests, and satisfy the issue. Remove anything not strictly required.
-- "Stay inside the change set." — The branch has a stated intent. Every fix must serve it. Prefer to touch only files the branch already changes; reaching outside it is a last resort, kept as small as possible and called out in the report.
-
+` + selfReviewPatternLine() + `
 `)
 
 	fmt.Fprintf(&sb, "## Branch\n\n- Repository: %s\n- Base branch: %s — fold fixes into this branch's own commits, the range origin/%[2]s..HEAD\n- You are on the feature branch the implement session committed. No PR exists yet; do NOT push or open one.\n\n",

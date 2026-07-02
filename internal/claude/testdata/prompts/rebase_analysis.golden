@@ -89,7 +89,4 @@ Output ONLY valid JSON matching this exact schema (no markdown fences, no surrou
 }
 
 Field rules:
-- "kind": one of renamed-symbol, changed-signature, removed-helper, lint-rule, semantic-change.
 - "upstream_ref" and "confidence" are optional; omit "upstream_ref" when no single upstream commit is responsible.
-- Include one "commits" entry for EVERY rebased commit, in order, even when its adjustments array is empty.
-- Do NOT invent adjustments. If the upstream range does not affect a commit, its adjustments array is empty.

@@ -27,7 +27,7 @@ First, if the issue decomposes the work into multiple parts — a "Work breakdow
 Then extract EVERY Acceptance Criterion from the issue body. For each one:
 1. Search the diff for the concrete code, test, or doc that satisfies it. Cite file:line.
 2. Classify it: satisfied (evidence found), partial (some but not all), or missing (no evidence in the diff).
-3. Report a finding for every criterion that is NOT fully satisfied. A criterion the implementer would claim is "done" but that you cannot verify in the actual diff is exactly the kind of finding this pass exists to catch.
+3. Report a finding for every criterion that is NOT fully satisfied.
 
 ## Severity
 

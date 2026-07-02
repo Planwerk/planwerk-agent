@@ -41,11 +41,9 @@ func buildCompliancePrompt(baseBranch string, feature *planwerk.Feature) string 
 
 	featureContent := feature.FormatForPrompt()
 
-	body := fmt.Sprintf(`You are a Requirements Engineer verifying that a PR implementation fully satisfies a Planwerk feature specification.
+	body := `You are a Requirements Engineer verifying that a PR implementation fully satisfies a Planwerk feature specification.
 
-SCOPE: Only review files changed in the current branch compared to origin/%s.
-First run: git diff origin/%s --name-only
-Then examine the changed files against the feature specification below.
+` + diffScopeLines(baseBranch) + fmt.Sprintf(`Then examine the changed files against the feature specification below.
 
 <planwerk-feature-specification>
 %s
@@ -107,7 +105,7 @@ For EVERY finding:
 3. **Confidence**: "verified" if you can confirm from the code, "likely" if evidence is indirect, "uncertain" if you need more context
 4. **Related Findings**: Reference other findings from this review that are connected
 
-`, baseBranch, baseBranch, featureContent)
+`, featureContent)
 
 	var sb strings.Builder
 	sb.WriteString(body)

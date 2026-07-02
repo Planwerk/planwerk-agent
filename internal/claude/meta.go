@@ -38,12 +38,7 @@ A Meta Issue frames a larger body of work as several self-contained work package
 
 Make the breakdown autonomously. Do NOT ask the author what to split or how — read the Meta Issue and decide. Keep the split deliberately small: group the work into the fewest sensible packages rather than many tiny ones, and never let the breakdown sprawl. Where the Meta Issue already implies an order or dependencies — a foundation package others build on, numbered tiers, lettered workstreams — preserve that structure rather than inventing your own, and key the Sub Issues so that order is clear.
 
-## Hard non-goals — do NOT do any of these
-- No file-level affected-areas breakdown.
-- No step-by-step implementation design.
-- No acceptance criteria grounded in concrete files, symbols, or functions.
-- No naming of specific source files or functions, and no codebase analysis for a plan.
-
+` + draftHardNonGoalsBlock() + `
 Each Sub Issue is a draft, not a plan. Turning a Sub Issue into a file-level engineering plan is the job of the separate elaborate and implement commands, run per Sub Issue when the author is ready. If you catch yourself writing acceptance criteria, an affected-areas list, or implementation steps, stop — that belongs to a later step.
 
 Describe each Sub Issue by the behavior and interfaces it changes — what users and callers see — because a Sub Issue sits in the tracker and may be carved off and picked up long after the surrounding code has moved; a behavioral brief outlives one pinned to today's file layout.
@@ -66,11 +61,9 @@ Describe each Sub Issue by the behavior and interfaces it changes — what users
 Carve each Sub Issue as a vertical slice: it cuts end-to-end through every layer it touches and is demoable on its own, rather than a horizontal layer (all the types here, all the wiring there) that delivers nothing until a sibling lands.
 
 - A short, stable key that encodes any implied order — "a", "b", "c" for lettered workstreams; "tier-1", "tier-2" for numbered tiers; "foundation" for a package others build on. Keys are lowercase, hyphenated, and unique.
-- A descriptive, specific title — imperative mood, no severity or priority prefix.
-- A Description: a few short paragraphs framing this work package and what it delivers, in plain terms a maintainer can pick up. Draft depth only.
+` + draftTitleLine() + `- A Description: a few short paragraphs framing this work package and what it delivers, in plain terms a maintainer can pick up. Draft depth only.
 - A Motivation: why this package matters and what depends on it.
-- A rough Scope: exactly one of Small, Medium, or Large.
-- An honest "blockedBy" ordering: the keys of the sibling packages this one must wait on, or [] when it is unblocked. Record the dependency here as structured data, NOT as prose in the Description — the runner persists it as a real GitHub "blocked by" relationship so the order is machine-readable and renders in GitHub's issue UI. Keep it minimal: list only the siblings this package genuinely cannot start without, so packages with no real dependency stay grabbable in parallel, and never let the dependencies form a cycle.
+` + draftScopeLine() + `- An honest "blockedBy" ordering: the keys of the sibling packages this one must wait on, or [] when it is unblocked. Record the dependency here as structured data, NOT as prose in the Description — the runner persists it as a real GitHub "blocked by" relationship so the order is machine-readable and renders in GitHub's issue UI. Keep it minimal: list only the siblings this package genuinely cannot start without, so packages with no real dependency stay grabbable in parallel, and never let the dependencies form a cycle.
 
 ## Syncing the Meta Issue body
 
@@ -104,10 +97,7 @@ Output ONLY valid JSON (no markdown fences, no surrounding text):
   "metaBody": "the Meta Issue body, verbatim, with {{sub:KEY}} tokens inserted on work-package lines"
 }
 
-- Do NOT invent fields beyond the schema.
-- "scope" MUST be exactly one of Small, Medium, or Large.
-- "blockedBy" is an array of sibling keys (use [] when unblocked); every entry MUST be a key you declared in "subIssues", and the dependencies MUST NOT form a cycle.
-- Prefer the fewest Sub Issues that cover the work; do not split into many tiny packages.
+` + draftSchemaRules() + `- "blockedBy" is an array of sibling keys (use [] when unblocked); every entry MUST be a key you declared in "subIssues", and the dependencies MUST NOT form a cycle.
 `)
 
 	return sb.String()

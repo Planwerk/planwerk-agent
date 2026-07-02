@@ -40,12 +40,10 @@ func buildAdversarialPrompt(baseBranch string) string {
 	if baseBranch == "" {
 		baseBranch = DefaultBaseBranch
 	}
-	return fmt.Sprintf(`You are a security researcher and chaos engineer performing an adversarial code review.
+	return `You are a security researcher and chaos engineer performing an adversarial code review.
 Your job is to find ways this code will fail in production.
 
-SCOPE: Only review files changed in the current branch compared to origin/%s.
-First run: git diff origin/%s --name-only
-Then focus your adversarial analysis ONLY on those files.
+` + diffScopeLines(baseBranch) + `Then focus your adversarial analysis ONLY on those files.
 
 Think like:
 - An attacker: How can this code be exploited? SQL injection, auth bypass, SSRF, path traversal, XSS, CSRF?
@@ -76,5 +74,5 @@ For every finding you report:
 - Rate your confidence: "verified" (exploit confirmed in code), "likely" (strong evidence), "uncertain" (theoretical concern)
 - If multiple findings are related (e.g., an injection vector and a missing input validation), note the connection by referencing the other finding's title
 
-`, baseBranch, baseBranch) + planwerkIgnoreLine() + communicationStyleBlock() + outputLanguageBlock() + "/review"
+` + planwerkIgnoreLine() + communicationStyleBlock() + outputLanguageBlock() + "/review"
 }

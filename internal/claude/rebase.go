@@ -180,10 +180,7 @@ Open the actual files; do not guess. Report only adjustments you can ground in t
 }
 
 Field rules:
-- "kind": one of renamed-symbol, changed-signature, removed-helper, lint-rule, semantic-change.
 - "upstream_ref" and "confidence" are optional; omit "upstream_ref" when no single upstream commit is responsible.
-- Include one "commits" entry for EVERY rebased commit, in order, even when its adjustments array is empty.
-- Do NOT invent adjustments. If the upstream range does not affect a commit, its adjustments array is empty.
 `)
 
 	return sb.String()
@@ -302,7 +299,7 @@ func BuildBareRebasePrompt(ctx rebase.BareContext) string {
 ## Hard rules
 
 - Preserve individual commits — do NOT squash.
-- Do NOT force-push unless explicitly asked. A rebase rewrites SHAs, so publishing needs `+"`git push --force-with-lease`"+` — only run it if the human asked you to publish.
+- Do NOT force-push unless explicitly asked. A rebase rewrites SHAs, so publishing needs `+"`git push --force-with-lease`"+`.
 - NEVER blind-pick a conflict side to make it go away.
 `, ctx.Onto)
 	sb.WriteString(noSkipHooksLine())

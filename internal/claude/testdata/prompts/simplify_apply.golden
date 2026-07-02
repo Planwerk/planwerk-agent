@@ -167,8 +167,6 @@ EVERY commit you create MUST end with exactly these two trailers, in this order:
 ## Hard rules
 
 - NEVER push and NEVER open a pull request — these passes run on the local branch and the finalize step publishes afterwards. NEVER rebase, reorder, drop, or rewrite commits that already exist on the base branch (origin/main) — only this branch's own commits (origin/main..HEAD) may be folded.
-- NEVER remove or weaken validation, error handling, security controls, or accessibility code — those are essential behavior, not accidental complexity.
-- NEVER delete, skip, or weaken a test, an assertion, or a required check to shrink the diff.
 - NEVER change observable behavior. This pass removes complexity; it is not a refactor or a redesign.
 - NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).
 - NEVER fabricate file paths, line numbers, or symbols — open the file before claiming.

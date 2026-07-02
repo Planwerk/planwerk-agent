@@ -53,14 +53,14 @@ func buildDraftQuestionsPrompt(seed string) string {
 ` + strings.TrimSpace(seed) + `
 </idea>
 
-Ask the few clarifying questions you need to write a strong issue description: the problem behind the idea, who benefits, rough scope, and any hard constraints. Ask only what genuinely sharpens the description. Do NOT ask about implementation details, file layout, or a step-by-step plan — that is a separate, later step.
+Ask the few clarifying questions you need to write a strong issue description: the problem behind the idea, who benefits, rough scope, and any hard constraints. Do NOT ask about implementation details, file layout, or a step-by-step plan — that is a separate, later step.
 
 Output between 3 and 5 questions, each a single short sentence. Write the questions in the same language as the idea above, so the author can answer in their own language — the drafted issue itself will be written in English in a separate step.
 
 Output ONLY valid JSON (no markdown fences, no surrounding text):
 
 {
-  "questions": ["First question?", "Second question?"]
+  "questions": ["First question?", "Second question?", "Third question?"]
 }`
 }
 
@@ -76,12 +76,7 @@ func BuildDraftPrompt(ctx draft.Context) string {
 
 Your job is to DESCRIBE the idea well, not to plan its implementation. This is the front of the pipeline: a later, separate elaborate step turns this description into an engineering plan. Keep this draft deliberately shallow.
 
-## Hard non-goals — do NOT do any of these
-- No file-level affected-areas breakdown.
-- No step-by-step implementation design.
-- No acceptance criteria grounded in concrete files, symbols, or functions.
-- No naming of specific source files or functions, and no codebase analysis for a plan.
-
+` + draftHardNonGoalsBlock() + `
 If you catch yourself writing an "Affected Areas" list, "Acceptance Criteria", or implementation steps, stop — that belongs to the separate elaborate step, not here. Any mention of scope is a rough sizing, never a design.
 
 Describe the work by its behavior and the interfaces it touches — what changes for the people who use or call it — because this draft lives in the tracker and may be picked up long after the surrounding code has moved; a behavioral brief outlives one pinned to today's file layout.
@@ -108,11 +103,9 @@ Describe the work by its behavior and the interfaces it touches — what changes
 
 	sb.WriteString(`## What to write
 
-- A descriptive, specific title — imperative mood, no severity or priority prefix.
-- A Description: a few short paragraphs framing the problem and what the feature does, in plain terms a maintainer can act on.
+` + draftTitleLine() + `- A Description: a few short paragraphs framing the problem and what the feature does, in plain terms a maintainer can act on.
 - A Motivation: why this matters — who benefits and what is worse without it.
-- A rough Scope: exactly one of Small, Medium, or Large.
-
+` + draftScopeLine() + `
 `)
 
 	sb.WriteString(proseStyleBlock())
@@ -129,9 +122,7 @@ Output ONLY valid JSON (no markdown fences, no surrounding text):
   "scope": "Small|Medium|Large"
 }
 
-- Do NOT invent fields beyond the schema.
-- "scope" MUST be exactly one of Small, Medium, or Large.
-`)
+` + draftSchemaRules())
 
 	return sb.String()
 }

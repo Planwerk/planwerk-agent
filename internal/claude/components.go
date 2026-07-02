@@ -18,6 +18,37 @@ import (
 // between a diff review and a whole-codebase audit) are deliberately NOT
 // shared here — forcing them into one shape would inject diff-only wording
 // into the codebase audit and vice versa.
+//
+// The July 2026 audit batch (issue #159) added the following blocks, each
+// byte-identical across its callers before extraction:
+//   - findingBudgetBlock — the "## Finding Budget" section (review, audit); it
+//     folds in the MaxFindings > 0 guard, returning "" when no budget is set.
+//   - workBreakdownDefinition — the work-breakdown enumeration (implement,
+//     bare-implement, verify-implementation, plan); each caller keeps its own
+//     surrounding sentence.
+//   - draftHardNonGoalsBlock, draftTitleLine, draftScopeLine, draftSchemaRules —
+//     the draft-depth scaffolding shared by the draft and meta prompts.
+//   - diffScopeLines — the "SCOPE: … / git diff --name-only" lead (adversarial,
+//     compliance, simplify-find, specialist).
+//   - emptyIDLine — the "leave id empty" line (propose, gap-analysis,
+//     review-prepared structuring).
+//   - simplifyGuardrailBullets, selfReviewPatternLine — the simplify guardrail
+//     bullets and the self-review pattern shared by the simplify and review-apply
+//     prompts.
+//   - fixThinkingPatterns — the fix thinking-pattern block (fix, bare-fix).
+//
+// A few near-copies stay per-builder on purpose and are NOT shared here:
+//   - The fifth simplify-guardrail bullet differs between the find and apply
+//     passes; unifying it would change what the apply pass is asked to do, so it
+//     stays per-pass (that class of change is issue #158's, not an audit edit).
+//   - The coverage prompt has no SCOPE sentence — it shares only the
+//     "git diff --name-only" command line, keeps its own task lead, and so does
+//     not call diffScopeLines.
+//   - The "Then …" line after the scope lead differs per builder and stays
+//     inline at each call site.
+//   - The structure prompt carries a fourth copy of the id line; the structure
+//     prompts are rewritten by issue #157, so that copy is left untouched here.
+//   - The bare-draft prompt keeps its own condensed hard-non-goals wording.
 
 // promptScope distinguishes a diff-scoped review (a PR or branch comparison)
 // from a whole-codebase audit. It selects the scope-specific suppression
@@ -358,6 +389,149 @@ End every GitHub artifact you author yourself — the pull request description, 
 - Append your exact model id when your runtime context provides it (e.g. ` + "`with Claude:claude-opus-4-8`" + `); otherwise write a bare ` + "`with Claude`" + ` — never guess the id. This mirrors the Assisted-by commit trailer.
 - Keep the ` + "`[planwerk-agent]`" + ` link intact so the artifact points back at the tool that produced it.
 - Add the footer once, as the last line of the artifact — do NOT repeat it per section.
+
+`
+}
+
+// findingBudgetBlock returns the "## Finding Budget" section shared by the
+// review and audit prompts. It folds in the guard the callers used to write
+// inline: a max of zero or less yields the empty string, so a run without a
+// finding cap leaves the prompt byte-for-byte unchanged.
+func findingBudgetBlock(maxFindings int) string {
+	if maxFindings <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("## Finding Budget\n\nReport at most %d findings. Prioritize BLOCKING > CRITICAL > WARNING > INFO. If more exist, keep the highest-severity and most representative ones.\n\n", maxFindings)
+}
+
+// workBreakdownDefinition returns the bare enumeration of the shapes a
+// multi-part issue's work breakdown can take. It is spliced into the sentence
+// each caller frames around it — the implement, bare-implement,
+// verify-implementation, and plan prompts keep their own leading and trailing
+// clauses, so only the enumeration itself is shared.
+func workBreakdownDefinition() string {
+	return `a "Work breakdown" / "Work packages" / "Work items" section, numbered items (1., 2., 3. or ### 1 / ### 2), lettered workstreams, tiered phases, or a checkbox task list`
+}
+
+// draftHardNonGoalsBlock returns the "## Hard non-goals" block shared by the
+// draft and meta prompts so a draft-depth issue cannot slide into a file-level
+// plan. It carries its own trailing newline so callers splice it between two
+// existing lines. The bare-draft prompt keeps its own condensed wording on
+// purpose and is not a caller.
+func draftHardNonGoalsBlock() string {
+	return `## Hard non-goals — do NOT do any of these
+- No file-level affected-areas breakdown.
+- No step-by-step implementation design.
+- No acceptance criteria grounded in concrete files, symbols, or functions.
+- No naming of specific source files or functions, and no codebase analysis for a plan.
+`
+}
+
+// draftTitleLine returns the "descriptive, specific title" bullet shared by the
+// draft and meta prompts, carrying its own trailing newline.
+func draftTitleLine() string {
+	return "- A descriptive, specific title — imperative mood, no severity or priority prefix.\n"
+}
+
+// draftScopeLine returns the "rough Scope" bullet shared by the draft and meta
+// prompts, carrying its own trailing newline.
+func draftScopeLine() string {
+	return "- A rough Scope: exactly one of Small, Medium, or Large.\n"
+}
+
+// draftSchemaRules returns the two trailing JSON-schema rules shared by the
+// draft and meta output sections (no invented fields; scope is one of the three
+// sizes). Each rule carries its own trailing newline.
+func draftSchemaRules() string {
+	return "- Do NOT invent fields beyond the schema.\n- \"scope\" MUST be exactly one of Small, Medium, or Large.\n"
+}
+
+// diffScopeLines returns the "SCOPE: … / git diff --name-only" lead shared by
+// the diff-scoped finder prompts (adversarial, compliance, simplify-find, and
+// the fan-out specialist). The specialist copy had drifted to a lowercase "only
+// files changed" without "review"; routing it through this one source
+// re-canonicalizes it. The "Then …" line that follows the lead differs per
+// builder and stays inline at each call site. baseBranch fills both origin/<b>
+// references; the block carries its own trailing newline.
+//
+// The coverage prompt is deliberately NOT a caller: it has no SCOPE sentence,
+// shares only the "git diff --name-only" command line, and keeps its own task
+// lead — splicing this lead in would add wording to its output.
+func diffScopeLines(baseBranch string) string {
+	return fmt.Sprintf("SCOPE: Only review files changed in the current branch compared to origin/%[1]s.\nFirst run: git diff origin/%[1]s --name-only\n", baseBranch)
+}
+
+// emptyIDLine returns the "leave the id field empty" line shared by the propose,
+// gap-analysis, and review-prepared structuring prompts. The propose copy had
+// drifted to "Leave the \"id\" field as an empty string — it will be assigned
+// automatically."; routing it through this one source re-canonicalizes it. The
+// line carries no bullet prefix and no surrounding newlines, so a caller whose
+// context is a bullet list prepends "- ". The structure prompt carries a fourth
+// copy that stays until issue #157 rewrites the structure prompts.
+func emptyIDLine() string {
+	return `"id": leave as empty string — it is assigned automatically.`
+}
+
+// simplifyGuardrailBullets lists the four essential-behavior categories the
+// simplify-find and simplify-apply guardrails share byte-for-byte. The heading,
+// lead, fifth bullet, and closing line differ per pass, so each builder assembles
+// its own block around this list.
+//
+// The fifth bullet stays per-pass on purpose: the finder says "never propose
+// deleting or weakening" while the apply pass says "NEVER delete or weaken … to
+// shrink the diff". Unifying it would change what the apply pass is asked to do,
+// which is a behavioral change of the kind issue #158 carries, not an audit
+// edit.
+const simplifyGuardrailBullets = `- Validation of inputs or arguments.
+- Error handling, error wrapping, or error propagation.
+- Security controls (authn/authz, input sanitization, crypto, secret handling).
+- Accessibility code.
+`
+
+// simplifyFindGuardrailBlock returns the "## HARD GUARDRAIL" block for the
+// read-only simplify-find prompt.
+func simplifyFindGuardrailBlock() string {
+	return `## HARD GUARDRAIL — never flag these
+Simplification removes accidental complexity, NEVER essential behavior. Do NOT flag,
+and do NOT propose removing or weakening, ANY of:
+` + simplifyGuardrailBullets + `- Tests, assertions, or required checks — never propose deleting or weakening a test, an assertion, or a test file.
+A finding that touches any of these areas is out of scope; leave it alone.
+`
+}
+
+// simplifyApplyGuardrailBlock returns the "## HARD GUARDRAIL" block for the
+// simplify-apply prompt.
+func simplifyApplyGuardrailBlock() string {
+	return `## HARD GUARDRAIL — never simplify these away
+
+Simplification removes accidental complexity, NEVER essential behavior. You MUST NOT remove or weaken ANY of:
+` + simplifyGuardrailBullets + `- Tests, assertions, or required checks — NEVER delete or weaken a test, an assertion, or a test file to shrink the diff.
+If applying a finding would touch any of these, SKIP that finding and record why in the report.
+`
+}
+
+// selfReviewPatternLine returns the "Self-review before you finish" thinking
+// pattern shared by the simplify-apply and review-apply prompts, carrying its
+// own trailing newline.
+func selfReviewPatternLine() string {
+	return "- \"Self-review before you finish.\" — Re-read the diff. The result MUST still build, pass the tests, and satisfy the issue. Remove anything not strictly required.\n"
+}
+
+// fixThinkingPatterns returns the task-specific thinking-pattern block shared by
+// the fix and bare-fix prompts. It carries the intro line, the ten bullets, and
+// the trailing blank line so callers splice it in with a single WriteString.
+func fixThinkingPatterns() string {
+	return `Apply these task-specific thinking patterns on top of the baseline above:
+- "Diagnose before patching." — Read every failing log to the bottom. Classify the failure category (build/compile, test, lint/format, type-check, dependency/security scan, infra/flake) BEFORE editing any file.
+- "Find the root cause." — A failing assertion is a symptom; the broken invariant in the code under test is the cause. Fix the cause, not the symptom.
+- "Reproduce, then verify." — When the failing command can be re-run in this checkout (test, lint, build, type-check), run it locally to reproduce the failure FIRST, then run it again after your edits to confirm the fix BEFORE pushing.
+- "Open the file, do not guess." — When a log cites a file:line, open the actual source. Never invent code shapes, error messages, or line numbers from the log alone.
+- "Do not cheat the check." — Never disable, skip, or weaken a check to make it pass. Forbidden: t.Skip / pytest.skip / xit / xdescribe added solely to bypass; // nolint, # noqa, # type: ignore, @ts-ignore, @SuppressWarnings added solely to silence; widening types to Any/interface{}/unknown to silence type-checkers; deleting or relaxing assertions; deleting test cases; pinning to an older dependency to dodge a security finding; --no-verify on commits.
+- "Minimal-invasive change." — Touch the smallest surface area that resolves each failure. No drive-by refactors, no reformatting unrelated code, no dependency bumps that are not directly implicated.
+- "Regression guard." — If the broken behavior is in production code and existing tests did not catch it, extend or add a test that fails before your fix and passes after.
+- "Simplify the diff." — Re-read your own diff and remove anything not strictly required. Prefer fewer lines, fewer files, fewer abstractions.
+- "Self-review before committing." — Walk through the diff once more as the reviewer. Reject anything you would push back on.
+- "Stay inside the PR." — The PR has a stated intent (title + body). Your fix must serve it. Prefer to touch only files the PR already changes; reaching outside it is a last resort — do it ONLY when the failing check cannot be fixed any other way, keep that reach as small as possible, and never reach outside for unrelated cleanups.
 
 `
 }

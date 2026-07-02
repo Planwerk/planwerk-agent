@@ -44,13 +44,11 @@ func buildSimplifyFindPrompt(baseBranch string) string {
 	if baseBranch == "" {
 		baseBranch = DefaultBaseBranch
 	}
-	return fmt.Sprintf(`You are a Staff Engineer performing a ponytail-style simplify review.
+	return `You are a Staff Engineer performing a ponytail-style simplify review.
 Your job is to find over-engineering and unnecessary complexity an unattended
 implementation session introduced — and produce a delete/collapse list, not a redesign.
 
-SCOPE: Only review files changed in the current branch compared to origin/%s.
-First run: git diff origin/%s --name-only
-Then focus your analysis ONLY on those files.
+` + diffScopeLines(baseBranch) + `Then focus your analysis ONLY on those files.
 
 ## The decision ladder
 For every piece of complexity, ask whether a simpler rung of this ladder would do
@@ -73,16 +71,7 @@ Flag ONLY:
 4. Over-built control flow — layers of indirection, wrappers that only forward, defensive handling for impossible states.
 5. Code that is simply longer than it needs to be — a 200-line solution that a senior engineer would write in 50.
 
-## HARD GUARDRAIL — never flag these
-Simplification removes accidental complexity, NEVER essential behavior. Do NOT flag,
-and do NOT propose removing or weakening, ANY of:
-- Validation of inputs or arguments.
-- Error handling, error wrapping, or error propagation.
-- Security controls (authn/authz, input sanitization, crypto, secret handling).
-- Accessibility code.
-- Tests, assertions, or required checks — never propose deleting or weakening a test, an assertion, or a test file.
-A finding that touches any of these areas is out of scope; leave it alone.
-
+` + simplifyFindGuardrailBlock() + `
 For every finding you report:
 - Quote the exact lines of over-engineered code from the diff.
 - Name the decision-ladder rung that replaces it and describe the smaller code it collapses to.
@@ -94,7 +83,7 @@ DO NOT comment on:
 - Code style, naming, or formatting.
 - Anything whose removal would change observable behavior.
 
-`, baseBranch, baseBranch) + planwerkIgnoreLine() + communicationStyleBlock() + outputLanguageBlock() + "/review"
+` + planwerkIgnoreLine() + communicationStyleBlock() + outputLanguageBlock() + "/review"
 }
 
 // simplifyReportHeading is the heading every simplification report opens with.
@@ -135,8 +124,7 @@ func BuildSimplifyApplyPrompt(ctx implement.SimplifyApplyContext) string {
 - "Decision ladder." — For every piece of complexity, prefer the simplest rung that still does the job: not building it (YAGNI) -> the standard library -> a platform/framework-native feature -> a dependency already present -> a one-liner -> only then the minimum new code. Collapse toward the top.
 - "Delete, do not redesign." — Simplification removes accidental complexity. It is NOT a refactor, an API redesign, or a behavior change. If a change alters observable behavior, it is out of scope — leave it.
 - "Each removal folds into the commit that introduced it." — A simplification to code an earlier commit added belongs IN that commit, not in a new commit stacked on top.
-- "Self-review before you finish." — Re-read the diff. The result MUST still build, pass the tests, and satisfy the issue. Remove anything not strictly required.
-
+` + selfReviewPatternLine() + `
 `)
 
 	fmt.Fprintf(&sb, "## Branch\n\n- Repository: %s\n- Base branch: %s — fold simplifications into this branch's own commits, the range origin/%[2]s..HEAD\n- You are on the feature branch the implement session committed. No PR exists yet; do NOT push or open one.\n\n",
@@ -155,16 +143,7 @@ func BuildSimplifyApplyPrompt(ctx implement.SimplifyApplyContext) string {
 		sb.WriteString("</review-patterns>\n\n")
 	}
 
-	sb.WriteString(`## HARD GUARDRAIL — never simplify these away
-
-Simplification removes accidental complexity, NEVER essential behavior. You MUST NOT remove or weaken ANY of:
-- Validation of inputs or arguments.
-- Error handling, error wrapping, or error propagation.
-- Security controls (authn/authz, input sanitization, crypto, secret handling).
-- Accessibility code.
-- Tests, assertions, or required checks — NEVER delete or weaken a test, an assertion, or a test file to shrink the diff.
-If applying a finding would touch any of these, SKIP that finding and record why in the report.
-
+	sb.WriteString(simplifyApplyGuardrailBlock() + `
 ## What to do
 
 1. For each simplification above, confirm it removes accidental complexity only and changes no observable behavior. Skip any that would touch the guardrail areas.
@@ -193,9 +172,7 @@ If applying a finding would touch any of these, SKIP that finding and record why
 
 `)
 	sb.WriteString(foldDisciplineRule(ctx.BaseBranch))
-	sb.WriteString(`- NEVER remove or weaken validation, error handling, security controls, or accessibility code — those are essential behavior, not accidental complexity.
-- NEVER delete, skip, or weaken a test, an assertion, or a required check to shrink the diff.
-- NEVER change observable behavior. This pass removes complexity; it is not a refactor or a redesign.
+	sb.WriteString(`- NEVER change observable behavior. This pass removes complexity; it is not a refactor or a redesign.
 `)
 	sb.WriteString(noSkipHooksLine())
 	sb.WriteString(`- NEVER fabricate file paths, line numbers, or symbols — open the file before claiming.

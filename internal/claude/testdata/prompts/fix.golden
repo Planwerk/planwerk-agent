@@ -135,11 +135,8 @@ Run these steps for EACH failing check above before editing any code:
 
 ## What to do
 
-1. Run the diagnosis workflow for every failing check.
-2. Apply the minimal change(s).
-3. Verify locally where possible. Re-read your diff. Remove anything not required.
-4. Self-review the diff against the original PR scope. Keep the fix inside it unless reaching outside is the only way to make the failing check pass — and if you must, confine the out-of-scope change to the minimum and call it out in the report.
-5. Fold each change into the commit it belongs to. This branch may carry more
+1. Work through the diagnosis workflow above for every failing check.
+2. Fold each change into the commit it belongs to. This branch may carry more
    than one commit, and a fix for code that an earlier commit introduced
    belongs IN that commit — not in a new commit stacked on top.
 
@@ -168,7 +165,7 @@ Run these steps for EACH failing check above before editing any code:
 
       git commit -s -m "<concise summary>" -m "Failed checks: <comma-separated names>" -m "Assisted-by: Claude"
 
-6. Publish the rewritten branch:
+3. Publish the rewritten branch:
 
       git push --force-with-lease origin HEAD:feat/snapshot-tests
 
@@ -176,7 +173,7 @@ Run these steps for EACH failing check above before editing any code:
    rejected. Use --force-with-lease (never plain --force): it publishes the
    fold while refusing to clobber commits you have not seen.
 
-7. After pushing, output a structured fix report in this exact shape:
+4. After pushing, output a structured fix report in this exact shape:
 
    ## Fix Report (iteration 2)
 

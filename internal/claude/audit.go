@@ -49,9 +49,11 @@ func buildAuditPrompt(ctx audit.AuditContext) string {
 		fmt.Fprintf(&sb, "Repository: %s\n\n", ctx.RepoName)
 	}
 
+	sb.WriteString("This is NOT a pull-request review — there is no diff. Audit the ENTIRE current state of the codebase.\n\n")
+
 	// Review patterns — grouped by category, severity-budgeted
 	sb.WriteString("## Review Patterns to Apply\n\n")
-	sb.WriteString("Apply EVERY pattern below to the whole codebase. For each concrete violation you find, emit a finding and set the \"pattern\" field to the pattern name.\n\n")
+	sb.WriteString("For each concrete violation you find, emit a finding.\n\n")
 	sb.WriteString("<review-patterns>\n")
 	sb.WriteString(patterns.FormatGroupedForPrompt(ctx.Patterns, ctx.MaxPatterns))
 	sb.WriteString("</review-patterns>\n\n")
@@ -63,10 +65,8 @@ func buildAuditPrompt(ctx audit.AuditContext) string {
 	// Audit methodology
 	sb.WriteString(`## Audit Methodology
 
-This is NOT a pull-request review — there is no diff. Audit the ENTIRE current state of the codebase.
-
 1. First, walk the repository structure to understand the project (language, layout, entry points, tests, docs).
-2. For EACH review pattern above, scan the codebase for violations. Reference the pattern by name in the "pattern" field of each finding.
+2. For EACH review pattern above, scan the codebase for violations.
 3. Beyond the patterns, also report any CRITICAL or BLOCKING issues you encounter (security holes, data-loss risks, missing error handling on hot paths) even if no pattern covers them.
 4. Cite concrete file paths and line numbers for every finding, following the citation rule under "Verification of Claims" below; a finding that cannot satisfy that rule must not be reported.
 5. Group duplicate violations: if the same pattern is violated in many places, pick the 3-5 most representative instances and list the remaining files in the "action" field rather than creating dozens of near-identical findings.
@@ -82,7 +82,6 @@ Audit the project's existing test and documentation coverage:
 2. For core features with significant logic, check whether matching tests exist. If a feature lacks tests while comparable features are tested, flag as WARNING titled "Missing Tests: <feature/file>".
 3. If the project has E2E tests for some features but not others, flag as WARNING titled "Missing E2E Tests: <feature>".
 4. For every public API, CLI flag, configuration option, or user-facing feature, check whether it is documented (README, CHANGELOG, doc comments). Flag undocumented items as WARNING titled "Missing Documentation: <item>" or "Undocumented Flag/Config: <name>".
-5. Do NOT flag missing tests for trivial getters/setters or missing docs for private/internal functions.
 
 ## Documentation Structure & Quality
 
@@ -145,9 +144,7 @@ For EVERY finding you report, you MUST include:
 `)
 
 	// Finding limit
-	if ctx.MaxFindings > 0 {
-		fmt.Fprintf(&sb, "## Finding Budget\n\nReport at most %d findings. Prioritize BLOCKING > CRITICAL > WARNING > INFO. If more exist, keep the highest-severity and most representative ones.\n\n", ctx.MaxFindings)
-	}
+	sb.WriteString(findingBudgetBlock(ctx.MaxFindings))
 
 	// Summary instructions
 	sb.WriteString(`## Audit Summary
@@ -156,7 +153,6 @@ At the end of your audit, write a brief overall summary (3-5 sentences) that:
 1. States the overall health of the codebase.
 2. Highlights the most important findings (top themes, not a list of every issue).
 3. Names the 1-3 highest-leverage improvements the team should tackle first.
-Keep it balanced and constructive.
 
 `)
 

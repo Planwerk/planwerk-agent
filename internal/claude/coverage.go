@@ -44,7 +44,7 @@ func buildCoveragePrompt(baseBranch string) string {
 	if baseBranch == "" {
 		baseBranch = DefaultBaseBranch
 	}
-	return outputLanguageBlock() + fmt.Sprintf(`Analyze test coverage for every function and method that was changed in the current branch compared to origin/%s.
+	return fmt.Sprintf(`Analyze test coverage for every function and method that was changed in the current branch compared to origin/%s.
 
 First run: git diff origin/%s --name-only
 Then for each changed file, identify all functions/methods that were added or modified.
@@ -87,5 +87,7 @@ Leave test_file and test_func empty for GAP entries.
 Leave uncovered_paths empty for ★★★ entries.
 Leave e2e_test empty if no E2E test exists or E2E is not applicable.
 Leave e2e_gap empty if E2E coverage exists or the project has no E2E tests.
-Include ALL changed functions, even trivial ones.`, baseBranch, baseBranch)
+Include ALL changed functions, even trivial ones.
+
+`, baseBranch, baseBranch) + outputLanguageBlock()
 }

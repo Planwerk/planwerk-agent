@@ -18,7 +18,6 @@ For each area, think about:
 - What is achievable with reasonable effort?
 
 Reference actual files, functions, and code patterns you observe.
-Provide a detailed, structured analysis covering all the areas above.
 
 IMPORTANT: Do NOT just list generic software improvements. Your proposals must be specific to THIS codebase and grounded in what you actually observe in the code.
 

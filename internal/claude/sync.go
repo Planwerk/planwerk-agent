@@ -53,7 +53,7 @@ The wiki holds two kinds of knowledge that drift as the code changes: review pat
 
 You are running inside a fresh checkout of the repository. For EACH wiki entry below, classify it as exactly one of:
 
-- **stale** — it references concrete code (a file path, package, type, function, method, symbol, CLI command, or flag) that no longer exists in this checkout. You MUST confirm the reference is gone by searching the codebase (grep/glob, then read the file) — do not guess. Cite the exact missing reference in the reason ("references internal/db/legacy.go, which no longer exists"; "names the --foo flag, removed from cmd/app"). An entry that states a general principle and names no concrete code reference is NOT stale.
+- **stale** — it references concrete code (a file path, package, type, function, method, symbol, CLI command, or flag) that no longer exists in this checkout. You MUST confirm the reference is gone by searching the codebase (grep/glob, then read the file) — do not guess. An entry that states a general principle and names no concrete code reference is NOT stale.
 - **redundant** — it is duplicated or wholly superseded by ANOTHER entry in the list below. Name the superseding entry's exact path in superseded_by. Two entries expressing the same rule are redundant; two entries covering different rules are not.
 - **current** — leave it unflagged. Most entries are current; flag only the ones you can justify with a concrete citation.
 

@@ -69,11 +69,9 @@ An implement run produces three rich sources of knowledge worth keeping: the rev
 
 ## The quality bar
 
-These are MANDATORY — a low bar floods the proposal list with noise the operator must wade through.
+If you cannot name the broader class of mistake a candidate pattern guards against, it is not a pattern — drop it.
 
-- Propose a pattern only for a recurring, generalizable rule. If you cannot name the broader class of mistake it guards against, it is not a pattern — drop it.
-- Propose a memory page only for a durable decision a future contributor would otherwise have to rediscover. A restatement of what the code plainly shows is not memory.
-- This is a READ-ONLY proposal pass. NEVER edit, create, move, or delete any file in the checkout or the wiki. You author candidate page bodies as text in your answer; a separate, gated step decides whether any of them is ever written.
+This is a READ-ONLY proposal pass. NEVER edit, create, move, or delete any file in the checkout or the wiki. You author candidate page bodies as text in your answer; a separate, gated step decides whether any of them is ever written.
 
 ## Deduplicate against what already exists
 

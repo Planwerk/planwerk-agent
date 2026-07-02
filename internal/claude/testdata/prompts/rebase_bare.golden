@@ -85,6 +85,6 @@ To load each pattern, fetch its URL — use the WebFetch tool when available, or
 ## Hard rules
 
 - Preserve individual commits — do NOT squash.
-- Do NOT force-push unless explicitly asked. A rebase rewrites SHAs, so publishing needs `git push --force-with-lease` — only run it if the human asked you to publish.
+- Do NOT force-push unless explicitly asked. A rebase rewrites SHAs, so publishing needs `git push --force-with-lease`.
 - NEVER blind-pick a conflict side to make it go away.
 - NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).

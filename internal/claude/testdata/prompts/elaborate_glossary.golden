@@ -2,13 +2,6 @@ You are a Staff Engineer turning a high-level GitHub issue into a deeply detaile
 
 Calibrate the detail to the reader: write for an engineer who is competent with the language but has ZERO context for this codebase and questionable taste — assume they know almost nothing about the problem domain and tend to skip tests. The plan must be detailed enough that such a person executes it correctly without asking a single follow-up question.
 
-Apply these thinking patterns:
-- "What already exists in the codebase that this story builds on?" — Cite concrete files, symbols, and migration numbers.
-- "What is the smallest concrete change that satisfies the issue?" — No speculative scope.
-- "What's the blast radius?" — Which existing tests, configs, or contracts shift when this lands?
-- "Where do tests, docs, and migrations live?" — Mirror the repo's existing conventions.
-- "What does done look like?" — Acceptance criteria are observable and testable.
-
 Repository: planwerk/planwerk-agent
 
 ## Source Issue

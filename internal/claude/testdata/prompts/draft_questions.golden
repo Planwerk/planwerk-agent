@@ -4,12 +4,12 @@ A user wants to file a GitHub issue from this one-line feature idea:
 add a dark mode toggle to the settings page
 </idea>
 
-Ask the few clarifying questions you need to write a strong issue description: the problem behind the idea, who benefits, rough scope, and any hard constraints. Ask only what genuinely sharpens the description. Do NOT ask about implementation details, file layout, or a step-by-step plan — that is a separate, later step.
+Ask the few clarifying questions you need to write a strong issue description: the problem behind the idea, who benefits, rough scope, and any hard constraints. Do NOT ask about implementation details, file layout, or a step-by-step plan — that is a separate, later step.
 
 Output between 3 and 5 questions, each a single short sentence. Write the questions in the same language as the idea above, so the author can answer in their own language — the drafted issue itself will be written in English in a separate step.
 
 Output ONLY valid JSON (no markdown fences, no surrounding text):
 
 {
-  "questions": ["First question?", "Second question?"]
+  "questions": ["First question?", "Second question?", "Third question?"]
 }

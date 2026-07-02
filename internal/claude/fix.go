@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/planwerk/planwerk-agent/internal/fix"
-	"github.com/planwerk/planwerk-agent/internal/patterns"
 )
 
 // Fix runs a fresh Claude Code session inside the given checkout directory
@@ -61,19 +60,7 @@ func BuildFixPrompt(ctx fix.Context) string {
 `)
 	sb.WriteString(baselineBehavioralPrinciples)
 	sb.WriteString(outputLanguageBlock())
-	sb.WriteString(`Apply these task-specific thinking patterns on top of the baseline above:
-- "Diagnose before patching." — Read every failing log to the bottom. Classify the failure category (build/compile, test, lint/format, type-check, dependency/security scan, infra/flake) BEFORE editing any file.
-- "Find the root cause." — A failing assertion is a symptom; the broken invariant in the code under test is the cause. Fix the cause, not the symptom.
-- "Reproduce, then verify." — When the failing command can be re-run in this checkout (test, lint, build, type-check), run it locally to reproduce the failure FIRST, then run it again after your edits to confirm the fix BEFORE pushing.
-- "Open the file, do not guess." — When a log cites a file:line, open the actual source. Never invent code shapes, error messages, or line numbers from the log alone.
-- "Do not cheat the check." — Never disable, skip, or weaken a check to make it pass. Forbidden: t.Skip / pytest.skip / xit / xdescribe added solely to bypass; // nolint, # noqa, # type: ignore, @ts-ignore, @SuppressWarnings added solely to silence; widening types to Any/interface{}/unknown to silence type-checkers; deleting or relaxing assertions; deleting test cases; pinning to an older dependency to dodge a security finding; --no-verify on commits.
-- "Minimal-invasive change." — Touch the smallest surface area that resolves each failure. No drive-by refactors, no reformatting unrelated code, no dependency bumps that are not directly implicated.
-- "Regression guard." — If the broken behavior is in production code and existing tests did not catch it, extend or add a test that fails before your fix and passes after.
-- "Simplify the diff." — Re-read your own diff and remove anything not strictly required. Prefer fewer lines, fewer files, fewer abstractions.
-- "Self-review before committing." — Walk through the diff once more as the reviewer. Reject anything you would push back on.
-- "Stay inside the PR." — The PR has a stated intent (title + body). Your fix must serve it. Prefer to touch only files the PR already changes; reaching outside it is a last resort — do it ONLY when the failing check cannot be fixed any other way, keep that reach as small as possible, and never reach outside for unrelated cleanups.
-
-`)
+	sb.WriteString(fixThinkingPatterns())
 
 	fmt.Fprintf(&sb, "## Pull Request\n\n- Repository: %s\n- PR #%d: %s\n- Head branch: %s (committed to and pushed by you)\n- Head SHA at start of this iteration: %s\n- Iteration: %d of %d (max)\n",
 		ctx.RepoFullName, ctx.PRNumber, ctx.PRTitle, ctx.HeadBranch, ctx.HeadSHA, ctx.Iteration, ctx.MaxIterations)
@@ -82,13 +69,8 @@ func BuildFixPrompt(ctx fix.Context) string {
 	}
 	sb.WriteString("\n")
 
-	if len(ctx.Patterns) > 0 {
-		sb.WriteString("## Project Review Patterns to Honor\n\n")
-		sb.WriteString("These patterns are the catalog the project's review/audit/elaborate tools share — including any project-specific patterns shipped under `.planwerk/review_patterns/` in this repository. The fix you push MUST stay consistent with them: do not introduce code or test changes that would itself be flagged by a pattern below. When the fix touches an area covered by a pattern, prefer the resolution the pattern endorses.\n\n")
-		sb.WriteString("<review-patterns>\n")
-		sb.WriteString(patterns.FormatGroupedForPrompt(ctx.Patterns, ctx.MaxPatterns))
-		sb.WriteString("</review-patterns>\n\n")
-	}
+	writePatternSection(&sb, ctx.Patterns, ctx.MaxPatterns,
+		"These patterns are the catalog the project's review/audit/elaborate tools share — including any project-specific patterns shipped under `.planwerk/review_patterns/` in this repository. The fix you push MUST stay consistent with them: do not introduce code or test changes that would itself be flagged by a pattern below. When the fix touches an area covered by a pattern, prefer the resolution the pattern endorses.")
 
 	if ctx.Iteration > 1 {
 		if ctx.Fixup {
@@ -148,14 +130,11 @@ Run these steps for EACH failing check above before editing any code:
 
 ## What to do
 
-1. Run the diagnosis workflow for every failing check.
-2. Apply the minimal change(s).
-3. Verify locally where possible. Re-read your diff. Remove anything not required.
-4. Self-review the diff against the original PR scope. Keep the fix inside it unless reaching outside is the only way to make the failing check pass — and if you must, confine the out-of-scope change to the minimum and call it out in the report.
+1. Work through the diagnosis workflow above for every failing check.
 `)
 
 	if ctx.Fixup {
-		fmt.Fprintf(&sb, "5. Fold each change into the commit it belongs to. This branch may carry more\n"+
+		fmt.Fprintf(&sb, "2. Fold each change into the commit it belongs to. This branch may carry more\n"+
 			"   than one commit, and a fix for code that an earlier commit introduced\n"+
 			"   belongs IN that commit — not in a new commit stacked on top.\n\n"+
 			"   a. List the branch's own commits (oldest first):\n\n"+
@@ -175,22 +154,22 @@ Run these steps for EACH failing check above before editing any code:
 			"   existing commit on this branch (e.g. an entirely new file unrelated to any\n"+
 			"   of them). That is the rare exception, not the default — and only then:\n\n"+
 			"      git commit -s -m \"<concise summary>\" -m \"Failed checks: <comma-separated names>\" -m \"Assisted-by: Claude\"\n\n"+
-			"6. Publish the rewritten branch:\n\n"+
+			"3. Publish the rewritten branch:\n\n"+
 			"      git push --force-with-lease origin HEAD:%[2]s\n\n"+
 			"   The autosquash rebase rewrote the branch's commit SHAs, so a plain push is\n"+
 			"   rejected. Use --force-with-lease (never plain --force): it publishes the\n"+
 			"   fold while refusing to clobber commits you have not seen.\n\n",
 			ctx.BaseBranch, ctx.HeadBranch)
 	} else {
-		fmt.Fprintf(&sb, "5. Stage your changes, create ONE follow-up commit using:\n\n"+
+		fmt.Fprintf(&sb, "2. Stage your changes, create ONE follow-up commit using:\n\n"+
 			"   git add -A\n"+
 			"   git commit -s -m \"Fix failing CI checks (iteration %d)\" -m \"Failed checks: <comma-separated names>\" -m \"Assisted-by: Claude\"\n\n"+
-			"6. Push to the PR head branch:\n\n"+
+			"3. Push to the PR head branch:\n\n"+
 			"   git push origin HEAD:%s\n\n",
 			ctx.Iteration, ctx.HeadBranch)
 	}
 
-	fmt.Fprintf(&sb, `7. After pushing, output a structured fix report in this exact shape:
+	fmt.Fprintf(&sb, `4. After pushing, output a structured fix report in this exact shape:
 
    ## Fix Report (iteration %d)
 
@@ -264,19 +243,7 @@ func BuildBareFixPrompt(ctx fix.BareContext) string {
 `)
 	sb.WriteString(baselineBehavioralPrinciples)
 	sb.WriteString(outputLanguageBlock())
-	sb.WriteString(`Apply these task-specific thinking patterns on top of the baseline above:
-- "Diagnose before patching." — Read every failing log to the bottom. Classify the failure category (build/compile, test, lint/format, type-check, dependency/security scan, infra/flake) BEFORE editing any file.
-- "Find the root cause." — A failing assertion is a symptom; the broken invariant in the code under test is the cause. Fix the cause, not the symptom.
-- "Reproduce, then verify." — When the failing command can be re-run in this checkout (test, lint, build, type-check), run it locally to reproduce the failure FIRST, then run it again after your edits to confirm the fix BEFORE pushing.
-- "Open the file, do not guess." — When a log cites a file:line, open the actual source. Never invent code shapes, error messages, or line numbers from the log alone.
-- "Do not cheat the check." — Never disable, skip, or weaken a check to make it pass. Forbidden: t.Skip / pytest.skip / xit / xdescribe added solely to bypass; // nolint, # noqa, # type: ignore, @ts-ignore, @SuppressWarnings added solely to silence; widening types to Any/interface{}/unknown to silence type-checkers; deleting or relaxing assertions; deleting test cases; pinning to an older dependency to dodge a security finding; --no-verify on commits.
-- "Minimal-invasive change." — Touch the smallest surface area that resolves each failure. No drive-by refactors, no reformatting unrelated code, no dependency bumps that are not directly implicated.
-- "Regression guard." — If the broken behavior is in production code and existing tests did not catch it, extend or add a test that fails before your fix and passes after.
-- "Simplify the diff." — Re-read your own diff and remove anything not strictly required. Prefer fewer lines, fewer files, fewer abstractions.
-- "Self-review before committing." — Walk through the diff once more as the reviewer. Reject anything you would push back on.
-- "Stay inside the PR." — The PR has a stated intent (title + body). Your fix must serve it. Prefer to touch only files the PR already changes; reaching outside it is a last resort — do it ONLY when the failing check cannot be fixed any other way, keep that reach as small as possible, and never reach outside for unrelated cleanups.
-
-`)
+	sb.WriteString(fixThinkingPatterns())
 
 	fmt.Fprintf(&sb, "## Pull Request\n\n- Repository: %s\n- PR #%d\n\n",
 		ctx.RepoFullName, ctx.PRNumber)

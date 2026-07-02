@@ -230,7 +230,7 @@ func buildGapStructurePrompt(rawAnalysis string) string {
 }
 
 Field rules:
-- "id": leave as empty string — it is assigned automatically.
+- ` + emptyIDLine() + `
 - "type": one of the four values above. Pick the type that matches WHAT IS MISSING.
 - "severity": uppercase, never BLOCKING (gap analysis runs on already-merged work).
 - "feature_id" / "feature_file": copy from the surrounding feature block.

@@ -85,4 +85,3 @@ Output ONLY valid JSON (no markdown fences, no surrounding text):
 - Do NOT invent fields beyond the schema.
 - "scope" MUST be exactly one of Small, Medium, or Large.
 - "blockedBy" is an array of sibling keys (use [] when unblocked); every entry MUST be a key you declared in "subIssues", and the dependencies MUST NOT form a cycle.
-- Prefer the fewest Sub Issues that cover the work; do not split into many tiny packages.
