@@ -215,7 +215,7 @@ func BuildRebaseApplyPrompt(ctx rebase.ApplyContext) string {
 
 	fmt.Fprintf(&sb, `## What to do
 
-1. For each adjustment, open the named file and apply exactly the described change.
+1. For each adjustment, open the named file and confirm it still applies — the analysis marks each with a confidence and can be wrong or already handled. Apply exactly the described change; if it is a false positive or no longer applies, SKIP it and record why in the report.
 2. Verify locally where you can run the toolchain.
 3. Fold each change into the commit it belongs to (the branch's own commits are the range origin/%[1]s..HEAD):
 
@@ -234,13 +234,19 @@ func BuildRebaseApplyPrompt(ctx rebase.ApplyContext) string {
 
       GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash origin/%[1]s
 
-4. Output a short report listing, per adjustment, which commit it was folded into.
+4. Output a report in this exact shape:
+
+   ### Applied
+   - <adjustment> — folded into <sha> <subject>
+   ### Skipped
+   - <adjustment> — <why: false positive, already handled, or no longer applies>
 
 ## Hard rules
 
 - Apply ONLY the adjustments listed above.
 - Do NOT push. Do NOT force-push. The orchestrator publishes the branch separately, only when --push is given.
 - NEVER rebase, reorder, drop, or rewrite commits that already exist on origin/%[1]s — only this branch's own commits (origin/%[1]s..HEAD) may be folded.
+- If an adjustment is a false positive or no longer applies, SKIP it and record why — do not invent a change to satisfy it.
 - If there is nothing to apply, do NOT create an empty commit; say so and stop.
 `, ctx.Onto)
 	sb.WriteString(noSkipHooksLine())
