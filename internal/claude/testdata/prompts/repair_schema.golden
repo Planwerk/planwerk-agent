@@ -1,0 +1,13 @@
+The following JSON is malformed. The Go JSON parser reported this error:
+
+invalid character ']' looking for beginning of value
+
+Fix the JSON so it is valid. Output ONLY the corrected JSON, nothing else.
+
+The corrected JSON MUST match this JSON Schema:
+
+{"type":"object","required":["findings"]}
+
+<malformed-json>
+{"findings": [}
+</malformed-json>

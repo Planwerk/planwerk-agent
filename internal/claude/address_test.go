@@ -42,7 +42,7 @@ func addressTestContext() address.Context {
 func TestDecodeAddressResult_Valid(t *testing.T) {
 	called := false
 	restore := repairJSON
-	repairJSON = func(*Client, string, error, string) (string, error) {
+	repairJSON = func(*Client, string, error, string, string) (string, error) {
 		called = true
 		return "", errors.New("repair must not be called for valid JSON")
 	}
@@ -66,7 +66,7 @@ func TestDecodeAddressResult_Valid(t *testing.T) {
 // session's output does not fail the run.
 func TestDecodeAddressResult_Repairs(t *testing.T) {
 	restore := repairJSON
-	repairJSON = func(_ *Client, malformed string, parseErr error, label string) (string, error) {
+	repairJSON = func(_ *Client, malformed string, parseErr error, label, schema string) (string, error) {
 		if parseErr == nil {
 			t.Error("repair should receive the original parse error")
 		}

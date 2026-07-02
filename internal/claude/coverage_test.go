@@ -14,7 +14,7 @@ import (
 func TestCoverageDecode_FencedPayload(t *testing.T) {
 	called := false
 	restore := repairJSON
-	repairJSON = func(*Client, string, error, string) (string, error) {
+	repairJSON = func(*Client, string, error, string, string) (string, error) {
 		called = true
 		return "", errors.New("repair must not be called for a fenced-but-valid payload")
 	}
@@ -39,7 +39,7 @@ func TestCoverageDecode_FencedPayload(t *testing.T) {
 // pass.
 func TestCoverageDecode_MalformedRepaired(t *testing.T) {
 	restore := repairJSON
-	repairJSON = func(_ *Client, _ string, parseErr error, _ string) (string, error) {
+	repairJSON = func(_ *Client, _ string, parseErr error, _, _ string) (string, error) {
 		if parseErr == nil {
 			t.Error("repair should receive the original parse error")
 		}
@@ -65,7 +65,7 @@ func TestCoverageDecode_MalformedRepaired(t *testing.T) {
 func TestDecodeCoverage_PrependedObjectFailsLoud(t *testing.T) {
 	called := false
 	restore := repairJSON
-	repairJSON = func(*Client, string, error, string) (string, error) {
+	repairJSON = func(*Client, string, error, string, string) (string, error) {
 		called = true
 		return "", errors.New("repair should not run: the leading object decodes cleanly")
 	}

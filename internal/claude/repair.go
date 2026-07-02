@@ -8,13 +8,21 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
-// repairJSON asks Claude to fix malformed JSON, feeding the parse error back so
-// the model can correct it. It is a package variable so tests can substitute a
-// deterministic repair without invoking the claude CLI. The call runs on the
-// *Client's structure tier (structureModel/structureEffort) via
-// runClaudeStructure, matching the structuring pass it backstops.
-var repairJSON = func(c *Client, malformed string, parseErr error, label string) (string, error) {
-	text, _, err := c.runClaudeStructure(buildRepairPrompt(malformed, parseErr), label+"-repair")
+// maxRepairRounds bounds how many times decodeJSONWithRepair (and the schema
+// repair in repairInvalidReview) retries. Go's JSON parser reports only the
+// first syntax error, so a payload with two independent glitches needs more than
+// one round; a small cap lets those resolve without letting a hopeless payload
+// loop indefinitely.
+const maxRepairRounds = 3
+
+// repairJSON asks Claude to fix malformed JSON, feeding the parse error (and,
+// when known, the target schema) back so the model can correct it. It is a
+// package variable so tests can substitute a deterministic repair without
+// invoking the claude CLI. The call runs on the *Client's structure tier
+// (structureModel/structureEffort) via runClaudeStructure, matching the
+// structuring pass it backstops.
+var repairJSON = func(c *Client, malformed string, parseErr error, label, schema string) (string, error) {
+	text, _, err := c.runClaudeStructure(buildRepairPrompt(malformed, parseErr, schema), label+"-repair")
 	return text, err
 }
 
@@ -30,26 +38,41 @@ var repairInvalidJSON = func(c *Client, invalid string, validationErr error, lab
 }
 
 // decodeJSONWithRepair strips markdown fences from text and unmarshals it into
-// v. On a parse error it asks Claude once to repair the JSON, then retries.
-// Every structuring step shares this so the repair behavior — and the one-shot
-// fallback that keeps a one-character JSON glitch from failing the whole run —
-// stays identical across review, audit, elaborate, propose, gap-analysis, and
-// review-prepared. The common case (valid JSON) never triggers a repair call.
+// v, repairing malformed JSON with up to maxRepairRounds bounded retries. Every
+// structuring step shares this so the repair behavior stays identical across
+// review, audit, elaborate, propose, gap-analysis, and review-prepared. The
+// common case (valid JSON) never triggers a repair call. Callers with a known
+// target schema use decodeJSONWithRepairSchema instead.
 func (c *Client) decodeJSONWithRepair(text, label string, v any) error {
+	return c.decodeJSONWithRepairSchema(text, label, "", v)
+}
+
+// decodeJSONWithRepairSchema is decodeJSONWithRepair with a known target schema
+// embedded in the repair prompt, so the model repairs toward the right shape
+// instead of guessing. It retries up to maxRepairRounds: because Go's parser
+// reports only the first syntax error, a payload with two independent glitches
+// needs more than one round, and each round feeds the latest parse error back.
+// An empty schema behaves exactly like the plain decodeJSONWithRepair.
+func (c *Client) decodeJSONWithRepairSchema(text, label, schema string, v any) error {
 	text = stripMarkdownFences(text)
 	err := unmarshalJSON(text, v)
 	if err == nil {
 		return nil
 	}
-	retry, retryErr := repairJSON(c, text, err, label)
-	if retryErr != nil {
-		return fmt.Errorf("parsing %s as JSON: %w\nraw output:\n%s", label, err, text)
+	payload, lastErr := text, err
+	for round := 0; round < maxRepairRounds; round++ {
+		retry, retryErr := repairJSON(c, payload, lastErr, label, schema)
+		if retryErr != nil {
+			return fmt.Errorf("parsing %s as JSON: %w\nraw output:\n%s", label, err, text)
+		}
+		retry = stripMarkdownFences(retry)
+		if err2 := unmarshalJSON(retry, v); err2 != nil {
+			payload, lastErr = retry, err2
+			continue
+		}
+		return nil
 	}
-	retry = stripMarkdownFences(retry)
-	if err2 := unmarshalJSON(retry, v); err2 != nil {
-		return fmt.Errorf("parsing %s as JSON (after retry): %w\nraw output:\n%s", label, err2, retry)
-	}
-	return nil
+	return fmt.Errorf("parsing %s as JSON after %d repair rounds: %w\nraw output:\n%s", label, maxRepairRounds, lastErr, payload)
 }
 
 // unmarshalJSON unmarshals text into v, first as-is and — only if that fails —
@@ -116,12 +139,23 @@ func extractJSONValue(s string) string {
 }
 
 // buildRepairPrompt asks Claude to fix malformed JSON using the parse error.
-func buildRepairPrompt(malformedJSON string, parseErr error) string {
+// When schema is non-empty it appends the target JSON Schema so the model
+// repairs toward the right shape — otherwise a valid-but-wrong-shape payload can
+// decode silently into zero values downstream.
+func buildRepairPrompt(malformedJSON string, parseErr error, schema string) string {
+	schemaSection := ""
+	if schema != "" {
+		schemaSection = `
+
+The corrected JSON MUST match this JSON Schema:
+
+` + schema
+	}
 	return `The following JSON is malformed. The Go JSON parser reported this error:
 
 ` + parseErr.Error() + `
 
-Fix the JSON so it is valid. Output ONLY the corrected JSON, nothing else.
+Fix the JSON so it is valid. Output ONLY the corrected JSON, nothing else.` + schemaSection + `
 
 <malformed-json>
 ` + malformedJSON + `

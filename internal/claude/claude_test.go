@@ -667,7 +667,7 @@ func TestSanitizeImplementationReport(t *testing.T) {
 func TestBuildRepairPrompt_ContainsErrorAndJSON(t *testing.T) {
 	malformed := `{"findings":[{"id":""},"id":""]}`
 	err := fmt.Errorf("invalid character ':' after array element")
-	prompt := buildRepairPrompt(malformed, err)
+	prompt := buildRepairPrompt(malformed, err, "")
 
 	if !strings.Contains(prompt, "invalid character") {
 		t.Error("repair prompt should include the parse error")
@@ -677,6 +677,19 @@ func TestBuildRepairPrompt_ContainsErrorAndJSON(t *testing.T) {
 	}
 	if !strings.Contains(prompt, "Fix the JSON") {
 		t.Error("repair prompt should ask Claude to fix the JSON")
+	}
+}
+
+func TestBuildRepairPrompt_SchemaSection(t *testing.T) {
+	err := fmt.Errorf("unexpected end of JSON input")
+	sch := `{"type":"object"}`
+	withSchema := buildRepairPrompt(`{`, err, sch)
+	if !strings.Contains(withSchema, "MUST match this JSON Schema") || !strings.Contains(withSchema, sch) {
+		t.Error("a non-empty schema must add the schema section")
+	}
+	withoutSchema := buildRepairPrompt(`{`, err, "")
+	if strings.Contains(withoutSchema, "MUST match this JSON Schema") {
+		t.Error("an empty schema must omit the schema section")
 	}
 }
 

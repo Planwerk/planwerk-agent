@@ -924,7 +924,17 @@ func TestBuildElaborateStructurePrompt_Golden(t *testing.T) {
 func TestBuildRepairPrompt_Golden(t *testing.T) {
 	parseErr := errors.New("invalid character ']' looking for beginning of value")
 	malformed := `{"findings": [}`
-	assertGoldenPrompt(t, "repair", buildRepairPrompt(malformed, parseErr))
+	assertGoldenPrompt(t, "repair", buildRepairPrompt(malformed, parseErr, ""))
+}
+
+// TestBuildRepairPrompt_Schema_Golden locks the schema-carrying variant: when a
+// target schema is supplied, the repair prompt appends the "MUST match this JSON
+// Schema" section so the model repairs toward the right shape.
+func TestBuildRepairPrompt_Schema_Golden(t *testing.T) {
+	parseErr := errors.New("invalid character ']' looking for beginning of value")
+	malformed := `{"findings": [}`
+	sch := `{"type":"object","required":["findings"]}`
+	assertGoldenPrompt(t, "repair_schema", buildRepairPrompt(malformed, parseErr, sch))
 }
 
 // TestBuildValidationRepairPrompt_Golden locks the schema-repair prompt: the

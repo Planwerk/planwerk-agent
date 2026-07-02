@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 
 	"github.com/planwerk/planwerk-agent/internal/report"
@@ -29,13 +30,14 @@ func (c *Client) structureReview(rawReview string) (*report.ReviewResult, error)
 	// passes the wire schema via --json-schema so the transcribe-only tier is
 	// constrained to the report shape at the CLI level; decodeJSONWithRepair
 	// remains the backstop.
-	text, _, err := c.runClaudeStructureWithSchema(buildStructurePrompt(rawReview), "structure", string(schema.StructuredReview))
+	wireSchema := string(schema.StructuredReview)
+	text, _, err := c.runClaudeStructureWithSchema(buildStructurePrompt(rawReview), "structure", wireSchema)
 	if err != nil {
 		return nil, err
 	}
 	var sr structuredReview
-	if err := c.decodeJSONWithRepair(text, "structured review", &sr); err != nil {
-		return nil, err
+	if err := c.decodeJSONWithRepairSchema(text, "structured review", wireSchema, &sr); err != nil {
+		return nil, wrapWithPersistedAnalysis(rawReview, err)
 	}
 	result := sr.ReviewResult
 	// Structuring is transcribe-only, so a finding whose source review stated no
@@ -44,10 +46,37 @@ func (c *Client) structureReview(rawReview string) (*report.ReviewResult, error)
 	// round on it.
 	normalizeTranscribedLabels(&result)
 	if err := c.repairInvalidReview(&result); err != nil {
-		return nil, err
+		return nil, wrapWithPersistedAnalysis(rawReview, err)
 	}
 	warnOnDroppedFindings(sr.SourceFindingCount, len(result.Findings))
 	return &result, nil
+}
+
+// persistFailedAnalysis writes the raw upstream analysis to a temp file so an
+// expensive reasoning call is not discarded when structuring finally fails. It
+// returns the path, or "" if the file could not be written.
+func persistFailedAnalysis(raw string) string {
+	f, err := os.CreateTemp("", "planwerk-analysis-*.md")
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	if _, err := f.WriteString(raw); err != nil {
+		return ""
+	}
+	return f.Name()
+}
+
+// wrapWithPersistedAnalysis persists the raw analysis and wraps cause with the
+// saved path and a re-structure-only retry hint, so a final structuring failure
+// does not throw away the expensive analysis. When the file cannot be written it
+// returns cause unchanged.
+func wrapWithPersistedAnalysis(raw string, cause error) error {
+	path := persistFailedAnalysis(raw)
+	if path == "" {
+		return cause
+	}
+	return fmt.Errorf("%w\nthe raw analysis was saved to %s — re-run structuring only against it to retry without repeating the analysis", cause, path)
 }
 
 // normalizeTranscribedLabels fills the two labels the transcribe-only structure
@@ -93,11 +122,12 @@ func warnOnDroppedFindings(sourceCount, emitted int) {
 
 // repairInvalidReview validates result against the finding schema. When a
 // finding has an empty title, an off-enum severity, or an off-enum confidence,
-// it asks Claude once to repair the offending fields instead of letting
-// assignIDs normalize the bad data into placeholder defaults. The repair is
-// bounded to a single round: if the repair call fails, or the repaired output
-// is unparseable or still invalid, it returns a descriptive error that wraps
-// the validation failure.
+// it asks Claude to repair the offending fields instead of letting assignIDs
+// normalize the bad data into placeholder defaults. The repair is bounded to
+// maxRepairRounds: each round feeds the latest validation (or parse) error back,
+// so two independent violations that a single round cannot both fix still
+// resolve. If every round fails it returns a descriptive error wrapping the last
+// validation failure.
 func (c *Client) repairInvalidReview(result *report.ReviewResult) error {
 	verr := result.Validate()
 	if verr == nil {
@@ -107,20 +137,26 @@ func (c *Client) repairInvalidReview(result *report.ReviewResult) error {
 	if err != nil {
 		return fmt.Errorf("marshaling structured review for schema repair: %w", err)
 	}
-	repaired, err := repairInvalidJSON(c, string(current), verr, "structured review")
-	if err != nil {
-		return fmt.Errorf("repairing schema-invalid structured review: %w (validation error: %w)", err, verr)
+	payload := string(current)
+	for round := 0; round < maxRepairRounds; round++ {
+		repaired, err := repairInvalidJSON(c, payload, verr, "structured review")
+		if err != nil {
+			return fmt.Errorf("repairing schema-invalid structured review: %w (validation error: %w)", err, verr)
+		}
+		repaired = stripMarkdownFences(repaired)
+		var fixed report.ReviewResult
+		if perr := json.Unmarshal([]byte(repaired), &fixed); perr != nil {
+			// The repaired output does not even parse; feed that back next round.
+			payload, verr = repaired, fmt.Errorf("output is not valid JSON: %w", perr)
+			continue
+		}
+		if verr = fixed.Validate(); verr == nil {
+			*result = fixed
+			return nil
+		}
+		payload = repaired
 	}
-	repaired = stripMarkdownFences(repaired)
-	var fixed report.ReviewResult
-	if err := json.Unmarshal([]byte(repaired), &fixed); err != nil {
-		return fmt.Errorf("parsing schema-repaired structured review as JSON: %w\nraw output:\n%s", err, repaired)
-	}
-	if err := fixed.Validate(); err != nil {
-		return fmt.Errorf("structured review still invalid after schema repair: %w\nraw output:\n%s", err, repaired)
-	}
-	*result = fixed
-	return nil
+	return fmt.Errorf("structured review still invalid after %d schema-repair rounds: %w", maxRepairRounds, verr)
 }
 
 func buildStructurePrompt(rawReview string) string {

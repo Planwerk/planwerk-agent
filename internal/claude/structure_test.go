@@ -2,6 +2,7 @@ package claude
 
 import (
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -17,7 +18,7 @@ func TestDecodeJSONWithRepair_ValidNoRepair(t *testing.T) {
 	// The common case: valid JSON decodes without ever invoking the repair path.
 	called := false
 	restore := repairJSON
-	repairJSON = func(*Client, string, error, string) (string, error) {
+	repairJSON = func(*Client, string, error, string, string) (string, error) {
 		called = true
 		return "", errors.New("repair must not be called for valid JSON")
 	}
@@ -37,7 +38,7 @@ func TestDecodeJSONWithRepair_ValidNoRepair(t *testing.T) {
 
 func TestDecodeJSONWithRepair_RepairsMalformed(t *testing.T) {
 	restore := repairJSON
-	repairJSON = func(_ *Client, malformed string, parseErr error, label string) (string, error) {
+	repairJSON = func(_ *Client, malformed string, parseErr error, label, schema string) (string, error) {
 		if parseErr == nil {
 			t.Error("repair should receive the original parse error")
 		}
@@ -56,7 +57,7 @@ func TestDecodeJSONWithRepair_RepairsMalformed(t *testing.T) {
 
 func TestDecodeJSONWithRepair_RepairCallFails(t *testing.T) {
 	restore := repairJSON
-	repairJSON = func(*Client, string, error, string) (string, error) {
+	repairJSON = func(*Client, string, error, string, string) (string, error) {
 		return "", errors.New("claude unavailable")
 	}
 	t.Cleanup(func() { repairJSON = restore })
@@ -69,7 +70,7 @@ func TestDecodeJSONWithRepair_RepairCallFails(t *testing.T) {
 
 func TestDecodeJSONWithRepair_RepairStillInvalid(t *testing.T) {
 	restore := repairJSON
-	repairJSON = func(*Client, string, error, string) (string, error) {
+	repairJSON = func(*Client, string, error, string, string) (string, error) {
 		return `still { not json`, nil
 	}
 	t.Cleanup(func() { repairJSON = restore })
@@ -85,7 +86,7 @@ func TestDecodeJSONWithRepair_RepairStillInvalid(t *testing.T) {
 func TestDecodeJSONWithRepair_PreambleNoRepair(t *testing.T) {
 	called := false
 	restore := repairJSON
-	repairJSON = func(*Client, string, error, string) (string, error) {
+	repairJSON = func(*Client, string, error, string, string) (string, error) {
 		called = true
 		return "", errors.New("repair must not be called when the value is recoverable")
 	}
@@ -110,7 +111,7 @@ func TestDecodeJSONWithRepair_PreambleNoRepair(t *testing.T) {
 // parse must still recover the embedded object instead of choking on 'T'.
 func TestDecodeJSONWithRepair_RetryPreamble(t *testing.T) {
 	restore := repairJSON
-	repairJSON = func(*Client, string, error, string) (string, error) {
+	repairJSON = func(*Client, string, error, string, string) (string, error) {
 		return "The error is caused by the prose preamble before the JSON object. " +
 			"Removing it yields valid JSON:\n\n```json\n{\"a\":7,\"b\":\"fixed\"}\n```", nil
 	}
@@ -122,6 +123,139 @@ func TestDecodeJSONWithRepair_RetryPreamble(t *testing.T) {
 	}
 	if got.A != 7 || got.B != "fixed" {
 		t.Errorf("decoded %+v after retry, want {A:7 B:fixed}", got)
+	}
+}
+
+func TestDecodeJSONWithRepair_TwoRoundsForTwoGlitches(t *testing.T) {
+	// One round can only fix the first syntax error Go reports; a payload with
+	// two independent glitches needs a second round.
+	calls := 0
+	restore := repairJSON
+	repairJSON = func(_ *Client, malformed string, parseErr error, label, schema string) (string, error) {
+		calls++
+		if calls == 1 {
+			return `{"a":7,"b":"x"`, nil // still missing the closing brace
+		}
+		return `{"a":7,"b":"x"}`, nil
+	}
+	t.Cleanup(func() { repairJSON = restore })
+
+	var got sample
+	if err := (&Client{}).decodeJSONWithRepair(`{"a":7,"b":"x"`, "test", &got); err != nil {
+		t.Fatalf("expected success after two rounds, got %v", err)
+	}
+	if calls != 2 {
+		t.Errorf("expected 2 repair rounds, got %d", calls)
+	}
+	if got.A != 7 || got.B != "x" {
+		t.Errorf("decoded %+v, want {A:7 B:x}", got)
+	}
+}
+
+func TestDecodeJSONWithRepair_BoundedRounds(t *testing.T) {
+	// A repair that never yields valid JSON must stop after maxRepairRounds.
+	calls := 0
+	restore := repairJSON
+	repairJSON = func(*Client, string, error, string, string) (string, error) {
+		calls++
+		return `{still broken`, nil
+	}
+	t.Cleanup(func() { repairJSON = restore })
+
+	var got sample
+	if err := (&Client{}).decodeJSONWithRepair(`bad`, "test", &got); err == nil {
+		t.Error("expected an error after the repair budget is exhausted")
+	}
+	if calls != maxRepairRounds {
+		t.Errorf("expected %d repair rounds, got %d", maxRepairRounds, calls)
+	}
+}
+
+func TestDecodeJSONWithRepairSchema_ThreadsSchema(t *testing.T) {
+	var gotSchema string
+	restore := repairJSON
+	repairJSON = func(_ *Client, _ string, _ error, _, schema string) (string, error) {
+		gotSchema = schema
+		return `{"a":1,"b":"y"}`, nil
+	}
+	t.Cleanup(func() { repairJSON = restore })
+
+	var got sample
+	if err := (&Client{}).decodeJSONWithRepairSchema(`{bad`, "test", `{"type":"object"}`, &got); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotSchema != `{"type":"object"}` {
+		t.Errorf("schema not threaded to repair call, got %q", gotSchema)
+	}
+}
+
+func TestRepairInvalidReview_BoundedRounds(t *testing.T) {
+	// A schema repair that never fixes the finding stops after maxRepairRounds.
+	calls := 0
+	restore := repairInvalidJSON
+	repairInvalidJSON = func(*Client, string, error, string) (string, error) {
+		calls++
+		return `{"findings":[{"title":"","severity":"WARNING","confidence":"likely"}]}`, nil // empty title, still invalid
+	}
+	t.Cleanup(func() { repairInvalidJSON = restore })
+
+	result := &report.ReviewResult{Findings: []report.Finding{{Title: "", Severity: report.SeverityWarning, Confidence: report.ConfidenceLikely}}}
+	if err := (&Client{}).repairInvalidReview(result); err == nil {
+		t.Error("expected failure after the schema-repair budget is exhausted")
+	}
+	if calls != maxRepairRounds {
+		t.Errorf("expected %d schema-repair rounds, got %d", maxRepairRounds, calls)
+	}
+}
+
+func TestRepairInvalidReview_SucceedsWithinRounds(t *testing.T) {
+	calls := 0
+	restore := repairInvalidJSON
+	repairInvalidJSON = func(*Client, string, error, string) (string, error) {
+		calls++
+		if calls == 1 {
+			return `{"findings":[{"title":"","severity":"WARNING","confidence":"likely"}]}`, nil // still bad
+		}
+		return `{"findings":[{"title":"Fixed","severity":"WARNING","confidence":"likely"}]}`, nil
+	}
+	t.Cleanup(func() { repairInvalidJSON = restore })
+
+	result := &report.ReviewResult{Findings: []report.Finding{{Title: "", Severity: report.SeverityWarning, Confidence: report.ConfidenceLikely}}}
+	if err := (&Client{}).repairInvalidReview(result); err != nil {
+		t.Fatalf("expected success within the round budget, got %v", err)
+	}
+	if calls != 2 {
+		t.Errorf("expected 2 rounds, got %d", calls)
+	}
+	if result.Findings[0].Title != "Fixed" {
+		t.Errorf("result not updated to the repaired finding, got %q", result.Findings[0].Title)
+	}
+}
+
+func TestPersistFailedAnalysis(t *testing.T) {
+	raw := "## Findings\n- an expensive analysis worth keeping"
+	path := persistFailedAnalysis(raw)
+	if path == "" {
+		t.Fatal("expected a persisted-analysis path")
+	}
+	t.Cleanup(func() { _ = os.Remove(path) })
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading persisted analysis: %v", err)
+	}
+	if string(data) != raw {
+		t.Errorf("persisted analysis = %q, want %q", data, raw)
+	}
+}
+
+func TestWrapWithPersistedAnalysis(t *testing.T) {
+	cause := errors.New("still invalid after 3 rounds")
+	err := wrapWithPersistedAnalysis("raw analysis", cause)
+	if !errors.Is(err, cause) {
+		t.Error("the underlying cause must be wrapped")
+	}
+	if !strings.Contains(err.Error(), "re-run structuring") {
+		t.Errorf("error must carry the re-structure hint, got %v", err)
 	}
 }
 
