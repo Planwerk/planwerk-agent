@@ -202,6 +202,19 @@ func TestExtractText(t *testing.T) {
 			wantCost:  0,
 		},
 		{
+			// With --json-schema the CLI carries the validated object in
+			// structured_output; extractText must prefer it over result.
+			name:     "structured_output preferred over result",
+			raw:      `{"result":"prose fallback","structured_output":{"findings":null,"summary":"s"}}`,
+			wantText: `{"findings":null,"summary":"s"}`,
+		},
+		{
+			// A literal null structured_output is treated as absent, so result wins.
+			name:     "null structured_output falls back to result",
+			raw:      `{"result":"the answer","structured_output":null}`,
+			wantText: "the answer",
+		},
+		{
 			// Empty input is not a valid envelope; json.Unmarshal rejects it.
 			name:    "empty input",
 			raw:     "",

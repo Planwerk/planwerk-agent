@@ -69,6 +69,21 @@ func TestReadStream_DispatchesAssistantTextAndCapturesResult(t *testing.T) {
 	}
 }
 
+func TestReadStream_PrefersStructuredOutputOnResultEvent(t *testing.T) {
+	// With --json-schema the result event carries structured_output; it must win
+	// over the plain result text (the buffered path's mirror).
+	const stream = `{"type":"system","subtype":"init"}
+{"type":"result","result":"prose fallback","structured_output":{"findings":null,"summary":"s"}}
+`
+	final, _, _, _, _, err := readStream(strings.NewReader(stream), "structure", &recordingSink{})
+	if err != nil {
+		t.Fatalf("readStream: %v", err)
+	}
+	if final != `{"findings":null,"summary":"s"}` {
+		t.Errorf("final = %q, want the structured_output object", final)
+	}
+}
+
 func TestReadStream_CapturesResolvedModelFromInitEvent(t *testing.T) {
 	const stream = `{"type":"system","subtype":"init","model":"claude-opus-4-8"}
 {"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}

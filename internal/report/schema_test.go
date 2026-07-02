@@ -53,6 +53,7 @@ func TestSchemasCompile(t *testing.T) {
 	compileSchema(t, "rebase-analysis.schema.json", schema.RebaseAnalysis)
 	compileSchema(t, "draft.schema.json", schema.Draft)
 	compileSchema(t, "address-result.schema.json", schema.AddressResult)
+	compileSchema(t, "structured-review.schema.json", schema.StructuredReview)
 }
 
 // TestFixturesValidateAgainstSchema validates every JSON fixture under
@@ -69,6 +70,7 @@ func TestFixturesValidateAgainstSchema(t *testing.T) {
 		{dir: "rebase-analysis", doc: schema.RebaseAnalysis},
 		{dir: "draft", doc: schema.Draft},
 		{dir: "address-result", doc: schema.AddressResult},
+		{dir: "structured-review", doc: schema.StructuredReview},
 	} {
 		t.Run(tc.dir, func(t *testing.T) {
 			sch := compileSchema(t, tc.dir, tc.doc)
@@ -177,6 +179,24 @@ func TestInvalidRebaseAnalysisRejected(t *testing.T) {
 		"bad kind enum":           `{"commits":[{"sha":"a","subject":"s","adjustments":[{"kind":"reworded","file":"f","detail":"d","action":"a"}]}],"summary":"","recommendation":""}`,
 		"missing required action": `{"commits":[{"sha":"a","subject":"s","adjustments":[{"kind":"lint-rule","file":"f","detail":"d"}]}],"summary":"","recommendation":""}`,
 		"unknown property":        `{"commits":null,"summary":"","recommendation":"","extra":true}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := validate(t, sch, []byte(doc)); err == nil {
+				t.Fatalf("expected a validation error for %q, got nil", name)
+			}
+		})
+	}
+}
+
+// TestInvalidStructuredReviewRejected feeds inline documents that violate the
+// structured-review wire contract and asserts the validator rejects each.
+func TestInvalidStructuredReviewRejected(t *testing.T) {
+	sch := compileSchema(t, "structured-review.schema.json", schema.StructuredReview)
+	for name, doc := range map[string]string{
+		"off-enum severity":     `{"findings":[{"id":"","severity":"SEV","title":"t","file":"f","problem":"p","action":"a"}],"summary":"","recommendation":"","source_finding_count":1}`,
+		"missing source count":  `{"findings":null,"summary":"","recommendation":""}`,
+		"top-level extra field": `{"findings":null,"summary":"","recommendation":"","source_finding_count":0,"extra":true}`,
+		"finding extra field":   `{"findings":[{"id":"","severity":"INFO","title":"t","file":"f","problem":"p","action":"a","confirmed_by":["review"]}],"summary":"","recommendation":"","source_finding_count":1}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			if err := validate(t, sch, []byte(doc)); err == nil {

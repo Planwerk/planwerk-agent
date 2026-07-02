@@ -1,0 +1,33 @@
+{
+  "findings": [
+    {
+      "id": "",
+      "severity": "CRITICAL",
+      "title": "SQL injection in user query",
+      "file": "db/users.go",
+      "line": 87,
+      "line_end": 92,
+      "actionability": "needs-discussion",
+      "confidence": "verified",
+      "problem": "User input is concatenated into a SQL query.",
+      "action": "Use a parameterized query.",
+      "code_snippet": "db.Query(\"... \" + id)",
+      "fix_options": [
+        {
+          "id": "A",
+          "approach": "Use prepared statements.",
+          "pros": "Eliminates the injection.",
+          "cons": "Touches every query.",
+          "effort": "MED",
+          "risk_if_skipped": "Database compromise."
+        }
+      ],
+      "recommended_option": "A",
+      "recommendation_reasoning": "Prepared statements are the standard fix.",
+      "related_to": ["W-001"]
+    }
+  ],
+  "summary": "One critical injection to fix before merge.",
+  "recommendation": "Do not merge until the injection is fixed.",
+  "source_finding_count": 1
+}

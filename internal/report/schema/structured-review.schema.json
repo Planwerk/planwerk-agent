@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "StructuredReview",
+  "description": "Wire contract for the review structuring pass — the JSON the transcribe-only structure tier must emit, passed to the CLI via --json-schema. It mirrors report.ReviewResult plus source_finding_count, minus the Go-derived and pipeline-set fields (fix_class, confirmed_by, verification_note) the structure tier never produces. The severity/actionability/confidence enums include the empty string so a finding whose source review stated no such label is representable; the pipeline fills those in afterward.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["findings", "summary", "recommendation", "source_finding_count"],
+  "properties": {
+    "findings": {
+      "description": "Findings transcribed from the review. Encoded as null (not []) when there are none.",
+      "type": ["array", "null"],
+      "items": { "$ref": "#/$defs/finding" }
+    },
+    "summary": { "type": "string" },
+    "recommendation": { "type": "string" },
+    "source_finding_count": { "type": "integer" }
+  },
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "severity", "title", "file", "problem", "action"],
+      "properties": {
+        "id": { "type": "string" },
+        "severity": {
+          "type": "string",
+          "enum": ["BLOCKING", "CRITICAL", "WARNING", "INFO", ""]
+        },
+        "title": { "type": "string" },
+        "file": { "type": "string" },
+        "line": { "type": "integer" },
+        "line_end": { "type": "integer" },
+        "pattern": { "type": "string" },
+        "actionability": {
+          "type": "string",
+          "enum": ["auto-fix", "needs-discussion", "architectural", ""]
+        },
+        "confidence": {
+          "type": "string",
+          "enum": ["verified", "likely", "uncertain", ""]
+        },
+        "problem": { "type": "string" },
+        "action": { "type": "string" },
+        "code_snippet": { "type": "string" },
+        "suggested_fix": { "type": "string" },
+        "fix_options": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/fixOption" }
+        },
+        "recommended_option": { "type": "string" },
+        "recommendation_reasoning": { "type": "string" },
+        "related_to": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "fixOption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "approach"],
+      "properties": {
+        "id": { "type": "string" },
+        "approach": { "type": "string" },
+        "pros": { "type": "string" },
+        "cons": { "type": "string" },
+        "effort": { "type": "string" },
+        "risk_if_skipped": { "type": "string" }
+      }
+    }
+  }
+}

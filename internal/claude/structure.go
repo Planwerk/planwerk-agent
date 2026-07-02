@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/planwerk/planwerk-agent/internal/report"
+	"github.com/planwerk/planwerk-agent/internal/report/schema"
 )
 
 // structuredReview is the structuring pass's decode target: the report schema
@@ -24,8 +25,11 @@ type structuredReview struct {
 func (c *Client) structureReview(rawReview string) (*report.ReviewResult, error) {
 	// The structuring pass runs on the dedicated structure tier
 	// (structureModel/structureEffort), independent of the upstream review
-	// model, so the discarded model return is not the attribution model.
-	text, _, err := c.runClaudeStructure(buildStructurePrompt(rawReview), "structure")
+	// model, so the discarded model return is not the attribution model. It
+	// passes the wire schema via --json-schema so the transcribe-only tier is
+	// constrained to the report shape at the CLI level; decodeJSONWithRepair
+	// remains the backstop.
+	text, _, err := c.runClaudeStructureWithSchema(buildStructurePrompt(rawReview), "structure", string(schema.StructuredReview))
 	if err != nil {
 		return nil, err
 	}
