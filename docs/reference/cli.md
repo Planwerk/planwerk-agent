@@ -36,6 +36,10 @@ CI log streams.
 
 The root command reviews a single GitHub pull request.
 
+> The review structuring pass constrains its output with Claude Code's
+> `--json-schema` flag, so this command requires Claude Code v2.1.83+ (the same
+> minimum the `implement` auto mode needs).
+
 ```bash
 # Simple invocation with PR URL
 planwerk-agent https://github.com/owner/repo/pull/123
