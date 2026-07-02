@@ -95,8 +95,8 @@ For EACH task marked as "done":
 - For every finding, cite the specific requirement ID, scenario name, acceptance criterion, or test specification that is affected
 - Quote the relevant code (or note its absence) as evidence
 - Be precise: "REQ-001 scenario 'Nil resources get defaults' is not implemented" rather than "some defaults might be missing"
-- If a requirement is FULLY satisfied with all scenarios covered, do NOT create a finding for it
-- If ALL requirements are satisfied, report an empty findings array
+- If an item — a requirement (with all its scenarios), an acceptance criterion, a planned test, or a task — is FULLY satisfied, do NOT create a finding for it
+- If EVERY requirement, acceptance criterion, planned test, and task is satisfied, report an empty findings array
 
 ## Finding Enrichment
 For EVERY finding:
