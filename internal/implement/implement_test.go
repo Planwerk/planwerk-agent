@@ -31,14 +31,29 @@ func (f *fakeVerifier) VerifyImplementation(dir, issueTitle, issueBody string) (
 type fakeAdversarialVerifier struct {
 	called atomic.Int32
 	base   string
-	result *report.ReviewResult
-	err    error
+	// result is returned on every call. results, when non-empty, scripts a
+	// per-call sequence instead: call N (1-based) returns results[N-1], with the
+	// last element repeating once the sequence is exhausted. This lets the review
+	// loop tests drive iteration N (e.g. findings then a clean pass).
+	result  *report.ReviewResult
+	results []*report.ReviewResult
+	err     error
 }
 
 func (f *fakeAdversarialVerifier) AdversarialReview(dir, baseBranch string) (*report.ReviewResult, error) {
-	f.called.Add(1)
+	n := int(f.called.Add(1))
 	f.base = baseBranch
-	return f.result, f.err
+	if f.err != nil {
+		return nil, f.err
+	}
+	if len(f.results) > 0 {
+		i := n - 1
+		if i >= len(f.results) {
+			i = len(f.results) - 1
+		}
+		return f.results[i], nil
+	}
+	return f.result, nil
 }
 
 type fakeSimplifyFinder struct {
@@ -941,6 +956,171 @@ func TestRun_VerifyAdversarialDisabledByDefault(t *testing.T) {
 	}
 }
 
+// oneCriterionFinding is the acceptance-criteria gap the --verify pass surfaces:
+// a criterion the diff does not satisfy. The review-feedback tests thread it
+// through to the applier.
+func oneCriterionFinding() *report.ReviewResult {
+	return &report.ReviewResult{Findings: []report.Finding{
+		{Severity: report.SeverityCritical, Title: "foo() not implemented", File: "foo.go", Problem: "no foo() in diff"},
+	}}
+}
+
+// verifyApplyRunner wires the acceptance-criteria verifier and a review applier
+// onto a fresh Runner. The adversarial finder is left nil, so the default-on
+// review-and-fix pass stays disabled and only the --verify feedback path touches
+// the applier — isolating Part A of the loop-closing work.
+func verifyApplyRunner(gh *fakeGitHub, cl *fakeClaude, fv *fakeVerifier, ra *fakeReviewApplier) *Runner {
+	ensureValidReport(cl)
+	r := newRunner(gh, cl)
+	r.Verifier = fv
+	r.ReviewApplier = ra
+	return r
+}
+
+// TestRun_VerifyFeedsUnmetCriteriaToApplier proves the --verify pass no longer
+// just renders: when it finds unmet criteria and an applier is wired, exactly
+// those findings are fed into the same ReviewApplier the review pass uses, and
+// the apply report is printed — while the render output still appears.
+func TestRun_VerifyFeedsUnmetCriteriaToApplier(t *testing.T) {
+	gh := &fakeGitHub{
+		issue:     sampleIssue(),
+		cloneDir:  t.TempDir(),
+		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	}
+	cl := &fakeClaude{report: validImplReport}
+	fv := &fakeVerifier{result: oneCriterionFinding()}
+	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
+	r := verifyApplyRunner(gh, cl, fv, ra)
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", Verify: true, NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if fv.called.Load() != 1 {
+		t.Errorf("verifier called %d times, want 1", fv.called.Load())
+	}
+	if ra.called.Load() != 1 {
+		t.Fatalf("applier called %d times, want 1 — the unmet-criteria findings feed the applier", ra.called.Load())
+	}
+	if len(ra.ctx.Findings) != 1 || ra.ctx.Findings[0].File != "foo.go" {
+		t.Errorf("applier got findings %+v, want exactly the verifier's unmet-criteria finding", ra.ctx.Findings)
+	}
+	if ra.ctx.BaseBranch != reviewTestBase {
+		t.Errorf("applier got base %q, want main threaded from CurrentBranchRef", ra.ctx.BaseBranch)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "unmet criterion finding") {
+		t.Errorf("the render output must still appear alongside the apply:\n%s", out)
+	}
+	if !strings.Contains(out, "Verification fixes report:") {
+		t.Errorf("missing the apply report in output:\n%s", out)
+	}
+}
+
+// TestRun_VerifyCleanPassSkipsApplier proves a clean --verify pass (no unmet
+// criteria) never touches the applier even when one is wired — the render-only
+// no-op path.
+func TestRun_VerifyCleanPassSkipsApplier(t *testing.T) {
+	gh := &fakeGitHub{
+		issue:     sampleIssue(),
+		cloneDir:  t.TempDir(),
+		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	}
+	cl := &fakeClaude{report: validImplReport}
+	fv := &fakeVerifier{result: &report.ReviewResult{}}
+	ra := &fakeReviewApplier{report: "unused"}
+	r := verifyApplyRunner(gh, cl, fv, ra)
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", Verify: true, NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if ra.called.Load() != 0 {
+		t.Errorf("applier called %d times, want 0 — a clean verify pass applies nothing", ra.called.Load())
+	}
+	if !strings.Contains(buf.String(), "all Acceptance Criteria satisfied") {
+		t.Errorf("expected the clean-pass message, got:\n%s", buf.String())
+	}
+}
+
+// TestRun_VerifyApplyErrorIsNonFatal proves a failure applying the verification
+// findings is surfaced but never aborts the run — the PR still opens.
+func TestRun_VerifyApplyErrorIsNonFatal(t *testing.T) {
+	gh := &fakeGitHub{
+		issue:     sampleIssue(),
+		cloneDir:  t.TempDir(),
+		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	}
+	cl := &fakeClaude{report: validImplReport}
+	fv := &fakeVerifier{result: oneCriterionFinding()}
+	ra := &fakeReviewApplier{err: errors.New("apply exploded")}
+	r := verifyApplyRunner(gh, cl, fv, ra)
+	ff := &fakeFinalizer{report: defaultFinalizeReport}
+	r.Finalizer = ff
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", Verify: true, NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil despite the apply error", err)
+	}
+	if ra.called.Load() != 1 {
+		t.Errorf("applier called %d times, want 1", ra.called.Load())
+	}
+	if ff.called.Load() != 1 {
+		t.Errorf("finalizer called %d times, want 1 — a verify-apply error must not block the PR", ff.called.Load())
+	}
+	if !strings.Contains(buf.String(), "Verification fixes could not run") {
+		t.Errorf("expected a non-fatal warning about the apply failure, got:\n%s", buf.String())
+	}
+}
+
+// TestRun_VerifyApplyBranchRefErrorSkips proves the verify-feedback apply degrades
+// cleanly when the base branch cannot be resolved: it renders, notes the skip,
+// and never calls the applier.
+func TestRun_VerifyApplyBranchRefErrorSkips(t *testing.T) {
+	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir(), branchRefErr: errors.New("no origin/HEAD")}
+	cl := &fakeClaude{report: validImplReport}
+	fv := &fakeVerifier{result: oneCriterionFinding()}
+	ra := &fakeReviewApplier{report: "unused"}
+	r := verifyApplyRunner(gh, cl, fv, ra)
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", Verify: true, NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if ra.called.Load() != 0 {
+		t.Errorf("applier called %d times, want 0 when the base branch cannot be resolved", ra.called.Load())
+	}
+	if !strings.Contains(buf.String(), "could not resolve the base branch") {
+		t.Errorf("missing the branch-resolution skip note in output:\n%s", buf.String())
+	}
+}
+
+// TestRun_VerifyRenderOnlyWithoutApplier proves the pre-loop behavior is intact:
+// with no applier wired, --verify renders its findings and never attempts a fix.
+func TestRun_VerifyRenderOnlyWithoutApplier(t *testing.T) {
+	gh := &fakeGitHub{
+		issue:     sampleIssue(),
+		cloneDir:  t.TempDir(),
+		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	}
+	cl := &fakeClaude{report: validImplReport}
+	fv := &fakeVerifier{result: oneCriterionFinding()}
+	r := newRunner(gh, cl)
+	r.Verifier = fv // no ReviewApplier wired
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", Verify: true, NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "unmet criterion finding") || !strings.Contains(out, "foo() not implemented") {
+		t.Errorf("render-only path must still show the findings:\n%s", out)
+	}
+	if strings.Contains(out, "Verification fixes report:") {
+		t.Errorf("render-only path must not run any apply:\n%s", out)
+	}
+}
+
 // ensureValidReport gives a pass test's implement fake a well-formed report
 // when it has none, so Run's implement guard (which aborts on a missing or
 // incomplete report) does not short-circuit the simplify/review pass the test
@@ -1242,6 +1422,23 @@ func oneReviewFinding(file string) *report.ReviewResult {
 	}}
 }
 
+// oneThenCleanReview scripts the review finder to surface one finding on the
+// first pass and a clean pass on the next, so the bounded review-and-fix loop
+// applies the fix once and then converges — the realistic single-fix path the
+// pre-loop tests exercised before the loop existed.
+func oneThenCleanReview(file string) []*report.ReviewResult {
+	return []*report.ReviewResult{oneReviewFinding(file), {}}
+}
+
+// twoReviewFindings is a two-finding round the loop folds into a single apply,
+// so the accumulation and multi-finding assertions have distinct files to check.
+func twoReviewFindings() *report.ReviewResult {
+	return &report.ReviewResult{Findings: []report.Finding{
+		{Severity: report.SeverityCritical, Title: "SQL injection in new query", File: "internal/foo/foo.go", Problem: "unescaped user input"},
+		{Severity: report.SeverityWarning, Title: "possible nil dereference", File: "internal/bar/bar.go", Problem: "missing nil check"},
+	}}
+}
+
 // Shared literals for the review-pass assertions, extracted so the repeated
 // base-branch and production-file strings stay under the goconst threshold.
 const (
@@ -1256,7 +1453,7 @@ func TestRun_ReviewDefaultOnAppliesFindings(t *testing.T) {
 		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
 	cl := &fakeClaude{} // helper fills a valid report; --no-report-comment keeps the only comment the review report
-	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
+	av := &fakeAdversarialVerifier{results: oneThenCleanReview(reviewTestProdFile)}
 	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
 	r := reviewRunner(gh, cl, av, ra)
 
@@ -1264,14 +1461,14 @@ func TestRun_ReviewDefaultOnAppliesFindings(t *testing.T) {
 	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
-	if av.called.Load() != 1 {
-		t.Errorf("finder called %d times, want 1 — the review pass is on by default", av.called.Load())
+	if av.called.Load() != 2 {
+		t.Errorf("finder called %d times, want 2 — the loop applies then re-reviews to confirm it converged", av.called.Load())
 	}
 	if av.base != reviewTestBase {
 		t.Errorf("finder got base %q, want main from CurrentBranchRef", av.base)
 	}
 	if ra.called.Load() != 1 {
-		t.Fatalf("applier called %d times, want 1", ra.called.Load())
+		t.Fatalf("applier called %d times, want 1 — the second review came back clean", ra.called.Load())
 	}
 	if ra.ctx.BaseBranch != reviewTestBase {
 		t.Errorf("applier got ctx %+v, want base main threaded from CurrentBranchRef", ra.ctx)
@@ -1361,6 +1558,13 @@ func TestRun_ReviewEscalationStops(t *testing.T) {
 			if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
 				t.Fatalf("Run returned %v, want nil — the review pass is non-fatal", err)
 			}
+			// The finder returns findings on every call, so had the escalation not
+			// stopped the loop it would run the full iteration budget. Exactly one
+			// finder + one apply proves the escalated apply stopped it after the
+			// first round.
+			if av.called.Load() != 1 || ra.called.Load() != 1 {
+				t.Errorf("finder/applier called (%d/%d), want 1/1 — an escalation stops the loop after the first apply", av.called.Load(), ra.called.Load())
+			}
 			if gh.commentCalls.Load() != 1 {
 				t.Errorf("AddIssueComment called %d times, want 1 — an escalated report must still post", gh.commentCalls.Load())
 			}
@@ -1379,7 +1583,7 @@ func TestRun_ReviewCommentFailureIsNonFatal(t *testing.T) {
 		commentErr: errors.New("github down"),
 	}
 	cl := &fakeClaude{}
-	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
+	av := &fakeAdversarialVerifier{results: oneThenCleanReview(reviewTestProdFile)}
 	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
 	r := reviewRunner(gh, cl, av, ra)
 
@@ -1442,6 +1646,121 @@ func TestRun_ReviewFinderErrorIsNonFatal(t *testing.T) {
 	}
 }
 
+// TestRun_ReviewLoopConvergesAfterApply drives the bounded loop's clean-exit
+// branch: a first round of findings is applied, then the re-review comes back
+// clean, so the loop stops after one apply and two finder calls — folding both
+// findings of the round into the single apply.
+func TestRun_ReviewLoopConvergesAfterApply(t *testing.T) {
+	gh := &fakeGitHub{
+		issue:     sampleIssue(),
+		cloneDir:  t.TempDir(),
+		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	}
+	cl := &fakeClaude{}
+	av := &fakeAdversarialVerifier{results: []*report.ReviewResult{twoReviewFindings(), {}}}
+	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
+	r := reviewRunner(gh, cl, av, ra)
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if av.called.Load() != 2 {
+		t.Errorf("finder called %d times, want 2 — apply once, then re-review to confirm clean", av.called.Load())
+	}
+	if ra.called.Load() != 1 {
+		t.Fatalf("applier called %d times, want 1 — the second review found nothing", ra.called.Load())
+	}
+	if len(ra.ctx.Findings) != 2 {
+		t.Errorf("applier got %d findings, want 2 — both findings of the round in one apply", len(ra.ctx.Findings))
+	}
+	if !strings.Contains(buf.String(), "Review pass converged: no further findings.") {
+		t.Errorf("missing the converged note in output:\n%s", buf.String())
+	}
+}
+
+// TestRun_ReviewLoopExhaustsBudget drives the budget-exhaustion branch: a finder
+// that keeps reporting findings is applied exactly defaultMaxReviewIterations
+// times, then the loop stops and surfaces the unresolved findings.
+func TestRun_ReviewLoopExhaustsBudget(t *testing.T) {
+	gh := &fakeGitHub{
+		issue:     sampleIssue(),
+		cloneDir:  t.TempDir(),
+		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	}
+	cl := &fakeClaude{}
+	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)} // never converges
+	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
+	r := reviewRunner(gh, cl, av, ra)
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil — the review pass is non-fatal", err)
+	}
+	if av.called.Load() != defaultMaxReviewIterations || ra.called.Load() != defaultMaxReviewIterations {
+		t.Errorf("finder/applier called (%d/%d), want %d/%d — the loop runs the full budget", av.called.Load(), ra.called.Load(), defaultMaxReviewIterations, defaultMaxReviewIterations)
+	}
+	if !strings.Contains(buf.String(), "stopped after 3 iteration(s) with findings still unresolved") {
+		t.Errorf("missing the unresolved-findings budget note in output:\n%s", buf.String())
+	}
+}
+
+// TestRun_ReviewLoopMaxIterationsOne proves opts.MaxReviewIterations is honored:
+// a cap of 1 applies exactly once and then stops with the unresolved note, even
+// though the finder still reports findings.
+func TestRun_ReviewLoopMaxIterationsOne(t *testing.T) {
+	gh := &fakeGitHub{
+		issue:     sampleIssue(),
+		cloneDir:  t.TempDir(),
+		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	}
+	cl := &fakeClaude{}
+	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)} // never converges
+	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
+	r := reviewRunner(gh, cl, av, ra)
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", MaxReviewIterations: 1, NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if av.called.Load() != 1 || ra.called.Load() != 1 {
+		t.Errorf("finder/applier called (%d/%d), want 1/1 — the cap of 1 stops after a single apply", av.called.Load(), ra.called.Load())
+	}
+	if !strings.Contains(buf.String(), "stopped after 1 iteration(s) with findings still unresolved") {
+		t.Errorf("missing the budget note for a 1-iteration cap in output:\n%s", buf.String())
+	}
+}
+
+// TestRun_ReviewLoopAccumulatesFindingsForCapture proves the findings from every
+// loop round reach the capture pass: two rounds of findings (2 then 1) followed
+// by a clean pass hand capture all three findings, not just the last round's.
+func TestRun_ReviewLoopAccumulatesFindingsForCapture(t *testing.T) {
+	gh := &fakeGitHub{
+		issue:     sampleIssue(),
+		cloneDir:  t.TempDir(),
+		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	}
+	cl := &fakeClaude{}
+	av := &fakeAdversarialVerifier{results: []*report.ReviewResult{twoReviewFindings(), oneReviewFinding(reviewTestProdFile), {}}}
+	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
+	cp := &fakeCapturer{result: onePatternProposal()}
+	r := captureRunner(t, gh, cl, av, ra, cp)
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if av.called.Load() != 3 || ra.called.Load() != 2 {
+		t.Errorf("finder/applier called (%d/%d), want 3/2 — two apply rounds then a clean re-review", av.called.Load(), ra.called.Load())
+	}
+	if cp.called.Load() != 1 {
+		t.Fatalf("capturer called %d times, want 1", cp.called.Load())
+	}
+	if len(cp.ctx.Findings) != 3 {
+		t.Errorf("capturer got %d findings, want 3 accumulated across both apply rounds", len(cp.ctx.Findings))
+	}
+}
+
 // captureRunner wires the capture pass onto a fresh Runner alongside the review
 // deps and a ResolveWiki seam that resolves to a temp wiki dir (so the capture
 // gate's wiki.Dir != "" check passes without cloning a real wiki). The review
@@ -1482,7 +1801,7 @@ func TestRun_CaptureProposesAndPostsComment(t *testing.T) {
 		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
 	cl := &fakeClaude{}
-	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
+	av := &fakeAdversarialVerifier{results: oneThenCleanReview(reviewTestProdFile)}
 	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
 	cp := &fakeCapturer{result: onePatternProposal()}
 	r := captureRunner(t, gh, cl, av, ra, cp)

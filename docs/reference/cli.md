@@ -616,10 +616,11 @@ planwerk-agent implement --wiki --capture-wiki --yes owner/repo#123
 | `--no-report-comment` | Do not post the implementation report as a comment on the source issue | `false` |
 | `--plan-model` | Model for the planning session passed to Claude Code via `--model` (e.g. `fable`, `opus`; env: `PLANWERK_PLAN_MODEL`) | `fable` |
 | `--plan-effort` | Reasoning effort for the planning session passed via `--effort` (`low`, `medium`, `high`, `xhigh`, `max`; env: `PLANWERK_PLAN_EFFORT`) | `max` |
-| `--verify` | After implementing, run an independent pass that checks the actual diff against the issue's Acceptance Criteria without trusting the implementer's report | `false` |
+| `--verify` | After implementing, run an independent pass that checks the actual diff against the issue's Acceptance Criteria without trusting the implementer's report; any unmet criteria are then fed into the review applier and fixed on the branch before the PR opens | `false` |
 | `--verify-adversarial` | After implementing, red-team the produced diff for the bugs it introduces using the adversarial-review pass (independent of `--verify`) | `false` |
 | `--no-simplify` | Skip the automatic simplify pass that folds over-engineering removals into the branch before the review phase | `false` |
 | `--no-review` | Skip the automatic review-and-fix pass that folds review findings into the branch after the simplify pass | `false` |
+| `--max-review-iterations` | Cap on the review-and-fix loop: each round re-reviews the branch and re-fixes until the finder comes back clean or this bound is hit (`<=0` uses the default of 3) | `0` |
 | `--no-capture` | Skip the read-only capture pass that proposes new wiki review patterns and memory pages (only runs with `--wiki`; writes nothing) | `false` |
 | `--capture-wiki` | Push the accepted capture pages to the wiki instead of only proposing them (off by default — a normal run is propose-only; confirms first, refuses a non-TTY run without `--yes`; env: `PLANWERK_CAPTURE_WIKI`, config: `capture.wiki`) | `false` |
 | `--yes` | Skip the `--capture-wiki` write confirmation prompt (for a non-interactive write) | `false` |
@@ -643,7 +644,11 @@ both run over the actual committed diff, not the implementer's self-report:
 reuses the same adversarial-review machinery as `review --thorough` to hunt for
 the bugs the change introduces (injection, race conditions, failure modes).
 Enable either, both, or neither. Both are non-fatal — a finding is reported, it
-does not fail the run.
+does not fail the run. When `--verify` finds unmet criteria, those findings are
+also fed into the same review applier the review-and-fix pass uses, so the gaps
+are fixed on the local branch before the finalize step opens the PR (this apply
+is non-fatal too, and a clean pass — or a run with no applier wired — stays
+render-only).
 
 The simplify pass runs by default once the branch is committed, before the
 review-and-fix and verification passes, so they assess the leaner diff. A
@@ -663,9 +668,13 @@ machinery that `--verify-adversarial` uses runs read-only over the produced diff
 when it finds something, a fresh session resolves each finding and folds the fix
 into the commit it belongs to (`git commit --fixup` + `git rebase --autosquash`)
 on the local branch — no push, since no pull request exists yet. Unlike the
-simplify pass, it is allowed to add regression tests. Its report is posted as a
-comment on the source issue (best-effort), and a `STATUS: BLOCKED` /
-`NEEDS_CONTEXT` report stops the pass without retrying. Nothing to fix is a clean
+simplify pass, it is allowed to add regression tests. It runs as a **bounded
+loop**: after each apply it re-reviews the branch it just changed and, while the
+finder still reports findings, fixes them again — stopping when the finder comes
+back clean, when an apply escalates (`STATUS: BLOCKED` / `NEEDS_CONTEXT`), or
+after `--max-review-iterations` rounds (default 3), noting any findings still
+unresolved when the budget runs out. Each round's report is posted as a comment
+on the source issue (best-effort). Nothing to fix on the first round is a clean
 no-op (no commit, no issue comment beyond a short stdout note). The pass is
 non-fatal — a failed or escalated review never changes the run's exit code. The
 read-only `--verify` / `--verify-adversarial` flags remain available for a

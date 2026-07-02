@@ -512,6 +512,8 @@ type ImplementConfig struct {
 	NoCapture         bool
 	CaptureWiki       bool
 	Yes               bool
+	// MaxReviewIterations caps the review-and-fix loop (<=0 uses the package default).
+	MaxReviewIterations int
 
 	PatternDirs     []string
 	NoRepoPatterns  bool
@@ -523,29 +525,30 @@ type ImplementConfig struct {
 
 func (c ImplementConfig) ToImplementOptions(version string) implement.Options {
 	return implement.Options{
-		IssueRef:          c.IssueRef,
-		DryRun:            c.DryRun,
-		PrintPrompt:       c.PrintPrompt,
-		PrintBarePrompt:   c.PrintBarePrompt,
-		PrintPlanPrompt:   c.PrintPlanPrompt,
-		NoPlan:            c.NoPlan,
-		NoPlanReuse:       c.NoPlanReuse,
-		NoPlanComment:     c.NoPlanComment,
-		NoReportComment:   c.NoReportComment,
-		Verify:            c.Verify,
-		VerifyAdversarial: c.VerifyAdversarial,
-		NoSimplify:        c.NoSimplify,
-		NoReview:          c.NoReview,
-		NoCapture:         c.NoCapture,
-		CaptureWiki:       c.CaptureWiki,
-		Yes:               c.Yes,
-		Version:           version,
-		PatternDirs:       c.PatternDirs,
-		NoRepoPatterns:    c.NoRepoPatterns,
-		NoLocalPatterns:   c.NoLocalPatterns,
-		MaxPatterns:       c.MaxPatterns,
-		Local:             c.Local,
-		Force:             c.Force,
+		IssueRef:            c.IssueRef,
+		DryRun:              c.DryRun,
+		PrintPrompt:         c.PrintPrompt,
+		PrintBarePrompt:     c.PrintBarePrompt,
+		PrintPlanPrompt:     c.PrintPlanPrompt,
+		NoPlan:              c.NoPlan,
+		NoPlanReuse:         c.NoPlanReuse,
+		NoPlanComment:       c.NoPlanComment,
+		NoReportComment:     c.NoReportComment,
+		Verify:              c.Verify,
+		VerifyAdversarial:   c.VerifyAdversarial,
+		NoSimplify:          c.NoSimplify,
+		NoReview:            c.NoReview,
+		NoCapture:           c.NoCapture,
+		CaptureWiki:         c.CaptureWiki,
+		Yes:                 c.Yes,
+		MaxReviewIterations: c.MaxReviewIterations,
+		Version:             version,
+		PatternDirs:         c.PatternDirs,
+		NoRepoPatterns:      c.NoRepoPatterns,
+		NoLocalPatterns:     c.NoLocalPatterns,
+		MaxPatterns:         c.MaxPatterns,
+		Local:               c.Local,
+		Force:               c.Force,
 	}
 }
 

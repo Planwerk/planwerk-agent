@@ -72,10 +72,16 @@ type Options struct {
 	CaptureWiki bool
 	// Yes skips the capture write-back's interactive confirmation, for a
 	// non-interactive (CI) --capture-wiki run.
-	Yes     bool
-	Local   bool // operate on the current working directory instead of cloning
-	Force   bool // with Local, skip the dirty-working-tree confirmation prompt
-	Version string
+	Yes bool
+	// MaxReviewIterations caps the review-and-fix loop: each round re-runs the
+	// adversarial finder and, while it still reports findings, applies them —
+	// stopping when the finder comes back clean, an apply escalates, or this many
+	// rounds have run. <= 0 falls back to defaultMaxReviewIterations. Mirrors the
+	// elaborate reviewer loop's bound.
+	MaxReviewIterations int
+	Local               bool // operate on the current working directory instead of cloning
+	Force               bool // with Local, skip the dirty-working-tree confirmation prompt
+	Version             string
 
 	// Pattern loading mirrors review/audit/elaborate so the implementation
 	// is grounded in the same review catalog and any project-specific
@@ -92,6 +98,12 @@ type Options struct {
 	// values.
 	Wiki patterns.WikiOptions
 }
+
+// defaultMaxReviewIterations bounds the review-and-fix loop so a finder and
+// applier that keep disagreeing cannot spin forever. After this many rounds any
+// findings still remaining are surfaced instead of retried. Mirrors elaborate's
+// reviewer-loop bound.
+const defaultMaxReviewIterations = 3
 
 // Runner glues together the GitHub issue/clone calls, the Claude planner,
 // the Claude implementer, and the prompt builders. Tests inject fakes via
@@ -502,7 +514,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// the verify and simplify passes. Its findings feed the capture pass below.
 	var reviewFindings []report.Finding
 	if !opts.NoReview && r.AdversarialVerifier != nil && r.ReviewApplier != nil {
-		reviewFindings = r.runReview(w, repo.Dir, owner, name, number, ctx)
+		reviewFindings = r.runReview(w, repo.Dir, owner, name, number, ctx, opts)
 	}
 
 	// Capture pass: read-only proposal of new wiki review patterns and memory
@@ -849,6 +861,13 @@ func implementReportStatus(report string) string {
 // the implement session produced and prints its verdict. Verification failures
 // are non-fatal — the implementation still happened, and the operator gets the
 // implementer's own report regardless.
+//
+// When the pass finds unmet-criteria findings and a review applier is wired, the
+// findings are fed into the same ReviewApplier the review-and-fix pass uses so
+// the gaps are closed on the local branch before the finalize step opens the PR.
+// That apply is non-fatal, mirroring runReview: a failed branch resolution or
+// apply is logged and surfaced but never aborts the run. With no applier wired
+// (or a clean pass) the pass stays render-only, exactly as before.
 func (r *Runner) runVerification(w io.Writer, dir string, ctx Context) {
 	slog.Info("running independent implementation verification")
 	result, err := r.Verifier.VerifyImplementation(dir, ctx.IssueTitle, ctx.IssueBody)
@@ -858,6 +877,35 @@ func (r *Runner) runVerification(w io.Writer, dir string, ctx Context) {
 		return
 	}
 	renderVerification(w, result)
+
+	if r.ReviewApplier == nil || result == nil || len(result.Findings) == 0 {
+		return
+	}
+
+	branch, err := r.GitHub.CurrentBranchRef(dir)
+	if err != nil {
+		slog.Warn("could not resolve the branch to apply verification findings; skipping", "err", err)
+		_, _ = fmt.Fprintf(w, "\nVerification fixes skipped: could not resolve the base branch for this checkout: %v\n", err)
+		return
+	}
+
+	slog.Info("feeding verification findings into the review applier", "findings", len(result.Findings))
+	verifyReport, _, err := r.ReviewApplier.ApplyReview(dir, ReviewApplyContext{
+		RepoFullName: ctx.RepoFullName,
+		BaseBranch:   branch.BaseBranch,
+		Findings:     result.Findings,
+		Patterns:     ctx.Patterns,
+		MaxPatterns:  ctx.MaxPatterns,
+	})
+	if err != nil {
+		slog.Warn("verification apply failed", "err", err)
+		_, _ = fmt.Fprintf(w, "\nVerification fixes could not run: %v\n", err)
+		return
+	}
+	if verifyReport != "" {
+		_, _ = fmt.Fprintf(w, "\nVerification fixes report:\n%s\n", verifyReport)
+	}
+	slog.Info("verification fixes complete")
 }
 
 // renderVerification prints the verification verdict: a clean pass when no
@@ -1070,16 +1118,24 @@ func (r *Runner) postSimplifyComment(w io.Writer, owner, name string, number int
 // grounded in the implement pattern catalog via /review) yields structured
 // findings, and — when findings remain — a fresh session resolves them and folds
 // each fix into the commit it belongs to (no push; the finalize pass opens the
-// PR afterwards). The whole pass is non-fatal: any failure (branch-ref
-// resolution, finder error, apply error, comment-post failure) is logged and
-// surfaced but never aborts the run, matching the simplify and verify passes'
-// contract. No findings is a clean no-op — no commit, no issue comment beyond a
-// short stdout note.
+// PR afterwards).
 //
-// It returns the findings the finder produced (even after they are folded in),
-// so the capture pass can mine them for generalizable review patterns. A skipped
-// or failed pass, and a pass that found nothing, return nil.
-func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx Context) []report.Finding {
+// The pass is a bounded finder→apply loop (mirroring elaborate's reviewer refine
+// loop): each round re-reviews the branch the prior apply just changed, so a fix
+// that leaves a new problem behind is caught. The loop exits clean when the
+// finder comes back with zero findings (the implement analog of elaborate's
+// passing score), stops early when an apply escalates (STATUS: BLOCKED /
+// NEEDS_CONTEXT), and otherwise caps at opts.MaxReviewIterations rounds — with a
+// note when the budget runs out while findings still remain. The whole pass is
+// non-fatal: any failure (branch-ref resolution, finder error, apply error,
+// comment-post failure) is logged and surfaced but never aborts the run, matching
+// the simplify and verify passes' contract. No findings on the first round is a
+// clean no-op — no commit, no issue comment beyond a short stdout note.
+//
+// It returns the findings the finder produced across ALL iterations (even after
+// they are folded in), so the capture pass can mine them for generalizable review
+// patterns. A skipped or failed pass, and a pass that found nothing, return nil.
+func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx Context, opts Options) []report.Finding {
 	slog.Info("running review-and-fix pass over the produced diff")
 	branch, err := r.GitHub.CurrentBranchRef(dir)
 	if err != nil {
@@ -1088,46 +1144,65 @@ func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx
 		return nil
 	}
 
-	result, err := r.AdversarialVerifier.AdversarialReview(dir, branch.BaseBranch)
-	if err != nil {
-		slog.Warn("review finder failed", "err", err)
-		_, _ = fmt.Fprintf(w, "\nReview pass could not run: %v\n", err)
-		return nil
+	maxIter := opts.MaxReviewIterations
+	if maxIter <= 0 {
+		maxIter = defaultMaxReviewIterations
 	}
 
-	var findings []report.Finding
-	if result != nil {
-		findings = result.Findings
-	}
-	if len(findings) == 0 {
-		slog.Info("review pass found nothing to fix")
-		_, _ = fmt.Fprintln(w, "\nReview found nothing to fix.")
-		return nil
+	var allFindings []report.Finding
+	for i := 1; i <= maxIter; i++ {
+		result, err := r.AdversarialVerifier.AdversarialReview(dir, branch.BaseBranch)
+		if err != nil {
+			slog.Warn("review finder failed", "iteration", i, "err", err)
+			_, _ = fmt.Fprintf(w, "\nReview pass could not run: %v\n", err)
+			return allFindings
+		}
+
+		var findings []report.Finding
+		if result != nil {
+			findings = result.Findings
+		}
+		if len(findings) == 0 {
+			if len(allFindings) == 0 {
+				slog.Info("review pass found nothing to fix")
+				_, _ = fmt.Fprintln(w, "\nReview found nothing to fix.")
+			} else {
+				slog.Info("review pass converged with no further findings", "issue", number, "iterations", i-1)
+				_, _ = fmt.Fprintln(w, "\nReview pass converged: no further findings.")
+			}
+			return allFindings
+		}
+		allFindings = append(allFindings, findings...)
+
+		reviewReport, model, err := r.ReviewApplier.ApplyReview(dir, ReviewApplyContext{
+			RepoFullName: ctx.RepoFullName,
+			BaseBranch:   branch.BaseBranch,
+			Findings:     findings,
+			Patterns:     ctx.Patterns,
+			MaxPatterns:  ctx.MaxPatterns,
+		})
+		if err != nil {
+			slog.Warn("review apply failed", "iteration", i, "err", err)
+			_, _ = fmt.Fprintf(w, "\nReview apply could not run: %v\n", err)
+			return allFindings
+		}
+		if reviewReport != "" {
+			_, _ = fmt.Fprintf(w, "\nReview report:\n%s\n", reviewReport)
+			// Post the report before the escalation check so an escalated report
+			// still lands on the issue for the human who must look at it.
+			r.postReviewComment(w, owner, name, number, reviewReport, model)
+		}
+		if status := planEscalation(reviewReport); status != "" {
+			_, _ = fmt.Fprintf(w, "\nClaude reported %s — stopping the review pass.\n", status)
+			return allFindings
+		}
+		slog.Info("review iteration applied; re-reviewing", "issue", number, "iteration", i)
 	}
 
-	reviewReport, model, err := r.ReviewApplier.ApplyReview(dir, ReviewApplyContext{
-		RepoFullName: ctx.RepoFullName,
-		BaseBranch:   branch.BaseBranch,
-		Findings:     findings,
-		Patterns:     ctx.Patterns,
-		MaxPatterns:  ctx.MaxPatterns,
-	})
-	if err != nil {
-		slog.Warn("review apply failed", "err", err)
-		_, _ = fmt.Fprintf(w, "\nReview apply could not run: %v\n", err)
-		return findings
-	}
-	if reviewReport != "" {
-		_, _ = fmt.Fprintf(w, "\nReview report:\n%s\n", reviewReport)
-		// Post the report before the escalation check so an escalated report
-		// still lands on the issue for the human who must look at it.
-		r.postReviewComment(w, owner, name, number, reviewReport, model)
-	}
-	if status := planEscalation(reviewReport); status != "" {
-		_, _ = fmt.Fprintf(w, "\nClaude reported %s — stopping the review pass.\n", status)
-	}
-	slog.Info("review pass complete", "issue", number)
-	return findings
+	// Budget exhausted with the finder still reporting findings on the last round.
+	slog.Warn("review pass hit the iteration budget with findings still remaining", "issue", number, "iterations", maxIter)
+	_, _ = fmt.Fprintf(w, "\nReview pass stopped after %d iteration(s) with findings still unresolved.\n", maxIter)
+	return allFindings
 }
 
 // reviewCommentFooter attributes the posted review report to planwerk-agent,
