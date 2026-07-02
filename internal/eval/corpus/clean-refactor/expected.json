@@ -1,0 +1,5 @@
+{
+  "description": "A behavior-preserving refactor that hoists the greeting format string into a named constant. No bug is seeded; any finding here is a false positive.",
+  "clean": true,
+  "findings": []
+}

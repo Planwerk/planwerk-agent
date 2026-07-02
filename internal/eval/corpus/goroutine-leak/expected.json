@@ -1,0 +1,12 @@
+{
+  "description": "A background goroutine reads a channel in an unbounded loop and never observes ctx.Done(), so it leaks when the caller returns.",
+  "clean": false,
+  "findings": [
+    {
+      "file": "watch.go",
+      "line": 12,
+      "severity": "WARNING",
+      "keywords": ["goroutine", "leak", "ctx.done", "cancellation"]
+    }
+  ]
+}

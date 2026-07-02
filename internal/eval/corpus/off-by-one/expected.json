@@ -1,0 +1,12 @@
+{
+  "description": "The tail clamp uses len(s)-1 instead of len(s), so the final element of a non-evenly-divisible slice is dropped. The existing test only covers an even split, so the boundary case is untested.",
+  "clean": false,
+  "findings": [
+    {
+      "file": "chunk.go",
+      "line": 12,
+      "severity": "CRITICAL",
+      "keywords": ["off-by-one", "off by one", "boundary", "last element", "len(s)-1"]
+    }
+  ]
+}

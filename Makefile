@@ -3,7 +3,7 @@ MAIN    := ./cmd/planwerk-agent
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: all build test vet lint fmt clean completions man
+.PHONY: all build test vet lint fmt clean completions man eval
 
 all: lint test build
 
@@ -35,3 +35,9 @@ fmt:
 clean:
 	rm -f $(BINARY)
 	rm -rf completions docs/man
+
+# Output-quality eval: scores the review pipeline against the seeded-bug corpus.
+# Invokes the real claude CLI and spends tokens, so it is deliberately NOT wired
+# into `test` or CI. Pass flags via EVAL_ARGS, e.g. `make eval EVAL_ARGS=-json`.
+eval:
+	go run ./cmd/planwerk-eval $(EVAL_ARGS)

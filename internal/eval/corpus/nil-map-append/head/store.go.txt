@@ -1,0 +1,18 @@
+package main
+
+// Store holds a hit counter and the ordered list of names seen.
+type Store struct {
+	counts map[string]int
+	names  []string
+}
+
+// NewStore returns a Store.
+func NewStore() *Store {
+	return &Store{}
+}
+
+// Add records a hit for name and remembers the name.
+func (s *Store) Add(name string) {
+	s.counts[name]++
+	_ = append(s.names, name)
+}

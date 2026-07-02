@@ -1,0 +1,18 @@
+{
+  "description": "NewStore no longer initializes the counts map, so Add writes to a nil map and panics; the append result is also discarded, so names is never updated.",
+  "clean": false,
+  "findings": [
+    {
+      "file": "store.go",
+      "line": 16,
+      "severity": "CRITICAL",
+      "keywords": ["nil map", "nil-map", "panic", "uninitialized"]
+    },
+    {
+      "file": "store.go",
+      "line": 17,
+      "severity": "WARNING",
+      "keywords": ["append", "discard", "result is not", "return value"]
+    }
+  ]
+}

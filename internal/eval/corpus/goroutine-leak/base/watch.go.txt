@@ -1,0 +1,16 @@
+package main
+
+import "fmt"
+
+// process handles values until the input channel is closed, then returns.
+func process(values <-chan int) {
+	for v := range values {
+		fmt.Println(v)
+	}
+}
+
+func main() {
+	ch := make(chan int)
+	close(ch)
+	process(ch)
+}

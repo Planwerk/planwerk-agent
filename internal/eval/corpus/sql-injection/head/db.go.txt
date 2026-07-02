@@ -1,0 +1,14 @@
+package main
+
+import (
+	"database/sql"
+	"fmt"
+)
+
+// userByID looks up a user's name by id. It builds the query by concatenating
+// the caller-supplied id straight into the SQL text, so a crafted id is executed
+// as SQL.
+func userByID(db *sql.DB, id string) *sql.Row {
+	query := fmt.Sprintf("SELECT name FROM users WHERE id = '%s'", id)
+	return db.QueryRow(query)
+}

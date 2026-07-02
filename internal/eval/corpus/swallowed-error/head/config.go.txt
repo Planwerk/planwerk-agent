@@ -1,0 +1,19 @@
+package main
+
+import (
+	"encoding/json"
+	"os"
+)
+
+// Config is the parsed application configuration.
+type Config struct {
+	Port int `json:"port"`
+}
+
+// Load reads and parses the config file at path.
+func Load(path string) *Config {
+	data, _ := os.ReadFile(path)
+	var cfg Config
+	_ = json.Unmarshal(data, &cfg)
+	return &cfg
+}

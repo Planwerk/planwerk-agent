@@ -1,0 +1,17 @@
+package main
+
+import (
+	"reflect"
+	"testing"
+)
+
+// TestChunkEvenSplit covers only the case where len(s) divides evenly by size.
+// It never exercises a final partial chunk, so it cannot catch an off-by-one at
+// the tail boundary.
+func TestChunkEvenSplit(t *testing.T) {
+	got := Chunk([]int{1, 2, 3, 4}, 2)
+	want := [][]int{{1, 2}, {3, 4}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Chunk = %v, want %v", got, want)
+	}
+}

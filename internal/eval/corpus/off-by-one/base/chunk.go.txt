@@ -1,0 +1,17 @@
+package main
+
+// Chunk splits s into contiguous chunks of at most size elements.
+func Chunk(s []int, size int) [][]int {
+	if size <= 0 {
+		return nil
+	}
+	var chunks [][]int
+	for i := 0; i < len(s); i += size {
+		end := i + size
+		if end > len(s) {
+			end = len(s)
+		}
+		chunks = append(chunks, s[i:end])
+	}
+	return chunks
+}

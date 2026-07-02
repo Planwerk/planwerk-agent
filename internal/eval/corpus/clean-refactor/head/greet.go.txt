@@ -1,0 +1,15 @@
+package main
+
+import "fmt"
+
+// greetingFormat is the template used to address a user by name.
+const greetingFormat = "Hello, %s!"
+
+// Greet returns a friendly greeting for name.
+func Greet(name string) string {
+	return fmt.Sprintf(greetingFormat, name)
+}
+
+func main() {
+	fmt.Println(Greet("world"))
+}

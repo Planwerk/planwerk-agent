@@ -1,0 +1,24 @@
+package main
+
+import (
+	"context"
+	"fmt"
+)
+
+// watch starts a background goroutine that logs values as they arrive. It takes
+// a context but never selects on ctx.Done(), so the goroutine blocks forever on
+// the receive and leaks once the caller returns and stops sending.
+func watch(ctx context.Context, values <-chan int) {
+	go func() {
+		for {
+			v := <-values
+			fmt.Println(v)
+		}
+	}()
+}
+
+func main() {
+	ctx := context.Background()
+	ch := make(chan int)
+	watch(ctx, ch)
+}

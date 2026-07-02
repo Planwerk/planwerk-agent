@@ -1,0 +1,9 @@
+package main
+
+import "database/sql"
+
+// userByID looks up a user's name by id using a parameterized query, so the id
+// value can never be interpreted as SQL.
+func userByID(db *sql.DB, id string) *sql.Row {
+	return db.QueryRow("SELECT name FROM users WHERE id = ?", id)
+}

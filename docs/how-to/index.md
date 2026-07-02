@@ -22,6 +22,7 @@ solves one specific problem.
 - [Install shell completions & man pages](/how-to/install-completions-and-man-pages)
 - [Write your own review patterns](/how-to/write-review-patterns)
 - [Configure the project](/how-to/configure-the-project)
+- [Run the output-quality eval](/how-to/run-the-quality-eval)
 
 For the full surface of every command and flag, see the
 [CLI reference](/reference/cli).

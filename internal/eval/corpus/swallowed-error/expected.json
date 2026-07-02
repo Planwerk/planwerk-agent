@@ -1,0 +1,12 @@
+{
+  "description": "Load now discards the errors from os.ReadFile and json.Unmarshal, so a missing or malformed config is silently treated as an empty, valid config.",
+  "clean": false,
+  "findings": [
+    {
+      "file": "config.go",
+      "line": 17,
+      "severity": "WARNING",
+      "keywords": ["error", "swallow", "ignored", "discard"]
+    }
+  ]
+}

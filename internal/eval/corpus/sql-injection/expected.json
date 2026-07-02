@@ -1,0 +1,12 @@
+{
+  "description": "A query is built with fmt.Sprintf that concatenates caller-supplied input into the SQL text instead of using a bound parameter — a SQL injection.",
+  "clean": false,
+  "findings": [
+    {
+      "file": "db.go",
+      "line": 11,
+      "severity": "BLOCKING",
+      "keywords": ["sql injection", "injection", "parameteriz", "concatenat"]
+    }
+  ]
+}
