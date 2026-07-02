@@ -389,6 +389,12 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		slog.Info("demoted findings failing snippet verification", "count", n)
 	}
 
+	// 11c. Claim verification: re-check each BLOCKING/CRITICAL finding's claim
+	// against the checkout and demote any the verifier refutes with quoted
+	// counter-evidence. Runs before the cache write so the demotion is cached
+	// too. Fail-open — a failed verification publishes the findings unchanged.
+	r.verifyClaims(result, pr.Dir)
+
 	// 12. Cache result
 	if !opts.NoCache {
 		if err := cache.Put(cacheKey, cache.CommandReview, result); err != nil {
@@ -410,6 +416,59 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// returned above before the catalog was loaded), and only when a wiki resolved.
 	r.runCapture(w, pr, opts, result, pats, wiki)
 	return nil
+}
+
+// verifyClaims re-checks each BLOCKING/CRITICAL finding's claim against the
+// checkout at dir. It batches every such finding into one VerifyFindingClaims
+// call; for each verdict the verifier refutes it demotes the finding to
+// uncertain confidence and attaches the refutation as a VerificationNote (which
+// routes it to the Unverified section). WARNING/INFO findings are never sent —
+// the snippet gate already covers them and verifying them is not worth the cost.
+// The pass is fail-open: a failed call, a missing verdict, or an out-of-range
+// index leaves the finding unchanged.
+func (r *Runner) verifyClaims(result *report.ReviewResult, dir string) {
+	if result == nil {
+		return
+	}
+	var selectedIdx []int
+	var selected []report.Finding
+	for i := range result.Findings {
+		if sev := result.Findings[i].Severity; sev == report.SeverityBlocking || sev == report.SeverityCritical {
+			selectedIdx = append(selectedIdx, i)
+			selected = append(selected, result.Findings[i])
+		}
+	}
+	if len(selected) == 0 {
+		return
+	}
+	verdicts, err := r.Claude.VerifyFindingClaims(dir, selected)
+	if err != nil {
+		slog.Warn("claim verification failed; publishing findings unchanged", "err", err)
+		return
+	}
+	demoted := 0
+	for _, v := range verdicts {
+		if v.Index < 0 || v.Index >= len(selectedIdx) {
+			continue // ignore an out-of-range index the model may return
+		}
+		if !strings.EqualFold(strings.TrimSpace(v.Verdict), "refuted") {
+			continue
+		}
+		reason := strings.TrimSpace(v.Reason)
+		if reason == "" {
+			reason = strings.TrimSpace(v.Evidence)
+		}
+		if reason == "" {
+			reason = "no supporting evidence found in the checkout"
+		}
+		fi := selectedIdx[v.Index]
+		result.Findings[fi].Confidence = report.ConfidenceUncertain
+		result.Findings[fi].VerificationNote = "refuted: " + reason
+		demoted++
+	}
+	if demoted > 0 {
+		slog.Info("demoted refuted BLOCKING/CRITICAL findings to uncertain", "count", demoted)
+	}
 }
 
 // dedupFilelessFindings folds cross-pass duplicate findings that carry no file

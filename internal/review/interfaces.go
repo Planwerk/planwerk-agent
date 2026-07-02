@@ -22,6 +22,10 @@ type ClaudeRunner interface {
 	// returning index groups into the passed slice. It backstops the fuzzy
 	// merge matcher for findings with no file to anchor on.
 	DedupFindings(findings []report.Finding) ([][]int, error)
+	// VerifyFindingClaims re-checks each finding's claim against the checkout at
+	// dir, returning one verdict per finding it judged (keyed by index). It reads
+	// the cited code, so it runs on the main tier.
+	VerifyFindingClaims(dir string, findings []report.Finding) ([]claude.ClaimVerdict, error)
 	// UsageTotals reports the per-Run Claude token usage and estimated cost
 	// accumulated across this runner's calls, for embedding in the data block.
 	UsageTotals() report.Usage
@@ -69,6 +73,10 @@ func (r defaultClaudeRunner) FeatureCompliance(dir, baseBranch string, feature *
 
 func (r defaultClaudeRunner) DedupFindings(findings []report.Finding) ([][]int, error) {
 	return r.client.DedupFindings(findings)
+}
+
+func (r defaultClaudeRunner) VerifyFindingClaims(dir string, findings []report.Finding) ([]claude.ClaimVerdict, error) {
+	return r.client.VerifyFindingClaims(dir, findings)
 }
 
 func (r defaultClaudeRunner) UsageTotals() report.Usage {

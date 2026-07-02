@@ -88,3 +88,33 @@ or media (`.md`, `.yaml`, `.json`, `.png`, …). Gated-out specialists are
 skipped with a log line, so a 5-line docs-only PR runs only the two always-on
 specialists instead of all six. When the changed-file set cannot be determined,
 the gate fails open and every specialist runs.
+
+## Cross-Pass Merge and Dedup
+
+When a secondary pass contributes findings (`--thorough`, `--specialists`, or a
+feature-compliance pass), the pipeline folds them into the primary review. Two
+independently worded passes almost never produce byte-identical titles, so the
+merge matches *fuzzily*: two findings fold together when they share the same
+file, their line ranges overlap within ±3 lines, and their titles share at least
+half their tokens. A folded pair keeps the higher severity, unions its
+provenance, and — the first time a finding is confirmed by two or more distinct
+passes — has its confidence boosted one step.
+
+Findings with no file cannot be anchored by the fuzzy matcher, so a single cheap
+structure-tier call groups the file-less duplicates by index; the pipeline folds
+each group in Go with the same merge semantics. The dedup call is non-fatal: if
+it fails, the findings ship unmerged.
+
+## Claim Verification
+
+The snippet gate demotes a finding whose quoted code cannot be found in the
+changed files, but it verifies the *quote*, not the *claim* — a finding passes
+by quoting one real line even when its conclusion is wrong. After the snippet
+gate, a claim-verification pass re-checks every BLOCKING and CRITICAL finding
+against the checkout in one batched, read-only call. The verifier confirms or
+refutes each finding's claim and may refute *only* with concrete quoted
+counter-evidence; absent such evidence it confirms. A refuted finding is demoted
+to `uncertain` confidence with the refutation attached as a `**Claim check**`
+note, which routes it into the Unverified / Low-Confidence section rather than
+dropping it. The pass is fail-open: a failed call publishes the findings
+unchanged.

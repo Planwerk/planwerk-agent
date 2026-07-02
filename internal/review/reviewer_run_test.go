@@ -119,6 +119,112 @@ func TestRun_CommitLogFailureLogsWarning(t *testing.T) {
 	}
 }
 
+func TestRun_VerifyClaimsDemotesRefuted(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	pr := fakePR(t, "acme", "widgets", 81, "sha-verify")
+	var sentToVerify []report.Finding
+	claudeMock := &configurableClaude{
+		review: func(dir string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
+			return &report.ReviewResult{
+				Findings: []report.Finding{
+					{ID: "B-001", Severity: report.SeverityBlocking, Title: "auth bypass", File: "a.go", Line: 1, Problem: "p", Action: "a"},
+					{ID: "C-001", Severity: report.SeverityCritical, Title: "nil deref", File: "b.go", Line: 2, Problem: "p", Action: "a"},
+					{ID: "W-001", Severity: report.SeverityWarning, Title: "nit", File: "c.go", Line: 3, Problem: "p", Action: "a"},
+				},
+			}, nil
+		},
+		verifyClaims: func(dir string, findings []report.Finding) ([]claude.ClaimVerdict, error) {
+			sentToVerify = findings
+			return []claude.ClaimVerdict{
+				{Index: 0, Verdict: "confirmed"},
+				{Index: 1, Verdict: "refuted", Reason: "b.go:2 is already nil-guarded"},
+			}, nil
+		},
+	}
+	gh := &mockGitHub{fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil }}
+	runner := &Runner{Claude: claudeMock, GitHub: gh}
+
+	var out bytes.Buffer
+	if err := runner.Run(&out, baseOpts()); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if claudeMock.verifyClaimsCalls != 1 {
+		t.Fatalf("VerifyFindingClaims calls = %d, want 1 (batched)", claudeMock.verifyClaimsCalls)
+	}
+	if len(sentToVerify) != 2 {
+		t.Fatalf("expected only BLOCKING+CRITICAL sent, got %d: %+v", len(sentToVerify), sentToVerify)
+	}
+
+	cached, ok := cache.Get(cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA), 0)
+	if !ok {
+		t.Fatal("expected a cached result carrying the demotion")
+	}
+	byID := map[string]report.Finding{}
+	for _, f := range cached.Findings {
+		byID[f.ID] = f
+	}
+	if got := byID["C-001"]; got.Confidence != report.ConfidenceUncertain || got.VerificationNote == "" {
+		t.Errorf("refuted C-001 must be demoted with a note, got confidence=%q note=%q", got.Confidence, got.VerificationNote)
+	}
+	if got := byID["B-001"]; got.VerificationNote != "" {
+		t.Errorf("confirmed B-001 must be untouched, got note=%q", got.VerificationNote)
+	}
+}
+
+func TestRun_VerifyClaims_ErrorIsNonFatal(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	pr := fakePR(t, "acme", "widgets", 82, "sha-verifyerr")
+	claudeMock := &configurableClaude{
+		review: func(dir string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
+			return &report.ReviewResult{Findings: []report.Finding{
+				{ID: "C-001", Severity: report.SeverityCritical, Title: "x", File: "b.go", Line: 2, Problem: "p", Action: "a", Confidence: report.ConfidenceVerified},
+			}}, nil
+		},
+		verifyClaims: func(dir string, findings []report.Finding) ([]claude.ClaimVerdict, error) {
+			return nil, errors.New("verifier down")
+		},
+	}
+	gh := &mockGitHub{fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil }}
+	runner := &Runner{Claude: claudeMock, GitHub: gh}
+
+	var out bytes.Buffer
+	if err := runner.Run(&out, baseOpts()); err != nil {
+		t.Fatalf("verifier error must not fail the review: %v", err)
+	}
+	cached, ok := cache.Get(cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA), 0)
+	if !ok || len(cached.Findings) != 1 || cached.Findings[0].Confidence != report.ConfidenceVerified {
+		t.Fatalf("finding must survive a failed verification unchanged, got ok=%v %+v", ok, cached.Findings)
+	}
+}
+
+func TestRun_VerifyClaims_SkippedWithoutHighSeverity(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	pr := fakePR(t, "acme", "widgets", 83, "sha-noverify")
+	claudeMock := &configurableClaude{
+		review: func(dir string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
+			return &report.ReviewResult{Findings: []report.Finding{
+				{ID: "W-001", Severity: report.SeverityWarning, Title: "nit", File: "c.go", Line: 3, Problem: "p", Action: "a"},
+			}}, nil
+		},
+	}
+	gh := &mockGitHub{fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil }}
+	runner := &Runner{Claude: claudeMock, GitHub: gh}
+
+	var out bytes.Buffer
+	if err := runner.Run(&out, baseOpts()); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if claudeMock.verifyClaimsCalls != 0 {
+		t.Errorf("claim verification must not run without a BLOCKING/CRITICAL finding, got %d calls", claudeMock.verifyClaimsCalls)
+	}
+}
+
 func TestRun_DedupFilelessFindings(t *testing.T) {
 	restore := cache.SetDir(t.TempDir())
 	t.Cleanup(restore)
@@ -284,6 +390,7 @@ type configurableClaude struct {
 	featureCompliance func(dir, baseBranch string, feature *planwerk.Feature) (*report.ReviewResult, error)
 	specialist        func(dir, baseBranch, key, focus string) (*report.ReviewResult, error)
 	dedup             func(findings []report.Finding) ([][]int, error)
+	verifyClaims      func(dir string, findings []report.Finding) ([]claude.ClaimVerdict, error)
 	usage             report.Usage
 
 	reviewCalls            int32
@@ -292,6 +399,7 @@ type configurableClaude struct {
 	featureComplianceCalls int32
 	specialistCalls        int32
 	dedupCalls             int32
+	verifyClaimsCalls      int32
 }
 
 func (c *configurableClaude) Review(dir string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
@@ -340,6 +448,14 @@ func (c *configurableClaude) DedupFindings(findings []report.Finding) ([][]int, 
 		return nil, nil
 	}
 	return c.dedup(findings)
+}
+
+func (c *configurableClaude) VerifyFindingClaims(dir string, findings []report.Finding) ([]claude.ClaimVerdict, error) {
+	atomic.AddInt32(&c.verifyClaimsCalls, 1)
+	if c.verifyClaims == nil {
+		return nil, nil
+	}
+	return c.verifyClaims(dir, findings)
 }
 
 func (c *configurableClaude) UsageTotals() report.Usage {

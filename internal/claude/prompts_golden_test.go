@@ -891,6 +891,18 @@ func TestBuildDedupFindingsPrompt_Golden(t *testing.T) {
 	assertGoldenPrompt(t, "dedup_findings", buildDedupFindingsPrompt(findings))
 }
 
+// TestBuildClaimVerificationPrompt_Golden locks the claim-verification prompt:
+// the confirm-or-refute-the-claim framing, the "refute only with quoted
+// counter-evidence, otherwise confirm" default, the read-only rule, and the
+// per-finding verdict output shape.
+func TestBuildClaimVerificationPrompt_Golden(t *testing.T) {
+	findings := []report.Finding{
+		{Severity: report.SeverityBlocking, Title: "SQL injection in user query", File: "db/users.go", Line: 87, Problem: "User input is concatenated into a SQL query.", CodeSnippet: "db.Query(\"... \" + id)"},
+		{Severity: report.SeverityCritical, Title: "Nil dereference on missing session", File: "handlers/session.go", Line: 55, Problem: "session may be nil when the cookie is absent."},
+	}
+	assertGoldenPrompt(t, "verify_claims", buildClaimVerificationPrompt(findings))
+}
+
 // TestBuildProposalStructurePrompt_Golden locks the propose-structuring prompt:
 // the proposal JSON schema, the priority/category/scope vocabularies, and the
 // 5-20 proposal budget.

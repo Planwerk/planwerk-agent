@@ -83,6 +83,10 @@ func (mockClaude) DedupFindings(findings []report.Finding) ([][]int, error) {
 	panic("mockClaude.DedupFindings called unexpectedly")
 }
 
+func (mockClaude) VerifyFindingClaims(dir string, findings []report.Finding) ([]claude.ClaimVerdict, error) {
+	panic("mockClaude.VerifyFindingClaims called unexpectedly")
+}
+
 func (mockClaude) UsageTotals() report.Usage {
 	return report.Usage{}
 }
