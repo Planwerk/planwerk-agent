@@ -27,6 +27,15 @@ Write your entire output in English, whatever language the input is written in �
 
 For EVERY finding, include: a code snippet (the exact problematic lines from the diff) and a concrete suggested fix. Quote the triggering line verbatim; if you cannot, set confidence to "uncertain".
 
+## Severity Ladder
+
+Assign every finding's severity against these definitions:
+
+- BLOCKING: Fundamental architecture or security issues — PR must not be merged
+- CRITICAL: Bugs, security vulnerabilities, severe problems — must be fixed before merge
+- WARNING: Code quality issues, potential problems — should be fixed
+- INFO: Style suggestions, minor improvements — optional
+
 ## Finding Labels
 
 Every finding you report MUST carry these three explicit labels. They are authoritative: the downstream structuring pass transcribes them unchanged and never re-derives them, so a label you omit is a label the report loses.
