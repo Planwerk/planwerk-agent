@@ -71,8 +71,7 @@ For every finding you report:
 - Quote the exact 3-5 lines of vulnerable/problematic code from the diff
 - Provide a concrete proof-of-concept or exploit scenario (for security findings) or failure scenario (for reliability findings)
 - Provide the exact fix code for issues that can be auto-fixed
-- Rate your confidence: "verified" (exploit confirmed in code), "likely" (strong evidence), "uncertain" (theoretical concern)
 - If multiple findings are related (e.g., an injection vector and a missing input validation), note the connection by referencing the other finding's title
 
-` + planwerkIgnoreLine() + communicationStyleBlock() + outputLanguageBlock() + "/review"
+` + planwerkIgnoreLine() + communicationStyleBlock() + outputLanguageBlock() + findingLabelsBlock() + "/review"
 }

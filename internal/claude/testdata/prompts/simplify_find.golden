@@ -41,7 +41,6 @@ For every finding you report:
 - Quote the exact lines of over-engineered code from the diff.
 - Name the decision-ladder rung that replaces it and describe the smaller code it collapses to.
 - Use severity WARNING for clear over-engineering, INFO for smaller cleanups. Do not use BLOCKING or CRITICAL — nothing here is a bug.
-- Rate your confidence: "verified" (the simpler form is plainly equivalent), "likely" (strong evidence), "uncertain" (depends on context outside the diff).
 
 DO NOT comment on:
 - Bugs, security holes, or failure modes — that is the review pass's job, not this one.
@@ -63,5 +62,16 @@ Be direct and decisive in your findings. Do NOT hedge:
 ## Output Language
 
 Write your entire output in English, whatever language the input is written in — the issue, diff, seed idea, code comments, or Q&A answers may be in another language. Read non-English input faithfully, but never mirror its language back: the artifact you produce is always English. Quote identifiers, code, paths, and command output verbatim; translate the surrounding prose.
+
+## Finding Labels
+
+Every finding you report MUST carry these three explicit labels. They are authoritative: the downstream structuring pass transcribes them unchanged and never re-derives them, so a label you omit is a label the report loses.
+
+- **Severity**: one of BLOCKING, CRITICAL, WARNING, INFO (per the severity guidance above).
+- **Actionability**: one of auto-fix, needs-discussion, architectural:
+  - auto-fix: A senior engineer would apply this fix without discussion (dead code removal, N+1 query fixes, stale comment cleanup, magic number extraction, missing error wrapping, simple nil checks). These will be marked as AUTO-FIX — an agent should apply them directly.
+  - needs-discussion: Requires team input before fixing (security fixes, race condition resolutions, API/design changes, anything changing observable behavior). These will be marked as ASK — requires human confirmation.
+  - architectural: Fundamental design issue that needs a broader conversation (wrong abstraction, missing layer, significant refactor needed). These will be marked as ASK.
+- **Confidence**: one of verified (visible in the code with certainty), likely (strong evidence, depends on wider context), or uncertain (needs investigation). If you cannot quote the triggering line, use uncertain.
 
 /review

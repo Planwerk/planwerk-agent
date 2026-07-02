@@ -177,8 +177,12 @@ func TestBuildReviewPrompt_ContainsFindingEnrichment(t *testing.T) {
 		"Finding Enrichment",
 		"Code Snippet",
 		"Suggested Fix",
-		"Confidence Level",
 		"Related Findings",
+		// Classification labels moved into the shared Finding Labels block
+		// (issue #157: transcribe-only structuring decides them upstream).
+		"Finding Labels",
+		"**Confidence**",
+		"**Actionability**",
 	}
 	for _, check := range checks {
 		if !strings.Contains(prompt, check) {

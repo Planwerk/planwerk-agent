@@ -217,19 +217,16 @@ For EVERY finding you report, you MUST include:
 
 3. **Line Range**: When a finding affects multiple lines, specify both the start line and end line.
 
-4. **Confidence Level**: Rate your confidence for each finding:
-   - "verified": You can see the bug/issue directly in the diff with certainty (e.g., nil dereference, SQL injection, wrong return type)
-   - "likely": Strong evidence but depends on context outside the diff (e.g., missing error handling where the caller might handle it)
-   - "uncertain": Potential issue that requires investigation (e.g., possible race condition, performance concern under load)
+4. **Related Findings**: If two or more findings are connected (e.g., a missing nil check and a missing test for that nil check), note the relationship by referencing the other finding's title.
 
-5. **Related Findings**: If two or more findings are connected (e.g., a missing nil check and a missing test for that nil check), note the relationship by referencing the other finding's title.
-
-6. **Fix Options** (REQUIRED for needs-discussion and architectural findings; OMIT for auto-fix):
+5. **Fix Options** (REQUIRED for needs-discussion and architectural findings; OMIT for auto-fix):
    Provide 2-3 alternative approaches (label them A, B, C). For each option supply: ` + "`approach`" + ` (one sentence), ` + "`pros`" + `, ` + "`cons`" + `, ` + "`effort`" + ` (LOW | MED | HIGH), and ` + "`risk_if_skipped`" + ` (what happens if this option is NOT chosen).
    Then pick exactly ONE option as the recommendation in ` + "`recommended_option`" + ` (matching the chosen option's id) and justify it in ` + "`recommendation_reasoning`" + ` (1-2 sentences referencing codebase patterns, the relevant review-pattern source, or project constraints).
    For ` + "`auto-fix`" + ` findings DO NOT emit options — the single ` + "`suggested_fix`" + ` from rule 2 is the entire output.
 
 `)
+
+	sb.WriteString(findingLabelsBlock())
 
 	// Finding limit
 	sb.WriteString(findingBudgetBlock(ctx.MaxFindings))

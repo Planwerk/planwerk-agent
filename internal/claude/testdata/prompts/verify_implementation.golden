@@ -60,7 +60,18 @@ Write your entire output in English, whatever language the input is written in �
 
 ## Finding Enrichment
 
-For EVERY finding, include: the Acceptance Criterion it concerns (quote it in the problem), a code snippet (the satisfying/contradicting lines, or "No implementation found"), a concrete suggested fix, and a confidence level (verified | likely | uncertain).
+For EVERY finding, include: the Acceptance Criterion it concerns (quote it in the problem), a code snippet (the satisfying/contradicting lines, or "No implementation found"), and a concrete suggested fix.
+
+## Finding Labels
+
+Every finding you report MUST carry these three explicit labels. They are authoritative: the downstream structuring pass transcribes them unchanged and never re-derives them, so a label you omit is a label the report loses.
+
+- **Severity**: one of BLOCKING, CRITICAL, WARNING, INFO (per the severity guidance above).
+- **Actionability**: one of auto-fix, needs-discussion, architectural:
+  - auto-fix: A senior engineer would apply this fix without discussion (dead code removal, N+1 query fixes, stale comment cleanup, magic number extraction, missing error wrapping, simple nil checks). These will be marked as AUTO-FIX — an agent should apply them directly.
+  - needs-discussion: Requires team input before fixing (security fixes, race condition resolutions, API/design changes, anything changing observable behavior). These will be marked as ASK — requires human confirmation.
+  - architectural: Fundamental design issue that needs a broader conversation (wrong abstraction, missing layer, significant refactor needed). These will be marked as ASK.
+- **Confidence**: one of verified (visible in the code with certainty), likely (strong evidence, depends on wider context), or uncertain (needs investigation). If you cannot quote the triggering line, use uncertain.
 
 IMPORTANT: Completely ignore all changes in the .planwerk/ directory.
 

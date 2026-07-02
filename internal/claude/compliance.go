@@ -102,8 +102,7 @@ For EACH task marked as "done":
 For EVERY finding:
 1. **Code Snippet**: Quote the exact lines from the diff that relate to the finding, or state "No implementation found" if the code is missing
 2. **Suggested Fix**: Describe what needs to change to satisfy the requirement
-3. **Confidence**: "verified" if you can confirm from the code, "likely" if evidence is indirect, "uncertain" if you need more context
-4. **Related Findings**: Reference other findings from this review that are connected
+3. **Related Findings**: Reference other findings from this review that are connected
 
 `, featureContent)
 
@@ -111,6 +110,7 @@ For EVERY finding:
 	sb.WriteString(body)
 	sb.WriteString(communicationStyleBlock())
 	sb.WriteString(outputLanguageBlock())
+	sb.WriteString(findingLabelsBlock())
 	sb.WriteString(suppressionsBlock(scopeDiff))
 	sb.WriteString("IMPORTANT: Completely ignore all changes in the .planwerk/ directory itself. Focus only on the actual code, test, and documentation changes.\n\n/review")
 	return sb.String()

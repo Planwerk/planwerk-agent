@@ -126,9 +126,10 @@ If your domain has no issues in this diff, return an empty findings array.
 
 	sb.WriteString(`## Finding Enrichment
 
-For EVERY finding, include: a code snippet (the exact problematic lines from the diff), a concrete suggested fix, and a confidence level — "verified" (visible in the diff with certainty), "likely" (strong evidence, depends on wider context), or "uncertain" (needs investigation). Quote the triggering line verbatim; if you cannot, set confidence to "uncertain".
+For EVERY finding, include: a code snippet (the exact problematic lines from the diff) and a concrete suggested fix. Quote the triggering line verbatim; if you cannot, set confidence to "uncertain".
 
 `)
+	sb.WriteString(findingLabelsBlock())
 	sb.WriteString(planwerkIgnoreLine())
 	sb.WriteString("/review")
 

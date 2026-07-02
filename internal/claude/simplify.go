@@ -76,14 +76,13 @@ For every finding you report:
 - Quote the exact lines of over-engineered code from the diff.
 - Name the decision-ladder rung that replaces it and describe the smaller code it collapses to.
 - Use severity WARNING for clear over-engineering, INFO for smaller cleanups. Do not use BLOCKING or CRITICAL — nothing here is a bug.
-- Rate your confidence: "verified" (the simpler form is plainly equivalent), "likely" (strong evidence), "uncertain" (depends on context outside the diff).
 
 DO NOT comment on:
 - Bugs, security holes, or failure modes — that is the review pass's job, not this one.
 - Code style, naming, or formatting.
 - Anything whose removal would change observable behavior.
 
-` + planwerkIgnoreLine() + communicationStyleBlock() + outputLanguageBlock() + "/review"
+` + planwerkIgnoreLine() + communicationStyleBlock() + outputLanguageBlock() + findingLabelsBlock() + "/review"
 }
 
 // simplifyReportHeading is the heading every simplification report opens with.

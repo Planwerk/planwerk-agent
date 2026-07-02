@@ -224,17 +224,23 @@ For EVERY finding you report, you MUST include:
 
 3. **Line Range**: When a finding affects multiple lines, specify both the start line and end line.
 
-4. **Confidence Level**: Rate your confidence for each finding:
-   - "verified": You can see the bug/issue directly in the diff with certainty (e.g., nil dereference, SQL injection, wrong return type)
-   - "likely": Strong evidence but depends on context outside the diff (e.g., missing error handling where the caller might handle it)
-   - "uncertain": Potential issue that requires investigation (e.g., possible race condition, performance concern under load)
+4. **Related Findings**: If two or more findings are connected (e.g., a missing nil check and a missing test for that nil check), note the relationship by referencing the other finding's title.
 
-5. **Related Findings**: If two or more findings are connected (e.g., a missing nil check and a missing test for that nil check), note the relationship by referencing the other finding's title.
-
-6. **Fix Options** (REQUIRED for needs-discussion and architectural findings; OMIT for auto-fix):
+5. **Fix Options** (REQUIRED for needs-discussion and architectural findings; OMIT for auto-fix):
    Provide 2-3 alternative approaches (label them A, B, C). For each option supply: `approach` (one sentence), `pros`, `cons`, `effort` (LOW | MED | HIGH), and `risk_if_skipped` (what happens if this option is NOT chosen).
    Then pick exactly ONE option as the recommendation in `recommended_option` (matching the chosen option's id) and justify it in `recommendation_reasoning` (1-2 sentences referencing codebase patterns, the relevant review-pattern source, or project constraints).
    For `auto-fix` findings DO NOT emit options — the single `suggested_fix` from rule 2 is the entire output.
+
+## Finding Labels
+
+Every finding you report MUST carry these three explicit labels. They are authoritative: the downstream structuring pass transcribes them unchanged and never re-derives them, so a label you omit is a label the report loses.
+
+- **Severity**: one of BLOCKING, CRITICAL, WARNING, INFO (per the severity guidance above).
+- **Actionability**: one of auto-fix, needs-discussion, architectural:
+  - auto-fix: A senior engineer would apply this fix without discussion (dead code removal, N+1 query fixes, stale comment cleanup, magic number extraction, missing error wrapping, simple nil checks). These will be marked as AUTO-FIX — an agent should apply them directly.
+  - needs-discussion: Requires team input before fixing (security fixes, race condition resolutions, API/design changes, anything changing observable behavior). These will be marked as ASK — requires human confirmation.
+  - architectural: Fundamental design issue that needs a broader conversation (wrong abstraction, missing layer, significant refactor needed). These will be marked as ASK.
+- **Confidence**: one of verified (visible in the code with certainty), likely (strong evidence, depends on wider context), or uncertain (needs investigation). If you cannot quote the triggering line, use uncertain.
 
 ## Review Summary
 

@@ -318,6 +318,33 @@ func foldDisciplineRule(baseBranch string) string {
 	return fmt.Sprintf("- NEVER push and NEVER open a pull request — these passes run on the local branch and the finalize step publishes afterwards. NEVER rebase, reorder, drop, or rewrite commits that already exist on the base branch (origin/%[1]s) — only this branch's own commits (origin/%[1]s..HEAD) may be folded.\n", baseBranch)
 }
 
+// findingLabelsBlock returns the "## Finding Labels" section shared by every
+// analysis prompt that feeds structureReview (review, adversarial, specialist,
+// compliance, audit, verify-implementation, simplify-find). Issue #157 makes the
+// structure tier transcribe-only, so classification must happen upstream where
+// the checkout is: this block requires every finding to carry three explicit,
+// authoritative labels the structuring pass copies unchanged. The severity VALUE
+// guidance stays per-builder (simplify forbids BLOCKING/CRITICAL, adversarial
+// steers CRITICAL vs WARNING), so this block only pins the allowed set and defers
+// to "the severity guidance above". The actionability definitions are the ones
+// formerly carried by the structure prompt; the confidence one-liners are the
+// ones formerly duplicated inline in each finder. Severity-level DEFINITIONS are
+// deliberately NOT added here — that is issue #158's severityLadderBlock().
+func findingLabelsBlock() string {
+	return `## Finding Labels
+
+Every finding you report MUST carry these three explicit labels. They are authoritative: the downstream structuring pass transcribes them unchanged and never re-derives them, so a label you omit is a label the report loses.
+
+- **Severity**: one of BLOCKING, CRITICAL, WARNING, INFO (per the severity guidance above).
+- **Actionability**: one of auto-fix, needs-discussion, architectural:
+  - auto-fix: A senior engineer would apply this fix without discussion (dead code removal, N+1 query fixes, stale comment cleanup, magic number extraction, missing error wrapping, simple nil checks). These will be marked as AUTO-FIX — an agent should apply them directly.
+  - needs-discussion: Requires team input before fixing (security fixes, race condition resolutions, API/design changes, anything changing observable behavior). These will be marked as ASK — requires human confirmation.
+  - architectural: Fundamental design issue that needs a broader conversation (wrong abstraction, missing layer, significant refactor needed). These will be marked as ASK.
+- **Confidence**: one of verified (visible in the code with certainty), likely (strong evidence, depends on wider context), or uncertain (needs investigation). If you cannot quote the triggering line, use uncertain.
+
+`
+}
+
 // jsonSchemaOnlyLine returns the one-line directive that precedes an inline JSON
 // schema in every structuring builder (structure, propose, elaborate,
 // gapanalysis, reviewprepared, coverage, rebase analysis) — the second Claude

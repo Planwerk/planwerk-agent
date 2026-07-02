@@ -98,7 +98,7 @@ func TestBuildAuditPrompt_OmitsMaxFindingsWhenZero(t *testing.T) {
 
 func TestBuildAuditPrompt_IncludesEnrichmentRules(t *testing.T) {
 	prompt := buildAuditPrompt(audit.AuditContext{})
-	for _, c := range []string{"Code Snippet", "Suggested Fix", "Confidence Level", "Related Findings", "Pattern"} {
+	for _, c := range []string{"Code Snippet", "Suggested Fix", "Finding Labels", "**Confidence**", "Related Findings", "Pattern"} {
 		if !strings.Contains(prompt, c) {
 			t.Errorf("audit prompt should include enrichment field %q", c)
 		}

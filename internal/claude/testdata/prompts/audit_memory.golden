@@ -153,9 +153,19 @@ For EVERY finding you report, you MUST include:
 1. **Code Snippet**: Quote the exact 3-5 lines of problematic code. Preserve original indentation.
 2. **Suggested Fix**: For auto-fix findings, provide the EXACT replacement code (no markdown fences, no comments, preserve indentation, no placeholders). For needs-discussion and architectural findings, describe the fix approach concretely.
 3. **Line Range**: Specify start and end line when the finding spans multiple lines.
-4. **Confidence Level**: "verified" (visible in code), "likely" (strong evidence, depends on wider context), or "uncertain" (requires further investigation).
-5. **Related Findings**: Reference related findings by their exact title.
-6. **Pattern**: If the finding violates one of the review patterns above, set "pattern" to the exact pattern name.
+4. **Related Findings**: Reference related findings by their exact title.
+5. **Pattern**: If the finding violates one of the review patterns above, set "pattern" to the exact pattern name.
+
+## Finding Labels
+
+Every finding you report MUST carry these three explicit labels. They are authoritative: the downstream structuring pass transcribes them unchanged and never re-derives them, so a label you omit is a label the report loses.
+
+- **Severity**: one of BLOCKING, CRITICAL, WARNING, INFO (per the severity guidance above).
+- **Actionability**: one of auto-fix, needs-discussion, architectural:
+  - auto-fix: A senior engineer would apply this fix without discussion (dead code removal, N+1 query fixes, stale comment cleanup, magic number extraction, missing error wrapping, simple nil checks). These will be marked as AUTO-FIX — an agent should apply them directly.
+  - needs-discussion: Requires team input before fixing (security fixes, race condition resolutions, API/design changes, anything changing observable behavior). These will be marked as ASK — requires human confirmation.
+  - architectural: Fundamental design issue that needs a broader conversation (wrong abstraction, missing layer, significant refactor needed). These will be marked as ASK.
+- **Confidence**: one of verified (visible in the code with certainty), likely (strong evidence, depends on wider context), or uncertain (needs investigation). If you cannot quote the triggering line, use uncertain.
 
 ## Finding Budget
 

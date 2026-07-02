@@ -137,11 +137,11 @@ For EVERY finding you report, you MUST include:
 1. **Code Snippet**: Quote the exact 3-5 lines of problematic code. Preserve original indentation.
 2. **Suggested Fix**: For auto-fix findings, provide the EXACT replacement code (no markdown fences, no comments, preserve indentation, no placeholders). For needs-discussion and architectural findings, describe the fix approach concretely.
 3. **Line Range**: Specify start and end line when the finding spans multiple lines.
-4. **Confidence Level**: "verified" (visible in code), "likely" (strong evidence, depends on wider context), or "uncertain" (requires further investigation).
-5. **Related Findings**: Reference related findings by their exact title.
-6. **Pattern**: If the finding violates one of the review patterns above, set "pattern" to the exact pattern name.
+4. **Related Findings**: Reference related findings by their exact title.
+5. **Pattern**: If the finding violates one of the review patterns above, set "pattern" to the exact pattern name.
 
 `)
+	sb.WriteString(findingLabelsBlock())
 
 	// Finding limit
 	sb.WriteString(findingBudgetBlock(ctx.MaxFindings))
