@@ -96,11 +96,15 @@ func BuildRebaseConflictPrompt(ctx rebase.ConflictContext) string {
 1. For each conflicted file, open it and read the conflict markers. Use git to inspect both sides and the upstream commit that changed them.
 2. Produce a resolution that keeps the replayed commit's intent AND the upstream change. Reconcile renamed symbols, changed signatures, removed helpers, and reformatted code — do not regress either side.
 3. Verify the resolved files parse / compile where you can run the toolchain locally.
-4. Stage every resolved file:
+4. Verify no conflict markers remain before staging — this command MUST print nothing:
+
+   grep -nE '^(<<<<<<<|=======|>>>>>>>)' -- <each resolved file>
+
+5. Stage every resolved file:
 
    git add -- <each resolved file>
 
-5. Output a one-paragraph summary of how you reconciled each file.
+6. Output a one-paragraph summary of how you reconciled each file.
 
 ## Hard rules
 
