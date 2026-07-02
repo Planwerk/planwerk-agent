@@ -337,7 +337,7 @@ func WithInheritUserConfig(b bool) Option {
 // and their repair recovery — use runClaudeStructure for the dedicated cheap
 // tier instead.
 func (c *Client) runClaude(dir, prompt, label string) (text, model string, err error) {
-	return c.runClaudeWithPermission(dir, prompt, label, "", c.model, c.effort, true)
+	return c.runClaudeWithPermission(dir, prompt, label, "", c.model, c.effort, true, "")
 }
 
 // runClaudePlan is runClaude on the dedicated planning model (planModel,
@@ -348,7 +348,7 @@ func (c *Client) runClaude(dir, prompt, label string) (text, model string, err e
 // thinks at the largest budget — the one session where that depth steers the
 // whole implementation.
 func (c *Client) runClaudePlan(dir, prompt, label string) (text, model string, err error) {
-	return c.runClaudeWithPermission(dir, prompt, label, "", c.planModel, c.planEffort, true)
+	return c.runClaudeWithPermission(dir, prompt, label, "", c.planModel, c.planEffort, true, "")
 }
 
 // runClaudeStructure is runClaude on the dedicated structuring tier
@@ -359,7 +359,18 @@ func (c *Client) runClaudePlan(dir, prompt, label string) (text, model string, e
 // rather than the heavy reasoning model the upstream call used. The
 // decodeJSONWithRepair backstop guards malformed output.
 func (c *Client) runClaudeStructure(prompt, label string) (text, model string, err error) {
-	return c.runClaudeWithPermission("", prompt, label, "", c.structureModel, c.structureEffort, true)
+	return c.runClaudeStructureWithSchema(prompt, label, "")
+}
+
+// runClaudeStructureWithSchema is runClaudeStructure that additionally passes a
+// JSON Schema to the CLI via --json-schema, constraining the structured output
+// to that shape. Only the review structuring pass uses it (with
+// schema.StructuredReview); every other structuring caller uses the schema-less
+// runClaudeStructure, since the CLI's schema enforcement is a hard constraint we
+// only want where a stable wire contract exists. decodeJSONWithRepair still
+// backstops the decode either way.
+func (c *Client) runClaudeStructureWithSchema(prompt, label, jsonSchema string) (text, model string, err error) {
+	return c.runClaudeWithPermission("", prompt, label, "", c.structureModel, c.structureEffort, true, jsonSchema)
 }
 
 // runClaudeAuto is runClaude with claudeAutoPermissionMode, letting the
@@ -369,7 +380,7 @@ func (c *Client) runClaudeStructure(prompt, label string) (text, model string, e
 // push a feature branch, and open a PR without a human confirming each
 // step. The auto-mode classifier still vets every action.
 func (c *Client) runClaudeAuto(dir, prompt, label string) (text, model string, err error) {
-	return c.runClaudeWithPermission(dir, prompt, label, claudeAutoPermissionMode, c.model, c.effort, false)
+	return c.runClaudeWithPermission(dir, prompt, label, claudeAutoPermissionMode, c.model, c.effort, false, "")
 }
 
 // runClaudeWithPermission is the shared implementation behind runClaude,
@@ -389,9 +400,9 @@ func (c *Client) runClaudeAuto(dir, prompt, label string) (text, model string, e
 // runClaudeStream, which uses --output-format stream-json --verbose and
 // surfaces output incrementally; the periodic heartbeat is skipped in that
 // mode because the stream itself is the heartbeat.
-func (c *Client) runClaudeWithPermission(dir, prompt, label, permissionMode, model, effort string, readOnly bool) (string, string, error) {
+func (c *Client) runClaudeWithPermission(dir, prompt, label, permissionMode, model, effort string, readOnly bool, jsonSchema string) (string, string, error) {
 	if c.showOutput {
-		return c.runClaudeStream(dir, prompt, label, permissionMode, model, effort, readOnly)
+		return c.runClaudeStream(dir, prompt, label, permissionMode, model, effort, readOnly, jsonSchema)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
@@ -408,6 +419,9 @@ func (c *Client) runClaudeWithPermission(dir, prompt, label, permissionMode, mod
 	}
 	if permissionMode != "" {
 		args = append(args, "--permission-mode", permissionMode)
+	}
+	if jsonSchema != "" {
+		args = append(args, "--json-schema", jsonSchema)
 	}
 	args = c.hermeticArgs(args)
 	args = withReadOnlyDenied(args, readOnly)
@@ -438,6 +452,13 @@ func (c *Client) runClaudeWithPermission(dir, prompt, label, permissionMode, mod
 
 type claudeResponse struct {
 	Result string `json:"result"`
+	// StructuredOutput carries the schema-validated object the CLI produces when
+	// invoked with --json-schema. It is preferred over Result when present so a
+	// structuring pass reads the constrained output directly; when the flag was
+	// not passed (or the CLI carries the object in Result instead) it stays nil
+	// and extractText falls back to Result. Captured raw and stringified in
+	// extractText, so an envelope that omits it costs nothing.
+	StructuredOutput json.RawMessage `json:"structured_output,omitempty"`
 	// Model is the resolved model id the CLI reports in the JSON envelope
 	// (e.g. "claude-opus-4-8"). It is the non-streaming counterpart of the
 	// streamEvent init model and feeds the attribution footers.
@@ -470,7 +491,19 @@ func extractText(raw []byte) (text, model string, usage tokenUsage, cost float64
 	// result the envelope carried fine.
 	_ = json.Unmarshal(resp.Usage, &usage)
 	_ = json.Unmarshal(resp.TotalCostUSD, &cost)
-	return resp.Result, resp.Model, usage, cost, nil
+	return preferStructuredOutput(resp.StructuredOutput, resp.Result), resp.Model, usage, cost, nil
+}
+
+// preferStructuredOutput returns the CLI's schema-validated structured_output as
+// text when it is present, falling back to result otherwise. It is defensive
+// against either envelope variant: --json-schema may surface the object in
+// structured_output, or the CLI may leave it in result. A literal JSON null in
+// structured_output is treated as absent.
+func preferStructuredOutput(structured json.RawMessage, result string) string {
+	if s := strings.TrimSpace(string(structured)); s != "" && s != "null" {
+		return s
+	}
+	return result
 }
 
 // head returns the first n bytes of b, or all of b when it is shorter. It

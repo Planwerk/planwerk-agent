@@ -1,0 +1,17 @@
+{
+  "findings": [
+    {
+      "id": "",
+      "severity": "",
+      "title": "Possible race on shared counter",
+      "file": "worker.go",
+      "actionability": "",
+      "confidence": "",
+      "problem": "The counter is incremented from two goroutines.",
+      "action": "Guard the counter with a mutex."
+    }
+  ],
+  "summary": "One finding the source review left unlabeled.",
+  "recommendation": "Review the flagged counter.",
+  "source_finding_count": 1
+}

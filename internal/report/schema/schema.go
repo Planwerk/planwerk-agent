@@ -50,3 +50,15 @@ var Draft []byte
 //
 //go:embed address-result.schema.json
 var AddressResult []byte
+
+// StructuredReview is the JSON Schema (draft 2020-12) for the review structuring
+// pass's output. Like AddressResult it is a per-run wire contract, not a
+// `--format json` stdout payload: the review pipeline passes it to the CLI via
+// --json-schema so the transcribe-only structure tier is constrained to the
+// report shape. It mirrors report.ReviewResult plus source_finding_count, minus
+// the Go-derived and pipeline-set fields the structure tier never emits, with
+// the classification enums widened by the empty string so an unlabeled finding
+// is representable at the wire level.
+//
+//go:embed structured-review.schema.json
+var StructuredReview []byte
