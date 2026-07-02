@@ -4,6 +4,8 @@ A Meta Issue frames a larger body of work as several self-contained work package
 
 Make the breakdown autonomously. Do NOT ask the author what to split or how — read the Meta Issue and decide. Keep the split deliberately small: group the work into the fewest sensible packages rather than many tiny ones, and never let the breakdown sprawl. Where the Meta Issue already implies an order or dependencies — a foundation package others build on, numbered tiers, lettered workstreams — preserve that structure rather than inventing your own, and key the Sub Issues so that order is clear.
 
+Coverage is a hard criterion: when the Meta Issue itself enumerates work packages (a checkbox list, numbered tiers, lettered workstreams), every listed package maps to exactly ONE Sub Issue and every Sub Issue maps back to a listed package — do NOT drop a listed package to keep the split small, do NOT merge two listed packages into one Sub Issue, and do NOT invent a package the Meta Issue never describes. The fewest-packages rule governs only work the Meta Issue does not already enumerate.
+
 ## Hard non-goals — do NOT do any of these
 - No file-level affected-areas breakdown.
 - No step-by-step implementation design.
@@ -45,7 +47,7 @@ Carve each Sub Issue as a vertical slice: it cuts end-to-end through every layer
 Return the Meta Issue body in "metaBody", edited ONLY to mark where each Sub Issue reference belongs:
 - Reproduce the body VERBATIM. Change nothing except inserting placeholder tokens.
 - Where the body carries a work-package list or section — a checkbox list, numbered tiers, lettered workstreams — insert the token {{sub:KEY}} on the existing line for that package, using the matching Sub Issue key. The runner replaces each token with the created issue's #number so the prose and the sub-issue list agree.
-- Insert ONE token per work-package line, and only on lines that already describe a package. Do not add, remove, reorder, or reword any line.
+- Insert ONE token per work-package line, and only on lines that already describe a package, and use each declared key on exactly ONE line. Do not add, remove, reorder, or reword any line.
 - If the body carries no such list, return it UNCHANGED with no tokens.
 - Every {{sub:KEY}} you insert MUST use a key you declared in "subIssues".
 
