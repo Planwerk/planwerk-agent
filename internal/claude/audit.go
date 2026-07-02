@@ -141,6 +141,7 @@ For EVERY finding you report, you MUST include:
 5. **Pattern**: If the finding violates one of the review patterns above, set "pattern" to the exact pattern name.
 
 `)
+	sb.WriteString(severityLadderBlock(scopeCodebase))
 	sb.WriteString(findingLabelsBlock())
 
 	// Finding limit

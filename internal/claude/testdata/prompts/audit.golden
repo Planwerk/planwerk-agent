@@ -140,6 +140,15 @@ For EVERY finding you report, you MUST include:
 4. **Related Findings**: Reference related findings by their exact title.
 5. **Pattern**: If the finding violates one of the review patterns above, set "pattern" to the exact pattern name.
 
+## Severity Ladder
+
+Assign every finding's severity against these definitions:
+
+- BLOCKING: Fundamental architecture or security issues
+- CRITICAL: Bugs, security vulnerabilities, severe problems
+- WARNING: Code quality issues, potential problems — should be fixed
+- INFO: Style suggestions, minor improvements — optional
+
 ## Finding Labels
 
 Every finding you report MUST carry these three explicit labels. They are authoritative: the downstream structuring pass transcribes them unchanged and never re-derives them, so a label you omit is a label the report loses.

@@ -232,6 +232,15 @@ For EVERY finding you report, you MUST include:
    Then pick exactly ONE option as the recommendation in `recommended_option` (matching the chosen option's id) and justify it in `recommendation_reasoning` (1-2 sentences referencing codebase patterns, the relevant review-pattern source, or project constraints).
    For `auto-fix` findings DO NOT emit options — the single `suggested_fix` from rule 2 is the entire output.
 
+## Severity Ladder
+
+Assign every finding's severity against these definitions:
+
+- BLOCKING: Fundamental architecture or security issues — PR must not be merged
+- CRITICAL: Bugs, security vulnerabilities, severe problems — must be fixed before merge
+- WARNING: Code quality issues, potential problems — should be fixed
+- INFO: Style suggestions, minor improvements — optional
+
 ## Finding Labels
 
 Every finding you report MUST carry these three explicit labels. They are authoritative: the downstream structuring pass transcribes them unchanged and never re-derives them, so a label you omit is a label the report loses.

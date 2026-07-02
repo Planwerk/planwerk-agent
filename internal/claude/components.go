@@ -318,6 +318,34 @@ func foldDisciplineRule(baseBranch string) string {
 	return fmt.Sprintf("- NEVER push and NEVER open a pull request — these passes run on the local branch and the finalize step publishes afterwards. NEVER rebase, reorder, drop, or rewrite commits that already exist on the base branch (origin/%[1]s) — only this branch's own commits (origin/%[1]s..HEAD) may be folded.\n", baseBranch)
 }
 
+// severityLadderBlock returns the "## Severity Ladder" section that defines the
+// four levels every finding-producing prompt asks for (BLOCKING, CRITICAL,
+// WARNING, INFO). The definitions lived only in the pre-#157 structure prompt,
+// which #157 made transcribe-only; decision 56 deferred re-homing them to this
+// block, which each finder now includes just above findingLabelsBlock() so the
+// "per the severity guidance above" reference resolves.
+//
+// The two diff-only consequence tails ("— PR must not be merged", "— must be
+// fixed before merge") are emitted only for scopeDiff, where a merge decision
+// exists; the codebase audit (scopeCodebase) omits them rather than inventing
+// audit-specific wording — the same omit-don't-rewrite mechanism as
+// suppressionsBlock. For scopeDiff this reproduces the recovered structure
+// rubric verbatim.
+func severityLadderBlock(scope promptScope) string {
+	blocking := "BLOCKING: Fundamental architecture or security issues"
+	critical := "CRITICAL: Bugs, security vulnerabilities, severe problems"
+	if scope == scopeDiff {
+		blocking += " — PR must not be merged"
+		critical += " — must be fixed before merge"
+	}
+	return "## Severity Ladder\n\n" +
+		"Assign every finding's severity against these definitions:\n\n" +
+		"- " + blocking + "\n" +
+		"- " + critical + "\n" +
+		"- WARNING: Code quality issues, potential problems — should be fixed\n" +
+		"- INFO: Style suggestions, minor improvements — optional\n\n"
+}
+
 // findingLabelsBlock returns the "## Finding Labels" section shared by every
 // analysis prompt that feeds structureReview (review, adversarial, specialist,
 // compliance, audit, verify-implementation, simplify-find). Issue #157 makes the
@@ -328,8 +356,9 @@ func foldDisciplineRule(baseBranch string) string {
 // steers CRITICAL vs WARNING), so this block only pins the allowed set and defers
 // to "the severity guidance above". The actionability definitions are the ones
 // formerly carried by the structure prompt; the confidence one-liners are the
-// ones formerly duplicated inline in each finder. Severity-level DEFINITIONS are
-// deliberately NOT added here — that is issue #158's severityLadderBlock().
+// ones formerly duplicated inline in each finder. Severity-level DEFINITIONS live
+// in the companion severityLadderBlock(), which each caller includes just above
+// this block so the "per the severity guidance above" reference resolves.
 func findingLabelsBlock() string {
 	return `## Finding Labels
 

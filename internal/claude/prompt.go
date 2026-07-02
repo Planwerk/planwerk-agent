@@ -226,6 +226,7 @@ For EVERY finding you report, you MUST include:
 
 `)
 
+	sb.WriteString(severityLadderBlock(scopeDiff))
 	sb.WriteString(findingLabelsBlock())
 
 	// Finding limit
