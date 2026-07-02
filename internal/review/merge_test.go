@@ -247,6 +247,121 @@ func TestMergeResults_NoSecondBoostBeyondTwoPasses(t *testing.T) {
 	}
 }
 
+func TestMergeResults_FuzzyTitleAndLineMatch(t *testing.T) {
+	// Independently worded passes rarely produce byte-identical titles or land
+	// on the exact same line; the fuzzy matcher must still fold them together.
+	primary := &report.ReviewResult{
+		Findings: []report.Finding{
+			{ID: "C-001", Severity: report.SeverityCritical, File: "svc.go", Line: 42,
+				Title: "nil pointer dereference in Foo", Confidence: report.ConfidenceLikely, ConfirmedBy: []string{passReview}},
+		},
+	}
+	adv := &report.ReviewResult{
+		Findings: []report.Finding{
+			{Severity: report.SeverityCritical, File: "svc.go", Line: 44,
+				Title: "nil dereference in Foo", ConfirmedBy: []string{passAdversarial}},
+		},
+	}
+	result := mergeResults(primary, adv)
+	if len(result.Findings) != 1 {
+		t.Fatalf("expected 1 merged finding, got %d", len(result.Findings))
+	}
+	f := result.Findings[0]
+	if len(f.ConfirmedBy) != 2 {
+		t.Errorf("expected 2 confirming passes, got %v", f.ConfirmedBy)
+	}
+	if f.Confidence != report.ConfidenceVerified {
+		t.Errorf("expected confidence boosted likely->verified, got %q", f.Confidence)
+	}
+}
+
+func TestFindMatchIndex(t *testing.T) {
+	tests := []struct {
+		name     string
+		existing []report.Finding
+		sf       report.Finding
+		want     int
+	}{
+		{
+			name:     "different file never matches",
+			existing: []report.Finding{{File: "a.go", Line: 10, Title: "leak"}},
+			sf:       report.Finding{File: "b.go", Line: 10, Title: "leak"},
+			want:     -1,
+		},
+		{
+			name:     "same file distant lines never matches",
+			existing: []report.Finding{{File: "a.go", Line: 42, Title: "off by one"}},
+			sf:       report.Finding{File: "a.go", Line: 90, Title: "off by one"},
+			want:     -1,
+		},
+		{
+			name:     "low token overlap never matches",
+			existing: []report.Finding{{File: "a.go", Line: 10, Title: "missing nil check"}},
+			sf:       report.Finding{File: "a.go", Line: 10, Title: "auth bypass vector"},
+			want:     -1,
+		},
+		{
+			name:     "both line-less falls back to title similarity",
+			existing: []report.Finding{{File: "a.go", Title: "goroutine leak in worker"}},
+			sf:       report.Finding{File: "a.go", Title: "leak of goroutine in worker"},
+			want:     0,
+		},
+		{
+			name:     "one-sided line does not match",
+			existing: []report.Finding{{File: "a.go", Line: 42, Title: "goroutine leak"}},
+			sf:       report.Finding{File: "a.go", Line: 0, Title: "goroutine leak"},
+			want:     -1,
+		},
+		{
+			name:     "file-less secondary never matches",
+			existing: []report.Finding{{File: "a.go", Line: 10, Title: "leak"}},
+			sf:       report.Finding{File: "", Line: 10, Title: "leak"},
+			want:     -1,
+		},
+		{
+			name: "multiple candidates picks closest line among equal similarity",
+			existing: []report.Finding{
+				{File: "a.go", Line: 40, Title: "nil deref"},
+				{File: "a.go", Line: 43, Title: "nil deref"},
+			},
+			sf:   report.Finding{File: "a.go", Line: 44, Title: "nil deref"},
+			want: 1,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := findMatchIndex(tc.existing, tc.sf); got != tc.want {
+				t.Errorf("findMatchIndex = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestMergeFindingPair_PreservesSemantics(t *testing.T) {
+	kept := report.Finding{
+		ID: "W-001", Severity: report.SeverityWarning, File: "a.go", Line: 10,
+		Title: "weak check", CodeSnippet: "x := 1", SuggestedFix: "x := 2",
+		ConfirmedBy: []string{passReview},
+	}
+	dup := report.Finding{
+		Severity: report.SeverityCritical, File: "a.go", Line: 10, Title: "weak check",
+		ConfirmedBy: []string{passAdversarial},
+	}
+	got := mergeFindingPair(kept, dup)
+	if got.Severity != report.SeverityCritical {
+		t.Errorf("higher severity must be adopted, got %s", got.Severity)
+	}
+	if got.ID != "W-001" {
+		t.Errorf("kept ID must be preserved, got %s", got.ID)
+	}
+	if got.CodeSnippet != "x := 1" || got.SuggestedFix != "x := 2" {
+		t.Errorf("enrichment must be preserved, got snippet=%q fix=%q", got.CodeSnippet, got.SuggestedFix)
+	}
+	if len(got.ConfirmedBy) != 2 {
+		t.Errorf("expected 2 confirming passes, got %v", got.ConfirmedBy)
+	}
+}
+
 func TestTagPass_OnlyFillsEmpty(t *testing.T) {
 	r := &report.ReviewResult{
 		Findings: []report.Finding{
