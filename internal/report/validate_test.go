@@ -85,3 +85,24 @@ func TestReviewResultValidate(t *testing.T) {
 		}
 	})
 }
+
+// TestValidationRules_MatchEnforcedRules is a light drift guard binding
+// ValidationRules to what Validate actually rejects: for every rule there is a
+// finding Validate flags. It does not parse rule text — it just asserts the
+// three-rule set and that each enforced dimension is covered.
+func TestValidationRules_MatchEnforcedRules(t *testing.T) {
+	rules := ValidationRules()
+	if len(rules) != 3 {
+		t.Fatalf("expected 3 validation rules, got %d: %v", len(rules), rules)
+	}
+	violations := []Finding{
+		{Title: "", Severity: SeverityInfo, Confidence: ConfidenceLikely}, // empty title
+		{Title: "t", Severity: "NOPE", Confidence: ConfidenceLikely},      // bad severity
+		{Title: "t", Severity: SeverityInfo, Confidence: "maybe"},         // bad confidence
+	}
+	for i, f := range violations {
+		if err := f.Validate(); err == nil {
+			t.Errorf("violation %d should be rejected by Validate", i)
+		}
+	}
+}

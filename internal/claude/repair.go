@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
 // repairJSON asks Claude to fix malformed JSON, feeding the parse error back so
@@ -128,16 +130,21 @@ Fix the JSON so it is valid. Output ONLY the corrected JSON, nothing else.
 
 // buildValidationRepairPrompt asks Claude to fix JSON that is well-formed but
 // violates the finding schema, using the validation error to pinpoint the fix.
+// The rule bullets are derived from report.ValidationRules so they cannot drift
+// from what report.Validate actually enforces.
 func buildValidationRepairPrompt(invalidJSON string, validationErr error) string {
+	var rules strings.Builder
+	for _, r := range report.ValidationRules() {
+		rules.WriteString("- ")
+		rules.WriteString(r)
+		rules.WriteString("\n")
+	}
 	return `The following JSON is valid JSON but violates the finding schema. The validator reported this error:
 
 ` + validationErr.Error() + `
 
 Fix the offending finding so every finding satisfies these rules:
-- "title" must be a non-empty string.
-- "severity" must be one of BLOCKING, CRITICAL, WARNING, INFO.
-- "confidence" must be one of verified, likely, uncertain.
-
+` + rules.String() + `
 Do not invent new findings or drop existing ones. Output ONLY the corrected JSON, nothing else.
 
 <invalid-json>

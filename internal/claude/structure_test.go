@@ -177,6 +177,18 @@ func TestWarnOnDroppedFindings(t *testing.T) {
 	}
 }
 
+// TestValidationRepairPromptUsesValidationRules binds the schema-repair prompt
+// to report.ValidationRules: every rule string must appear verbatim in the
+// prompt, so the two cannot drift.
+func TestValidationRepairPromptUsesValidationRules(t *testing.T) {
+	prompt := buildValidationRepairPrompt(`{"findings":[]}`, errors.New("finding 0: title is empty"))
+	for _, rule := range report.ValidationRules() {
+		if !strings.Contains(prompt, rule) {
+			t.Errorf("validation-repair prompt should contain the rule %q verbatim", rule)
+		}
+	}
+}
+
 func TestNormalizeTranscribedLabels(t *testing.T) {
 	restore := slogWarnFn
 	warns := 0
