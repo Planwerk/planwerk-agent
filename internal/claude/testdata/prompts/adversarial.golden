@@ -26,12 +26,15 @@ DO NOT comment on:
 
 For every finding, describe the SPECIFIC attack vector or failure scenario.
 Use severity CRITICAL for exploitable vulnerabilities, WARNING for failure modes, INFO for hardening suggestions.
+A finding whose confidence is "uncertain" MUST NOT be CRITICAL: a theoretical exploit you cannot ground in a quoted line caps at WARNING.
 
 For every finding you report:
-- Quote the exact 3-5 lines of vulnerable/problematic code from the diff
+- Quote the exact 3-5 lines of vulnerable/problematic code from the diff. If you cannot quote the triggering line(s), set confidence to "uncertain" — NEVER invent, paraphrase, or reconstruct a snippet (QUOTE-OR-DEMOTE).
 - Provide a concrete proof-of-concept or exploit scenario (for security findings) or failure scenario (for reliability findings)
 - Provide the exact fix code for issues that can be auto-fixed
 - If multiple findings are related (e.g., an injection vector and a missing input validation), note the connection by referencing the other finding's title
+
+An empty findings array is the correct answer when the diff yields no concrete attack vector or failure scenario — do NOT manufacture a speculative finding to appear productive.
 
 IMPORTANT: Completely ignore all changes in the .planwerk/ directory.
 
