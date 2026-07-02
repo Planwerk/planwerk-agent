@@ -265,6 +265,8 @@ Recommendation: <merge | merge after fixes | do not merge> because <name the sin
 
 The reason MUST name a specific finding and what it breaks. Generic justifications — "because it's safer", "to improve quality", "follows best practice", "because it's cleaner" — are not acceptable; if you cannot name a specific blocking finding, recommend merge.
 
+A zero-finding review is a valid outcome: when the diff is clean after the full checklist, report an empty findings list, say the PR is clean in the summary, and recommend merge — do NOT invent a finding to appear productive.
+
 IMPORTANT: Completely ignore all changes in the .planwerk/ directory. Do not create any findings for files inside .planwerk/. These are project management artifacts that are always expected in the diff.
 
 /review
