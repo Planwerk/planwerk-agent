@@ -255,6 +255,7 @@ func populatedFinding() report.Finding {
 		RecommendationReasoning: "Prepared statements are the standard fix.",
 		RelatedTo:               []string{"B-001"},
 		ConfirmedBy:             []string{"review", "adversarial"},
+		VerificationNote:        "refuted: the input is already parameterized at db/users.go:80",
 	}
 }
 

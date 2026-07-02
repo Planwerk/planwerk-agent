@@ -106,6 +106,7 @@ Each finding includes additional metadata for tooling and automation:
 | **SuggestedFix** | Concrete replacement code for auto-fix findings |
 | **RelatedTo** | IDs of related findings (e.g., `["B-001", "C-003"]`) |
 | **LineEnd** | End line for multi-line findings (enables line-range comments) |
+| **VerificationNote** | Set only by the claim-verification pass: why a BLOCKING/CRITICAL finding was refuted (e.g. `refuted: guarded at line 50`). A finding that carries it is demoted to `uncertain` confidence and routed to the Unverified / Low-Confidence section, and the Markdown report renders it as a `**Claim check**:` line. |
 
 ## Machine-Readable Output
 

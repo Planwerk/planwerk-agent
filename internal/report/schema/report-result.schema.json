@@ -59,7 +59,8 @@
         "confirmed_by": {
           "type": "array",
           "items": { "type": "string" }
-        }
+        },
+        "verification_note": { "type": "string" }
       }
     },
     "fixOption": {

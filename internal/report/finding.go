@@ -198,6 +198,12 @@ type Finding struct {
 	// renderer marks it as cross-pass confirmed. It is provenance the model
 	// never sets — the merge step assigns it.
 	ConfirmedBy []string `json:"confirmed_by,omitempty"`
+	// VerificationNote records why the claim-verification pass refuted a
+	// BLOCKING/CRITICAL finding, paired with a demotion to uncertain confidence.
+	// It is set only by the review pipeline's claim-verification step — the model
+	// never populates it at structure time — and routes the demoted finding into
+	// the Unverified section.
+	VerificationNote string `json:"verification_note,omitempty"`
 }
 
 type ReviewResult struct {

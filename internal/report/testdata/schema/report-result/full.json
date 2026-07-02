@@ -69,6 +69,17 @@
       "confidence": "uncertain",
       "problem": "The three near-identical test functions could be table-driven.",
       "action": "Collapse the cases into a single table-driven test."
+    },
+    {
+      "id": "C-002",
+      "severity": "CRITICAL",
+      "title": "Nil dereference on missing session",
+      "file": "handlers/session.go",
+      "line": 55,
+      "confidence": "uncertain",
+      "problem": "session may be nil when the cookie is absent.",
+      "action": "Guard against a nil session before dereferencing it.",
+      "verification_note": "refuted: handlers/session.go:50 returns early when session is nil"
     }
   ],
   "summary": "The change introduces authentication but ships a hardcoded secret and an SQL injection that must be fixed before merge.",

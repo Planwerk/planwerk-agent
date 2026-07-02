@@ -138,6 +138,9 @@ func (r *Renderer) renderFinding(f Finding, last bool) {
 	}
 	_, _ = fmt.Fprintln(r.w, meta)
 	_, _ = fmt.Fprintln(r.w)
+	if f.VerificationNote != "" {
+		_, _ = fmt.Fprintf(r.w, "**Claim check**: %s\n\n", f.VerificationNote)
+	}
 	_, _ = fmt.Fprintf(r.w, "**Problem**: %s\n\n", f.Problem)
 	if f.CodeSnippet != "" {
 		_, _ = fmt.Fprintf(r.w, "**Code**:\n```\n%s\n```\n\n", f.CodeSnippet)

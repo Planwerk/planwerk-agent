@@ -34,6 +34,42 @@ func TestRenderMarkdown_WikiProvenance(t *testing.T) {
 	})
 }
 
+// TestRenderMarkdown_ClaimCheck verifies a refuted finding renders its
+// verification note as a Claim check line, and that a finding without one omits
+// the line entirely.
+func TestRenderMarkdown_ClaimCheck(t *testing.T) {
+	pr := PRInfo{Owner: "acme", Repo: "widgets", Number: 7, Title: "PR"}
+
+	t.Run("renders the claim check line for a refuted finding", func(t *testing.T) {
+		result := ReviewResult{
+			Findings: []Finding{{
+				ID: "C-001", Severity: SeverityCritical, Title: "Nil deref",
+				Confidence: ConfidenceUncertain, Problem: "p", Action: "a",
+				VerificationNote: "refuted: guarded at line 50",
+			}},
+		}
+		var buf bytes.Buffer
+		NewRenderer(&buf).RenderMarkdown(result, pr, SeverityInfo, "", "v1")
+		if !strings.Contains(buf.String(), "**Claim check**: refuted: guarded at line 50") {
+			t.Errorf("expected the claim check line, got:\n%s", buf.String())
+		}
+	})
+
+	t.Run("omits the claim check line without a note", func(t *testing.T) {
+		result := ReviewResult{
+			Findings: []Finding{{
+				ID: "C-001", Severity: SeverityCritical, Title: "Nil deref",
+				Confidence: ConfidenceVerified, Problem: "p", Action: "a",
+			}},
+		}
+		var buf bytes.Buffer
+		NewRenderer(&buf).RenderMarkdown(result, pr, SeverityInfo, "", "v1")
+		if strings.Contains(buf.String(), "Claim check") {
+			t.Errorf("finding without a note must not render a claim check line, got:\n%s", buf.String())
+		}
+	})
+}
+
 // TestRenderAuditMarkdown_WikiProvenance verifies the audit header carries the
 // resolved wiki commit when one was used.
 func TestRenderAuditMarkdown_WikiProvenance(t *testing.T) {

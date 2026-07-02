@@ -92,6 +92,24 @@ func TestCategorize_UnverifiedRouting(t *testing.T) {
 	}
 }
 
+func TestCategorize_RefutedCriticalDemoted(t *testing.T) {
+	findings := []Finding{
+		// A refuted CRITICAL (uncertain + a VerificationNote) is demoted to
+		// Unverified — the counter-evidence outweighs the "never bury a critical"
+		// rule.
+		{Severity: SeverityCritical, Title: "refuted", Confidence: ConfidenceUncertain, VerificationNote: "refuted: guarded above"},
+		// A merely-uncertain CRITICAL with no note stays in Critical.
+		{Severity: SeverityCritical, Title: "unverifiable", Confidence: ConfidenceUncertain},
+	}
+	cf := Categorize(findings, SeverityInfo, "")
+	if len(cf.Unverified) != 1 || cf.Unverified[0].Title != "refuted" {
+		t.Errorf("Unverified = %v, want only the refuted finding", cf.Unverified)
+	}
+	if len(cf.Critical) != 1 || cf.Critical[0].Title != "unverifiable" {
+		t.Errorf("Critical = %v, want only the unverifiable finding", cf.Critical)
+	}
+}
+
 func TestCategorize_MinConfidence(t *testing.T) {
 	findings := []Finding{
 		{Severity: SeverityCritical, Title: "verified", Confidence: ConfidenceVerified},

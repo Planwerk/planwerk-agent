@@ -10,8 +10,12 @@ type CategorizedFindings struct {
 	// Unverified collects low-severity (WARNING/INFO) findings whose
 	// confidence is "uncertain". They are pulled out of their severity bucket
 	// so the main report stays high-signal; the renderer shows them in a
-	// dedicated low-confidence section. BLOCKING/CRITICAL findings are never
-	// demoted here — they are too important to bury even when uncertain.
+	// dedicated low-confidence section. A merely-uncertain BLOCKING/CRITICAL
+	// finding is never demoted here — it is too important to bury. The one
+	// exception is a claim the verification pass explicitly refuted (it carries
+	// a VerificationNote): a refuted claim backed by counter-evidence is a
+	// stronger signal than an unverifiable one, so it belongs with the other
+	// unverified findings rather than in the blocking section.
 	Unverified []Finding
 }
 
@@ -32,9 +36,15 @@ func Categorize(findings []Finding, minSeverity Severity, minConfidence Confiden
 			continue
 		}
 		// Low-confidence, low-severity findings are demoted to the Unverified
-		// section so an uncertain nit never sits next to a verified bug.
-		if f.Confidence == ConfidenceUncertain &&
-			(f.Severity == SeverityWarning || f.Severity == SeverityInfo) {
+		// section so an uncertain nit never sits next to a verified bug. A
+		// BLOCKING/CRITICAL claim the verification pass explicitly refuted
+		// (uncertain + a VerificationNote) is demoted too — the counter-evidence
+		// makes it stronger than a merely-unverifiable finding, so it must not
+		// remain in the blocking section.
+		refuted := f.Confidence == ConfidenceUncertain && f.VerificationNote != ""
+		if refuted ||
+			(f.Confidence == ConfidenceUncertain &&
+				(f.Severity == SeverityWarning || f.Severity == SeverityInfo)) {
 			cf.Unverified = append(cf.Unverified, f)
 			continue
 		}
