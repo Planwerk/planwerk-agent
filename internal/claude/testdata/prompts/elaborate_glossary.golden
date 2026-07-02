@@ -133,6 +133,8 @@ Before you output the elaborated issue, review your own draft and fix what you f
 1. Spec coverage — every Acceptance Criterion maps to a concrete change named in Description or Affected Areas. List any criterion that does not, then close the gap.
 2. Placeholder scan — no "TBD" / "add error handling" / "see Task N"-style placeholders remain (see Plan Quality Rules).
 3. Name consistency — each symbol is named identically everywhere. A function called clearLayers() in one section and clearFullLayers() in another is a bug; reconcile it.
+4. Citation check — every cited file path, symbol, and migration exists in the repository, or is explicitly marked as an assumption per the Anti-Hallucination Rules.
+5. Edge-case coverage — every data-flow acceptance criterion enumerates its empty/zero-length, nil/absent, and upstream-error shadow paths as separate entries, each naming the concrete error (see Edge-Case Enumeration).
 
 
 Now walk the repository, then produce the elaborated issue. Use the section headings above (**Description**, **Motivation**, **User Stories**, **Affected Areas**, **Acceptance Criteria**, **Non-Goals**, **References**) so the structuring step can extract them reliably.
