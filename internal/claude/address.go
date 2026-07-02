@@ -49,6 +49,7 @@ func BuildAddressPrompt(ctx address.Context) string {
 - "Open the file at the anchored hunk; do not guess." — The diff hunk shows where the comment was left. Open the actual source at that path and line before editing. Never invent code shapes or line numbers.
 - "Verify before committing." — Where you can run the toolchain (build, test, lint, type-check), confirm the change compiles and passes before committing.
 - "If you cannot address it, say so." — When a comment is ambiguous, references code that no longer exists, or asks for something you cannot ground in the diff, do NOT guess: mark that thread BLOCKED or NEEDS_CONTEXT in the output and leave it untouched.
+- "A reviewer can be wrong." — When you have concrete evidence the requested change would be incorrect (it would break behavior, contradict the issue, or reintroduce a bug), do NOT make the change and do NOT file the thread as BLOCKED: set its status to NEEDS_CONTEXT and state the disagreement with the file:line evidence in the summary, so a human decides.
 
 `)
 
@@ -119,7 +120,7 @@ func BuildAddressPrompt(ctx address.Context) string {
 
 Field rules:
 - Include one "threads" entry for EVERY thread above, in order, even when you could not address it.
-- "status" per thread: DONE when addressed and verified; DONE_WITH_CONCERNS when changed but with a reservation; BLOCKED when you could not make progress; NEEDS_CONTEXT when only a human can supply what is missing.
+- "status" per thread: DONE when addressed and verified; DONE_WITH_CONCERNS when changed but with a reservation; BLOCKED when you could not make progress; NEEDS_CONTEXT when only a human can supply what is missing — including a reasoned disagreement: leave the code untouched and put the disagreement and its evidence in the summary.
 - "files" lists the repo-relative paths you touched for that thread; omit it when you changed nothing.
 - The top-level "status" is the run's overall terminal status. The orchestrator stops and escalates on BLOCKED or NEEDS_CONTEXT.
 
@@ -154,6 +155,7 @@ func BuildBareAddressPrompt(ctx address.BareContext) string {
 - "Open the file at the anchored hunk; do not guess." — Open the actual source at the path and line the comment is anchored to before editing.
 - "Verify before committing." — Where you can run the toolchain, confirm the change compiles and passes before committing.
 - "If you cannot address it, say so." — When a comment is ambiguous or references code that no longer exists, do NOT guess: leave it untouched and report it.
+- "A reviewer can be wrong." — When you have concrete evidence the requested change would be incorrect (it would break behavior, contradict the issue, or reintroduce a bug), do NOT make the change and do NOT file the thread as BLOCKED: set its status to NEEDS_CONTEXT and state the disagreement with the file:line evidence in the summary, so a human decides.
 
 `)
 
@@ -212,7 +214,7 @@ Skip threads that are already resolved (isResolved: true) and any thread whose f
    ### Threads
    - <file:line or thread id> — STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT> — <one sentence: what changed, or why not>
 
-   Include one entry for EVERY unresolved thread you fetched, in the order fetched, even when you could not address it. Per-thread STATUS: DONE when addressed and verified; DONE_WITH_CONCERNS when changed but with a reservation; BLOCKED when you could not make progress; NEEDS_CONTEXT when only a human can supply what is missing.
+   Include one entry for EVERY unresolved thread you fetched, in the order fetched, even when you could not address it. Per-thread STATUS: DONE when addressed and verified; DONE_WITH_CONCERNS when changed but with a reservation; BLOCKED when you could not make progress; NEEDS_CONTEXT when only a human can supply what is missing — including a reasoned disagreement: leave the code untouched and put the disagreement and its evidence in the summary.
 
    ### Summary
 
