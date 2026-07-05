@@ -20,6 +20,7 @@ full resolution order.
 | `PLANWERK_CLAUDE_INHERIT_USER_CONFIG` | `--claude-inherit-user-config` | Truthy values let sessions inherit user-global `~/.claude` config: `1`, `true`, `yes`, `on` (case-insensitive). Off by default (hermetic). |
 | `PLANWERK_PLAN_MODEL` | `--plan-model` (`implement`) | Model for the planning session. |
 | `PLANWERK_PLAN_EFFORT` | `--plan-effort` (`implement`) | Reasoning effort for the planning session. |
+| `PLANWERK_IMPLEMENT_MODEL` | `--implement-model` (`implement`, `ship`) | Model for the implement session only; empty or unset inherits `--claude-model`. The simplify/review/finalize passes always stay on `--claude-model`. |
 | `PLANWERK_WIKI` | `--wiki` / `--no-wiki` | Truthy values (`1`, `true`, `yes`, `on`) enable the GitHub Wiki knowledge source; falsy values (`0`, `false`, `no`, `off`) disable it. Config-file `wiki.enabled` takes precedence over this variable; the flags take precedence over both. |
 | `PLANWERK_WIKI_REF` | `--wiki-ref` | Pins the wiki to a branch, tag, or commit. Empty uses the wiki's default branch. |
 | `PLANWERK_CAPTURE_WIKI` | `--capture-wiki` (`implement`, `audit`) | Truthy values (`1`, `true`, `yes`, `on`) push the accepted capture pages to the wiki; falsy values (`0`, `false`, `no`, `off`) keep the run propose-only. `review` ignores this (and `--capture-wiki`): it analyzes an untrusted pull request, so its capture pass is always propose-only. Config-file `capture.wiki` takes precedence over this variable; the flag takes precedence over both. Off by default. |

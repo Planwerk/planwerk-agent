@@ -25,6 +25,7 @@ func newShipCmd(deps *runtimeDeps) *cobra.Command {
 	var shipCfg cli.ShipConfig
 	var planModel string
 	var planEffort string
+	var implementModel string
 
 	shipCmd := &cobra.Command{
 		Use:   "ship <issue-ref>",
@@ -85,13 +86,16 @@ or short form (owner/repo#123).`,
 			shipCfg.MaxPatterns = maxPatterns
 
 			// The per–Sub Issue implement run plans on the dedicated planning
-			// model/effort, so build a client that layers the resolved --plan-*
-			// options on top of the shared --claude-* options, exactly as the
-			// implement command does. The fix loop reuses the same client.
+			// model/effort — and implements on its optional model override — so
+			// build a client that layers the resolved --plan-* and
+			// --implement-model options on top of the shared --claude-* options,
+			// exactly as the implement command does. The fix loop reuses the
+			// same client.
 			planOpts := append([]claude.Option{}, deps.claudeOpts...)
 			planOpts = append(planOpts,
 				claude.WithPlanModel(resolvePlanModel(planModel, cmd.Flags().Changed("plan-model"))),
 				claude.WithPlanEffort(resolvePlanEffort(planEffort, cmd.Flags().Changed("plan-effort"))),
+				claude.WithImplementModel(resolveImplementModel(implementModel, cmd.Flags().Changed("implement-model"))),
 			)
 			client := claude.NewClient(planOpts...)
 			defer client.LogUsageSummary(cmd.ErrOrStderr())
@@ -130,6 +134,7 @@ or short form (owner/repo#123).`,
 	shipFlags.BoolVar(&shipCfg.NoPlanComment, "no-plan-comment", false, "Do not post the generated implementation plan as a comment on each Sub Issue")
 	shipFlags.StringVar(&planModel, "plan-model", claude.DefaultPlanModel, "Model for the planning session passed to Claude Code via --model (env: "+envPlanModel+")")
 	shipFlags.StringVar(&planEffort, "plan-effort", claude.DefaultPlanEffort, "Reasoning effort for the planning session passed via --effort (low, medium, high, xhigh, max; env: "+envPlanEffort+")")
+	shipFlags.StringVar(&implementModel, "implement-model", "", "Model for the implement session in each per–Sub Issue run; the other sessions stay on --claude-model (empty inherits --claude-model; env: "+envImplementModel+")")
 	shipFlags.StringSliceVar(&shipCfg.PatternDirs, "patterns", nil, "Additional pattern sources: local dirs, github:owner/repo[/sub][@ref], or git+https://...[#ref[:sub]]")
 	shipFlags.BoolVar(&shipCfg.NoRepoPatterns, "no-repo-patterns", false, "Ignore repo-specific patterns under .planwerk/review_patterns/ in the target repo")
 	shipFlags.BoolVar(&shipCfg.NoLocalPatterns, "no-local-patterns", false, "Ignore local patterns from the tool")

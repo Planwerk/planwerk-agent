@@ -620,6 +620,7 @@ planwerk-agent implement --wiki --capture-wiki --yes owner/repo#123
 | `--no-report-comment` | Do not post the implementation report as a comment on the source issue | `false` |
 | `--plan-model` | Model for the planning session passed to Claude Code via `--model` (e.g. `fable`, `opus`; env: `PLANWERK_PLAN_MODEL`) | `fable` |
 | `--plan-effort` | Reasoning effort for the planning session passed via `--effort` (`low`, `medium`, `high`, `xhigh`, `max`; env: `PLANWERK_PLAN_EFFORT`) | `max` |
+| `--implement-model` | Model for the implement session only, passed to Claude Code via `--model`; the simplify/review/finalize passes stay on `--claude-model` (env: `PLANWERK_IMPLEMENT_MODEL`) | inherits `--claude-model` |
 | `--verify` | After implementing, run an independent pass that checks the actual diff against the issue's Acceptance Criteria without trusting the implementer's report; any unmet criteria are then fed into the review applier and fixed on the branch before the PR opens | `false` |
 | `--verify-adversarial` | After implementing, red-team the produced diff for the bugs it introduces using the adversarial-review pass (independent of `--verify`) | `false` |
 | `--no-simplify` | Skip the automatic simplify pass that folds over-engineering removals into the branch before the review phase | `false` |
@@ -766,6 +767,7 @@ planwerk-agent ship --start-at 456 owner/repo#123
 | `--no-plan-comment` | Do not post the generated implementation plan as a comment on each Sub Issue | `false` |
 | `--plan-model` | Model for the planning session passed to Claude Code via `--model` (env: `PLANWERK_PLAN_MODEL`) | `fable` |
 | `--plan-effort` | Reasoning effort for the planning session passed via `--effort` (env: `PLANWERK_PLAN_EFFORT`) | `max` |
+| `--implement-model` | Model for the implement session in each per–Sub Issue run; the other sessions stay on `--claude-model` (env: `PLANWERK_IMPLEMENT_MODEL`) | inherits `--claude-model` |
 | `--patterns` | Additional pattern source: local directory, `github:owner/repo[/sub][@ref]`, or `git+https://…[#ref[:sub]]` | - |
 | `--no-repo-patterns` | Ignore repo-specific patterns under `.planwerk/review_patterns/` in the target repo | `false` |
 | `--no-local-patterns` | Ignore local patterns from the tool | `false` |
