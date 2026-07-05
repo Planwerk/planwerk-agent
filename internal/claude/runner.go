@@ -190,8 +190,16 @@ func (c *Client) hermeticArgs(args []string) []string {
 // counterpart to the package-level configuration this type replaces. Construct
 // one with NewClient and thread it through the runners.
 type Client struct {
-	timeout         time.Duration
-	model           string
+	timeout time.Duration
+	model   string
+	// implementModel, when non-empty, overrides model for the implement
+	// session only — the single code-writing `claude -p` call — leaving the
+	// planning session on planModel and every other session (simplify/review
+	// apply, finalize, fix, address, rebase) on model. Unlike planModel and
+	// structureModel it has no compiled-in default: the empty zero value means
+	// "inherit model", so --claude-model keeps steering the implement session
+	// unless --implement-model is set. Set via WithImplementModel.
+	implementModel  string
 	planModel       string
 	structureModel  string
 	effort          string
@@ -255,6 +263,18 @@ func WithModel(m string) Option {
 	return func(c *Client) {
 		if m != "" {
 			c.model = m
+		}
+	}
+}
+
+// WithImplementModel sets the model used by the implement session only (the
+// code-writing phase); the surrounding sessions stay on the main model. An
+// empty m is ignored, which leaves the zero value in place — the implement
+// session then inherits the main model (see Client.implementModel).
+func WithImplementModel(m string) Option {
+	return func(c *Client) {
+		if m != "" {
+			c.implementModel = m
 		}
 	}
 }
@@ -383,8 +403,28 @@ func (c *Client) runClaudeAuto(dir, prompt, label string) (text, model string, e
 	return c.runClaudeWithPermission(dir, prompt, label, claudeAutoPermissionMode, c.model, c.effort, false, "")
 }
 
+// runClaudeImplement is runClaudeAuto on the implement session's model
+// override (implementModel) when one is set, and on the shared main model
+// otherwise. Only the Implement call uses it: --implement-model swaps the
+// model of the single code-writing session without recoloring the auto-mode
+// sessions around it (simplify/review apply, finalize, fix, address, rebase),
+// which stay on runClaudeAuto and the main model.
+func (c *Client) runClaudeImplement(dir, prompt, label string) (text, model string, err error) {
+	return c.runClaudeWithPermission(dir, prompt, label, claudeAutoPermissionMode, c.implementSessionModel(), c.effort, false, "")
+}
+
+// implementSessionModel resolves the model for the implement session: the
+// dedicated implementModel override when set, the shared main model otherwise —
+// the "--implement-model defaults to --claude-model" contract.
+func (c *Client) implementSessionModel() string {
+	if c.implementModel != "" {
+		return c.implementModel
+	}
+	return c.model
+}
+
 // runClaudeWithPermission is the shared implementation behind runClaude,
-// runClaudePlan, and runClaudeAuto. permissionMode, when non-empty, is
+// runClaudePlan, runClaudeAuto, and runClaudeImplement. permissionMode, when non-empty, is
 // passed to claude as --permission-mode; an empty value leaves claude on
 // its default mode. model is the --model value and effort the --effort value
 // (callers pass c.model/c.effort, or c.planModel/c.planEffort for the

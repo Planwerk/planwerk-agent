@@ -23,6 +23,7 @@ func newImplementCmd(deps *runtimeDeps) *cobra.Command {
 	var implementCfg cli.ImplementConfig
 	var planModel string
 	var planEffort string
+	var implementModel string
 	var wikiEnable, wikiDisable bool
 	var wikiRef string
 
@@ -59,7 +60,10 @@ The implement session runs in Claude Code's auto mode (--permission-mode
 auto) so it can edit files, run the test suite, and commit without an
 interactive confirmation. A background classifier still vets each action and
 blocks anything irreversible or aimed outside the repository (force push,
-pushing to main, data exfiltration). Requires Claude Code v2.1.83+.
+pushing to main, data exfiltration). Requires Claude Code v2.1.83+. The
+session runs on the shared --claude-model unless --implement-model overrides
+the model for just this one session; the simplify, review, and finalize
+passes below always stay on --claude-model.
 
 After the implement session the implementation report is posted back onto the
 source issue as a comment on every run — including runs where nothing was
@@ -144,13 +148,15 @@ or short form (owner/repo#123).`,
 			if modes > 1 {
 				return fmt.Errorf("--dry-run, --print-prompt, --print-bare-prompt, and --print-plan-prompt are mutually exclusive")
 			}
-			// The planning session runs on its own model/effort, so build a
-			// client that layers the resolved --plan-* options on top of the
-			// shared --claude-* options.
+			// The planning session runs on its own model/effort — and the
+			// implement session on its optional model override — so build a
+			// client that layers the resolved --plan-* and --implement-model
+			// options on top of the shared --claude-* options.
 			planOpts := append([]claude.Option{}, deps.claudeOpts...)
 			planOpts = append(planOpts,
 				claude.WithPlanModel(resolvePlanModel(planModel, cmd.Flags().Changed("plan-model"))),
 				claude.WithPlanEffort(resolvePlanEffort(planEffort, cmd.Flags().Changed("plan-effort"))),
+				claude.WithImplementModel(resolveImplementModel(implementModel, cmd.Flags().Changed("implement-model"))),
 			)
 			client := claude.NewClient(planOpts...)
 			// The implement command runs its sessions on this client, not
@@ -180,6 +186,7 @@ or short form (owner/repo#123).`,
 	implementFlags.BoolVar(&implementCfg.NoReportComment, "no-report-comment", false, "Do not post the implementation report as a comment on the source issue")
 	implementFlags.StringVar(&planModel, "plan-model", claude.DefaultPlanModel, "Model for the planning session passed to Claude Code via --model (e.g. fable, opus; env: "+envPlanModel+")")
 	implementFlags.StringVar(&planEffort, "plan-effort", claude.DefaultPlanEffort, "Reasoning effort for the planning session passed to Claude Code via --effort (low, medium, high, xhigh, max; env: "+envPlanEffort+")")
+	implementFlags.StringVar(&implementModel, "implement-model", "", "Model for the implement session only, passed to Claude Code via --model; the simplify/review/finalize passes stay on --claude-model (empty inherits --claude-model; env: "+envImplementModel+")")
 	implementFlags.BoolVar(&implementCfg.Verify, "verify", false, "After implementing, run an independent pass that checks the actual diff against the issue's Acceptance Criteria without trusting the implementer's report; any unmet criteria are fed into the review applier to be fixed on the branch")
 	implementFlags.BoolVar(&implementCfg.VerifyAdversarial, "verify-adversarial", false, "After implementing, red-team the produced diff for the bugs it introduces using the adversarial-review pass (independent of --verify)")
 	implementFlags.BoolVar(&implementCfg.NoSimplify, "no-simplify", false, "Skip the automatic simplify pass that folds over-engineering removals into the branch before the review phase")

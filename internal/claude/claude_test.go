@@ -370,6 +370,16 @@ func TestAssignIDs_DropsRecommendedOptionWhenIDMissing(t *testing.T) {
 	}
 }
 
+// testMainModel and testImplementOverride are arbitrary non-default values the
+// client tests assign and expect back. Named constants rather than repeated
+// literals: the values collide with real defaults ("fable" is DefaultPlanModel,
+// "sonnet" is DefaultStructureModel), and goconst flags a literal repeated
+// three times when a constant with that value already exists.
+const (
+	testMainModel         = "fable"
+	testImplementOverride = "sonnet"
+)
+
 func TestNewClient_DefaultsFromConsts(t *testing.T) {
 	c := NewClient()
 	if c.timeout != DefaultClaudeTimeout {
@@ -377,6 +387,9 @@ func TestNewClient_DefaultsFromConsts(t *testing.T) {
 	}
 	if c.model != DefaultClaudeModel {
 		t.Errorf("model = %q, want default %q", c.model, DefaultClaudeModel)
+	}
+	if c.implementModel != "" {
+		t.Errorf("implementModel = %q, want empty (inherit model)", c.implementModel)
 	}
 	if c.planModel != DefaultPlanModel {
 		t.Errorf("planModel = %q, want default %q", c.planModel, DefaultPlanModel)
@@ -402,6 +415,7 @@ func TestNewClient_AppliesOptions(t *testing.T) {
 	c := NewClient(
 		WithTimeout(42*time.Minute),
 		WithModel("fable"),
+		WithImplementModel(testImplementOverride),
 		WithPlanModel("opus"),
 		WithStructureModel("opus"),
 		WithEffort("max"),
@@ -414,6 +428,9 @@ func TestNewClient_AppliesOptions(t *testing.T) {
 	}
 	if c.model != "fable" {
 		t.Errorf("model = %q, want \"fable\"", c.model)
+	}
+	if c.implementModel != testImplementOverride {
+		t.Errorf("implementModel = %q, want %q", c.implementModel, testImplementOverride)
 	}
 	if c.planModel != "opus" {
 		t.Errorf("planModel = %q, want \"opus\"", c.planModel)
@@ -432,6 +449,26 @@ func TestNewClient_AppliesOptions(t *testing.T) {
 	}
 	if !c.showOutput {
 		t.Errorf("showOutput = false, want true")
+	}
+}
+
+// TestImplementSessionModel pins the "--implement-model defaults to
+// --claude-model" contract: without the override the implement session runs on
+// the main model (including a non-default one), and with it the override wins
+// while the main model is untouched for the surrounding sessions.
+func TestImplementSessionModel(t *testing.T) {
+	if got := NewClient().implementSessionModel(); got != DefaultClaudeModel {
+		t.Errorf("no override: implement session model = %q, want main model %q", got, DefaultClaudeModel)
+	}
+	if got := NewClient(WithModel(testMainModel)).implementSessionModel(); got != testMainModel {
+		t.Errorf("no override: implement session model = %q, want main model %q", got, testMainModel)
+	}
+	c := NewClient(WithModel(testMainModel), WithImplementModel(testImplementOverride))
+	if got := c.implementSessionModel(); got != testImplementOverride {
+		t.Errorf("with override: implement session model = %q, want %q", got, testImplementOverride)
+	}
+	if c.model != testMainModel {
+		t.Errorf("override must not touch the main model; model = %q, want %q", c.model, testMainModel)
 	}
 }
 

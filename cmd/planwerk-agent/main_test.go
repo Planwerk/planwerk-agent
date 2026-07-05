@@ -332,6 +332,34 @@ func TestResolvePlanModelDefault(t *testing.T) {
 	}
 }
 
+func TestResolveImplementModelFlagWins(t *testing.T) {
+	t.Setenv(envImplementModel, "sonnet")
+	if got := resolveImplementModel(modelOpus, true); got != modelOpus {
+		t.Fatalf("got %q, want flag value %q", got, modelOpus)
+	}
+}
+
+func TestResolveImplementModelEnvBeatsDefault(t *testing.T) {
+	t.Setenv(envImplementModel, "  opus  ")
+	if got := resolveImplementModel("", false); got != modelOpus {
+		t.Fatalf("got %q, want trimmed env value %q", got, modelOpus)
+	}
+}
+
+// TestResolveImplementModelDefaultEmpty pins that with neither flag nor env
+// set the resolver yields "" — the inherit---claude-model sentinel the Client
+// maps to its main model — rather than some compiled-in model of its own.
+func TestResolveImplementModelDefaultEmpty(t *testing.T) {
+	t.Setenv(envImplementModel, "")
+	if got := resolveImplementModel("", false); got != "" {
+		t.Fatalf("got %q, want empty (inherit --claude-model)", got)
+	}
+	// An explicitly-set-but-empty flag falls through to the empty default too.
+	if got := resolveImplementModel("", true); got != "" {
+		t.Fatalf("got %q for empty flag, want empty (inherit --claude-model)", got)
+	}
+}
+
 func TestResolvePlanEffortFlagWins(t *testing.T) {
 	t.Setenv(envPlanEffort, effortHigh)
 	if got := resolvePlanEffort("max", true); got != "max" {

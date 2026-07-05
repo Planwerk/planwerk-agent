@@ -82,6 +82,12 @@ const envPlanModel = "PLANWERK_PLAN_MODEL"
 // --plan-effort CLI flag takes precedence when explicitly set.
 const envPlanEffort = "PLANWERK_PLAN_EFFORT"
 
+// envImplementModel overrides the model used by the implement session only —
+// the code-writing phase of the implement and ship commands (e.g. "fable",
+// "sonnet"). Empty or unset inherits --claude-model. The --implement-model
+// CLI flag takes precedence when explicitly set.
+const envImplementModel = "PLANWERK_IMPLEMENT_MODEL"
+
 // envStructureModel overrides the model used by the JSON-structuring passes
 // for every subcommand (e.g. "sonnet", "opus"). The --structure-model CLI
 // flag takes precedence when explicitly set.
@@ -205,6 +211,25 @@ func resolvePlanModel(flagValue string, flagSet bool) string {
 		}
 	}
 	return claude.DefaultPlanModel
+}
+
+// resolveImplementModel returns the effective model override for the implement
+// session. Precedence: explicit CLI flag, then PLANWERK_IMPLEMENT_MODEL, then
+// empty — unlike the plan/structure tiers there is no compiled-in default,
+// because empty means "inherit --claude-model" (the Client falls back to its
+// main model when the override is unset). The value is passed through verbatim —
+// model names are validated by Claude Code itself, so an unknown name surfaces
+// as a claude error rather than being rejected here.
+func resolveImplementModel(flagValue string, flagSet bool) string {
+	if flagSet && flagValue != "" {
+		return flagValue
+	}
+	if raw, ok := os.LookupEnv(envImplementModel); ok {
+		if v := strings.TrimSpace(raw); v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // resolvePlanEffort returns the effective reasoning effort for the implement

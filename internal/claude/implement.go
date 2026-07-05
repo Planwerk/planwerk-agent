@@ -101,13 +101,15 @@ For EVERY finding, include: the Acceptance Criterion it concerns (quote it in th
 // over the committed diff first, then a dedicated finalize session opens the
 // draft PR so it lands already simplified and self-reviewed.
 //
-// runClaudeAuto already creates a fresh `claude -p` invocation per call, so
-// every implement call runs in a brand-new Claude session by construction.
+// runClaudeImplement already creates a fresh `claude -p` invocation per call,
+// so every implement call runs in a brand-new Claude session by construction.
 // It runs in auto mode (--permission-mode auto) so the session can edit
 // files, run tests, and commit without an interactive confirmation, while the
-// auto-mode classifier still vets each action.
+// auto-mode classifier still vets each action. The session runs on the
+// --implement-model override when one is set, and on the shared --claude-model
+// otherwise; the surrounding passes always stay on --claude-model.
 func (c *Client) Implement(dir string, ctx implement.Context) (string, string, error) {
-	out, model, err := c.runClaudeAuto(dir, BuildImplementPrompt(ctx), "implement")
+	out, model, err := c.runClaudeImplement(dir, BuildImplementPrompt(ctx), "implement")
 	if err != nil {
 		return "", "", fmt.Errorf("running implement: %w", err)
 	}
