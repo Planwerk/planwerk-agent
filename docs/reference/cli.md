@@ -638,10 +638,20 @@ planwerk-agent implement --wiki --capture-wiki --yes owner/repo#123
 | `--wiki-ref` | Pin the wiki to a branch, tag, or commit (env: `PLANWERK_WIKI_REF`) | - |
 | `--local` | Operate on the current working directory instead of cloning into a temp dir | `false` |
 | `--force` | With `--local`, skip the confirmation prompt when the working tree is dirty | `false` |
+| `--no-resume` | Start a fresh feature branch instead of resuming the commits an earlier aborted run for this issue left on its branch; also disables pushing partial progress after an abort | `false` |
 
 `--dry-run`, `--print-prompt`, `--print-bare-prompt`, and `--print-plan-prompt`
 are mutually exclusive. The implement session runs in Claude Code's auto mode
 and requires Claude Code v2.1.83+.
+
+If an earlier run for this issue aborted mid-implementation (for example the
+Claude session hit its usage limit), it left commits on a feature branch. By
+default the next run detects that branch, checks it out, and continues from
+where it stopped — reconciling the commits already present against the plan's
+commit sequence — instead of redoing the committed work. In `--local` mode the
+branch persists in your checkout; in clone/CI mode the aborted run pushes its
+partial progress to `origin` (no PR) so the next clone can fetch and resume it.
+Pass `--no-resume` to start a fresh branch and disable pushing partial progress.
 
 `--verify` and `--verify-adversarial` are independent verification passes that
 both run over the actual committed diff, not the implementer's self-report:

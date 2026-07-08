@@ -521,6 +521,7 @@ type ImplementConfig struct {
 	MaxPatterns     int
 	Local           bool
 	Force           bool
+	NoResume        bool
 }
 
 func (c ImplementConfig) ToImplementOptions(version string) implement.Options {
@@ -549,6 +550,7 @@ func (c ImplementConfig) ToImplementOptions(version string) implement.Options {
 		MaxPatterns:         c.MaxPatterns,
 		Local:               c.Local,
 		Force:               c.Force,
+		NoResume:            c.NoResume,
 	}
 }
 

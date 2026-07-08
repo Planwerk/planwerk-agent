@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/planwerk/planwerk-agent/internal/address"
@@ -509,6 +510,52 @@ func TestBuildImplementPromptWithPlan_Golden(t *testing.T) {
 	ctx := goldenImplementContext()
 	ctx.Plan = "## Implementation Plan (issue #42)\n\n### Summary\n- Add a golden file per prompt builder and a -update helper.\n\n### Status\nSTATUS: PLAN_READY"
 	assertGoldenPrompt(t, "implement_with_plan", BuildImplementPrompt(ctx))
+}
+
+// TestBuildImplementPromptResume_Golden locks the shape used when an earlier
+// aborted run left commits on the branch: a "Resuming a partial implementation"
+// section lists them and workflow step 4 stays on the existing branch instead of
+// creating a fresh one.
+func TestBuildImplementPromptResume_Golden(t *testing.T) {
+	ctx := goldenImplementContext()
+	ctx.Resume = &implement.ResumeContext{
+		Branch: "implement/issue-42-golden-tests",
+		Commits: []github.Commit{
+			{SHA: "abc1234def5678", Subject: "Add golden helper and -update flag"},
+			{SHA: "0f1e2d3c4b5a69", Subject: "Snapshot the review prompt builder"},
+		},
+	}
+	assertGoldenPrompt(t, "implement_resume", BuildImplementPrompt(ctx))
+}
+
+// TestBuildImplementPrompt_ResumeSection locks the resume block's essentials: it
+// appears only with a resume context, lists the already-present commits by short
+// SHA, keeps the session on the existing branch, and — in a fresh prompt —
+// mandates the resumable branch-name prefix that detection keys on.
+func TestBuildImplementPrompt_ResumeSection(t *testing.T) {
+	fresh := BuildImplementPrompt(goldenImplementContext())
+	if strings.Contains(fresh, "Resuming a partial implementation") {
+		t.Error("fresh implement prompt should not carry the resume section")
+	}
+	if !strings.Contains(fresh, `MUST begin with "implement/issue-42-"`) {
+		t.Error("implement prompt should mandate the resumable branch-name prefix")
+	}
+
+	ctx := goldenImplementContext()
+	ctx.Resume = &implement.ResumeContext{
+		Branch:  "implement/issue-42-foo",
+		Commits: []github.Commit{{SHA: "abc1234def", Subject: "Add scaffolding"}},
+	}
+	got := BuildImplementPrompt(ctx)
+	for _, want := range []string{
+		"## Resuming a partial implementation",
+		"STAY on the existing feature branch `implement/issue-42-foo`",
+		"abc1234 Add scaffolding",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("resume prompt missing %q", want)
+		}
+	}
 }
 
 func goldenPlanMetaContext() implement.Context {

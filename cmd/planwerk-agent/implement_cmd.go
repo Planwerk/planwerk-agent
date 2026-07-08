@@ -56,6 +56,14 @@ skipped, no duplicate plan comment is posted, and the reused plan is still held
 to the same STATUS check. Use --no-plan-reuse to force a fresh planning session
 when the issue has changed and the posted plan has gone stale.
 
+If an earlier run for this issue aborted mid-implementation (for example the
+session hit its usage limit), it left commits on a feature branch. By default the
+next run detects that branch, checks it out, and continues from where it stopped
+instead of redoing the committed work — in --local mode the branch persists in
+your checkout, and in clone mode the aborted run pushes its partial progress to
+origin so the next clone can fetch and resume it. Use --no-resume to start a
+fresh branch and disable pushing partial progress.
+
 The implement session runs in Claude Code's auto mode (--permission-mode
 auto) so it can edit files, run the test suite, and commit without an
 interactive confirmation. A background classifier still vets each action and
@@ -201,6 +209,7 @@ or short form (owner/repo#123).`,
 	implementFlags.IntVar(&implementCfg.MaxPatterns, "max-patterns", patterns.DefaultMaxPatternsInPrompt, "Max review patterns injected into the prompt (<=0 disables truncation, env: "+envMaxPatterns+")")
 	implementFlags.BoolVar(&implementCfg.Local, "local", false, "Operate on the current working directory instead of cloning into a temp dir")
 	implementFlags.BoolVar(&implementCfg.Force, "force", false, "With --local, skip the confirmation prompt when the working tree is dirty")
+	implementFlags.BoolVar(&implementCfg.NoResume, "no-resume", false, "Start a fresh feature branch instead of resuming the commits an earlier aborted run for this issue left on its branch; also disables pushing partial progress after an abort")
 	addWikiFlags(implementFlags, &wikiEnable, &wikiDisable, &wikiRef)
 
 	return implementCmd

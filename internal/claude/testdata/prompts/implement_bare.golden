@@ -92,7 +92,7 @@ Run these steps in order. Do not skip ahead.
    - Identify the project's test conventions (unit, integration, E2E) and where tests live.
    - Identify the project's documentation conventions (README, docs/, CHANGELOG, generated API docs).
 3. PLAN the smallest change set that satisfies every Acceptance Criterion. Sketch the commit sequence before editing — keep each commit small and reviewable.
-4. CREATE a fresh feature branch off the current default branch. Use a short, descriptive branch name derived from the issue (e.g. "implement/issue-42-<slug>").
+4. CREATE a fresh feature branch off the current default branch. Use a short, descriptive branch name that MUST begin with "implement/issue-42-" (e.g. "implement/issue-42-<slug>") so the branch is unambiguously identifiable as this issue's implementation.
 5. IMPLEMENT the change set:
    - Match existing layout, naming, error handling, and logging conventions.
    - Add unit tests for new logic, and make every new test exercise at least one error or edge path — not the happy path only. Add integration / E2E tests when the project has them for comparable features.

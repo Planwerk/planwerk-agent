@@ -75,12 +75,12 @@ Run these steps in order. Do not skip ahead.
    - Resolve the base branch: run ` + "`git symbolic-ref --short refs/remotes/origin/HEAD`" + ` (it returns e.g. "origin/main"; the base is the part after "origin/"). Fall back to origin/main, then origin/master, if it is unset.
    - You are on the feature branch the implement session committed. Run ` + "`git log <base>..HEAD --oneline`" + ` and ` + "`git diff <base>...HEAD --stat`" + ` to see the commits and files that make up this change.
    - If there are NO commits between the base branch and HEAD, there is nothing to ship: do NOT push and do NOT open a pull request. Output the report below with an empty Pull Request section and STATUS: DONE, explaining that the branch carries no commits.
-2. PUSH the branch to origin (it has not been pushed yet):
+2. PUSH the branch to origin:
 
        git push -u origin HEAD
 
-   Use a plain push — the branch is new on the remote. NEVER force-push.
-3. OPEN A DRAFT PULL REQUEST against the base branch with ` + "`gh pr create --draft`" + `. The PR description must:
+   Use a plain push — NEVER force-push. The branch is usually new on the remote; if an earlier interrupted run already pushed partial progress to it, your local commits are ahead of it and this is a fast-forward.
+3. OPEN OR UPDATE THE DRAFT PULL REQUEST against the base branch. First check whether one already exists for this branch: run ` + "`gh pr list --head <branch> --json number,url,state`" + ` — an earlier PARTIAL run may already have opened one. If NONE exists, open a draft PR with ` + "`gh pr create --draft`" + `. If one ALREADY exists, do NOT open a second (the push above already updated its commits) — update its description with ` + "`gh pr edit`" + ` if it needs it, and report that PR's URL. The PR description must:
 ` + linkInstruction + `
    - Walk the reviewer through the change set in commit order, reading the actual commits and diff — not guessing from the issue.
    - Call out anything in the diff that diverged from the issue (and why), if you can tell from the commits.
@@ -104,7 +104,7 @@ After opening the draft PR, output a report in this exact shape:
 ` + attributionFooterBlock("Implemented by") + `## Hard rules
 
 - NEVER edit code, amend commits, rebase, or change the branch's history — the diff is final. You only push and open the PR.
-- NEVER force-push. The branch is new on the remote; a plain push is correct.
+- NEVER force-push. A plain push is correct — a fast-forward when an earlier interrupted run already pushed this branch.
 ` + noSkipHooksLine() + `- NEVER open an empty pull request. If the branch carries no commits over the base, open nothing and report it.
 - If pushing or opening the PR fails, STOP and report BLOCKED with the exact error — do not retry blindly or invent a workaround.
 `)

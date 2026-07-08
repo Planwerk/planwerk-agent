@@ -394,6 +394,143 @@ func TestRun_AbortsOnImplementEscalation(t *testing.T) {
 	}
 }
 
+// TestRun_ResumeDetectedFeedsImplement locks that a feature branch left by an
+// earlier aborted run is detected and threaded into the implement context: the
+// session is told which commits are already present so it continues from there.
+func TestRun_ResumeDetectedFeedsImplement(t *testing.T) {
+	commits := []github.Commit{
+		{SHA: "abc1234def", Subject: "Add foo scaffolding"},
+		{SHA: "0011223344", Subject: "Wire foo into the CLI"},
+	}
+	gh := &fakeGitHub{
+		issue:       sampleIssue(),
+		cloneDir:    t.TempDir(),
+		resumeState: &github.ResumeState{Branch: "implement/issue-42-foo", Commits: commits},
+	}
+	cl := &fakeClaude{report: validImplReport}
+	r := newRunner(gh, cl)
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if gh.resumeCalls.Load() != 1 {
+		t.Errorf("PrepareResume called %d times, want 1", gh.resumeCalls.Load())
+	}
+	if cl.ctx.Resume == nil {
+		t.Fatal("implement ctx.Resume is nil, want the resumed branch/commits")
+	}
+	if cl.ctx.Resume.Branch != "implement/issue-42-foo" {
+		t.Errorf("resume branch = %q, want implement/issue-42-foo", cl.ctx.Resume.Branch)
+	}
+	if len(cl.ctx.Resume.Commits) != 2 {
+		t.Errorf("resume carried %d commits, want 2", len(cl.ctx.Resume.Commits))
+	}
+	if !strings.Contains(buf.String(), "Resuming on branch implement/issue-42-foo") {
+		t.Errorf("missing resume notice in output:\n%s", buf.String())
+	}
+}
+
+// TestRun_ResumeDetectionErrorIsNonFatal locks that a failure to look for a
+// resumable branch never aborts the run: it degrades to a normal fresh
+// implementation with ctx.Resume left nil.
+func TestRun_ResumeDetectionErrorIsNonFatal(t *testing.T) {
+	gh := &fakeGitHub{
+		issue:     sampleIssue(),
+		cloneDir:  t.TempDir(),
+		resumeErr: errors.New("git down"),
+	}
+	cl := &fakeClaude{report: validImplReport}
+	r := newRunner(gh, cl)
+
+	if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42"}); err != nil {
+		t.Fatalf("Run returned %v, want nil (resume detection is best-effort)", err)
+	}
+	if cl.ctx.Resume != nil {
+		t.Errorf("ctx.Resume = %+v, want nil after a detection error", cl.ctx.Resume)
+	}
+}
+
+// TestRun_NoResumeSkipsDetectionAndPush locks that --no-resume disables both the
+// pre-implement resume detection and the post-abort partial-progress push.
+func TestRun_NoResumeSkipsDetectionAndPush(t *testing.T) {
+	gh := &fakeGitHub{
+		issue:         sampleIssue(),
+		cloneDir:      t.TempDir(),
+		resumeState:   &github.ResumeState{Branch: "implement/issue-42-foo", Commits: []github.Commit{{SHA: "abc1234", Subject: "wip"}}},
+		progressState: &github.ResumeState{Branch: "implement/issue-42-foo", Commits: []github.Commit{{SHA: "abc1234", Subject: "wip"}}},
+	}
+	cl := &fakeClaude{report: "prose without a report heading or status"}
+	r := newRunner(gh, cl)
+
+	err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42", NoResume: true})
+	if err == nil || !strings.Contains(err.Error(), "complete implementation report") {
+		t.Fatalf("Run returned %v, want an incomplete-report error", err)
+	}
+	if gh.resumeCalls.Load() != 0 {
+		t.Errorf("PrepareResume called %d times, want 0 under --no-resume", gh.resumeCalls.Load())
+	}
+	if cl.ctx.Resume != nil {
+		t.Errorf("ctx.Resume = %+v, want nil under --no-resume", cl.ctx.Resume)
+	}
+	if gh.pushBranchCalls.Load() != 0 {
+		t.Errorf("PushBranch called %d times, want 0 under --no-resume", gh.pushBranchCalls.Load())
+	}
+}
+
+// TestRun_PersistsPartialProgressOnAbortInCloneMode locks that when a clone-mode
+// run aborts with an incomplete report, the commits the session did make are
+// pushed to origin so a later run can resume — and the abort error is still
+// returned.
+func TestRun_PersistsPartialProgressOnAbortInCloneMode(t *testing.T) {
+	gh := &fakeGitHub{
+		issue:         sampleIssue(),
+		cloneDir:      t.TempDir(),
+		progressState: &github.ResumeState{Branch: "implement/issue-42-foo", Commits: []github.Commit{{SHA: "abc1234", Subject: "wip"}}},
+	}
+	cl := &fakeClaude{report: "prose without a report heading or status"}
+	r := newRunner(gh, cl)
+
+	var buf bytes.Buffer
+	err := r.Run(&buf, Options{IssueRef: "owner/repo#42"})
+	if err == nil || !strings.Contains(err.Error(), "complete implementation report") {
+		t.Fatalf("Run returned %v, want an incomplete-report error", err)
+	}
+	if gh.pushBranchCalls.Load() != 1 {
+		t.Fatalf("PushBranch called %d times, want 1", gh.pushBranchCalls.Load())
+	}
+	if gh.pushBranchArg != "implement/issue-42-foo" {
+		t.Errorf("pushed branch %q, want implement/issue-42-foo", gh.pushBranchArg)
+	}
+	if !strings.Contains(buf.String(), "Pushed partial progress to origin/implement/issue-42-foo") {
+		t.Errorf("missing partial-progress notice in output:\n%s", buf.String())
+	}
+}
+
+// TestRun_LocalAbortDoesNotPushPartialProgress locks that in --local mode the
+// partial branch is left in the user's checkout rather than pushed to origin.
+func TestRun_LocalAbortDoesNotPushPartialProgress(t *testing.T) {
+	gh := &fakeGitHub{
+		issue:         sampleIssue(),
+		cloneDir:      t.TempDir(),
+		progressState: &github.ResumeState{Branch: "implement/issue-42-foo", Commits: []github.Commit{{SHA: "abc1234", Subject: "wip"}}},
+	}
+	cl := &fakeClaude{report: "prose without a report heading or status"}
+	r := newRunner(gh, cl)
+
+	var buf bytes.Buffer
+	err := r.Run(&buf, Options{IssueRef: "owner/repo#42", Local: true})
+	if err == nil || !strings.Contains(err.Error(), "complete implementation report") {
+		t.Fatalf("Run returned %v, want an incomplete-report error", err)
+	}
+	if gh.pushBranchCalls.Load() != 0 {
+		t.Errorf("PushBranch called %d times, want 0 in --local mode", gh.pushBranchCalls.Load())
+	}
+	if !strings.Contains(buf.String(), "local branch implement/issue-42-foo") {
+		t.Errorf("missing local-branch resume hint in output:\n%s", buf.String())
+	}
+}
+
 func TestRun_NoReportCommentSkipsReportComment(t *testing.T) {
 	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
 	cl := &fakeClaude{report: validImplReport}
@@ -2200,6 +2337,21 @@ type fakeGitHub struct {
 	branchRef      *github.BranchRef
 	branchRefErr   error
 	branchRefCalls atomic.Int32
+
+	// resumeState/resumeErr drive PrepareResume (pre-implement resume detection);
+	// progressState/progressErr drive CurrentFeatureProgress (post-abort partial
+	// progress); pushBranch* record PushBranch (the clone-mode partial push).
+	resumeState *github.ResumeState
+	resumeErr   error
+	resumeCalls atomic.Int32
+
+	progressState *github.ResumeState
+	progressErr   error
+	progressCalls atomic.Int32
+
+	pushBranchArg   string
+	pushBranchErr   error
+	pushBranchCalls atomic.Int32
 }
 
 func (f *fakeGitHub) GetIssue(owner, name string, number int) (*github.Issue, error) {
@@ -2289,6 +2441,28 @@ func (f *fakeGitHub) CloneRepoLocal(ref string, _ github.LocalOptions) (*github.
 		return nil, err
 	}
 	return &github.Repo{Owner: owner, Name: name, Dir: f.cloneDir, Local: true}, nil
+}
+
+// PrepareResume returns the canned resumable branch (nil by default, so a run
+// implements fresh) and records the call so tests can assert detection ran.
+func (f *fakeGitHub) PrepareResume(_ string, _ int) (*github.ResumeState, error) {
+	f.resumeCalls.Add(1)
+	return f.resumeState, f.resumeErr
+}
+
+// CurrentFeatureProgress returns the canned partial-progress state (nil by
+// default, so persistPartialProgress finds nothing to push).
+func (f *fakeGitHub) CurrentFeatureProgress(_ string) (*github.ResumeState, error) {
+	f.progressCalls.Add(1)
+	return f.progressState, f.progressErr
+}
+
+// PushBranch records the branch a clone-mode abort pushed to preserve partial
+// progress, returning pushBranchErr to exercise the best-effort failure path.
+func (f *fakeGitHub) PushBranch(_, branch string) error {
+	f.pushBranchCalls.Add(1)
+	f.pushBranchArg = branch
+	return f.pushBranchErr
 }
 
 type fakeClaude struct {

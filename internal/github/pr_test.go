@@ -276,7 +276,7 @@ func TestCurrentBranchRef(t *testing.T) {
 	// origin/main already exists (from initGitRepoForDiff); point origin/HEAD at
 	// it and move onto a feature branch so head != base.
 	run("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
-	run("checkout", "-q", "-b", "implement/issue-42-foo")
+	run("checkout", "-q", "-b", testFeatureBranch)
 
 	ref, err := CurrentBranchRef(dir)
 	if err != nil {
@@ -285,7 +285,7 @@ func TestCurrentBranchRef(t *testing.T) {
 	if ref.BaseBranch != "main" {
 		t.Errorf("BaseBranch = %q, want main (from origin/HEAD)", ref.BaseBranch)
 	}
-	if ref.HeadBranch != "implement/issue-42-foo" {
+	if ref.HeadBranch != testFeatureBranch {
 		t.Errorf("HeadBranch = %q, want implement/issue-42-foo", ref.HeadBranch)
 	}
 }

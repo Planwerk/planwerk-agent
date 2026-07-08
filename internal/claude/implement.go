@@ -191,6 +191,11 @@ Apply these task-specific thinking patterns on top of the baseline above:
 		sb.WriteString("\n</implementation-plan>\n\n")
 	}
 
+	hasResume := ctx.Resume != nil && len(ctx.Resume.Commits) > 0
+	if hasResume {
+		sb.WriteString(renderResumeSection(ctx.Resume))
+	}
+
 	sb.WriteString(`## Implementation Workflow
 
 Run these steps in order. Do not skip ahead.
@@ -209,8 +214,12 @@ Run these steps in order. Do not skip ahead.
 		sb.WriteString(`3. PLAN the smallest change set that satisfies every Acceptance Criterion. Sketch the commit sequence before editing — keep each commit small and reviewable.
 `)
 	}
-	sb.WriteString(`4. CREATE a fresh feature branch off the current default branch. Use a short, descriptive branch name derived from the issue (e.g. "implement/issue-` + fmt.Sprintf("%d", ctx.IssueNumber) + `-<slug>").
-5. IMPLEMENT the change set:
+	if hasResume {
+		fmt.Fprintf(&sb, "4. STAY on the existing feature branch `%s` you are already checked out on — an earlier run created it (see \"Resuming a partial implementation\" above). Do NOT create a new branch and do NOT reset, rebase, or amend it.\n", ctx.Resume.Branch)
+	} else {
+		fmt.Fprintf(&sb, "4. CREATE a fresh feature branch off the current default branch. Use a short, descriptive branch name that MUST begin with \"implement/issue-%d-\" (e.g. \"implement/issue-%d-<slug>\") — the orchestrator keys on this prefix to find and resume the branch if this session is interrupted before it finishes.\n", ctx.IssueNumber, ctx.IssueNumber)
+	}
+	sb.WriteString(`5. IMPLEMENT the change set:
    - Match existing layout, naming, error handling, and logging conventions.
    - Add unit tests for new logic, and make every new test exercise at least one error or edge path — not the happy path only. Add integration / E2E tests when the project has them for comparable features.
    - Add or update documentation (README, CHANGELOG, doc comments, CLI help, generated API references) for every user-visible change.
@@ -275,6 +284,34 @@ When you hit a circuit breaker, halt immediately and emit STATUS: PARTIAL when a
 - It is OK to stop and report BLOCKED or NEEDS_CONTEXT. Bad work is worse than no work; escalating is not penalized. Emit the matching STATUS instead of inventing scope or shipping a half-built change.
 `)
 
+	return sb.String()
+}
+
+// renderResumeSection builds the prompt block for a resuming implement session:
+// it tells the session it is already on the feature branch an earlier aborted run
+// left behind, lists the commits already on it, and instructs it to build on that
+// work — reconciling it against the plan and finishing only what remains — rather
+// than recreating the branch and redoing committed work. Called only when
+// ctx.Resume carries commits.
+func renderResumeSection(rc *implement.ResumeContext) string {
+	var sb strings.Builder
+	sb.WriteString("## Resuming a partial implementation\n\n")
+	fmt.Fprintf(&sb, "An earlier run for this issue stopped before finishing (most likely it hit its session/usage limit). You are ALREADY checked out on the feature branch it left behind — `%s` — with the commits it already made on it:\n\n", rc.Branch)
+	for _, c := range rc.Commits {
+		sha := c.SHA
+		if len(sha) > 7 {
+			sha = sha[:7]
+		}
+		fmt.Fprintf(&sb, "- %s %s\n", sha, c.Subject)
+	}
+	sb.WriteString(`
+Continue that work — do NOT start over:
+- Do NOT create a new branch, and do NOT reset, rebase, revert, or amend the commits already on this branch. They are completed work; build on top of them.
+- Reconcile the commits above against the plan's Commit Sequence and Work Breakdown: work out which commits and work packages are already delivered and which remain. Open the files an existing commit changed to confirm it does what its subject claims; only if one is clearly broken or incomplete should you correct it in a NEW follow-up commit — never by rewriting history.
+- Then implement ONLY the remaining commits and work packages, on this same branch, committing as you go.
+- In the Work Breakdown Coverage and Commits sections of your report, include the already-present commits and mark the packages they deliver "done", with those commits as evidence — exactly as if you had made them this session.
+
+`)
 	return sb.String()
 }
 
@@ -351,7 +388,7 @@ Run these steps in order. Do not skip ahead.
    - Identify the project's test conventions (unit, integration, E2E) and where tests live.
    - Identify the project's documentation conventions (README, docs/, CHANGELOG, generated API docs).
 3. PLAN the smallest change set that satisfies every Acceptance Criterion. Sketch the commit sequence before editing — keep each commit small and reviewable.
-4. CREATE a fresh feature branch off the current default branch. Use a short, descriptive branch name derived from the issue (e.g. "implement/issue-` + fmt.Sprintf("%d", issueNumber) + `-<slug>").
+4. CREATE a fresh feature branch off the current default branch. Use a short, descriptive branch name that MUST begin with "implement/issue-` + fmt.Sprintf("%d", issueNumber) + `-" (e.g. "implement/issue-` + fmt.Sprintf("%d", issueNumber) + `-<slug>") so the branch is unambiguously identifiable as this issue's implementation.
 5. IMPLEMENT the change set:
    - Match existing layout, naming, error handling, and logging conventions.
    - Add unit tests for new logic, and make every new test exercise at least one error or edge path — not the happy path only. Add integration / E2E tests when the project has them for comparable features.
