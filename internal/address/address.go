@@ -18,6 +18,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
+	"github.com/planwerk/planwerk-agent/internal/skills"
 	"github.com/planwerk/planwerk-agent/internal/workspace"
 )
 
@@ -179,13 +180,14 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	}
 
 	pats := loadPatterns(opts, pr.Dir)
+	sks := skills.Load(pr.Dir)
 
 	if opts.PrintPrompt {
 		unit := selected
 		if opts.OneCommitPerThread {
 			unit = selected[:1] // render the first thread's prompt
 		}
-		prompt := r.BuildPrompt(r.contextFor(opts, pr, unit, pats))
+		prompt := r.BuildPrompt(r.contextFor(opts, pr, unit, pats, sks))
 		if _, err := io.WriteString(w, prompt); err != nil {
 			return fmt.Errorf("writing prompt: %w", err)
 		}
@@ -195,14 +197,14 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		return nil
 	}
 
-	return r.dispatch(w, opts, pr, fullName, selected, pats)
+	return r.dispatch(w, opts, pr, fullName, selected, pats, sks)
 }
 
 // dispatch drives the address work: aggregate (one session over all threads) or
 // per-thread (one session per thread, bounded by MaxIterations). It collects
 // the per-thread results, posts the aggregate report, and returns an escalation
 // or max-iterations error when the run could not finish cleanly.
-func (r *Runner) dispatch(w io.Writer, opts Options, pr *github.PR, fullName string, selected []github.ReviewThread, pats []patterns.Pattern) error {
+func (r *Runner) dispatch(w io.Writer, opts Options, pr *github.PR, fullName string, selected []github.ReviewThread, pats []patterns.Pattern, sks []skills.Skill) error {
 	var addressed []report.AddressedThread
 	var summaries []string
 	var escalated Status
@@ -216,7 +218,7 @@ func (r *Runner) dispatch(w io.Writer, opts Options, pr *github.PR, fullName str
 			}
 			processed++
 			_, _ = fmt.Fprintf(w, "Addressing thread %s (%s)...\n", t.ID, threadLocation(t))
-			result, err := r.addressUnit(w, opts, pr, []github.ReviewThread{t}, pats)
+			result, err := r.addressUnit(w, opts, pr, []github.ReviewThread{t}, pats, sks)
 			if err != nil {
 				return err
 			}
@@ -232,7 +234,7 @@ func (r *Runner) dispatch(w io.Writer, opts Options, pr *github.PR, fullName str
 		}
 	} else {
 		_, _ = fmt.Fprintf(w, "Addressing %d thread(s) as one aggregate commit...\n", len(selected))
-		result, err := r.addressUnit(w, opts, pr, selected, pats)
+		result, err := r.addressUnit(w, opts, pr, selected, pats, sks)
 		if err != nil {
 			return err
 		}
@@ -267,8 +269,8 @@ func (r *Runner) dispatch(w io.Writer, opts Options, pr *github.PR, fullName str
 // addressUnit runs one Claude address session, publishes the follow-up
 // commit(s) it made, and (gated) replies to and resolves each addressed thread.
 // The push is fatal on failure; replying and resolving are best-effort.
-func (r *Runner) addressUnit(w io.Writer, opts Options, pr *github.PR, threads []github.ReviewThread, pats []patterns.Pattern) (*report.AddressResult, error) {
-	result, err := r.Claude.Address(pr.Dir, r.contextFor(opts, pr, threads, pats))
+func (r *Runner) addressUnit(w io.Writer, opts Options, pr *github.PR, threads []github.ReviewThread, pats []patterns.Pattern, sks []skills.Skill) (*report.AddressResult, error) {
+	result, err := r.Claude.Address(pr.Dir, r.contextFor(opts, pr, threads, pats, sks))
 	if err != nil {
 		return nil, fmt.Errorf("claude address: %w", err)
 	}
@@ -361,7 +363,7 @@ func pickByID(w io.Writer, threads []github.ReviewThread, ids []string) []github
 }
 
 // contextFor assembles the Claude prompt context for a unit of work.
-func (r *Runner) contextFor(opts Options, pr *github.PR, threads []github.ReviewThread, pats []patterns.Pattern) Context {
+func (r *Runner) contextFor(opts Options, pr *github.PR, threads []github.ReviewThread, pats []patterns.Pattern, sks []skills.Skill) Context {
 	return Context{
 		RepoFullName:       fmt.Sprintf("%s/%s", pr.Owner, pr.Repo),
 		PRNumber:           pr.Number,
@@ -372,6 +374,7 @@ func (r *Runner) contextFor(opts Options, pr *github.PR, threads []github.Review
 		OneCommitPerThread: opts.OneCommitPerThread,
 		Patterns:           pats,
 		MaxPatterns:        opts.MaxPatterns,
+		Skills:             sks,
 		Local:              opts.Local,
 	}
 }

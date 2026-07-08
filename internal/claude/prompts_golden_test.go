@@ -26,6 +26,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/rebase"
 	"github.com/planwerk/planwerk-agent/internal/report"
 	"github.com/planwerk/planwerk-agent/internal/reviewprepared"
+	"github.com/planwerk/planwerk-agent/internal/skills"
 	"github.com/planwerk/planwerk-agent/internal/sync"
 )
 
@@ -77,6 +78,17 @@ func goldenPatterns() []patterns.Pattern {
 			AppliesWhen:   []string{"go"},
 			Body:          "## Rule\nLong-running functions MUST accept a context.Context.",
 		},
+	}
+}
+
+// goldenSkills returns a deterministic set of project-provided skills (name +
+// description, sorted by name as skills.Load returns them) so the implement,
+// fix, and address goldens lock the rendered <project-skills> block. One skill
+// carries no description to snapshot that branch of projectSkillsBlock.
+func goldenSkills() []skills.Skill {
+	return []skills.Skill{
+		{Name: "drift-check", Description: "Reconcile drift between the issue spec, the plan, and the committed code before finishing."},
+		{Name: "domain-glossary", Description: "Resolve project-specific domain terms before implementing."},
 	}
 }
 
@@ -490,6 +502,7 @@ func goldenImplementContext() implement.Context {
 	return implement.Context{
 		Patterns:     goldenPatterns(),
 		MaxPatterns:  0,
+		Skills:       goldenSkills(),
 		RepoFullName: "planwerk/planwerk-agent",
 		IssueNumber:  42,
 		IssueTitle:   "Add snapshot tests for prompt builders",
@@ -678,6 +691,7 @@ func goldenFixContext() fix.Context {
 		},
 		Patterns:    goldenPatterns(),
 		MaxPatterns: 0,
+		Skills:      goldenSkills(),
 		Fixup:       true,
 	}
 }
@@ -754,6 +768,7 @@ func goldenAddressContext() address.Context {
 		OneCommitPerThread: true,
 		Patterns:           goldenPatterns(),
 		MaxPatterns:        0,
+		Skills:             goldenSkills(),
 	}
 }
 
@@ -1008,6 +1023,7 @@ func goldenBareImplementContext() implement.BareContext {
 			},
 		},
 		BundledURLBase: "https://raw.githubusercontent.com/planwerk/planwerk-agent/main/internal/patterns/patterns",
+		Skills:         goldenSkills(),
 	}
 }
 

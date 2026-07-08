@@ -101,6 +101,15 @@ Secrets MUST be loaded from environment variables or a secret manager.
 
 </review-patterns>
 
+## Project-provided Skills (use them)
+
+This repository ships the Skills below under `.claude/skills/` for specialized tasks. They are the project's own, committed to the repo, and they exist precisely so this class of work is done the project's way. When a task you are about to perform falls within a skill's stated purpose, you MUST invoke that skill (via the Skill tool) and follow it rather than improvising your own approach — match by the description; a skill whose purpose covers your task is not optional. Only the repo-shipped skills listed here are in scope — ignore any unrelated globally-installed skills.
+
+<project-skills>
+- `drift-check` — Reconcile drift between the issue spec, the plan, and the committed code before finishing.
+- `domain-glossary` — Resolve project-specific domain terms before implementing.
+</project-skills>
+
 ## Implementation Workflow
 
 Run these steps in order. Do not skip ahead.
