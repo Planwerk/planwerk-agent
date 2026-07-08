@@ -81,7 +81,13 @@ type Options struct {
 	MaxReviewIterations int
 	Local               bool // operate on the current working directory instead of cloning
 	Force               bool // with Local, skip the dirty-working-tree confirmation prompt
-	Version             string
+	// NoResume disables resuming an earlier aborted run: instead of detecting the
+	// feature branch a prior run for this issue left behind (commits already made
+	// before it hit its session limit), checking it out, and continuing from the
+	// next commit, the implement session starts a fresh branch. It also disables
+	// pushing partial progress after an abort. Resume is on by default.
+	NoResume bool
+	Version  string
 
 	// Pattern loading mirrors review/audit/elaborate so the implementation
 	// is grounded in the same review catalog and any project-specific
@@ -451,6 +457,15 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		}
 	}
 
+	// Resume detection: when an earlier run for this issue aborted mid-work (e.g.
+	// the session hit its usage limit) it left commits on a feature branch. Detect
+	// and check that branch out, and hand the implement session the commits
+	// already on it so it continues from where the earlier run stopped instead of
+	// recreating the branch and redoing the work. Off with --no-resume.
+	if !opts.NoResume {
+		r.prepareResume(w, repo.Dir, number, &ctx)
+	}
+
 	implReport, model, err := r.Claude.Implement(repo.Dir, ctx)
 	if err != nil {
 		return fmt.Errorf("claude implement: %w", err)
@@ -469,6 +484,10 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		if strings.TrimSpace(implReport) != "" {
 			_, _ = fmt.Fprintf(w, "\nClaude returned no valid implementation report:\n%s\n", implReport)
 		}
+		// The session stopped mid-work (this is the aborted-run case resume exists
+		// for). Persist whatever it committed so the next run can continue from it,
+		// then abort — the branch is half-built, so no PR is opened.
+		r.persistPartialProgress(w, opts, repo.Dir)
 		return fmt.Errorf("the implement session did not produce a complete implementation report (missing the %q heading or a terminal STATUS line); the implementation did not finish and no pull request was opened", reportHeading)
 	}
 
@@ -480,6 +499,9 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// posted for the human who must intervene; stop here rather than open a PR on
 	// an incomplete branch, mirroring the planning phase's escalation handling.
 	if status == statusBlocked || status == statusNeedsContext {
+		// Any commits the session did make before escalating are worth keeping for a
+		// follow-up run that continues once the blocker is cleared.
+		r.persistPartialProgress(w, opts, repo.Dir)
 		return fmt.Errorf("the implement session reported %s; the implementation did not finish and no pull request was opened — review the report above and clarify the issue", status)
 	}
 
@@ -571,6 +593,61 @@ func (r *Runner) openRepo(opts Options, fullName string) (*github.Repo, error) {
 	}
 	slog.Info("cloning repository for implementation", "repo", fullName)
 	return r.GitHub.CloneRepo(fullName)
+}
+
+// prepareResume detects a feature branch an earlier aborted run for this issue
+// left behind — the commits it made before it stopped — checks it out, and
+// records it in ctx.Resume so the implement session continues on that branch
+// instead of starting a fresh one. It is best-effort: any failure to detect or
+// check out the branch is logged and surfaced but leaves ctx.Resume nil, so the
+// run proceeds as a normal fresh implementation. No branch to resume is the
+// silent, common case.
+func (r *Runner) prepareResume(w io.Writer, dir string, number int, ctx *Context) {
+	state, err := r.GitHub.PrepareResume(dir, number)
+	if err != nil {
+		slog.Warn("could not check for a resumable branch; implementing fresh", "issue", number, "err", err)
+		_, _ = fmt.Fprintf(w, "\nCould not check for an earlier aborted run to resume: %v\n", err)
+		return
+	}
+	if state == nil || len(state.Commits) == 0 {
+		return
+	}
+	ctx.Resume = &ResumeContext{Branch: state.Branch, Commits: state.Commits}
+	slog.Info("resuming an earlier aborted run", "issue", number, "branch", state.Branch, "commits", len(state.Commits))
+	_, _ = fmt.Fprintf(w, "\nResuming on branch %s: %d commit(s) from an earlier aborted run are already present — continuing from where it stopped.\n", state.Branch, len(state.Commits))
+}
+
+// persistPartialProgress preserves the commits an aborted implement session left
+// on its feature branch so a later run can resume them. In clone mode it pushes
+// the branch to origin (no PR) — the temp clone is about to be deleted, so
+// without the push the work is lost, and a later run then finds origin/<branch>
+// and resumes. In --local mode the branch already persists in the user's
+// checkout, so it only points the operator at it. The whole step is best-effort:
+// a failure to resolve or push is logged and surfaced but never changes the abort
+// error the caller is about to return. Disabled by --no-resume.
+func (r *Runner) persistPartialProgress(w io.Writer, opts Options, dir string) {
+	if opts.NoResume {
+		return
+	}
+	state, err := r.GitHub.CurrentFeatureProgress(dir)
+	if err != nil {
+		slog.Warn("could not resolve partial progress to preserve", "err", err)
+		return
+	}
+	if state == nil || len(state.Commits) == 0 {
+		return // no commits to preserve
+	}
+	if opts.Local {
+		_, _ = fmt.Fprintf(w, "\nPartial progress (%d commit(s)) is on local branch %s; rerun implement --local to resume it.\n", len(state.Commits), state.Branch)
+		return
+	}
+	if err := r.GitHub.PushBranch(dir, state.Branch); err != nil {
+		slog.Warn("could not push partial progress; it will be lost with the clone", "branch", state.Branch, "err", err)
+		_, _ = fmt.Fprintf(w, "\nCould not push partial progress on branch %s (it will be lost with the temporary clone): %v\n", state.Branch, err)
+		return
+	}
+	slog.Info("pushed partial progress for a later resume", "branch", state.Branch, "commits", len(state.Commits))
+	_, _ = fmt.Fprintf(w, "\nPushed partial progress to origin/%s (%d commit(s)); rerun implement to resume it.\n", state.Branch, len(state.Commits))
 }
 
 // planHeading is the first line every plan carries ("## Implementation Plan

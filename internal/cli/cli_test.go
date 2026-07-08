@@ -88,6 +88,16 @@ func TestToImplementOptions_VerifyFlags(t *testing.T) {
 		}
 	})
 
+	t.Run("no-resume maps through", func(t *testing.T) {
+		if opts := (ImplementConfig{NoResume: true}).ToImplementOptions("v1"); !opts.NoResume {
+			t.Errorf("NoResume=%v, want true", opts.NoResume)
+		}
+		// Resume is on by default, so the zero config leaves the flag off.
+		if opts := (ImplementConfig{}).ToImplementOptions("v1"); opts.NoResume {
+			t.Errorf("NoResume=%v, want false by default", opts.NoResume)
+		}
+	})
+
 	t.Run("capture-wiki and yes map through", func(t *testing.T) {
 		opts := ImplementConfig{CaptureWiki: true, Yes: true}.ToImplementOptions("v1")
 		if !opts.CaptureWiki || !opts.Yes {

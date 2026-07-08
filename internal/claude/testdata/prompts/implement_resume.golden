@@ -101,6 +101,19 @@ Secrets MUST be loaded from environment variables or a secret manager.
 
 </review-patterns>
 
+## Resuming a partial implementation
+
+An earlier run for this issue stopped before finishing (most likely it hit its session/usage limit). You are ALREADY checked out on the feature branch it left behind — `implement/issue-42-golden-tests` — with the commits it already made on it:
+
+- abc1234 Add golden helper and -update flag
+- 0f1e2d3 Snapshot the review prompt builder
+
+Continue that work — do NOT start over:
+- Do NOT create a new branch, and do NOT reset, rebase, revert, or amend the commits already on this branch. They are completed work; build on top of them.
+- Reconcile the commits above against the plan's Commit Sequence and Work Breakdown: work out which commits and work packages are already delivered and which remain. Open the files an existing commit changed to confirm it does what its subject claims; only if one is clearly broken or incomplete should you correct it in a NEW follow-up commit — never by rewriting history.
+- Then implement ONLY the remaining commits and work packages, on this same branch, committing as you go.
+- In the Work Breakdown Coverage and Commits sections of your report, include the already-present commits and mark the packages they deliver "done", with those commits as evidence — exactly as if you had made them this session.
+
 ## Implementation Workflow
 
 Run these steps in order. Do not skip ahead.
@@ -112,7 +125,7 @@ Run these steps in order. Do not skip ahead.
    - Identify the project's test conventions (unit, integration, E2E) and where tests live.
    - Identify the project's documentation conventions (README, docs/, CHANGELOG, generated API docs).
 3. PLAN the smallest change set that satisfies every Acceptance Criterion. Sketch the commit sequence before editing — keep each commit small and reviewable.
-4. CREATE a fresh feature branch off the current default branch. Use a short, descriptive branch name that MUST begin with "implement/issue-42-" (e.g. "implement/issue-42-<slug>") — the orchestrator keys on this prefix to find and resume the branch if this session is interrupted before it finishes.
+4. STAY on the existing feature branch `implement/issue-42-golden-tests` you are already checked out on — an earlier run created it (see "Resuming a partial implementation" above). Do NOT create a new branch and do NOT reset, rebase, or amend it.
 5. IMPLEMENT the change set:
    - Match existing layout, naming, error handling, and logging conventions.
    - Add unit tests for new logic, and make every new test exercise at least one error or edge path — not the happy path only. Add integration / E2E tests when the project has them for comparable features.

@@ -45,6 +45,25 @@ type Context struct {
 	MetaIssue     *github.Issue
 	SiblingIssues []github.Issue
 	ChildIssues   []github.Issue
+	// Resume, when non-nil, marks this as a continuation of an earlier implement
+	// run for the same issue that aborted mid-work (e.g. the session hit its usage
+	// limit). The orchestrator has already checked out the feature branch that run
+	// left behind; Resume carries that branch name and the commits already on it
+	// so the implement prompt tells the session to stay on the branch, reconcile
+	// the existing commits against the plan, and continue from where the earlier
+	// run stopped instead of recreating the branch and redoing the work. Nil for a
+	// fresh run.
+	Resume *ResumeContext
+}
+
+// ResumeContext describes the partial work an earlier aborted run for this issue
+// left on its feature branch, so the implement prompt can continue from it rather
+// than start over. Branch is the feature branch (already checked out by the
+// orchestrator); Commits are the commits already on it over the base branch,
+// oldest-first, for the session to reconcile against the plan's Commit Sequence.
+type ResumeContext struct {
+	Branch  string
+	Commits []github.Commit
 }
 
 // ImplementFn is the bare-function shape the CLI passes in to wire Claude
@@ -356,6 +375,17 @@ type GitHubClient interface {
 	CloneRepoLocal(ref string, opts github.LocalOptions) (*github.Repo, error)
 	AddIssueComment(owner, name string, number int, body string) (string, error)
 	CurrentBranchRef(dir string) (*github.BranchRef, error)
+	// PrepareResume finds and checks out a feature branch an earlier aborted run
+	// for this issue left behind, returning the commits already on it (nil when
+	// there is nothing to resume). CurrentFeatureProgress reports the commits the
+	// current checkout has committed over the base branch (nil when still on the
+	// base or nothing is ahead), so the orchestrator can push partial progress
+	// after an abort. PushBranch publishes the branch to origin (no PR) so a later
+	// clone-mode run can fetch and resume it. Together they implement resuming an
+	// aborted implement run.
+	PrepareResume(dir string, number int) (*github.ResumeState, error)
+	CurrentFeatureProgress(dir string) (*github.ResumeState, error)
+	PushBranch(dir, branch string) error
 }
 
 // defaultGitHubClient is the production GitHubClient backed by the github
@@ -388,4 +418,16 @@ func (defaultGitHubClient) AddIssueComment(owner, name string, number int, body 
 
 func (defaultGitHubClient) CurrentBranchRef(dir string) (*github.BranchRef, error) {
 	return github.CurrentBranchRef(dir)
+}
+
+func (defaultGitHubClient) PrepareResume(dir string, number int) (*github.ResumeState, error) {
+	return github.PrepareResume(dir, number)
+}
+
+func (defaultGitHubClient) CurrentFeatureProgress(dir string) (*github.ResumeState, error) {
+	return github.CurrentFeatureProgress(dir)
+}
+
+func (defaultGitHubClient) PushBranch(dir, branch string) error {
+	return github.PushHead(dir, branch)
 }
