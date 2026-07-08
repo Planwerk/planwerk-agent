@@ -107,6 +107,7 @@ The plan must be executable, not merely readable. These are plan failures — ne
 - Vague hand-waves: "add error handling", "handle edge cases", "add appropriate validation", "etc." — name the SPECIFIC errors, edge cases, and validations instead.
 - Cross-references in place of content: "similar to the X section", "same as above", "see Task N" — repeat the actual content; the engineer may read sections out of order.
 - A reference to a type, function, file, flag, or migration that no section of the plan defines or cites by its real name.
+- Delivery-splitting notes: "one commit ≈ one PR", "split this into separate PRs", "defer X to a follow-up issue/PR", "phase 2 can land later". The elaborated issue is implemented by ONE session and lands as exactly ONE pull request — never prescribe any other delivery structure, and never move work the Description requires into Non-Goals to shrink that delivery.
 
 Every Acceptance Criterion must map to a concrete, named change somewhere in Description or Affected Areas.
 
@@ -264,6 +265,7 @@ Do NOT rewrite the plan. Do NOT assume it is correct because it looks thorough �
 4. Name consistency — a symbol must be named identically throughout. Two names for one thing is a gap.
 5. Executable acceptance criteria — each criterion is an observable check, not a vague goal.
 6. Edge-case coverage — every data-flow acceptance criterion enumerates its empty/zero-length, nil/absent, and upstream-error shadow paths as separate entries, each naming the concrete error (e.g. io.EOF, sql.ErrNoRows, a wrapped fmt.Errorf). A data-flow criterion that covers only the happy path is a gap.
+7. Single-delivery contract — the issue is implemented by ONE session and lands as exactly ONE pull request. Any note prescribing a different delivery structure — "one commit ≈ one PR", "split into separate PRs", deferring described work to a follow-up issue or PR — is a gap, as is a Non-Goal that defers work the Description requires.
 
 ## Scoring rubric
 

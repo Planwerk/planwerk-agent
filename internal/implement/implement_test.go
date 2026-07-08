@@ -405,7 +405,7 @@ func TestRun_ResumeDetectedFeedsImplement(t *testing.T) {
 	gh := &fakeGitHub{
 		issue:       sampleIssue(),
 		cloneDir:    t.TempDir(),
-		resumeState: &github.ResumeState{Branch: "implement/issue-42-foo", Commits: commits},
+		resumeState: &github.ResumeState{Branch: testResumeBranch, Commits: commits},
 	}
 	cl := &fakeClaude{report: validImplReport}
 	r := newRunner(gh, cl)
@@ -420,7 +420,7 @@ func TestRun_ResumeDetectedFeedsImplement(t *testing.T) {
 	if cl.ctx.Resume == nil {
 		t.Fatal("implement ctx.Resume is nil, want the resumed branch/commits")
 	}
-	if cl.ctx.Resume.Branch != "implement/issue-42-foo" {
+	if cl.ctx.Resume.Branch != testResumeBranch {
 		t.Errorf("resume branch = %q, want implement/issue-42-foo", cl.ctx.Resume.Branch)
 	}
 	if len(cl.ctx.Resume.Commits) != 2 {
@@ -457,8 +457,8 @@ func TestRun_NoResumeSkipsDetectionAndPush(t *testing.T) {
 	gh := &fakeGitHub{
 		issue:         sampleIssue(),
 		cloneDir:      t.TempDir(),
-		resumeState:   &github.ResumeState{Branch: "implement/issue-42-foo", Commits: []github.Commit{{SHA: "abc1234", Subject: "wip"}}},
-		progressState: &github.ResumeState{Branch: "implement/issue-42-foo", Commits: []github.Commit{{SHA: "abc1234", Subject: "wip"}}},
+		resumeState:   &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "abc1234", Subject: "wip"}}},
+		progressState: &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "abc1234", Subject: "wip"}}},
 	}
 	cl := &fakeClaude{report: "prose without a report heading or status"}
 	r := newRunner(gh, cl)
@@ -486,7 +486,7 @@ func TestRun_PersistsPartialProgressOnAbortInCloneMode(t *testing.T) {
 	gh := &fakeGitHub{
 		issue:         sampleIssue(),
 		cloneDir:      t.TempDir(),
-		progressState: &github.ResumeState{Branch: "implement/issue-42-foo", Commits: []github.Commit{{SHA: "abc1234", Subject: "wip"}}},
+		progressState: &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "abc1234", Subject: "wip"}}},
 	}
 	cl := &fakeClaude{report: "prose without a report heading or status"}
 	r := newRunner(gh, cl)
@@ -499,7 +499,7 @@ func TestRun_PersistsPartialProgressOnAbortInCloneMode(t *testing.T) {
 	if gh.pushBranchCalls.Load() != 1 {
 		t.Fatalf("PushBranch called %d times, want 1", gh.pushBranchCalls.Load())
 	}
-	if gh.pushBranchArg != "implement/issue-42-foo" {
+	if gh.pushBranchArg != testResumeBranch {
 		t.Errorf("pushed branch %q, want implement/issue-42-foo", gh.pushBranchArg)
 	}
 	if !strings.Contains(buf.String(), "Pushed partial progress to origin/implement/issue-42-foo") {
@@ -513,7 +513,7 @@ func TestRun_LocalAbortDoesNotPushPartialProgress(t *testing.T) {
 	gh := &fakeGitHub{
 		issue:         sampleIssue(),
 		cloneDir:      t.TempDir(),
-		progressState: &github.ResumeState{Branch: "implement/issue-42-foo", Commits: []github.Commit{{SHA: "abc1234", Subject: "wip"}}},
+		progressState: &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "abc1234", Subject: "wip"}}},
 	}
 	cl := &fakeClaude{report: "prose without a report heading or status"}
 	r := newRunner(gh, cl)
@@ -2253,17 +2253,16 @@ func TestRun_FinalizeOpensPR(t *testing.T) {
 	}
 }
 
-// TestRun_FinalizeClosingByStatus locks how the implement report's terminal
-// STATUS drives the issue link the finalize session uses. A complete
-// implementation (DONE / DONE_WITH_CONCERNS) opens a closing PR
-// (FinalizeContext.Closing == true → "Closes #N"); a PARTIAL one — a reviewable
-// subset that did not finish every work package — still opens a PR but a
-// non-closing one (Closing == false → "Refs #N") so the issue stays open. None of
-// these abort the run.
-func TestRun_FinalizeClosingByStatus(t *testing.T) {
+// TestRun_FinalizeByStatus locks how the implement report's terminal STATUS
+// drives the finalize pass. A complete implementation (DONE /
+// DONE_WITH_CONCERNS) opens the single closing PR. A PARTIAL one — at least one
+// work package left unfinished by a genuine interruption — opens NO pull
+// request: an issue lands as exactly one complete PR, so the run pushes the
+// partial branch for a later resume and aborts instead of shipping a subset.
+func TestRun_FinalizeByStatus(t *testing.T) {
 	cases := []struct {
-		status      string
-		wantClosing bool
+		status       string
+		wantFinalize bool
 	}{
 		{"DONE", true},
 		{"DONE_WITH_CONCERNS", true},
@@ -2271,20 +2270,34 @@ func TestRun_FinalizeClosingByStatus(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.status, func(t *testing.T) {
-			gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+			gh := &fakeGitHub{
+				issue:         sampleIssue(),
+				cloneDir:      t.TempDir(),
+				progressState: &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "abc1234", Subject: "wip"}}},
+			}
 			cl := &fakeClaude{report: "## Implementation Report (issue #42)\n\nSTATUS: " + tc.status}
 			ff := &fakeFinalizer{report: defaultFinalizeReport}
 			r := newRunner(gh, cl)
 			r.Finalizer = ff
 
-			if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42"}); err != nil {
-				t.Fatalf("Run returned %v, want nil for a %s report", err, tc.status)
+			err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42"})
+			if tc.wantFinalize {
+				if err != nil {
+					t.Fatalf("Run returned %v, want nil for a %s report", err, tc.status)
+				}
+				if ff.called.Load() != 1 {
+					t.Fatalf("finalizer called %d times, want 1 — a %s report opens the closing PR", ff.called.Load(), tc.status)
+				}
+				return
 			}
-			if ff.called.Load() != 1 {
-				t.Fatalf("finalizer called %d times, want 1 — a %s report still opens a PR", ff.called.Load(), tc.status)
+			if err == nil || !strings.Contains(err.Error(), "PARTIAL") {
+				t.Fatalf("Run returned %v, want a PARTIAL abort error — partial work must not ship as a PR", err)
 			}
-			if ff.ctx.Closing != tc.wantClosing {
-				t.Errorf("finalizer got Closing=%v for STATUS: %s, want %v", ff.ctx.Closing, tc.status, tc.wantClosing)
+			if ff.called.Load() != 0 {
+				t.Errorf("finalizer called %d times, want 0 — no pull request is opened for partial work", ff.called.Load())
+			}
+			if gh.pushBranchCalls.Load() != 1 || gh.pushBranchArg != testResumeBranch {
+				t.Errorf("PushBranch called %d times with %q, want exactly 1 push of the partial branch for a later resume", gh.pushBranchCalls.Load(), gh.pushBranchArg)
 			}
 		})
 	}
@@ -2484,6 +2497,10 @@ func (f *fakeClaude) Implement(dir string, ctx Context) (string, string, error) 
 // testRepoFullName is the "owner/repo" slug the tests parse out of the
 // "owner/repo#42" issue refs; resolved-context assertions compare against it.
 const testRepoFullName = "owner/repo"
+
+// testResumeBranch is the canned feature branch name resume/partial-progress
+// tests use for both the fakeGitHub state and the assertions against it.
+const testResumeBranch = "implement/issue-42-foo"
 
 func sampleIssue() *github.Issue {
 	return &github.Issue{

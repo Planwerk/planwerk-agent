@@ -323,17 +323,13 @@ type resolveWikiFn func(owner, name string, wopts patterns.WikiOptions, ropts pa
 // non-"main" default branch and an empty change set are handled in the session
 // rather than threaded through here.
 //
-// Closing selects how the PR links the issue. When true (a complete
-// implementation — STATUS: DONE or DONE_WITH_CONCERNS), the PR links with the
-// GitHub closing keyword "Closes #N" so merging closes the issue. When false (a
-// PARTIAL implementation — at least one work package is unfinished), the PR links
-// with a non-closing "Refs #N" instead, so the issue stays open for the remaining
-// work packages and a merge does not falsely close it.
+// Finalize only runs for a complete implementation — a PARTIAL run persists its
+// branch and aborts before this step — so the PR always links the issue with
+// the closing "Closes #N" keyword.
 type FinalizeContext struct {
 	RepoFullName string
 	IssueNumber  int
 	IssueTitle   string
-	Closing      bool
 }
 
 // PRFinalizer opens the draft pull request for the implemented + simplified +
