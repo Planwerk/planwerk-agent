@@ -70,6 +70,7 @@ The plan must be executable, not merely readable. These are plan failures — ne
 - Vague hand-waves: "add error handling", "handle edge cases", "add appropriate validation", "etc." — name the SPECIFIC errors, edge cases, and validations instead.
 - Cross-references in place of content: "similar to the X section", "same as above", "see Task N" — repeat the actual content; the engineer may read sections out of order.
 - A reference to a type, function, file, flag, or migration that no section of the plan defines or cites by its real name.
+- Delivery-splitting notes: "one commit ≈ one PR", "split this into separate PRs", "defer X to a follow-up issue/PR", "phase 2 can land later". The elaborated issue is implemented by ONE session and lands as exactly ONE pull request — never prescribe any other delivery structure, and never move work the Description requires into Non-Goals to shrink that delivery.
 
 Every Acceptance Criterion must map to a concrete, named change somewhere in Description or Affected Areas.
 

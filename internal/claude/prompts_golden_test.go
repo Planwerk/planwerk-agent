@@ -642,32 +642,17 @@ func goldenFinalizeContext() implement.FinalizeContext {
 		RepoFullName: "planwerk/planwerk-agent",
 		IssueNumber:  42,
 		IssueTitle:   "Add snapshot tests for prompt builders",
-		Closing:      true,
 	}
-}
-
-// goldenFinalizePartialContext is the non-closing finalize variant: a PARTIAL
-// implementation whose PR must link the issue with "Refs #N" instead of
-// "Closes #N", so the remaining work packages keep the issue open.
-func goldenFinalizePartialContext() implement.FinalizeContext {
-	ctx := goldenFinalizeContext()
-	ctx.Closing = false
-	return ctx
 }
 
 // TestBuildFinalizePrompt_Golden locks the finalize prompt: the session resolves
 // the base branch and change set itself, pushes the branch, and opens the draft
 // PR with the mandatory "Closes #N" link — and opens nothing when the branch
-// carries no commits.
+// carries no commits. Finalize only runs for a complete implementation (a
+// PARTIAL run persists its branch and aborts first), so there is no non-closing
+// variant.
 func TestBuildFinalizePrompt_Golden(t *testing.T) {
 	assertGoldenPrompt(t, "finalize", BuildFinalizePrompt(goldenFinalizeContext()))
-}
-
-// TestBuildFinalizePrompt_Partial_Golden locks the non-closing finalize prompt:
-// for a PARTIAL implementation the PR links the issue with "Refs #N" and keeps it
-// open, listing which work packages shipped and which remain.
-func TestBuildFinalizePrompt_Partial_Golden(t *testing.T) {
-	assertGoldenPrompt(t, "finalize_partial", BuildFinalizePrompt(goldenFinalizePartialContext()))
 }
 
 func goldenFixContext() fix.Context {
