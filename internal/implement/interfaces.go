@@ -5,6 +5,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
+	"github.com/planwerk/planwerk-agent/internal/skills"
 )
 
 // Context is the input for the Claude implement prompt. It carries the
@@ -24,6 +25,12 @@ type Context struct {
 	IssueState   string
 	Patterns     []patterns.Pattern
 	MaxPatterns  int
+	// Skills lists the Claude Code Agent Skills the target repo ships under
+	// .claude/skills/ (loaded by skills.Load from the checkout). They are
+	// rendered into the implement prompt so the session uses a matching
+	// project skill for a specialized task instead of improvising; empty when
+	// the repo ships none.
+	Skills []skills.Skill
 	// Plan is the implementation plan the preceding read-only planning
 	// session produced. When non-empty it is embedded verbatim into the
 	// implement prompt; empty means the implement session plans for
@@ -99,6 +106,12 @@ type BareContext struct {
 	PatternCatalog   []patterns.CatalogReference
 	BundledURLBase   string
 	HasRepoLocalRefs bool
+	// Skills lists the Agent Skills the target repo ships under .claude/skills/,
+	// discovered by skills.Load from the clone the orchestrator makes at
+	// prompt-build time. They are inlined into the bare prompt so the pasted-into
+	// session — running in its own checkout of the same repo — uses a matching
+	// project skill instead of improvising. Empty when the repo ships none.
+	Skills []skills.Skill
 }
 
 // BarePromptBuildFn renders a self-contained implement prompt — no issue

@@ -182,6 +182,8 @@ Apply these task-specific thinking patterns on top of the baseline above:
 		sb.WriteString("</review-patterns>\n\n")
 	}
 
+	sb.WriteString(projectSkillsBlock(ctx.Skills))
+
 	hasPlan := strings.TrimSpace(ctx.Plan) != ""
 	if hasPlan {
 		sb.WriteString("## Implementation Plan (from the planning session)\n\n")
@@ -365,6 +367,8 @@ func BuildBareImplementPrompt(ctx implement.BareContext) string {
 	sb.WriteString("You are already running inside a checkout of this repository's default branch. Do NOT re-clone. Operate on the working tree you have. You run as a one-shot session: fetch the issue yourself, implement it, push a fresh feature branch, open a draft PR, and report.\n\n")
 
 	sb.WriteString(renderBareCatalog(ctx.PatternCatalog, ctx.HasRepoLocalRefs))
+
+	sb.WriteString(projectSkillsBlock(ctx.Skills))
 
 	fmt.Fprintf(&sb, `## Fetch the issue
 

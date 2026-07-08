@@ -3,6 +3,7 @@ package fix
 import (
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
+	"github.com/planwerk/planwerk-agent/internal/skills"
 )
 
 // FailedCheck is a flattened, prompt-friendly view of a single failing check
@@ -35,6 +36,11 @@ type Context struct {
 	FailedChecks  []FailedCheck
 	Patterns      []patterns.Pattern
 	MaxPatterns   int
+	// Skills lists the Agent Skills the target repo ships under .claude/skills/
+	// (loaded by skills.Load from the checkout), rendered into the fix prompt so
+	// the session uses a matching project skill for a specialized fix instead of
+	// improvising. Empty when the repo ships none.
+	Skills []skills.Skill
 
 	// Local marks a --local run: the fix operates on the user's own checkout
 	// (PullOnBranch each iteration) instead of a throw-away temp-dir clone. It

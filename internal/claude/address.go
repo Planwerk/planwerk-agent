@@ -67,6 +67,8 @@ func BuildAddressPrompt(ctx address.Context) string {
 	writePatternSection(&sb, ctx.Patterns, ctx.MaxPatterns,
 		"These patterns are the catalog the project's review/audit tools share. Your change MUST stay consistent with them: do not address a comment in a way that would itself be flagged by a pattern below.")
 
+	sb.WriteString(projectSkillsBlock(ctx.Skills))
+
 	sb.WriteString("## What to do\n\n")
 	sb.WriteString(`1. For each thread above, read the full comment chain and open the file at the anchored path and line.
 2. Make the minimal change that addresses the reviewer's ask. If two threads share a root cause, fix it once.

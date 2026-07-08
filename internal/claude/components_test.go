@@ -3,6 +3,8 @@ package claude
 import (
 	"strings"
 	"testing"
+
+	"github.com/planwerk/planwerk-agent/internal/skills"
 )
 
 // TestEscapeFence verifies the fence delimiters of an untrusted body are
@@ -98,4 +100,46 @@ func TestDomainGlossaryBlockEscapesBreakout(t *testing.T) {
 	if !strings.Contains(out, "&lt;/domain-glossary&gt;") {
 		t.Errorf("injected closing delimiter was not escaped:\n%s", out)
 	}
+}
+
+// TestProjectSkillsBlock locks the shape of the project-skills section: it
+// renders nothing for a repo that ships no skills, and for a repo that does it
+// lists each skill's name + description inside the <project-skills> fence under a
+// "you MUST invoke" obligation.
+func TestProjectSkillsBlock(t *testing.T) {
+	t.Run("no skills yields empty string", func(t *testing.T) {
+		if got := projectSkillsBlock(nil); got != "" {
+			t.Errorf("projectSkillsBlock(nil) = %q, want empty", got)
+		}
+		if got := projectSkillsBlock([]skills.Skill{}); got != "" {
+			t.Errorf("projectSkillsBlock(empty) = %q, want empty", got)
+		}
+	})
+
+	t.Run("skills render as an obliged, fenced list", func(t *testing.T) {
+		out := projectSkillsBlock([]skills.Skill{
+			{Name: "drift-check", Description: "Reconcile spec/code drift."},
+			{Name: "no-desc"},
+		})
+		if !strings.Contains(out, "## Project-provided Skills") {
+			t.Errorf("missing heading:\n%s", out)
+		}
+		if !strings.Contains(out, "MUST invoke") {
+			t.Errorf("missing the obligation to invoke a matching skill:\n%s", out)
+		}
+		if !strings.Contains(out, "<project-skills>") || !strings.Contains(out, "</project-skills>") {
+			t.Errorf("skill list is not fenced:\n%s", out)
+		}
+		if !strings.Contains(out, "`drift-check` — Reconcile spec/code drift.") {
+			t.Errorf("named skill with description missing:\n%s", out)
+		}
+		// A skill without a description still lists its name, with no trailing dash.
+		if !strings.Contains(out, "- `no-desc`\n") {
+			t.Errorf("description-less skill not rendered cleanly:\n%s", out)
+		}
+		// Hermeticity guard: the block scopes itself to repo-shipped skills.
+		if !strings.Contains(out, "ignore any unrelated globally-installed skills") {
+			t.Errorf("missing the user-global scope guard:\n%s", out)
+		}
+	})
 }

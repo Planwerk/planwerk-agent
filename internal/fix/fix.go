@@ -14,6 +14,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/detect"
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
+	"github.com/planwerk/planwerk-agent/internal/skills"
 	"github.com/planwerk/planwerk-agent/internal/workspace"
 )
 
@@ -369,6 +370,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 			FailedChecks:  failed,
 			Patterns:      pats,
 			MaxPatterns:   opts.MaxPatterns,
+			Skills:        skills.Load(fresh.Dir),
 			Local:         opts.Local,
 			Fixup:         !opts.NoFixup,
 			BaseBranch:    pr.BaseBranch,

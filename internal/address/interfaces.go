@@ -4,6 +4,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
+	"github.com/planwerk/planwerk-agent/internal/skills"
 )
 
 // Context is the input for the Claude address prompt for one unit of work. In
@@ -26,6 +27,11 @@ type Context struct {
 	OneCommitPerThread bool
 	Patterns           []patterns.Pattern
 	MaxPatterns        int
+	// Skills lists the Agent Skills the target repo ships under .claude/skills/
+	// (loaded by skills.Load from the checkout), rendered into the address prompt
+	// so the session uses a matching project skill when resolving a thread instead
+	// of improvising. Empty when the repo ships none.
+	Skills []skills.Skill
 	// Local marks a --local run: the session operates on the user's own
 	// checkout. The orchestrator owns the push in both modes.
 	Local bool
