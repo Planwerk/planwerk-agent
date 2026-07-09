@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -280,5 +281,170 @@ func TestExtractText_ErrorIncludesTruncatedRaw(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), strings.Repeat("x", 201)) {
 		t.Errorf("error %q includes more than 200 bytes; head did not truncate", err)
+	}
+}
+
+// rateLimitEnvelope and maxTurnsEnvelope are the two failure envelopes Claude
+// Code actually emits, captured verbatim from `claude -p --output-format json`.
+// Both exit non-zero with an EMPTY stderr, which is the whole reason
+// claudeRunError exists. Note that the rate-limit envelope reports
+// subtype "success" while setting is_error — envelopeFailure must not quote that
+// subtype back as the reason.
+const (
+	rateLimitEnvelope = `{"type":"result","subtype":"success","is_error":true,"api_error_status":429,"result":"You've reached your Fable 5 limit. Run /usage-credits to continue or switch models with /model.","stop_reason":"stop_sequence"}`
+	maxTurnsEnvelope  = `{"type":"result","subtype":"error_max_turns","is_error":true,"num_turns":2,"stop_reason":"tool_use"}`
+)
+
+// TestEnvelopeFailure locks in the diagnosis of a failed `claude -p` turn from
+// the result envelope, which is the only place the CLI records the reason: it
+// writes the envelope to stdout and leaves stderr empty.
+func TestEnvelopeFailure(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{
+			// The reported bug: the planning session runs on fable, the limit is
+			// hit, and the operator saw only "exit status 1\nstderr: ".
+			name: "api error carries status and reason",
+			raw:  rateLimitEnvelope,
+			want: "api error 429: You've reached your Fable 5 limit. Run /usage-credits to continue or switch models with /model.",
+		},
+		{
+			// A harness-level abort carries no result text at all; the subtype is
+			// the only thing naming the failure.
+			name: "max turns names itself through subtype",
+			raw:  maxTurnsEnvelope,
+			want: "error_max_turns",
+		},
+		{
+			// A status with no accompanying prose must still surface the status.
+			name: "status without reason",
+			raw:  `{"is_error":true,"subtype":"success","api_error_status":529}`,
+			want: "api error 529",
+		},
+		{
+			// is_error unset means the turn succeeded: never manufacture a failure
+			// out of a good envelope, or every successful call would error.
+			name: "successful envelope is not a failure",
+			raw:  `{"type":"result","subtype":"success","is_error":false,"result":"## Implementation Plan (issue #585)"}`,
+		},
+		{
+			// An envelope that omits is_error entirely (older CLI) is a success.
+			name: "envelope without is_error is not a failure",
+			raw:  `{"result":"the answer"}`,
+		},
+		{
+			// is_error set but nothing names the reason: report nothing so the
+			// caller falls back to stderr, then to the raw stdout head.
+			name: "failed turn with no reason yields nothing",
+			raw:  `{"is_error":true,"subtype":"success"}`,
+		},
+		{
+			// A literal null status must not render as "api error null".
+			name: "null status is treated as absent",
+			raw:  `{"is_error":true,"subtype":"error_during_execution","api_error_status":null}`,
+			want: "error_during_execution",
+		},
+		{
+			name: "non-envelope output yields nothing",
+			raw:  "claude: command failed",
+		},
+		{
+			name: "empty output yields nothing",
+			raw:  "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := envelopeFailure([]byte(tc.raw)); got != tc.want {
+				t.Errorf("envelopeFailure(%s) = %q, want %q", tc.raw, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestClaudeRunError_SurfacesEnvelopeReason is the regression test for the
+// reported failure: `implement` died with "claude: exit status 1\nstderr: " and
+// no hint that the fable rate limit was hit. The reason lives on stdout, so the
+// error must carry it — and must name the model, since the envelope talks about
+// "Fable 5" while the operator only ever typed `implement`.
+func TestClaudeRunError_SurfacesEnvelopeReason(t *testing.T) {
+	t.Parallel()
+
+	err := claudeRunError(errors.New("exit status 1"), "fable", []byte(rateLimitEnvelope), nil)
+
+	for _, want := range []string{"exit status 1", "model fable", "api error 429", "You've reached your Fable 5 limit"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
+		}
+	}
+}
+
+// TestClaudeRunError_PrefersEnvelopeOverStderr documents the precedence: when
+// the CLI diagnosed the failure itself, that beats whatever noise it also wrote
+// to stderr.
+func TestClaudeRunError_PrefersEnvelopeOverStderr(t *testing.T) {
+	t.Parallel()
+
+	err := claudeRunError(errors.New("exit status 1"), "opus", []byte(maxTurnsEnvelope), []byte("some warning\n"))
+
+	if !strings.Contains(err.Error(), "error_max_turns") {
+		t.Errorf("error %q does not carry the envelope reason", err)
+	}
+	if strings.Contains(err.Error(), "some warning") {
+		t.Errorf("error %q quoted stderr even though the envelope diagnosed the failure", err)
+	}
+}
+
+// TestClaudeRunError_FallsBackToStderr covers the failures that never reach the
+// API and so produce no envelope — an unknown flag, a rejected argument. Those
+// do land on stderr, and dropping them would be the same bug in reverse.
+func TestClaudeRunError_FallsBackToStderr(t *testing.T) {
+	t.Parallel()
+
+	err := claudeRunError(errors.New("exit status 2"), "opus", nil, []byte("  error: unknown option '--nope'\n"))
+
+	if !strings.Contains(err.Error(), "unknown option '--nope'") {
+		t.Errorf("error %q does not carry stderr", err)
+	}
+	if strings.Contains(err.Error(), "no failure envelope") {
+		t.Errorf("error %q claimed there was no output despite stderr", err)
+	}
+}
+
+// TestClaudeRunError_FallsBackToStdoutHead keeps a claude that crashes with
+// plain text on stdout (not an envelope) and an empty stderr diagnosable, and
+// bounds how much of it lands in the error.
+func TestClaudeRunError_FallsBackToStdoutHead(t *testing.T) {
+	t.Parallel()
+
+	err := claudeRunError(errors.New("exit status 1"), "opus", []byte(strings.Repeat("x", 300)), nil)
+
+	if !strings.Contains(err.Error(), strings.Repeat("x", 200)) {
+		t.Errorf("error %q does not include the first 200 bytes of stdout", err)
+	}
+	if strings.Contains(err.Error(), strings.Repeat("x", 201)) {
+		t.Errorf("error %q includes more than 200 bytes; head did not truncate", err)
+	}
+}
+
+// TestClaudeRunError_NoOutputAtAll documents the last resort: say so explicitly
+// rather than emitting the trailing "stderr: " that hid the real problem.
+func TestClaudeRunError_NoOutputAtAll(t *testing.T) {
+	t.Parallel()
+
+	err := claudeRunError(errors.New("signal: killed"), "opus", nil, nil)
+
+	if !strings.Contains(err.Error(), "no failure envelope on stdout and no stderr output") {
+		t.Errorf("error %q does not explain the absent diagnostic", err)
+	}
+	if !strings.Contains(err.Error(), "signal: killed") {
+		t.Errorf("error %q lost the underlying error", err)
 	}
 }

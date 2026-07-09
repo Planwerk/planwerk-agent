@@ -757,7 +757,7 @@ func (r *Runner) runPlanning(w io.Writer, opts Options, owner, name, dir string,
 	slog.Info("running planning session", "issue", ctx.IssueNumber)
 	plan, model, err := r.Planner.Plan(dir, *ctx)
 	if err != nil {
-		return fmt.Errorf("claude plan: %w (use --no-plan to skip the planning phase)", err)
+		return fmt.Errorf("claude plan: %w (use --plan-model to plan on a different model, or --no-plan to skip the planning phase)", err)
 	}
 	plan = strings.TrimSpace(plan)
 	if plan != "" {

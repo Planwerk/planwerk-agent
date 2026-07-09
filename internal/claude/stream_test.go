@@ -41,7 +41,7 @@ func TestReadStream_DispatchesAssistantTextAndCapturesResult(t *testing.T) {
 {"type":"result","subtype":"success","result":"final review text"}
 `
 	sink := &recordingSink{}
-	final, acc, _, _, _, err := readStream(strings.NewReader(stream), "review", sink)
+	final, acc, _, _, _, _, err := readStream(strings.NewReader(stream), "review", sink)
 	if err != nil {
 		t.Fatalf("readStream: %v", err)
 	}
@@ -75,7 +75,7 @@ func TestReadStream_PrefersStructuredOutputOnResultEvent(t *testing.T) {
 	const stream = `{"type":"system","subtype":"init"}
 {"type":"result","result":"prose fallback","structured_output":{"findings":null,"summary":"s"}}
 `
-	final, _, _, _, _, err := readStream(strings.NewReader(stream), "structure", &recordingSink{})
+	final, _, _, _, _, _, err := readStream(strings.NewReader(stream), "structure", &recordingSink{})
 	if err != nil {
 		t.Fatalf("readStream: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestReadStream_CapturesResolvedModelFromInitEvent(t *testing.T) {
 {"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}
 {"type":"result","result":"ok"}
 `
-	_, _, model, _, _, err := readStream(strings.NewReader(stream), "review", &recordingSink{})
+	_, _, model, _, _, _, err := readStream(strings.NewReader(stream), "review", &recordingSink{})
 	if err != nil {
 		t.Fatalf("readStream: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestReadStream_ResolvedModelEmptyWhenInitOmitsIt(t *testing.T) {
 	const stream = `{"type":"system","subtype":"init"}
 {"type":"result","result":"ok"}
 `
-	_, _, model, _, _, err := readStream(strings.NewReader(stream), "review", &recordingSink{})
+	_, _, model, _, _, _, err := readStream(strings.NewReader(stream), "review", &recordingSink{})
 	if err != nil {
 		t.Fatalf("readStream: %v", err)
 	}
@@ -116,7 +116,7 @@ func TestReadStream_CapturesUsageFromResultEvent(t *testing.T) {
 {"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}
 {"type":"result","subtype":"success","result":"ok","usage":{"input_tokens":3180,"output_tokens":4,"cache_read_input_tokens":18090,"cache_creation_input_tokens":0},"total_cost_usd":0.025612}
 `
-	_, _, _, usage, cost, err := readStream(strings.NewReader(stream), "review", &recordingSink{})
+	_, _, _, usage, cost, _, err := readStream(strings.NewReader(stream), "review", &recordingSink{})
 	if err != nil {
 		t.Fatalf("readStream: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestReadStream_UsageZeroWhenResultEventOmitsIt(t *testing.T) {
 	// rather than fail — older or newer CLI versions may not emit usage.
 	const stream = `{"type":"result","result":"ok"}
 `
-	_, _, _, usage, cost, err := readStream(strings.NewReader(stream), "review", &recordingSink{})
+	_, _, _, usage, cost, _, err := readStream(strings.NewReader(stream), "review", &recordingSink{})
 	if err != nil {
 		t.Fatalf("readStream: %v", err)
 	}
@@ -155,7 +155,7 @@ func TestReadStream_UsageZeroWhenResultEventOmitsIt(t *testing.T) {
 func TestReadStream_UsageDriftDoesNotDropResultText(t *testing.T) {
 	const stream = `{"type":"result","result":"final review text","usage":[1,2,3],"total_cost_usd":"oops"}
 `
-	final, _, _, usage, cost, err := readStream(strings.NewReader(stream), "review", &recordingSink{})
+	final, _, _, usage, cost, _, err := readStream(strings.NewReader(stream), "review", &recordingSink{})
 	if err != nil {
 		t.Fatalf("readStream: %v", err)
 	}
@@ -174,7 +174,7 @@ func TestReadStream_FallsBackToAccumulatedTextWhenNoResultEvent(t *testing.T) {
 	const stream = `{"type":"assistant","message":{"content":[{"type":"text","text":"partial"}]}}
 `
 	sink := &recordingSink{}
-	final, acc, _, _, _, err := readStream(strings.NewReader(stream), "review", sink)
+	final, acc, _, _, _, _, err := readStream(strings.NewReader(stream), "review", sink)
 	if err != nil {
 		t.Fatalf("readStream: %v", err)
 	}
@@ -193,7 +193,7 @@ func TestReadStream_TolerantOfMalformedAndUnknownLines(t *testing.T) {
 {"type":"result","result":"ok"}
 `
 	sink := &recordingSink{}
-	final, _, _, _, _, err := readStream(strings.NewReader(stream), "review", sink)
+	final, _, _, _, _, _, err := readStream(strings.NewReader(stream), "review", sink)
 	if err != nil {
 		t.Fatalf("readStream should not fail on malformed/unknown lines: %v", err)
 	}
@@ -210,7 +210,7 @@ func TestReadStream_LaterResultEventOverwritesEarlier(t *testing.T) {
 	const stream = `{"type":"result","result":"first"}
 {"type":"result","result":"second"}
 `
-	final, _, _, _, _, err := readStream(strings.NewReader(stream), "review", &recordingSink{})
+	final, _, _, _, _, _, err := readStream(strings.NewReader(stream), "review", &recordingSink{})
 	if err != nil {
 		t.Fatalf("readStream: %v", err)
 	}
@@ -222,8 +222,8 @@ func TestReadStream_LaterResultEventOverwritesEarlier(t *testing.T) {
 func TestHandleStreamLine_EmptyAndWhitespaceLinesAreIgnored(t *testing.T) {
 	sink := &recordingSink{}
 	var acc, final strings.Builder
-	handleStreamLine([]byte(""), "review", sink, &acc, &final, nil, nil, nil)
-	handleStreamLine([]byte("   \t  "), "review", sink, &acc, &final, nil, nil, nil)
+	handleStreamLine([]byte(""), "review", sink, &acc, &final, nil, nil, nil, nil)
+	handleStreamLine([]byte("   \t  "), "review", sink, &acc, &final, nil, nil, nil, nil)
 	if acc.Len() != 0 || final.Len() != 0 {
 		t.Errorf("blank lines should not modify buffers (acc=%q, final=%q)", acc.String(), final.String())
 	}
@@ -236,11 +236,50 @@ func TestHandleStreamLine_SkipsAssistantTextWithEmptyString(t *testing.T) {
 	sink := &recordingSink{}
 	var acc, final strings.Builder
 	const line = `{"type":"assistant","message":{"content":[{"type":"text","text":""}]}}`
-	handleStreamLine([]byte(line), "review", sink, &acc, &final, nil, nil, nil)
+	handleStreamLine([]byte(line), "review", sink, &acc, &final, nil, nil, nil, nil)
 	if acc.Len() != 0 {
 		t.Errorf("empty assistant text must not be accumulated, got %q", acc.String())
 	}
 	if len(sink.snapshot()) != 0 {
 		t.Errorf("empty assistant text must not produce sink events, got %v", sink.snapshot())
+	}
+}
+
+// TestReadStream_CapturesFailedResultLine locks in the streaming counterpart of
+// the buffered runner's envelope diagnosis: a `result` event that reports a
+// failed turn is kept verbatim, so runClaudeStream can render the reason the CLI
+// never wrote to stderr. Both runners then feed the same envelopeFailure, which
+// is what keeps them from drifting on how a failure is reported.
+func TestReadStream_CapturesFailedResultLine(t *testing.T) {
+	stream := `{"type":"system","subtype":"init","model":"claude-fable-5"}
+{"type":"result","subtype":"success","is_error":true,"api_error_status":429,"result":"You've reached your Fable 5 limit."}
+`
+	_, _, _, _, _, failLine, err := readStream(strings.NewReader(stream), "plan", &recordingSink{})
+	if err != nil {
+		t.Fatalf("readStream: %v", err)
+	}
+	if failLine == nil {
+		t.Fatal("readStream did not capture the failed result event")
+	}
+	if got, want := envelopeFailure(failLine), "api error 429: You've reached your Fable 5 limit."; got != want {
+		t.Errorf("envelopeFailure(failLine) = %q, want %q", got, want)
+	}
+}
+
+// TestReadStream_SuccessfulTurnCapturesNoFailure documents the other half: a
+// successful stream pays for no copy of its result event, which can reach
+// megabytes, and reports no failure to render.
+func TestReadStream_SuccessfulTurnCapturesNoFailure(t *testing.T) {
+	stream := `{"type":"result","subtype":"success","is_error":false,"result":"## Implementation Plan (issue #585)"}
+`
+	final, _, _, _, _, failLine, err := readStream(strings.NewReader(stream), "plan", &recordingSink{})
+	if err != nil {
+		t.Fatalf("readStream: %v", err)
+	}
+	if failLine != nil {
+		t.Errorf("readStream captured a failure line for a successful turn: %s", failLine)
+	}
+	if final != "## Implementation Plan (issue #585)" {
+		t.Errorf("final = %q, want the plan text", final)
 	}
 }

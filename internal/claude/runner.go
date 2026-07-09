@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -474,10 +475,10 @@ func (c *Client) runClaudeWithPermission(dir, prompt, label, permissionMode, mod
 	out, err := cmd.Output()
 	if err != nil {
 		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			return "", "", fmt.Errorf("claude: %w\nstderr: %s", err, exitErr.Stderr)
+		if !errors.As(err, &exitErr) {
+			return "", "", fmt.Errorf("claude (model %s): %w", model, err)
 		}
-		return "", "", fmt.Errorf("claude: %w", err)
+		return "", "", claudeRunError(err, model, out, exitErr.Stderr)
 	}
 	// The returned model is the exact id the envelope reports (e.g.
 	// "claude-opus-4-8"); the caller threads it per-run into the artifact
@@ -511,6 +512,74 @@ type claudeResponse struct {
 	// zero, not fail the envelope and discard a result the call carried fine.
 	Usage        json.RawMessage `json:"usage"`
 	TotalCostUSD json.RawMessage `json:"total_cost_usd"`
+	// IsError marks an envelope the CLI emitted for a FAILED turn. Claude Code
+	// exits non-zero whenever it sets this — for an upstream API error and for
+	// an exhausted turn budget alike — so only the error path reads it; a
+	// zero-exit call never sees it set. Subtype and APIErrorStatus qualify the
+	// failure; envelopeFailure turns the three into one diagnostic line.
+	IsError bool `json:"is_error,omitempty"`
+	// Subtype names a failure that carries no result text at all
+	// ("error_max_turns"). A successful turn reports "success" here, which
+	// envelopeFailure must therefore never quote back as a reason.
+	Subtype string `json:"subtype,omitempty"`
+	// APIErrorStatus is the upstream HTTP status behind an API-level failure
+	// (429 once a model's rate limit is hit). Captured raw and stringified so a
+	// status the CLI one day emits as a string cannot make the whole envelope
+	// unparseable — the same wire-drift tolerance Usage and TotalCostUSD get.
+	APIErrorStatus json.RawMessage `json:"api_error_status,omitempty"`
+}
+
+// claudeRunError renders a failed `claude -p` invocation into an error that
+// names what actually went wrong. Claude Code reports an API-level failure — a
+// hit rate limit, an exhausted turn budget — by writing its result envelope to
+// STDOUT and exiting non-zero, leaving STDERR empty. A runner that reports only
+// stderr therefore prints "claude: exit status 1\nstderr: " and drops the one
+// sentence that explains the failure ("You've reached your Fable 5 limit."),
+// which reads exactly like a crashed binary. stdout is the buffered envelope —
+// or, on the streaming path, the raw `result` event, which repeats the same
+// fields; stderr carries the failures that never reach the API, such as an
+// unknown flag. The model alias is named either way: the envelope talks about
+// "Fable 5" while the operator only ever typed `implement`, so which session hit
+// the limit is the actionable part.
+func claudeRunError(err error, model string, stdout, stderr []byte) error {
+	if failure := envelopeFailure(stdout); failure != "" {
+		return fmt.Errorf("claude (model %s): %w: %s", model, err, failure)
+	}
+	if msg := bytes.TrimSpace(stderr); len(msg) > 0 {
+		return fmt.Errorf("claude (model %s): %w\nstderr: %s", model, err, msg)
+	}
+	if msg := bytes.TrimSpace(stdout); len(msg) > 0 {
+		return fmt.Errorf("claude (model %s): %w\nstdout: %s", model, err, head(msg, 200))
+	}
+	return fmt.Errorf("claude (model %s): %w (no failure envelope on stdout and no stderr output)", model, err)
+}
+
+// envelopeFailure extracts the human-readable reason from a `claude -p` result
+// envelope that reports a failed turn, and "" when raw is not an envelope or the
+// turn succeeded. Both observed failure shapes are covered: an API error carries
+// the reason in result and the upstream status in api_error_status (is_error
+// true, api_error_status 429, result "You've reached your Fable 5 limit."),
+// while a harness-level abort carries no result at all and names itself only in
+// subtype (is_error true, subtype "error_max_turns"). It reads the streaming
+// path's raw `result` event just as well, since that event repeats these fields
+// verbatim — so the two runners cannot drift on how a failure is diagnosed.
+func envelopeFailure(raw []byte) string {
+	var resp claudeResponse
+	if err := json.Unmarshal(raw, &resp); err != nil || !resp.IsError {
+		return ""
+	}
+	reason := strings.TrimSpace(resp.Result)
+	if reason == "" && resp.Subtype != "success" {
+		reason = resp.Subtype
+	}
+	status := strings.TrimSpace(string(resp.APIErrorStatus))
+	if status == "" || status == "null" {
+		return reason
+	}
+	if reason == "" {
+		return "api error " + status
+	}
+	return fmt.Sprintf("api error %s: %s", status, reason)
 }
 
 // extractText extracts the response text, the resolved model id, and the

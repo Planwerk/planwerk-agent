@@ -22,9 +22,11 @@ import (
 // runClaude* call it is a fresh `claude -p` invocation, so plan and
 // implement are two independent sessions by construction.
 func (c *Client) Plan(dir string, ctx implement.Context) (string, string, error) {
+	// Returned unwrapped: the sole caller (implement's runPlanning) already
+	// prefixes "claude plan", and runClaudePlan names the model and the reason.
 	out, model, err := c.runClaudePlan(dir, BuildPlanPrompt(ctx), "plan")
 	if err != nil {
-		return "", "", fmt.Errorf("running plan: %w", err)
+		return "", "", err
 	}
 	return sanitizePlan(out), model, nil
 }
