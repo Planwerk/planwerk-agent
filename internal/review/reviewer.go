@@ -393,6 +393,8 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// against the checkout and demote any the verifier refutes with quoted
 	// counter-evidence. Runs before the cache write so the demotion is cached
 	// too. Fail-open — a failed verification publishes the findings unchanged.
+	// The returned stats are logged by the pass itself; see claimStats for why
+	// the refuted/sent ratio is worth watching.
 	r.verifyClaims(result, pr.Dir)
 
 	// 12. Cache result
@@ -418,6 +420,20 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	return nil
 }
 
+// claimStats records what one claim-verification pass did: how many findings it
+// sent, how many verdicts came back, and how many of those refuted a finding.
+// The refuted/sent ratio is the pass's own no-op signal. The verifier is asked
+// to confirm unless it finds quoted counter-evidence, and it is handed the
+// finding's claim along with the code — two nudges toward agreement — so a pass
+// that refutes nothing across many runs is not verifying, it is agreeing, and
+// belongs sharpened or deleted rather than left to look productive. The counts
+// are logged on every run so that case is visible instead of silent.
+type claimStats struct {
+	Sent     int
+	Verdicts int
+	Refuted  int
+}
+
 // verifyClaims re-checks each BLOCKING/CRITICAL finding's claim against the
 // checkout at dir. It batches every such finding into one VerifyFindingClaims
 // call; for each verdict the verifier refutes it demotes the finding to
@@ -425,10 +441,11 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 // routes it to the Unverified section). WARNING/INFO findings are never sent —
 // the snippet gate already covers them and verifying them is not worth the cost.
 // The pass is fail-open: a failed call, a missing verdict, or an out-of-range
-// index leaves the finding unchanged.
-func (r *Runner) verifyClaims(result *report.ReviewResult, dir string) {
+// index leaves the finding unchanged. The returned stats are the pass's own
+// measurement; the caller needs no other use for them.
+func (r *Runner) verifyClaims(result *report.ReviewResult, dir string) claimStats {
 	if result == nil {
-		return
+		return claimStats{}
 	}
 	var selectedIdx []int
 	var selected []report.Finding
@@ -439,12 +456,12 @@ func (r *Runner) verifyClaims(result *report.ReviewResult, dir string) {
 		}
 	}
 	if len(selected) == 0 {
-		return
+		return claimStats{}
 	}
 	verdicts, err := r.Claude.VerifyFindingClaims(dir, selected)
 	if err != nil {
 		slog.Warn("claim verification failed; publishing findings unchanged", "err", err)
-		return
+		return claimStats{Sent: len(selected)}
 	}
 	demoted := 0
 	for _, v := range verdicts {
@@ -466,9 +483,10 @@ func (r *Runner) verifyClaims(result *report.ReviewResult, dir string) {
 		result.Findings[fi].VerificationNote = "refuted: " + reason
 		demoted++
 	}
-	if demoted > 0 {
-		slog.Info("demoted refuted BLOCKING/CRITICAL findings to uncertain", "count", demoted)
-	}
+	stats := claimStats{Sent: len(selected), Verdicts: len(verdicts), Refuted: demoted}
+	slog.Info("claim verification complete",
+		"sent", stats.Sent, "verdicts", stats.Verdicts, "refuted", stats.Refuted)
+	return stats
 }
 
 // dedupFilelessFindings folds cross-pass duplicate findings that carry no file

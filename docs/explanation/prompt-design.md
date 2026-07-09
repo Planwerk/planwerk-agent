@@ -157,6 +157,28 @@ line and say "that is sediment" instead of arguing taste.
   path but not the empty or error branch. *Caught by* the checkable-and-
   exhaustive test above.
 
+## The no-op test, applied to a whole pass
+
+The five failure modes above are read at the resolution of a sentence: delete
+the line, and ask whether the output changes. A pass can fail the same test at
+the resolution of a *call*, and reading it will never reveal that, because every
+sentence in it looks like it instructs something.
+
+The claim-verification pass is the standing example. It hands the verifier a
+finding's claim, tells it to confirm unless it finds quoted counter-evidence,
+and adds "never refute on a hunch". Each instruction is deliberate — the pass may
+only demote, never promote, so agreeing is the safe default — but all three push
+the same way, and a verifier that agrees with everything is not verifying. It is
+a no-op wearing a Claude call.
+
+You cannot settle that by re-reading the prompt. You settle it by counting: the
+pass logs `sent`, `verdicts`, and `refuted` on every run (`claimStats` in
+`internal/review/reviewer.go`). A refutation rate that stays at zero across real
+runs is the evidence that the pass has stopped earning its tokens, and the
+signal to sharpen it or delete it. Until that evidence exists, the prompt stays
+as it is — instrumenting a suspicion is cheap, and rewriting a prompt on one is
+how a hedge gets written.
+
 ## How the doctrine is enforced
 
 The safety net is `internal/claude/prompts_golden_test.go` and its fixtures
@@ -192,3 +214,10 @@ from the `writing-great-skills` skill and `GLOSSARY.md` in
 [mattpocock/skills](https://github.com/mattpocock/skills) (MIT), reframed from
 authoring interactive Claude Code skills to authoring this project's
 non-interactive prompt builders.
+
+The "no-op applied to a whole pass" test is adapted from
+[addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) (MIT): its
+`doubt-driven-development` skill's *doubt theater* signal — "across two or more
+cycles the reviewer surfaced substantive findings and zero were actionable: you
+are validating, not doubting" — restated as an empirical form of the no-op test
+we already had.
