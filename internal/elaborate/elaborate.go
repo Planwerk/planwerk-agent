@@ -291,6 +291,12 @@ func elaborateCacheKey(owner, name string, number int, issue *github.Issue, rela
 // near-misses are surfaced; gaps and the "what a 10 looks like" target that
 // survive the budget are surfaced too rather than silently published. Any
 // reviewer or refinement error keeps the best draft so far.
+//
+// The reviewer is a fresh call per round that sees the issue and the draft but
+// never the previous score, so it cannot be talked upward by a number it
+// already agreed to. The one way this loop could still spin without improving
+// is a refinement that hands back the draft it was given; that case exits early
+// rather than paying for a reviewer call whose verdict cannot differ.
 func (r *Runner) runReviewLoop(dir string, baseCtx Context, result *Result, opts Options) *Result {
 	maxIter := opts.MaxReviewIterations
 	if maxIter <= 0 {
@@ -321,8 +327,9 @@ func (r *Runner) runReviewLoop(dir string, baseCtx Context, result *Result, opts
 			return result
 		}
 
+		priorBody := result.Body
 		refineCtx := baseCtx
-		refineCtx.PriorDraft = result.Body
+		refineCtx.PriorDraft = priorBody
 		refineCtx.ReviewGaps = review.Gaps
 		refineCtx.ReviewTarget = review.ToReachTen
 		refined, err := r.Claude.Elaborate(dir, refineCtx)
@@ -338,6 +345,19 @@ func (r *Runner) runReviewLoop(dir string, baseCtx Context, result *Result, opts
 		// draft would otherwise lose the Category/Scope line the first pass kept.
 		refined.Header = result.Header
 		refined.Body = BuildIssueBody(refined)
+
+		// A refinement that returned the draft it was given did not close a gap.
+		// Re-reviewing the identical body cannot yield a different verdict, so a
+		// further round would only re-score the same text — the loop looking busy
+		// while nothing improves. Stop and surface the gaps this round reported.
+		if refined.Body == priorBody {
+			slog.Warn("refinement returned an unchanged draft; stopping the loop",
+				"iteration", i, "score", review.Score, "gaps", len(review.Gaps))
+			result.UnresolvedGaps = review.Gaps
+			result.ReviewTarget = review.ToReachTen
+			result.Body = BuildIssueBody(result)
+			return result
+		}
 		result = refined
 	}
 	return result
