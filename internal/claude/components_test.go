@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/planwerk/planwerk-agent/internal/implement"
 	"github.com/planwerk/planwerk-agent/internal/skills"
 )
 
@@ -142,4 +143,64 @@ func TestProjectSkillsBlock(t *testing.T) {
 			t.Errorf("missing the user-global scope guard:\n%s", out)
 		}
 	})
+}
+
+// implementPrompts renders both implement builders for the shared-block
+// assertions below. The bare builder takes a different context type, so the
+// two are rendered here rather than table-driven over one constructor.
+func implementPrompts() map[string]string {
+	return map[string]string{
+		"implement":      BuildImplementPrompt(implement.Context{RepoFullName: "acme/widget", IssueNumber: 42, IssueTitle: "Do the thing"}),
+		"bare-implement": BuildBareImplementPrompt(implement.BareContext{RepoFullName: "acme/widget", IssueNumber: 42}),
+	}
+}
+
+// TestImplementRationalizationsBlockIsShared pins the block into both implement
+// prompts. A hardening that lives in only one of them is exactly the drift
+// components.go exists to prevent.
+func TestImplementRationalizationsBlockIsShared(t *testing.T) {
+	block := implementRationalizationsBlock()
+	for name, prompt := range implementPrompts() {
+		if !strings.Contains(prompt, block) {
+			t.Errorf("%s prompt does not carry the rationalizations block verbatim", name)
+		}
+	}
+}
+
+// TestImplementRationalizationsDoNotDuplicateHardRules is the doctrine guard:
+// the table carries the reasoning that used to trail the hard rules inline, so
+// each excuse must appear once in the prompt, not once per section. A second
+// occurrence means a row was added on top of the prose it was meant to replace.
+func TestImplementRationalizationsDoNotDuplicateHardRules(t *testing.T) {
+	// Phrases that exist only inside the table. Each was moved out of a hard
+	// rule; finding two of them means the move regressed into a copy.
+	once := []string{
+		"one commit ≈ one PR",
+		"too large for one session",
+	}
+	for name, prompt := range implementPrompts() {
+		for _, phrase := range once {
+			if got := strings.Count(prompt, phrase); got != 1 {
+				t.Errorf("%s prompt: %q appears %d times, want exactly 1 (it belongs to the rationalizations table alone)", name, phrase, got)
+			}
+		}
+	}
+}
+
+// TestImplementReportHasNegativeSpaceSection checks the report's out-of-scope
+// section and, more importantly, the guard that keeps it from becoming a
+// parking lot for work the issue actually asked for — which would reopen the
+// PARTIAL loophole design decision 62 closed.
+func TestImplementReportHasNegativeSpaceSection(t *testing.T) {
+	for name, prompt := range implementPrompts() {
+		if !strings.Contains(prompt, "### Noticed but not touching") {
+			t.Errorf("%s prompt: report shape has no \"Noticed but not touching\" section", name)
+		}
+		if !strings.Contains(prompt, "NEVER park a work package or an Acceptance Criterion here") {
+			t.Errorf("%s prompt: the out-of-scope section lacks its anti-loophole guard", name)
+		}
+		if !strings.Contains(prompt, `- "Note it, don't fix it."`) {
+			t.Errorf("%s prompt: no thinking pattern feeds the out-of-scope section", name)
+		}
+	}
 }

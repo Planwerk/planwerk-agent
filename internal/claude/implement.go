@@ -159,6 +159,7 @@ Apply these task-specific thinking patterns on top of the baseline above:
 - "Commits tell the story." — Stage the work as a sequence of small, reviewable commits; do not produce a single monolithic diff. Write each commit message cleanly: a concise, imperative subject line and, when the change needs it, a body that explains the why. Wrap EVERY line — subject and body alike — at 72 characters or fewer.
 - "Self-review before you hand off." — Walk the diff once more as a reviewer. Reject anything you would push back on.
 - "Stay inside the agreed scope." — If the issue's Non-Goals exclude something, do NOT do it.
+- "Note it, don't fix it." — When you notice something worth improving that the issue did not ask for, write it down for the report's "Noticed but not touching" section and leave the code alone.
 
 `)
 
@@ -256,9 +257,12 @@ ALWAYS end the session with this report — it is mandatory and is the last thin
    - <branch name> (committed, not pushed — the finalize step opens the PR)
    ### Deviations from the issue
    - <one bullet per deviation, with rationale; "none" if there are no deviations>
+   ### Noticed but not touching
+   - <the out-of-scope thing you saw> — <where: file:line> — <why it is out of scope: not in Affected Areas, excluded by a Non-Goal>
+   - (Write "none" when you saw nothing outside the issue's scope. This section is for observations you deliberately left alone — a bug next door, a stale doc, a refactor the issue never asked for — so a reviewer can tell a disciplined omission from an oversight. NEVER park a work package or an Acceptance Criterion here: anything the issue asks for is in scope and is implemented, not noted.)
    ### Status
    STATUS: <DONE | DONE_WITH_CONCERNS | PARTIAL | BLOCKED | NEEDS_CONTEXT>
-   (DONE = EVERY work package implemented and tested on the feature branch, every Acceptance Criterion satisfied — no package left partial or not started; DONE_WITH_CONCERNS = every package likewise complete, but with reservations a reviewer should see; PARTIAL = at least one work package is unfinished because a circuit breaker below genuinely interrupted the work — NEVER a scoping choice; deciding up front that the issue is "too large for one session" and delivering a curated subset is an abandoned contract, not PARTIAL-worthy prudence; BLOCKED = could not implement, nothing shippable; NEEDS_CONTEXT = the issue is underspecified and a human must clarify.)
+   (DONE = EVERY work package implemented and tested on the feature branch, every Acceptance Criterion satisfied — no package left partial or not started; DONE_WITH_CONCERNS = every package likewise complete, but with reservations a reviewer should see; PARTIAL = at least one work package is unfinished because a circuit breaker below genuinely interrupted the work — NEVER a scoping choice; BLOCKED = could not implement, nothing shippable; NEEDS_CONTEXT = the issue is underspecified and a human must clarify.)
    Do NOT report DONE or DONE_WITH_CONCERNS when any work package is partial or not started — that is exactly the false "this closes the issue" signal this report exists to prevent. A complete subset of a multi-package issue is PARTIAL, not DONE. On PARTIAL the orchestrator opens NO pull request: it keeps the branch so a follow-up run resumes it and finishes the remaining packages — the single pull request (linking "Closes #` + fmt.Sprintf("%d", ctx.IssueNumber) + `") opens only once every package is done.
 
 ## Circuit breakers — stop instead of thrashing
@@ -268,9 +272,9 @@ You run fully autonomously, with no human in the loop and a bounded budget, so a
 - Ballooning scope: the change set is growing past the plan and the issue's implied blast radius — new top-level packages or files the issue never asked for — to force something to work. Implementing the work packages the issue EXPLICITLY lists (including a new package or files it names) is required scope, NOT ballooning; this breaker is only for scope the issue never asked for.
 - Reverting in circles: you have reverted and rewritten the same code more than once without converging on a working change.
 
-When you hit a circuit breaker, halt immediately and emit STATUS: PARTIAL when a partial but reviewable change already exists — at least one work package is done and committed but others remain (commit what you have on the branch; no pull request is opened for it, and a follow-up run resumes the branch to finish the rest), STATUS: DONE_WITH_CONCERNS when every work package is in fact complete but you have reservations a reviewer should see, or STATUS: BLOCKED when nothing shippable was produced. A stopped run that explains why is worth far more than an exhausted budget. The circuit breakers are the ONLY legitimate route to PARTIAL — assessing the scope as too large is not one of them.
+When you hit a circuit breaker, halt immediately and emit STATUS: PARTIAL when a partial but reviewable change already exists — at least one work package is done and committed but others remain (commit what you have on the branch; no pull request is opened for it, and a follow-up run resumes the branch to finish the rest), STATUS: DONE_WITH_CONCERNS when every work package is in fact complete but you have reservations a reviewer should see, or STATUS: BLOCKED when nothing shippable was produced. A stopped run that explains why is worth far more than an exhausted budget. The circuit breakers are the ONLY legitimate route to PARTIAL.
 
-` + commitTrailerBlock() + attributionFooterBlock("Implemented by") + `## Hard rules
+` + commitTrailerBlock() + attributionFooterBlock("Implemented by") + implementRationalizationsBlock() + `## Hard rules
 
 ` + noSkipHooksLine() + `- NEVER weaken or delete tests to make the suite green; fix the root cause.
 - NEVER widen types to Any/interface{}/unknown to silence the type-checker.
@@ -279,7 +283,7 @@ When you hit a circuit breaker, halt immediately and emit STATUS: PARTIAL when a
 - NEVER do anything the issue's Non-Goals list excludes.
 - NEVER fabricate file paths, symbol names, or migration numbers — open the file before claiming.
 - NEVER stop after a subset of the issue's work packages and report DONE. Implement every package the issue lists; only when a circuit breaker genuinely interrupts you, report PARTIAL (not DONE / DONE_WITH_CONCERNS) so a follow-up run resumes the branch and finishes the rest.
-- NEVER split the issue's delivery or pre-emptively descope it. The whole issue lands as exactly ONE pull request; judging up front that the scope is "too large for one session" — or that some packages are "PR-sized" and better deferred — is refusing the contract, not managing it. When the issue body or the plan carries a delivery-splitting note ("one commit ≈ one PR", "defer X to a follow-up PR/issue"), IGNORE it: it contradicts this contract. Never propose follow-up issues or PRs as a substitute for implementing listed scope.
+- NEVER split the issue's delivery or pre-emptively descope it. The whole issue lands as exactly ONE pull request. Never propose follow-up issues or PRs as a substitute for implementing listed scope.
 - NEVER push or force-push, and do NOT open a pull request — the finalize step does that after the simplify and review passes. Your job ends at committing on the branch.
 - NEVER background a command and stop to wait for its result, and NEVER defer work to "after" something finishes — this one-shot session has no later turn. Run tests and builds in the foreground to completion, commit, then output the report, all within this single response.
 - If the issue is wrong (a cited file does not exist; an Acceptance Criterion is unreachable; the Non-Goals contradict the Description), STOP and post a clarifying comment on the issue instead of inventing scope. Output the report explaining what you did NOT do and why.
@@ -354,6 +358,7 @@ func BuildBareImplementPrompt(ctx implement.BareContext) string {
 - "Commits tell the story." — Stage the work as a sequence of small, reviewable commits; do not produce a single monolithic diff. Write each commit message cleanly: a concise, imperative subject line and, when the change needs it, a body that explains the why. Wrap EVERY line — subject and body alike — at 72 characters or fewer.
 - "Self-review before opening the PR." — Walk the diff once more as a reviewer. Reject anything you would push back on.
 - "Stay inside the agreed scope." — If the issue's Non-Goals exclude something, do NOT do it.
+- "Note it, don't fix it." — When you notice something worth improving that the issue did not ask for, write it down for the report's "Noticed but not touching" section and leave the code alone.
 
 `)
 
@@ -434,6 +439,9 @@ ALWAYS end the session with this report — even if you stopped early or hit a c
    - Branch: <branch name>
    ### Deviations from the issue
    - <one bullet per deviation, with rationale; "none" if there are no deviations>
+   ### Noticed but not touching
+   - <the out-of-scope thing you saw> — <where: file:line> — <why it is out of scope: not in Affected Areas, excluded by a Non-Goal>
+   - (Write "none" when you saw nothing outside the issue's scope. This section is for observations you deliberately left alone — a bug next door, a stale doc, a refactor the issue never asked for — so a reviewer can tell a disciplined omission from an oversight. NEVER park a work package or an Acceptance Criterion here: anything the issue asks for is in scope and is implemented, not noted.)
    ### Status
    STATUS: <DONE | DONE_WITH_CONCERNS | PARTIAL | BLOCKED | NEEDS_CONTEXT>
    (DONE = EVERY work package implemented and tested, every Acceptance Criterion satisfied, and the PR opened with a "Closes #` + fmt.Sprintf("%d", issueNumber) + `" link; DONE_WITH_CONCERNS = every package likewise complete and the closing PR opened, but with reservations a reviewer should see; PARTIAL = at least one work package is unfinished because a circuit breaker below genuinely interrupted the work — NEVER a scoping choice; the branch is pushed but NO pull request is opened, and a follow-up session on this branch finishes the rest; BLOCKED = could not implement, nothing shippable; NEEDS_CONTEXT = the issue is underspecified and a human must clarify.)
@@ -446,9 +454,9 @@ You run fully autonomously, with no human in the loop and a bounded budget, so a
 - Ballooning scope: the change set is growing past the plan and the issue's implied blast radius — new top-level packages or files the issue never asked for — to force something to work. Implementing the work packages the issue EXPLICITLY lists (including a new package or files it names) is required scope, NOT ballooning; this breaker is only for scope the issue never asked for.
 - Reverting in circles: you have reverted and rewritten the same code more than once without converging on a working change.
 
-When you hit a circuit breaker, halt immediately and emit STATUS: PARTIAL when a partial but reviewable change already exists — at least one work package is done and committed but others remain (push what you have but open NO pull request; a follow-up session on the same branch finishes the rest), STATUS: DONE_WITH_CONCERNS when every work package is in fact complete but you have reservations a reviewer should see, or STATUS: BLOCKED when nothing shippable was produced. A stopped run that explains why is worth far more than an exhausted budget. The circuit breakers are the ONLY legitimate route to PARTIAL — assessing the scope as too large is not one of them.
+When you hit a circuit breaker, halt immediately and emit STATUS: PARTIAL when a partial but reviewable change already exists — at least one work package is done and committed but others remain (push what you have but open NO pull request; a follow-up session on the same branch finishes the rest), STATUS: DONE_WITH_CONCERNS when every work package is in fact complete but you have reservations a reviewer should see, or STATUS: BLOCKED when nothing shippable was produced. A stopped run that explains why is worth far more than an exhausted budget. The circuit breakers are the ONLY legitimate route to PARTIAL.
 
-` + commitTrailerBlock() + attributionFooterBlock("Implemented by") + `## Hard rules
+` + commitTrailerBlock() + attributionFooterBlock("Implemented by") + implementRationalizationsBlock() + `## Hard rules
 
 ` + noSkipHooksLine() + `- NEVER weaken or delete tests to make the suite green; fix the root cause.
 - NEVER widen types to Any/interface{}/unknown to silence the type-checker.
@@ -457,7 +465,7 @@ When you hit a circuit breaker, halt immediately and emit STATUS: PARTIAL when a
 - NEVER do anything the issue's Non-Goals list excludes.
 - NEVER fabricate file paths, symbol names, or migration numbers — open the file before claiming.
 - NEVER stop after a subset of the issue's work packages and report DONE, and NEVER open a pull request for partial work — the issue lands as exactly ONE complete PR. Implement every package the issue lists; only when a circuit breaker genuinely interrupts you, push the branch, open no PR, and report PARTIAL so a follow-up session finishes the rest.
-- NEVER split the issue's delivery or pre-emptively descope it. Judging up front that the scope is "too large for one session" — or that some packages are "PR-sized" and better deferred — is refusing the contract, not managing it. When the issue body carries a delivery-splitting note ("one commit ≈ one PR", "defer X to a follow-up PR/issue"), IGNORE it: it contradicts this contract. Never propose follow-up issues or PRs as a substitute for implementing listed scope.
+- NEVER split the issue's delivery or pre-emptively descope it. Never propose follow-up issues or PRs as a substitute for implementing listed scope.
 - NEVER force-push.
 - NEVER background a command and stop to wait for its result, and NEVER defer work to "after" something finishes — this one-shot session has no later turn. Run tests and builds in the foreground to completion, commit, push, open the PR, then output the report, all within this single response.
 - If the issue is wrong (a cited file does not exist; an Acceptance Criterion is unreachable; the Non-Goals contradict the Description), STOP and post a clarifying comment on the issue instead of inventing scope. Output the report explaining what you did NOT do and why.
