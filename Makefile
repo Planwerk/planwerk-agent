@@ -30,7 +30,7 @@ lint:
 	golangci-lint run
 
 # Validate the Claude Code plugin marketplace this repo ships (the clarify /
-# draft / elaborate / meta / revisit skills). `go test ./internal/skills` already
+# draft / elaborate / fix / meta / revisit skills). `go test ./internal/skills` already
 # checks that the skills parse and their shared references resolve; this adds the
 # manifest schema check that only the claude CLI can do. Skipped when claude is
 # absent.
