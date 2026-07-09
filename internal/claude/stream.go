@@ -27,6 +27,12 @@ const streamMaxLineBytes = 16 * 1024 * 1024
 type streamEvent struct {
 	Type    string `json:"type"`
 	Subtype string `json:"subtype,omitempty"`
+	// IsError marks a `result` event the CLI emitted for a failed turn (a hit
+	// rate limit, an exhausted turn budget). handleStreamLine only reads it to
+	// decide whether to keep the raw line around: the diagnosis itself is left
+	// to envelopeFailure, which parses that line with the same decoder the
+	// buffered runner uses on its envelope.
+	IsError bool `json:"is_error,omitempty"`
 	// Model is the resolved model id the CLI reports on the `system`/`init`
 	// event (e.g. "claude-opus-4-8"). The orchestrator only ever passes a model
 	// alias ("opus") via --model, so this event is the one place the exact id
@@ -198,7 +204,9 @@ func (c *Client) runClaudeStream(dir, prompt, label, permissionMode, model, effo
 	// resolvedModel is the exact id the session reported on its init event;
 	// it is returned so the caller threads it per-run into the artifact footers
 	// instead of a package-level global, not the alias passed via --model.
-	finalResult, accText, resolvedModel, usage, cost, scanErr := readStream(stdout, label, sink)
+	// failLine is the raw `result` event of a failed turn (nil otherwise), which
+	// carries the reason the CLI never writes to stderr.
+	finalResult, accText, resolvedModel, usage, cost, failLine, scanErr := readStream(stdout, label, sink)
 
 	waitErr := cmd.Wait()
 	wg.Wait()
@@ -207,7 +215,7 @@ func (c *Client) runClaudeStream(dir, prompt, label, permissionMode, model, effo
 		return "", "", fmt.Errorf("claude stream read: %w\nstderr: %s", scanErr, stderrBuf.String())
 	}
 	if waitErr != nil {
-		return "", "", fmt.Errorf("claude: %w\nstderr: %s", waitErr, stderrBuf.String())
+		return "", "", claudeRunError(waitErr, model, failLine, stderrBuf.Bytes())
 	}
 
 	// Count the call once the stream read cleanly, before the empty-result
@@ -230,8 +238,9 @@ func (c *Client) runClaudeStream(dir, prompt, label, permissionMode, model, effo
 // fallback for schema drift, the resolved model id reported on the init
 // event (empty if the stream never announced one), the cumulative token
 // usage and estimated cost from the "result" event (zero if it carried
-// none), and any read error.
-func readStream(r io.Reader, label string, sink streamSink) (final, acc, model string, usage tokenUsage, cost float64, err error) {
+// none), the raw "result" event of a failed turn (nil when the turn
+// succeeded), and any read error.
+func readStream(r io.Reader, label string, sink streamSink) (final, acc, model string, usage tokenUsage, cost float64, failLine []byte, err error) {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), streamMaxLineBytes)
 
@@ -240,12 +249,12 @@ func readStream(r io.Reader, label string, sink streamSink) (final, acc, model s
 		accBuf   strings.Builder
 	)
 	for scanner.Scan() {
-		handleStreamLine(scanner.Bytes(), label, sink, &accBuf, &finalBuf, &model, &usage, &cost)
+		handleStreamLine(scanner.Bytes(), label, sink, &accBuf, &finalBuf, &model, &usage, &cost, &failLine)
 	}
 	if err := scanner.Err(); err != nil {
-		return finalBuf.String(), accBuf.String(), model, usage, cost, err
+		return finalBuf.String(), accBuf.String(), model, usage, cost, failLine, err
 	}
-	return finalBuf.String(), accBuf.String(), model, usage, cost, nil
+	return finalBuf.String(), accBuf.String(), model, usage, cost, failLine, nil
 }
 
 // handleStreamLine parses one NDJSON line and dispatches its events to
@@ -254,8 +263,12 @@ func readStream(r io.Reader, label string, sink streamSink) (final, acc, model s
 // resolved model id (the `system`/`init` event), it is recorded in *model so
 // the caller can stamp the attribution footers with the exact model. The
 // `result` event's cumulative token usage and estimated cost are recorded in
-// *usage and *cost when those pointers are non-nil.
-func handleStreamLine(line []byte, label string, sink streamSink, accBuf, finalBuf *strings.Builder, model *string, usage *tokenUsage, cost *float64) {
+// *usage and *cost when those pointers are non-nil, and a `result` event that
+// reports a failed turn is copied verbatim into *failLine so the caller can
+// diagnose the exit with envelopeFailure. The copy is taken only on failure —
+// scanner.Bytes() is reused across lines, and a successful run must not pay for
+// a second copy of a result that can reach megabytes.
+func handleStreamLine(line []byte, label string, sink streamSink, accBuf, finalBuf *strings.Builder, model *string, usage *tokenUsage, cost *float64, failLine *[]byte) {
 	if len(bytes.TrimSpace(line)) == 0 {
 		return
 	}
@@ -296,6 +309,11 @@ func handleStreamLine(line []byte, label string, sink streamSink, accBuf, finalB
 			}
 		}
 	case "result":
+		// A failed turn carries its reason here and nowhere else — the CLI leaves
+		// stderr empty. Keep the raw line so runClaudeStream can render it.
+		if ev.IsError && failLine != nil {
+			*failLine = bytes.Clone(line)
+		}
 		// Prefer the schema-validated structured_output when the session ran with
 		// --json-schema; fall back to the plain result text otherwise.
 		if final := preferStructuredOutput(ev.StructuredOutput, ev.Result); final != "" {
