@@ -12,9 +12,9 @@ omitted. Shell completions and man pages are produced by the built-in
 ::: info Drafting and splitting are skills, not subcommands
 `draft` and `meta` are no longer `planwerk-agent` subcommands. They are Claude
 Code Skills — `/planwerk:draft` and `/planwerk:meta` — because both turn on
-decisions only a human can make mid-run. `elaborate` exists both ways: as the
-command documented below, and as the `/planwerk:elaborate` skill. See
-[Use the issue skills](/how-to/use-the-skills).
+decisions only a human can make mid-run. `elaborate` and `fix` exist both ways:
+as the commands documented below, and as the `/planwerk:elaborate` and
+`/planwerk:fix` skills. See [Use the skills](/how-to/use-the-skills).
 :::
 
 ## Global flags
@@ -413,6 +413,11 @@ planwerk-agent prompt --mode implement owner/repo#42
 Watch a pull request's CI checks and, when one fails, dispatch a fresh Claude
 Code session to apply a minimal fix and publish it. The loop continues until
 every check is green or `--max-iterations` is exhausted.
+
+The loop runs unattended, so it decides alone at every fork the repair turns on —
+whether the code or the test is the wrong one, whether to reach outside the
+failure surface. When you are there to answer those, use the
+[`/planwerk:fix` skill](/how-to/fix-failing-checks) instead.
 
 By default each fix is folded into the branch commit it belongs to
 (`git commit --fixup` + `git rebase --autosquash`) and published with

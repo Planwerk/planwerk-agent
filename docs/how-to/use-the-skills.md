@@ -1,7 +1,7 @@
-# Use the issue skills
+# Use the skills
 
-planwerk-agent ships five Claude Code Skills that author the issues the rest of
-the pipeline consumes:
+planwerk-agent ships six Claude Code Skills. Five author the issues the rest of
+the pipeline consumes; the sixth repairs a pull request whose checks went red:
 
 | Skill | What it does |
 |-------|--------------|
@@ -10,14 +10,17 @@ the pipeline consumes:
 | `/planwerk:meta` | Splits a Meta Issue into linked, dependency-ordered Sub Issues |
 | `/planwerk:revisit` | Re-checks a prepared issue against what has actually landed since, and corrects what went stale |
 | `/planwerk:clarify` | Answers the open questions that stopped a planning session, and records them in the issue body |
+| `/planwerk:fix` | Repairs a pull request's failing CI checks, and asks you at the forks a diagnosis cannot settle |
 
-They replace the `draft` and `meta` subcommands, which were removed. Each one
-needs decisions only a human can make, and a skill can ask for them mid-run in a
-way a one-shot subcommand never could.
+`draft` and `meta` replace the subcommands of the same names, which were
+removed. Each skill needs decisions only a human can make, and a skill can ask
+for them mid-run in a way a one-shot subcommand never could.
 
-`elaborate` exists both ways: as this skill, and as the
-[`elaborate` command](/reference/cli#elaborate) for unattended use in CI. Both
-render the same [issue format](#one-format-every-skill).
+Two exist both ways. `elaborate` is also the
+[`elaborate` command](/reference/cli#elaborate), and `fix` is also the
+[`fix` command](/reference/cli#fix), for unattended use in CI. Reach for a
+command when nobody is watching — it has to guess where the skill would have
+asked.
 
 ## Install
 
@@ -30,7 +33,8 @@ claude plugin install planwerk@planwerk-agent
 ```
 
 Restart Claude Code. `/planwerk:draft`, `/planwerk:elaborate`, `/planwerk:meta`,
-`/planwerk:revisit`, and `/planwerk:clarify` are now available in any session.
+`/planwerk:revisit`, `/planwerk:clarify`, and `/planwerk:fix` are now available
+in any session.
 
 To update after a new release:
 
@@ -53,8 +57,9 @@ Confirm what got installed with `claude plugin details planwerk`.
 The skills call the [`gh` CLI](https://cli.github.com/), so `gh auth status` must
 succeed. `/planwerk:elaborate`, `/planwerk:revisit`, and `/planwerk:clarify` read
 the repository, so run them from inside a checkout of the repo whose issue you are
-working on. `/planwerk:draft` and `/planwerk:meta` only talk to the GitHub API and
-need no checkout.
+working on. `/planwerk:fix` goes further and needs the PR's own head branch
+checked out, with a clean working tree. `/planwerk:draft` and `/planwerk:meta`
+only talk to the GitHub API and need no checkout.
 
 ## Draft an idea
 
@@ -124,17 +129,34 @@ you, largest blast radius first, each one saying which option the plan already
 assumed and what the other one invalidates. The answers land in the issue body,
 never in the plan. See [Clarify an issue](/how-to/clarify-an-issue).
 
+## Fix the pull request when its checks go red
+
+```
+/planwerk:fix owner/repo#123
+```
+
+Run it from inside a checkout of the PR's head branch; with no argument it
+targets the pull request for the branch you are on. The skill reads every failing
+check's logs, reproduces the failure with the exact command CI ran, and opens the
+file the log cites. Then it asks you the questions a diagnosis cannot answer —
+above all whether the production code is wrong or the test encodes behavior
+nobody wants any more, a fork where both answers make the check green and only
+one is right. It folds the repair into the commit that introduced the bug and
+pushes only once you say so. See
+[Fix failing checks](/how-to/fix-failing-checks).
+
 ## Nothing reaches GitHub without a yes
 
 Every skill reads GitHub freely and writes only once, behind an explicit
-confirmation. If you decline, nothing is created. If you skip a question, the
-skill records it as an unresolved decision in the issue rather than quietly
+confirmation. If you decline, nothing is created, and `/planwerk:fix` pushes
+nothing. If you skip a question, the skill records it as an unresolved decision
+in the issue — or, for `fix`, as a concern in its report — rather than quietly
 picking an answer.
 
-## One format, every skill
+## One format, every issue skill
 
-The skills share their format specification rather than each restating it, so an
-issue is the same shape whichever produced it. That matters because
+The five issue skills share their format specification rather than each restating
+it, so an issue is the same shape whichever produced it. That matters because
 [`plan`](/reference/cli#implement), [`implement`](/reference/cli#implement), and
 [`ship`](/reference/cli#ship) read these issues:
 
@@ -157,11 +179,11 @@ renderer and that document disagree, so the two `elaborate` paths cannot drift.
 
 ## Where the pipeline goes next
 
-`/planwerk:draft` → `/planwerk:elaborate` → `planwerk-agent implement`, with
-`/planwerk:revisit` before the last step when the issue has been sitting long
-enough for the branch to move under it, and `/planwerk:clarify` after it when the
-planning session stopped at `NEEDS_CONTEXT`. Or `/planwerk:meta` →
-`planwerk-agent ship` to drive every Sub Issue to merged in
-dependency order. `ship` reads the native sub-issue and `blocked by`
-relationships `/planwerk:meta` writes, which is why the skill records the
-dependency graph as real GitHub relationships and not as prose.
+`/planwerk:draft` → `/planwerk:elaborate` → `planwerk-agent implement` →
+`/planwerk:fix`, with `/planwerk:revisit` before the implement step when the
+issue has been sitting long enough for the branch to move under it, and
+`/planwerk:clarify` after it when the planning session stopped at
+`NEEDS_CONTEXT`. Or `/planwerk:meta` → `planwerk-agent ship` to drive every Sub
+Issue to merged in dependency order. `ship` reads the native sub-issue and
+`blocked by` relationships `/planwerk:meta` writes, which is why the skill
+records the dependency graph as real GitHub relationships and not as prose.

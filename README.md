@@ -24,7 +24,7 @@ AI-powered code review and codebase analysis tool for GitHub repositories. Uses 
 
 ### Skills
 
-Issue authoring needs decisions only a human can make, so it ships as
+Some of this work needs decisions only a human can make, so it ships as
 interactive [Claude Code Skills](https://code.claude.com/docs/en/skills) rather
 than subcommands:
 
@@ -33,6 +33,7 @@ than subcommands:
 - **`/planwerk:meta`** splits a Meta Issue into linked, dependency-ordered Sub Issues
 - **`/planwerk:revisit`** re-checks a prepared issue against what has actually landed since, and corrects what went stale
 - **`/planwerk:clarify`** answers the open questions that stopped a planning session, and records them where the next one reads them
+- **`/planwerk:fix`** repairs a pull request's failing CI checks, asking you whether the code or the test is the wrong one
 
 ## Quick start
 
@@ -50,7 +51,7 @@ Review a pull request:
 planwerk-agent owner/repo#123
 ```
 
-Install the issue skills:
+Install the skills:
 
 ```bash
 claude plugin marketplace add planwerk/planwerk-agent
@@ -61,7 +62,7 @@ You need [Claude Code](https://docs.claude.com/en/docs/claude-code) and the
 [`gh` CLI](https://cli.github.com/) installed and authenticated. See
 [Getting started](https://planwerk.github.io/planwerk-agent/tutorials/getting-started)
 for the full walkthrough, and
-[Use the issue skills](https://planwerk.github.io/planwerk-agent/how-to/use-the-skills)
+[Use the skills](https://planwerk.github.io/planwerk-agent/how-to/use-the-skills)
 for the skills.
 
 ## Documentation

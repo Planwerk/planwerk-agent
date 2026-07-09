@@ -54,7 +54,7 @@ export default defineConfig({
             },
             { text: 'Audit a codebase', link: '/how-to/audit-a-codebase' },
             { text: 'Check feature gaps', link: '/how-to/check-feature-gaps' },
-            { text: 'Use the issue skills', link: '/how-to/use-the-skills' },
+            { text: 'Use the skills', link: '/how-to/use-the-skills' },
             { text: 'Draft an issue', link: '/how-to/draft-an-issue' },
             { text: 'Elaborate an issue', link: '/how-to/elaborate-an-issue' },
             { text: 'Split a Meta Issue', link: '/how-to/split-a-meta-issue' },
@@ -63,6 +63,7 @@ export default defineConfig({
             { text: 'Generate a prompt', link: '/how-to/generate-a-prompt' },
             { text: 'Implement an issue', link: '/how-to/implement-an-issue' },
             { text: 'Ship a Meta Issue', link: '/how-to/ship-a-meta-issue' },
+            { text: 'Fix failing checks', link: '/how-to/fix-failing-checks' },
             { text: 'Rebase a PR', link: '/how-to/rebase-a-pr' },
             {
               text: 'Address review comments',
