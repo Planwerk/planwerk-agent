@@ -32,6 +32,7 @@ than subcommands:
 - **`/planwerk:elaborate`** expands an issue into an engineering plan grounded in the repository
 - **`/planwerk:meta`** splits a Meta Issue into linked, dependency-ordered Sub Issues
 - **`/planwerk:revisit`** re-checks a prepared issue against what has actually landed since, and corrects what went stale
+- **`/planwerk:clarify`** answers the open questions that stopped a planning session, and records them where the next one reads them
 
 ## Quick start
 
