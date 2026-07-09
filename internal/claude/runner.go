@@ -157,6 +157,37 @@ func withReadOnlyDenied(args []string, readOnly bool) []string {
 	return append(args, claudeReadOnlyDeniedTools...)
 }
 
+// cliJSONSchema prepares a schema document for the CLI's --json-schema flag by
+// dropping its top-level "$schema" dialect declaration. The CLI validates the
+// document with a draft-07 validator that has no 2020-12 meta-schema
+// registered, so a document declaring that dialect is rejected outright —
+// "--json-schema is not a valid JSON Schema: no schema with key or ref
+// https://json-schema.org/draft/2020-12/schema" — and the session exits before
+// the model is ever called, failing every structuring pass. Without the
+// declaration the CLI applies its own dialect, and the keywords the embedded
+// schemas use ($defs, $ref, type, enum, items, required, additionalProperties)
+// mean the same thing under both drafts, so nothing is validated more loosely.
+// The embedded documents stay authoritative 2020-12 for the schema subcommand
+// and the contract tests; only this wire copy is adjusted. A document that does
+// not parse as a JSON object — including the empty string the schema-less
+// callers pass — travels through untouched, so the CLI reports the real defect
+// instead of this helper masking it.
+func cliJSONSchema(doc string) string {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(doc), &fields); err != nil {
+		return doc
+	}
+	if _, ok := fields["$schema"]; !ok {
+		return doc
+	}
+	delete(fields, "$schema")
+	stripped, err := json.Marshal(fields)
+	if err != nil {
+		return doc
+	}
+	return string(stripped)
+}
+
 // hermeticArgs appends the flags that isolate an orchestrated `claude -p`
 // session from the invoking user's global configuration so the same input
 // yields the same output across machines and CI — the predictability the
@@ -442,6 +473,9 @@ func (c *Client) implementSessionModel() string {
 // surfaces output incrementally; the periodic heartbeat is skipped in that
 // mode because the stream itself is the heartbeat.
 func (c *Client) runClaudeWithPermission(dir, prompt, label, permissionMode, model, effort string, readOnly bool, jsonSchema string) (string, string, error) {
+	// Normalize once, above the fork, so neither runner path can pass the CLI a
+	// dialect declaration it cannot resolve.
+	jsonSchema = cliJSONSchema(jsonSchema)
 	if c.showOutput {
 		return c.runClaudeStream(dir, prompt, label, permissionMode, model, effort, readOnly, jsonSchema)
 	}
