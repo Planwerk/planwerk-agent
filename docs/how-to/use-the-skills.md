@@ -1,6 +1,6 @@
 # Use the issue skills
 
-planwerk-agent ships four Claude Code Skills that author the issues the rest of
+planwerk-agent ships five Claude Code Skills that author the issues the rest of
 the pipeline consumes:
 
 | Skill | What it does |
@@ -9,6 +9,7 @@ the pipeline consumes:
 | `/planwerk:elaborate` | Expands an issue into an engineering plan grounded in the repository |
 | `/planwerk:meta` | Splits a Meta Issue into linked, dependency-ordered Sub Issues |
 | `/planwerk:revisit` | Re-checks a prepared issue against what has actually landed since, and corrects what went stale |
+| `/planwerk:clarify` | Answers the open questions that stopped a planning session, and records them in the issue body |
 
 They replace the `draft` and `meta` subcommands, which were removed. Each one
 needs decisions only a human can make, and a skill can ask for them mid-run in a
@@ -29,7 +30,7 @@ claude plugin install planwerk@planwerk-agent
 ```
 
 Restart Claude Code. `/planwerk:draft`, `/planwerk:elaborate`, `/planwerk:meta`,
-and `/planwerk:revisit` are now available in any session.
+`/planwerk:revisit`, and `/planwerk:clarify` are now available in any session.
 
 To update after a new release:
 
@@ -50,10 +51,10 @@ Confirm what got installed with `claude plugin details planwerk`.
 ## Prerequisites
 
 The skills call the [`gh` CLI](https://cli.github.com/), so `gh auth status` must
-succeed. `/planwerk:elaborate` and `/planwerk:revisit` read the repository, so run
-them from inside a checkout of the repo whose issue you are working on.
-`/planwerk:draft` and `/planwerk:meta` only talk to the GitHub API and need no
-checkout.
+succeed. `/planwerk:elaborate`, `/planwerk:revisit`, and `/planwerk:clarify` read
+the repository, so run them from inside a checkout of the repo whose issue you are
+working on. `/planwerk:draft` and `/planwerk:meta` only talk to the GitHub API and
+need no checkout.
 
 ## Draft an idea
 
@@ -108,6 +109,21 @@ that failed, and you approve a diff rather than a rewritten body. It never
 changes the issue's depth, and never closes anything. See
 [Revisit an issue](/how-to/revisit-an-issue).
 
+## Clarify it when planning stops
+
+```
+/planwerk:clarify owner/repo#42
+```
+
+`implement` plans before it writes code, and a planning session that hits a
+question it has no authority to answer reports `STATUS: NEEDS_CONTEXT` and aborts
+the run. The skill reads that posted plan, and answers from the repository every
+question the repository answers — the planner reports what *it* could not settle,
+which is not the same as what a human must decide. Only the genuine forks reach
+you, largest blast radius first, each one saying which option the plan already
+assumed and what the other one invalidates. The answers land in the issue body,
+never in the plan. See [Clarify an issue](/how-to/clarify-an-issue).
+
 ## Nothing reaches GitHub without a yes
 
 Every skill reads GitHub freely and writes only once, behind an explicit
@@ -132,7 +148,8 @@ issue is the same shape whichever produced it. That matters because
   Claude model that wrote it.
 
 There are exactly these two depths. `elaborate` promotes a draft to a plan;
-`revisit` re-checks an issue at the depth it already has and leaves it there.
+`revisit` and `clarify` work on an issue at the depth it already has and leave it
+there.
 
 The specification lives in `plugins/planwerk/shared/issue-format.md`. A Go test
 (`TestBuildIssueBody_MatchesSharedFormat`) fails when the `elaborate` command's
@@ -142,7 +159,8 @@ renderer and that document disagree, so the two `elaborate` paths cannot drift.
 
 `/planwerk:draft` → `/planwerk:elaborate` → `planwerk-agent implement`, with
 `/planwerk:revisit` before the last step when the issue has been sitting long
-enough for the branch to move under it. Or `/planwerk:meta` →
+enough for the branch to move under it, and `/planwerk:clarify` after it when the
+planning session stopped at `NEEDS_CONTEXT`. Or `/planwerk:meta` →
 `planwerk-agent ship` to drive every Sub Issue to merged in
 dependency order. `ship` reads the native sub-issue and `blocked by`
 relationships `/planwerk:meta` writes, which is why the skill records the
