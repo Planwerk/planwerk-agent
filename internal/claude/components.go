@@ -36,6 +36,12 @@ import (
 //     prompts.
 //   - fixThinkingPatterns — the fix thinking-pattern block (fix, bare-fix).
 //
+// Added since:
+//   - implementRationalizationsBlock — the excuse/rebuttal table (implement,
+//     bare-implement). It is not a restatement of the hard rules: it carries the
+//     reasoning that used to trail two of them inline, moved next to the excuse
+//     it answers.
+//
 // A few near-copies stay per-builder on purpose and are NOT shared here:
 //   - The fifth simplify-guardrail bullet differs between the find and apply
 //     passes; unifying it would change what the apply pass is asked to do, so it
@@ -499,6 +505,37 @@ func findingBudgetBlock(maxFindings int) string {
 // clauses, so only the enumeration itself is shared.
 func workBreakdownDefinition() string {
 	return `a "Work breakdown" / "Work packages" / "Work items" section, numbered items (1., 2., 3. or ### 1 / ### 2), lettered workstreams, tiered phases, or a checkbox task list`
+}
+
+// implementRationalizationsBlock returns the excuse/rebuttal table both
+// implement builders carry. A hard rule states a constraint; this block
+// intercepts the justification the session reaches for at the moment it is
+// about to break one. The two are complementary, not redundant: the rules keep
+// their NEVER imperatives, and the reasoning that used to trail them inline
+// ("judging up front that the scope is too large is refusing the contract")
+// lives here once, next to the excuse it answers.
+//
+// Every row must be earned by a shortcut this project has actually seen a
+// session take — each one below is the excuse behind an existing hardening
+// (design decisions #38 and #62, the circuit breakers, the one-shot session
+// rules). A row invented for an excuse nobody has observed is a no-op that
+// dilutes the rows around it; do not add one on suspicion.
+func implementRationalizationsBlock() string {
+	return `## Rationalizations — the excuses that precede a broken rule
+
+Each row is an excuse sessions reach for. When you catch yourself forming one, the rule it evades is the one that applies.
+
+| The excuse | The reality |
+|---|---|
+| "This issue is too large for one session — I'll ship the core and open a follow-up." | Nothing follows this session. A curated subset of a multi-package issue is an abandoned contract, not prudence. Implement every package, or report PARTIAL and open no PR. |
+| "The issue (or the plan) says one commit ≈ one PR, so splitting is what was asked." | A delivery-splitting note contradicts this contract. Ignore it: the whole issue lands as exactly ONE pull request. |
+| "The scope grew, so this is a circuit breaker — PARTIAL is legitimate." | The breakers fire on thrashing and on scope the issue never asked for, never on the size of the scope it did ask for. Implementing the packages the issue lists IS the required scope; assessing it as too large is never a route to PARTIAL. |
+| "This test was already failing / is flaky — skipping it is fine." | You cannot tell a flaky test from the defect you just introduced. Fix the root cause; never weaken, skip, or delete the test to go green. |
+| "I'll start the test run in the background and commit once it is green." | This session has no later turn. A backgrounded run is killed when you stop, its result never arrives, and the commit it gated never happens. Run it in the foreground and wait. |
+| "This refactor is basically required to do the change cleanly." | Unless it is listed in Affected Areas, it is scope the issue did not ask for. Make the change the issue asked for; note the refactor and leave it. |
+| "I noticed a bug next door — fixing it is a courtesy." | It is an unsolicited change a reviewer did not ask for and cannot attribute. Record it under "Noticed but not touching" and move on. |
+
+`
 }
 
 // diffScopeLines returns the "SCOPE: … / git diff --name-only" lead shared by
