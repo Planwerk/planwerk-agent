@@ -107,8 +107,8 @@ would otherwise have to be kept in sync by hand.
 
 The skills obey the same rule on their own surface: the house issue format, the
 prose rules, the interaction doctrine, and the `gh` invocations are written once
-under `plugins/planwerk/shared/` and read by all three `SKILL.md` files, rather
-than restated per skill.
+under `plugins/planwerk/shared/` and read by every `SKILL.md`, rather than
+restated per skill.
 
 One instruction genuinely lives in two places. `elaborate` exists as both a
 command and a skill, so the issue format is expressed once as Go
@@ -133,9 +133,9 @@ block for every superficially similar paragraph*.
 
 The skills surface has one instruction that is not in the skill. Claude Code
 injects each shipped skill's `description` into the system prompt so the model
-can decide when to reach for it, and it does that for all four skills on every
-turn of every session, invoked or not. The body is loaded only once a skill is
-chosen.
+can decide when to reach for it, and it does that for every shipped skill on
+every turn of every session, invoked or not. The body is loaded only once a
+skill is chosen.
 
 That asymmetry sets the rule: a description says *what* the skill does and *when*
 to use it, never *how* it proceeds. A description that summarizes the workflow
