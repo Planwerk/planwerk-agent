@@ -1,6 +1,6 @@
 ---
 name: draft
-description: Turn a rough, one-line feature idea into a ready-to-file GitHub issue through a short clarifying conversation, then file it. Use when the user wants to capture an idea, file an issue, or write up a ticket. Stops at draft depth — it describes the idea, it does not plan the implementation.
+description: Turns a rough, one-line feature idea into a filed GitHub issue at draft depth. Use when the user wants to capture an idea, file an issue, or write up a ticket. It describes the idea; it does not plan the implementation.
 argument-hint: "[owner/repo] [one-line idea]"
 allowed-tools: AskUserQuestion Read Write Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue list:*) Bash(gh issue create:*)
 ---

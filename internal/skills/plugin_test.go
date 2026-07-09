@@ -29,6 +29,27 @@ var wantSkills = []string{"draft", "elaborate", "meta", "revisit"}
 // captured path must resolve to a file that exists in the shipped plugin.
 var skillDirRef = regexp.MustCompile(`\$\{CLAUDE_SKILL_DIR\}/([^\s` + "`" + `)]+)`)
 
+// maxDescriptionLen bounds a skill description. Claude Code injects every
+// shipped skill's description into the system prompt to route on, so the four
+// descriptions are paid for on every turn of every session — whether or not a
+// skill is invoked. The limit is Anthropic's documented one.
+const maxDescriptionLen = 1024
+
+// descriptionTrigger matches the "use when / use before / use after" clause a
+// description needs. A description that says only what a skill does gives the
+// model nothing to route on, and the skill is never chosen.
+var descriptionTrigger = regexp.MustCompile(`(?i)\buse (this )?when\b|\buse (before|after|during)\b`)
+
+// descriptionSequencing matches a step sequence in a description (", then …").
+// A description must say what the skill does and when to reach for it, never how
+// it proceeds: the description sits in the system prompt while the body does
+// not, so a workflow summary invites the model to follow the summary instead of
+// reading the skill — and a two-step gloss of a seven-phase skill drops the
+// gates. This catches the one tell we shipped ("…, then file it"); it is a
+// narrow heuristic, not a parser, and the doctrine in
+// docs/explanation/prompt-design.md is the real rule.
+var descriptionSequencing = regexp.MustCompile(`,\s+then\s`)
+
 // TestPluginSkillsParse guards the shipped plugin the same way the golden tests
 // guard the prompt builders: the skills must be discoverable, identify
 // themselves, and their shared-reference paths must resolve. A renamed file
@@ -53,6 +74,7 @@ func TestPluginSkillsParse(t *testing.T) {
 		if skill.Description == "" {
 			t.Errorf("skill %q: frontmatter carries no description; Claude Code selects a skill by its description", name)
 		}
+		assertDescriptionRoutes(t, name, skill.Description)
 
 		assertSkillDirRefsResolve(t, name, dir, path)
 	}
@@ -60,6 +82,23 @@ func TestPluginSkillsParse(t *testing.T) {
 	sort.Strings(got)
 	if strings.Join(got, ",") != strings.Join(wantSkills, ",") {
 		t.Errorf("shipped skills = %v, want %v", got, wantSkills)
+	}
+}
+
+// assertDescriptionRoutes checks the three properties a description needs to do
+// its one job: fit the system-prompt budget it is charged against, carry a
+// trigger the model can route on, and describe the skill rather than summarize
+// its workflow.
+func assertDescriptionRoutes(t *testing.T, name, description string) {
+	t.Helper()
+	if n := len(description); n > maxDescriptionLen {
+		t.Errorf("skill %q: description is %d characters, over the %d limit; it is injected into the system prompt of every session", name, n, maxDescriptionLen)
+	}
+	if !descriptionTrigger.MatchString(description) {
+		t.Errorf("skill %q: description carries no \"Use when …\" trigger, so nothing tells the model when to reach for it", name)
+	}
+	if m := descriptionSequencing.FindString(description); m != "" {
+		t.Errorf("skill %q: description sequences steps (%q); say what the skill does and when to use it, never how it proceeds — the body carries the workflow", name, strings.TrimSpace(m))
 	}
 }
 

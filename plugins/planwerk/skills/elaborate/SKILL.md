@@ -1,6 +1,6 @@
 ---
 name: elaborate
-description: Expand a high-level GitHub issue into a deeply detailed engineering plan grounded in the actual repository, resolving open decisions with the author before writing. Use when an issue needs a plan before it can be implemented, or when the user asks to elaborate, deepen, or flesh out an issue.
+description: Expands a high-level GitHub issue into a deeply detailed engineering plan grounded in the actual repository, with the open decisions resolved by its author. Use when an issue needs a plan before it can be implemented, or when the user asks to elaborate, deepen, or flesh out an issue.
 argument-hint: "<issue-ref>"
 allowed-tools: AskUserQuestion Read Grep Glob Write Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue view:*) Bash(gh issue edit:*) Bash(gh issue comment:*) Bash(gh api:*)
 ---

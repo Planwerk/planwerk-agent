@@ -129,6 +129,28 @@ kept separate on purpose. `components.go` documents these exceptions in its
 header. Single source of truth means *one source per instruction*, not *one
 block for every superficially similar paragraph*.
 
+## A skill description routes; it does not instruct
+
+The skills surface has one instruction that is not in the skill. Claude Code
+injects each shipped skill's `description` into the system prompt so the model
+can decide when to reach for it, and it does that for all four skills on every
+turn of every session, invoked or not. The body is loaded only once a skill is
+chosen.
+
+That asymmetry sets the rule: a description says *what* the skill does and *when*
+to use it, never *how* it proceeds. A description that summarizes the workflow
+gives the model a version of the skill that is always in context and always
+shorter than the real one — and a two-step gloss of a seven-phase skill has
+dropped every gate between the steps. `draft` shipped for a while as "…through a
+short clarifying conversation, then file it", four words that quietly contradict
+the hard gate in its own body ("do not produce an issue in your first reply").
+
+`assertDescriptionRoutes` in `internal/skills/plugin_test.go` holds the three
+checkable parts: the description fits the 1024-character budget it is charged
+against, it carries a `Use when …` trigger the model can route on, and it does
+not sequence steps. The last is a narrow heuristic against the one tell we
+shipped; the rule is broader than the regex, and this page is where it lives.
+
 ## The named failure modes
 
 The audit that pays this doctrine back across the builders looks for five
@@ -282,6 +304,61 @@ draft it was given ends the loop rather than paying for a verdict that cannot
 differ. On the skill surface, where the model scores its own draft, the rule is
 written out: a score rises only when a line of the plan changed.
 
+## Rationalizations must be earned
+
+A hard rule states a constraint. It does not answer the sentence the model tells
+itself just before it breaks one — "this issue is too large for one session, I
+will ship the core and open a follow-up" — and a rule the model has already
+talked its way around is a rule that did not fire.
+
+So the implement prompts carry a table of those sentences, each paired with the
+reason it is wrong (`implementRationalizationsBlock` in `components.go`). The
+excuse sits next to its rebuttal, at the decision point, in the model's own
+voice.
+
+The discipline that keeps this from becoming sprawl: **a row must be earned by a
+shortcut a session has actually taken.** Every row in the block today is the
+excuse behind an existing hardening — the PARTIAL contract (decision 62), the
+complete-report guard (decision 38), the circuit breakers, the one-shot session
+rules. A row invented for an excuse nobody has observed instructs nothing; it is
+a no-op that dilutes the rows around it, and the no-op test catches it: delete
+the row, and if no output changes, it never belonged.
+
+The corollary is that the table replaces prose rather than stacking on it. When
+a rationalization moves into the table, the justification that used to trail its
+hard rule inline comes out — the rule keeps its `NEVER`, the reasoning lives in
+one place. `TestImplementRationalizationsDoNotDuplicateHardRules` asserts it: an
+excuse that appears twice in one prompt failed the move.
+
+## The no-op test, applied to a whole pass
+
+The five failure modes above are read at the resolution of a sentence: delete
+the line, and ask whether the output changes. A pass can fail the same test at
+the resolution of a *call*, and reading it will never reveal that, because every
+sentence in it looks like it instructs something.
+
+The claim-verification pass is the standing example. It hands the verifier a
+finding's claim, tells it to confirm unless it finds quoted counter-evidence,
+and adds "never refute on a hunch". Each instruction is deliberate — the pass may
+only demote, never promote, so agreeing is the safe default — but all three push
+the same way, and a verifier that agrees with everything is not verifying. It is
+a no-op wearing a Claude call.
+
+You cannot settle that by re-reading the prompt. You settle it by counting: the
+pass logs `sent`, `verdicts`, and `refuted` on every run (`claimStats` in
+`internal/review/reviewer.go`). A refutation rate that stays at zero across real
+runs is the evidence that the pass has stopped earning its tokens, and the
+signal to sharpen it or delete it. Until that evidence exists, the prompt stays
+as it is — instrumenting a suspicion is cheap, and rewriting a prompt on one is
+how a hedge gets written.
+
+The same idea guards the elaborate refine loop from the other direction. Its
+reviewer is a fresh call that never sees the previous score, so it cannot be
+talked upward by a number it already agreed to; and a refinement that returns the
+draft it was given ends the loop rather than paying for a verdict that cannot
+differ. On the skill surface, where the model scores its own draft, the rule is
+written out: a score rises only when a line of the plan changed.
+
 ## How the doctrine is enforced
 
 The safety net is `internal/claude/prompts_golden_test.go` and its fixtures
@@ -317,6 +394,18 @@ from the `writing-great-skills` skill and `GLOSSARY.md` in
 [mattpocock/skills](https://github.com/mattpocock/skills) (MIT), reframed from
 authoring interactive Claude Code skills to authoring this project's
 non-interactive prompt builders.
+
+Three later additions come from
+[addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) (MIT). The
+rationalizations table is that collection's signature device, carried by all of
+its skills; the earned-row discipline is ours, and answers the sprawl the pattern
+invites. The "no-op applied to a whole pass" test is its `doubt-driven-development`
+skill's *doubt theater* signal — "across two or more cycles the reviewer surfaced
+substantive findings and zero were actionable: you are validating, not doubting"
+— restated as an empirical form of the no-op test we already had. The
+description rule is from its `docs/skill-anatomy.md`: "do not summarize the
+workflow — if the description contains process steps, the agent may follow the
+summary instead of reading the full skill."
 
 Two later additions come from
 [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) (MIT). The

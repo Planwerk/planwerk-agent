@@ -1,6 +1,6 @@
 ---
 name: revisit
-description: Re-check a prepared GitHub issue against what has actually landed since it was written, and correct the parts that went stale. For a Sub Issue, re-check its scope against the Meta Issue and against what the closed siblings really delivered. Use before implementing an issue that has been sitting, or when the user asks to revisit, re-check, or re-scope one.
+description: Re-checks a prepared GitHub issue against what has actually landed since it was written, correcting the parts that went stale. For a Sub Issue, that includes its scope against the Meta Issue and against what the closed siblings really delivered. Use before implementing an issue that has been sitting, or when the user asks to revisit, re-check, or re-scope one.
 argument-hint: "<issue-ref>"
 allowed-tools: AskUserQuestion Read Grep Glob Write Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue view:*) Bash(gh issue edit:*) Bash(gh issue comment:*) Bash(gh api:*) Bash(gh pr view:*) Bash(gh pr diff:*) Bash(git fetch:*) Bash(git status:*) Bash(git log:*) Bash(git show:*)
 ---
