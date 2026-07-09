@@ -26,7 +26,53 @@ gh issue view <number> --repo <owner/repo> --json number,title,body,state,url
 # Near-duplicate check before filing a new issue
 gh issue list --repo <owner/repo> --search "<distinctive words from the title>" \
   --state all --limit 10 --json number,title,state,url
+
+# The issue's comments, where an author moves the goalposts after filing
+gh issue view <number> --repo <owner/repo> --comments
 ```
+
+## Reading the Meta / Sub-Issue neighborhood
+
+`elaborate` and `revisit` ground a Sub Issue in the larger effort it belongs to,
+so they need its parent, its siblings, and what those siblings shipped. REST
+cannot answer this: `GET /issues/{n}/sub_issues` lists an issue's **children**,
+never its parent. Read the whole neighborhood through GraphQL, in one call:
+
+```bash
+gh api graphql -F owner=<owner> -F name=<repo> -F number=<number> -f query='
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    issue(number: $number) {
+      number
+      parent {
+        number title body url state
+        subIssues(first: 100) {
+          nodes {
+            number title body url state
+            closedByPullRequestsReferences(first: 10, includeClosedPrs: true) {
+              nodes { number title url state isDraft mergedAt }
+            }
+          }
+        }
+      }
+      subIssues(first: 100) { totalCount nodes { number title url state } }
+    }
+  }
+}'
+```
+
+- `parent` is `null` when the issue is not a Sub Issue.
+- `parent.subIssues.nodes` are the siblings. The issue itself appears in that
+  list — filter it out by number.
+- A non-empty top-level `subIssues` means the issue **is** a Meta Issue.
+- `closedByPullRequestsReferences` carries each sibling's linked pull requests.
+  `includeClosedPrs: true` brings back the ones that already landed; a PR `state`
+  of `MERGED` is the only state that shipped code, and `CLOSED` means it was
+  abandoned. **A merged PR is what a sibling delivered. Its issue body is only
+  what it promised.**
+
+`planwerk-agent`'s own `GetIssueRelations` (`internal/github/relations.go`)
+issues this same query, so the skills and the commands see one neighborhood.
 
 ## Sub-issues and dependencies
 

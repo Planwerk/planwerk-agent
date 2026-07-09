@@ -58,6 +58,7 @@ export default defineConfig({
             { text: 'Draft an issue', link: '/how-to/draft-an-issue' },
             { text: 'Elaborate an issue', link: '/how-to/elaborate-an-issue' },
             { text: 'Split a Meta Issue', link: '/how-to/split-a-meta-issue' },
+            { text: 'Revisit an issue', link: '/how-to/revisit-an-issue' },
             { text: 'Generate a prompt', link: '/how-to/generate-a-prompt' },
             { text: 'Implement an issue', link: '/how-to/implement-an-issue' },
             { text: 'Ship a Meta Issue', link: '/how-to/ship-a-meta-issue' },
