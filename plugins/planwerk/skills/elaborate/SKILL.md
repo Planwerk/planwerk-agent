@@ -30,13 +30,11 @@ belongs to a different repo, say so and stop.
 
 ## Phase 1 — Read the issue and its neighborhood
 
-Fetch the issue body. Then check whether it sits inside a Meta Issue:
+Fetch the issue body. Then check whether it sits inside a Meta Issue, with the
+neighborhood query in `github.md` — REST's `sub_issues` endpoint lists an issue's
+children, so it can never tell you it has a parent.
 
-```bash
-gh api repos/<owner>/<repo>/issues/<number>/sub_issues
-```
-
-and look for a parent. When the issue **is** a Sub Issue, read the Meta Issue and
+When the issue **is** a Sub Issue, read the Meta Issue and
 its sibling Sub Issues before planning, and obey these rules:
 
 - Honor the Meta Issue's framing and shared decisions. Do not re-litigate them.

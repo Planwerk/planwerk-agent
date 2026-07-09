@@ -11,17 +11,18 @@ import (
 )
 
 // pluginRoot is the Claude Code plugin this repository ships as a marketplace:
-// the interactive draft/elaborate/meta skills that replaced the subcommands of
-// the same names.
+// the interactive draft/elaborate/meta/revisit skills, three of which replaced
+// the subcommands of the same names.
 const pluginRoot = "../../plugins/planwerk"
 
 // marketplaceManifest is the repo-root marketplace catalog Claude Code reads
 // when a user runs `claude plugin marketplace add planwerk/planwerk-agent`.
 const marketplaceManifest = "../../.claude-plugin/marketplace.json"
 
-// wantSkills is the skill set the plugin ships. Adding or removing one is a
-// deliberate act, so it is pinned here rather than discovered.
-var wantSkills = []string{"draft", "elaborate", "meta"}
+// wantSkills is the skill set the plugin ships, in the sorted order the
+// discovered set is compared against. Adding or removing one is a deliberate
+// act, so it is pinned here rather than discovered.
+var wantSkills = []string{"draft", "elaborate", "meta", "revisit"}
 
 // skillDirRef matches a `${CLAUDE_SKILL_DIR}/<path>` reference in a SKILL.md
 // body. Claude Code expands the variable to the skill's own directory, so every
@@ -31,8 +32,8 @@ var skillDirRef = regexp.MustCompile(`\$\{CLAUDE_SKILL_DIR\}/([^\s` + "`" + `)]+
 // TestPluginSkillsParse guards the shipped plugin the same way the golden tests
 // guard the prompt builders: the skills must be discoverable, identify
 // themselves, and their shared-reference paths must resolve. A renamed file
-// under plugins/planwerk/shared/ otherwise breaks all three skills silently, at
-// the user's first invocation rather than in CI.
+// under plugins/planwerk/shared/ otherwise breaks every skill silently, at the
+// user's first invocation rather than in CI.
 func TestPluginSkillsParse(t *testing.T) {
 	var got []string
 	for _, name := range wantSkills {

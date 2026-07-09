@@ -6,7 +6,7 @@ to Claude Code. Those builders live in `internal/claude/` — roughly forty of
 them — and the quality of the tool is, to a first approximation, the quality of
 the prompts they emit.
 
-The tool has a second prompt surface: the three Claude Code Skills under
+The tool has a second prompt surface: the Claude Code Skills under
 `plugins/planwerk/skills/` (see
 [design decision 64](./design-decisions.md)). They are prompts a human converses
 with rather than prompts a subcommand fires once, so they add rules this page

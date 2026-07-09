@@ -7,6 +7,9 @@ are a contract, not a style preference.
 Issues come at exactly two depths. A draft-depth issue describes work. An
 elaborated issue plans it. Nothing in between.
 
+`draft` and `meta` write depth 1. `elaborate` promotes depth 1 to depth 2.
+`revisit` re-checks an issue at the depth it already has and leaves it there.
+
 ## Depth 1 — draft
 
 Produced by `draft`, and by `meta` for each Sub Issue. It describes the idea and
@@ -166,6 +169,11 @@ _<verb> [planwerk-agent](https://github.com/planwerk/planwerk-agent) with Claude
 | `draft` | `Drafted by` |
 | `elaborate` | `Elaborated by` |
 | `meta` (each Sub Issue) | `Split from #<meta issue number> by` |
+| `revisit` | `Revisited by` |
+
+The footer names the skill that last wrote the body, so `revisit` replaces the
+verb it finds rather than appending a second line. Nothing is lost: a Sub
+Issue's parent is a native GitHub relationship, not the `Split from #N` prose.
 
 Append your exact model id when your runtime context provides it (for example
 `with Claude:claude-opus-4-8`). Otherwise write a bare `with Claude` — never
