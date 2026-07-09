@@ -3,6 +3,7 @@ package elaborate
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -166,8 +167,14 @@ func TestRun_ReviewLoop_SurfacesUnresolvedGaps(t *testing.T) {
 	patternDir := seedPatternDir(t)
 	gh := reviewLoopGitHub(t, fakeRepo(t, "acme", "widgets"))
 
+	// Each refinement genuinely moves the draft — it just never moves it far
+	// enough. A fake that returned the same text twice would exit through the
+	// unchanged-draft guard instead of exhausting the iteration budget this test
+	// is about.
+	var elabCalls int32
 	cl := &fakeClaude{fn: func(dir string, ctx Context) (*Result, error) {
-		return &Result{Title: "Title", Description: "draft"}, nil
+		n := atomic.AddInt32(&elabCalls, 1)
+		return &Result{Title: "Title", Description: fmt.Sprintf("draft revision %d", n)}, nil
 	}}
 	rv := &fakeReviewer{fn: func(dir string, ctx Context, draft string) (*ReviewResult, error) {
 		return &ReviewResult{Score: 4, Gaps: []string{"persistent gap Y"}, ToReachTen: "enumerate the empty-slice path"}, nil
@@ -735,5 +742,53 @@ func TestRun_LocalUsesCwd(t *testing.T) {
 	}
 	if _, err := os.Stat(repo.Dir); err != nil {
 		t.Fatalf("local checkout must survive the run: %v", err)
+	}
+}
+
+// TestRun_ReviewLoop_StopsOnUnchangedDraft covers the loop's one remaining way
+// to spin without improving: a refinement that hands back the draft it was
+// given. Re-reviewing identical text cannot produce a different verdict, so the
+// loop must stop after the first such round — spending one reviewer call, not
+// three — and publish the gaps it already knows about.
+func TestRun_ReviewLoop_StopsOnUnchangedDraft(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+	patternDir := seedPatternDir(t)
+	gh := reviewLoopGitHub(t, fakeRepo(t, "acme", "widgets"))
+
+	// Every call renders the same body, so the refined draft equals the prior one.
+	var elabCalls int32
+	cl := &fakeClaude{fn: func(dir string, ctx Context) (*Result, error) {
+		atomic.AddInt32(&elabCalls, 1)
+		return &Result{Title: "Title", Description: "an unmoved draft"}, nil
+	}}
+	rv := &fakeReviewer{}
+	rv.fn = func(dir string, ctx Context, draft string) (*ReviewResult, error) {
+		return &ReviewResult{Score: 4, Gaps: []string{"close gap X"}, ToReachTen: "name the io.EOF path"}, nil
+	}
+	r := &Runner{Claude: cl, GitHub: gh, Reviewer: rv}
+
+	opts := baseOpts(patternDir)
+	opts.Review = true
+	var out bytes.Buffer
+	if err := r.Run(&out, opts); err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+
+	if got := atomic.LoadInt32(&rv.calls); got != 1 {
+		t.Errorf("reviewer calls = %d, want 1 (an unchanged draft cannot score differently)", got)
+	}
+	if got := atomic.LoadInt32(&elabCalls); got != 2 {
+		t.Errorf("elaborate calls = %d, want 2 (initial + the one refine that changed nothing)", got)
+	}
+	body := out.String()
+	if !strings.Contains(body, "Reviewer Notes (unresolved):") {
+		t.Error("a loop that stopped short must surface its unresolved gaps, not publish silently")
+	}
+	if !strings.Contains(body, "close gap X") {
+		t.Error("the gap the reviewer reported is missing from the published body")
+	}
+	if !strings.Contains(body, "**Executability score:** 4/10") {
+		t.Error("the near-miss score must stay visible on the published body")
 	}
 }

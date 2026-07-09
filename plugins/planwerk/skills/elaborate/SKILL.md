@@ -129,7 +129,19 @@ Only gaps that would make an implementer build the wrong thing or get stuck
 count. Wording preferences are not gaps.
 
 Refine and re-score until the score reaches 8, or until you have refined three
-times. If it still falls short, emit the body anyway with the
+times. You are scoring your own work, so the score is the easiest thing in this
+phase to move without moving the plan. Two rules keep it honest:
+
+- **A score only rises when the plan changed.** Before you raise it, name the
+  gap you closed and the line you changed to close it. A re-score with no edit
+  behind it is invalid — the previous score stands.
+- **A round that finds nothing is a round that did not look.** If a re-score
+  surfaces no gap at all while the score is still below 8, you are validating
+  your draft rather than doubting it. Go back to the six checks and work one
+  concrete failing example per check, or stop and report what you could not
+  close.
+
+If it still falls short, emit the body anyway with the
 `**Executability score:**` line and a `**Reviewer Notes (unresolved):**` block
 listing what you could not close. A visible near-miss beats a hidden one.
 
