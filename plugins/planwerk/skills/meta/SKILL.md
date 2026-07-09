@@ -1,6 +1,6 @@
 ---
 name: meta
-description: Split a Meta Issue into the fewest self-contained Sub Issues, verify the split covers the work, then file them with native GitHub sub-issue links and blocked-by dependencies. Use when an issue frames a larger body of work as several work packages and the user wants it decomposed.
+description: Decomposes a Meta Issue into the fewest self-contained Sub Issues, filed with native GitHub sub-issue links and blocked-by dependencies. Use when an issue frames a larger body of work as several work packages and the user wants it decomposed.
 argument-hint: "<meta-issue-ref>"
 allowed-tools: AskUserQuestion Read Write Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue view:*) Bash(gh issue create:*) Bash(gh issue edit:*) Bash(gh api:*)
 ---
