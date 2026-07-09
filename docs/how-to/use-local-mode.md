@@ -6,8 +6,6 @@ By default every repo-facing subcommand (`review`, `fix`, `rebase`, `address`,
 it on exit. The
 `--local` flag makes the command operate on the **current working directory**
 instead — no clone, and the checkout is left in place when the command exits.
-`draft` also takes `--local`, but only to read the `origin` owner/repo — it
-never takes a local checkout (see below).
 
 This unlocks three workflows the temp-dir clone blocks:
 
@@ -28,9 +26,7 @@ This unlocks three workflows the temp-dir clone blocks:
   current branch (via `gh pr view`); `propose`/`audit`/`gap-analysis`/`review-prepared`
   infer owner/repo from the `origin` remote. `elaborate` and `implement` still
   require their issue reference (you must name the issue) — only the repository
-  checkout is taken locally. `draft` infers **only** the `origin` owner/repo so
-  it knows where to file the issue; it takes no checkout, clones nothing, and
-  runs no codebase analysis. When a reference **is** given explicitly, its
+  checkout is taken locally. When a reference **is** given explicitly, its
   owner/repo must match the cwd's `origin`, otherwise the run aborts.
 - **Branch left on.** For `review`/`fix`/`rebase`/`address` the working tree is
   switched to the PR head via `gh pr checkout` (no restore afterwards). The runner logs

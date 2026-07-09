@@ -1,13 +1,42 @@
 # Elaborate an issue
 
-Take a high-level GitHub issue (typically the output of `propose` or `audit`)
-and expand it into a deeply detailed engineering plan grounded in the actual
-repository state — the kind of issue body a senior engineer can pick up and
-execute without further clarification (mirrors the structure shown in
-[plexsphere/plexsphere#10](https://github.com/plexsphere/plexsphere/issues/10):
-Description with concrete "already exists / this story adds" boundaries,
-Motivation, an optional User Stories section, Affected Areas, Acceptance
-Criteria, Non-Goals, References).
+Take a high-level GitHub issue (typically the output of `draft`, `propose`, or
+`audit`) and expand it into a deeply detailed engineering plan grounded in the
+actual repository state — the kind of issue body a senior engineer can pick up and
+execute without further clarification: a Description with concrete "already
+exists / this issue adds" boundaries, a Motivation, an optional User Stories
+section, Affected Areas, Acceptance Criteria, Non-Goals, and References.
+
+`elaborate` comes two ways. Both render the same issue body.
+
+## The skill: `/planwerk:elaborate`
+
+Use this when a human is at the keyboard. It is the better choice by default,
+because elaboration turns on decisions the issue never made, and the skill asks
+you about them instead of guessing.
+
+```
+/planwerk:elaborate owner/repo#123
+```
+
+Run it from inside a checkout of the issue's repository. The skill reads the
+issue and its Meta/Sub-Issue neighborhood, **walks the repository before it asks
+you anything**, and then surfaces only the decisions that would otherwise become
+guesses — each grounded in the concrete `path:line` that raised it. A question it
+can answer by reading the code, it does not ask.
+
+It then writes the plan, scores its own draft for executability, refines until
+the score clears 8, and asks whether to replace the issue body or post a comment.
+Nothing is written to GitHub until you say so. A question you decline to answer
+is recorded in the issue under Non-Goals or as an explicit assumption, never
+resolved silently.
+
+Install it first: see [Use the issue skills](/how-to/use-the-skills).
+
+## The command: `planwerk-agent elaborate`
+
+Use this for unattended runs — CI, scripts, batch elaboration — where there is
+nobody to ask. It clones the repository itself, so it needs no checkout.
 
 ```bash
 # Render the elaborated body to stdout
@@ -31,7 +60,11 @@ matches your team's workflow (overwrite the source issue vs. preserve history
 and append a follow-up comment). See the
 [CLI reference](/reference/cli#elaborate) for every flag.
 
-## How it works
+Where the skill asks you, the command records the ambiguity in Non-Goals and
+plans the smallest change that satisfies the issue. That is the trade: the
+command never blocks, and never gets an answer it could not derive.
+
+## How the command works
 
 1. **Issue Input**: The tool receives a GitHub issue reference (URL or `owner/repo#number`).
 2. **Fetch Issue**: Title, body, URL, and state are fetched via `gh issue view`.
@@ -63,6 +96,15 @@ one as work that may land in parallel. This is automatic — there is no flag �
 best-effort: an issue that is not a Sub Issue, or a repo where the relationship
 cannot be read, elaborates exactly as before.
 
+## The issue body keeps its header
+
+An elaboration replaces the whole issue body, so it carries the source issue's
+`**Category**: … | **Scope**: …` header line through and corrects the `Scope`
+when the plan changed the size. An issue that never had that line renders without
+one. Both the skill and the command do this, and a Go test
+(`TestBuildIssueBody_MatchesSharedFormat`) fails when the two paths disagree
+about the format.
+
 ## Score the draft before output (`--review`)
 
 `--review` adds a reviewer pass between elaboration and output. A reviewer
@@ -71,6 +113,8 @@ implementer executes without asking a single question. While the score stays
 below the bar, the refine loop revises the draft to close the reviewer's gaps
 and iterates until the score clears the bar or `--max-review-iterations` is
 exhausted (default 3).
+
+The skill always runs this pass; on the command it is opt-in.
 
 The final score is surfaced in the output as `Executability score: N/10`, so a
 near-miss is visible rather than hidden behind a binary pass/fail. When the loop

@@ -10,6 +10,7 @@ solves one specific problem.
 - [Use the GitHub Wiki as a knowledge source](/how-to/use-the-github-wiki)
 - [Sync the wiki against the code](/how-to/sync-the-wiki)
 - [Check completed features for gaps](/how-to/check-feature-gaps)
+- [Use the issue skills](/how-to/use-the-skills)
 - [Draft an issue](/how-to/draft-an-issue)
 - [Elaborate an issue](/how-to/elaborate-an-issue)
 - [Split a Meta Issue](/how-to/split-a-meta-issue)

@@ -12,14 +12,12 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/audit"
 	"github.com/planwerk/planwerk-agent/internal/capture"
 	"github.com/planwerk/planwerk-agent/internal/doccheck"
-	"github.com/planwerk/planwerk-agent/internal/draft"
 	"github.com/planwerk/planwerk-agent/internal/elaborate"
 	"github.com/planwerk/planwerk-agent/internal/fix"
 	"github.com/planwerk/planwerk-agent/internal/gapanalysis"
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/glossary"
 	"github.com/planwerk/planwerk-agent/internal/implement"
-	"github.com/planwerk/planwerk-agent/internal/meta"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/planwerk"
 	"github.com/planwerk/planwerk-agent/internal/propose"
@@ -200,50 +198,8 @@ func goldenElaborateContext() elaborate.Context {
 	}
 }
 
-func goldenDraftContext() draft.Context {
-	return draft.Context{
-		Seed: "add a dark mode toggle to the settings page",
-		Answers: []draft.QA{
-			{Question: "Who benefits from this?", Answer: "Users who work at night."},
-			{Question: "Any hard constraints?", Answer: "Must respect the OS-level preference."},
-		},
-	}
-}
-
 func TestBuildReviewPrompt_Golden(t *testing.T) {
 	assertGoldenPrompt(t, "review", buildReviewPrompt(goldenReviewContext()))
-}
-
-func TestBuildDraftPrompt_Golden(t *testing.T) {
-	assertGoldenPrompt(t, "draft", BuildDraftPrompt(goldenDraftContext()))
-}
-
-func goldenMetaContext() meta.Context {
-	return meta.Context{
-		Issue: &github.Issue{
-			Number: 78,
-			Title:  "Restructure the documentation site",
-			URL:    "https://github.com/planwerk/planwerk-agent/issues/78",
-			Body: "Split the docs overhaul into lettered workstreams.\n\n" +
-				"## Workstreams\n\n" +
-				"- A. Reorganize the reference section\n" +
-				"- B. Rewrite the how-to guides\n" +
-				"- C. Add an explanation section",
-			State: "open",
-		},
-	}
-}
-
-func TestBuildMetaPrompt_Golden(t *testing.T) {
-	assertGoldenPrompt(t, "meta", BuildMetaPrompt(goldenMetaContext()))
-}
-
-func TestBuildDraftQuestionsPrompt_Golden(t *testing.T) {
-	assertGoldenPrompt(t, "draft_questions", buildDraftQuestionsPrompt("add a dark mode toggle to the settings page"))
-}
-
-func TestBuildBareDraftPrompt_Golden(t *testing.T) {
-	assertGoldenPrompt(t, "draft_bare", BuildBareDraftPrompt("add a dark mode toggle to the settings page"))
 }
 
 // goldenMetaIssue and goldenSiblingIssues describe the Meta/Sub-Issue
@@ -308,7 +264,7 @@ func TestBuildElaboratePrompt_Meta_Golden(t *testing.T) {
 }
 
 func TestBuildElaborateReviewPrompt_Golden(t *testing.T) {
-	draft := "**Description:**\n\nAdd golden files for every prompt builder.\n\n**Acceptance Criteria:**\n\n- [ ] A golden file exists for every builder\n"
+	draft := "## Description\n\nAdd golden files for every prompt builder.\n\n## Acceptance Criteria\n\n- [ ] A golden file exists for every builder\n"
 	assertGoldenPrompt(t, "elaborate_review", buildElaborateReviewPrompt(goldenElaborateContext(), draft))
 }
 
@@ -961,7 +917,7 @@ func TestBuildProposalStructurePrompt_Golden(t *testing.T) {
 // TestBuildElaborateStructurePrompt_Golden locks the elaborate-structuring
 // prompt, including the verbatim source title pinned into the field rules.
 func TestBuildElaborateStructurePrompt_Golden(t *testing.T) {
-	raw := "**Description:**\n\nAdd golden files for every prompt builder.\n\n**Acceptance Criteria:**\n\n- [ ] A golden file exists for every builder\n"
+	raw := "## Description\n\nAdd golden files for every prompt builder.\n\n## Acceptance Criteria\n\n- [ ] A golden file exists for every builder\n"
 	assertGoldenPrompt(t, "elaborate_structure", buildElaborateStructurePrompt(raw, goldenElaborateContext()))
 }
 

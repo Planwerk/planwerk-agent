@@ -198,6 +198,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	if result.Title == "" {
 		result.Title = issue.Title
 	}
+	result.Header = categoryHeader(issue.Body)
 	result.Body = BuildIssueBody(result)
 
 	if opts.Review && r.Reviewer != nil {
@@ -333,6 +334,9 @@ func (r *Runner) runReviewLoop(dir string, baseCtx Context, result *Result, opts
 		if refined.Title == "" {
 			refined.Title = result.Title
 		}
+		// Header is derived from the source issue, not from Claude, so a refined
+		// draft would otherwise lose the Category/Scope line the first pass kept.
+		refined.Header = result.Header
 		refined.Body = BuildIssueBody(refined)
 		result = refined
 	}

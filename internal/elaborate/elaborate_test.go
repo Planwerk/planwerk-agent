@@ -565,12 +565,12 @@ func TestBuildIssueBodySectionsAndOrder(t *testing.T) {
 	}
 	body := BuildIssueBody(r)
 	// section order + checklist syntax
-	descIdx := strings.Index(body, "**Description:**")
-	motivIdx := strings.Index(body, "**Motivation:**")
-	areasIdx := strings.Index(body, "**Affected Areas:**")
-	acIdx := strings.Index(body, "**Acceptance Criteria:**")
-	ngIdx := strings.Index(body, "**Non-Goals:**")
-	refIdx := strings.Index(body, "**References:**")
+	descIdx := strings.Index(body, "## Description")
+	motivIdx := strings.Index(body, "## Motivation")
+	areasIdx := strings.Index(body, "## Affected Areas")
+	acIdx := strings.Index(body, "## Acceptance Criteria")
+	ngIdx := strings.Index(body, "## Non-Goals")
+	refIdx := strings.Index(body, "## References")
 	for _, p := range []int{descIdx, motivIdx, areasIdx, acIdx, ngIdx, refIdx} {
 		if p < 0 {
 			t.Fatalf("missing section in body:\n%s", body)
@@ -640,7 +640,7 @@ func TestBuildIssueBody_UserStories(t *testing.T) {
 			UserStories:   []Story{{Role: "maintainer", Want: "X", SoThat: "Y", Criteria: []string{"crit one"}}},
 			AffectedAreas: []string{"a.go"},
 		})
-		if !strings.Contains(body, "**User Stories:**") {
+		if !strings.Contains(body, "## User Stories") {
 			t.Fatalf("missing User Stories header:\n%s", body)
 		}
 		if !strings.Contains(body, "- As a maintainer, I want X, so that Y") {
@@ -649,9 +649,9 @@ func TestBuildIssueBody_UserStories(t *testing.T) {
 		if !strings.Contains(body, "  - crit one") {
 			t.Errorf("story criterion not nested under the story:\n%s", body)
 		}
-		motivIdx := strings.Index(body, "**Motivation:**")
-		storiesIdx := strings.Index(body, "**User Stories:**")
-		areasIdx := strings.Index(body, "**Affected Areas:**")
+		motivIdx := strings.Index(body, "## Motivation")
+		storiesIdx := strings.Index(body, "## User Stories")
+		areasIdx := strings.Index(body, "## Affected Areas")
 		if motivIdx >= storiesIdx || storiesIdx >= areasIdx {
 			t.Fatalf("User Stories out of order (motiv=%d stories=%d areas=%d):\n%s", motivIdx, storiesIdx, areasIdx, body)
 		}
@@ -659,7 +659,7 @@ func TestBuildIssueBody_UserStories(t *testing.T) {
 
 	t.Run("empty omits the section entirely", func(t *testing.T) {
 		body := BuildIssueBody(&Result{Description: "desc", Motivation: "motiv"})
-		if strings.Contains(body, "**User Stories:**") {
+		if strings.Contains(body, "## User Stories") {
 			t.Errorf("empty UserStories should render no header or filler, got:\n%s", body)
 		}
 	})
@@ -672,7 +672,7 @@ func TestBuildIssueBody_UserStories(t *testing.T) {
 		if strings.Contains(body, "As a") {
 			t.Errorf("a story with blank role/want/so-that should be skipped, got:\n%s", body)
 		}
-		if strings.Contains(body, "**User Stories:**") {
+		if strings.Contains(body, "## User Stories") {
 			t.Errorf("an all-blank story should leave no orphaned header, got:\n%s", body)
 		}
 	})

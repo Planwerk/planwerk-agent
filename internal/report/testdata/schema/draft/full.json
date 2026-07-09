@@ -1,7 +1,0 @@
-{
-  "title": "Add a dark mode toggle to the settings page",
-  "description": "Users who work at night want a dark theme. Add a toggle on the settings page that switches the interface between the light and dark palettes and remembers the choice.",
-  "motivation": "Without a dark theme, night-time users face a bright interface that strains the eyes. A toggle gives them control without affecting anyone on the default light theme.",
-  "scope": "Medium",
-  "body": "**Category**: feature | **Scope**: Medium\n\n## Description\n\nUsers who work at night want a dark theme.\n\n## Motivation\n\nReduces eye strain at night.\n\n---\n\n_Drafted by [planwerk-agent](https://github.com/planwerk/planwerk-agent) with Claude_\n"
-}

@@ -9,11 +9,19 @@ omitted. Shell completions and man pages are produced by the built-in
 `completion` command and packaging — see
 [Install completions & man pages](/how-to/install-completions-and-man-pages).
 
+::: info Drafting and splitting are skills, not subcommands
+`draft` and `meta` are no longer `planwerk-agent` subcommands. They are Claude
+Code Skills — `/planwerk:draft` and `/planwerk:meta` — because both turn on
+decisions only a human can make mid-run. `elaborate` exists both ways: as the
+command documented below, and as the `/planwerk:elaborate` skill. See
+[Use the issue skills](/how-to/use-the-skills).
+:::
+
 ## Global flags
 
 These persistent flags apply to every command (`review`, `propose`, `audit`,
-`glossary`, `gap-analysis`, `review-prepared`, `draft`, `elaborate`, `meta`,
-`prompt`, `fix`, `rebase`, `address`, `implement`, `cache`, `schema`).
+`glossary`, `gap-analysis`, `review-prepared`, `elaborate`, `prompt`, `fix`,
+`rebase`, `address`, `implement`, `ship`, `cache`, `schema`).
 
 | Flag | Description | Default |
 |------|-------------|---------|
@@ -356,60 +364,6 @@ planwerk-agent review-prepared --create-pr owner/repo
 | `--local` | Operate on the current working directory instead of cloning into a temp dir | `false` |
 | `--force` | With `--local`, skip the confirmation prompt when the working tree is dirty | `false` |
 
-## `draft`
-
-Turn a rough, one-line feature idea into a ready-to-file GitHub issue through a
-short clarifying Q&A. The draft is previewed, duplicate-title-checked, and
-created only on explicit confirmation. `draft` is the front of the pipeline —
-`draft → elaborate → implement` — and deliberately stops at an initial feature
-description: it does not produce an engineering plan (that is `elaborate`).
-
-```bash
-# Draft an issue for an explicit repository (prompts for the idea, then asks)
-planwerk-agent draft owner/repo
-
-# Seed the idea on the command line
-planwerk-agent draft owner/repo "add a dark mode toggle"
-
-# File against the current checkout's origin (no repo-ref needed)
-planwerk-agent draft --local "add a dark mode toggle"
-
-# Draft without the clarifying questions, and preview without filing
-planwerk-agent draft --no-interactive --dry-run owner/repo "add a dark mode toggle"
-```
-
-Without `--local`, the first positional is the repository reference
-(`owner/repo` or URL) and the second, optional, is the one-line idea. With
-`--local` the issue is filed against the current checkout's `origin` (no
-repo-ref needed) and the single positional is the idea; an explicit ref given
-under `--local` must match `origin`. When the idea is omitted it is prompted for
-interactively — except in a non-interactive context (stdin is not a TTY, or
-`--no-interactive`), where a missing idea aborts with an actionable error.
-
-On an interactive terminal (both stdin and stderr a TTY), the idea and each
-clarifying answer are captured in a multi-line composer: `Enter` inserts a
-newline, `Ctrl-D` submits, `Ctrl-C` cancels, and `Ctrl-E` opens an external
-editor on the current text (precedence `$VISUAL` → `$EDITOR` → `vi`). When
-stdin is piped, stderr is redirected, or `--no-interactive` is set, `draft`
-falls back to single-line reads so scripted input stays stable. See
-[Compose your input](/how-to/draft-an-issue#compose-your-input).
-
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--local` | File against the current checkout's `origin` repo instead of taking an explicit repo-ref (see [Use local mode](/how-to/use-local-mode)). `draft` needs only the `origin` owner/repo — it takes no local checkout. | `false` |
-| `--no-interactive`, `-y` | Skip the clarifying Q&A loop and draft straight from the seed idea | `false` |
-| `--dry-run` | Render the drafted issue without filing it | `false` |
-| `--no-create` | Alias of `--dry-run`: render the drafted issue without filing it | `false` |
-| `--label` | Label to attach to the created issue (repeatable; no severity/priority levels — house convention) | - |
-| `--format` | Output format (`markdown`, `json`) | `markdown` |
-| `--print-prompt` | Render the draft prompt for the idea to stdout and exit; do not invoke Claude or GitHub | `false` |
-| `--print-bare-prompt` | Render a self-contained draft prompt (for a manual Claude session) to stdout and exit | `false` |
-
-`--print-prompt` and `--print-bare-prompt` are mutually exclusive and both
-require an idea. The create step always asks for confirmation, even with
-`--no-interactive` (which skips only the clarifying questions) — script
-non-interactive runs with `--dry-run` or `--format json`.
-
 ## `elaborate`
 
 Expand a high-level GitHub issue into a detailed engineering plan grounded in
@@ -438,53 +392,6 @@ planwerk-agent elaborate --post-comment owner/repo#123
 | `--force` | With `--local`, skip the confirmation prompt when the working tree is dirty | `false` |
 
 `--update-issue` and `--post-comment` are mutually exclusive.
-
-## `meta`
-
-Expand a Meta Issue — an issue that frames a larger body of work as several
-self-contained work packages — into linked, draft-depth Sub Issues. The command
-reads the Meta Issue and decides the breakdown on its own: it carves it into the
-fewest sensible Sub Issues, files each one at draft depth, links it to the Meta
-Issue via GitHub's native sub-issue relationship, and back-fills the Meta Issue
-body so its work-package lines reference the freshly created Sub Issues.
-
-Like `draft`, each Sub Issue stops at an initial feature description — it is
-deliberately **not** elaborated. Turning a Sub Issue into a file-level
-engineering plan stays the job of `elaborate` / `implement`, run per Sub Issue.
-The command stops at creating and linking: it does not orchestrate the Sub
-Issues through `elaborate` / `implement` / `fix`, and it does not close the Meta
-Issue.
-
-```bash
-# Preview the planned split without filing or linking anything
-planwerk-agent meta --dry-run owner/repo#123
-
-# Carve the Meta Issue into Sub Issues, link them, and sync the body
-planwerk-agent meta owner/repo#123
-
-# Attach a label to each created Sub Issue
-planwerk-agent meta --label enhancement owner/repo#123
-```
-
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--dry-run` | Render the planned split without filing or linking any sub-issues | `false` |
-| `--no-create` | Alias of `--dry-run`: render the planned split without filing | `false` |
-| `--label` | Label to attach to each created sub-issue (repeatable; no severity/priority levels — house convention) | - |
-| `--format` | Output format (`markdown`, `json`) | `markdown` |
-
-A link failure on one Sub Issue does not abort the run — the Sub Issue is still
-created and the failure is reported so it can be linked by hand. The Meta Issue
-body is back-filled only when every reference resolves, so it is never left with
-a dangling placeholder.
-
-`meta` also records each Sub Issue's dependency ordering as a native GitHub
-"blocked by" relationship — the structured form of "which siblings this package
-waits on" the split decides. The relationship renders in GitHub's issue UI and is
-what [`ship`](#ship) reads back to drive the Sub Issues in dependency order.
-Setting a relationship is best-effort like sub-issue linking: a failure is
-reported, not fatal, so a target whose GitHub does not expose issue dependencies
-degrades to "all Sub Issues independent".
 
 ## `prompt`
 
@@ -728,7 +635,8 @@ not an error.
 
 ## `ship`
 
-Take a Meta Issue — the kind [`meta`](#meta) produces — and drive every one of
+Take a Meta Issue — the kind the [`/planwerk:meta` skill](/how-to/split-a-meta-issue)
+produces — and drive every one of
 its Sub Issues to merged on the default branch, in dependency order, without a
 human in the loop. Where `implement` is supervised and deliberately stops at a
 draft pull request, `ship` makes those decisions itself: for each Sub Issue it
@@ -737,7 +645,8 @@ fixes red CI itself (reusing the [`fix`](#fix) loop), and merges when green, the
 advances to the next ready Sub Issue.
 
 Sub Issues are processed in the order their dependencies allow. `ship` reads the
-native "blocked by" relationships `meta` records and works them topologically, so
+native "blocked by" relationships `/planwerk:meta` records and works them
+topologically, so
 a Sub Issue becomes eligible only once every Sub Issue it is blocked by has
 merged; independent Sub Issues stay independently shippable. When a Sub Issue
 cannot be finished autonomously — `implement` reports `BLOCKED` / `NEEDS_CONTEXT`,
@@ -793,7 +702,7 @@ resumes from a chosen Sub Issue, treating Sub Issues ordered before it as
 already-handled unless they are still open. The per–Sub Issue implement runs honor
 the same `--no-simplify` / `--no-review` switches as `implement`, so each diff is
 cleaned and self-reviewed before CI ever sees it. `ship` does not create Sub
-Issues — that stays the job of `meta`.
+Issues — that stays the job of the [`/planwerk:meta` skill](/how-to/split-a-meta-issue).
 
 ## `address`
 
@@ -885,7 +794,6 @@ check-jsonschema --schemafile proposal.schema.json proposals.json
 | `audit` | Schema for `audit --format json` output — identical to `review`, because audit reuses the review result shape |
 | `propose` | Schema for `propose --format json` output (`proposal.schema.json`, the proposal-result envelope) |
 | `rebase` | Schema for the `rebase` post-rebase analysis output (`rebase-analysis.schema.json`) |
-| `draft` | Schema for `draft --format json` output (`draft.schema.json`, the drafted issue) |
 
 ## Built-in commands
 

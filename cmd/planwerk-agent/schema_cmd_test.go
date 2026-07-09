@@ -31,7 +31,6 @@ func TestSchemaCmdEmitsEmbeddedSchema(t *testing.T) {
 		{arg: "audit", want: schema.ReportResult},
 		{arg: "propose", want: schema.Proposal},
 		{arg: "rebase", want: schema.RebaseAnalysis},
-		{arg: "draft", want: schema.Draft},
 	} {
 		t.Run(tc.arg, func(t *testing.T) {
 			got, err := runSchemaCmd(t, tc.arg)
