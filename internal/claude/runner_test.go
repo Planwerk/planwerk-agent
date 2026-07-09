@@ -1,10 +1,13 @@
 package claude
 
 import (
+	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/planwerk/planwerk-agent/internal/report/schema"
 )
 
 // TestWithAllowedTools_PreApprovesWebTools locks in the contract the read-only
@@ -132,6 +135,51 @@ func TestHermeticArgs_InheritWhenEnabled(t *testing.T) {
 	}
 	if len(got) != len(base) {
 		t.Errorf("hermeticArgs changed args when inheriting; got %v, want %v", got, base)
+	}
+}
+
+// TestCLIJSONSchema_StripsDialectFromEmbeddedSchema is the regression guard for
+// the bug that failed every structuring pass: schema.StructuredReview declares
+// $schema 2020-12, and the CLI's draft-07 validator rejects the whole
+// --json-schema flag with "no schema with key or ref …/draft/2020-12/schema"
+// before the model runs. The wire copy must carry no dialect declaration while
+// keeping the document otherwise intact.
+func TestCLIJSONSchema_StripsDialectFromEmbeddedSchema(t *testing.T) {
+	got := cliJSONSchema(string(schema.StructuredReview))
+
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(got), &fields); err != nil {
+		t.Fatalf("cliJSONSchema produced invalid JSON: %v", err)
+	}
+	if _, ok := fields["$schema"]; ok {
+		t.Errorf("cliJSONSchema left the $schema dialect declaration in the wire copy; the CLI rejects it")
+	}
+	for _, want := range []string{"properties", "required", "$defs", "type"} {
+		if _, ok := fields[want]; !ok {
+			t.Errorf("cliJSONSchema dropped %q; only $schema may be removed", want)
+		}
+	}
+}
+
+// TestCLIJSONSchema_PassesThroughNonObjects documents the guard: a document that
+// is not a JSON object — including the empty string every schema-less caller
+// passes — is returned untouched, so the empty value still suppresses the flag
+// and a genuinely malformed schema reaches the CLI to be reported there.
+func TestCLIJSONSchema_PassesThroughNonObjects(t *testing.T) {
+	for _, doc := range []string{"", "not json", "[1,2]"} {
+		if got := cliJSONSchema(doc); got != doc {
+			t.Errorf("cliJSONSchema(%q) = %q, want it unchanged", doc, got)
+		}
+	}
+}
+
+// TestCLIJSONSchema_LeavesSchemalessDocumentUnchanged keeps the helper a no-op
+// for a document that already declares no dialect, rather than round-tripping it
+// through the JSON encoder for nothing.
+func TestCLIJSONSchema_LeavesSchemalessDocumentUnchanged(t *testing.T) {
+	doc := `{"type":"object","properties":{"ok":{"type":"boolean"}}}`
+	if got := cliJSONSchema(doc); got != doc {
+		t.Errorf("cliJSONSchema(%q) = %q, want it unchanged", doc, got)
 	}
 }
 
