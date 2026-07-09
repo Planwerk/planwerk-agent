@@ -108,6 +108,21 @@ planwerk-agent/
 │   └── todocheck/
 │       ├── todocheck.go        # Load TODOS.md for cross-reference
 │       └── todocheck_test.go
+├── .claude-plugin/
+│   └── marketplace.json        # Claude Code marketplace catalog (this repo)
+├── plugins/
+│   └── planwerk/               # The plugin: draft / elaborate / meta skills
+│       ├── .claude-plugin/
+│       │   └── plugin.json
+│       ├── shared/             # One source for the format, style, doctrine, gh calls
+│       │   ├── issue-format.md
+│       │   ├── house-style.md
+│       │   ├── interaction.md
+│       │   └── github.md
+│       └── skills/
+│           ├── draft/SKILL.md
+│           ├── elaborate/SKILL.md
+│           └── meta/SKILL.md
 ├── Makefile
 ├── go.mod
 ├── go.sum
@@ -125,6 +140,7 @@ planwerk-agent/
   - `test`: `go test ./...` on matrix (Ubuntu, macOS)
   - `build`: `go build ./cmd/planwerk-agent/`
   - `vet`: `go vet ./...`
+  - `plugin`: `claude plugin validate --strict` on the marketplace and plugin manifests
 
 ### Lint (`lint.yml`)
 

@@ -40,8 +40,6 @@ func main() {
 		newGapAnalysisCmd(deps),
 		newReviewPreparedCmd(deps),
 		newElaborateCmd(deps),
-		newDraftCmd(deps),
-		newMetaCmd(deps),
 		newPromptCmd(deps),
 		newFixCmd(deps),
 		newRebaseCmd(deps),
@@ -52,6 +50,9 @@ func main() {
 		newSchemaCmd(deps),
 		newGenManCmd(deps),
 	)
+	for _, c := range newRemovedCmds() {
+		rootCmd.AddCommand(c)
+	}
 
 	err := rootCmd.Execute()
 

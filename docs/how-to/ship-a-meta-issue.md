@@ -1,7 +1,7 @@
 # Ship a Meta Issue
 
 Drive every Sub Issue of a **Meta Issue** — the kind
-[`meta`](/how-to/split-a-meta-issue) produces — to merged on the default branch,
+[`/planwerk:meta`](/how-to/split-a-meta-issue) produces — to merged on the default branch,
 in dependency order, without a human in the loop. Where
 [`implement`](/how-to/implement-an-issue) is supervised and deliberately stops at
 a draft pull request, `ship` is the unattended fleet driver: for each Sub Issue it
@@ -59,7 +59,7 @@ For each eligible Sub Issue, `ship` runs:
 
 ## Dependency order
 
-`ship` processes Sub Issues in the order their dependencies allow. `meta` records
+`ship` processes Sub Issues in the order their dependencies allow. `/planwerk:meta` records
 each Sub Issue's "blocked by" ordering as a native GitHub relationship; `ship`
 reads those back and works them topologically, so a Sub Issue becomes eligible
 only once every Sub Issue it is blocked by has merged. Sub Issues with no real
@@ -98,7 +98,7 @@ was skipped, and why. When every Sub Issue has merged, the Meta Issue is closed.
 
 ## What it does not do
 
-`ship` does **not** create Sub Issues — that stays the job of `meta`. It composes
-`implement`, `fix`, and `meta`'s output; it does not replace them, and the
+`ship` does **not** create Sub Issues — that stays the job of `/planwerk:meta`. It composes
+`implement`, `fix`, and `/planwerk:meta`'s output; it does not replace them, and the
 single-issue commands are untouched. See the [CLI reference](/reference/cli#ship)
 for every flag.

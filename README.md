@@ -7,19 +7,30 @@ AI-powered code review and codebase analysis tool for GitHub repositories. Uses 
 
 ## Features
 
+### Commands
+
 - **Review** a pull request and produce a structured, severity-categorized report
 - **Propose** feature work by analyzing an entire repository
 - **Audit** a codebase against every known review pattern
 - **Sync** the GitHub Wiki against the code, flagging stale and redundant knowledge
 - **Gap-analysis** of completed features against the actual code
-- **Draft** a one-line feature idea into a ready-to-file GitHub issue
 - **Elaborate** a high-level issue into a detailed engineering plan
-- **Meta** split a Meta Issue into linked, draft-depth Sub Issues
 - **Prompt** generation that fixes or implements an issue
 - **Implement** an elaborated issue end to end and open a draft PR
+- **Ship** a Meta Issue: drive every Sub Issue to merged, in dependency order
 - **Fix** a PR's failing CI checks in a self-healing loop
 - **Rebase** a PR onto its base, resolve conflicts with Claude, and analyze the rebased commits
 - **Address** a PR's review comments by incorporating selected threads as follow-up commits
+
+### Skills
+
+Issue authoring needs decisions only a human can make, so it ships as
+interactive [Claude Code Skills](https://code.claude.com/docs/en/skills) rather
+than subcommands:
+
+- **`/planwerk:draft`** turns a one-line idea into a ready-to-file GitHub issue
+- **`/planwerk:elaborate`** expands an issue into an engineering plan grounded in the repository
+- **`/planwerk:meta`** splits a Meta Issue into linked, dependency-ordered Sub Issues
 
 ## Quick start
 
@@ -37,10 +48,19 @@ Review a pull request:
 planwerk-agent owner/repo#123
 ```
 
+Install the issue skills:
+
+```bash
+claude plugin marketplace add planwerk/planwerk-agent
+claude plugin install planwerk@planwerk-agent
+```
+
 You need [Claude Code](https://docs.claude.com/en/docs/claude-code) and the
 [`gh` CLI](https://cli.github.com/) installed and authenticated. See
 [Getting started](https://planwerk.github.io/planwerk-agent/tutorials/getting-started)
-for the full walkthrough.
+for the full walkthrough, and
+[Use the issue skills](https://planwerk.github.io/planwerk-agent/how-to/use-the-skills)
+for the skills.
 
 ## Documentation
 

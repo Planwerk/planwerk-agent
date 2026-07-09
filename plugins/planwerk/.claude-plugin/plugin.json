@@ -1,0 +1,17 @@
+{
+  "name": "planwerk",
+  "description": "Guided, interactive skills for the planwerk-agent workflow",
+  "version": "0.1.0",
+  "author": {
+    "name": "planwerk"
+  },
+  "homepage": "https://github.com/planwerk/planwerk-agent",
+  "repository": "https://github.com/planwerk/planwerk-agent",
+  "license": "MIT",
+  "keywords": [
+    "github",
+    "issues",
+    "planning",
+    "decomposition"
+  ]
+}

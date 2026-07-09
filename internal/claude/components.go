@@ -27,8 +27,6 @@ import (
 //   - workBreakdownDefinition — the work-breakdown enumeration (implement,
 //     bare-implement, verify-implementation, plan); each caller keeps its own
 //     surrounding sentence.
-//   - draftHardNonGoalsBlock, draftTitleLine, draftScopeLine, draftSchemaRules —
-//     the draft-depth scaffolding shared by the draft and meta prompts.
 //   - diffScopeLines — the "SCOPE: … / git diff --name-only" lead (adversarial,
 //     compliance, simplify-find, specialist).
 //   - emptyIDLine — the "leave id empty" line (propose, gap-analysis,
@@ -49,7 +47,6 @@ import (
 //     inline at each call site.
 //   - The structure prompt now routes its id line through emptyIDLine() too
 //     (issue #157 rewrote the structure prompt to be transcribe-only).
-//   - The bare-draft prompt keeps its own condensed hard-non-goals wording.
 
 // promptScope distinguishes a diff-scoped review (a PR or branch comparison)
 // from a whole-codebase audit. It selects the scope-specific suppression
@@ -134,13 +131,12 @@ Apply these rules to all prose you write (descriptions, motivations, summaries, 
 
 // outputLanguageBlock returns the "## Output Language" section that pins every
 // generated artifact — implementation plan, fix report, implementation report,
-// review, audit, analysis, drafted issue, … — to English, whatever language the
-// input is written in. The maintainers routinely write issues, seeds, and code
+// review, audit, analysis, elaborated issue, … — to English, whatever language
+// the input is written in. The maintainers routinely write issues and code
 // comments in German; without this pin the model mirrors that language into the
-// artifact. The one deliberate exception lives outside this block: the draft
-// command asks its clarifying questions in the author's own language (see
-// buildDraftQuestionsPrompt and BuildBareDraftPrompt) — only the questions, not
-// the drafted issue, which stays English like every other artifact.
+// artifact. The interactive skills carry the same rule with one deliberate
+// exception — they converse in the author's language and still emit an English
+// artifact (see plugins/planwerk/shared/house-style.md).
 func outputLanguageBlock() string {
 	return `## Output Language
 
@@ -415,10 +411,10 @@ Every finding you report MUST carry these three explicit labels. They are author
 // gapanalysis, reviewprepared, coverage, rebase analysis) — the second Claude
 // call that converts a builder's prose output into the strict JSON its decoder
 // expects. The wording was copied verbatim into eight builders, free to drift;
-// one source keeps them aligned. The address/draft/meta variants word it
-// differently on purpose ("no prose before or after") and are left alone. The
-// line carries no surrounding newlines so each caller keeps its own spacing
-// around the schema block.
+// one source keeps them aligned. The address variant words it differently on
+// purpose ("no prose before or after") and is left alone. The line carries no
+// surrounding newlines so each caller keeps its own spacing around the schema
+// block.
 func jsonSchemaOnlyLine() string {
 	return "Output ONLY valid JSON matching this exact schema (no markdown fences, no surrounding text):"
 }
@@ -503,39 +499,6 @@ func findingBudgetBlock(maxFindings int) string {
 // clauses, so only the enumeration itself is shared.
 func workBreakdownDefinition() string {
 	return `a "Work breakdown" / "Work packages" / "Work items" section, numbered items (1., 2., 3. or ### 1 / ### 2), lettered workstreams, tiered phases, or a checkbox task list`
-}
-
-// draftHardNonGoalsBlock returns the "## Hard non-goals" block shared by the
-// draft and meta prompts so a draft-depth issue cannot slide into a file-level
-// plan. It carries its own trailing newline so callers splice it between two
-// existing lines. The bare-draft prompt keeps its own condensed wording on
-// purpose and is not a caller.
-func draftHardNonGoalsBlock() string {
-	return `## Hard non-goals — do NOT do any of these
-- No file-level affected-areas breakdown.
-- No step-by-step implementation design.
-- No acceptance criteria grounded in concrete files, symbols, or functions.
-- No naming of specific source files or functions, and no codebase analysis for a plan.
-`
-}
-
-// draftTitleLine returns the "descriptive, specific title" bullet shared by the
-// draft and meta prompts, carrying its own trailing newline.
-func draftTitleLine() string {
-	return "- A descriptive, specific title — imperative mood, no severity or priority prefix.\n"
-}
-
-// draftScopeLine returns the "rough Scope" bullet shared by the draft and meta
-// prompts, carrying its own trailing newline.
-func draftScopeLine() string {
-	return "- A rough Scope: exactly one of Small, Medium, or Large.\n"
-}
-
-// draftSchemaRules returns the two trailing JSON-schema rules shared by the
-// draft and meta output sections (no invented fields; scope is one of the three
-// sizes). Each rule carries its own trailing newline.
-func draftSchemaRules() string {
-	return "- Do NOT invent fields beyond the schema.\n- \"scope\" MUST be exactly one of Small, Medium, or Large.\n"
 }
 
 // diffScopeLines returns the "SCOPE: … / git diff --name-only" lead shared by

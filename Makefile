@@ -3,7 +3,7 @@ MAIN    := ./cmd/planwerk-agent
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: all build test vet lint fmt clean completions man eval
+.PHONY: all build test vet lint fmt clean completions man eval plugin-validate
 
 all: lint test build
 
@@ -28,6 +28,15 @@ vet:
 
 lint:
 	golangci-lint run
+
+# Validate the Claude Code plugin marketplace this repo ships (the draft /
+# elaborate / meta skills). `go test ./internal/skills` already checks that the
+# skills parse and their shared references resolve; this adds the manifest
+# schema check that only the claude CLI can do. Skipped when claude is absent.
+plugin-validate:
+	@command -v claude >/dev/null 2>&1 || { echo "claude CLI not found; skipping plugin validation"; exit 0; }
+	claude plugin validate --strict .
+	claude plugin validate --strict plugins/planwerk
 
 fmt:
 	gofmt -s -w .

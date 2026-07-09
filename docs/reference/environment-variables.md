@@ -32,13 +32,6 @@ full resolution order.
 | `GH_TOKEN` | `gh` CLI | Authenticates repo clones (including private), PR/issue metadata, checkout, and the GitHub API. Used in place of `gh auth login` in CI. |
 | `ANTHROPIC_API_KEY` | Claude Code | Required when Claude Code runs in non-interactive mode (e.g. in the GitHub Action). |
 
-### Editor
-
-| Variable | Used by | Notes |
-|----------|---------|-------|
-| `VISUAL` | `draft` | Editor opened by the composer's `Ctrl-E` escape. Takes precedence over `$EDITOR`. May include flags (e.g. `code --wait`). |
-| `EDITOR` | `draft` | Fallback editor when `$VISUAL` is unset. If neither is set, `draft` uses `vi`. |
-
 ## Exit codes
 
 | Code | Meaning |

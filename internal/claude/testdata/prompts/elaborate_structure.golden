@@ -21,11 +21,11 @@ Field rules:
 - Do NOT invent fields beyond the schema.
 
 <elaboration-output>
-**Description:**
+## Description
 
 Add golden files for every prompt builder.
 
-**Acceptance Criteria:**
+## Acceptance Criteria
 
 - [ ] A golden file exists for every builder
 

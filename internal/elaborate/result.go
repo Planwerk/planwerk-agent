@@ -20,6 +20,14 @@ type Result struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	Motivation  string `json:"motivation"`
+	// Header is the source issue's "**Category**: … | **Scope**: …" line, carried
+	// through so an elaboration that replaces the issue body does not drop the
+	// header the draft-depth issue opened with. Empty when the source issue
+	// carried no such line, in which case the rendered body simply starts at the
+	// Description. It is derived from the source issue rather than produced by
+	// Claude, so it is excluded from the serialized payload — the rendered Body
+	// already carries it across a cache round-trip.
+	Header string `json:"-"`
 	// UserStories anchors clusters of acceptance criteria to who benefits and
 	// why (role / want / so_that). Optional and proportional: omitted entirely
 	// for purely mechanical or infrastructure work that serves no distinct

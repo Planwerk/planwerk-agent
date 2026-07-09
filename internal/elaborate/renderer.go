@@ -19,11 +19,18 @@ func RenderMarkdown(w io.Writer, repoFullName string, issueNumber int, version s
 	}
 }
 
-// BuildIssueBody renders the canonical issue body for the elaboration.
-// Section headers and ordering match the example issue style
-// (plexsphere/plexsphere#10): Description, Motivation, an optional User
-// Stories section, Affected Areas, Acceptance Criteria, Non-Goals,
-// References, plus a generated-by footer.
+// BuildIssueBody renders the canonical issue body for the elaboration: the
+// source issue's Category/Scope header line (when it had one), then Description,
+// Motivation, an optional User Stories section, Affected Areas, Acceptance
+// Criteria, Non-Goals, References, plus a generated-by footer.
+//
+// The section names, their order, and their `## ` heading level are a contract
+// shared with the `elaborate` skill, which renders the same body from a
+// conversation instead of a Claude call. Both are specified by
+// plugins/planwerk/shared/issue-format.md, and TestBuildIssueBody_MatchesSharedFormat
+// fails when the two drift apart. The two trailing blocks (executability score,
+// reviewer notes) stay bold lines rather than headings because they annotate the
+// plan rather than belonging to the issue.
 //
 // Description and Motivation are emitted verbatim — Claude is responsible
 // for the prose density and depth. List sections are normalised so the
@@ -31,14 +38,19 @@ func RenderMarkdown(w io.Writer, repoFullName string, issueNumber int, version s
 func BuildIssueBody(r *Result) string {
 	var b strings.Builder
 
+	if h := strings.TrimSpace(r.Header); h != "" {
+		fmt.Fprintln(&b, h)
+		fmt.Fprintln(&b)
+	}
+
 	if d := strings.TrimSpace(r.Description); d != "" {
-		fmt.Fprint(&b, "**Description:**\n\n")
+		fmt.Fprint(&b, "## Description\n\n")
 		fmt.Fprintln(&b, d)
 		fmt.Fprintln(&b)
 	}
 
 	if m := strings.TrimSpace(r.Motivation); m != "" {
-		fmt.Fprint(&b, "**Motivation:**\n\n")
+		fmt.Fprint(&b, "## Motivation\n\n")
 		fmt.Fprintln(&b, m)
 		fmt.Fprintln(&b)
 	}
@@ -62,14 +74,14 @@ func BuildIssueBody(r *Result) string {
 			}
 		}
 		if stories.Len() > 0 {
-			fmt.Fprint(&b, "**User Stories:**\n\n")
+			fmt.Fprint(&b, "## User Stories\n\n")
 			b.WriteString(stories.String())
 			fmt.Fprintln(&b)
 		}
 	}
 
 	if len(r.AffectedAreas) > 0 {
-		fmt.Fprint(&b, "**Affected Areas:**\n\n")
+		fmt.Fprint(&b, "## Affected Areas\n\n")
 		for _, a := range r.AffectedAreas {
 			a = strings.TrimSpace(a)
 			if a == "" {
@@ -81,7 +93,7 @@ func BuildIssueBody(r *Result) string {
 	}
 
 	if len(r.AcceptanceCriteria) > 0 {
-		fmt.Fprint(&b, "**Acceptance Criteria:**\n\n")
+		fmt.Fprint(&b, "## Acceptance Criteria\n\n")
 		for _, ac := range r.AcceptanceCriteria {
 			ac = strings.TrimSpace(ac)
 			if ac == "" {
@@ -93,7 +105,7 @@ func BuildIssueBody(r *Result) string {
 	}
 
 	if len(r.NonGoals) > 0 {
-		fmt.Fprint(&b, "**Non-Goals:**\n\n")
+		fmt.Fprint(&b, "## Non-Goals\n\n")
 		for _, n := range r.NonGoals {
 			n = strings.TrimSpace(n)
 			if n == "" {
@@ -105,7 +117,7 @@ func BuildIssueBody(r *Result) string {
 	}
 
 	if len(r.References) > 0 {
-		fmt.Fprint(&b, "**References:**\n\n")
+		fmt.Fprint(&b, "## References\n\n")
 		for _, ref := range r.References {
 			ref = strings.TrimSpace(ref)
 			if ref == "" {

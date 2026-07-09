@@ -54,6 +54,7 @@ export default defineConfig({
             },
             { text: 'Audit a codebase', link: '/how-to/audit-a-codebase' },
             { text: 'Check feature gaps', link: '/how-to/check-feature-gaps' },
+            { text: 'Use the issue skills', link: '/how-to/use-the-skills' },
             { text: 'Draft an issue', link: '/how-to/draft-an-issue' },
             { text: 'Elaborate an issue', link: '/how-to/elaborate-an-issue' },
             { text: 'Split a Meta Issue', link: '/how-to/split-a-meta-issue' },

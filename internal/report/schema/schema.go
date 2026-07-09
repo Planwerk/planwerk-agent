@@ -35,13 +35,6 @@ var Proposal []byte
 //go:embed rebase-analysis.schema.json
 var RebaseAnalysis []byte
 
-// Draft is the JSON Schema (draft 2020-12) for the `draft` --format json
-// output, i.e. draft.Result: a captured feature idea (title, description,
-// motivation, rough scope) plus the rendered issue body.
-//
-//go:embed draft.schema.json
-var Draft []byte
-
 // AddressResult is the JSON Schema (draft 2020-12) for the `address` command's
 // per-run Claude output, i.e. report.AddressResult. Unlike the other schemas
 // here it does not back a `--format json` stdout payload — it is the contract

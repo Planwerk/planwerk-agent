@@ -6,6 +6,15 @@ to Claude Code. Those builders live in `internal/claude/` — roughly forty of
 them — and the quality of the tool is, to a first approximation, the quality of
 the prompts they emit.
 
+The tool has a second prompt surface: the three Claude Code Skills under
+`plugins/planwerk/skills/` (see
+[design decision 64](./design-decisions.md)). They are prompts a human converses
+with rather than prompts a subcommand fires once, so they add rules this page
+does not cover — when to ask instead of guess, how to present a choice, what
+must never happen without a confirmation. Those rules live in
+`plugins/planwerk/shared/interaction.md`. Everything below applies to both
+surfaces.
+
 That authoring discipline has so far lived only in practice. The builders are
 consistent because the people writing them carried the rules in their heads, not
 because the rules were written down. A discipline that lives only in heads
@@ -95,6 +104,20 @@ shortened copy that had already drifted from the review prompt's version.
 Extraction is the rule; copying is the exception that has to justify itself. The
 test for whether something belongs in `components.go` is whether two builders
 would otherwise have to be kept in sync by hand.
+
+The skills obey the same rule on their own surface: the house issue format, the
+prose rules, the interaction doctrine, and the `gh` invocations are written once
+under `plugins/planwerk/shared/` and read by all three `SKILL.md` files, rather
+than restated per skill.
+
+One instruction genuinely lives in two places. `elaborate` exists as both a
+command and a skill, so the issue format is expressed once as Go
+(`elaborate.BuildIssueBody`) and once as prose
+(`plugins/planwerk/shared/issue-format.md`). Discipline alone would not keep
+those aligned, so `TestBuildIssueBody_MatchesSharedFormat` asserts it: the
+sections, their order, the `- [ ]` checkbox form, and the footer must agree, or
+the build fails. Where duplication is unavoidable, make the drift mechanically
+detectable.
 
 The rule has a deliberate inverse. Some text *looks* shared but is not the same
 instruction: the Staff Engineer persona, the Verification-of-Claims rules, and
