@@ -15,13 +15,13 @@ import (
 // the sync pass exists to clean, so it is dropped.
 //
 // It deliberately does NOT apply the meta-issue's "ConfirmedBy >= 2" half of the
-// gate. The implement review pass runs AdversarialReview directly, which stamps
-// an empty Pattern with "adversarial-review" and never runs the multi-pass merge
-// that populates ConfirmedBy — so that half would select zero findings and make
-// pattern capture a guaranteed no-op. The recurring/generalizable judgment is
-// delegated to the proposal prompt instead; because the posture is propose-only,
-// a looser pre-filter only lengthens a human-reviewed suggestion list, never an
-// unreviewed write.
+// gate. The implement review pass now runs the same multi-pass merge the review
+// command does (issue #181), so ConfirmedBy is populated for the first time under
+// implement — but the pre-filter is intentionally left looser than "ConfirmedBy
+// >= 2". The recurring/generalizable judgment is delegated to the proposal prompt
+// instead; because the posture is propose-only, a looser pre-filter only
+// lengthens a human-reviewed suggestion list, never an unreviewed write.
+// Reinstating the stricter filter is left open, not decided here.
 func CandidateFindings(findings []report.Finding, catalog []patterns.Pattern) []report.Finding {
 	known := make(map[string]bool, len(catalog))
 	for _, p := range catalog {

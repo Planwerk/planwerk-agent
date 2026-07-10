@@ -106,7 +106,7 @@ or short form (owner/repo#123).`,
 				iopts := shipCfg.ToShipImplementOptions(deps.version)
 				iopts.IssueRef = issueRef
 				iopts.Remote = deps.remoteOpts
-				return implement.Run(w, iopts, client.Plan, claude.BuildPlanPrompt, client.Implement, claude.BuildImplementPrompt, client.VerifyImplementation, client.AdversarialReview, client.SimplifyFindings, client.ApplySimplifications, client.ApplyReview, client.Capture, client.FinalizePR)
+				return implement.Run(w, iopts, client.Plan, claude.BuildPlanPrompt, client.Implement, claude.BuildImplementPrompt, client.VerifyImplementation, client.AdversarialReview, client.SpecialistReviews, client.SimplifyFindings, client.ApplySimplifications, client.ApplyReview, client.DedupFindings, client.VerifyFindingClaims, client.Capture, client.FinalizePR)
 			}
 			fixFn := func(w io.Writer, prRef string) error {
 				fopts := shipCfg.ToShipFixOptions(deps.version)

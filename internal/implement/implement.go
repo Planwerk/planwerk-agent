@@ -16,10 +16,13 @@ import (
 	"log/slog"
 	"strings"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/planwerk/planwerk-agent/internal/attribution"
 	"github.com/planwerk/planwerk-agent/internal/capture"
 	"github.com/planwerk/planwerk-agent/internal/detect"
 	"github.com/planwerk/planwerk-agent/internal/github"
+	"github.com/planwerk/planwerk-agent/internal/hygiene"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
 	"github.com/planwerk/planwerk-agent/internal/skills"
@@ -59,6 +62,12 @@ type Options struct {
 	// fix into the commit it belongs to on the local branch (no push). The pass
 	// is on by default; a full run is implement -> simplify -> review -> finalize.
 	NoReview bool
+	// NoSpecialists disables the domain-specialist fan-out on the review pass's
+	// first round; the adversarial finder still runs. The fan-out is on by default
+	// because implement runs unattended and nobody is present to opt in; this is
+	// its off-switch. It only affects the review pass's first round (later rounds
+	// never fan out regardless), and does nothing when --no-review is set.
+	NoSpecialists bool
 	// NoCapture disables the read-only capture pass that, after the review pass
 	// and before finalizing, proposes new wiki review patterns and memory pages
 	// from the review findings, plan, and implementation report — writing
@@ -149,6 +158,20 @@ type Runner struct {
 	// non-nil (and opts.NoReview false) for the pass to run. Nil leaves the
 	// review-and-fix pass disabled.
 	ReviewApplier ReviewApplier
+	// SpecialistReviewer runs the domain-specialist fan-out on the review pass's
+	// first round, widening the self-review beyond the adversarial finder's
+	// security/failure-mode scope. Nil (or opts.NoSpecialists) skips the fan-out
+	// and the round runs the adversarial finder alone.
+	SpecialistReviewer SpecialistReviewer
+	// DedupFindings and VerifyClaims are the shared finding-hygiene seams the
+	// review pass runs over the merged self-review findings — the same stages the
+	// review command runs. DedupFindings folds cross-pass file-less duplicates
+	// (only invoked when a specialist contributed); VerifyClaims re-checks each
+	// BLOCKING/CRITICAL claim and demotes the refuted ones. Both are nil-tolerant:
+	// a nil seam skips that stage (hygiene handles it), matching every other
+	// optional dependency here.
+	DedupFindings hygiene.DedupFn
+	VerifyClaims  hygiene.VerifyClaimsFn
 	// Capturer runs the read-only capture pass after the review pass: it proposes
 	// new wiki review patterns and memory pages from the review findings, plan,
 	// and implementation report, writing nothing. Nil (or a wiki that did not
@@ -183,21 +206,26 @@ type Runner struct {
 // finder/applier, the optional review applier, and the finalize function. The
 // CLI wires claude.Plan / claude.BuildPlanPrompt / claude.Implement /
 // claude.BuildImplementPrompt / claude.VerifyImplementation /
-// claude.AdversarialReview / claude.SimplifyFindings / claude.ApplySimplifications /
-// claude.ApplyReview / claude.Capture / claude.FinalizePR so the import direction
-// stays claude -> implement. A nil planFn disables the planning phase; a nil
-// verifyFn leaves the verification pass disabled; a nil adversarialFn leaves both
-// the adversarial pass and the review-and-fix finder disabled; a nil
-// simplifyFindFn or simplifyApplyFn leaves the simplify pass disabled; a nil
-// reviewApplyFn leaves the review-and-fix pass disabled; a nil captureFn leaves
-// the capture pass disabled; a nil finalizeFn leaves the run on the committed
-// branch with no PR opened.
-func NewRunner(planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn, adversarialFn AdversarialFn, simplifyFindFn SimplifyFindFn, simplifyApplyFn SimplifyApplyFn, reviewApplyFn ReviewApplyFn, captureFn CaptureFn, finalizeFn FinalizeFn) *Runner {
+// claude.AdversarialReview / claude.SpecialistReviews / claude.SimplifyFindings /
+// claude.ApplySimplifications / claude.ApplyReview / claude.DedupFindings /
+// claude.VerifyFindingClaims / claude.Capture / claude.FinalizePR so the import
+// direction stays claude -> implement. A nil planFn disables the planning phase;
+// a nil verifyFn leaves the verification pass disabled; a nil adversarialFn
+// leaves both the adversarial pass and the review-and-fix finder disabled; a nil
+// specialistsFn leaves the review pass's first-round fan-out disabled (the
+// adversarial finder still runs); a nil simplifyFindFn or simplifyApplyFn leaves
+// the simplify pass disabled; a nil reviewApplyFn leaves the review-and-fix pass
+// disabled; a nil dedupFn or verifyClaimsFn skips that hygiene stage; a nil
+// captureFn leaves the capture pass disabled; a nil finalizeFn leaves the run on
+// the committed branch with no PR opened.
+func NewRunner(planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn, adversarialFn AdversarialFn, specialistsFn SpecialistReviewsFn, simplifyFindFn SimplifyFindFn, simplifyApplyFn SimplifyApplyFn, reviewApplyFn ReviewApplyFn, dedupFn hygiene.DedupFn, verifyClaimsFn hygiene.VerifyClaimsFn, captureFn CaptureFn, finalizeFn FinalizeFn) *Runner {
 	r := &Runner{
 		Claude:          implementFnAdapter{fn: fn},
 		GitHub:          defaultGitHubClient{},
 		BuildPrompt:     build,
 		BuildPlanPrompt: buildPlan,
+		DedupFindings:   dedupFn,
+		VerifyClaims:    verifyClaimsFn,
 	}
 	if planFn != nil {
 		r.Planner = planFnAdapter{fn: planFn}
@@ -207,6 +235,9 @@ func NewRunner(planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build Pro
 	}
 	if adversarialFn != nil {
 		r.AdversarialVerifier = adversarialFnAdapter{fn: adversarialFn}
+	}
+	if specialistsFn != nil {
+		r.SpecialistReviewer = specialistReviewsFnAdapter{fn: specialistsFn}
 	}
 	if simplifyFindFn != nil {
 		r.Simplifier = simplifyFindFnAdapter{fn: simplifyFindFn}
@@ -227,15 +258,15 @@ func NewRunner(planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build Pro
 }
 
 // Run is a package-level convenience that delegates to NewRunner(...).Run.
-func Run(w io.Writer, opts Options, planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn, adversarialFn AdversarialFn, simplifyFindFn SimplifyFindFn, simplifyApplyFn SimplifyApplyFn, reviewApplyFn ReviewApplyFn, captureFn CaptureFn, finalizeFn FinalizeFn) error {
-	return NewRunner(planFn, buildPlan, fn, build, verifyFn, adversarialFn, simplifyFindFn, simplifyApplyFn, reviewApplyFn, captureFn, finalizeFn).Run(w, opts)
+func Run(w io.Writer, opts Options, planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn, adversarialFn AdversarialFn, specialistsFn SpecialistReviewsFn, simplifyFindFn SimplifyFindFn, simplifyApplyFn SimplifyApplyFn, reviewApplyFn ReviewApplyFn, dedupFn hygiene.DedupFn, verifyClaimsFn hygiene.VerifyClaimsFn, captureFn CaptureFn, finalizeFn FinalizeFn) error {
+	return NewRunner(planFn, buildPlan, fn, build, verifyFn, adversarialFn, specialistsFn, simplifyFindFn, simplifyApplyFn, reviewApplyFn, dedupFn, verifyClaimsFn, captureFn, finalizeFn).Run(w, opts)
 }
 
 // PrintBarePrompt is a package-level convenience that delegates to
 // NewRunner(nil, ...).PrintBarePrompt. The prompt itself is built without
 // invoking Claude, so the functions passed to NewRunner are not used here.
 func PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuildFn) error {
-	return NewRunner(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil).PrintBarePrompt(w, opts, build)
+	return NewRunner(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil).PrintBarePrompt(w, opts, build)
 }
 
 // PrintBarePrompt builds a self-contained ("bare") implement prompt from
@@ -1196,27 +1227,37 @@ func (r *Runner) postSimplifyComment(w io.Writer, owner, name string, number int
 
 // runReview runs the automatic review-and-fix pass over the diff the implement
 // session committed, on the local feature branch before any pull request
-// exists: the adversarial review (the same finder --verify-adversarial uses,
-// grounded in the implement pattern catalog via /review) yields structured
-// findings, and — when findings remain — a fresh session resolves them and folds
-// each fix into the commit it belongs to (no push; the finalize pass opens the
-// PR afterwards).
+// exists. It runs the same finders and the same finding-hygiene stage the review
+// command runs, then hands only the survivors to a fresh session that resolves
+// them and folds each fix into the commit it belongs to (no push; the finalize
+// pass opens the PR afterwards).
+//
+// Each round's findings are gathered by gatherReviewFindings: the first round
+// runs the adversarial finder plus the domain-specialist fan-out (unless
+// --no-specialists or no fan-out is wired), adaptively gated by the branch's
+// changed files and grounded in the pattern catalog; later rounds run the
+// cheaper adversarial finder alone, bounding the fan-out to the first round. The
+// merged findings go through the shared hygiene stage (file-less dedup when a
+// specialist contributed, the snippet gate, claim verification), then are
+// partitioned by Finding.Unverified: only the survivors reach the editing
+// session (design decision 70). Findings the hygiene stage withheld are reported
+// on stdout and on the issue but never applied — the harness enforces the gate
+// rather than asking the editing session to honor it (extending decision 46).
 //
 // The pass is a bounded finder→apply loop (mirroring elaborate's reviewer refine
-// loop): each round re-reviews the branch the prior apply just changed, so a fix
-// that leaves a new problem behind is caught. The loop exits clean when the
-// finder comes back with zero findings (the implement analog of elaborate's
-// passing score), stops early when an apply escalates (STATUS: BLOCKED /
-// NEEDS_CONTEXT), and otherwise caps at opts.MaxReviewIterations rounds — with a
-// note when the budget runs out while findings still remain. The whole pass is
-// non-fatal: any failure (branch-ref resolution, finder error, apply error,
-// comment-post failure) is logged and surfaced but never aborts the run, matching
-// the simplify and verify passes' contract. No findings on the first round is a
-// clean no-op — no commit, no issue comment beyond a short stdout note.
+// loop): each round re-reviews the branch the prior apply just changed. The loop
+// exits clean when the finder comes back with zero findings, when nothing
+// survives hygiene (re-running the finder on an unchanged branch cannot
+// converge), when an apply escalates (STATUS: BLOCKED / NEEDS_CONTEXT), and
+// otherwise caps at opts.MaxReviewIterations rounds. The whole pass is non-fatal:
+// any failure (branch-ref resolution, finder error, apply error, comment-post
+// failure) is logged and surfaced but never aborts the run, matching the simplify
+// and verify passes' contract.
 //
-// It returns the findings the finder produced across ALL iterations (even after
-// they are folded in), so the capture pass can mine them for generalizable review
-// patterns. A skipped or failed pass, and a pass that found nothing, return nil.
+// It returns the post-hygiene findings the finder produced across ALL iterations
+// (both applied and withheld), so the capture pass can mine the merged,
+// provenance-tagged set for generalizable review patterns. A skipped or failed
+// pass, and a pass that found nothing, return nil.
 func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx Context, opts Options) []report.Finding {
 	slog.Info("running review-and-fix pass over the produced diff")
 	branch, err := r.GitHub.CurrentBranchRef(dir)
@@ -1233,17 +1274,24 @@ func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx
 
 	var allFindings []report.Finding
 	for i := 1; i <= maxIter; i++ {
-		result, err := r.AdversarialVerifier.AdversarialReview(dir, branch.BaseBranch, ctx.Patterns, ctx.MaxPatterns)
+		// The changed-file set scopes the specialist gate and the snippet gate. A
+		// failure fails open (nil): the specialist gate runs every specialist and
+		// the snippet gate skips on an empty haystack, so a missing signal never
+		// buries a finding.
+		changedFiles, err := r.GitHub.ChangedFiles(dir, branch.BaseBranch)
+		if err != nil {
+			slog.Warn("could not resolve changed files for the review pass; gates fail open", "iteration", i, "err", err)
+			changedFiles = nil
+		}
+
+		result, err := r.gatherReviewFindings(dir, branch.BaseBranch, changedFiles, ctx, opts, i == 1)
 		if err != nil {
 			slog.Warn("review finder failed", "iteration", i, "err", err)
 			_, _ = fmt.Fprintf(w, "\nReview pass could not run: %v\n", err)
 			return allFindings
 		}
 
-		var findings []report.Finding
-		if result != nil {
-			findings = result.Findings
-		}
+		findings := result.Findings
 		if len(findings) == 0 {
 			if len(allFindings) == 0 {
 				slog.Info("review pass found nothing to fix")
@@ -1254,12 +1302,37 @@ func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx
 			}
 			return allFindings
 		}
+		// Accumulate the post-hygiene findings (both applied and withheld) so the
+		// capture pass mines the merged, provenance-tagged set.
 		allFindings = append(allFindings, findings...)
+
+		// Survive-before-apply gate: only findings that survived the hygiene stage
+		// may reach the editing session; the rest are reported but never applied.
+		var actionable, unverified []report.Finding
+		for _, f := range findings {
+			if f.Unverified() {
+				unverified = append(unverified, f)
+			} else {
+				actionable = append(actionable, f)
+			}
+		}
+		unvSection := unverifiedSection(unverified)
+
+		if len(actionable) == 0 {
+			// Nothing survived hygiene. Report the withheld findings, apply nothing,
+			// and end the loop: re-running the finder on an unchanged branch could
+			// only re-surface the same unverified findings, so it cannot converge.
+			slog.Info("review pass withheld every finding as unverified; nothing applied", "issue", number, "withheld", len(unverified))
+			withheld := withheldOnlyReport(unvSection)
+			_, _ = fmt.Fprintf(w, "\nReview report:\n%s\n", withheld)
+			r.postReviewComment(w, owner, name, number, withheld, "")
+			return allFindings
+		}
 
 		reviewReport, model, err := r.ReviewApplier.ApplyReview(dir, ReviewApplyContext{
 			RepoFullName: ctx.RepoFullName,
 			BaseBranch:   branch.BaseBranch,
-			Findings:     findings,
+			Findings:     actionable,
 			Patterns:     ctx.Patterns,
 			MaxPatterns:  ctx.MaxPatterns,
 		})
@@ -1268,11 +1341,12 @@ func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx
 			_, _ = fmt.Fprintf(w, "\nReview apply could not run: %v\n", err)
 			return allFindings
 		}
-		if reviewReport != "" {
-			_, _ = fmt.Fprintf(w, "\nReview report:\n%s\n", reviewReport)
+		roundReport := appendUnverifiedSection(reviewReport, unvSection)
+		if roundReport != "" {
+			_, _ = fmt.Fprintf(w, "\nReview report:\n%s\n", roundReport)
 			// Post the report before the escalation check so an escalated report
 			// still lands on the issue for the human who must look at it.
-			r.postReviewComment(w, owner, name, number, reviewReport, model)
+			r.postReviewComment(w, owner, name, number, roundReport, model)
 		}
 		if status := planEscalation(reviewReport); status != "" {
 			_, _ = fmt.Fprintf(w, "\nClaude reported %s — stopping the review pass.\n", status)
@@ -1285,6 +1359,134 @@ func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx
 	slog.Warn("review pass hit the iteration budget with findings still remaining", "issue", number, "iterations", maxIter)
 	_, _ = fmt.Fprintf(w, "\nReview pass stopped after %d iteration(s) with findings still unresolved.\n", maxIter)
 	return allFindings
+}
+
+// gatherReviewFindings runs the finders for one review round and puts their
+// findings through the shared finding-hygiene stage, returning the merged,
+// hygiene-processed result. On firstRound it runs the adversarial finder and the
+// domain-specialist fan-out concurrently (unless --no-specialists or no
+// SpecialistReviewer is wired), so the self-review checks the same domains a
+// later review of this diff would; later rounds run the adversarial finder alone,
+// bounding the fan-out's cost. The adversarial finder is load-bearing (its
+// failure fails the round); the fan-out is best-effort (its failure degrades to
+// adversarial-only). The merged findings are tagged with provenance, deduplicated
+// (only when a specialist contributed), snippet-checked, and claim-verified — the
+// same gates, in the same order, the review command runs.
+func (r *Runner) gatherReviewFindings(dir, baseBranch string, changedFiles []string, ctx Context, opts Options, firstRound bool) (*report.ReviewResult, error) {
+	fanOut := firstRound && !opts.NoSpecialists && r.SpecialistReviewer != nil
+	var (
+		advResult   *report.ReviewResult
+		specResults []SpecialistResult
+	)
+	if fanOut {
+		var (
+			g       errgroup.Group
+			specErr error
+		)
+		g.Go(func() error {
+			res, err := r.AdversarialVerifier.AdversarialReview(dir, baseBranch, ctx.Patterns, ctx.MaxPatterns)
+			if err != nil {
+				return err
+			}
+			advResult = res
+			return nil
+		})
+		g.Go(func() error {
+			// The fan-out is non-fatal: its error is captured and handled after Wait
+			// so it never sinks the load-bearing adversarial finder.
+			specResults, specErr = r.SpecialistReviewer.SpecialistReviews(dir, baseBranch, changedFiles, ctx.Patterns, ctx.MaxPatterns)
+			return nil
+		})
+		if err := g.Wait(); err != nil {
+			return nil, err
+		}
+		if specErr != nil {
+			slog.Warn("specialist fan-out failed; continuing with the adversarial finder alone", "err", specErr)
+			specResults = nil
+		}
+	} else {
+		res, err := r.AdversarialVerifier.AdversarialReview(dir, baseBranch, ctx.Patterns, ctx.MaxPatterns)
+		if err != nil {
+			return nil, err
+		}
+		advResult = res
+	}
+
+	result := advResult
+	if result == nil {
+		result = &report.ReviewResult{}
+	}
+	// Tag and merge exactly as the review command does, so cross-pass agreement
+	// boosts confidence and records which passes confirmed each finding.
+	hygiene.TagPass(result, hygiene.PassAdversarial)
+	specialistContributed := false
+	for _, sr := range specResults {
+		if sr.Result == nil {
+			continue
+		}
+		hygiene.TagPass(sr.Result, "specialist:"+sr.Key)
+		result = hygiene.MergeResults(result, sr.Result)
+		specialistContributed = true
+	}
+	// Run the shared hygiene stages in the review command's order: the file-less
+	// dedup fallback (only when a secondary pass contributed), the snippet gate,
+	// then claim verification. Each is nil-tolerant via its hygiene seam.
+	if specialistContributed {
+		hygiene.DedupFileless(result, r.DedupFindings)
+	}
+	if n := hygiene.VerifySnippets(result, dir, changedFiles); n > 0 {
+		slog.Info("demoted self-review findings failing snippet verification", "count", n)
+	}
+	hygiene.VerifyClaims(result, dir, r.VerifyClaims)
+	return result, nil
+}
+
+// unverifiedSection renders the findings the survive-before-apply gate withheld —
+// the ones that did not survive the shared hygiene stage — as a report section,
+// so they are surfaced on stdout and on the issue even though no editing session
+// acted on them. Empty when nothing was withheld.
+func unverifiedSection(findings []report.Finding) string {
+	if len(findings) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("### Unverified findings (reported, not applied)\n\n")
+	sb.WriteString("These self-review findings did not survive the shared finding-hygiene stage, so no editing session acted on them:\n\n")
+	for _, f := range findings {
+		_, _ = fmt.Fprintf(&sb, "- [%s] %s", f.Severity, f.Title)
+		if f.File != "" {
+			_, _ = fmt.Fprintf(&sb, " (%s)", f.File)
+		}
+		sb.WriteString("\n")
+		note := f.VerificationNote
+		if note == "" {
+			note = "did not survive snippet verification (no verifiable evidence in the changed files)"
+		}
+		_, _ = fmt.Fprintf(&sb, "  %s\n", note)
+	}
+	return strings.TrimRight(sb.String(), "\n")
+}
+
+// appendUnverifiedSection appends the withheld-findings section to an apply
+// report, so a single posted comment carries both what was fixed and what was
+// withheld. Either part may be empty.
+func appendUnverifiedSection(applyReport, unvSection string) string {
+	applyReport = strings.TrimRight(applyReport, "\n")
+	switch {
+	case applyReport == "":
+		return unvSection
+	case unvSection == "":
+		return applyReport
+	default:
+		return applyReport + "\n\n" + unvSection
+	}
+}
+
+// withheldOnlyReport is the review report posted when every self-review finding
+// was withheld by the hygiene stage and nothing was applied. It carries the
+// "## Review Report" heading so postReviewComment recognizes and footers it.
+func withheldOnlyReport(unvSection string) string {
+	return "## Review Report\n\nEvery self-review finding was withheld by the shared finding-hygiene stage; nothing was applied to the branch.\n\n" + unvSection + "\n"
 }
 
 // reviewCommentFooter attributes the posted review report to planwerk-agent,

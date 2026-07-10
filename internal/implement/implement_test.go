@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -13,6 +14,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/attribution"
 	"github.com/planwerk/planwerk-agent/internal/capture"
 	"github.com/planwerk/planwerk-agent/internal/github"
+	"github.com/planwerk/planwerk-agent/internal/hygiene"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
@@ -99,6 +101,26 @@ func (f *fakeReviewApplier) ApplyReview(dir string, ctx ReviewApplyContext) (str
 	f.called.Add(1)
 	f.ctx = ctx
 	return f.report, f.model, f.err
+}
+
+// fakeSpecialistReviewer scripts the domain-specialist fan-out the review pass's
+// first round runs. It records the base branch, changed files, and pattern
+// catalog it was handed so tests can assert the gate/grounding wiring.
+type fakeSpecialistReviewer struct {
+	called       atomic.Int32
+	base         string
+	changedFiles []string
+	pats         []patterns.Pattern
+	results      []SpecialistResult
+	err          error
+}
+
+func (f *fakeSpecialistReviewer) SpecialistReviews(dir, baseBranch string, changedFiles []string, pats []patterns.Pattern, maxPatterns int) ([]SpecialistResult, error) {
+	f.called.Add(1)
+	f.base = baseBranch
+	f.changedFiles = changedFiles
+	f.pats = pats
+	return f.results, f.err
 }
 
 type fakeCapturer struct {
@@ -2355,6 +2377,13 @@ type fakeGitHub struct {
 	branchRefErr   error
 	branchRefCalls atomic.Int32
 
+	// changedFiles/changedFilesErr drive ChangedFiles (the review pass's specialist
+	// gate + snippet-gate scope). Default nil/nil means "no changed files", so the
+	// snippet gate skips on an empty haystack and the specialist gate fails open.
+	changedFiles      []string
+	changedFilesErr   error
+	changedFilesCalls atomic.Int32
+
 	// resumeState/resumeErr drive PrepareResume (pre-implement resume detection);
 	// progressState/progressErr drive CurrentFeatureProgress (post-abort partial
 	// progress); pushBranch* record PushBranch (the clone-mode partial push).
@@ -2480,6 +2509,16 @@ func (f *fakeGitHub) PushBranch(_, branch string) error {
 	f.pushBranchCalls.Add(1)
 	f.pushBranchArg = branch
 	return f.pushBranchErr
+}
+
+// ChangedFiles returns the canned changed-file list the review pass gates on
+// (nil by default), unless changedFilesErr is set to exercise the fail-open path.
+func (f *fakeGitHub) ChangedFiles(_, baseBranch string) ([]string, error) {
+	f.changedFilesCalls.Add(1)
+	if f.changedFilesErr != nil {
+		return nil, f.changedFilesErr
+	}
+	return f.changedFiles, nil
 }
 
 type fakeClaude struct {
@@ -2857,5 +2896,300 @@ func TestPrintBarePrompt_LocalNoClone(t *testing.T) {
 	}
 	if !strings.HasPrefix(buf.String(), "BARE repo=owner/repo issue=7") {
 		t.Errorf("unexpected bare prompt output: %q", buf.String())
+	}
+}
+
+// reviewGH returns a fakeGitHub wired for a review-pass test: a sample issue, a
+// temp clone dir, and a main/feat branch ref so CurrentBranchRef resolves.
+func reviewGH(t *testing.T) *fakeGitHub {
+	t.Helper()
+	return &fakeGitHub{
+		issue:     sampleIssue(),
+		cloneDir:  t.TempDir(),
+		branchRef: &github.BranchRef{BaseBranch: reviewTestBase, HeadBranch: "feat/x"},
+	}
+}
+
+// criticalFinding is a survivable BLOCKING/CRITICAL-class finding with a definite
+// (non-uncertain) confidence, so the survive-gate keeps it actionable unless a
+// hygiene stage demotes it.
+func criticalFinding(title, file string) report.Finding {
+	return report.Finding{Severity: report.SeverityCritical, Title: title, File: file, Problem: "p", Confidence: report.ConfidenceVerified}
+}
+
+// TestRun_ReviewFirstRoundRunsSpecialistFanOut proves the review pass's first
+// round runs the adversarial finder and the specialist fan-out together, merges
+// both into a single apply, and does NOT fan out again on the re-review round.
+func TestRun_ReviewFirstRoundRunsSpecialistFanOut(t *testing.T) {
+	gh := reviewGH(t)
+	gh.changedFiles = []string{reviewTestProdFile}
+	cl := &fakeClaude{}
+	av := &fakeAdversarialVerifier{results: oneThenCleanReview(reviewTestProdFile)}
+	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
+	spec := &fakeSpecialistReviewer{results: []SpecialistResult{
+		{Key: "testing", Result: &report.ReviewResult{Findings: []report.Finding{
+			{Severity: report.SeverityWarning, Title: "missing error-path test", File: "internal/bar/bar.go", Problem: "no test"},
+		}}},
+	}}
+	r := reviewRunner(gh, cl, av, ra)
+	r.SpecialistReviewer = spec
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if spec.called.Load() != 1 {
+		t.Errorf("specialist fan-out ran %d times, want 1 (first round only)", spec.called.Load())
+	}
+	if av.called.Load() != 2 {
+		t.Errorf("adversarial finder ran %d times, want 2 (round 1 + re-review)", av.called.Load())
+	}
+	if len(spec.changedFiles) != 1 || spec.changedFiles[0] != reviewTestProdFile {
+		t.Errorf("fan-out got changed files %v, want [%s]", spec.changedFiles, reviewTestProdFile)
+	}
+	if ra.called.Load() != 1 {
+		t.Fatalf("applier ran %d times, want 1", ra.called.Load())
+	}
+	if len(ra.ctx.Findings) != 2 {
+		t.Errorf("applier got %d findings, want 2 (adversarial + specialist merged)", len(ra.ctx.Findings))
+	}
+}
+
+// TestRun_NoSpecialistsSkipsFanOut proves the --no-specialists off-switch drops
+// the fan-out while the adversarial finder still runs and applies its findings.
+func TestRun_NoSpecialistsSkipsFanOut(t *testing.T) {
+	gh := reviewGH(t)
+	cl := &fakeClaude{}
+	av := &fakeAdversarialVerifier{results: oneThenCleanReview(reviewTestProdFile)}
+	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
+	spec := &fakeSpecialistReviewer{}
+	r := reviewRunner(gh, cl, av, ra)
+	r.SpecialistReviewer = spec
+
+	if err := r.Run(io.Discard, Options{IssueRef: "owner/repo#42", NoReportComment: true, NoSpecialists: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if spec.called.Load() != 0 {
+		t.Errorf("specialist fan-out ran %d times, want 0 with --no-specialists", spec.called.Load())
+	}
+	if ra.called.Load() != 1 {
+		t.Errorf("applier ran %d times, want 1 — the adversarial finder still runs", ra.called.Load())
+	}
+}
+
+// TestRun_ReviewNilSpecialistReviewerDegrades proves an unwired fan-out (nil
+// SpecialistReviewer) degrades to the adversarial-only round without error.
+func TestRun_ReviewNilSpecialistReviewerDegrades(t *testing.T) {
+	gh := reviewGH(t)
+	cl := &fakeClaude{}
+	av := &fakeAdversarialVerifier{results: oneThenCleanReview(reviewTestProdFile)}
+	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
+	r := reviewRunner(gh, cl, av, ra) // SpecialistReviewer left nil
+
+	if err := r.Run(io.Discard, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if ra.called.Load() != 1 {
+		t.Errorf("applier ran %d times, want 1", ra.called.Load())
+	}
+}
+
+// TestRun_ReviewSpecialistFanOutErrorDegradesToAdversarial proves a fan-out
+// failure is non-fatal: the load-bearing adversarial finder still applies.
+func TestRun_ReviewSpecialistFanOutErrorDegradesToAdversarial(t *testing.T) {
+	gh := reviewGH(t)
+	cl := &fakeClaude{}
+	av := &fakeAdversarialVerifier{results: oneThenCleanReview(reviewTestProdFile)}
+	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
+	spec := &fakeSpecialistReviewer{err: errors.New("fan-out down")}
+	r := reviewRunner(gh, cl, av, ra)
+	r.SpecialistReviewer = spec
+
+	if err := r.Run(io.Discard, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil — a fan-out failure must not fail the run", err)
+	}
+	if ra.called.Load() != 1 {
+		t.Errorf("applier ran %d times, want 1 — the adversarial finder degraded cleanly", ra.called.Load())
+	}
+	if len(ra.ctx.Findings) != 1 {
+		t.Errorf("applier got %d findings, want 1 (adversarial only)", len(ra.ctx.Findings))
+	}
+}
+
+// TestRun_ReviewGateWithholdsUnverifiedFindings proves a claim the verifier
+// refutes is withheld from the editing session, reported on stdout and on the
+// issue, while the surviving finding is applied.
+func TestRun_ReviewGateWithholdsUnverifiedFindings(t *testing.T) {
+	gh := reviewGH(t)
+	cl := &fakeClaude{}
+	av := &fakeAdversarialVerifier{results: []*report.ReviewResult{
+		{Findings: []report.Finding{
+			criticalFinding("real SQL injection", reviewTestProdFile),
+			criticalFinding("phantom auth bypass", "internal/bar/bar.go"),
+		}},
+		{},
+	}}
+	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
+	r := reviewRunner(gh, cl, av, ra)
+	// The verifier refutes the second finding; the first is confirmed.
+	r.VerifyClaims = func(_ string, findings []report.Finding) ([]hygiene.ClaimVerdict, error) {
+		return []hygiene.ClaimVerdict{{Index: 1, Verdict: "refuted", Reason: "bar.go already guards this path"}}, nil
+	}
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if len(ra.ctx.Findings) != 1 || ra.ctx.Findings[0].Title != "real SQL injection" {
+		t.Fatalf("applier got %+v, want only the surviving finding", ra.ctx.Findings)
+	}
+	if !strings.Contains(buf.String(), "Unverified findings") || !strings.Contains(buf.String(), "phantom auth bypass") {
+		t.Errorf("stdout missing the withheld finding:\n%s", buf.String())
+	}
+	if gh.commentCalls.Load() != 1 {
+		t.Fatalf("AddIssueComment ran %d times, want 1", gh.commentCalls.Load())
+	}
+	if !strings.Contains(gh.commentBodies[0], "phantom auth bypass") || !strings.Contains(gh.commentBodies[0], "refuted: bar.go already guards this path") {
+		t.Errorf("posted comment missing the withheld finding and its refutation:\n%s", gh.commentBodies[0])
+	}
+}
+
+// TestRun_ReviewAllFindingsUnverifiedSkipsApply proves that when nothing survives
+// hygiene, no apply runs, a report is still posted, the loop ends, and the run
+// stays green.
+func TestRun_ReviewAllFindingsUnverifiedSkipsApply(t *testing.T) {
+	gh := reviewGH(t)
+	cl := &fakeClaude{}
+	av := &fakeAdversarialVerifier{result: &report.ReviewResult{Findings: []report.Finding{
+		criticalFinding("phantom bug", reviewTestProdFile),
+	}}}
+	ra := &fakeReviewApplier{report: "unused"}
+	r := reviewRunner(gh, cl, av, ra)
+	r.VerifyClaims = func(_ string, findings []report.Finding) ([]hygiene.ClaimVerdict, error) {
+		return []hygiene.ClaimVerdict{{Index: 0, Verdict: "refuted", Reason: "no such code path"}}, nil
+	}
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if av.called.Load() != 1 {
+		t.Errorf("adversarial finder ran %d times, want 1 — a zero-survivor round ends the loop", av.called.Load())
+	}
+	if ra.called.Load() != 0 {
+		t.Errorf("applier ran %d times, want 0 — nothing survived hygiene", ra.called.Load())
+	}
+	if gh.commentCalls.Load() != 1 {
+		t.Fatalf("AddIssueComment ran %d times, want 1 (the withheld report)", gh.commentCalls.Load())
+	}
+	if !strings.Contains(gh.commentBodies[0], "Every self-review finding was withheld") {
+		t.Errorf("posted comment missing the withheld-only note:\n%s", gh.commentBodies[0])
+	}
+}
+
+// TestRun_ReviewSnippetGateDemotesUnquotedFinding proves the snippet gate
+// withholds a finding whose quoted code is absent from the changed files.
+func TestRun_ReviewSnippetGateDemotesUnquotedFinding(t *testing.T) {
+	gh := reviewGH(t)
+	gh.changedFiles = []string{"foo.go"}
+	if err := os.WriteFile(filepath.Join(gh.cloneDir, "foo.go"), []byte("func Foo() { realCall() }\n"), 0o600); err != nil {
+		t.Fatalf("write changed file: %v", err)
+	}
+	cl := &fakeClaude{}
+	av := &fakeAdversarialVerifier{result: &report.ReviewResult{Findings: []report.Finding{
+		{Severity: report.SeverityWarning, Title: "unquoted claim", File: "foo.go", Problem: "p", Confidence: report.ConfidenceVerified, CodeSnippet: "notInFile()"},
+	}}}
+	ra := &fakeReviewApplier{report: "unused"}
+	r := reviewRunner(gh, cl, av, ra)
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if ra.called.Load() != 0 {
+		t.Errorf("applier ran %d times, want 0 — the unquoted finding is withheld", ra.called.Load())
+	}
+	if !strings.Contains(buf.String(), "unquoted claim") || !strings.Contains(buf.String(), "snippet verification") {
+		t.Errorf("stdout missing the snippet-demoted finding:\n%s", buf.String())
+	}
+}
+
+// TestRun_ReviewChangedFilesErrorFailsOpen proves a ChangedFiles failure does not
+// bury findings: the gates fail open and the finding is still applied.
+func TestRun_ReviewChangedFilesErrorFailsOpen(t *testing.T) {
+	gh := reviewGH(t)
+	gh.changedFilesErr = errors.New("git diff exploded")
+	cl := &fakeClaude{}
+	av := &fakeAdversarialVerifier{results: []*report.ReviewResult{
+		{Findings: []report.Finding{criticalFinding("real bug", reviewTestProdFile)}},
+		{},
+	}}
+	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
+	r := reviewRunner(gh, cl, av, ra)
+
+	if err := r.Run(io.Discard, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if gh.changedFilesCalls.Load() == 0 {
+		t.Error("ChangedFiles was never called")
+	}
+	if ra.called.Load() != 1 || len(ra.ctx.Findings) != 1 {
+		t.Errorf("applier ran %d times with %d findings, want 1/1 — gates fail open", ra.called.Load(), len(ra.ctx.Findings))
+	}
+}
+
+// TestRun_ReviewFilelessDedupOnlyOnMultiPass proves the file-less dedup fallback
+// runs only on the round a specialist contributed, never on an adversarial-only
+// round.
+func TestRun_ReviewFilelessDedupOnlyOnMultiPass(t *testing.T) {
+	gh := reviewGH(t)
+	cl := &fakeClaude{}
+	// Round 1 adversarial: one file-less finding. Round 2: clean (converge).
+	av := &fakeAdversarialVerifier{results: []*report.ReviewResult{
+		{Findings: []report.Finding{{Severity: report.SeverityCritical, Title: "config drift", Problem: "p", Confidence: report.ConfidenceVerified}}},
+		{},
+	}}
+	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
+	// Specialist contributes a second file-less finding, so the fan-out round has
+	// the >= 2 file-less findings DedupFileless needs to actually call the seam.
+	spec := &fakeSpecialistReviewer{results: []SpecialistResult{
+		{Key: "maintainability", Result: &report.ReviewResult{Findings: []report.Finding{
+			{Severity: report.SeverityWarning, Title: "dead config key", Problem: "p", Confidence: report.ConfidenceVerified},
+		}}},
+	}}
+	var dedupCalls atomic.Int32
+	r := reviewRunner(gh, cl, av, ra)
+	r.SpecialistReviewer = spec
+	r.DedupFindings = func(findings []report.Finding) ([][]int, error) {
+		dedupCalls.Add(1)
+		return nil, nil
+	}
+
+	if err := r.Run(io.Discard, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if dedupCalls.Load() != 1 {
+		t.Errorf("DedupFindings ran %d times, want 1 — only the specialist round has a secondary pass", dedupCalls.Load())
+	}
+}
+
+// TestRunReview_GroundsFindersInPatterns proves the loaded pattern catalog is
+// forwarded to both the adversarial finder and the specialist fan-out.
+func TestRunReview_GroundsFindersInPatterns(t *testing.T) {
+	pats := []patterns.Pattern{{Name: "Go Error Wrapping", Category: "technology"}}
+	gh := reviewGH(t)
+	av := &fakeAdversarialVerifier{results: oneThenCleanReview(reviewTestProdFile)}
+	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
+	spec := &fakeSpecialistReviewer{}
+	r := &Runner{GitHub: gh, AdversarialVerifier: av, ReviewApplier: ra, SpecialistReviewer: spec}
+	ctx := Context{RepoFullName: testRepoFullName, IssueNumber: 42, Patterns: pats, MaxPatterns: 7}
+
+	r.runReview(io.Discard, gh.cloneDir, "owner", "repo", 42, ctx, Options{NoReportComment: true})
+
+	if len(av.pats) != 1 || av.pats[0].Name != "Go Error Wrapping" {
+		t.Errorf("adversarial finder got pats %+v, want the loaded catalog", av.pats)
+	}
+	if len(spec.pats) != 1 || spec.pats[0].Name != "Go Error Wrapping" {
+		t.Errorf("specialist fan-out got pats %+v, want the loaded catalog", spec.pats)
 	}
 }
