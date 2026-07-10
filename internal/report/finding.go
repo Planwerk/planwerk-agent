@@ -206,6 +206,27 @@ type Finding struct {
 	VerificationNote string `json:"verification_note,omitempty"`
 }
 
+// Unverified reports whether the finding did not survive the hygiene stage and
+// so belongs in the report's Unverified section rather than in its severity
+// bucket. A low-confidence, low-severity finding is demoted so an uncertain nit
+// never sits next to a verified bug. A BLOCKING/CRITICAL claim the verification
+// pass explicitly refuted (uncertain + a VerificationNote) is demoted too — the
+// counter-evidence makes it stronger than a merely-unverifiable finding, so it
+// must not remain in the blocking section. A merely-uncertain BLOCKING/CRITICAL
+// finding with no counter-evidence is NOT unverified: it is too important to
+// bury, so it stays in its severity bucket.
+//
+// This is the single predicate that decides both where the renderer files a
+// finding (see Categorize) and, in the implement command, whether an editing
+// session may act on it — a finding that returns true is reported but never
+// applied. Defining it once keeps the two from drifting apart.
+func (f Finding) Unverified() bool {
+	if f.Confidence != ConfidenceUncertain {
+		return false
+	}
+	return f.VerificationNote != "" || f.Severity == SeverityWarning || f.Severity == SeverityInfo
+}
+
 type ReviewResult struct {
 	Findings       []Finding `json:"findings"`
 	Summary        string    `json:"summary"`
