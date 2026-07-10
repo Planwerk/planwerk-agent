@@ -86,15 +86,24 @@ no push. It never removes validation, error handling, security, accessibility,
 tests, or assertions, posts its report as a comment on the source issue, and is
 non-fatal. Nothing to simplify is a clean no-op. Disable it with --no-simplify.
 
-After the simplify pass, a review-and-fix pass runs by default: the
-adversarial review machinery flags bugs in the produced diff, then a fresh
-session folds each fix into the commit it belongs to (same fixup/autosquash
-mechanism as the simplify pass, still no push) so the eventual PR lands already
-self-reviewed. It posts its report as a comment on the source issue, a STATUS:
-BLOCKED / NEEDS_CONTEXT report stops the pass without retrying, and nothing to
-fix is a clean no-op. The pass is non-fatal — a failed or escalated review never
-changes the run's exit code. Disable it with --no-review. (The read-only
---verify / --verify-adversarial flags remain available for a report-only run.)
+After the simplify pass, a review-and-fix pass runs by default: it runs the same
+finders and finding-hygiene the review command runs, then folds each fix into the
+commit it belongs to (same fixup/autosquash mechanism as the simplify pass, still
+no push) so the eventual PR lands already self-reviewed. Its first round runs the
+adversarial finder plus the domain-specialist fan-out (security, data migration,
+testing, performance, api contract, maintainability), adaptively gated by the
+files the branch changed and run concurrently; later rounds re-check the applied
+fixes with the adversarial finder alone. The merged findings pass through the
+shared hygiene stage — multi-pass merge, file-less dedup, the quote-or-demote
+snippet gate, and claim verification — and only findings that survive it are
+handed to the editing session. Findings that do not survive are reported (on
+stdout and on the issue) but never applied. It posts its report as a comment on
+the source issue, a STATUS: BLOCKED / NEEDS_CONTEXT report stops the pass without
+retrying, and nothing to fix is a clean no-op. The pass is non-fatal — a failed
+or escalated review never changes the run's exit code. Disable the whole pass
+with --no-review, or just the first-round specialist fan-out with
+--no-specialists. (The read-only --verify / --verify-adversarial flags remain
+available for a report-only run.)
 
 When the run uses --wiki, a read-only capture pass then proposes new project
 knowledge for the wiki: generalizable review findings become candidate review
@@ -199,6 +208,7 @@ or short form (owner/repo#123).`,
 	implementFlags.BoolVar(&implementCfg.VerifyAdversarial, "verify-adversarial", false, "After implementing, red-team the produced diff for the bugs it introduces using the adversarial-review pass (independent of --verify)")
 	implementFlags.BoolVar(&implementCfg.NoSimplify, "no-simplify", false, "Skip the automatic simplify pass that folds over-engineering removals into the branch before the review phase")
 	implementFlags.BoolVar(&implementCfg.NoReview, "no-review", false, "Skip the automatic review-and-fix pass that folds review findings into the branch after the simplify pass")
+	implementFlags.BoolVar(&implementCfg.NoSpecialists, "no-specialists", false, "Skip the domain-specialist fan-out on the review pass's first round; the adversarial finder still runs")
 	implementFlags.IntVar(&implementCfg.MaxReviewIterations, "max-review-iterations", 0, "Cap on review-and-fix loop iterations: each round re-reviews and re-fixes until clean or this bound (<=0 uses the default of 3)")
 	implementFlags.BoolVar(&implementCfg.NoCapture, "no-capture", false, "Skip the read-only capture pass that proposes new wiki review patterns and memory pages (only runs with --wiki; writes nothing)")
 	implementFlags.BoolVar(&implementCfg.CaptureWiki, "capture-wiki", false, "Push the accepted capture pages to the wiki instead of only proposing them (off by default — a normal run is propose-only; confirms first, refuses a non-TTY run without --yes; env: "+envCaptureWiki+")")

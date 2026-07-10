@@ -37,6 +37,17 @@ func TestToImplementOptions_VerifyFlags(t *testing.T) {
 		}
 	})
 
+	t.Run("no-specialists maps through", func(t *testing.T) {
+		if opts := (ImplementConfig{NoSpecialists: true}).ToImplementOptions("v1"); !opts.NoSpecialists {
+			t.Errorf("NoSpecialists=%v, want true", opts.NoSpecialists)
+		}
+		// The first-round specialist fan-out is on by default, so the zero config
+		// leaves the flag off.
+		if opts := (ImplementConfig{}).ToImplementOptions("v1"); opts.NoSpecialists {
+			t.Errorf("NoSpecialists=%v, want false by default", opts.NoSpecialists)
+		}
+	})
+
 	t.Run("no-capture maps through", func(t *testing.T) {
 		if opts := (ImplementConfig{NoCapture: true}).ToImplementOptions("v1"); !opts.NoCapture {
 			t.Errorf("NoCapture=%v, want true", opts.NoCapture)
@@ -69,6 +80,21 @@ func TestToImplementOptions_VerifyFlags(t *testing.T) {
 			t.Errorf("CaptureWiki=%v Yes=%v, want false/false by default", opts.CaptureWiki, opts.Yes)
 		}
 	})
+}
+
+// TestToShipImplementOptions_NoSpecialistsAbsent documents that ship carries no
+// --no-specialists control: a ship-driven implement run always inherits the
+// default-on first-round fan-out, and --no-review remains ship's whole-pass
+// switch. A ShipConfig has no NoSpecialists field, so the mapped options leave it
+// false.
+func TestToShipImplementOptions_NoSpecialistsAbsent(t *testing.T) {
+	if opts := (ShipConfig{}).ToShipImplementOptions("v1"); opts.NoSpecialists {
+		t.Errorf("NoSpecialists=%v, want false — ship has no fan-out off-switch", opts.NoSpecialists)
+	}
+	// --no-review still disables the whole pass (fan-out included) for ship runs.
+	if opts := (ShipConfig{NoReview: true}).ToShipImplementOptions("v1"); !opts.NoReview {
+		t.Errorf("NoReview=%v, want true — ship threads --no-review into the implement run", opts.NoReview)
+	}
 }
 
 // TestToReviewOptions_CaptureFlags guards that the capture flags thread through
