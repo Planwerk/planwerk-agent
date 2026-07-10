@@ -129,6 +129,17 @@ note, which routes it into the Unverified / Low-Confidence section rather than
 dropping it. The pass is fail-open: a failed call publishes the findings
 unchanged.
 
+Both gates record what they did, not only what they rejected. Each stamps every
+finding it examined with its own per-finding outcome, and each writes run-level
+counts — findings examined, verdicts returned, and demotions — onto the result,
+where they ride the cached result and the machine-readable data block. This is
+what makes the claim verifier's `refuted / sent` ratio answerable from history: a
+verifier that refutes nothing across many runs is agreeing rather than verifying,
+and telling the two apart needs the number, which now accumulates from real runs
+instead of dying in a log line. See
+[Demotion-Gate Records](/reference/output-format#demotion-gate-records) for the
+recorded shape.
+
 ## Shared with the `implement` self-review
 
 Everything above — the specialist fan-out, the cross-pass merge and dedup, the

@@ -107,6 +107,8 @@ Each finding includes additional metadata for tooling and automation:
 | **RelatedTo** | IDs of related findings (e.g., `["B-001", "C-003"]`) |
 | **LineEnd** | End line for multi-line findings (enables line-range comments) |
 | **VerificationNote** | Set only by the claim-verification pass: why a BLOCKING/CRITICAL finding was refuted (e.g. `refuted: guarded at line 50`). A finding that carries it is demoted to `uncertain` confidence and routed to the Unverified / Low-Confidence section, and the Markdown report renders it as a `**Claim check**:` line. |
+| **SnippetCheck** | Set only by the snippet-verification gate: `passed` when the finding's quoted code was found in the changed files, or a `demoted: <reason>` string when it was not. A demoted finding is lowered to `uncertain` confidence; the Markdown report renders the reason as a `**Snippet check**:` line, while a `passed` record renders nothing. Unlike `VerificationNote` it does **not** route the finding — it is a pure record of what the gate examined. |
+| **ClaimCheck** | Set only by the claim-verification gate: `confirmed`, `refuted`, or `no-verdict` (the gate ran but returned no verdict for this finding — the fail-open case). This machine token records the gate's decision; the human-readable refutation reason continues to come from `VerificationNote` (the `**Claim check**:` line), which the token does not duplicate. |
 
 ## Machine-Readable Output
 
@@ -147,6 +149,10 @@ for CI extraction, alongside the findings:
 {
   "commit_sha": "abc123",
   "findings": [],
+  "gates": {
+    "snippet": { "examined": 8, "demoted": 2 },
+    "claim": { "sent": 3, "verdicts": 3, "refuted": 1 }
+  },
   "usage": {
     "calls": 6,
     "input_tokens": 13400,
@@ -160,6 +166,35 @@ for CI extraction, alongside the findings:
 
 `est_cost_usd` is the literal estimate Claude Code reports, summed across calls —
 not a recomputed tokens × price figure.
+
+## Demotion-Gate Records
+
+A review has two gates that can demote a finding: the snippet gate (demotes a
+finding whose quoted code is absent from the changed files) and the
+claim-verification gate (re-checks each BLOCKING/CRITICAL claim and demotes the
+ones a verifier refutes). Each gate records what it did so a run where every
+finding passed is distinguishable from one where the gate never ran.
+
+The per-finding record travels on each finding as `snippet_check` / `claim_check`
+(see the [Enriched Finding Fields](#enriched-finding-fields) table). The
+run-level counts travel in the `gates` object of the data block and the
+`--format json` output:
+
+- `snippet.examined` / `snippet.demoted` — findings the snippet gate checked and
+  the subset it demoted.
+- `claim.sent` / `claim.verdicts` / `claim.refuted` — findings sent to the claim
+  verifier, verdicts returned, and the subset refuted. `sent > 0` with
+  `verdicts: 0` is the **fail-open** case: the gate ran but the verifier returned
+  nothing.
+- An **absent** gate entry means that gate never ran (an empty diff skips the
+  snippet gate; no BLOCKING/CRITICAL finding leaves nothing for the claim gate to
+  send). Read a missing entry as "not recorded", never as "nothing demoted".
+
+The `refuted / sent` ratio accumulated across cached results and posted reports
+is the claim verifier's own no-op signal: a verifier that refutes nothing across
+many runs is agreeing rather than verifying. Data blocks and cached results
+produced before gate recording existed carry no `gates` object and no
+per-finding records.
 
 ## JSON Schema
 
