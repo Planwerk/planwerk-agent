@@ -20,6 +20,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/doccheck"
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/glossary"
+	"github.com/planwerk/planwerk-agent/internal/hygiene"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/planwerk"
 	"github.com/planwerk/planwerk-agent/internal/redact"
@@ -353,17 +354,17 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	if advErr != nil {
 		slog.Warn("adversarial review failed", "err", advErr)
 	} else if advResult != nil {
-		tagPass(result, passReview)
-		tagPass(advResult, passAdversarial)
-		result = mergeResults(result, advResult)
+		hygiene.TagPass(result, hygiene.PassReview)
+		hygiene.TagPass(advResult, hygiene.PassAdversarial)
+		result = hygiene.MergeResults(result, advResult)
 		appendSummaryNote(result, "includes adversarial review pass")
 	}
 	if complianceErr != nil {
 		slog.Warn("feature compliance check failed", "err", complianceErr)
 	} else if complianceResult != nil {
-		tagPass(result, passReview)
-		tagPass(complianceResult, passCompliance)
-		result = mergeResults(result, complianceResult)
+		hygiene.TagPass(result, hygiene.PassReview)
+		hygiene.TagPass(complianceResult, hygiene.PassCompliance)
+		result = hygiene.MergeResults(result, complianceResult)
 		appendSummaryNote(result, "includes feature-compliance pass")
 	}
 	if opts.Specialists {
@@ -379,13 +380,13 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// single cheap structure-tier grouping call. Non-fatal: on failure the
 	// findings ship unmerged.
 	if opts.Thorough || opts.Specialists || feature != nil {
-		r.dedupFilelessFindings(result)
+		hygiene.DedupFileless(result, r.Claude.DedupFindings)
 	}
 
 	// 11b. Quote-or-demote gate: downgrade findings whose code snippet cannot
 	// be located in the changed files so unverifiable claims land in the
 	// Unverified section instead of next to confirmed bugs.
-	if n := verifyFindingSnippets(result, pr.Dir, pr.ChangedFiles); n > 0 {
+	if n := hygiene.VerifySnippets(result, pr.Dir, pr.ChangedFiles); n > 0 {
 		slog.Info("demoted findings failing snippet verification", "count", n)
 	}
 
@@ -393,9 +394,9 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// against the checkout and demote any the verifier refutes with quoted
 	// counter-evidence. Runs before the cache write so the demotion is cached
 	// too. Fail-open — a failed verification publishes the findings unchanged.
-	// The returned stats are logged by the pass itself; see claimStats for why
-	// the refuted/sent ratio is worth watching.
-	r.verifyClaims(result, pr.Dir)
+	// The returned stats are logged by the pass itself; see hygiene.ClaimStats
+	// for why the refuted/sent ratio is worth watching.
+	hygiene.VerifyClaims(result, pr.Dir, r.Claude.VerifyFindingClaims)
 
 	// 12. Cache result
 	if !opts.NoCache {
@@ -418,145 +419,6 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// returned above before the catalog was loaded), and only when a wiki resolved.
 	r.runCapture(w, pr, opts, result, pats, wiki)
 	return nil
-}
-
-// claimStats records what one claim-verification pass did: how many findings it
-// sent, how many verdicts came back, and how many of those refuted a finding.
-// The refuted/sent ratio is the pass's own no-op signal. The verifier is asked
-// to confirm unless it finds quoted counter-evidence, and it is handed the
-// finding's claim along with the code — two nudges toward agreement — so a pass
-// that refutes nothing across many runs is not verifying, it is agreeing, and
-// belongs sharpened or deleted rather than left to look productive. The counts
-// are logged on every run so that case is visible instead of silent.
-type claimStats struct {
-	Sent     int
-	Verdicts int
-	Refuted  int
-}
-
-// verifyClaims re-checks each BLOCKING/CRITICAL finding's claim against the
-// checkout at dir. It batches every such finding into one VerifyFindingClaims
-// call; for each verdict the verifier refutes it demotes the finding to
-// uncertain confidence and attaches the refutation as a VerificationNote (which
-// routes it to the Unverified section). WARNING/INFO findings are never sent —
-// the snippet gate already covers them and verifying them is not worth the cost.
-// The pass is fail-open: a failed call, a missing verdict, or an out-of-range
-// index leaves the finding unchanged. The returned stats are the pass's own
-// measurement; the caller needs no other use for them.
-func (r *Runner) verifyClaims(result *report.ReviewResult, dir string) claimStats {
-	if result == nil {
-		return claimStats{}
-	}
-	var selectedIdx []int
-	var selected []report.Finding
-	for i := range result.Findings {
-		if sev := result.Findings[i].Severity; sev == report.SeverityBlocking || sev == report.SeverityCritical {
-			selectedIdx = append(selectedIdx, i)
-			selected = append(selected, result.Findings[i])
-		}
-	}
-	if len(selected) == 0 {
-		return claimStats{}
-	}
-	verdicts, err := r.Claude.VerifyFindingClaims(dir, selected)
-	if err != nil {
-		slog.Warn("claim verification failed; publishing findings unchanged", "err", err)
-		return claimStats{Sent: len(selected)}
-	}
-	demoted := 0
-	for _, v := range verdicts {
-		if v.Index < 0 || v.Index >= len(selectedIdx) {
-			continue // ignore an out-of-range index the model may return
-		}
-		if !strings.EqualFold(strings.TrimSpace(v.Verdict), "refuted") {
-			continue
-		}
-		reason := strings.TrimSpace(v.Reason)
-		if reason == "" {
-			reason = strings.TrimSpace(v.Evidence)
-		}
-		if reason == "" {
-			reason = "no supporting evidence found in the checkout"
-		}
-		fi := selectedIdx[v.Index]
-		result.Findings[fi].Confidence = report.ConfidenceUncertain
-		result.Findings[fi].VerificationNote = "refuted: " + reason
-		demoted++
-	}
-	stats := claimStats{Sent: len(selected), Verdicts: len(verdicts), Refuted: demoted}
-	slog.Info("claim verification complete",
-		"sent", stats.Sent, "verdicts", stats.Verdicts, "refuted", stats.Refuted)
-	return stats
-}
-
-// dedupFilelessFindings folds cross-pass duplicate findings that carry no file
-// — the ones mergeResults' fuzzy matcher cannot anchor. It sends only the
-// file-less findings to the structure tier, which returns index groups, and
-// folds each group in Go via mergeFindingPair so no finding content is
-// transcribed by the model. Fewer than two file-less findings need no call. The
-// pass is non-fatal: a failed grouping call leaves the findings unmerged.
-func (r *Runner) dedupFilelessFindings(result *report.ReviewResult) {
-	if result == nil {
-		return
-	}
-	var fileless []int
-	for i := range result.Findings {
-		if result.Findings[i].File == "" {
-			fileless = append(fileless, i)
-		}
-	}
-	if len(fileless) < 2 {
-		return
-	}
-	subset := make([]report.Finding, len(fileless))
-	for j, idx := range fileless {
-		subset[j] = result.Findings[idx]
-	}
-	groups, err := r.Claude.DedupFindings(subset)
-	if err != nil {
-		slog.Warn("file-less finding dedup failed; keeping findings unmerged", "err", err)
-		return
-	}
-
-	// Fold each group into its first member; mark the rest for removal. Group
-	// indices are into subset, so map back to result.Findings via fileless.
-	// claimed tracks every subset index the model has already assigned to a
-	// group. The prompt asks it to place each index in at most one group, but
-	// nothing enforces that: overlapping groups (e.g. [[0,1],[1,2]]) could make an
-	// index that was merged-and-marked-for-removal become a later group's
-	// keep-target, so its content merges only into a doomed finding and is then
-	// pruned away. Claiming each index at most once keeps every distinct finding.
-	remove := make(map[int]bool)
-	claimed := make(map[int]bool)
-	merged := 0
-	for _, group := range groups {
-		keepSub := -1
-		for _, sub := range group {
-			if sub < 0 || sub >= len(fileless) || claimed[sub] {
-				continue // out-of-range or already claimed by an earlier group
-			}
-			claimed[sub] = true
-			if keepSub == -1 {
-				keepSub = sub
-				continue
-			}
-			keepIdx, dupIdx := fileless[keepSub], fileless[sub]
-			result.Findings[keepIdx] = mergeFindingPair(result.Findings[keepIdx], result.Findings[dupIdx])
-			remove[dupIdx] = true
-			merged++
-		}
-	}
-	if merged == 0 {
-		return
-	}
-	kept := result.Findings[:0]
-	for i := range result.Findings {
-		if !remove[i] {
-			kept = append(kept, result.Findings[i])
-		}
-	}
-	result.Findings = kept
-	slog.Info("merged file-less duplicate findings via structure-tier fallback", "merged", merged)
 }
 
 // runCapture runs the read-only capture pass after the review renders: it mines

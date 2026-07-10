@@ -4,24 +4,15 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/planwerk/planwerk-agent/internal/hygiene"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
-// ClaimVerdict is one entry of the claim-verification pass's output: the model's
-// judgment of whether a single finding's CLAIM holds against the checkout.
-// Index refers to the finding's position in the batch VerifyFindingClaims was
-// given. Verdict is "confirmed" or "refuted"; Evidence quotes the file:line the
-// model grounded its judgment in; Reason explains a refutation.
-type ClaimVerdict struct {
-	Index    int    `json:"index"`
-	Verdict  string `json:"verdict"`
-	Evidence string `json:"evidence"`
-	Reason   string `json:"reason"`
-}
-
-// claimVerdicts is the decode target for the claim-verification output.
+// claimVerdicts is the decode target for the claim-verification output. The
+// verdict type itself lives in internal/hygiene, the shared finding-hygiene
+// package both review and implement drive it from.
 type claimVerdicts struct {
-	Verdicts []ClaimVerdict `json:"verdicts"`
+	Verdicts []hygiene.ClaimVerdict `json:"verdicts"`
 }
 
 // VerifyFindingClaims re-checks each finding's CLAIM (not merely its quoted
@@ -30,7 +21,7 @@ type claimVerdicts struct {
 // returns one verdict per finding it judged, keyed by index into findings. The
 // caller demotes refuted findings rather than dropping them; decodeJSONWithRepair
 // backstops malformed output. An empty batch needs no call.
-func (c *Client) VerifyFindingClaims(dir string, findings []report.Finding) ([]ClaimVerdict, error) {
+func (c *Client) VerifyFindingClaims(dir string, findings []report.Finding) ([]hygiene.ClaimVerdict, error) {
 	if len(findings) == 0 {
 		return nil, nil
 	}

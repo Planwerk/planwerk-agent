@@ -16,6 +16,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/capture"
 	"github.com/planwerk/planwerk-agent/internal/claude"
 	"github.com/planwerk/planwerk-agent/internal/github"
+	"github.com/planwerk/planwerk-agent/internal/hygiene"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/planwerk"
 	"github.com/planwerk/planwerk-agent/internal/report"
@@ -135,9 +136,9 @@ func TestRun_VerifyClaimsDemotesRefuted(t *testing.T) {
 				},
 			}, nil
 		},
-		verifyClaims: func(dir string, findings []report.Finding) ([]claude.ClaimVerdict, error) {
+		verifyClaims: func(dir string, findings []report.Finding) ([]hygiene.ClaimVerdict, error) {
 			sentToVerify = findings
-			return []claude.ClaimVerdict{
+			return []hygiene.ClaimVerdict{
 				{Index: 0, Verdict: "confirmed"},
 				{Index: 1, Verdict: "refuted", Reason: "b.go:2 is already nil-guarded"},
 			}, nil
@@ -184,7 +185,7 @@ func TestRun_VerifyClaims_ErrorIsNonFatal(t *testing.T) {
 				{ID: "C-001", Severity: report.SeverityCritical, Title: "x", File: "b.go", Line: 2, Problem: "p", Action: "a", Confidence: report.ConfidenceVerified},
 			}}, nil
 		},
-		verifyClaims: func(dir string, findings []report.Finding) ([]claude.ClaimVerdict, error) {
+		verifyClaims: func(dir string, findings []report.Finding) ([]hygiene.ClaimVerdict, error) {
 			return nil, errors.New("verifier down")
 		},
 	}
@@ -337,48 +338,6 @@ func TestRun_DedupFileless_ErrorIsNonFatal(t *testing.T) {
 	}
 }
 
-// TestDedupFilelessFindings_OverlappingGroups guards against the model returning
-// index groups that share an index (e.g. [[0,1],[1,2]]). The prompt asks it to
-// place each index in at most one group, but nothing enforces that. Without a
-// per-index claim guard, a finding merged-and-marked-for-removal by the first
-// group becomes the second group's keep-target, so the third finding's content
-// merges only into the doomed finding and is then pruned — silently dropping a
-// distinct (and here CRITICAL) finding. Every distinct finding must survive.
-func TestDedupFilelessFindings_OverlappingGroups(t *testing.T) {
-	claudeMock := &configurableClaude{
-		dedup: func(findings []report.Finding) ([][]int, error) {
-			return [][]int{{0, 1}, {1, 2}}, nil
-		},
-	}
-	runner := &Runner{Claude: claudeMock}
-	result := &report.ReviewResult{
-		Findings: []report.Finding{
-			{Severity: report.SeverityWarning, Title: "alpha", Problem: "p", Action: "a"},
-			{Severity: report.SeverityWarning, Title: "beta", Problem: "p", Action: "a"},
-			{Severity: report.SeverityCritical, Title: "gamma", Problem: "p", Action: "a"},
-		},
-	}
-	runner.dedupFilelessFindings(result)
-
-	got := make([]string, len(result.Findings))
-	titles := map[string]bool{}
-	for i, f := range result.Findings {
-		got[i] = f.Title
-		titles[f.Title] = true
-	}
-	// alpha absorbs beta via group [0,1]; index 1 is then already claimed, so
-	// group [1,2] leaves gamma standalone. gamma must not vanish.
-	if !titles["gamma"] {
-		t.Fatalf("distinct CRITICAL finding 'gamma' was dropped by overlapping dedup groups; surviving titles = %v", got)
-	}
-	if !titles["alpha"] {
-		t.Errorf("keep-target 'alpha' missing; surviving titles = %v", got)
-	}
-	if len(result.Findings) != 2 {
-		t.Errorf("want 2 findings after folding [0,1] and leaving gamma, got %d: %v", len(result.Findings), got)
-	}
-}
-
 // configurableClaude is a ClaudeRunner whose behavior is set per-test via
 // closures. Each closure is also wrapped in a call-counter so the test can
 // assert which methods actually ran — essential for verifying that cache
@@ -390,7 +349,7 @@ type configurableClaude struct {
 	featureCompliance func(dir, baseBranch string, feature *planwerk.Feature) (*report.ReviewResult, error)
 	specialist        func(dir, baseBranch, key, focus string) (*report.ReviewResult, error)
 	dedup             func(findings []report.Finding) ([][]int, error)
-	verifyClaims      func(dir string, findings []report.Finding) ([]claude.ClaimVerdict, error)
+	verifyClaims      func(dir string, findings []report.Finding) ([]hygiene.ClaimVerdict, error)
 	usage             report.Usage
 
 	reviewCalls            int32
@@ -450,7 +409,7 @@ func (c *configurableClaude) DedupFindings(findings []report.Finding) ([][]int, 
 	return c.dedup(findings)
 }
 
-func (c *configurableClaude) VerifyFindingClaims(dir string, findings []report.Finding) ([]claude.ClaimVerdict, error) {
+func (c *configurableClaude) VerifyFindingClaims(dir string, findings []report.Finding) ([]hygiene.ClaimVerdict, error) {
 	atomic.AddInt32(&c.verifyClaimsCalls, 1)
 	if c.verifyClaims == nil {
 		return nil, nil

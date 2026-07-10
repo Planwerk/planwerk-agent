@@ -17,8 +17,8 @@ type dedupGroups struct {
 
 // DedupFindings asks the structure tier to group findings that describe the same
 // underlying issue, returning index groups (never merged findings) so the model
-// only classifies and never transcribes finding content — the review package
-// folds each group in Go via mergeFindingPair. It backstops mergeResults' fuzzy
+// only classifies and never transcribes finding content — the hygiene package
+// folds each group in Go via its merge helper. It backstops the fuzzy merge
 // matcher for findings that carry no file to anchor on. Fewer than two findings
 // need no call and return no groups.
 func (c *Client) DedupFindings(findings []report.Finding) ([][]int, error) {
