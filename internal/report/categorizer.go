@@ -35,16 +35,11 @@ func Categorize(findings []Finding, minSeverity Severity, minConfidence Confiden
 		if !f.Confidence.MeetsMinimum(minConfidence) {
 			continue
 		}
-		// Low-confidence, low-severity findings are demoted to the Unverified
-		// section so an uncertain nit never sits next to a verified bug. A
-		// BLOCKING/CRITICAL claim the verification pass explicitly refuted
-		// (uncertain + a VerificationNote) is demoted too — the counter-evidence
-		// makes it stronger than a merely-unverifiable finding, so it must not
-		// remain in the blocking section.
-		refuted := f.Confidence == ConfidenceUncertain && f.VerificationNote != ""
-		if refuted ||
-			(f.Confidence == ConfidenceUncertain &&
-				(f.Severity == SeverityWarning || f.Severity == SeverityInfo)) {
+		// Findings that did not survive the hygiene stage are demoted to the
+		// Unverified section so an uncertain nit — or a refuted BLOCKING/CRITICAL
+		// claim — never sits next to a verified bug. Finding.Unverified is the
+		// single predicate; the implement gate reuses it so the two cannot drift.
+		if f.Unverified() {
 			cf.Unverified = append(cf.Unverified, f)
 			continue
 		}

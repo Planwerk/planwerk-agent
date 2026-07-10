@@ -5,6 +5,33 @@ import (
 	"testing"
 )
 
+func TestFindingUnverified(t *testing.T) {
+	tests := []struct {
+		name string
+		f    Finding
+		want bool
+	}{
+		{"uncertain warning is unverified", Finding{Confidence: ConfidenceUncertain, Severity: SeverityWarning}, true},
+		{"uncertain info is unverified", Finding{Confidence: ConfidenceUncertain, Severity: SeverityInfo}, true},
+		{"uncertain critical without note stays actionable", Finding{Confidence: ConfidenceUncertain, Severity: SeverityCritical}, false},
+		{"uncertain blocking without note stays actionable", Finding{Confidence: ConfidenceUncertain, Severity: SeverityBlocking}, false},
+		{"refuted critical with note is unverified", Finding{Confidence: ConfidenceUncertain, Severity: SeverityCritical, VerificationNote: "refuted: guarded"}, true},
+		{"refuted blocking with note is unverified", Finding{Confidence: ConfidenceUncertain, Severity: SeverityBlocking, VerificationNote: "refuted: guarded"}, true},
+		{"likely warning is actionable", Finding{Confidence: ConfidenceLikely, Severity: SeverityWarning}, false},
+		{"verified info is actionable", Finding{Confidence: ConfidenceVerified, Severity: SeverityInfo}, false},
+		// A note without an uncertain confidence cannot happen from the pipeline,
+		// but the predicate must not fire on the note alone.
+		{"verified critical with a note stays actionable", Finding{Confidence: ConfidenceVerified, Severity: SeverityCritical, VerificationNote: "refuted: x"}, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.f.Unverified(); got != tc.want {
+				t.Errorf("Unverified() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestParseSeverity(t *testing.T) {
 	tests := []struct {
 		input   string
