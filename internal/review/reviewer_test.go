@@ -117,6 +117,10 @@ func TestRenderResult_PostReview(t *testing.T) {
 		Findings: []report.Finding{
 			{ID: "F1", Severity: report.SeverityWarning, Title: "Test finding", File: "main.go", Problem: "Issue", Action: "Fix it"},
 		},
+		Gates: &report.GateStats{
+			Snippet: &report.SnippetGateStats{Examined: 1, Demoted: 0},
+			Claim:   &report.ClaimGateStats{Sent: 1, Verdicts: 1, Refuted: 0},
+		},
 	}
 	pr := &github.PR{Owner: "test", Repo: "repo", Number: 1, Title: "Test PR"}
 	opts := Options{
@@ -147,6 +151,11 @@ func TestRenderResult_PostReview(t *testing.T) {
 	}
 	if !strings.Contains(postedBody, "planwerk-agent-data") {
 		t.Error("posted body should contain machine-readable data block")
+	}
+	// The posted data block carries the run-level gate records so a report reader
+	// (and the eval harness) accumulates the refuted/examined ratio from history.
+	if !strings.Contains(postedBody, `"gates":{`) {
+		t.Error("posted data block should carry the run-level gate records")
 	}
 }
 
