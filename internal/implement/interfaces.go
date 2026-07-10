@@ -206,6 +206,16 @@ func (a adversarialFnAdapter) AdversarialReview(dir, baseBranch string, pats []p
 	return a.fn(dir, baseBranch, pats, maxPatterns)
 }
 
+// SpecialistResult pairs a domain specialist's key with the findings its pass
+// produced, so the review-and-fix pass can tag each specialist's findings with
+// its provenance label before merging them. It is the implement-side shape of
+// the claude fan-out's output; a fan-out that gated a specialist out or whose
+// pass failed simply omits it from the returned slice.
+type SpecialistResult struct {
+	Key    string
+	Result *report.ReviewResult
+}
+
 // SimplifyApplyContext is the input for the Claude simplify-apply session: the
 // simplification findings to fold into the local feature branch and the pattern
 // catalog so the apply session stays consistent with the same review patterns

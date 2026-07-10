@@ -2,8 +2,12 @@ package claude
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 
+	"golang.org/x/sync/errgroup"
+
+	"github.com/planwerk/planwerk-agent/internal/implement"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
@@ -81,6 +85,64 @@ var Specialists = []Specialist{
 		Relevance: RelevanceAnySource,
 		Focus:     `Clarity and intent: dead code, misleading names, duplicated logic that should be factored, magic numbers that should be named constants, and missing documentation for new public APIs, CLI flags, or config options. Flag only what genuinely impairs a new reader — not style preferences.`,
 	},
+}
+
+// SpecialistReviews runs the domain-specialist fan-out over the diff and returns
+// the successful results keyed by specialist, so the implement command's
+// review-and-fix pass can run the same specialists the review command does. It
+// mirrors review's fan-out: each specialist is adaptively gated by
+// Specialist.ShouldRun(changedFiles), the gated-in ones run concurrently, and a
+// specialist whose pass fails is logged and dropped rather than sinking the
+// rest. baseBranch scopes the diff; pats/maxPatterns ground each specialist in
+// the review-pattern catalog. The error return is always nil — per-specialist
+// failures are non-fatal — but exists so the seam can surface a fatal error in
+// future without a signature change.
+func (c *Client) SpecialistReviews(dir, baseBranch string, changedFiles []string, pats []patterns.Pattern, maxPatterns int) ([]implement.SpecialistResult, error) {
+	return runSpecialistFanOut(changedFiles, func(sp Specialist) (*report.ReviewResult, error) {
+		return c.SpecialistReview(dir, baseBranch, sp.Key, sp.Focus, pats, maxPatterns)
+	}), nil
+}
+
+// runSpecialistFanOut is the gate/dispatch/collect core of SpecialistReviews,
+// factored out from the Claude call so it is unit-testable without the binary.
+// It runs call(sp) concurrently for every specialist whose ShouldRun(changedFiles)
+// is true, skips the rest (adaptive gating), drops a specialist whose call
+// errors (logged, non-fatal), and returns the survivors in registry order.
+func runSpecialistFanOut(changedFiles []string, call func(Specialist) (*report.ReviewResult, error)) []implement.SpecialistResult {
+	results := make([]*report.ReviewResult, len(Specialists))
+	var g errgroup.Group
+	running := 0
+	for i, sp := range Specialists {
+		if !sp.ShouldRun(changedFiles) {
+			// Adaptive gating: the diff does not touch this specialist's relevant
+			// paths, so running it would only add cost.
+			slog.Info("skipping specialist; diff does not touch its relevant paths", "specialist", sp.Key)
+			continue
+		}
+		running++
+		g.Go(func() error {
+			res, err := call(sp)
+			if err != nil {
+				// A failed specialist must not sink the whole fan-out.
+				slog.Warn("specialist review failed", "specialist", sp.Key, "err", err)
+				return nil
+			}
+			results[i] = res
+			return nil
+		})
+	}
+	slog.Info("running specialist review fan-out", "running", running, "registered", len(Specialists))
+	// The callbacks never return an error, so Wait cannot fail; the error return
+	// is discarded deliberately.
+	_ = g.Wait()
+
+	var out []implement.SpecialistResult
+	for i, sp := range Specialists {
+		if results[i] != nil {
+			out = append(out, implement.SpecialistResult{Key: sp.Key, Result: results[i]})
+		}
+	}
+	return out
 }
 
 // SpecialistReview runs a single domain-focused review pass over the diff and
