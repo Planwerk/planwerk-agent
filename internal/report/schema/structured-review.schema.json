@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "StructuredReview",
-  "description": "Wire contract for the review structuring pass — the JSON the transcribe-only structure tier must emit, passed to the CLI via --json-schema. It mirrors report.ReviewResult plus source_finding_count, minus the Go-derived and pipeline-set fields (fix_class, confirmed_by, verification_note) the structure tier never produces. The severity/actionability/confidence enums include the empty string so a finding whose source review stated no such label is representable; the pipeline fills those in afterward.",
+  "description": "Wire contract for the review structuring pass — the JSON the transcribe-only structure tier must emit, passed to the CLI via --json-schema. It mirrors report.ReviewResult plus source_finding_count, minus the Go-derived and pipeline-set fields (fix_class, confirmed_by, verification_note, snippet_check, claim_check, and the run-level gates object) the structure tier never produces. The severity/actionability/confidence enums include the empty string so a finding whose source review stated no such label is representable; the pipeline fills those in afterward.",
   "type": "object",
   "additionalProperties": false,
   "required": ["findings", "summary", "recommendation", "source_finding_count"],

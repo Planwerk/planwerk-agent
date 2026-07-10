@@ -204,7 +204,37 @@ type Finding struct {
 	// never populates it at structure time — and routes the demoted finding into
 	// the Unverified section.
 	VerificationNote string `json:"verification_note,omitempty"`
+	// SnippetCheck records the quote-or-demote gate's per-finding decision:
+	// SnippetCheckPassed when the finding's quoted code was located in the
+	// changed files, or a "demoted: <reason>" string when it was not. It is set
+	// only by the review pipeline's snippet-verification step — the model never
+	// populates it. Unlike VerificationNote it does NOT route the finding
+	// (Unverified is unchanged); it is a pure record of what the gate examined,
+	// so a run where every finding passed is distinguishable from one where the
+	// gate never ran (which leaves it empty).
+	SnippetCheck string `json:"snippet_check,omitempty"`
+	// ClaimCheck records the claim-verification gate's per-finding decision as a
+	// machine token: ClaimCheckConfirmed, ClaimCheckRefuted, or
+	// ClaimCheckNoVerdict (the gate ran but returned no verdict for this
+	// finding — the fail-open case). It is set only by the review pipeline's
+	// claim-verification step. The human-readable refutation reason still lives
+	// in VerificationNote; this token does not duplicate it and does not route
+	// the finding.
+	ClaimCheck string `json:"claim_check,omitempty"`
 }
+
+// SnippetCheckPassed is the SnippetCheck value recorded on a finding whose
+// quoted code the snippet gate located in the changed files. A demotion records
+// a "demoted: <reason>" string instead.
+const SnippetCheckPassed = "passed"
+
+// ClaimCheck token values recorded by the claim-verification gate on each
+// finding it examined.
+const (
+	ClaimCheckConfirmed = "confirmed"
+	ClaimCheckRefuted   = "refuted"
+	ClaimCheckNoVerdict = "no-verdict"
+)
 
 // Unverified reports whether the finding did not survive the hygiene stage and
 // so belongs in the report's Unverified section rather than in its severity
@@ -243,4 +273,44 @@ type ReviewResult struct {
 	// payload; WikiCommit is re-attached to the machine-readable data block.
 	WikiRepo   string `json:"-"`
 	WikiCommit string `json:"-"`
+	// Gates records what each demotion gate examined and demoted in this run.
+	// Unlike the neighboring json:"-" fields it IS serialized: it rides the
+	// cached result and the machine-readable data block so the refuted/examined
+	// ratio can be computed from history rather than from a fresh run. A nil
+	// per-gate entry means that gate never ran, which keeps a clean pass
+	// distinguishable from a skipped gate.
+	Gates *GateStats `json:"gates,omitempty"`
+}
+
+// GateStats aggregates the per-run counts of the review's two demotion gates.
+// A nil per-gate field means that gate did not run this run.
+type GateStats struct {
+	Snippet *SnippetGateStats `json:"snippet,omitempty"`
+	Claim   *ClaimGateStats   `json:"claim,omitempty"`
+}
+
+// SnippetGateStats records the quote-or-demote gate's per-run counts: how many
+// findings it Examined and the Demoted subset whose quoted code it could not
+// locate in the changed files. Both are recorded even when zero, so a gate that
+// ran but demoted nothing is distinguishable from one that never ran (a nil
+// SnippetGateStats).
+type SnippetGateStats struct {
+	Examined int `json:"examined"`
+	Demoted  int `json:"demoted"`
+}
+
+// ClaimGateStats records the claim-verification gate's per-run counts: how many
+// findings it Sent, how many Verdicts came back, and how many it Refuted. The
+// refuted/sent ratio is the pass's own no-op signal. The verifier is asked to
+// confirm unless it finds quoted counter-evidence, and it is handed the
+// finding's claim along with the code — two nudges toward agreement — so a pass
+// that refutes nothing across many runs is not verifying, it is agreeing, and
+// belongs sharpened or deleted rather than left to look productive. Recording
+// the counts on the run (not only in a log line that dies on exit) is what lets
+// that ratio accumulate from real runs. Sent>0 with Verdicts=0 is the fail-open
+// case: the gate ran but the verifier returned nothing.
+type ClaimGateStats struct {
+	Sent     int `json:"sent"`
+	Verdicts int `json:"verdicts"`
+	Refuted  int `json:"refuted"`
 }

@@ -22,6 +22,13 @@ func TestFindingUnverified(t *testing.T) {
 		// A note without an uncertain confidence cannot happen from the pipeline,
 		// but the predicate must not fire on the note alone.
 		{"verified critical with a note stays actionable", Finding{Confidence: ConfidenceVerified, Severity: SeverityCritical, VerificationNote: "refuted: x"}, false},
+		// The gate records must NOT re-route a finding: an uncertain BLOCKING/CRITICAL
+		// finding a gate examined-and-passed (SnippetCheck/ClaimCheck set, no
+		// refutation note) stays in its severity bucket, exactly as it would without
+		// the records. Only VerificationNote demotes a high-severity finding.
+		{"examined blocking without a note stays actionable", Finding{Confidence: ConfidenceUncertain, Severity: SeverityBlocking, SnippetCheck: SnippetCheckPassed, ClaimCheck: ClaimCheckConfirmed}, false},
+		{"no-verdict critical without a note stays actionable", Finding{Confidence: ConfidenceUncertain, Severity: SeverityCritical, ClaimCheck: ClaimCheckNoVerdict}, false},
+		{"refuted critical with note and claim_check is unverified", Finding{Confidence: ConfidenceUncertain, Severity: SeverityCritical, VerificationNote: "refuted: guarded", ClaimCheck: ClaimCheckRefuted}, true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
