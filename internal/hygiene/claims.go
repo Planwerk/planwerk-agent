@@ -25,20 +25,6 @@ type ClaimVerdict struct {
 // VerifyClaimsFn makes VerifyClaims a no-op.
 type VerifyClaimsFn func(dir string, findings []report.Finding) ([]ClaimVerdict, error)
 
-// ClaimStats records what one claim-verification pass did: how many findings it
-// sent, how many verdicts came back, and how many of those refuted a finding.
-// The refuted/sent ratio is the pass's own no-op signal. The verifier is asked
-// to confirm unless it finds quoted counter-evidence, and it is handed the
-// finding's claim along with the code — two nudges toward agreement — so a pass
-// that refutes nothing across many runs is not verifying, it is agreeing, and
-// belongs sharpened or deleted rather than left to look productive. The counts
-// are logged on every run so that case is visible instead of silent.
-type ClaimStats struct {
-	Sent     int
-	Verdicts int
-	Refuted  int
-}
-
 // VerifyClaims re-checks each BLOCKING/CRITICAL finding's claim against the
 // checkout at dir. It batches every such finding into one verify call; for each
 // verdict the verifier refutes it demotes the finding to uncertain confidence
@@ -46,11 +32,18 @@ type ClaimStats struct {
 // Unverified section). WARNING/INFO findings are never sent — the snippet gate
 // already covers them and verifying them is not worth the cost. The pass is
 // fail-open: a nil verify, a failed call, a missing verdict, or an out-of-range
-// index leaves the finding unchanged. The returned stats are the pass's own
-// measurement; the caller needs no other use for them.
-func VerifyClaims(result *report.ReviewResult, dir string, verify VerifyClaimsFn) ClaimStats {
+// index leaves the finding's confidence unchanged.
+//
+// It records what it did on the result rather than returning it: every sent
+// finding is stamped with a per-finding ClaimCheck token (confirmed, refuted,
+// or no-verdict for the fail-open cases), and the run-level counts land in
+// result.Gates.Claim. A nil Gates.Claim means the gate never ran; the counts
+// there — and the refuted/sent ratio they carry — are the pass's own no-op
+// signal (see report.ClaimGateStats), now surviving in the cached result and
+// the data block instead of dying with the log line.
+func VerifyClaims(result *report.ReviewResult, dir string, verify VerifyClaimsFn) {
 	if result == nil || verify == nil {
-		return ClaimStats{}
+		return
 	}
 	var selectedIdx []int
 	var selected []report.Finding
@@ -60,20 +53,35 @@ func VerifyClaims(result *report.ReviewResult, dir string, verify VerifyClaimsFn
 			selected = append(selected, result.Findings[i])
 		}
 	}
+	// Record that the gate ran even when nothing was eligible: a nil Gates.Claim
+	// means "never ran", Sent=0 means "ran, nothing severe enough to verify".
+	stats := &report.ClaimGateStats{Sent: len(selected)}
+	ensureGates(result).Claim = stats
 	if len(selected) == 0 {
-		return ClaimStats{}
+		return
+	}
+	// Stamp every sent finding no-verdict up front; a verdict overwrites it, and
+	// the fail-open paths (a failed call, a missing verdict) leave it as the
+	// record that the gate ran but returned nothing for this finding.
+	for _, fi := range selectedIdx {
+		result.Findings[fi].ClaimCheck = report.ClaimCheckNoVerdict
 	}
 	verdicts, err := verify(dir, selected)
 	if err != nil {
 		slog.Warn("claim verification failed; publishing findings unchanged", "err", err)
-		return ClaimStats{Sent: len(selected)}
+		return
 	}
+	stats.Verdicts = len(verdicts) // raw count, out-of-range verdicts included
 	demoted := 0
 	for _, v := range verdicts {
 		if v.Index < 0 || v.Index >= len(selectedIdx) {
 			continue // ignore an out-of-range index the model may return
 		}
+		fi := selectedIdx[v.Index]
 		if !strings.EqualFold(strings.TrimSpace(v.Verdict), "refuted") {
+			// The gate's decision is binary; an off-enum verdict that lets the
+			// finding through records as a confirmation.
+			result.Findings[fi].ClaimCheck = report.ClaimCheckConfirmed
 			continue
 		}
 		reason := strings.TrimSpace(v.Reason)
@@ -83,13 +91,12 @@ func VerifyClaims(result *report.ReviewResult, dir string, verify VerifyClaimsFn
 		if reason == "" {
 			reason = "no supporting evidence found in the checkout"
 		}
-		fi := selectedIdx[v.Index]
 		result.Findings[fi].Confidence = report.ConfidenceUncertain
 		result.Findings[fi].VerificationNote = "refuted: " + reason
+		result.Findings[fi].ClaimCheck = report.ClaimCheckRefuted
 		demoted++
 	}
-	stats := ClaimStats{Sent: len(selected), Verdicts: len(verdicts), Refuted: demoted}
+	stats.Refuted = demoted
 	slog.Info("claim verification complete",
 		"sent", stats.Sent, "verdicts", stats.Verdicts, "refuted", stats.Refuted)
-	return stats
 }
