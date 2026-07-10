@@ -93,12 +93,12 @@ func OpenLocalPR(ref string, opts LocalOptions) (*PR, error) {
 	if err := localPRCheckout(dir, pr.Number); err != nil {
 		return nil, err
 	}
-	// Ensure origin/<base> exists for the diff query in diffNames. Safety #5.
+	// Ensure origin/<base> exists for the diff query in DiffNames. Safety #5.
 	if err := localFetchBase(dir, pr.BaseBranch); err != nil {
 		return nil, err
 	}
 
-	changed, err := diffNames(dir, pr.BaseBranch)
+	changed, err := DiffNames(dir, pr.BaseBranch)
 	if err != nil {
 		slog.Warn("listing changed files failed; feature detection and specialist gating may be degraded", "err", err, "dir", dir, "base", pr.BaseBranch)
 	}
@@ -187,7 +187,7 @@ func localPRCheckout(dir string, number int) error {
 }
 
 // localFetchBase fetches the base branch so origin/<base> exists for the diff
-// query in diffNames. Best-effort beyond a hard error: an empty base is a
+// query in DiffNames. Best-effort beyond a hard error: an empty base is a
 // no-op (the diff query degrades gracefully).
 func localFetchBase(dir, baseBranch string) error {
 	if baseBranch == "" {

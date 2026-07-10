@@ -136,7 +136,7 @@ func FetchAndCheckout(ref string) (*PR, error) {
 		return nil, fmt.Errorf("checking out PR: %w", err)
 	}
 	pr.Dir = dir
-	changed, err := diffNames(dir, pr.BaseBranch)
+	changed, err := DiffNames(dir, pr.BaseBranch)
 	if err != nil {
 		slog.Warn("listing changed files failed; feature detection and specialist gating may be degraded", "err", err, "dir", dir, "base", pr.BaseBranch)
 	}
@@ -145,11 +145,13 @@ func FetchAndCheckout(ref string) (*PR, error) {
 	return pr, nil
 }
 
-// diffNames returns repo-relative paths of files changed between the base
-// branch and HEAD. An empty dir or baseBranch yields a nil slice and no error.
-// On subprocess failure it returns a nil slice and an error wrapping git's
-// stderr, so callers can log the cause before degrading gracefully.
-func diffNames(dir, baseBranch string) ([]string, error) {
+// DiffNames returns repo-relative paths of files changed between the base
+// branch and HEAD (the range origin/<base>...HEAD). An empty dir or baseBranch
+// yields a nil slice and no error. On subprocess failure it returns a nil slice
+// and an error wrapping git's stderr, so callers can log the cause before
+// degrading gracefully. It is exported so the implement command's review pass
+// can adaptively gate its specialist fan-out on the branch's changed files.
+func DiffNames(dir, baseBranch string) ([]string, error) {
 	if dir == "" || baseBranch == "" {
 		return nil, nil
 	}

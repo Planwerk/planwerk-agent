@@ -150,7 +150,7 @@ func TestParseRefBareNumberWithGitHubRepository(t *testing.T) {
 }
 
 // initGitRepoForDiff builds a temp git repo with two commits and points
-// refs/remotes/origin/main at the first commit, so diffNames(dir, "main")
+// refs/remotes/origin/main at the first commit, so DiffNames(dir, "main")
 // resolves origin/main...HEAD entirely offline — no network, no real remote.
 // The second commit modifies only changed.go.
 func initGitRepoForDiff(t *testing.T) string {
@@ -188,9 +188,9 @@ func initGitRepoForDiff(t *testing.T) string {
 func TestDiffNames(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		dir := initGitRepoForDiff(t)
-		files, err := diffNames(dir, "main")
+		files, err := DiffNames(dir, "main")
 		if err != nil {
-			t.Fatalf("diffNames returned error: %v", err)
+			t.Fatalf("DiffNames returned error: %v", err)
 		}
 		if len(files) != 1 || files[0] != "changed.go" {
 			t.Fatalf("files = %v, want [changed.go]", files)
@@ -217,7 +217,7 @@ func TestDiffNames(t *testing.T) {
 		run("add", "-A")
 		run("commit", "-q", "-m", "only")
 
-		files, err := diffNames(dir, "main")
+		files, err := DiffNames(dir, "main")
 		if err == nil {
 			t.Fatal("expected an error when origin/main is missing, got nil")
 		}
@@ -230,9 +230,9 @@ func TestDiffNames(t *testing.T) {
 	})
 
 	t.Run("empty inputs", func(t *testing.T) {
-		files, err := diffNames("", "")
+		files, err := DiffNames("", "")
 		if err != nil {
-			t.Errorf("diffNames(\"\", \"\") error = %v, want nil", err)
+			t.Errorf("DiffNames(\"\", \"\") error = %v, want nil", err)
 		}
 		if files != nil {
 			t.Errorf("files = %v, want nil", files)
