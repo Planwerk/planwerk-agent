@@ -385,17 +385,20 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 
 	// 11b. Quote-or-demote gate: downgrade findings whose code snippet cannot
 	// be located in the changed files so unverifiable claims land in the
-	// Unverified section instead of next to confirmed bugs.
+	// Unverified section instead of next to confirmed bugs. The gate records
+	// what it examined and demoted on the result, which the cache write below
+	// then persists.
 	if n := hygiene.VerifySnippets(result, pr.Dir, pr.ChangedFiles); n > 0 {
 		slog.Info("demoted findings failing snippet verification", "count", n)
 	}
 
 	// 11c. Claim verification: re-check each BLOCKING/CRITICAL finding's claim
 	// against the checkout and demote any the verifier refutes with quoted
-	// counter-evidence. Runs before the cache write so the demotion is cached
-	// too. Fail-open — a failed verification publishes the findings unchanged.
-	// The returned stats are logged by the pass itself; see hygiene.ClaimStats
-	// for why the refuted/sent ratio is worth watching.
+	// counter-evidence. Runs before the cache write so the demotion — and the
+	// per-finding and run-level records the gate writes onto the result — are
+	// cached too. Fail-open: a failed verification publishes the findings
+	// unchanged. See report.ClaimGateStats for why the refuted/sent ratio the
+	// records now carry is worth watching.
 	hygiene.VerifyClaims(result, pr.Dir, r.Claude.VerifyFindingClaims)
 
 	// 12. Cache result
