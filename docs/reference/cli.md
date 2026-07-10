@@ -537,6 +537,7 @@ planwerk-agent implement --wiki --capture-wiki --yes owner/repo#123
 | `--verify-adversarial` | After implementing, red-team the produced diff for the bugs it introduces using the adversarial-review pass (independent of `--verify`) | `false` |
 | `--no-simplify` | Skip the automatic simplify pass that folds over-engineering removals into the branch before the review phase | `false` |
 | `--no-review` | Skip the automatic review-and-fix pass that folds review findings into the branch after the simplify pass | `false` |
+| `--no-specialists` | Skip the domain-specialist fan-out on the review pass's first round; the adversarial finder still runs | `false` |
 | `--max-review-iterations` | Cap on the review-and-fix loop: each round re-reviews the branch and re-fixes until the finder comes back clean or this bound is hit (`<=0` uses the default of 3) | `0` |
 | `--no-capture` | Skip the read-only capture pass that proposes new wiki review patterns and memory pages (only runs with `--wiki`; writes nothing) | `false` |
 | `--capture-wiki` | Push the accepted capture pages to the wiki instead of only proposing them (off by default — a normal run is propose-only; confirms first, refuses a non-TTY run without `--yes`; env: `PLANWERK_CAPTURE_WIKI`, config: `capture.wiki`) | `false` |
@@ -590,22 +591,42 @@ simplify is a clean no-op (no commit, no issue comment), and the pass is
 non-fatal. Disable it with `--no-simplify`.
 
 The review-and-fix pass runs by default after the simplify pass — a full run is
-**implement → simplify → review → finalize**. The same adversarial-review
-machinery that `--verify-adversarial` uses runs read-only over the produced diff;
-when it finds something, a fresh session resolves each finding and folds the fix
-into the commit it belongs to (`git commit --fixup` + `git rebase --autosquash`)
-on the local branch — no push, since no pull request exists yet. Unlike the
-simplify pass, it is allowed to add regression tests. It runs as a **bounded
-loop**: after each apply it re-reviews the branch it just changed and, while the
-finder still reports findings, fixes them again — stopping when the finder comes
-back clean, when an apply escalates (`STATUS: BLOCKED` / `NEEDS_CONTEXT`), or
+**implement → simplify → review → finalize**. It runs the same finders and the
+same finding hygiene the `review` command runs (package `internal/hygiene`),
+then folds each surviving fix into the commit it belongs to (`git commit --fixup`
++ `git rebase --autosquash`) on the local branch — no push, since no pull request
+exists yet. Unlike the simplify pass, it is allowed to add regression tests.
+
+The **first round** runs the adversarial finder plus the domain-specialist
+fan-out (security, data-migration, testing, performance, api-contract,
+maintainability) concurrently, adaptively gated by the files the branch changed
+(see [Adaptive specialist gating](/explanation/review-methodology#adaptive-specialist-gating))
+and grounded in the same review-pattern catalog a later review of the diff would
+apply. The fan-out is on by default because `implement` runs unattended with
+nobody present to opt in; `--no-specialists` turns it off, and later rounds run
+the cheaper adversarial finder alone regardless, bounding the fan-out's cost to
+the first round.
+
+The merged findings pass through the shared **finding hygiene** — multi-pass
+merge (with its confidence boost and cross-pass provenance), file-less dedup, the
+quote-or-demote snippet gate, and claim verification — and only findings that
+**survive** it are handed to the editing session. Findings that do not survive
+(an unverifiable snippet, a refuted claim) are reported on stdout and on the
+source issue but **never applied** — the restriction is enforced by the harness,
+not requested in the editing session's prompt.
+
+It runs as a **bounded loop**: after each apply it re-reviews the branch it just
+changed and, while the finder still reports actionable findings, fixes them again
+— stopping when the finder comes back clean, when a round yields no findings that
+survive hygiene, when an apply escalates (`STATUS: BLOCKED` / `NEEDS_CONTEXT`), or
 after `--max-review-iterations` rounds (default 3), noting any findings still
 unresolved when the budget runs out. Each round's report is posted as a comment
 on the source issue (best-effort). Nothing to fix on the first round is a clean
 no-op (no commit, no issue comment beyond a short stdout note). The pass is
 non-fatal — a failed or escalated review never changes the run's exit code. The
 read-only `--verify` / `--verify-adversarial` flags remain available for a
-report-only run. Disable the apply behavior with `--no-review`.
+report-only run. Disable the whole pass with `--no-review`, or just the
+first-round specialist fan-out with `--no-specialists`.
 
 When the run uses `--wiki`, a read-only capture pass then proposes new project
 knowledge for the wiki: generalizable review findings become candidate
@@ -706,8 +727,12 @@ and, by construction, only the initially-unblocked Sub Issues run). `--start-at`
 resumes from a chosen Sub Issue, treating Sub Issues ordered before it as
 already-handled unless they are still open. The per–Sub Issue implement runs honor
 the same `--no-simplify` / `--no-review` switches as `implement`, so each diff is
-cleaned and self-reviewed before CI ever sees it. `ship` does not create Sub
-Issues — that stays the job of the [`/planwerk:meta` skill](/how-to/split-a-meta-issue).
+cleaned and self-reviewed before CI ever sees it. `ship` gains no fan-out
+off-switch of its own: each per–Sub Issue run inherits the default-on first-round
+specialist fan-out, and `--no-review` remains the whole-pass switch — so every Sub
+Issue is checked across the same domains and its self-review findings pass the
+same hygiene before any fix lands. `ship` does not create Sub Issues — that stays
+the job of the [`/planwerk:meta` skill](/how-to/split-a-meta-issue).
 
 ## `address`
 

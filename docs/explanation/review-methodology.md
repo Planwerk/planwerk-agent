@@ -89,6 +89,12 @@ skipped with a log line, so a 5-line docs-only PR runs only the two always-on
 specialists instead of all six. When the changed-file set cannot be determined,
 the gate fails open and every specialist runs.
 
+The same fan-out runs inside `implement`'s self-review, on the first round of
+its review-and-fix loop (see [Shared with `implement`'s self-review](#shared-with-the-implement-self-review)).
+Both the adversarial finder and each specialist are also grounded in the
+project's review-pattern catalog, so a pass inspecting a fresh diff applies the
+same patterns a later review of that diff would.
+
 ## Cross-Pass Merge and Dedup
 
 When a secondary pass contributes findings (`--thorough`, `--specialists`, or a
@@ -105,6 +111,10 @@ structure-tier call groups the file-less duplicates by index; the pipeline folds
 each group in Go with the same merge semantics. The dedup call is non-fatal: if
 it fails, the findings ship unmerged.
 
+The merge, dedup, snippet-gate, and claim-verification stages live in the shared
+`internal/hygiene` package, so `implement`'s self-review runs the exact same
+hygiene the reporting path does — see [Shared with `implement`'s self-review](#shared-with-the-implement-self-review).
+
 ## Claim Verification
 
 The snippet gate demotes a finding whose quoted code cannot be found in the
@@ -118,3 +128,24 @@ to `uncertain` confidence with the refutation attached as a `**Claim check**`
 note, which routes it into the Unverified / Low-Confidence section rather than
 dropping it. The pass is fail-open: a failed call publishes the findings
 unchanged.
+
+## Shared with the `implement` self-review
+
+Everything above — the specialist fan-out, the cross-pass merge and dedup, the
+snippet gate, and claim verification — is behavior the `review` command and the
+`implement` command's self-review both run, out of the shared `internal/hygiene`
+package. The distinction is what each command does with the result. `review`
+*reports*: it renders every finding, routing the ones that did not survive
+hygiene into an Unverified section a human can weigh. `implement` *acts*: a
+second session edits the branch to resolve findings, unattended, with no human to
+catch a hallucinated one before it becomes a commit.
+
+That difference is why the acting path treats hygiene as a gate. A finding must
+survive the same stages — merge, dedup, snippet gate, claim verification — before
+`implement`'s editing session may act on it. Findings that do not survive are
+reported (on stdout and on the issue) but never applied: the restriction is
+enforced by the harness, not requested in the editing session's prompt. To bound
+the cost, `implement` runs the fan-out on the first round of its review loop only;
+later rounds re-check the applied fixes with the cheaper adversarial finder alone.
+See [Review-and-Fix Pass](/how-to/implement-an-issue) for the operator's view and
+[design decision 72](/explanation/design-decisions) for the rationale.

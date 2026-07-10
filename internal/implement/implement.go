@@ -1240,7 +1240,7 @@ func (r *Runner) postSimplifyComment(w io.Writer, owner, name string, number int
 // merged findings go through the shared hygiene stage (file-less dedup when a
 // specialist contributed, the snippet gate, claim verification), then are
 // partitioned by Finding.Unverified: only the survivors reach the editing
-// session (design decision 70). Findings the hygiene stage withheld are reported
+// session (design decision 72). Findings the hygiene stage withheld are reported
 // on stdout and on the issue but never applied — the harness enforces the gate
 // rather than asking the editing session to honor it (extending decision 46).
 //
