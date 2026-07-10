@@ -20,30 +20,70 @@ import (
 // leading +/- carried over from git diff output never causes a false demotion.
 // It returns the number of findings demoted.
 //
+// The gate records what it did on the result: every examined finding is stamped
+// with its SnippetCheck outcome (SnippetCheckPassed on a match, one of the
+// snippetReason* strings on a demotion), and the run-level counts land in
+// result.Gates.Snippet so a run where everything passed is distinguishable from
+// one where the gate never ran.
+//
 // When no changed-file content can be loaded (empty diff, unreadable checkout)
-// the gate is skipped entirely and nothing is demoted: without ground truth a
-// "not found" result is meaningless and would spuriously bury every finding.
+// the gate is skipped entirely and nothing is demoted or recorded: without
+// ground truth a "not found" result is meaningless and would spuriously bury
+// every finding, and a nil Gates.Snippet keeps that skip visible.
 func VerifySnippets(result *report.ReviewResult, dir string, changedFiles []string) int {
 	if result == nil {
 		return 0
 	}
 	haystack := normalizeForMatch(loadChangedContent(dir, changedFiles))
 	if haystack == "" {
-		return 0 // no ground truth — do not demote blindly
+		return 0 // no ground truth — do not demote blindly; record nothing
 	}
-	demoted := 0
+	examined, demoted := 0, 0
 	for i := range result.Findings {
 		f := &result.Findings[i]
 		if f.Confidence == report.ConfidenceUncertain {
-			continue // already lowest confidence; nothing to demote
+			continue // already lowest confidence; not examined, not stamped
 		}
-		if snippetPresent(f.CodeSnippet, haystack) {
-			continue
+		examined++
+		// The snippet may be quoted verbatim from `git diff` output, so strip its
+		// leading +/- markers before normalizing (see stripDiffMarkers); the
+		// haystack is on-disk source and is left untouched.
+		needle := normalizeForMatch(stripDiffMarkers(f.CodeSnippet))
+		switch {
+		case needle == "":
+			// A finding with no quoted evidence cannot be confirmed.
+			f.Confidence = report.ConfidenceUncertain
+			f.SnippetCheck = snippetReasonNoQuote
+			demoted++
+		case strings.Contains(haystack, needle):
+			f.SnippetCheck = report.SnippetCheckPassed
+		default:
+			f.Confidence = report.ConfidenceUncertain
+			f.SnippetCheck = snippetReasonNotFound
+			demoted++
 		}
-		f.Confidence = report.ConfidenceUncertain
-		demoted++
 	}
+	ensureGates(result).Snippet = &report.SnippetGateStats{Examined: examined, Demoted: demoted}
 	return demoted
+}
+
+// snippetReason* are the SnippetCheck strings the gate stamps on a demoted
+// finding, kept as constants so the writer, the renderer, and the tests share
+// one spelling. snippetReasonNoQuote covers a finding whose quoted evidence is
+// empty or whitespace-only; snippetReasonNotFound covers a snippet absent from
+// the changed files.
+const (
+	snippetReasonNoQuote  = "demoted: the finding quotes no code to verify"
+	snippetReasonNotFound = "demoted: quoted code not found in the changed files"
+)
+
+// ensureGates returns result.Gates, allocating it on first use so each gate can
+// record into a shared object without the caller pre-initializing it.
+func ensureGates(result *report.ReviewResult) *report.GateStats {
+	if result.Gates == nil {
+		result.Gates = &report.GateStats{}
+	}
+	return result.Gates
 }
 
 // loadChangedContent reads and concatenates the current (HEAD) content of every
@@ -66,20 +106,6 @@ func loadChangedContent(dir string, changedFiles []string) string {
 		sb.WriteByte('\n')
 	}
 	return sb.String()
-}
-
-// snippetPresent reports whether snippet appears in the already-normalized
-// haystack. An empty or whitespace-only snippet is treated as unverifiable
-// (false) so the finding is demoted: a finding with no quoted evidence cannot
-// be confirmed. The snippet's leading diff markers are stripped before
-// normalizing — it may be quoted verbatim from `git diff` output — while the
-// haystack (on-disk source) is left untouched.
-func snippetPresent(snippet, normalizedHaystack string) bool {
-	needle := normalizeForMatch(stripDiffMarkers(snippet))
-	if needle == "" {
-		return false
-	}
-	return strings.Contains(normalizedHaystack, needle)
 }
 
 // stripDiffMarkers removes the single leading diff column ('+' or '-') each line
