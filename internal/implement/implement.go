@@ -1458,9 +1458,17 @@ func unverifiedSection(findings []report.Finding) string {
 			_, _ = fmt.Fprintf(&sb, " (%s)", f.File)
 		}
 		sb.WriteString("\n")
+		// Prefer the gate's own record of why it withheld the finding: a refuted
+		// claim's note, then the snippet gate's recorded demotion reason, and only
+		// then a generic fallback — which now describes its one remaining case, a
+		// finding the model itself rated uncertain that no gate demoted.
 		note := f.VerificationNote
-		if note == "" {
-			note = "did not survive snippet verification (no verifiable evidence in the changed files)"
+		switch {
+		case note != "":
+		case f.SnippetCheck != "" && f.SnippetCheck != report.SnippetCheckPassed:
+			note = f.SnippetCheck
+		default:
+			note = "uncertain-confidence finding — below the apply gate's bar"
 		}
 		_, _ = fmt.Fprintf(&sb, "  %s\n", note)
 	}

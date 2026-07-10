@@ -3109,8 +3109,10 @@ func TestRun_ReviewSnippetGateDemotesUnquotedFinding(t *testing.T) {
 	if ra.called.Load() != 0 {
 		t.Errorf("applier ran %d times, want 0 — the unquoted finding is withheld", ra.called.Load())
 	}
-	if !strings.Contains(buf.String(), "unquoted claim") || !strings.Contains(buf.String(), "snippet verification") {
-		t.Errorf("stdout missing the snippet-demoted finding:\n%s", buf.String())
+	// The withheld finding now carries the snippet gate's own recorded reason
+	// rather than a guessed one.
+	if !strings.Contains(buf.String(), "unquoted claim") || !strings.Contains(buf.String(), "quoted code not found in the changed files") {
+		t.Errorf("stdout missing the snippet-demoted finding and its recorded reason:\n%s", buf.String())
 	}
 }
 
