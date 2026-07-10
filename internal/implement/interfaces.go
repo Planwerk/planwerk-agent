@@ -216,6 +216,30 @@ type SpecialistResult struct {
 	Result *report.ReviewResult
 }
 
+// SpecialistReviewer runs the domain-specialist fan-out over the produced diff,
+// returning the successful, adaptively-gated results. The review-and-fix pass
+// runs it on the loop's first round only (paired with the adversarial finder) to
+// widen the self-review to the same domains the review command checks, then
+// bounds the cost by running the cheaper adversarial finder alone on later
+// rounds. The production implementation is claude.Client.SpecialistReviews; a
+// nil SpecialistReviewer (or opts.NoSpecialists) leaves the fan-out disabled and
+// the round runs the adversarial finder alone.
+type SpecialistReviewer interface {
+	SpecialistReviews(dir, baseBranch string, changedFiles []string, pats []patterns.Pattern, maxPatterns int) ([]SpecialistResult, error)
+}
+
+// SpecialistReviewsFn is the bare-function form of SpecialistReviewer. It matches
+// claude.SpecialistReviews so the CLI can wire it directly.
+type SpecialistReviewsFn func(dir, baseBranch string, changedFiles []string, pats []patterns.Pattern, maxPatterns int) ([]SpecialistResult, error)
+
+type specialistReviewsFnAdapter struct {
+	fn SpecialistReviewsFn
+}
+
+func (a specialistReviewsFnAdapter) SpecialistReviews(dir, baseBranch string, changedFiles []string, pats []patterns.Pattern, maxPatterns int) ([]SpecialistResult, error) {
+	return a.fn(dir, baseBranch, changedFiles, pats, maxPatterns)
+}
+
 // SimplifyApplyContext is the input for the Claude simplify-apply session: the
 // simplification findings to fold into the local feature branch and the pattern
 // catalog so the apply session stays consistent with the same review patterns
@@ -408,6 +432,12 @@ type GitHubClient interface {
 	PrepareResume(dir string, number int) (*github.ResumeState, error)
 	CurrentFeatureProgress(dir string) (*github.ResumeState, error)
 	PushBranch(dir, branch string) error
+	// ChangedFiles lists the repo-relative paths the feature branch changed over
+	// the base branch, so the review pass can adaptively gate its specialist
+	// fan-out and scope the snippet gate to the changed files. It maps to the same
+	// git diff FetchAndCheckout runs; an empty base yields nil (both gates fail
+	// open on a missing signal).
+	ChangedFiles(dir, baseBranch string) ([]string, error)
 }
 
 // defaultGitHubClient is the production GitHubClient backed by the github
@@ -452,4 +482,8 @@ func (defaultGitHubClient) CurrentFeatureProgress(dir string) (*github.ResumeSta
 
 func (defaultGitHubClient) PushBranch(dir, branch string) error {
 	return github.PushHead(dir, branch)
+}
+
+func (defaultGitHubClient) ChangedFiles(dir, baseBranch string) ([]string, error) {
+	return github.DiffNames(dir, baseBranch)
 }
