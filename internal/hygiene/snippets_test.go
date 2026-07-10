@@ -163,3 +163,63 @@ func TestVerifySnippets_NilResult(t *testing.T) {
 		t.Errorf("demoted = %d, want 0 for a nil result", n)
 	}
 }
+
+// TestVerifySnippets_RecoversOutsideDiff locks the checkout-wide fallback: a real
+// finding whose quoted code lives in a file the change did NOT modify (the
+// cross-file class the changed-files haystack is blind to) must be verified and
+// left actionable, not demoted — while a snippet found nowhere in the checkout
+// is still demoted.
+func TestVerifySnippets_RecoversOutsideDiff(t *testing.T) {
+	dir := t.TempDir()
+	// The changed file — a new caller added by the diff.
+	writeChangedFile(t, dir, "internal/svc/reconciler.go", "func sweep() {\n\tfor range xs {\n\t\texec.Record()\n\t}\n}\n")
+	// An UNCHANGED file elsewhere in the checkout holding the quoted evidence.
+	writeChangedFile(t, dir, "internal/svc/execution.go", "func (e Execution) Record() {\n\tinvocations := make([]Inv, len(e.invocations))\n\tcopy(invocations, e.invocations)\n}\n")
+
+	result := &report.ReviewResult{
+		Findings: []report.Finding{
+			// Evidence in the unchanged file → recovered, not demoted.
+			{Title: "cross-file", Confidence: report.ConfidenceLikely, CodeSnippet: "invocations := make([]Inv, len(e.invocations))"},
+			// Evidence in the changed file → passes on the primary haystack.
+			{Title: "in-diff", Confidence: report.ConfidenceLikely, CodeSnippet: "exec.Record()"},
+			// Nowhere in the checkout → still demoted as hallucinated.
+			{Title: "hallucinated", Confidence: report.ConfidenceLikely, CodeSnippet: "user.DeleteAllRecords()"},
+		},
+	}
+
+	// Only reconciler.go is in the change set; execution.go is not.
+	demoted := VerifySnippets(result, dir, []string{"internal/svc/reconciler.go"})
+	if demoted != 1 {
+		t.Errorf("demoted = %d, want 1 (only the hallucinated finding)", demoted)
+	}
+	wantConf := map[string]report.Confidence{
+		"cross-file":   report.ConfidenceLikely,    // recovered → confidence untouched
+		"in-diff":      report.ConfidenceLikely,    // passed on the diff
+		"hallucinated": report.ConfidenceUncertain, // demoted
+	}
+	wantCheck := map[string]string{
+		"cross-file":   snippetPassedOutsideDiff,
+		"in-diff":      report.SnippetCheckPassed,
+		"hallucinated": snippetReasonNotFound,
+	}
+	for _, f := range result.Findings {
+		if f.Confidence != wantConf[f.Title] {
+			t.Errorf("%s: confidence = %q, want %q", f.Title, f.Confidence, wantConf[f.Title])
+		}
+		if f.SnippetCheck != wantCheck[f.Title] {
+			t.Errorf("%s: snippet check = %q, want %q", f.Title, f.SnippetCheck, wantCheck[f.Title])
+		}
+	}
+	// A recovered finding is NOT unverified — it must survive the apply gate.
+	for _, f := range result.Findings {
+		if f.Title == "cross-file" && f.Unverified() {
+			t.Error("cross-file finding recovered from the checkout must not be Unverified")
+		}
+	}
+	if result.Gates == nil || result.Gates.Snippet == nil {
+		t.Fatalf("gate stats not recorded: %+v", result.Gates)
+	}
+	if got := *result.Gates.Snippet; got != (report.SnippetGateStats{Examined: 3, Demoted: 1, RecoveredOutsideDiff: 1}) {
+		t.Errorf("snippet stats = %+v, want {Examined:3 Demoted:1 RecoveredOutsideDiff:1}", got)
+	}
+}

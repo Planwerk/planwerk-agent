@@ -290,13 +290,18 @@ type GateStats struct {
 }
 
 // SnippetGateStats records the quote-or-demote gate's per-run counts: how many
-// findings it Examined and the Demoted subset whose quoted code it could not
-// locate in the changed files. Both are recorded even when zero, so a gate that
-// ran but demoted nothing is distinguishable from one that never ran (a nil
-// SnippetGateStats).
+// findings it Examined, the Demoted subset whose quoted code it could locate
+// neither in the changed files nor anywhere else in the checkout, and the
+// RecoveredOutsideDiff subset whose quoted code was absent from the changed
+// files but found elsewhere in the checkout — a verified cross-file finding that
+// is kept, not demoted. Examined and Demoted are recorded even when zero, so a
+// gate that ran but demoted nothing is distinguishable from one that never ran
+// (a nil SnippetGateStats); RecoveredOutsideDiff is omitted when zero since the
+// fallback is the exception, not the norm.
 type SnippetGateStats struct {
-	Examined int `json:"examined"`
-	Demoted  int `json:"demoted"`
+	Examined             int `json:"examined"`
+	Demoted              int `json:"demoted"`
+	RecoveredOutsideDiff int `json:"recovered_outside_diff,omitempty"`
 }
 
 // ClaimGateStats records the claim-verification gate's per-run counts: how many

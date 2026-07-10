@@ -3088,7 +3088,8 @@ func TestRun_ReviewAllFindingsUnverifiedSkipsApply(t *testing.T) {
 }
 
 // TestRun_ReviewSnippetGateDemotesUnquotedFinding proves the snippet gate
-// withholds a finding whose quoted code is absent from the changed files.
+// withholds a finding whose quoted code is absent from the changed files and
+// from the rest of the checkout (the whole-checkout fallback finds it nowhere).
 func TestRun_ReviewSnippetGateDemotesUnquotedFinding(t *testing.T) {
 	gh := reviewGH(t)
 	gh.changedFiles = []string{"foo.go"}
@@ -3111,7 +3112,7 @@ func TestRun_ReviewSnippetGateDemotesUnquotedFinding(t *testing.T) {
 	}
 	// The withheld finding now carries the snippet gate's own recorded reason
 	// rather than a guessed one.
-	if !strings.Contains(buf.String(), "unquoted claim") || !strings.Contains(buf.String(), "quoted code not found in the changed files") {
+	if !strings.Contains(buf.String(), "unquoted claim") || !strings.Contains(buf.String(), "quoted code not found in the checkout") {
 		t.Errorf("stdout missing the snippet-demoted finding and its recorded reason:\n%s", buf.String())
 	}
 }
