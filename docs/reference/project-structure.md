@@ -67,6 +67,11 @@ planwerk-agent/
 │   │   ├── repo_test.go
 │   │   ├── review.go           # Submit PR reviews via GitHub Review API
 │   │   └── review_test.go
+│   ├── hygiene/                # Shared finding hygiene (review + implement self-review)
+│   │   ├── merge.go            # Multi-pass merge, confidence boost, ConfirmedBy provenance
+│   │   ├── dedup.go            # File-less duplicate fold (DedupFileless)
+│   │   ├── snippets.go         # Quote-or-demote snippet gate (VerifySnippets)
+│   │   └── claims.go           # Claim verification demotion (VerifyClaims, ClaimVerdict)
 │   ├── patterns/
 │   │   ├── embedded.go         # //go:embed all:patterns + loadEmbedded()
 │   │   ├── loader.go           # Load patterns from directories
