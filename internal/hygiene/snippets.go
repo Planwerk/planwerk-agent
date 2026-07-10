@@ -27,9 +27,10 @@ import (
 // snippetPassedOutsideDiff so the outside-diff provenance stays visible. Only a
 // snippet found nowhere in the checkout is demoted.
 //
-// Matching is whitespace- and diff-marker-insensitive so indentation or a
-// leading +/- carried over from git diff output never causes a false demotion.
-// It returns the number of findings demoted.
+// Matching is whitespace-, diff-marker-, and line-comment-marker-insensitive so
+// indentation, a leading +/- carried over from git diff output, or the interior
+// // markers a multi-line comment carries at each line break never cause a false
+// demotion. It returns the number of findings demoted.
 //
 // The gate records what it did on the result: every examined finding is stamped
 // with its SnippetCheck outcome (SnippetCheckPassed on a match, one of the
@@ -45,7 +46,7 @@ func VerifySnippets(result *report.ReviewResult, dir string, changedFiles []stri
 	if result == nil {
 		return 0
 	}
-	changedHaystack := normalizeForMatch(loadChangedContent(dir, changedFiles))
+	changedHaystack := matchable(loadChangedContent(dir, changedFiles))
 	if changedHaystack == "" {
 		return 0 // no ground truth — do not demote blindly; record nothing
 	}
@@ -61,10 +62,11 @@ func VerifySnippets(result *report.ReviewResult, dir string, changedFiles []stri
 			continue // already lowest confidence; not examined, not stamped
 		}
 		examined++
-		// The snippet may be quoted verbatim from `git diff` output, so strip its
-		// leading +/- markers before normalizing (see stripDiffMarkers); the
-		// haystack is on-disk source and is left untouched.
-		needle := normalizeForMatch(stripDiffMarkers(f.CodeSnippet))
+		// matchableSnippet strips the snippet's leading +/- diff markers and its
+		// line-comment markers before whitespace normalization, so a snippet quoted
+		// verbatim from `git diff` output — or a multi-line // comment quoted as
+		// prose — still matches the on-disk source.
+		needle := matchableSnippet(f.CodeSnippet)
 		switch {
 		case needle == "":
 			// A finding with no quoted evidence cannot be confirmed.
@@ -78,7 +80,7 @@ func VerifySnippets(result *report.ReviewResult, dir string, changedFiles []stri
 			// cross-file finding (its evidence in a file the change references but
 			// did not modify) is verified rather than demoted as hallucinated.
 			if !checkoutTried {
-				checkoutHaystack = normalizeForMatch(loadCheckoutContent(dir))
+				checkoutHaystack = matchable(loadCheckoutContent(dir))
 				checkoutTried = true
 			}
 			if checkoutHaystack != "" && strings.Contains(checkoutHaystack, needle) {
@@ -236,10 +238,44 @@ func stripDiffMarkers(s string) string {
 	return strings.Join(lines, "\n")
 }
 
+// stripLineComments removes a leading // line-comment marker (after any
+// indentation) from each line, so a multi-line // comment collapses to its prose
+// and a finding that quotes the comment without reproducing the interior // at
+// each line break still matches. Unlike stripDiffMarkers it is applied to BOTH
+// the haystack and the needle, so the two converge. Only // is stripped — not #,
+// *, or -- — because those collide with legitimate leading content (a Markdown
+// bullet, a diff marker) and would loosen the match past the point the
+// quote-or-demote gate can still prove a snippet is real.
+func stripLineComments(s string) string {
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		if trimmed := strings.TrimLeft(line, " \t"); strings.HasPrefix(trimmed, "//") {
+			lines[i] = trimmed[2:]
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// matchable renders on-disk source (a haystack) into the comparison form: line
+// comments and all whitespace removed. Both the changed-files and checkout
+// haystacks pass through it so they compare identically to a needle.
+func matchable(s string) string {
+	return normalizeForMatch(stripLineComments(s))
+}
+
+// matchableSnippet renders a finding's quoted snippet into the same comparison
+// form as matchable, first stripping the leading +/- diff markers a snippet
+// quoted verbatim from `git diff` output carries (see stripDiffMarkers). Diff
+// markers are stripped from the needle only; comment markers and whitespace from
+// both sides.
+func matchableSnippet(s string) string {
+	return normalizeForMatch(stripLineComments(stripDiffMarkers(s)))
+}
+
 // normalizeForMatch strips every whitespace character so matching ignores
-// indentation and line breaks. The haystack passes through it directly; the
-// needle is marker-stripped first (see stripDiffMarkers), so a snippet quoted
-// verbatim from git diff output still matches the on-disk source.
+// indentation and line breaks. It is the final step of matchable (haystack) and
+// matchableSnippet (needle), which first remove comment and diff markers so both
+// sides compare identically.
 func normalizeForMatch(s string) string {
 	return strings.Map(func(r rune) rune {
 		switch r {
