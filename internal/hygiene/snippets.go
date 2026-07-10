@@ -1,4 +1,4 @@
-package review
+package hygiene
 
 import (
 	"os"
@@ -8,8 +8,8 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
-// verifyFindingSnippets enforces the quote-or-demote gate (#23): a finding
-// whose code_snippet cannot be located in the changed files is downgraded to
+// VerifySnippets enforces the quote-or-demote gate (#23): a finding whose
+// code_snippet cannot be located in the changed files is downgraded to
 // "uncertain" confidence — never dropped — so the renderer routes it to the
 // Unverified section. This targets the largest false-positive class in LLM
 // review (a hallucinated "this symbol does not exist" finding quotes code that
@@ -23,7 +23,7 @@ import (
 // When no changed-file content can be loaded (empty diff, unreadable checkout)
 // the gate is skipped entirely and nothing is demoted: without ground truth a
 // "not found" result is meaningless and would spuriously bury every finding.
-func verifyFindingSnippets(result *report.ReviewResult, dir string, changedFiles []string) int {
+func VerifySnippets(result *report.ReviewResult, dir string, changedFiles []string) int {
 	if result == nil {
 		return 0
 	}

@@ -3,6 +3,7 @@ package review
 import (
 	"github.com/planwerk/planwerk-agent/internal/claude"
 	"github.com/planwerk/planwerk-agent/internal/github"
+	"github.com/planwerk/planwerk-agent/internal/hygiene"
 	"github.com/planwerk/planwerk-agent/internal/planwerk"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
@@ -25,7 +26,7 @@ type ClaudeRunner interface {
 	// VerifyFindingClaims re-checks each finding's claim against the checkout at
 	// dir, returning one verdict per finding it judged (keyed by index). It reads
 	// the cited code, so it runs on the main tier.
-	VerifyFindingClaims(dir string, findings []report.Finding) ([]claude.ClaimVerdict, error)
+	VerifyFindingClaims(dir string, findings []report.Finding) ([]hygiene.ClaimVerdict, error)
 	// UsageTotals reports the per-Run Claude token usage and estimated cost
 	// accumulated across this runner's calls, for embedding in the data block.
 	UsageTotals() report.Usage
@@ -75,7 +76,7 @@ func (r defaultClaudeRunner) DedupFindings(findings []report.Finding) ([][]int, 
 	return r.client.DedupFindings(findings)
 }
 
-func (r defaultClaudeRunner) VerifyFindingClaims(dir string, findings []report.Finding) ([]claude.ClaimVerdict, error) {
+func (r defaultClaudeRunner) VerifyFindingClaims(dir string, findings []report.Finding) ([]hygiene.ClaimVerdict, error) {
 	return r.client.VerifyFindingClaims(dir, findings)
 }
 

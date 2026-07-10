@@ -7,6 +7,7 @@ import (
 
 	"github.com/planwerk/planwerk-agent/internal/claude"
 	"github.com/planwerk/planwerk-agent/internal/github"
+	"github.com/planwerk/planwerk-agent/internal/hygiene"
 	"github.com/planwerk/planwerk-agent/internal/planwerk"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
@@ -83,7 +84,7 @@ func (mockClaude) DedupFindings(findings []report.Finding) ([][]int, error) {
 	panic("mockClaude.DedupFindings called unexpectedly")
 }
 
-func (mockClaude) VerifyFindingClaims(dir string, findings []report.Finding) ([]claude.ClaimVerdict, error) {
+func (mockClaude) VerifyFindingClaims(dir string, findings []report.Finding) ([]hygiene.ClaimVerdict, error) {
 	panic("mockClaude.VerifyFindingClaims called unexpectedly")
 }
 

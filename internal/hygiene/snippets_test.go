@@ -1,4 +1,4 @@
-package review
+package hygiene
 
 import (
 	"os"
@@ -19,7 +19,7 @@ func writeChangedFile(t *testing.T, dir, rel, content string) {
 	}
 }
 
-func TestVerifyFindingSnippets(t *testing.T) {
+func TestVerifySnippets(t *testing.T) {
 	dir := t.TempDir()
 	writeChangedFile(t, dir, "internal/foo/foo.go", "func Foo() error {\n\treturn db.Exec(query)\n}\n")
 
@@ -36,7 +36,7 @@ func TestVerifyFindingSnippets(t *testing.T) {
 		},
 	}
 
-	demoted := verifyFindingSnippets(result, dir, []string{"internal/foo/foo.go"})
+	demoted := VerifySnippets(result, dir, []string{"internal/foo/foo.go"})
 	if demoted != 2 {
 		t.Errorf("demoted = %d, want 2 (hallucinated + no-snippet)", demoted)
 	}
@@ -53,11 +53,11 @@ func TestVerifyFindingSnippets(t *testing.T) {
 	}
 }
 
-// TestVerifyFindingSnippets_DiffMarkers locks the quote-or-demote gate against
+// TestVerifySnippets_DiffMarkers locks the quote-or-demote gate against
 // snippets that carry leading +/- diff markers (issue #156, defect 1): a
 // finding quoting its snippet verbatim from `git diff` output must pass the
 // gate rather than be falsely demoted to uncertain.
-func TestVerifyFindingSnippets_DiffMarkers(t *testing.T) {
+func TestVerifySnippets_DiffMarkers(t *testing.T) {
 	dir := t.TempDir()
 	writeChangedFile(t, dir, "internal/foo/foo.go", "func Foo() error {\n\treturn db.Exec(query)\n}\n")
 	writeChangedFile(t, dir, "docs/list.md", "- item one\n- item two\n")
@@ -93,7 +93,7 @@ func TestVerifyFindingSnippets_DiffMarkers(t *testing.T) {
 					{Title: tc.name, Confidence: report.ConfidenceVerified, CodeSnippet: tc.snippet},
 				},
 			}
-			verifyFindingSnippets(result, dir, changed)
+			VerifySnippets(result, dir, changed)
 			if got := result.Findings[0].Confidence; got != tc.want {
 				t.Errorf("confidence = %q, want %q", got, tc.want)
 			}
@@ -101,7 +101,7 @@ func TestVerifyFindingSnippets_DiffMarkers(t *testing.T) {
 	}
 }
 
-func TestVerifyFindingSnippets_NoGroundTruthSkips(t *testing.T) {
+func TestVerifySnippets_NoGroundTruthSkips(t *testing.T) {
 	dir := t.TempDir() // no changed files written
 	result := &report.ReviewResult{
 		Findings: []report.Finding{
@@ -109,7 +109,7 @@ func TestVerifyFindingSnippets_NoGroundTruthSkips(t *testing.T) {
 		},
 	}
 	// Empty/unreadable change set → gate is skipped, nothing demoted.
-	if n := verifyFindingSnippets(result, dir, []string{"missing.go"}); n != 0 {
+	if n := VerifySnippets(result, dir, []string{"missing.go"}); n != 0 {
 		t.Errorf("demoted = %d, want 0 when no content can be loaded", n)
 	}
 	if result.Findings[0].Confidence != report.ConfidenceVerified {
@@ -117,7 +117,7 @@ func TestVerifyFindingSnippets_NoGroundTruthSkips(t *testing.T) {
 	}
 }
 
-func TestVerifyFindingSnippets_PathEscapeIgnored(t *testing.T) {
+func TestVerifySnippets_PathEscapeIgnored(t *testing.T) {
 	dir := t.TempDir()
 	writeChangedFile(t, dir, "ok.go", "safeContent()")
 	result := &report.ReviewResult{
@@ -125,7 +125,14 @@ func TestVerifyFindingSnippets_PathEscapeIgnored(t *testing.T) {
 	}
 	// A path-escaping entry must be skipped without panicking; the in-tree file
 	// still provides the haystack so the legitimate finding survives.
-	if n := verifyFindingSnippets(result, dir, []string{"../../../etc/passwd", "ok.go"}); n != 0 {
+	if n := VerifySnippets(result, dir, []string{"../../../etc/passwd", "ok.go"}); n != 0 {
 		t.Errorf("demoted = %d, want 0", n)
+	}
+}
+
+func TestVerifySnippets_NilResult(t *testing.T) {
+	// A nil result is a documented no-op; it must not panic.
+	if n := VerifySnippets(nil, t.TempDir(), []string{"ok.go"}); n != 0 {
+		t.Errorf("demoted = %d, want 0 for a nil result", n)
 	}
 }
