@@ -559,7 +559,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		r.runVerification(w, repo.Dir, ctx)
 	}
 	if opts.VerifyAdversarial && r.AdversarialVerifier != nil {
-		r.runAdversarialVerification(w, repo.Dir)
+		r.runAdversarialVerification(w, repo.Dir, ctx)
 	}
 
 	// Finalize: open the draft pull request last, so it lands already simplified
@@ -1014,10 +1014,11 @@ func renderVerification(w io.Writer, result *report.ReviewResult) {
 // machinery, and prints its verdict. Like the acceptance-criteria pass it is
 // non-fatal — the implementation already happened, and a red-team failure must
 // not mask it. The base branch is left empty so AdversarialReview falls back to
-// the repository's default branch.
-func (r *Runner) runAdversarialVerification(w io.Writer, dir string) {
+// the repository's default branch. It grounds the finder in the same pattern
+// catalog the review-and-fix pass uses (ctx.Patterns/MaxPatterns).
+func (r *Runner) runAdversarialVerification(w io.Writer, dir string, ctx Context) {
 	slog.Info("running adversarial verification over the produced diff")
-	result, err := r.AdversarialVerifier.AdversarialReview(dir, "")
+	result, err := r.AdversarialVerifier.AdversarialReview(dir, "", ctx.Patterns, ctx.MaxPatterns)
 	if err != nil {
 		slog.Warn("adversarial verification failed", "err", err)
 		_, _ = fmt.Fprintf(w, "\nAdversarial verification could not run: %v\n", err)
@@ -1232,7 +1233,7 @@ func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx
 
 	var allFindings []report.Finding
 	for i := 1; i <= maxIter; i++ {
-		result, err := r.AdversarialVerifier.AdversarialReview(dir, branch.BaseBranch)
+		result, err := r.AdversarialVerifier.AdversarialReview(dir, branch.BaseBranch, ctx.Patterns, ctx.MaxPatterns)
 		if err != nil {
 			slog.Warn("review finder failed", "iteration", i, "err", err)
 			_, _ = fmt.Fprintf(w, "\nReview pass could not run: %v\n", err)

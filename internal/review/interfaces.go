@@ -4,6 +4,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/claude"
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/hygiene"
+	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/planwerk"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
@@ -15,10 +16,10 @@ import (
 // review pipeline.
 type ClaudeRunner interface {
 	Review(dir string, ctx claude.ReviewContext) (*report.ReviewResult, error)
-	AdversarialReview(dir, baseBranch string) (*report.ReviewResult, error)
+	AdversarialReview(dir, baseBranch string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error)
 	CoverageMap(dir, baseBranch string) (*report.CoverageResult, error)
 	FeatureCompliance(dir, baseBranch string, feature *planwerk.Feature) (*report.ReviewResult, error)
-	SpecialistReview(dir, baseBranch, key, focus string) (*report.ReviewResult, error)
+	SpecialistReview(dir, baseBranch, key, focus string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error)
 	// DedupFindings groups findings that describe the same underlying issue,
 	// returning index groups into the passed slice. It backstops the fuzzy
 	// merge matcher for findings with no file to anchor on.
@@ -56,16 +57,16 @@ func (r defaultClaudeRunner) Review(dir string, ctx claude.ReviewContext) (*repo
 	return r.client.Review(dir, ctx)
 }
 
-func (r defaultClaudeRunner) AdversarialReview(dir, baseBranch string) (*report.ReviewResult, error) {
-	return r.client.AdversarialReview(dir, baseBranch)
+func (r defaultClaudeRunner) AdversarialReview(dir, baseBranch string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
+	return r.client.AdversarialReview(dir, baseBranch, pats, maxPatterns)
 }
 
 func (r defaultClaudeRunner) CoverageMap(dir, baseBranch string) (*report.CoverageResult, error) {
 	return r.client.CoverageMap(dir, baseBranch)
 }
 
-func (r defaultClaudeRunner) SpecialistReview(dir, baseBranch, key, focus string) (*report.ReviewResult, error) {
-	return r.client.SpecialistReview(dir, baseBranch, key, focus)
+func (r defaultClaudeRunner) SpecialistReview(dir, baseBranch, key, focus string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
+	return r.client.SpecialistReview(dir, baseBranch, key, focus, pats, maxPatterns)
 }
 
 func (r defaultClaudeRunner) FeatureCompliance(dir, baseBranch string, feature *planwerk.Feature) (*report.ReviewResult, error) {

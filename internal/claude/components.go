@@ -5,8 +5,25 @@ import (
 	"strings"
 
 	"github.com/planwerk/planwerk-agent/internal/attribution"
+	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/skills"
 )
+
+// finderPatternCatalog renders the project review-pattern catalog for a finder
+// prompt (the adversarial pass or a domain specialist), wrapped in the shared
+// <review-patterns> tags the audit and apply prompts use. intro frames the
+// catalog as grounding — not widening — the finder's existing focus: it points
+// the pass at the same patterns a later review of this diff would apply, while
+// the finder's own Focus ONLY / domain rules still bound what it reports.
+// Returns "" when the catalog is empty, so a run without patterns is unchanged.
+func finderPatternCatalog(intro string, pats []patterns.Pattern, maxPatterns int) string {
+	if len(pats) == 0 {
+		return ""
+	}
+	return intro + "\n\n<review-patterns>\n" +
+		patterns.FormatGroupedForPrompt(pats, maxPatterns) +
+		"</review-patterns>\n\n"
+}
 
 // This file holds prompt building blocks that are shared across more than one
 // prompt builder. Keeping them in one place stops the copies from drifting

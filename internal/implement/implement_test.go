@@ -31,6 +31,9 @@ func (f *fakeVerifier) VerifyImplementation(dir, issueTitle, issueBody string) (
 type fakeAdversarialVerifier struct {
 	called atomic.Int32
 	base   string
+	// pats records the pattern catalog the finder last received, so a test can
+	// assert the review-and-fix pass grounds the adversarial finder in it.
+	pats []patterns.Pattern
 	// result is returned on every call. results, when non-empty, scripts a
 	// per-call sequence instead: call N (1-based) returns results[N-1], with the
 	// last element repeating once the sequence is exhausted. This lets the review
@@ -40,9 +43,10 @@ type fakeAdversarialVerifier struct {
 	err     error
 }
 
-func (f *fakeAdversarialVerifier) AdversarialReview(dir, baseBranch string) (*report.ReviewResult, error) {
+func (f *fakeAdversarialVerifier) AdversarialReview(dir, baseBranch string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
 	n := int(f.called.Add(1))
 	f.base = baseBranch
+	f.pats = pats
 	if f.err != nil {
 		return nil, f.err
 	}

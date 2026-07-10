@@ -8,6 +8,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/claude"
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/hygiene"
+	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/planwerk"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
@@ -64,7 +65,7 @@ func (mockClaude) Review(dir string, ctx claude.ReviewContext) (*report.ReviewRe
 	panic("mockClaude.Review called unexpectedly")
 }
 
-func (mockClaude) AdversarialReview(dir, baseBranch string) (*report.ReviewResult, error) {
+func (mockClaude) AdversarialReview(dir, baseBranch string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
 	panic("mockClaude.AdversarialReview called unexpectedly")
 }
 
@@ -76,7 +77,7 @@ func (mockClaude) FeatureCompliance(dir, baseBranch string, feature *planwerk.Fe
 	panic("mockClaude.FeatureCompliance called unexpectedly")
 }
 
-func (mockClaude) SpecialistReview(dir, baseBranch, key, focus string) (*report.ReviewResult, error) {
+func (mockClaude) SpecialistReview(dir, baseBranch, key, focus string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
 	panic("mockClaude.SpecialistReview called unexpectedly")
 }
 

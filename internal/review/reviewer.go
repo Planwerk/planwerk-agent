@@ -311,7 +311,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	})
 	if opts.Thorough {
 		g.Go(func() error {
-			advResult, advErr = r.Claude.AdversarialReview(pr.Dir, pr.BaseBranch)
+			advResult, advErr = r.Claude.AdversarialReview(pr.Dir, pr.BaseBranch, pats, opts.MaxPatterns)
 			return nil
 		})
 	}
@@ -336,7 +336,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 				continue
 			}
 			g.Go(func() error {
-				res, err := r.Claude.SpecialistReview(pr.Dir, pr.BaseBranch, sp.Key, sp.Focus)
+				res, err := r.Claude.SpecialistReview(pr.Dir, pr.BaseBranch, sp.Key, sp.Focus, pats, opts.MaxPatterns)
 				if err != nil {
 					// A failed specialist must not sink the whole review.
 					slog.Warn("specialist review failed", "specialist", sp.Key, "err", err)
