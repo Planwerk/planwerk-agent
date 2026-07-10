@@ -172,6 +172,27 @@ func TestRun_VerifyClaimsDemotesRefuted(t *testing.T) {
 	if got := byID["B-001"]; got.VerificationNote != "" {
 		t.Errorf("confirmed B-001 must be untouched, got note=%q", got.VerificationNote)
 	}
+	// The per-finding records and run-level counts travel with the cached result,
+	// so a later reader computes the refuted/sent ratio from history — including
+	// the confirmation the old log-only path never persisted.
+	if cached.Gates == nil || cached.Gates.Claim == nil {
+		t.Fatalf("cached result missing claim gate stats: %+v", cached.Gates)
+	}
+	if got := *cached.Gates.Claim; got != (report.ClaimGateStats{Sent: 2, Verdicts: 2, Refuted: 1}) {
+		t.Errorf("cached claim stats = %+v, want {Sent:2 Verdicts:2 Refuted:1}", got)
+	}
+	if cached.Gates.Snippet != nil {
+		t.Errorf("snippet gate must not run without changed files (nil = skipped), got %+v", cached.Gates.Snippet)
+	}
+	if byID["C-001"].ClaimCheck != report.ClaimCheckRefuted {
+		t.Errorf("refuted C-001 claim_check = %q, want refuted", byID["C-001"].ClaimCheck)
+	}
+	if byID["B-001"].ClaimCheck != report.ClaimCheckConfirmed {
+		t.Errorf("confirmed B-001 claim_check = %q, want confirmed", byID["B-001"].ClaimCheck)
+	}
+	if byID["W-001"].ClaimCheck != "" {
+		t.Errorf("WARNING W-001 must not be sent or stamped, got %q", byID["W-001"].ClaimCheck)
+	}
 }
 
 func TestRun_VerifyClaims_ErrorIsNonFatal(t *testing.T) {
@@ -199,6 +220,18 @@ func TestRun_VerifyClaims_ErrorIsNonFatal(t *testing.T) {
 	cached, ok := cache.Get(cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA), 0)
 	if !ok || len(cached.Findings) != 1 || cached.Findings[0].Confidence != report.ConfidenceVerified {
 		t.Fatalf("finding must survive a failed verification unchanged, got ok=%v %+v", ok, cached.Findings)
+	}
+	// The fail-open case is now visible in the cache: the gate ran (Sent=1) but
+	// the verifier returned nothing (Verdicts=0), and the finding stays
+	// no-verdict — distinct from a run that verified and confirmed.
+	if cached.Gates == nil || cached.Gates.Claim == nil {
+		t.Fatalf("cached result missing claim gate stats after a failed verify: %+v", cached.Gates)
+	}
+	if got := *cached.Gates.Claim; got != (report.ClaimGateStats{Sent: 1}) {
+		t.Errorf("cached claim stats = %+v, want {Sent:1} (fail-open)", got)
+	}
+	if cached.Findings[0].ClaimCheck != report.ClaimCheckNoVerdict {
+		t.Errorf("finding after a failed verify must stay no-verdict, got %q", cached.Findings[0].ClaimCheck)
 	}
 }
 
