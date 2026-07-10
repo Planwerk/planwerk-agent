@@ -164,6 +164,47 @@ func TestVerifySnippets_NilResult(t *testing.T) {
 	}
 }
 
+// TestVerifySnippets_MultilineComment locks the comment-insensitive match: a
+// finding that quotes a multi-line // comment as continuous prose — without
+// reproducing the interior // marker the source carries at each line break —
+// must pass rather than be demoted (the false-demotion class that withheld a
+// valid "misleading comment" finding). The same comment quoted WITH its markers
+// must pass too.
+func TestVerifySnippets_MultilineComment(t *testing.T) {
+	dir := t.TempDir()
+	writeChangedFile(t, dir, "svc/reconciler.go",
+		"func sweep() {\n"+
+			"\t// timeout is a legal edge from every\n"+
+			"\t// non-terminal status, so this never errors\n"+
+			"\trun()\n"+
+			"}\n")
+	result := &report.ReviewResult{
+		Findings: []report.Finding{
+			// Quoted as flowing prose, no interior // — spans the two comment lines.
+			{Title: "prose", Confidence: report.ConfidenceVerified, CodeSnippet: "timeout is a legal edge from every non-terminal status"},
+			// The same comment quoted verbatim WITH the // markers.
+			{Title: "with-markers", Confidence: report.ConfidenceVerified, CodeSnippet: "// timeout is a legal edge from every\n// non-terminal status"},
+			// A comment line that is genuinely NOT in the file is still demoted —
+			// the loosening does not turn the gate into a free pass.
+			{Title: "fabricated", Confidence: report.ConfidenceVerified, CodeSnippet: "// this comment does not exist anywhere"},
+		},
+	}
+	demoted := VerifySnippets(result, dir, []string{"svc/reconciler.go"})
+	if demoted != 1 {
+		t.Errorf("demoted = %d, want 1 (only the fabricated comment)", demoted)
+	}
+	want := map[string]report.Confidence{
+		"prose":        report.ConfidenceVerified,
+		"with-markers": report.ConfidenceVerified,
+		"fabricated":   report.ConfidenceUncertain,
+	}
+	for _, f := range result.Findings {
+		if f.Confidence != want[f.Title] {
+			t.Errorf("%s: confidence = %q, want %q", f.Title, f.Confidence, want[f.Title])
+		}
+	}
+}
+
 // TestVerifySnippets_RecoversOutsideDiff locks the checkout-wide fallback: a real
 // finding whose quoted code lives in a file the change did NOT modify (the
 // cross-file class the changed-files haystack is blind to) must be verified and
