@@ -46,10 +46,29 @@ func TestVerifySnippets(t *testing.T) {
 		"no-snippet":        report.ConfidenceUncertain,
 		"already-uncertain": report.ConfidenceUncertain,
 	}
+	// Every examined finding records what the gate decided; the already-uncertain
+	// finding is skipped (not examined) and so stays unstamped.
+	wantCheck := map[string]string{
+		"real":              report.SnippetCheckPassed,
+		"hallucinated":      snippetReasonNotFound,
+		"no-snippet":        snippetReasonNoQuote,
+		"already-uncertain": "",
+	}
 	for _, f := range result.Findings {
 		if f.Confidence != want[f.Title] {
 			t.Errorf("%s: confidence = %q, want %q", f.Title, f.Confidence, want[f.Title])
 		}
+		if f.SnippetCheck != wantCheck[f.Title] {
+			t.Errorf("%s: snippet check = %q, want %q", f.Title, f.SnippetCheck, wantCheck[f.Title])
+		}
+	}
+	// The run-level counts must record what the gate examined and demoted, so a
+	// clean pass is distinguishable from a skipped gate (Story 1).
+	if result.Gates == nil || result.Gates.Snippet == nil {
+		t.Fatalf("gate stats not recorded: %+v", result.Gates)
+	}
+	if got := *result.Gates.Snippet; got != (report.SnippetGateStats{Examined: 3, Demoted: 2}) {
+		t.Errorf("snippet stats = %+v, want {Examined:3 Demoted:2}", got)
 	}
 }
 
@@ -114,6 +133,14 @@ func TestVerifySnippets_NoGroundTruthSkips(t *testing.T) {
 	}
 	if result.Findings[0].Confidence != report.ConfidenceVerified {
 		t.Error("finding must not be demoted when there is no ground truth")
+	}
+	// A skipped gate records nothing and stamps nothing — a nil Gates.Snippet is
+	// how a reader tells "gate skipped" apart from "gate ran and passed all".
+	if result.Gates != nil {
+		t.Errorf("skipped gate must not record stats, got %+v", result.Gates)
+	}
+	if result.Findings[0].SnippetCheck != "" {
+		t.Errorf("skipped gate must not stamp a finding, got %q", result.Findings[0].SnippetCheck)
 	}
 }
 
