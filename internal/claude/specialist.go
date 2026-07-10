@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
@@ -84,9 +85,12 @@ var Specialists = []Specialist{
 
 // SpecialistReview runs a single domain-focused review pass over the diff and
 // returns its findings, tagged with the specialist's pattern. baseBranch scopes
-// the review to changes relative to that branch.
-func (c *Client) SpecialistReview(dir, baseBranch, key, focus string) (*report.ReviewResult, error) {
-	raw, model, err := c.runClaude(dir, buildSpecialistPrompt(baseBranch, key, focus), "specialist-"+key)
+// the review to changes relative to that branch. pats is the project
+// review-pattern catalog (maxPatterns budgets how many are rendered), injected
+// so the specialist applies the patterns that fall inside its domain; an empty
+// catalog leaves the prompt unchanged.
+func (c *Client) SpecialistReview(dir, baseBranch, key, focus string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
+	raw, model, err := c.runClaude(dir, buildSpecialistPrompt(baseBranch, key, focus, pats, maxPatterns), "specialist-"+key)
 	if err != nil {
 		return nil, fmt.Errorf("running %s specialist review: %w", key, err)
 	}
@@ -104,7 +108,7 @@ func (c *Client) SpecialistReview(dir, baseBranch, key, focus string) (*report.R
 	return result, nil
 }
 
-func buildSpecialistPrompt(baseBranch, key, focus string) string {
+func buildSpecialistPrompt(baseBranch, key, focus string, pats []patterns.Pattern, maxPatterns int) string {
 	if baseBranch == "" {
 		baseBranch = DefaultBaseBranch
 	}
@@ -120,6 +124,8 @@ func buildSpecialistPrompt(baseBranch, key, focus string) string {
 If your domain has no issues in this diff, return an empty findings array.
 
 `, key, focus)
+
+	sb.WriteString(finderPatternCatalog("## Project review patterns\n\nApply the project review patterns below that fall inside your domain — they ground your pass in the same catalog a later review of this diff would apply. They do NOT widen your scope beyond the domain above.", pats, maxPatterns))
 
 	sb.WriteString(communicationStyleBlock())
 	sb.WriteString(outputLanguageBlock())

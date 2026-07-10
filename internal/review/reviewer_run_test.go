@@ -359,6 +359,12 @@ type configurableClaude struct {
 	specialistCalls        int32
 	dedupCalls             int32
 	verifyClaimsCalls      int32
+
+	// lastAdversarialPats / lastSpecialistPats record the pattern catalog the
+	// finder call last received, so a test can assert the loaded patterns are
+	// forwarded to the grounded finders.
+	lastAdversarialPats []patterns.Pattern
+	lastSpecialistPats  []patterns.Pattern
 }
 
 func (c *configurableClaude) Review(dir string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
@@ -369,8 +375,9 @@ func (c *configurableClaude) Review(dir string, ctx claude.ReviewContext) (*repo
 	return c.review(dir, ctx)
 }
 
-func (c *configurableClaude) AdversarialReview(dir, baseBranch string) (*report.ReviewResult, error) {
+func (c *configurableClaude) AdversarialReview(dir, baseBranch string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
 	atomic.AddInt32(&c.adversarialCalls, 1)
+	c.lastAdversarialPats = pats
 	if c.adversarial == nil {
 		return nil, nil
 	}
@@ -393,8 +400,9 @@ func (c *configurableClaude) FeatureCompliance(dir, baseBranch string, feature *
 	return c.featureCompliance(dir, baseBranch, feature)
 }
 
-func (c *configurableClaude) SpecialistReview(dir, baseBranch, key, focus string) (*report.ReviewResult, error) {
+func (c *configurableClaude) SpecialistReview(dir, baseBranch, key, focus string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
 	atomic.AddInt32(&c.specialistCalls, 1)
+	c.lastSpecialistPats = pats
 	if c.specialist == nil {
 		return &report.ReviewResult{}, nil
 	}

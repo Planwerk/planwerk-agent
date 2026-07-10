@@ -443,7 +443,14 @@ func TestBuildGlossaryPrompt_Golden(t *testing.T) {
 }
 
 func TestBuildAdversarialPrompt_Golden(t *testing.T) {
-	assertGoldenPrompt(t, "adversarial", buildAdversarialPrompt("develop"))
+	assertGoldenPrompt(t, "adversarial", buildAdversarialPrompt("develop", nil, 0))
+}
+
+// TestBuildAdversarialPrompt_Patterns_Golden locks the adversarial prompt when
+// the finder is grounded in the project review-pattern catalog: the
+// <review-patterns> block appears with its grounding-not-widening framing.
+func TestBuildAdversarialPrompt_Patterns_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "adversarial_patterns", buildAdversarialPrompt("develop", goldenPatterns(), 0))
 }
 
 func TestBuildCompliancePrompt_Golden(t *testing.T) {
@@ -953,7 +960,14 @@ func TestBuildValidationRepairPrompt_Golden(t *testing.T) {
 // security domain: the domain-scoped framing, the shared communication/output
 // blocks, and the finding-enrichment tail.
 func TestBuildSpecialistPrompt_Golden(t *testing.T) {
-	assertGoldenPrompt(t, "specialist_security", buildSpecialistPrompt("develop", Specialists[0].Key, Specialists[0].Focus))
+	assertGoldenPrompt(t, "specialist_security", buildSpecialistPrompt("develop", Specialists[0].Key, Specialists[0].Focus, nil, 0))
+}
+
+// TestBuildSpecialistPrompt_Patterns_Golden locks a domain specialist's prompt
+// when it is grounded in the project review-pattern catalog: the
+// <review-patterns> block appears with its in-domain framing.
+func TestBuildSpecialistPrompt_Patterns_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "specialist_security_patterns", buildSpecialistPrompt("develop", Specialists[0].Key, Specialists[0].Focus, goldenPatterns(), 0))
 }
 
 // TestBuildVerifyImplementationPrompt_Golden locks the independent

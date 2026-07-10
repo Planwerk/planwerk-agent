@@ -3,14 +3,18 @@ package claude
 import (
 	"fmt"
 
+	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
 // AdversarialReview runs an independent adversarial review pass using a fresh Claude context.
 // It focuses on security vulnerabilities, failure modes, and attack vectors.
-// baseBranch scopes the review to changes relative to the given branch.
-func (c *Client) AdversarialReview(dir, baseBranch string) (*report.ReviewResult, error) {
-	rawReview, model, err := c.runAdversarialReview(dir, baseBranch)
+// baseBranch scopes the review to changes relative to the given branch. pats is
+// the project review-pattern catalog, injected so a pass inspecting a fresh diff
+// applies the same patterns a later review of that diff would (maxPatterns
+// budgets how many are rendered); an empty catalog leaves the prompt unchanged.
+func (c *Client) AdversarialReview(dir, baseBranch string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
+	rawReview, model, err := c.runAdversarialReview(dir, baseBranch, pats, maxPatterns)
 	if err != nil {
 		return nil, fmt.Errorf("running adversarial review: %w", err)
 	}
@@ -32,11 +36,11 @@ func (c *Client) AdversarialReview(dir, baseBranch string) (*report.ReviewResult
 	return result, nil
 }
 
-func (c *Client) runAdversarialReview(dir, baseBranch string) (text, model string, err error) {
-	return c.runClaude(dir, buildAdversarialPrompt(baseBranch), "adversarial")
+func (c *Client) runAdversarialReview(dir, baseBranch string, pats []patterns.Pattern, maxPatterns int) (text, model string, err error) {
+	return c.runClaude(dir, buildAdversarialPrompt(baseBranch, pats, maxPatterns), "adversarial")
 }
 
-func buildAdversarialPrompt(baseBranch string) string {
+func buildAdversarialPrompt(baseBranch string, pats []patterns.Pattern, maxPatterns int) string {
 	if baseBranch == "" {
 		baseBranch = DefaultBaseBranch
 	}
@@ -76,5 +80,5 @@ For every finding you report:
 
 An empty findings array is the correct answer when the diff yields no concrete attack vector or failure scenario — do NOT manufacture a speculative finding to appear productive.
 
-` + planwerkIgnoreLine() + communicationStyleBlock() + outputLanguageBlock() + findingLabelsBlock() + "/review"
+` + finderPatternCatalog("## Project review patterns\n\nApply these project review patterns where they intersect the focus areas above — a pass inspecting a fresh diff should know the same patterns a later review of that diff would apply. They do NOT widen your scope: the Focus ONLY and DO NOT comment on rules above still bound what you report.", pats, maxPatterns) + planwerkIgnoreLine() + communicationStyleBlock() + outputLanguageBlock() + findingLabelsBlock() + "/review"
 }
