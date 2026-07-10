@@ -70,6 +70,100 @@ func TestRenderMarkdown_ClaimCheck(t *testing.T) {
 	})
 }
 
+// TestRenderMarkdown_SnippetCheck verifies a snippet-demoted finding renders its
+// recorded reason as a Snippet check line, while a passed or unstamped finding
+// omits the line — a demoted finding must explain itself wherever it renders.
+func TestRenderMarkdown_SnippetCheck(t *testing.T) {
+	pr := PRInfo{Owner: "acme", Repo: "widgets", Number: 7, Title: "PR"}
+
+	t.Run("renders the snippet check line for a demoted finding", func(t *testing.T) {
+		result := ReviewResult{
+			Findings: []Finding{{
+				ID: "W-001", Severity: SeverityWarning, Title: "unquoted claim",
+				Confidence: ConfidenceUncertain, Problem: "p", Action: "a",
+				SnippetCheck: "demoted: quoted code not found in the changed files",
+			}},
+		}
+		var buf bytes.Buffer
+		NewRenderer(&buf).RenderMarkdown(result, pr, SeverityInfo, "", "v1")
+		if !strings.Contains(buf.String(), "**Snippet check**: demoted: quoted code not found in the changed files") {
+			t.Errorf("expected the snippet check line, got:\n%s", buf.String())
+		}
+	})
+
+	t.Run("omits the snippet check line for a passed finding", func(t *testing.T) {
+		result := ReviewResult{
+			Findings: []Finding{{
+				ID: "C-001", Severity: SeverityCritical, Title: "real bug",
+				Confidence: ConfidenceVerified, Problem: "p", Action: "a",
+				SnippetCheck: SnippetCheckPassed,
+			}},
+		}
+		var buf bytes.Buffer
+		NewRenderer(&buf).RenderMarkdown(result, pr, SeverityInfo, "", "v1")
+		if strings.Contains(buf.String(), "Snippet check") {
+			t.Errorf("a passed finding must not render a snippet check line, got:\n%s", buf.String())
+		}
+	})
+}
+
+// TestRenderDataBlock_IncludesGates verifies the run-level gate records ride the
+// machine-readable data block when set, are omitted when nil, and that adding
+// them leaves the existing SHA+findings round-trip (now carrying the per-finding
+// records) intact.
+func TestRenderDataBlock_IncludesGates(t *testing.T) {
+	t.Run("present when set", func(t *testing.T) {
+		full := ReviewResult{
+			Findings: []Finding{
+				{ID: "C-001", Severity: SeverityCritical, Title: "SQLi", File: "db.go", Line: 10, ClaimCheck: ClaimCheckRefuted, SnippetCheck: SnippetCheckPassed},
+			},
+			Gates: &GateStats{
+				Snippet: &SnippetGateStats{Examined: 4, Demoted: 1},
+				Claim:   &ClaimGateStats{Sent: 2, Verdicts: 2, Refuted: 1},
+			},
+		}
+		block := RenderDataBlock(full, "sha-gates", Usage{})
+		for _, want := range []string{
+			`"gates":{`,
+			`"snippet":{"examined":4,"demoted":1}`,
+			`"claim":{"sent":2,"verdicts":2,"refuted":1}`,
+			`"claim_check":"refuted"`,
+		} {
+			if !strings.Contains(block, want) {
+				t.Errorf("data block missing %q; got %q", want, block)
+			}
+		}
+		// The added gates field must not disturb the existing SHA+findings parse.
+		sha, findings, ok := ParseDataBlock(block)
+		if !ok {
+			t.Fatal("expected a parseable data block")
+		}
+		if sha != "sha-gates" {
+			t.Errorf("sha = %q, want sha-gates", sha)
+		}
+		if len(findings) != 1 || findings[0].ClaimCheck != ClaimCheckRefuted {
+			t.Errorf("findings = %+v, want one finding carrying its claim_check", findings)
+		}
+	})
+
+	t.Run("fail-open shape stays visible", func(t *testing.T) {
+		// A gate that ran but returned no verdicts records sent>0, verdicts=0 —
+		// the fail-open case must survive to the data block, not vanish.
+		full := ReviewResult{Gates: &GateStats{Claim: &ClaimGateStats{Sent: 1}}}
+		block := RenderDataBlock(full, "def456", Usage{})
+		if !strings.Contains(block, `"claim":{"sent":1,"verdicts":0,"refuted":0}`) {
+			t.Errorf("fail-open claim stats missing from data block; got %q", block)
+		}
+	})
+
+	t.Run("omitted when nil", func(t *testing.T) {
+		block := RenderDataBlock(ReviewResult{}, "plainsha", Usage{})
+		if strings.Contains(block, `"gates"`) {
+			t.Errorf("data block should omit gates when unset; got %q", block)
+		}
+	})
+}
+
 // TestRenderAuditMarkdown_WikiProvenance verifies the audit header carries the
 // resolved wiki commit when one was used.
 func TestRenderAuditMarkdown_WikiProvenance(t *testing.T) {

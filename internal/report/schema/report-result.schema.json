@@ -12,7 +12,11 @@
       "items": { "$ref": "#/$defs/finding" }
     },
     "summary": { "type": "string" },
-    "recommendation": { "type": "string" }
+    "recommendation": { "type": "string" },
+    "gates": {
+      "description": "Per-run counts for the review's two demotion gates. The counts describe the whole run, not the filtered finding list. Absent when neither gate ran, or on results produced before gate recording existed; an absent gate object means 'not recorded', not 'nothing demoted'.",
+      "$ref": "#/$defs/gateStats"
+    }
   },
   "$defs": {
     "finding": {
@@ -60,7 +64,44 @@
           "type": "array",
           "items": { "type": "string" }
         },
-        "verification_note": { "type": "string" }
+        "verification_note": { "type": "string" },
+        "snippet_check": {
+          "description": "The snippet gate's per-finding record: 'passed' or a 'demoted: <reason>' string. Set by the pipeline, never by the model.",
+          "type": "string"
+        },
+        "claim_check": {
+          "description": "The claim gate's per-finding record. Set by the pipeline, never by the model.",
+          "type": "string",
+          "enum": ["confirmed", "refuted", "no-verdict"]
+        }
+      }
+    },
+    "gateStats": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Per-run counts for each demotion gate. A missing gate object means the gate never ran this run.",
+      "properties": {
+        "snippet": { "$ref": "#/$defs/snippetGateStats" },
+        "claim": { "$ref": "#/$defs/claimGateStats" }
+      }
+    },
+    "snippetGateStats": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["examined", "demoted"],
+      "properties": {
+        "examined": { "type": "integer" },
+        "demoted": { "type": "integer" }
+      }
+    },
+    "claimGateStats": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sent", "verdicts", "refuted"],
+      "properties": {
+        "sent": { "type": "integer" },
+        "verdicts": { "type": "integer" },
+        "refuted": { "type": "integer" }
       }
     },
     "fixOption": {

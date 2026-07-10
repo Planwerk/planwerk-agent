@@ -31,6 +31,10 @@ func (r *Renderer) RenderJSON(result ReviewResult, minSeverity Severity, minConf
 	filtered.Findings = append(filtered.Findings, cf.Warning...)
 	filtered.Findings = append(filtered.Findings, cf.Info...)
 	filtered.Findings = append(filtered.Findings, cf.Unverified...)
+	// Carry the run-level gate records so --format json tells the same story the
+	// posted data block does; the counts describe the whole run, not the filtered
+	// list.
+	filtered.Gates = result.Gates
 
 	enc := json.NewEncoder(r.w)
 	enc.SetIndent("", "  ")
@@ -140,6 +144,9 @@ func (r *Renderer) renderFinding(f Finding, last bool) {
 	_, _ = fmt.Fprintln(r.w)
 	if f.VerificationNote != "" {
 		_, _ = fmt.Fprintf(r.w, "**Claim check**: %s\n\n", f.VerificationNote)
+	}
+	if f.SnippetCheck != "" && f.SnippetCheck != SnippetCheckPassed {
+		_, _ = fmt.Fprintf(r.w, "**Snippet check**: %s\n\n", f.SnippetCheck)
 	}
 	_, _ = fmt.Fprintf(r.w, "**Problem**: %s\n\n", f.Problem)
 	if f.CodeSnippet != "" {
@@ -338,10 +345,11 @@ type Usage struct {
 
 // dataBlockPayload is the JSON structure embedded in the HTML comment for machine consumption.
 type dataBlockPayload struct {
-	CommitSHA  string    `json:"commit_sha"`
-	WikiCommit string    `json:"wiki_commit,omitempty"`
-	Findings   []Finding `json:"findings"`
-	Usage      Usage     `json:"usage"`
+	CommitSHA  string     `json:"commit_sha"`
+	WikiCommit string     `json:"wiki_commit,omitempty"`
+	Findings   []Finding  `json:"findings"`
+	Gates      *GateStats `json:"gates,omitempty"`
+	Usage      Usage      `json:"usage"`
 }
 
 // RenderDataBlock returns an HTML comment containing the JSON-encoded findings,
@@ -352,6 +360,7 @@ func RenderDataBlock(result ReviewResult, commitSHA string, usage Usage) string 
 		CommitSHA:  commitSHA,
 		WikiCommit: result.WikiCommit,
 		Findings:   result.Findings,
+		Gates:      result.Gates,
 		Usage:      usage,
 	}
 	data, err := json.Marshal(payload)

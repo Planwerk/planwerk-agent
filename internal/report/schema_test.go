@@ -105,6 +105,10 @@ func TestRendererOutputMatchesSchema(t *testing.T) {
 			Findings:       []report.Finding{populatedFinding()},
 			Summary:        "a populated summary",
 			Recommendation: "a populated recommendation",
+			Gates: &report.GateStats{
+				Snippet: &report.SnippetGateStats{Examined: 3, Demoted: 1},
+				Claim:   &report.ClaimGateStats{Sent: 2, Verdicts: 2, Refuted: 1},
+			},
 		}
 		var buf bytes.Buffer
 		if err := report.NewRenderer(&buf).RenderJSON(rr, report.SeverityInfo, ""); err != nil {
@@ -262,6 +266,8 @@ func populatedFinding() report.Finding {
 		RelatedTo:               []string{"B-001"},
 		ConfirmedBy:             []string{"review", "adversarial"},
 		VerificationNote:        "refuted: the input is already parameterized at db/users.go:80",
+		SnippetCheck:            report.SnippetCheckPassed,
+		ClaimCheck:              report.ClaimCheckRefuted,
 	}
 }
 
