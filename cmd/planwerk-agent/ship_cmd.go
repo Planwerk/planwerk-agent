@@ -26,6 +26,8 @@ func newShipCmd(deps *runtimeDeps) *cobra.Command {
 	var planModel string
 	var planEffort string
 	var implementModel string
+	var implementWorkerModel string
+	var implementWorkerEffort string
 
 	shipCmd := &cobra.Command{
 		Use:   "ship <issue-ref>",
@@ -106,6 +108,8 @@ or short form (owner/repo#123).`,
 				iopts := shipCfg.ToShipImplementOptions(deps.version)
 				iopts.IssueRef = issueRef
 				iopts.Remote = deps.remoteOpts
+				iopts.WorkerModel = resolveImplementWorkerModel(implementWorkerModel, cmd.Flags().Changed("implement-worker-model"))
+				iopts.WorkerEffort = resolveImplementWorkerEffort(implementWorkerEffort, cmd.Flags().Changed("implement-worker-effort"))
 				return implement.Run(w, iopts, client.Plan, claude.BuildPlanPrompt, client.Implement, claude.BuildImplementPrompt, client.VerifyImplementation, client.AdversarialReview, client.SpecialistReviews, client.SimplifyFindings, client.ApplySimplifications, client.ApplyReview, client.DedupFindings, client.VerifyFindingClaims, client.Capture, client.FinalizePR)
 			}
 			fixFn := func(w io.Writer, prRef string) error {
@@ -135,6 +139,8 @@ or short form (owner/repo#123).`,
 	shipFlags.StringVar(&planModel, "plan-model", claude.DefaultPlanModel, "Model for the planning session passed to Claude Code via --model (env: "+envPlanModel+")")
 	shipFlags.StringVar(&planEffort, "plan-effort", claude.DefaultPlanEffort, "Reasoning effort for the planning session passed via --effort (low, medium, high, xhigh, max; env: "+envPlanEffort+")")
 	shipFlags.StringVar(&implementModel, "implement-model", "", "Model for the implement session in each per–Sub Issue run; the other sessions stay on --claude-model (empty inherits --claude-model; env: "+envImplementModel+")")
+	shipFlags.StringVar(&implementWorkerModel, "implement-worker-model", "", "Model for the implementer subagents in each per–Sub Issue implement run; setting it switches those runs into orchestrator mode (empty keeps the single-session behavior; env: "+envImplementWorkerModel+")")
+	shipFlags.StringVar(&implementWorkerEffort, "implement-worker-effort", claude.DefaultImplementWorkerEffort, "Reasoning effort for the implementer subagents in orchestrator mode (low, medium, high, xhigh, max; ignored without --implement-worker-model; env: "+envImplementWorkerEffort+")")
 	shipFlags.StringSliceVar(&shipCfg.PatternDirs, "patterns", nil, "Additional pattern sources: local dirs, github:owner/repo[/sub][@ref], or git+https://...[#ref[:sub]]")
 	shipFlags.BoolVar(&shipCfg.NoRepoPatterns, "no-repo-patterns", false, "Ignore repo-specific patterns under .planwerk/review_patterns/ in the target repo")
 	shipFlags.BoolVar(&shipCfg.NoLocalPatterns, "no-local-patterns", false, "Ignore local patterns from the tool")

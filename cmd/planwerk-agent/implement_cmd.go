@@ -24,6 +24,8 @@ func newImplementCmd(deps *runtimeDeps) *cobra.Command {
 	var planModel string
 	var planEffort string
 	var implementModel string
+	var implementWorkerModel string
+	var implementWorkerEffort string
 	var wikiEnable, wikiDisable bool
 	var wikiRef string
 
@@ -72,6 +74,19 @@ pushing to main, data exfiltration). Requires Claude Code v2.1.83+. The
 session runs on the shared --claude-model unless --implement-model overrides
 the model for just this one session; the simplify, review, and finalize
 passes below always stay on --claude-model.
+
+With --implement-worker-model the implement session switches into orchestrator
+mode: the session itself (on --implement-model, e.g. "fable") keeps the whole
+issue in view and delegates every work package to a dedicated "implementer"
+subagent running on the worker model (e.g. "opus") at --implement-worker-effort,
+verifying each delivered package against the actual diff — and dispatching
+follow-up tasks for every gap — before moving on. The subagent is defined
+inline via Claude Code's --agents flag, so the target checkout stays untouched
+and the session stays hermetic; the workers inherit auto mode, so the
+classifier keeps vetting their actions. The report's attribution then names the
+worker model — the model that wrote the code — and the workers' commit trailers
+carry their exact model id. Without the flag the implement session writes the
+code itself, exactly as before.
 
 After the implement session the implementation report is posted back onto the
 source issue as a comment on every run — including runs where nothing was
@@ -184,6 +199,8 @@ or short form (owner/repo#123).`,
 			implementCfg.CaptureWiki = resolveCaptureWiki(implementCfg.CaptureWiki, cmd.Flags().Changed("capture-wiki"), deps.fileCfg.Capture)
 			opts := implementCfg.ToImplementOptions(deps.version)
 			opts.Remote = deps.remoteOpts
+			opts.WorkerModel = resolveImplementWorkerModel(implementWorkerModel, cmd.Flags().Changed("implement-worker-model"))
+			opts.WorkerEffort = resolveImplementWorkerEffort(implementWorkerEffort, cmd.Flags().Changed("implement-worker-effort"))
 			opts.Wiki = resolveWikiOptions(wikiEnable, wikiDisable, cmd.Flags().Changed("wiki"), cmd.Flags().Changed("no-wiki"), wikiRef, cmd.Flags().Changed("wiki-ref"), deps.fileCfg.Wiki)
 			if implementCfg.PrintBarePrompt {
 				return implement.PrintBarePrompt(cmd.OutOrStdout(), opts, claude.BuildBareImplementPrompt)
@@ -204,6 +221,8 @@ or short form (owner/repo#123).`,
 	implementFlags.StringVar(&planModel, "plan-model", claude.DefaultPlanModel, "Model for the planning session passed to Claude Code via --model (e.g. fable, opus; env: "+envPlanModel+")")
 	implementFlags.StringVar(&planEffort, "plan-effort", claude.DefaultPlanEffort, "Reasoning effort for the planning session passed to Claude Code via --effort (low, medium, high, xhigh, max; env: "+envPlanEffort+")")
 	implementFlags.StringVar(&implementModel, "implement-model", "", "Model for the implement session only, passed to Claude Code via --model; the simplify/review/finalize passes stay on --claude-model (empty inherits --claude-model; env: "+envImplementModel+")")
+	implementFlags.StringVar(&implementWorkerModel, "implement-worker-model", "", "Model for the implementer subagents the implement session delegates its work packages to; setting it switches the session into orchestrator mode (empty keeps the single-session behavior; pass an exact model id for exact attribution; env: "+envImplementWorkerModel+")")
+	implementFlags.StringVar(&implementWorkerEffort, "implement-worker-effort", claude.DefaultImplementWorkerEffort, "Reasoning effort for the implementer subagents in orchestrator mode (low, medium, high, xhigh, max; ignored without --implement-worker-model; env: "+envImplementWorkerEffort+")")
 	implementFlags.BoolVar(&implementCfg.Verify, "verify", false, "After implementing, run an independent pass that checks the actual diff against the issue's Acceptance Criteria without trusting the implementer's report; any unmet criteria are fed into the review applier to be fixed on the branch")
 	implementFlags.BoolVar(&implementCfg.VerifyAdversarial, "verify-adversarial", false, "After implementing, red-team the produced diff for the bugs it introduces using the adversarial-review pass (independent of --verify)")
 	implementFlags.BoolVar(&implementCfg.NoSimplify, "no-simplify", false, "Skip the automatic simplify pass that folds over-engineering removals into the branch before the review phase")

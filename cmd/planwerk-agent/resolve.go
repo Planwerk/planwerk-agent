@@ -88,6 +88,19 @@ const envPlanEffort = "PLANWERK_PLAN_EFFORT"
 // CLI flag takes precedence when explicitly set.
 const envImplementModel = "PLANWERK_IMPLEMENT_MODEL"
 
+// envImplementWorkerModel overrides the model the implementer subagents run on
+// in the implement/ship commands' orchestrated mode (e.g. "opus",
+// "claude-opus-4-8"). Empty or unset keeps orchestrator mode OFF and the
+// implement session writes the code itself, as before the worker tier existed.
+// The --implement-worker-model CLI flag takes precedence when explicitly set.
+const envImplementWorkerModel = "PLANWERK_IMPLEMENT_WORKER_MODEL"
+
+// envImplementWorkerEffort overrides the reasoning effort the implementer
+// subagents run at in orchestrated mode (low, medium, high, xhigh, max);
+// ignored while orchestrator mode is off. The --implement-worker-effort CLI
+// flag takes precedence when explicitly set.
+const envImplementWorkerEffort = "PLANWERK_IMPLEMENT_WORKER_EFFORT"
+
 // envStructureModel overrides the model used by the JSON-structuring passes
 // for every subcommand (e.g. "sonnet", "opus"). The --structure-model CLI
 // flag takes precedence when explicitly set.
@@ -230,6 +243,46 @@ func resolveImplementModel(flagValue string, flagSet bool) string {
 		}
 	}
 	return ""
+}
+
+// resolveImplementWorkerModel returns the effective model for the implementer
+// subagents of the implement/ship commands' orchestrated mode. Precedence:
+// explicit CLI flag, then PLANWERK_IMPLEMENT_WORKER_MODEL, then empty — like
+// --implement-model there is no compiled-in default, because empty means
+// "orchestrator mode off": the implement session writes the code itself. The
+// value is passed through verbatim — model names are validated by Claude Code
+// itself, so an unknown name surfaces as a claude error rather than being
+// rejected here. Passing an exact model id (e.g. "claude-opus-4-8") instead of
+// an alias makes the report footer's attribution name that exact id.
+func resolveImplementWorkerModel(flagValue string, flagSet bool) string {
+	if flagSet && flagValue != "" {
+		return flagValue
+	}
+	if raw, ok := os.LookupEnv(envImplementWorkerModel); ok {
+		if v := strings.TrimSpace(raw); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// resolveImplementWorkerEffort returns the effective reasoning effort for the
+// implementer subagents in orchestrated mode. Precedence: explicit CLI flag,
+// then PLANWERK_IMPLEMENT_WORKER_EFFORT, then the compiled-in default. The
+// value is passed through verbatim — the accepted effort levels are validated
+// by Claude Code itself, so an unknown level surfaces as a claude error rather
+// than being rejected here. It resolves independently of the worker model: the
+// claude package ignores it while orchestrator mode is off.
+func resolveImplementWorkerEffort(flagValue string, flagSet bool) string {
+	if flagSet && flagValue != "" {
+		return flagValue
+	}
+	if raw, ok := os.LookupEnv(envImplementWorkerEffort); ok {
+		if v := strings.TrimSpace(raw); v != "" {
+			return v
+		}
+	}
+	return claude.DefaultImplementWorkerEffort
 }
 
 // resolvePlanEffort returns the effective reasoning effort for the implement
