@@ -360,6 +360,56 @@ func TestResolveImplementModelDefaultEmpty(t *testing.T) {
 	}
 }
 
+func TestResolveImplementWorkerModelFlagWins(t *testing.T) {
+	t.Setenv(envImplementWorkerModel, "sonnet")
+	if got := resolveImplementWorkerModel(modelOpus, true); got != modelOpus {
+		t.Fatalf("got %q, want flag value %q", got, modelOpus)
+	}
+}
+
+func TestResolveImplementWorkerModelEnvBeatsDefault(t *testing.T) {
+	t.Setenv(envImplementWorkerModel, "  opus  ")
+	if got := resolveImplementWorkerModel("", false); got != modelOpus {
+		t.Fatalf("got %q, want trimmed env value %q", got, modelOpus)
+	}
+}
+
+// TestResolveImplementWorkerModelDefaultEmpty pins that with neither flag nor
+// env set the resolver yields "" — the orchestrator-mode-off sentinel the
+// claude package maps to the historical single-session behavior — rather than
+// some compiled-in worker model of its own.
+func TestResolveImplementWorkerModelDefaultEmpty(t *testing.T) {
+	t.Setenv(envImplementWorkerModel, "")
+	if got := resolveImplementWorkerModel("", false); got != "" {
+		t.Fatalf("got %q, want empty (orchestrator mode off)", got)
+	}
+	// An explicitly-set-but-empty flag falls through to the empty default too.
+	if got := resolveImplementWorkerModel("", true); got != "" {
+		t.Fatalf("got %q for empty flag, want empty (orchestrator mode off)", got)
+	}
+}
+
+func TestResolveImplementWorkerEffortFlagWins(t *testing.T) {
+	t.Setenv(envImplementWorkerEffort, effortHigh)
+	if got := resolveImplementWorkerEffort("max", true); got != "max" {
+		t.Fatalf("got %q, want flag value %q", got, "max")
+	}
+}
+
+func TestResolveImplementWorkerEffortEnvBeatsDefault(t *testing.T) {
+	t.Setenv(envImplementWorkerEffort, "  high  ")
+	if got := resolveImplementWorkerEffort("", false); got != effortHigh {
+		t.Fatalf("got %q, want trimmed env value %q", got, effortHigh)
+	}
+}
+
+func TestResolveImplementWorkerEffortDefault(t *testing.T) {
+	t.Setenv(envImplementWorkerEffort, "")
+	if got := resolveImplementWorkerEffort("", false); got != claude.DefaultImplementWorkerEffort {
+		t.Fatalf("got %q, want default %q", got, claude.DefaultImplementWorkerEffort)
+	}
+}
+
 func TestResolvePlanEffortFlagWins(t *testing.T) {
 	t.Setenv(envPlanEffort, effortHigh)
 	if got := resolvePlanEffort("max", true); got != "max" {
