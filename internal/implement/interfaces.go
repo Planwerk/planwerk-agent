@@ -61,6 +61,19 @@ type Context struct {
 	// run stopped instead of recreating the branch and redoing the work. Nil for a
 	// fresh run.
 	Resume *ResumeContext
+	// WorkerModel, when non-empty, switches the implement session into
+	// orchestrator mode (see Options.WorkerModel): BuildImplementPrompt adds
+	// the orchestration instructions that make the session delegate every work
+	// package to the "implementer" subagent, and claude.Implement defines that
+	// subagent on this model via the CLI's --agents flag. It lives on the
+	// Context — not only on the claude Client — because it shapes the rendered
+	// prompt, so --print-prompt shows exactly what a live run with the same
+	// flags would execute. Empty keeps the single-session prompt unchanged.
+	WorkerModel string
+	// WorkerEffort is the reasoning effort for the implementer subagents in
+	// orchestrator mode; empty falls back to the claude package's compiled-in
+	// default. Ignored when WorkerModel is empty.
+	WorkerEffort string
 }
 
 // ResumeContext describes the partial work an earlier aborted run for this issue

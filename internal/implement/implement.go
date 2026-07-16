@@ -91,6 +91,20 @@ type Options struct {
 	MaxReviewIterations int
 	Local               bool // operate on the current working directory instead of cloning
 	Force               bool // with Local, skip the dirty-working-tree confirmation prompt
+	// WorkerModel, when non-empty, switches the implement session into
+	// orchestrator mode: the session itself (typically running on a stronger
+	// model via --implement-model) keeps the whole issue in view and delegates
+	// every work package to an inline-defined "implementer" subagent running
+	// on this model, verifying each result before moving on. Empty (the
+	// default) keeps the historical single-session behavior where the
+	// implement session writes the code itself. Driven by the
+	// --implement-worker-model flag / PLANWERK_IMPLEMENT_WORKER_MODEL env var.
+	WorkerModel string
+	// WorkerEffort is the reasoning effort the implementer subagents run at in
+	// orchestrator mode ("xhigh" by default, resolved by the CLI). Ignored when
+	// WorkerModel is empty. Driven by the --implement-worker-effort flag /
+	// PLANWERK_IMPLEMENT_WORKER_EFFORT env var.
+	WorkerEffort string
 	// NoResume disables resuming an earlier aborted run: instead of detecting the
 	// feature branch a prior run for this issue left behind (commits already made
 	// before it hit its session limit), checking it out, and continuing from the
@@ -409,6 +423,8 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		IssueURL:     issue.URL,
 		IssueState:   issue.State,
 		MaxPatterns:  opts.MaxPatterns,
+		WorkerModel:  opts.WorkerModel,
+		WorkerEffort: opts.WorkerEffort,
 	}
 
 	// Resolve the issue's Meta/Sub-Issue neighborhood so the planning session

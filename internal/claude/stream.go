@@ -145,11 +145,12 @@ func (slogStreamSink) toolResult(label string) {
 // non-empty, is passed to claude as --permission-mode; model is the --model
 // value and effort the --effort value the caller selected (c.model/c.effort, or
 // c.planModel/c.planEffort for the planning session); readOnly denies the write
-// tools on the analysis passes. It routes through the same hermeticArgs,
-// withReadOnlyDenied, and withAllowedTools helpers as the buffered path so the
-// two runners cannot drift on which flags an isolation- or tool-level decision
-// emits.
-func (c *Client) runClaudeStream(dir, prompt, label, permissionMode, model, effort string, readOnly bool, jsonSchema string) (string, string, error) {
+// tools on the analysis passes; agentsJSON, when non-empty, carries the inline
+// subagent definitions passed via --agents. It routes through the same
+// hermeticArgs, withReadOnlyDenied, withAllowedTools, and withAgents helpers as
+// the buffered path so the two runners cannot drift on which flags an
+// isolation- or tool-level decision emits.
+func (c *Client) runClaudeStream(dir, prompt, label, permissionMode, model, effort string, readOnly bool, jsonSchema, agentsJSON string) (string, string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
@@ -166,6 +167,7 @@ func (c *Client) runClaudeStream(dir, prompt, label, permissionMode, model, effo
 	if jsonSchema != "" {
 		args = append(args, "--json-schema", jsonSchema)
 	}
+	args = withAgents(args, agentsJSON)
 	args = c.hermeticArgs(args)
 	args = withReadOnlyDenied(args, readOnly)
 	args = withAllowedTools(args)

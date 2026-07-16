@@ -16,11 +16,14 @@ import (
 
 const (
 	// DefaultClaudeTimeout is the compiled-in default for the maximum time
-	// allowed for a single Claude Code invocation. Override with
-	// SetTimeout (driven by the --claude-timeout flag / PLANWERK_CLAUDE_TIMEOUT
-	// env var) when long-running prompts such as audit/elaborate/implement
-	// need more headroom.
-	DefaultClaudeTimeout = 15 * time.Minute
+	// allowed for a single Claude Code invocation. 60 minutes gives the
+	// long-running sessions — audit, elaborate, and above all an implement
+	// session that delegates its work packages to implementer subagents and
+	// verifies each result — enough headroom to finish instead of being cut
+	// off mid-branch. Override with WithTimeout (driven by the
+	// --claude-timeout flag / PLANWERK_CLAUDE_TIMEOUT env var) when a run
+	// needs even more.
+	DefaultClaudeTimeout = 60 * time.Minute
 	// DefaultClaudeModel is the compiled-in default model passed to Claude
 	// Code via --model. The "opus" alias runs the latest Opus release
 	// automatically, without re-pinning on each model bump; Opus follows
@@ -56,6 +59,16 @@ const (
 	// with SetPlanEffort (driven by the implement command's --plan-effort
 	// flag / PLANWERK_PLAN_EFFORT env var).
 	DefaultPlanEffort = "max"
+	// DefaultImplementWorkerEffort is the compiled-in default reasoning effort
+	// for the implementer subagents an orchestrated implement session
+	// delegates its work packages to (--implement-worker-model). "xhigh"
+	// matches DefaultClaudeEffort: the workers do the actual coding, so they
+	// get the same effort the single-session implement run would have spent.
+	// There is no DefaultImplementWorkerModel — the worker tier is opt-in, and
+	// an empty model keeps the historical single-session behavior. Override
+	// with the --implement-worker-effort flag / PLANWERK_IMPLEMENT_WORKER_EFFORT
+	// env var.
+	DefaultImplementWorkerEffort = "xhigh"
 	// DefaultStructureModel is the compiled-in default model for the mechanical
 	// JSON-structuring passes — the secondary `claude -p` calls that cast an
 	// upstream reasoning call's already-reasoned prose into the report schema
@@ -155,6 +168,24 @@ func withReadOnlyDenied(args []string, readOnly bool) []string {
 	}
 	args = append(args, "--disallowed-tools")
 	return append(args, claudeReadOnlyDeniedTools...)
+}
+
+// withAgents appends the --agents flag carrying the inline subagent
+// definitions (a JSON object mapping agent names to their definition) when
+// agentsJSON is non-empty, and is a no-op otherwise. Passing the definitions
+// as a CLI flag — rather than writing .claude/agents/ files into the target
+// checkout — keeps the orchestrated session hermetic: the flag outranks
+// project settings and leaves the reviewed repository untouched. Only the
+// implement session in orchestrator mode passes a non-empty value (see
+// implementAgentsJSON); every other session runs without subagent
+// definitions. Both runner paths route their args through it so the buffered
+// and streaming runners cannot drift on how a subagent definition reaches the
+// CLI.
+func withAgents(args []string, agentsJSON string) []string {
+	if agentsJSON == "" {
+		return args
+	}
+	return append(args, "--agents", agentsJSON)
 }
 
 // cliJSONSchema prepares a schema document for the CLI's --json-schema flag by
@@ -389,7 +420,7 @@ func WithInheritUserConfig(b bool) Option {
 // and their repair recovery — use runClaudeStructure for the dedicated cheap
 // tier instead.
 func (c *Client) runClaude(dir, prompt, label string) (text, model string, err error) {
-	return c.runClaudeWithPermission(dir, prompt, label, "", c.model, c.effort, true, "")
+	return c.runClaudeWithPermission(dir, prompt, label, "", c.model, c.effort, true, "", "")
 }
 
 // runClaudePlan is runClaude on the dedicated planning model (planModel,
@@ -400,7 +431,7 @@ func (c *Client) runClaude(dir, prompt, label string) (text, model string, err e
 // thinks at the largest budget — the one session where that depth steers the
 // whole implementation.
 func (c *Client) runClaudePlan(dir, prompt, label string) (text, model string, err error) {
-	return c.runClaudeWithPermission(dir, prompt, label, "", c.planModel, c.planEffort, true, "")
+	return c.runClaudeWithPermission(dir, prompt, label, "", c.planModel, c.planEffort, true, "", "")
 }
 
 // runClaudeStructure is runClaude on the dedicated structuring tier
@@ -422,7 +453,7 @@ func (c *Client) runClaudeStructure(prompt, label string) (text, model string, e
 // only want where a stable wire contract exists. decodeJSONWithRepair still
 // backstops the decode either way.
 func (c *Client) runClaudeStructureWithSchema(prompt, label, jsonSchema string) (text, model string, err error) {
-	return c.runClaudeWithPermission("", prompt, label, "", c.structureModel, c.structureEffort, true, jsonSchema)
+	return c.runClaudeWithPermission("", prompt, label, "", c.structureModel, c.structureEffort, true, jsonSchema, "")
 }
 
 // runClaudeAuto is runClaude with claudeAutoPermissionMode, letting the
@@ -432,7 +463,7 @@ func (c *Client) runClaudeStructureWithSchema(prompt, label, jsonSchema string) 
 // push a feature branch, and open a PR without a human confirming each
 // step. The auto-mode classifier still vets every action.
 func (c *Client) runClaudeAuto(dir, prompt, label string) (text, model string, err error) {
-	return c.runClaudeWithPermission(dir, prompt, label, claudeAutoPermissionMode, c.model, c.effort, false, "")
+	return c.runClaudeWithPermission(dir, prompt, label, claudeAutoPermissionMode, c.model, c.effort, false, "", "")
 }
 
 // runClaudeImplement is runClaudeAuto on the implement session's model
@@ -440,9 +471,13 @@ func (c *Client) runClaudeAuto(dir, prompt, label string) (text, model string, e
 // otherwise. Only the Implement call uses it: --implement-model swaps the
 // model of the single code-writing session without recoloring the auto-mode
 // sessions around it (simplify/review apply, finalize, fix, address, rebase),
-// which stay on runClaudeAuto and the main model.
-func (c *Client) runClaudeImplement(dir, prompt, label string) (text, model string, err error) {
-	return c.runClaudeWithPermission(dir, prompt, label, claudeAutoPermissionMode, c.implementSessionModel(), c.effort, false, "")
+// which stay on runClaudeAuto and the main model. agentsJSON, when non-empty,
+// carries the inline implementer-subagent definition the orchestrated mode
+// passes via --agents (see implementAgentsJSON); an empty value runs the
+// session without subagent definitions, exactly as before orchestrator mode
+// existed.
+func (c *Client) runClaudeImplement(dir, prompt, label, agentsJSON string) (text, model string, err error) {
+	return c.runClaudeWithPermission(dir, prompt, label, claudeAutoPermissionMode, c.implementSessionModel(), c.effort, false, "", agentsJSON)
 }
 
 // implementSessionModel resolves the model for the implement session: the
@@ -462,22 +497,25 @@ func (c *Client) implementSessionModel() string {
 // (callers pass c.model/c.effort, or c.planModel/c.planEffort for the
 // planning session). readOnly is true for the analysis passes (runClaude,
 // runClaudePlan): it denies the write tools via withReadOnlyDenied so the
-// session cannot mutate the checkout. Every invocation is also isolated from
-// user-global config via hermeticArgs and pre-approves claudeAllowedTools via
-// --allowed-tools (see withAllowedTools). The label tags elapsed-time progress
-// updates (or per-line stream prefixes when streaming is enabled).
+// session cannot mutate the checkout. agentsJSON, when non-empty, is passed
+// via --agents so the session can delegate to inline-defined subagents (only
+// the orchestrated implement session uses it — see withAgents). Every
+// invocation is also isolated from user-global config via hermeticArgs and
+// pre-approves claudeAllowedTools via --allowed-tools (see withAllowedTools).
+// The label tags elapsed-time progress updates (or per-line stream prefixes
+// when streaming is enabled).
 //
 // When c.showOutput is false it uses --output-format json and captures the
 // full result via cmd.Output(). When c.showOutput is true it delegates to
 // runClaudeStream, which uses --output-format stream-json --verbose and
 // surfaces output incrementally; the periodic heartbeat is skipped in that
 // mode because the stream itself is the heartbeat.
-func (c *Client) runClaudeWithPermission(dir, prompt, label, permissionMode, model, effort string, readOnly bool, jsonSchema string) (string, string, error) {
+func (c *Client) runClaudeWithPermission(dir, prompt, label, permissionMode, model, effort string, readOnly bool, jsonSchema, agentsJSON string) (string, string, error) {
 	// Normalize once, above the fork, so neither runner path can pass the CLI a
 	// dialect declaration it cannot resolve.
 	jsonSchema = cliJSONSchema(jsonSchema)
 	if c.showOutput {
-		return c.runClaudeStream(dir, prompt, label, permissionMode, model, effort, readOnly, jsonSchema)
+		return c.runClaudeStream(dir, prompt, label, permissionMode, model, effort, readOnly, jsonSchema, agentsJSON)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
@@ -498,6 +536,7 @@ func (c *Client) runClaudeWithPermission(dir, prompt, label, permissionMode, mod
 	if jsonSchema != "" {
 		args = append(args, "--json-schema", jsonSchema)
 	}
+	args = withAgents(args, agentsJSON)
 	args = c.hermeticArgs(args)
 	args = withReadOnlyDenied(args, readOnly)
 	args = withAllowedTools(args)

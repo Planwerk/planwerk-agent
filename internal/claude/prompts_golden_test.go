@@ -488,6 +488,29 @@ func TestBuildImplementPromptWithPlan_Golden(t *testing.T) {
 	assertGoldenPrompt(t, "implement_with_plan", BuildImplementPrompt(ctx))
 }
 
+// TestBuildImplementPromptOrchestrated_Golden locks the orchestrator-mode
+// shape (--implement-worker-model set): the prompt carries the "Orchestrated
+// implementation" section, workflow step 5 delegates package by package to the
+// implementer agent, and the hard rules gain the never-edit-yourself rule. The
+// plan is included because orchestrator mode leans on the plan's
+// commit-sequence order for its delegation order.
+func TestBuildImplementPromptOrchestrated_Golden(t *testing.T) {
+	ctx := goldenImplementContext()
+	ctx.Plan = "## Implementation Plan (issue #42)\n\n### Summary\n- Add a golden file per prompt builder and a -update helper.\n\n### Status\nSTATUS: PLAN_READY"
+	ctx.WorkerModel = "opus"
+	ctx.WorkerEffort = "xhigh"
+	assertGoldenPrompt(t, "implement_orchestrated", BuildImplementPrompt(ctx))
+}
+
+// TestBuildImplementerAgentPrompt_Golden locks the implementer subagent's
+// system prompt — the static half of the --agents definition an orchestrated
+// implement session passes to Claude Code. Determinism here is load-bearing:
+// the worker sees neither the issue nor the plan, so everything in this golden
+// is the entirety of what every delegated work package inherits.
+func TestBuildImplementerAgentPrompt_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "implementer_agent", buildImplementerAgentPrompt())
+}
+
 // TestBuildImplementPromptResume_Golden locks the shape used when an earlier
 // aborted run left commits on the branch: a "Resuming a partial implementation"
 // section lists them and workflow step 4 stays on the existing branch instead of

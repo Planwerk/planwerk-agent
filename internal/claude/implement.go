@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -108,12 +109,140 @@ For EVERY finding, include: the Acceptance Criterion it concerns (quote it in th
 // auto-mode classifier still vets each action. The session runs on the
 // --implement-model override when one is set, and on the shared --claude-model
 // otherwise; the surrounding passes always stay on --claude-model.
+//
+// When ctx.WorkerModel is set the session runs in orchestrator mode: the
+// prompt instructs it to delegate every work package to the "implementer"
+// subagent defined via the CLI's --agents flag (see implementAgentsJSON),
+// which runs on ctx.WorkerModel. Subagents inherit the parent's auto
+// permission mode, so the workers can edit, test, and commit under the same
+// classifier. The returned model then names the worker model — the model that
+// wrote the code — rather than the orchestrating session's model, so the
+// report's attribution footer credits the implementing model (the workers'
+// own commit trailers already carry their exact model id).
 func (c *Client) Implement(dir string, ctx implement.Context) (string, string, error) {
-	out, model, err := c.runClaudeImplement(dir, BuildImplementPrompt(ctx), "implement")
+	agentsJSON, err := implementAgentsJSON(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	out, model, err := c.runClaudeImplement(dir, BuildImplementPrompt(ctx), "implement", agentsJSON)
 	if err != nil {
 		return "", "", fmt.Errorf("running implement: %w", err)
 	}
-	return sanitizeImplementationReport(out), model, nil
+	return sanitizeImplementationReport(out), implementAttributionModel(ctx, model), nil
+}
+
+// implementAttributionModel resolves which model the implement run's artifacts
+// are attributed to (the report comment footer). In orchestrator mode that is
+// the worker model — the implementer subagents wrote the code, so the
+// attribution names the implementing model, not the orchestrating one that
+// only reviewed and verified. In single-session mode it stays the resolved
+// session model the envelope reported, exactly as before orchestrator mode
+// existed. The worker attribution carries the configured value (an alias like
+// "opus", or an exact id when the operator passed one) because the envelope
+// only ever resolves the session's own model; the workers' commit trailers
+// name their exact model id regardless (see commitTrailerBlock).
+func implementAttributionModel(ctx implement.Context, sessionModel string) string {
+	if ctx.WorkerModel != "" {
+		return ctx.WorkerModel
+	}
+	return sessionModel
+}
+
+// implementerAgentName is the subagent name the orchestrated implement session
+// delegates its work packages to. It appears in two coupled places: the
+// --agents definition implementAgentsJSON emits, and the orchestration
+// instructions BuildImplementPrompt renders — the constant keeps them from
+// drifting apart.
+const implementerAgentName = "implementer"
+
+// agentDefinition is the JSON shape of one inline subagent definition inside
+// the object Claude Code's --agents flag accepts (the same fields as a
+// .claude/agents/*.md frontmatter): what the agent is for, its system prompt,
+// and the model/effort it runs on. Tools are deliberately not restricted — the
+// worker inherits the full toolset (Edit, Write, Bash, …) and the parent
+// session's auto permission mode, so the auto classifier keeps vetting its
+// actions.
+type agentDefinition struct {
+	Description string `json:"description"`
+	Prompt      string `json:"prompt"`
+	Model       string `json:"model,omitempty"`
+	Effort      string `json:"effort,omitempty"`
+}
+
+// implementAgentsJSON renders the --agents value for an orchestrated implement
+// session: a JSON object defining the implementer subagent on ctx.WorkerModel
+// at ctx.WorkerEffort (falling back to DefaultImplementWorkerEffort). It
+// returns "" when ctx.WorkerModel is empty — the single-session mode, where no
+// subagent is defined and the runner omits the --agents flag entirely, keeping
+// the historical invocation byte-for-byte unchanged.
+func implementAgentsJSON(ctx implement.Context) (string, error) {
+	if ctx.WorkerModel == "" {
+		return "", nil
+	}
+	effort := ctx.WorkerEffort
+	if effort == "" {
+		effort = DefaultImplementWorkerEffort
+	}
+	raw, err := json.Marshal(map[string]agentDefinition{
+		implementerAgentName: {
+			Description: "Implements exactly one delegated work package of a GitHub issue end-to-end — code, tests, docs — committed on the current feature branch.",
+			Prompt:      buildImplementerAgentPrompt(),
+			Model:       ctx.WorkerModel,
+			Effort:      effort,
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("encoding implementer agent definition: %w", err)
+	}
+	return string(raw), nil
+}
+
+// buildImplementerAgentPrompt assembles the system prompt of the implementer
+// subagent an orchestrated implement session delegates its work packages to.
+// The worker shares the orchestrator's checkout but NOT its context — it sees
+// neither the issue nor the plan nor the orchestrator's prompt — so everything
+// it must honor unconditionally (the baseline principles, the commit-trailer
+// convention, the hard rules) is repeated here, while everything task-specific
+// arrives in the per-delegation brief the orchestrator writes. The prompt is
+// static by design: a deterministic --agents value keeps the orchestrated
+// invocation reproducible and lets a golden test lock it.
+func buildImplementerAgentPrompt() string {
+	var sb strings.Builder
+	sb.WriteString(`You are a Staff Engineer implementing exactly ONE work package of a larger GitHub issue, inside a checkout of the target repository. An orchestrator session delegated this package to you; the task brief you received is your entire contract — you cannot see the orchestrator's context, the issue, or the plan, so treat the brief as authoritative and complete. If the brief is missing something you need, say so in your result instead of guessing.
+
+`)
+	sb.WriteString(baselineBehavioralPrinciples)
+	sb.WriteString(outputLanguageBlock())
+	sb.WriteString(`## Rules for this delegation
+
+- Implement ONLY what the brief asks for: the named work package with its code, tests, and documentation. Anything beyond it — refactors, renames, drive-by fixes — is out of scope; mention it in your result instead of doing it.
+- You are ALREADY on the correct feature branch. NEVER create or switch branches, NEVER reset, rebase, revert, or amend existing commits, and NEVER push or open a pull request — the orchestrator owns the branch and the delivery.
+- Mirror the repository's existing conventions: layout, naming, error handling, logging, test style.
+- Tests are part of the package: add unit tests for new logic, each exercising at least one error or edge path — not the happy path only — and integration/E2E tests when the project runs them for comparable features.
+- Documentation is part of the package: update README, CHANGELOG, doc comments, or CLI help for every user-visible change the brief covers.
+- Run tests, linters, and builds in the FOREGROUND and wait for them to finish; never background a command — your result must carry their real exit status.
+- Commit your finished work in small, reviewable commits with clean imperative messages (subject and body wrapped at 72 characters), and leave the working tree CLEAN before you return — an uncommitted change is invisible to the orchestrator and lost work.
+
+`)
+	sb.WriteString(commitTrailerBlock())
+	sb.WriteString(`## Hard rules
+
+` + noSkipHooksLine() + `- NEVER weaken, skip, or delete tests to go green; fix the root cause.
+- NEVER widen types to Any/interface{}/unknown to silence the type-checker.
+- NEVER suppress lint findings with // nolint, # noqa, # type: ignore, @ts-ignore, etc. unless that suppression is already idiomatic in the same file.
+- NEVER fabricate file paths, symbol names, or migration numbers — open the file before claiming.
+- If the brief contradicts the repository (a cited file does not exist, a criterion is unreachable), STOP and report the contradiction in your result instead of inventing code around it.
+
+## Result (what you report back)
+
+End with a summary the orchestrator can verify without trusting you:
+- the commits you made (sha7 + subject),
+- the files you changed,
+- the exact verification commands you ran with their pass/fail status,
+- any deviation from the brief, with rationale,
+- anything you noticed but deliberately left alone.
+`)
+	return sb.String()
 }
 
 // implementReportHeading is the heading every implementation report opens with
@@ -138,6 +267,13 @@ func sanitizeImplementationReport(out string) string {
 // (--print-prompt mode).
 func BuildImplementPrompt(ctx implement.Context) string {
 	var sb strings.Builder
+	// orchestrated switches the prompt into orchestrator mode: the session
+	// delegates every work package to the implementer subagent (defined on
+	// ctx.WorkerModel via --agents, see implementAgentsJSON) instead of writing
+	// the code itself. The flag shapes the prompt in three coupled places — the
+	// orchestration section, workflow step 5, and one hard rule — all gated on
+	// this one condition.
+	orchestrated := ctx.WorkerModel != ""
 
 	sb.WriteString(`You are a Staff Engineer implementing an elaborated GitHub issue end-to-end inside a fresh checkout of the target repository. The issue body below is the definition of done — treat its Acceptance Criteria as a contract, and treat the WHOLE issue as one unit of work: when the issue breaks the work into several work packages, implementing it means implementing EVERY package, not the first one and a stop.
 
@@ -148,7 +284,11 @@ func BuildImplementPrompt(ctx implement.Context) string {
 
 This is a single, non-interactive, one-shot session: there is NO next turn, no human to hand work back to, and nothing re-invokes you after you stop. Do everything to completion now, within this one response — read the issue, edit, run the tests in the FOREGROUND and wait for them to finish, commit every change, then output the report as the last thing you do. NEVER launch a long-running command (a test run, a build) in the background and then yield to "wait" for it or to be "notified" when it finishes: when this session ends the backgrounded job is killed, its result never arrives, and the work it gated — the next commit, the fix it would have informed — never happens. NEVER defer a step to later ("I'll commit once the tests pass", "waiting for the run to complete before committing"): anything left unfinished when you stop is finished never.
 
-Apply these task-specific thinking patterns on top of the baseline above:
+`)
+	if orchestrated {
+		sb.WriteString(orchestrationBlock())
+	}
+	sb.WriteString(`Apply these task-specific thinking patterns on top of the baseline above:
 - "Read the issue first, in full." — Acceptance Criteria, Non-Goals, Affected Areas, References. Do NOT start editing before you have read every section.
 - "Verify the ground truth." — For every file, symbol, package, or migration the issue cites, open the file and confirm it exists and matches the description. If it does not, STOP and report — do not invent code on top of a stale spec.
 - "Implement EVERY work package — the whole issue is the contract." — When the issue decomposes the work into multiple parts — ` + workBreakdownDefinition() + ` — you must implement ALL of them in this session, each with its own deliverables (the unit / integration / e2e tests and docs the package calls for). Implementing only the first package or two and stopping is an INCOMPLETE implementation, not a "smaller" one. There is no later session to pick up the rest: whatever you leave unimplemented stays unimplemented.
@@ -222,12 +362,20 @@ Run these steps in order. Do not skip ahead.
 	} else {
 		fmt.Fprintf(&sb, "4. CREATE a fresh feature branch off the current default branch. Use a short, descriptive branch name that MUST begin with \"implement/issue-%d-\" (e.g. \"implement/issue-%d-<slug>\") — the orchestrator keys on this prefix to find and resume the branch if this session is interrupted before it finishes.\n", ctx.IssueNumber, ctx.IssueNumber)
 	}
-	sb.WriteString(`5. IMPLEMENT the change set:
+	if orchestrated {
+		sb.WriteString(`5. IMPLEMENT the change set package by package, through the ` + "`" + implementerAgentName + "`" + ` agent (see "Orchestrated implementation" above):
+   - Delegate one work package per task with a self-contained brief; the worker matches existing conventions, adds the package's tests and docs, and commits in small, reviewable steps.
+   - After each worker returns, verify its commits and run the tests in the foreground yourself; dispatch follow-up tasks for every gap, and only then delegate the next package.
+`)
+	} else {
+		sb.WriteString(`5. IMPLEMENT the change set:
    - Match existing layout, naming, error handling, and logging conventions.
    - Add unit tests for new logic, and make every new test exercise at least one error or edge path — not the happy path only. Add integration / E2E tests when the project has them for comparable features.
    - Add or update documentation (README, CHANGELOG, doc comments, CLI help, generated API references) for every user-visible change.
    - Commit in small, reviewable steps with descriptive messages.
-6. VERIFY LOCALLY before you hand off:
+`)
+	}
+	sb.WriteString(`6. VERIFY LOCALLY before you hand off:
    - Run every command in the FOREGROUND and wait for it to finish before the next step — never background a test or build run and move on. You need its real exit status in hand to commit and to fill in the report; a backgrounded run's result never reaches this one-shot session.
    - Run the project's test suite (or the targeted subset that covers the new code).
    - Run lint / vet / formatter / type-checker as the project configures them.
@@ -290,8 +438,39 @@ When you hit a circuit breaker, halt immediately and emit STATUS: PARTIAL when a
 - If there is nothing to commit (the issue turns out to already be implemented), do NOT create an empty commit; output the report explaining what you found.
 - It is OK to stop and report BLOCKED or NEEDS_CONTEXT. Bad work is worse than no work; escalating is not penalized. Emit the matching STATUS instead of inventing scope or shipping a half-built change.
 `)
+	if orchestrated {
+		sb.WriteString("- NEVER create or edit a file yourself in this orchestrated session — every code change is delivered by an `" + implementerAgentName + "` delegation, and every gap your verification finds goes back to one as a follow-up task.\n")
+	}
 
 	return sb.String()
+}
+
+// orchestrationBlock returns the "## Orchestrated implementation" section
+// BuildImplementPrompt renders when ctx.WorkerModel is set. It flips the
+// session's role from implementer to orchestrator: the session keeps the whole
+// issue in view, delegates every work package to the implementer subagent
+// (defined via --agents on the worker model), and verifies each delivered
+// package against the actual diff before moving on — the delegate → verify →
+// follow-up loop that keeps the strongest model on oversight while the worker
+// model writes the code. Sequential delegation is mandated because the workers
+// commit on one shared feature branch; parallel workers would race each other
+// on the git index.
+func orchestrationBlock() string {
+	name := "`" + implementerAgentName + "`"
+	return `## Orchestrated implementation — delegate the code to ` + name + ` subagents
+
+This session runs in ORCHESTRATOR mode: your job is to keep the WHOLE issue in view, delegate the code work, and verify every delivered piece — not to write the code yourself. A dedicated ` + name + ` agent is defined for this session, running on a model dedicated to implementation work; every code change goes through it. The one-shot rules above still bind you — everything must finish within this session — but the code-writing happens through delegations, not your own edits.
+
+- NEVER create or edit files yourself. Delegate every work package to the ` + name + ` agent via the Task tool. You may — and must — run the read-only commands (git log, git diff, reading files) and the verification commands (tests, linters, builds) yourself.
+- Delegate ONE work package at a time, in the plan's commit-sequence order. The workers commit on the shared feature branch, so parallel workers would race each other on the git index; sequential delegation also lets each package build on the one before it.
+- Write each delegation brief SELF-CONTAINED: the worker shares your checkout but NOT your context — it sees neither the issue, nor the plan, nor this prompt. Include the work package's description verbatim, its Acceptance Criteria, the files the plan names for it, the test and documentation expectations, and every review pattern or project skill that constrains it. A brief that says "see the issue" delivers nothing.
+- Instruct every worker to commit its finished work on the current branch and to leave the working tree clean before returning.
+- VERIFY every worker's result yourself before moving on: read the commits it made (git log, git diff), run the tests in the FOREGROUND, and check the package's Acceptance Criteria against the actual diff. Do NOT take the worker's summary at its word.
+- When your verification finds gaps, dispatch a follow-up ` + name + ` task carrying your concrete findings — the file:line, the failing command's output, the unmet criterion — instead of fixing the code yourself. Repeat until the package genuinely passes, then move to the next one.
+- If a worker returns with uncommitted changes or a broken intermediate state, dispatch a follow-up task to finish and commit — never patch the tree yourself.
+- The Implementation Report below stays YOURS: fill it in from your own verification — the commits and test runs you checked — not from the workers' summaries.
+
+`
 }
 
 // renderResumeSection builds the prompt block for a resuming implement session:

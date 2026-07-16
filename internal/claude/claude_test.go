@@ -370,14 +370,16 @@ func TestAssignIDs_DropsRecommendedOptionWhenIDMissing(t *testing.T) {
 	}
 }
 
-// testMainModel and testImplementOverride are arbitrary non-default values the
-// client tests assign and expect back. Named constants rather than repeated
-// literals: the values collide with real defaults ("fable" is DefaultPlanModel,
-// "sonnet" is DefaultStructureModel), and goconst flags a literal repeated
-// three times when a constant with that value already exists.
+// testMainModel, testImplementOverride, and testTierOverride are arbitrary
+// non-default values the client tests assign and expect back. Named constants
+// rather than repeated literals: the values collide with real defaults
+// ("fable" is DefaultPlanModel, "sonnet" is DefaultStructureModel, "opus" is
+// DefaultClaudeModel), and goconst flags a literal repeated three times when
+// a constant with that value already exists.
 const (
 	testMainModel         = "fable"
 	testImplementOverride = "sonnet"
+	testTierOverride      = "opus"
 )
 
 func TestNewClient_DefaultsFromConsts(t *testing.T) {
@@ -416,8 +418,8 @@ func TestNewClient_AppliesOptions(t *testing.T) {
 		WithTimeout(42*time.Minute),
 		WithModel("fable"),
 		WithImplementModel(testImplementOverride),
-		WithPlanModel("opus"),
-		WithStructureModel("opus"),
+		WithPlanModel(testTierOverride),
+		WithStructureModel(testTierOverride),
 		WithEffort("max"),
 		WithPlanEffort("high"),
 		WithStructureEffort("xhigh"),
@@ -432,10 +434,10 @@ func TestNewClient_AppliesOptions(t *testing.T) {
 	if c.implementModel != testImplementOverride {
 		t.Errorf("implementModel = %q, want %q", c.implementModel, testImplementOverride)
 	}
-	if c.planModel != "opus" {
+	if c.planModel != testTierOverride {
 		t.Errorf("planModel = %q, want \"opus\"", c.planModel)
 	}
-	if c.structureModel != "opus" {
+	if c.structureModel != testTierOverride {
 		t.Errorf("structureModel = %q, want \"opus\"", c.structureModel)
 	}
 	if c.effort != "max" {
