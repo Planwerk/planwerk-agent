@@ -236,6 +236,27 @@ func TestRun_PlanFeedsImplement(t *testing.T) {
 	}
 }
 
+// TestRun_WorkerModelReachesImplementContext locks the orchestrator-mode
+// threading: the WorkerModel/WorkerEffort options reach the Context handed to
+// the Claude implementer, where BuildImplementPrompt keys the orchestration
+// section and claude.Implement builds the --agents definition from them.
+func TestRun_WorkerModelReachesImplementContext(t *testing.T) {
+	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+	cl := &fakeClaude{report: validImplReport}
+	r := newRunner(gh, cl)
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", WorkerModel: "opus", WorkerEffort: "high"}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if cl.ctx.WorkerModel != "opus" {
+		t.Errorf("implement received WorkerModel %q, want %q", cl.ctx.WorkerModel, "opus")
+	}
+	if cl.ctx.WorkerEffort != "high" {
+		t.Errorf("implement received WorkerEffort %q, want %q", cl.ctx.WorkerEffort, "high")
+	}
+}
+
 // TestRun_RelationsFeedPlanner locks that the Meta/Sub-Issue neighborhood
 // fetched in Run reaches the planning session's context, so BuildPlanPrompt can
 // render the Meta Issue and sibling Sub Issues.

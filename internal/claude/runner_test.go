@@ -49,6 +49,37 @@ func TestWithAllowedTools_NoFlagWhenEmpty(t *testing.T) {
 	}
 }
 
+// TestWithAgents_AppendsFlag locks the orchestrated implement session's
+// contract: a non-empty agents JSON reaches the CLI verbatim as the --agents
+// value, so the inline implementer definition (worker model, effort, prompt)
+// arrives without any file being written into the target checkout.
+func TestWithAgents_AppendsFlag(t *testing.T) {
+	const agentsJSON = `{"implementer":{"model":"opus"}}`
+	got := withAgents([]string{"-p", "--model", "fable"}, agentsJSON)
+
+	idx := slices.Index(got, "--agents")
+	if idx == -1 || idx+1 >= len(got) {
+		t.Fatalf("withAgents did not append --agents with a value; got %v", got)
+	}
+	if got[idx+1] != agentsJSON {
+		t.Errorf("--agents value = %q, want the JSON passed in %q", got[idx+1], agentsJSON)
+	}
+}
+
+// TestWithAgents_NoFlagWhenEmpty documents the guard: an empty agents JSON —
+// every session except the orchestrated implement one — leaves the args
+// untouched rather than emitting a dangling --agents flag with no value.
+func TestWithAgents_NoFlagWhenEmpty(t *testing.T) {
+	base := []string{"-p", "--model", "opus"}
+	got := withAgents(base, "")
+	if slices.Contains(got, "--agents") {
+		t.Errorf("withAgents emitted the flag for an empty value; got %v", got)
+	}
+	if len(got) != len(base) {
+		t.Errorf("withAgents changed args for an empty value; got %v, want %v", got, base)
+	}
+}
+
 // TestWithReadOnlyDenied_DeniesWriteTools locks in the harness-level guarantee
 // the read-only analysis passes depend on: when readOnly is true the write
 // tools are removed from the model's context via --disallowed-tools, so a pass
