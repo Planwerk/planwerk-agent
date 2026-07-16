@@ -28,7 +28,7 @@ These persistent flags apply to every command (`review`, `propose`, `audit`,
 | `--verbose`, `-v` | Enable debug-level logging (also shows verbose build info with `--version`) | `false` |
 | `--log-format` | Log output format: `text` (human-friendly) or `json` (one JSON object per record, CI-friendly) | `text` |
 | `--remote-patterns-ttl` | Refresh interval for remote pattern sources (env: `PLANWERK_REMOTE_PATTERNS_TTL`; `<=0` disables refresh once cached). See [Remote pattern sources](/reference/review-patterns#remote-pattern-sources). | `24h` |
-| `--claude-timeout` | Maximum duration for a single Claude Code invocation, applied to every Claude call across all subcommands. Accepts any `time.ParseDuration` value (e.g. `20m`, `1h30m`); must be `> 0`. Env: `PLANWERK_CLAUDE_TIMEOUT`. | `15m` |
+| `--claude-timeout` | Maximum duration for a single Claude Code invocation, applied to every Claude call across all subcommands. Accepts any `time.ParseDuration` value (e.g. `20m`, `1h30m`); must be `> 0`. Env: `PLANWERK_CLAUDE_TIMEOUT`. | `60m` |
 | `--show-claude-output` | Stream Claude Code's live output to stderr while a run is in flight, instead of only the periodic heartbeat. Env: `PLANWERK_SHOW_CLAUDE_OUTPUT` (truthy: `1`, `true`, `yes`, `on`). | `false` |
 | `--claude-model` | Model passed to Claude Code via `--model` for every Claude call. Accepts a short alias (`opus`, `fable`, `sonnet`) or a full model ID (`claude-fable-5`). Env: `PLANWERK_CLAUDE_MODEL`. | `opus` |
 | `--claude-effort` | Reasoning effort passed to Claude Code via `--effort`: one of `low`, `medium`, `high`, `xhigh`, `max`. Env: `PLANWERK_CLAUDE_EFFORT`. | `xhigh` |
@@ -533,6 +533,8 @@ planwerk-agent implement --wiki --capture-wiki --yes owner/repo#123
 | `--plan-model` | Model for the planning session passed to Claude Code via `--model` (e.g. `fable`, `opus`; env: `PLANWERK_PLAN_MODEL`) | `fable` |
 | `--plan-effort` | Reasoning effort for the planning session passed via `--effort` (`low`, `medium`, `high`, `xhigh`, `max`; env: `PLANWERK_PLAN_EFFORT`) | `max` |
 | `--implement-model` | Model for the implement session only, passed to Claude Code via `--model`; the simplify/review/finalize passes stay on `--claude-model` (env: `PLANWERK_IMPLEMENT_MODEL`) | inherits `--claude-model` |
+| `--implement-worker-model` | Model for the `implementer` subagents the implement session delegates its work packages to. Setting it switches the session into **orchestrator mode**: the session (on `--implement-model`, e.g. `fable`) keeps the whole issue in view, delegates each work package to a subagent on this model, and verifies every delivered package against the actual diff before moving on. The subagent is defined inline via Claude Code's `--agents` flag, so the checkout stays untouched; the report's attribution names this model, and the workers' commit trailers carry their exact model id. Pass an exact model id (e.g. `claude-opus-4-8`) for exact footer attribution. Empty keeps the single-session behavior (env: `PLANWERK_IMPLEMENT_WORKER_MODEL`) | - (orchestrator mode off) |
+| `--implement-worker-effort` | Reasoning effort for the `implementer` subagents in orchestrator mode (`low`, `medium`, `high`, `xhigh`, `max`); ignored without `--implement-worker-model` (env: `PLANWERK_IMPLEMENT_WORKER_EFFORT`) | `xhigh` |
 | `--verify` | After implementing, run an independent pass that checks the actual diff against the issue's Acceptance Criteria without trusting the implementer's report; any unmet criteria are then fed into the review applier and fixed on the branch before the PR opens | `false` |
 | `--verify-adversarial` | After implementing, red-team the produced diff for the bugs it introduces using the adversarial-review pass (independent of `--verify`) | `false` |
 | `--no-simplify` | Skip the automatic simplify pass that folds over-engineering removals into the branch before the review phase | `false` |
@@ -713,6 +715,8 @@ planwerk-agent ship --start-at 456 owner/repo#123
 | `--plan-model` | Model for the planning session passed to Claude Code via `--model` (env: `PLANWERK_PLAN_MODEL`) | `fable` |
 | `--plan-effort` | Reasoning effort for the planning session passed via `--effort` (env: `PLANWERK_PLAN_EFFORT`) | `max` |
 | `--implement-model` | Model for the implement session in each per–Sub Issue run; the other sessions stay on `--claude-model` (env: `PLANWERK_IMPLEMENT_MODEL`) | inherits `--claude-model` |
+| `--implement-worker-model` | Model for the `implementer` subagents in each per–Sub Issue implement run; setting it switches those runs into orchestrator mode, exactly as on `implement` (env: `PLANWERK_IMPLEMENT_WORKER_MODEL`) | - (orchestrator mode off) |
+| `--implement-worker-effort` | Reasoning effort for the `implementer` subagents in orchestrator mode; ignored without `--implement-worker-model` (env: `PLANWERK_IMPLEMENT_WORKER_EFFORT`) | `xhigh` |
 | `--patterns` | Additional pattern source: local directory, `github:owner/repo[/sub][@ref]`, or `git+https://…[#ref[:sub]]` | - |
 | `--no-repo-patterns` | Ignore repo-specific patterns under `.planwerk/review_patterns/` in the target repo | `false` |
 | `--no-local-patterns` | Ignore local patterns from the tool | `false` |
