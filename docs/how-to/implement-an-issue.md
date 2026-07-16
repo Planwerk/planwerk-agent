@@ -50,6 +50,44 @@ See the [CLI reference](/reference/cli#implement) for every flag, including the
 the `--plan-model` / `--plan-effort` planning-session overrides, and the
 `--implement-model` override for the implement session itself.
 
+### Orchestrator mode: a strong model oversees, worker subagents write the code
+
+`--implement-worker-model` (env: `PLANWERK_IMPLEMENT_WORKER_MODEL`) splits the
+implement session into an orchestrator and workers, inside one Claude Code
+session:
+
+```sh
+# Fable keeps the whole issue in view; Opus subagents implement the packages
+planwerk-agent implement \
+  --implement-model fable \
+  --implement-worker-model opus \
+  owner/repo#123
+```
+
+The session runs on `--implement-model` as the **orchestrator**: it never edits
+a file itself. Instead it delegates every work package — in the plan's
+commit-sequence order, one at a time — to an `implementer` subagent running on
+the worker model at `--implement-worker-effort` (default `xhigh`). Each
+delegation brief is self-contained (the worker shares the checkout but not the
+orchestrator's context), and after each worker returns the orchestrator
+verifies the delivered package against the actual diff — reading the commits,
+running the tests in the foreground, checking the package's Acceptance
+Criteria — and dispatches follow-up delegations for every gap before moving
+on. The Implementation Report and its terminal `STATUS` line stay with the
+orchestrator, so resume, the PARTIAL/BLOCKED guards, and the surrounding
+simplify/review/finalize passes behave exactly as in a single-session run.
+
+The subagent is defined inline via Claude Code's `--agents` flag, so the target
+checkout stays untouched and the session stays hermetic; the workers inherit
+auto mode, so the permission classifier keeps vetting their actions.
+Attribution follows the code, not the reviewer: the report footer names the
+worker model, and the workers' commits carry their exact model id in the
+`Assisted-by` trailer. Pass an exact model id (e.g.
+`--implement-worker-model claude-opus-4-8`) when you want the footer to name
+it precisely. Without `--implement-worker-model` the implement session writes
+the code itself, exactly as before. `ship` accepts the same two flags for its
+per–Sub Issue implement runs.
+
 ## How it works
 
 1. **Issue Input**: A GitHub issue reference (URL or `owner/repo#number`), typically already elaborated via `elaborate`.
