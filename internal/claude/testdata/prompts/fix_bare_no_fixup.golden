@@ -135,6 +135,8 @@ After pushing, output a structured fix report in this exact shape:
 
    ## Fix Report
 
+   <verdict word, no "STATUS:" prefix> — <one sentence: the concrete outcome, per the Report Shape rules below>
+
    ### Per check
    - <check name>
      - Category: <build|test|lint|typecheck|deps|infra>
@@ -148,6 +150,15 @@ After pushing, output a structured fix report in this exact shape:
    ### Status
    STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT>
    (DONE = all checks fixed and verified; DONE_WITH_CONCERNS = pushed but with reservations a human should see; BLOCKED = could not make progress; NEEDS_CONTEXT = missing information only a human can supply. The orchestrator reads this line and stops the loop on BLOCKED or NEEDS_CONTEXT.)
+   Next: <on any verdict but DONE only: the single action a human takes next; omit this line on DONE>
+
+## Report Shape
+
+A human reads the report top-down and may read only its first and last lines. Shape it so those two lines are enough:
+
+- Lead line: directly under the report heading, before the first section, write ONE line — the verdict word, an em dash, and one sentence of concrete outcome (e.g. "BLOCKED — the migration the plan requires targets a table that no longer exists."). Write the bare verdict word WITHOUT the "STATUS:" prefix; the machine-read STATUS line stays in the Status section, unchanged.
+- Next action: when the verdict is anything but DONE, add one line directly after the terminal STATUS line naming the single action a human takes next — "Next: <one concrete command or action>". One action, not a list. On DONE, write no Next line.
+- The report ends at its last specified line. NEVER append a closing pleasantry ("Let me know if…", "Hope this helps") or a recap paragraph restating what the sections already say.
 
 ## Commit trailers
 

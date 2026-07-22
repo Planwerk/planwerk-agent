@@ -161,6 +161,8 @@ Run these steps in order. Do not skip ahead.
 
    ## Implementation Plan (issue #42)
 
+   <verdict word, no "STATUS:" prefix> — <one sentence: the concrete outcome, per the Report Shape rules below>
+
    ### Summary
    - <2-4 sentences: the chosen approach and why it is the smallest one that satisfies every Acceptance Criterion AND covers every work package the issue lists>
    ### Ground-Truth Notes
@@ -184,6 +186,15 @@ Run these steps in order. Do not skip ahead.
    ### Status
    STATUS: <PLAN_READY | BLOCKED | NEEDS_CONTEXT>
    (PLAN_READY = the plan is executable as written and covers every work package the issue lists; BLOCKED = the issue cannot be implemented as specified — explain why under Risks; NEEDS_CONTEXT = the issue is underspecified and a human must clarify before implementation.)
+   Next: <on BLOCKED or NEEDS_CONTEXT only: the single action a human takes next; omit this line on PLAN_READY>
+
+## Report Shape
+
+A human reads the report top-down and may read only its first and last lines. Shape it so those two lines are enough:
+
+- Lead line: directly under the report heading, before the first section, write ONE line — the verdict word, an em dash, and one sentence of concrete outcome (e.g. "BLOCKED — the migration the plan requires targets a table that no longer exists."). Write the bare verdict word WITHOUT the "STATUS:" prefix; the machine-read STATUS line stays in the Status section, unchanged.
+- Next action: when the verdict is anything but PLAN_READY, add one line directly after the terminal STATUS line naming the single action a human takes next — "Next: <one concrete command or action>". One action, not a list. On PLAN_READY, write no Next line.
+- The report ends at its last specified line. NEVER append a closing pleasantry ("Let me know if…", "Hope this helps") or a recap paragraph restating what the sections already say.
 
 ## Hard rules
 

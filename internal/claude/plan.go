@@ -113,6 +113,8 @@ Run these steps in order. Do not skip ahead.
 
    ## Implementation Plan (issue #` + fmt.Sprintf("%d", ctx.IssueNumber) + `)
 
+   <verdict word, no "STATUS:" prefix> — <one sentence: the concrete outcome, per the Report Shape rules below>
+
    ### Summary
    - <2-4 sentences: the chosen approach and why it is the smallest one that satisfies every Acceptance Criterion AND covers every work package the issue lists>
    ### Ground-Truth Notes
@@ -136,8 +138,9 @@ Run these steps in order. Do not skip ahead.
    ### Status
    STATUS: <PLAN_READY | BLOCKED | NEEDS_CONTEXT>
    (PLAN_READY = the plan is executable as written and covers every work package the issue lists; BLOCKED = the issue cannot be implemented as specified — explain why under Risks; NEEDS_CONTEXT = the issue is underspecified and a human must clarify before implementation.)
+   Next: <on BLOCKED or NEEDS_CONTEXT only: the single action a human takes next; omit this line on PLAN_READY>
 
-## Hard rules
+` + reportShapeBlock("PLAN_READY") + `## Hard rules
 
 - This is a PLANNING session. NEVER edit files, create branches, run formatters or code generators, commit, push, or open PRs. Inspecting the repository with read-only commands is fine; modifying the working tree is not.
 - NEVER fabricate file paths, symbol names, or migration numbers — open the file before citing it.

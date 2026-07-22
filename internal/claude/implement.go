@@ -390,6 +390,8 @@ ALWAYS end the session with this report — it is mandatory and is the last thin
 
    ## Implementation Report (issue #` + fmt.Sprintf("%d", ctx.IssueNumber) + `)
 
+   <verdict word, no "STATUS:" prefix> — <one sentence: the concrete outcome, per the Report Shape rules below>
+
    ### Work Breakdown Coverage
    - <work package / work item, verbatim title or number> — <done | partial | not started> — <evidence: the commits, files, and tests that deliver it, including its own tests and docs>
    - (List EVERY work package the issue breaks the work into. Write "None — the issue is a single undivided change" when the issue has no multi-part breakdown. STATUS: DONE is only legitimate when every package here is "done".)
@@ -411,6 +413,7 @@ ALWAYS end the session with this report — it is mandatory and is the last thin
    ### Status
    STATUS: <DONE | DONE_WITH_CONCERNS | PARTIAL | BLOCKED | NEEDS_CONTEXT>
    (DONE = EVERY work package implemented and tested on the feature branch, every Acceptance Criterion satisfied — no package left partial or not started; DONE_WITH_CONCERNS = every package likewise complete, but with reservations a reviewer should see; PARTIAL = at least one work package is unfinished because a circuit breaker below genuinely interrupted the work — NEVER a scoping choice; BLOCKED = could not implement, nothing shippable; NEEDS_CONTEXT = the issue is underspecified and a human must clarify.)
+   Next: <on any verdict but DONE only: the single action a human takes next — e.g. on PARTIAL "rerun implement on branch <branch>"; omit this line on DONE>
    Do NOT report DONE or DONE_WITH_CONCERNS when any work package is partial or not started — that is exactly the false "this closes the issue" signal this report exists to prevent. A complete subset of a multi-package issue is PARTIAL, not DONE. On PARTIAL the orchestrator opens NO pull request: it keeps the branch so a follow-up run resumes it and finishes the remaining packages — the single pull request (linking "Closes #` + fmt.Sprintf("%d", ctx.IssueNumber) + `") opens only once every package is done.
 
 ## Circuit breakers — stop instead of thrashing
@@ -422,7 +425,7 @@ You run fully autonomously, with no human in the loop and a bounded budget, so a
 
 When you hit a circuit breaker, halt immediately and emit STATUS: PARTIAL when a partial but reviewable change already exists — at least one work package is done and committed but others remain (commit what you have on the branch; no pull request is opened for it, and a follow-up run resumes the branch to finish the rest), STATUS: DONE_WITH_CONCERNS when every work package is in fact complete but you have reservations a reviewer should see, or STATUS: BLOCKED when nothing shippable was produced. A stopped run that explains why is worth far more than an exhausted budget. The circuit breakers are the ONLY legitimate route to PARTIAL.
 
-` + commitTrailerBlock() + attributionFooterBlock("Implemented by") + implementRationalizationsBlock() + `## Hard rules
+` + reportShapeBlock("DONE") + commitTrailerBlock() + attributionFooterBlock("Implemented by") + implementRationalizationsBlock() + `## Hard rules
 
 ` + noSkipHooksLine() + `- NEVER weaken or delete tests to make the suite green; fix the root cause.
 - NEVER widen types to Any/interface{}/unknown to silence the type-checker.
@@ -602,6 +605,8 @@ ALWAYS end the session with this report — even if you stopped early or hit a c
 
    ## Implementation Report (issue #` + fmt.Sprintf("%d", issueNumber) + `)
 
+   <verdict word, no "STATUS:" prefix> — <one sentence: the concrete outcome, per the Report Shape rules below>
+
    ### Work Breakdown Coverage
    - <work package / work item, verbatim title or number> — <done | partial | not started> — <evidence: the commits, files, and tests that deliver it, including its own tests and docs>
    - (List EVERY work package the issue breaks the work into. Write "None — the issue is a single undivided change" when the issue has no multi-part breakdown. STATUS: DONE is only legitimate when every package here is "done".)
@@ -624,6 +629,7 @@ ALWAYS end the session with this report — even if you stopped early or hit a c
    ### Status
    STATUS: <DONE | DONE_WITH_CONCERNS | PARTIAL | BLOCKED | NEEDS_CONTEXT>
    (DONE = EVERY work package implemented and tested, every Acceptance Criterion satisfied, and the PR opened with a "Closes #` + fmt.Sprintf("%d", issueNumber) + `" link; DONE_WITH_CONCERNS = every package likewise complete and the closing PR opened, but with reservations a reviewer should see; PARTIAL = at least one work package is unfinished because a circuit breaker below genuinely interrupted the work — NEVER a scoping choice; the branch is pushed but NO pull request is opened, and a follow-up session on this branch finishes the rest; BLOCKED = could not implement, nothing shippable; NEEDS_CONTEXT = the issue is underspecified and a human must clarify.)
+   Next: <on any verdict but DONE only: the single action a human takes next — e.g. on PARTIAL "rerun implement on branch <branch>"; omit this line on DONE>
    Do NOT report DONE or DONE_WITH_CONCERNS when any work package is partial or not started — a complete subset of a multi-package issue is PARTIAL, and PARTIAL opens no pull request.
 
 ## Circuit breakers — stop instead of thrashing
@@ -635,7 +641,7 @@ You run fully autonomously, with no human in the loop and a bounded budget, so a
 
 When you hit a circuit breaker, halt immediately and emit STATUS: PARTIAL when a partial but reviewable change already exists — at least one work package is done and committed but others remain (push what you have but open NO pull request; a follow-up session on the same branch finishes the rest), STATUS: DONE_WITH_CONCERNS when every work package is in fact complete but you have reservations a reviewer should see, or STATUS: BLOCKED when nothing shippable was produced. A stopped run that explains why is worth far more than an exhausted budget. The circuit breakers are the ONLY legitimate route to PARTIAL.
 
-` + commitTrailerBlock() + attributionFooterBlock("Implemented by") + implementRationalizationsBlock() + `## Hard rules
+` + reportShapeBlock("DONE") + commitTrailerBlock() + attributionFooterBlock("Implemented by") + implementRationalizationsBlock() + `## Hard rules
 
 ` + noSkipHooksLine() + `- NEVER weaken or delete tests to make the suite green; fix the root cause.
 - NEVER widen types to Any/interface{}/unknown to silence the type-checker.

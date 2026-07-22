@@ -216,11 +216,13 @@ is nothing to write.
 
 ## Phase 7 — Report
 
-State the verdict, what changed, what you could not verify, and every question
-the author declined to answer. An unresolved decision belongs in the body, under
-Non-Goals or as a stated assumption — never only in the chat.
+Open with the verdict word and one sentence of outcome — the first line the
+author reads. Then state what changed, what you could not verify, and every
+question the author declined to answer. An unresolved decision belongs in the
+body, under Non-Goals or as a stated assumption — never only in the chat.
 
-Then name the next step. **Current** and **Stale** hand off to
+End with the next step as the last line, nothing after it — no closers, no
+recap. **Current** and **Stale** hand off to
 `planwerk-agent implement <issue-ref>`. **Re-scoped** hands off to the author to
 re-read first, because the shape of the work changed. **Obsolete** hands off to
 the author to close: `revisit` does not close issues.

@@ -213,6 +213,8 @@ Skip threads that are already resolved (isResolved: true) and any thread whose f
 
    ## Address Report
 
+   <verdict word, no "STATUS:" prefix> — <one sentence: the concrete outcome, per the Report Shape rules below>
+
    ### Threads
    - <file:line or thread id> — STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT> — <one sentence: what changed, or why not>
 
@@ -223,9 +225,11 @@ Skip threads that are already resolved (isResolved: true) and any thread whose f
    Overall: how the selected threads were addressed (2-4 sentences).
 
    STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT>
+   Next: <on any verdict but DONE only: the single action a human takes next; omit this line on DONE>
 
 `, ctx.PRNumber)
 
+	sb.WriteString(reportShapeBlock("DONE"))
 	sb.WriteString(commitTrailerBlock())
 	sb.WriteString(attributionFooterBlock("Addressed by"))
 

@@ -175,6 +175,8 @@ Run these steps for EACH failing check above before editing any code:
 
    ## Fix Report (iteration %d)
 
+   <verdict word, no "STATUS:" prefix> — <one sentence: the concrete outcome, per the Report Shape rules below>
+
    ### Per check
    - <check name>
      - Category: <build|test|lint|typecheck|deps|infra>
@@ -194,8 +196,9 @@ Run these steps for EACH failing check above before editing any code:
 	sb.WriteString(`   ### Status
    STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT>
    (DONE = all checks fixed and verified; DONE_WITH_CONCERNS = pushed but with reservations a human should see; BLOCKED = could not make progress; NEEDS_CONTEXT = missing information only a human can supply. The orchestrator reads this line and stops the loop on BLOCKED or NEEDS_CONTEXT.)
+   Next: <on any verdict but DONE only: the single action a human takes next; omit this line on DONE>
 
-` + commitTrailerBlock() + `## Hard rules
+` + reportShapeBlock("DONE") + commitTrailerBlock() + `## Hard rules
 
 `)
 
@@ -371,6 +374,8 @@ Run these steps for EACH failing check before editing any code:
 
    ## Fix Report
 
+   <verdict word, no "STATUS:" prefix> — <one sentence: the concrete outcome, per the Report Shape rules below>
+
    ### Per check
    - <check name>
      - Category: <build|test|lint|typecheck|deps|infra>
@@ -390,8 +395,9 @@ Run these steps for EACH failing check before editing any code:
 	sb.WriteString(`   ### Status
    STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT>
    (DONE = all checks fixed and verified; DONE_WITH_CONCERNS = pushed but with reservations a human should see; BLOCKED = could not make progress; NEEDS_CONTEXT = missing information only a human can supply. The orchestrator reads this line and stops the loop on BLOCKED or NEEDS_CONTEXT.)
+   Next: <on any verdict but DONE only: the single action a human takes next; omit this line on DONE>
 
-` + commitTrailerBlock() + `## Hard rules
+` + reportShapeBlock("DONE") + commitTrailerBlock() + `## Hard rules
 
 `)
 

@@ -1,7 +1,7 @@
 # House style
 
 Rules for every artifact the planwerk skills write: issue bodies, descriptions,
-motivations, comments.
+motivations, comments, and the report that ends a run.
 
 ## Output language
 
@@ -49,6 +49,19 @@ State what is, not what "could be considered".
 - Do not write "this could potentially cause…" — state what will happen.
 - Take a position. If something is wrong, say it is wrong. If it is fine, do not
   mention it at all.
+
+## First line, last line
+
+A reader catching up reads the first and last lines of a report and skims the
+rest. Shape every final report or wrap-up so those two lines are enough:
+
+- Open with the outcome: the verdict or result in one sentence, explanation
+  after it — never a narration of what you are about to say.
+- If anything is left open, end by naming the single next action — one concrete
+  command or step, not a list of options.
+- No closers, no recaps. Never end with "Let me know if…", "Hope this helps",
+  or a paragraph restating what was already said. The artifact ends when its
+  last piece of information is written.
 
 ## Anti-hallucination
 

@@ -287,13 +287,16 @@ Write only on an explicit yes.
 
 ## Phase 7 — Report
 
-State, in this order:
+Open with one line: how many questions blocked the issue, and how many the
+repository settled versus the author. Then state, in this order:
 
 - Every question, and what settled it: a `path:line`, the author, or nothing.
 - Every decision the author declined, and the assumption now carrying it.
 - Whether the answers invalidated the posted plan. That is not a failed run — it
   is the run working.
-- The handoff: `planwerk-agent implement <issue-ref> --no-plan-reuse`.
+
+End with the handoff as the last line, nothing after it — no closers, no recap:
+`planwerk-agent implement <issue-ref> --no-plan-reuse`.
 
 ## Before you write back, verify
 

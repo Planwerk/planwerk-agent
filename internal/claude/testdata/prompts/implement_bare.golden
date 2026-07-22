@@ -127,6 +127,8 @@ ALWAYS end the session with this report — even if you stopped early or hit a c
 
    ## Implementation Report (issue #42)
 
+   <verdict word, no "STATUS:" prefix> — <one sentence: the concrete outcome, per the Report Shape rules below>
+
    ### Work Breakdown Coverage
    - <work package / work item, verbatim title or number> — <done | partial | not started> — <evidence: the commits, files, and tests that deliver it, including its own tests and docs>
    - (List EVERY work package the issue breaks the work into. Write "None — the issue is a single undivided change" when the issue has no multi-part breakdown. STATUS: DONE is only legitimate when every package here is "done".)
@@ -149,6 +151,7 @@ ALWAYS end the session with this report — even if you stopped early or hit a c
    ### Status
    STATUS: <DONE | DONE_WITH_CONCERNS | PARTIAL | BLOCKED | NEEDS_CONTEXT>
    (DONE = EVERY work package implemented and tested, every Acceptance Criterion satisfied, and the PR opened with a "Closes #42" link; DONE_WITH_CONCERNS = every package likewise complete and the closing PR opened, but with reservations a reviewer should see; PARTIAL = at least one work package is unfinished because a circuit breaker below genuinely interrupted the work — NEVER a scoping choice; the branch is pushed but NO pull request is opened, and a follow-up session on this branch finishes the rest; BLOCKED = could not implement, nothing shippable; NEEDS_CONTEXT = the issue is underspecified and a human must clarify.)
+   Next: <on any verdict but DONE only: the single action a human takes next — e.g. on PARTIAL "rerun implement on branch <branch>"; omit this line on DONE>
    Do NOT report DONE or DONE_WITH_CONCERNS when any work package is partial or not started — a complete subset of a multi-package issue is PARTIAL, and PARTIAL opens no pull request.
 
 ## Circuit breakers — stop instead of thrashing
@@ -159,6 +162,14 @@ You run fully autonomously, with no human in the loop and a bounded budget, so a
 - Reverting in circles: you have reverted and rewritten the same code more than once without converging on a working change.
 
 When you hit a circuit breaker, halt immediately and emit STATUS: PARTIAL when a partial but reviewable change already exists — at least one work package is done and committed but others remain (push what you have but open NO pull request; a follow-up session on the same branch finishes the rest), STATUS: DONE_WITH_CONCERNS when every work package is in fact complete but you have reservations a reviewer should see, or STATUS: BLOCKED when nothing shippable was produced. A stopped run that explains why is worth far more than an exhausted budget. The circuit breakers are the ONLY legitimate route to PARTIAL.
+
+## Report Shape
+
+A human reads the report top-down and may read only its first and last lines. Shape it so those two lines are enough:
+
+- Lead line: directly under the report heading, before the first section, write ONE line — the verdict word, an em dash, and one sentence of concrete outcome (e.g. "BLOCKED — the migration the plan requires targets a table that no longer exists."). Write the bare verdict word WITHOUT the "STATUS:" prefix; the machine-read STATUS line stays in the Status section, unchanged.
+- Next action: when the verdict is anything but DONE, add one line directly after the terminal STATUS line naming the single action a human takes next — "Next: <one concrete command or action>". One action, not a list. On DONE, write no Next line.
+- The report ends at its last specified line. NEVER append a closing pleasantry ("Let me know if…", "Hope this helps") or a recap paragraph restating what the sections already say.
 
 ## Commit trailers
 

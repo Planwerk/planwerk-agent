@@ -152,6 +152,39 @@ Apply these rules to all prose you write (descriptions, motivations, summaries, 
 `
 }
 
+// reportShapeBlock returns the "## Report Shape" section shared by every
+// builder whose session ends in a structured Markdown report a human reads
+// top-down (plan, implement, finalize, fix, and the bare address variant —
+// the orchestrated address emits JSON and has nothing to shape). It is the
+// report-side companion to proseStyleBlock: where that governs the prose
+// inside sections, this pins the report's first and last lines so a reader
+// who reads only those two knows what happened and what to do next. Adapted
+// from the ayghri/i-have-adhd output-shaping skill (lead with the outcome,
+// end with one next action, no closers).
+//
+// The lead line deliberately repeats the verdict of the terminal STATUS
+// line. That line is a parser contract (decision #38) and stays terminal and
+// machine-shaped; the lead line is the human's copy of the same verdict,
+// placed where a top-down reader meets it first. It must not carry the
+// "STATUS:" prefix: the escalation parsers (planEscalation,
+// implementReportStatus, fix.parseStatus) are line-anchored on that prefix,
+// so an unprefixed lead line is invisible to them by construction.
+//
+// successVerdict names the report's fully-successful verdict ("DONE", or
+// "PLAN_READY" for the plan) so the next-action rule can key on it without
+// this block guessing at each builder's verdict set.
+func reportShapeBlock(successVerdict string) string {
+	return `## Report Shape
+
+A human reads the report top-down and may read only its first and last lines. Shape it so those two lines are enough:
+
+- Lead line: directly under the report heading, before the first section, write ONE line — the verdict word, an em dash, and one sentence of concrete outcome (e.g. "BLOCKED — the migration the plan requires targets a table that no longer exists."). Write the bare verdict word WITHOUT the "STATUS:" prefix; the machine-read STATUS line stays in the Status section, unchanged.
+- Next action: when the verdict is anything but ` + successVerdict + `, add one line directly after the terminal STATUS line naming the single action a human takes next — "Next: <one concrete command or action>". One action, not a list. On ` + successVerdict + `, write no Next line.
+- The report ends at its last specified line. NEVER append a closing pleasantry ("Let me know if…", "Hope this helps") or a recap paragraph restating what the sections already say.
+
+`
+}
+
 // outputLanguageBlock returns the "## Output Language" section that pins every
 // generated artifact — implementation plan, fix report, implementation report,
 // review, audit, analysis, elaborated issue, … — to English, whatever language

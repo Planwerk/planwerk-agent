@@ -187,6 +187,8 @@ report format whichever produced it:
 ```
 ## Fix Report
 
+<verdict word, no "STATUS:" prefix> — <one sentence: the concrete outcome>
+
 ### Per check
 - <check name>
   - Category: <build|test|lint|typecheck|deps|infra>
@@ -200,6 +202,7 @@ report format whichever produced it:
 - Commit strategy: <per change: "folded into <sha> <subject>", OR "new commit — <why it belonged to no existing commit>", OR "not committed — left in the working tree">
 ### Status
 STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT>
+Next: <on any verdict but DONE only: the single action a human takes next; omit this line on DONE>
 ```
 
 `DONE` means every check was fixed and verified. `DONE_WITH_CONCERNS` means you

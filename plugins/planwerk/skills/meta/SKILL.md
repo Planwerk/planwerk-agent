@@ -146,11 +146,13 @@ Edit the Meta Issue body so its prose and its sub-issue list agree:
 
 ## Phase 7 — Report
 
-State what was created, what was linked, which dependencies were set, and
-whether the Meta body was synced. Name every failure explicitly.
+Open with one line: how many Sub Issues were filed and whether every link,
+dependency, and body sync landed. Then state what was created, what was linked,
+which dependencies were set, and whether the Meta body was synced. Name every
+failure explicitly.
 
-Then name the next step: each Sub Issue is at draft depth, so
-`/planwerk:elaborate <sub-issue-ref>` plans one when the author is ready, and
-`planwerk-agent ship <meta-issue-ref>` drives them all in dependency order.
-`meta` stops at creating and linking. It does not elaborate, implement, or close
-anything.
+End with the next step as the last line, nothing after it — no closers, no
+recap: each Sub Issue is at draft depth, so `/planwerk:elaborate <sub-issue-ref>`
+plans one when the author is ready, and `planwerk-agent ship <meta-issue-ref>`
+drives them all in dependency order. `meta` stops at creating and linking. It
+does not elaborate, implement, or close anything.

@@ -69,6 +69,8 @@ After opening the draft PR, output a report in this exact shape:
 
    ## Pull Request
 
+   <verdict word, no "STATUS:" prefix> — <one sentence: the concrete outcome, per the Report Shape rules below>
+
    - URL: <draft PR URL, or "none — branch carries no commits">
    - Branch: <branch name>
    - Base: <base branch>
@@ -77,6 +79,15 @@ After opening the draft PR, output a report in this exact shape:
    ### Status
    STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT>
    (DONE = PR opened, or nothing to ship; DONE_WITH_CONCERNS = opened but with reservations a reviewer should see; BLOCKED = could not push or open the PR; NEEDS_CONTEXT = missing information only a human can supply.)
+   Next: <on any verdict but DONE only: the single action a human takes next; omit this line on DONE>
+
+## Report Shape
+
+A human reads the report top-down and may read only its first and last lines. Shape it so those two lines are enough:
+
+- Lead line: directly under the report heading, before the first section, write ONE line — the verdict word, an em dash, and one sentence of concrete outcome (e.g. "BLOCKED — the migration the plan requires targets a table that no longer exists."). Write the bare verdict word WITHOUT the "STATUS:" prefix; the machine-read STATUS line stays in the Status section, unchanged.
+- Next action: when the verdict is anything but DONE, add one line directly after the terminal STATUS line naming the single action a human takes next — "Next: <one concrete command or action>". One action, not a list. On DONE, write no Next line.
+- The report ends at its last specified line. NEVER append a closing pleasantry ("Let me know if…", "Hope this helps") or a recap paragraph restating what the sections already say.
 
 ## Attribution footer
 
