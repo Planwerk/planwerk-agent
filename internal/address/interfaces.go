@@ -32,6 +32,12 @@ type Context struct {
 	// so the session uses a matching project skill when resolving a thread instead
 	// of improvising. Empty when the repo ships none.
 	Skills []skills.Skill
+	// StyleGuidePath is the repo-relative path of the documentation style
+	// guide the target repo commits (found by styleguide.Find from the
+	// checkout, e.g. "STYLE_GUIDE.md"). Rendered into the address prompt so
+	// any documentation prose a resolved thread touches follows the repo's
+	// own guide. Empty when the repo ships none.
+	StyleGuidePath string
 	// Local marks a --local run: the session operates on the user's own
 	// checkout. The orchestrator owns the push in both modes.
 	Local bool

@@ -31,6 +31,13 @@ type Context struct {
 	// project skill for a specialized task instead of improvising; empty when
 	// the repo ships none.
 	Skills []skills.Skill
+	// StyleGuidePath is the repo-relative path of the documentation style
+	// guide the target repo commits (found by styleguide.Find from the
+	// checkout, e.g. "STYLE_GUIDE.md"). Rendered into the implement prompt so
+	// every piece of documentation the session writes — docs pages, CHANGELOG
+	// entries, doc comments / docstrings — follows the repo's own guide.
+	// Empty when the repo ships none.
+	StyleGuidePath string
 	// Plan is the implementation plan the preceding read-only planning
 	// session produced. When non-empty it is embedded verbatim into the
 	// implement prompt; empty means the implement session plans for
@@ -125,6 +132,12 @@ type BareContext struct {
 	// session — running in its own checkout of the same repo — uses a matching
 	// project skill instead of improvising. Empty when the repo ships none.
 	Skills []skills.Skill
+	// StyleGuidePath is the repo-relative path of the documentation style
+	// guide the target repo commits, discovered by styleguide.Find from the
+	// clone the orchestrator makes at prompt-build time. The pasted-into
+	// session reads the file from its own checkout of the same repo. Empty
+	// when the repo ships none.
+	StyleGuidePath string
 }
 
 // BarePromptBuildFn renders a self-contained implement prompt — no issue

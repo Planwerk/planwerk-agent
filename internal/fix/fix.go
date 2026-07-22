@@ -15,6 +15,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/skills"
+	"github.com/planwerk/planwerk-agent/internal/styleguide"
 	"github.com/planwerk/planwerk-agent/internal/workspace"
 )
 
@@ -360,20 +361,21 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		pats := loadPatterns(opts, fresh.Dir)
 
 		report, model, fixErr := r.Claude.Fix(fresh.Dir, Context{
-			RepoFullName:  fullName,
-			PRNumber:      number,
-			PRTitle:       pr.Title,
-			HeadBranch:    pr.HeadBranch,
-			HeadSHA:       fresh.HeadSHA,
-			Iteration:     iteration,
-			MaxIterations: opts.MaxIterations,
-			FailedChecks:  failed,
-			Patterns:      pats,
-			MaxPatterns:   opts.MaxPatterns,
-			Skills:        skills.Load(fresh.Dir),
-			Local:         opts.Local,
-			Fixup:         !opts.NoFixup,
-			BaseBranch:    pr.BaseBranch,
+			RepoFullName:   fullName,
+			PRNumber:       number,
+			PRTitle:        pr.Title,
+			HeadBranch:     pr.HeadBranch,
+			HeadSHA:        fresh.HeadSHA,
+			Iteration:      iteration,
+			MaxIterations:  opts.MaxIterations,
+			FailedChecks:   failed,
+			Patterns:       pats,
+			MaxPatterns:    opts.MaxPatterns,
+			Skills:         skills.Load(fresh.Dir),
+			StyleGuidePath: styleguide.Find(fresh.Dir),
+			Local:          opts.Local,
+			Fixup:          !opts.NoFixup,
+			BaseBranch:     pr.BaseBranch,
 		})
 		fresh.Cleanup()
 		if fixErr != nil {

@@ -324,6 +324,7 @@ This is a single, non-interactive, one-shot session: there is NO next turn, no h
 	}
 
 	sb.WriteString(projectSkillsBlock(ctx.Skills))
+	sb.WriteString(styleGuideBlock(ctx.StyleGuidePath))
 
 	hasPlan := strings.TrimSpace(ctx.Plan) != ""
 	if hasPlan {
@@ -556,6 +557,7 @@ func BuildBareImplementPrompt(ctx implement.BareContext) string {
 	sb.WriteString(renderBareCatalog(ctx.PatternCatalog, ctx.HasRepoLocalRefs))
 
 	sb.WriteString(projectSkillsBlock(ctx.Skills))
+	sb.WriteString(styleGuideBlock(ctx.StyleGuidePath))
 
 	fmt.Fprintf(&sb, `## Fetch the issue
 

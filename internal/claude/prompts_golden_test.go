@@ -79,6 +79,11 @@ func goldenPatterns() []patterns.Pattern {
 	}
 }
 
+// goldenStyleGuidePath is the deterministic style-guide path shared by the
+// implement, bare-implement, fix, and address style-guide goldens, locking the
+// rendered styleGuideBlock citation.
+const goldenStyleGuidePath = "STYLE_GUIDE.md"
+
 // goldenSkills returns a deterministic set of project-provided skills (name +
 // description, sorted by name as skills.Load returns them) so the implement,
 // fix, and address goldens lock the rendered <project-skills> block. One skill
@@ -479,6 +484,15 @@ func TestBuildImplementPrompt_Golden(t *testing.T) {
 	assertGoldenPrompt(t, "implement", BuildImplementPrompt(goldenImplementContext()))
 }
 
+// TestBuildImplementPrompt_StyleGuide locks the "## Documentation Style Guide"
+// block injected into the implement prompt when the target repo commits a
+// STYLE_GUIDE.md. The empty branch stays covered by implement.golden.
+func TestBuildImplementPrompt_StyleGuide(t *testing.T) {
+	ctx := goldenImplementContext()
+	ctx.StyleGuidePath = goldenStyleGuidePath
+	assertGoldenPrompt(t, "implement_styleguide", BuildImplementPrompt(ctx))
+}
+
 // TestBuildImplementPromptWithPlan_Golden locks the shape used when a
 // planning session preceded the implement session: the plan is embedded
 // verbatim and workflow step 3 switches from PLAN to VALIDATE.
@@ -690,6 +704,14 @@ func TestBuildFixPrompt_Golden(t *testing.T) {
 	assertGoldenPrompt(t, "fix", BuildFixPrompt(goldenFixContext()))
 }
 
+// TestBuildFixPrompt_StyleGuide locks the documentation-style-guide block in
+// the fix prompt. The empty branch stays covered by fix.golden.
+func TestBuildFixPrompt_StyleGuide(t *testing.T) {
+	ctx := goldenFixContext()
+	ctx.StyleGuidePath = goldenStyleGuidePath
+	assertGoldenPrompt(t, "fix_styleguide", BuildFixPrompt(ctx))
+}
+
 // TestBuildFixPrompt_NoFixup_Golden locks the --no-fixup fix prompt: a single
 // on-top follow-up commit, a normal push, and the "NEVER force-push" hard rule.
 func TestBuildFixPrompt_NoFixup_Golden(t *testing.T) {
@@ -780,6 +802,14 @@ func goldenBareAddressContext() address.BareContext {
 // the thread, commit one focused follow-up commit, never push.
 func TestBuildAddressPrompt_Golden(t *testing.T) {
 	assertGoldenPrompt(t, "address", BuildAddressPrompt(goldenAddressContext()))
+}
+
+// TestBuildAddressPrompt_StyleGuide locks the documentation-style-guide block
+// in the address prompt. The empty branch stays covered by address.golden.
+func TestBuildAddressPrompt_StyleGuide(t *testing.T) {
+	ctx := goldenAddressContext()
+	ctx.StyleGuidePath = goldenStyleGuidePath
+	assertGoldenPrompt(t, "address_styleguide", BuildAddressPrompt(ctx))
 }
 
 // TestBuildAddressPrompt_Aggregate_Golden locks the aggregate variant: fold
@@ -1025,6 +1055,15 @@ func goldenBareImplementContext() implement.BareContext {
 // opens a draft PR, and reports.
 func TestBuildBareImplementPrompt_Golden(t *testing.T) {
 	assertGoldenPrompt(t, "implement_bare", BuildBareImplementPrompt(goldenBareImplementContext()))
+}
+
+// TestBuildBareImplementPrompt_StyleGuide locks the documentation-style-guide
+// block in the bare implement prompt. The empty branch stays covered by
+// implement_bare.golden.
+func TestBuildBareImplementPrompt_StyleGuide(t *testing.T) {
+	ctx := goldenBareImplementContext()
+	ctx.StyleGuidePath = goldenStyleGuidePath
+	assertGoldenPrompt(t, "implement_bare_styleguide", BuildBareImplementPrompt(ctx))
 }
 
 func goldenGapAnalysisContext() gapanalysis.AnalysisContext {

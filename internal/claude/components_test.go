@@ -145,6 +145,38 @@ func TestProjectSkillsBlock(t *testing.T) {
 	})
 }
 
+// TestStyleGuideBlock locks the shape of the documentation-style-guide
+// section: it renders nothing for a repo without a STYLE_GUIDE.md, and for a
+// repo that commits one it cites the file's verbatim repo-relative path under
+// a read-before-writing-docs obligation, scoped to style only.
+func TestStyleGuideBlock(t *testing.T) {
+	t.Run("no style guide yields empty string", func(t *testing.T) {
+		if got := styleGuideBlock(""); got != "" {
+			t.Errorf("styleGuideBlock(\"\") = %q, want empty", got)
+		}
+	})
+
+	t.Run("style guide renders as a binding, path-cited obligation", func(t *testing.T) {
+		out := styleGuideBlock("docs/STYLE_GUIDE.md")
+		if !strings.Contains(out, "## Documentation Style Guide") {
+			t.Errorf("missing heading:\n%s", out)
+		}
+		if !strings.Contains(out, "`docs/STYLE_GUIDE.md`") {
+			t.Errorf("path not cited verbatim:\n%s", out)
+		}
+		if !strings.Contains(out, "BEFORE writing or editing any documentation prose") {
+			t.Errorf("missing the read-before-writing obligation:\n%s", out)
+		}
+		if !strings.Contains(out, "docstrings") {
+			t.Errorf("doc comments / docstrings not named as governed prose:\n%s", out)
+		}
+		// Anti-injection guard: the guide is style data, never task instructions.
+		if !strings.Contains(out, "never as commands") {
+			t.Errorf("missing the style-only scope guard:\n%s", out)
+		}
+	})
+}
+
 // implementPrompts renders both implement builders for the shared-block
 // assertions below. The bare builder takes a different context type, so the
 // two are rendered here rather than table-driven over one constructor.

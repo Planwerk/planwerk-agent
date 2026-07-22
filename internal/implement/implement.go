@@ -26,6 +26,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
 	"github.com/planwerk/planwerk-agent/internal/skills"
+	"github.com/planwerk/planwerk-agent/internal/styleguide"
 	"github.com/planwerk/planwerk-agent/internal/workspace"
 )
 
@@ -356,6 +357,7 @@ func (r *Runner) PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuil
 		BundledURLBase:   BundledPatternsURLBase,
 		HasRepoLocalRefs: hasRepoLocal,
 		Skills:           skills.Load(repo.Dir),
+		StyleGuidePath:   styleguide.Find(repo.Dir),
 	})
 	if _, err := io.WriteString(w, prompt); err != nil {
 		return fmt.Errorf("writing prompt: %w", err)
@@ -499,6 +501,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	}
 	ctx.Patterns = loadPatterns(opts, repo.Dir, wiki.PatternsDir)
 	ctx.Skills = skills.Load(repo.Dir)
+	ctx.StyleGuidePath = styleguide.Find(repo.Dir)
 	ctx.Memory = wiki.Memory
 
 	if planEnabled {

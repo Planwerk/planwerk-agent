@@ -41,6 +41,13 @@ type Context struct {
 	// the session uses a matching project skill for a specialized fix instead of
 	// improvising. Empty when the repo ships none.
 	Skills []skills.Skill
+	// StyleGuidePath is the repo-relative path of the documentation style
+	// guide the target repo commits (found by styleguide.Find from the
+	// checkout, e.g. "STYLE_GUIDE.md"). Rendered into the fix prompt so any
+	// documentation prose the fix touches — doc comments, CHANGELOG entries,
+	// docs pages — follows the repo's own guide. Empty when the repo ships
+	// none.
+	StyleGuidePath string
 
 	// Local marks a --local run: the fix operates on the user's own checkout
 	// (PullOnBranch each iteration) instead of a throw-away temp-dir clone. It

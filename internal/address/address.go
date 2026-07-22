@@ -19,6 +19,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
 	"github.com/planwerk/planwerk-agent/internal/skills"
+	"github.com/planwerk/planwerk-agent/internal/styleguide"
 	"github.com/planwerk/planwerk-agent/internal/workspace"
 )
 
@@ -375,6 +376,7 @@ func (r *Runner) contextFor(opts Options, pr *github.PR, threads []github.Review
 		Patterns:           pats,
 		MaxPatterns:        opts.MaxPatterns,
 		Skills:             sks,
+		StyleGuidePath:     styleguide.Find(pr.Dir),
 		Local:              opts.Local,
 	}
 }
