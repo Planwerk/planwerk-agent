@@ -527,8 +527,9 @@ func TestBuildImplementerAgentPrompt_Golden(t *testing.T) {
 
 // TestBuildImplementPromptResume_Golden locks the shape used when an earlier
 // aborted run left commits on the branch: a "Resuming a partial implementation"
-// section lists them and workflow step 4 stays on the existing branch instead of
-// creating a fresh one.
+// section lists them, embeds the stopped session's last account (its progress
+// note or partial report, recovered from the issue), and workflow step 4 stays
+// on the existing branch instead of creating a fresh one.
 func TestBuildImplementPromptResume_Golden(t *testing.T) {
 	ctx := goldenImplementContext()
 	ctx.Resume = &implement.ResumeContext{
@@ -537,6 +538,7 @@ func TestBuildImplementPromptResume_Golden(t *testing.T) {
 			{SHA: "abc1234def5678", Subject: "Add golden helper and -update flag"},
 			{SHA: "0f1e2d3c4b5a69", Subject: "Snapshot the review prompt builder"},
 		},
+		PriorReport: "Verified so far: go test ./... green, golangci-lint clean.\nOutstanding: the envtest integration run exceeded the foreground cap.",
 	}
 	assertGoldenPrompt(t, "implement_resume", BuildImplementPrompt(ctx))
 }
@@ -567,6 +569,20 @@ func TestBuildImplementPrompt_ResumeSection(t *testing.T) {
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("resume prompt missing %q", want)
+		}
+	}
+	if strings.Contains(got, "<previous-session-account>") {
+		t.Error("resume prompt without a PriorReport should not carry the account block")
+	}
+
+	ctx.Resume.PriorReport = "Outstanding: the envtest run."
+	withAccount := BuildImplementPrompt(ctx)
+	for _, want := range []string{
+		"<previous-session-account>\nOutstanding: the envtest run.\n</previous-session-account>",
+		"Treat it as your map, not as truth",
+	} {
+		if !strings.Contains(withAccount, want) {
+			t.Errorf("resume prompt with an account missing %q", want)
 		}
 	}
 }

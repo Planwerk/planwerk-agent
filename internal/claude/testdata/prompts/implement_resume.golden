@@ -118,6 +118,13 @@ An earlier run for this issue stopped before finishing (most likely it hit its s
 - abc1234 Add golden helper and -update flag
 - 0f1e2d3 Snapshot the review prompt builder
 
+The stopped session's final account is preserved below. Treat it as your map, not as truth: it records what that session had already implemented and verified — commits made, verification commands that already passed, and what was still outstanding when it stopped. Focus your work on the outstanding part, re-verify the account's claims cheaply (git log, re-run a check only where doubt exists) instead of redoing every verification from scratch, and never contradict the actual repository state in its favor.
+
+<previous-session-account>
+Verified so far: go test ./... green, golangci-lint clean.
+Outstanding: the envtest integration run exceeded the foreground cap.
+</previous-session-account>
+
 Continue that work — do NOT start over:
 - Do NOT create a new branch, and do NOT reset, rebase, revert, or amend the commits already on this branch. They are completed work; build on top of them.
 - Reconcile the commits above against the plan's Commit Sequence and Work Breakdown: work out which commits and work packages are already delivered and which remain. Open the files an existing commit changed to confirm it does what its subject claims; only if one is clearly broken or incomplete should you correct it in a NEW follow-up commit — never by rewriting history.

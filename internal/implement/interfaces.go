@@ -88,9 +88,14 @@ type Context struct {
 // than start over. Branch is the feature branch (already checked out by the
 // orchestrator); Commits are the commits already on it over the base branch,
 // oldest-first, for the session to reconcile against the plan's Commit Sequence.
+// PriorReport, when non-empty, is the stopped session's last account — the most
+// recent progress note or (PARTIAL) implementation report posted on the issue,
+// footer stripped — so the resuming session knows what was already implemented
+// and verified instead of re-deriving it; empty when the issue carries none.
 type ResumeContext struct {
-	Branch  string
-	Commits []github.Commit
+	Branch      string
+	Commits     []github.Commit
+	PriorReport string
 }
 
 // ImplementFn is the bare-function shape the CLI passes in to wire Claude
