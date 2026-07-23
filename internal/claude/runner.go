@@ -3,6 +3,7 @@ package claude
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -168,6 +169,60 @@ func withReadOnlyDenied(args []string, readOnly bool) []string {
 	}
 	args = append(args, "--disallowed-tools")
 	return append(args, claudeReadOnlyDeniedTools...)
+}
+
+// runSpec bundles the per-invocation knobs behind one `claude -p` session so
+// the buffered and streaming runners share one shape instead of ten parallel
+// parameters. The runClaude* wrappers construct it; runClaudeWithPermission
+// and runClaudeStream consume it.
+type runSpec struct {
+	dir            string
+	label          string
+	permissionMode string // --permission-mode when non-empty
+	model          string
+	effort         string
+	readOnly       bool   // deny the write tools (withReadOnlyDenied)
+	jsonSchema     string // --json-schema when non-empty
+	agentsJSON     string // --agents when non-empty
+	// sessionID, when non-empty, pins the CLI session's id via --session-id so
+	// a later invocation can resume the very same session with its full
+	// context. resume flips the invocation from starting a fresh session to
+	// resuming sessionID via --resume — the completion nudge's follow-up turn.
+	// Both stay zero for every ordinary one-shot call, leaving the historical
+	// invocation unchanged.
+	sessionID string
+	resume    bool
+}
+
+// withSession appends the session-identity flags: --session-id <id> pins a
+// fresh session's id so a follow-up turn can find it, --resume <id> continues
+// that session in place of starting a fresh one. A no-op when no session id is
+// set — the ordinary one-shot invocation. Both runner paths route their args
+// through it so the buffered and streaming runners cannot drift on how a
+// session is pinned or resumed.
+func withSession(args []string, spec runSpec) []string {
+	if spec.sessionID == "" {
+		return args
+	}
+	if spec.resume {
+		return append(args, "--resume", spec.sessionID)
+	}
+	return append(args, "--session-id", spec.sessionID)
+}
+
+// newSessionID returns a fresh RFC 4122 version-4 UUID for the CLI's
+// --session-id flag (which requires a valid UUID). It returns "" when the
+// system's entropy source fails — the caller then runs without a pinned
+// session id, which merely disables the completion nudge for that call rather
+// than failing the session.
+func newSessionID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return ""
+	}
+	b[6] = (b[6] & 0x0f) | 0x40 // version 4
+	b[8] = (b[8] & 0x3f) | 0x80 // RFC 4122 variant
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
 // withAgents appends the --agents flag carrying the inline subagent
@@ -420,7 +475,7 @@ func WithInheritUserConfig(b bool) Option {
 // and their repair recovery — use runClaudeStructure for the dedicated cheap
 // tier instead.
 func (c *Client) runClaude(dir, prompt, label string) (text, model string, err error) {
-	return c.runClaudeWithPermission(dir, prompt, label, "", c.model, c.effort, true, "", "")
+	return c.runClaudeWithPermission(runSpec{dir: dir, label: label, model: c.model, effort: c.effort, readOnly: true}, prompt)
 }
 
 // runClaudePlan is runClaude on the dedicated planning model (planModel,
@@ -431,7 +486,7 @@ func (c *Client) runClaude(dir, prompt, label string) (text, model string, err e
 // thinks at the largest budget — the one session where that depth steers the
 // whole implementation.
 func (c *Client) runClaudePlan(dir, prompt, label string) (text, model string, err error) {
-	return c.runClaudeWithPermission(dir, prompt, label, "", c.planModel, c.planEffort, true, "", "")
+	return c.runClaudeWithPermission(runSpec{dir: dir, label: label, model: c.planModel, effort: c.planEffort, readOnly: true}, prompt)
 }
 
 // runClaudeStructure is runClaude on the dedicated structuring tier
@@ -453,7 +508,7 @@ func (c *Client) runClaudeStructure(prompt, label string) (text, model string, e
 // only want where a stable wire contract exists. decodeJSONWithRepair still
 // backstops the decode either way.
 func (c *Client) runClaudeStructureWithSchema(prompt, label, jsonSchema string) (text, model string, err error) {
-	return c.runClaudeWithPermission("", prompt, label, "", c.structureModel, c.structureEffort, true, jsonSchema, "")
+	return c.runClaudeWithPermission(runSpec{label: label, model: c.structureModel, effort: c.structureEffort, readOnly: true, jsonSchema: jsonSchema}, prompt)
 }
 
 // runClaudeAuto is runClaude with claudeAutoPermissionMode, letting the
@@ -463,7 +518,15 @@ func (c *Client) runClaudeStructureWithSchema(prompt, label, jsonSchema string) 
 // push a feature branch, and open a PR without a human confirming each
 // step. The auto-mode classifier still vets every action.
 func (c *Client) runClaudeAuto(dir, prompt, label string) (text, model string, err error) {
-	return c.runClaudeWithPermission(dir, prompt, label, claudeAutoPermissionMode, c.model, c.effort, false, "", "")
+	return c.runClaudeWithPermission(c.autoSpec(dir, label), prompt)
+}
+
+// autoSpec is the runSpec every auto-mode mutating session starts from: the
+// shared main model and effort, claudeAutoPermissionMode, and the write tools
+// kept (readOnly false). runClaudeAuto and the completion-gated variants build
+// on it so the auto-mode invocation is defined once.
+func (c *Client) autoSpec(dir, label string) runSpec {
+	return runSpec{dir: dir, label: label, permissionMode: claudeAutoPermissionMode, model: c.model, effort: c.effort}
 }
 
 // runClaudeImplement is runClaudeAuto on the implement session's model
@@ -477,7 +540,10 @@ func (c *Client) runClaudeAuto(dir, prompt, label string) (text, model string, e
 // session without subagent definitions, exactly as before orchestrator mode
 // existed.
 func (c *Client) runClaudeImplement(dir, prompt, label, agentsJSON string) (text, model string, err error) {
-	return c.runClaudeWithPermission(dir, prompt, label, claudeAutoPermissionMode, c.implementSessionModel(), c.effort, false, "", agentsJSON)
+	spec := c.autoSpec(dir, label)
+	spec.model = c.implementSessionModel()
+	spec.agentsJSON = agentsJSON
+	return c.runClaudeWithPermission(spec, prompt)
 }
 
 // implementSessionModel resolves the model for the implement session: the
@@ -491,67 +557,69 @@ func (c *Client) implementSessionModel() string {
 }
 
 // runClaudeWithPermission is the shared implementation behind runClaude,
-// runClaudePlan, runClaudeAuto, and runClaudeImplement. permissionMode, when non-empty, is
-// passed to claude as --permission-mode; an empty value leaves claude on
-// its default mode. model is the --model value and effort the --effort value
-// (callers pass c.model/c.effort, or c.planModel/c.planEffort for the
-// planning session). readOnly is true for the analysis passes (runClaude,
-// runClaudePlan): it denies the write tools via withReadOnlyDenied so the
-// session cannot mutate the checkout. agentsJSON, when non-empty, is passed
-// via --agents so the session can delegate to inline-defined subagents (only
-// the orchestrated implement session uses it — see withAgents). Every
-// invocation is also isolated from user-global config via hermeticArgs and
-// pre-approves claudeAllowedTools via --allowed-tools (see withAllowedTools).
-// The label tags elapsed-time progress updates (or per-line stream prefixes
-// when streaming is enabled).
+// runClaudePlan, runClaudeAuto, and runClaudeImplement. The spec carries the
+// per-invocation knobs: permissionMode, when non-empty, is passed to claude as
+// --permission-mode (an empty value leaves claude on its default mode); model
+// and effort are the --model/--effort values the caller selected; readOnly is
+// true for the analysis passes (runClaude, runClaudePlan) and denies the write
+// tools via withReadOnlyDenied so the session cannot mutate the checkout;
+// agentsJSON, when non-empty, is passed via --agents so the session can
+// delegate to inline-defined subagents (only the orchestrated implement
+// session uses it — see withAgents); sessionID/resume pin or resume the CLI
+// session for the completion nudge (see withSession). Every invocation is also
+// isolated from user-global config via hermeticArgs and pre-approves
+// claudeAllowedTools via --allowed-tools (see withAllowedTools). The label
+// tags elapsed-time progress updates (or per-line stream prefixes when
+// streaming is enabled).
 //
 // When c.showOutput is false it uses --output-format json and captures the
 // full result via cmd.Output(). When c.showOutput is true it delegates to
 // runClaudeStream, which uses --output-format stream-json --verbose and
 // surfaces output incrementally; the periodic heartbeat is skipped in that
 // mode because the stream itself is the heartbeat.
-func (c *Client) runClaudeWithPermission(dir, prompt, label, permissionMode, model, effort string, readOnly bool, jsonSchema, agentsJSON string) (string, string, error) {
+func (c *Client) runClaudeWithPermission(spec runSpec, prompt string) (string, string, error) {
 	// Normalize once, above the fork, so neither runner path can pass the CLI a
 	// dialect declaration it cannot resolve.
-	jsonSchema = cliJSONSchema(jsonSchema)
+	spec.jsonSchema = cliJSONSchema(spec.jsonSchema)
 	if c.showOutput {
-		return c.runClaudeStream(dir, prompt, label, permissionMode, model, effort, readOnly, jsonSchema, agentsJSON)
+		return c.runClaudeStream(spec, prompt)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
-	stopProgress := startProgress(label)
+	stopProgress := startProgress(spec.label)
 	defer stopProgress()
 
 	args := []string{
 		"-p",
-		"--model", model,
-		"--effort", effort,
+		"--model", spec.model,
+		"--effort", spec.effort,
 		"--output-format", "json",
 	}
-	if permissionMode != "" {
-		args = append(args, "--permission-mode", permissionMode)
+	if spec.permissionMode != "" {
+		args = append(args, "--permission-mode", spec.permissionMode)
 	}
-	if jsonSchema != "" {
-		args = append(args, "--json-schema", jsonSchema)
+	if spec.jsonSchema != "" {
+		args = append(args, "--json-schema", spec.jsonSchema)
 	}
-	args = withAgents(args, agentsJSON)
+	args = withSession(args, spec)
+	args = withAgents(args, spec.agentsJSON)
 	args = c.hermeticArgs(args)
-	args = withReadOnlyDenied(args, readOnly)
+	args = withReadOnlyDenied(args, spec.readOnly)
 	args = withAllowedTools(args)
 	cmd := exec.CommandContext(ctx, "claude", args...)
-	if dir != "" {
-		cmd.Dir = dir
+	if spec.dir != "" {
+		cmd.Dir = spec.dir
 	}
 	cmd.Stdin = strings.NewReader(prompt)
 	out, err := cmd.Output()
 	if err != nil {
 		var exitErr *exec.ExitError
 		if !errors.As(err, &exitErr) {
-			return "", "", fmt.Errorf("claude (model %s): %w", model, err)
+			return "", "", fmt.Errorf("claude (model %s): %w", spec.model, err)
 		}
-		return "", "", claudeRunError(err, model, out, exitErr.Stderr)
+		return "", "", claudeRunError(err, spec.model, out, exitErr.Stderr)
 	}
 	// The returned model is the exact id the envelope reports (e.g.
 	// "claude-opus-4-8"); the caller threads it per-run into the artifact

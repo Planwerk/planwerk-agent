@@ -141,39 +141,41 @@ func (slogStreamSink) toolResult(label string) {
 // and surfaces assistant text and tool activity through a streamSink as
 // it arrives. The final assistant text is returned. The method is the
 // streaming counterpart of runClaudeWithPermission and shares its timeout,
-// effort, permission-mode, and isolation handling: permissionMode, when
-// non-empty, is passed to claude as --permission-mode; model is the --model
-// value and effort the --effort value the caller selected (c.model/c.effort, or
-// c.planModel/c.planEffort for the planning session); readOnly denies the write
-// tools on the analysis passes; agentsJSON, when non-empty, carries the inline
-// subagent definitions passed via --agents. It routes through the same
-// hermeticArgs, withReadOnlyDenied, withAllowedTools, and withAgents helpers as
-// the buffered path so the two runners cannot drift on which flags an
-// isolation- or tool-level decision emits.
-func (c *Client) runClaudeStream(dir, prompt, label, permissionMode, model, effort string, readOnly bool, jsonSchema, agentsJSON string) (string, string, error) {
+// effort, permission-mode, and isolation handling via the same runSpec shape:
+// spec.permissionMode, when non-empty, is passed to claude as
+// --permission-mode; spec.model/spec.effort are the --model/--effort values
+// the caller selected; spec.readOnly denies the write tools on the analysis
+// passes; spec.agentsJSON, when non-empty, carries the inline subagent
+// definitions passed via --agents; spec.sessionID/spec.resume pin or resume
+// the CLI session for the completion nudge. It routes through the same
+// hermeticArgs, withReadOnlyDenied, withAllowedTools, withAgents, and
+// withSession helpers as the buffered path so the two runners cannot drift on
+// which flags an isolation-, tool-, or session-level decision emits.
+func (c *Client) runClaudeStream(spec runSpec, prompt string) (string, string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
 	args := []string{
 		"-p",
-		"--model", model,
-		"--effort", effort,
+		"--model", spec.model,
+		"--effort", spec.effort,
 		"--output-format", "stream-json",
 		"--verbose",
 	}
-	if permissionMode != "" {
-		args = append(args, "--permission-mode", permissionMode)
+	if spec.permissionMode != "" {
+		args = append(args, "--permission-mode", spec.permissionMode)
 	}
-	if jsonSchema != "" {
-		args = append(args, "--json-schema", jsonSchema)
+	if spec.jsonSchema != "" {
+		args = append(args, "--json-schema", spec.jsonSchema)
 	}
-	args = withAgents(args, agentsJSON)
+	args = withSession(args, spec)
+	args = withAgents(args, spec.agentsJSON)
 	args = c.hermeticArgs(args)
-	args = withReadOnlyDenied(args, readOnly)
+	args = withReadOnlyDenied(args, spec.readOnly)
 	args = withAllowedTools(args)
 	cmd := exec.CommandContext(ctx, "claude", args...)
-	if dir != "" {
-		cmd.Dir = dir
+	if spec.dir != "" {
+		cmd.Dir = spec.dir
 	}
 	cmd.Stdin = strings.NewReader(prompt)
 
@@ -187,7 +189,7 @@ func (c *Client) runClaudeStream(dir, prompt, label, permissionMode, model, effo
 	}
 
 	sink := streamSinkFn()
-	sink.starting(label)
+	sink.starting(spec.label)
 
 	if err := cmd.Start(); err != nil {
 		return "", "", fmt.Errorf("claude start: %w", err)
@@ -208,7 +210,7 @@ func (c *Client) runClaudeStream(dir, prompt, label, permissionMode, model, effo
 	// instead of a package-level global, not the alias passed via --model.
 	// failLine is the raw `result` event of a failed turn (nil otherwise), which
 	// carries the reason the CLI never writes to stderr.
-	finalResult, accText, resolvedModel, usage, cost, failLine, scanErr := readStream(stdout, label, sink)
+	finalResult, accText, resolvedModel, usage, cost, failLine, scanErr := readStream(stdout, spec.label, sink)
 
 	waitErr := cmd.Wait()
 	wg.Wait()
@@ -217,7 +219,7 @@ func (c *Client) runClaudeStream(dir, prompt, label, permissionMode, model, effo
 		return "", "", fmt.Errorf("claude stream read: %w\nstderr: %s", scanErr, stderrBuf.String())
 	}
 	if waitErr != nil {
-		return "", "", claudeRunError(waitErr, model, failLine, stderrBuf.Bytes())
+		return "", "", claudeRunError(waitErr, spec.model, failLine, stderrBuf.Bytes())
 	}
 
 	// Count the call once the stream read cleanly, before the empty-result
