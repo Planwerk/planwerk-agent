@@ -513,10 +513,13 @@ func (c *Client) runClaudeStructureWithSchema(prompt, label, jsonSchema string) 
 
 // runClaudeAuto is runClaude with claudeAutoPermissionMode, letting the
 // session edit files and run git/gh/test commands without an interactive
-// approval. The implement command uses it: its orchestrated, one-shot
-// `claude -p` session runs unattended inside a checkout and must commit,
-// push a feature branch, and open a PR without a human confirming each
-// step. The auto-mode classifier still vets every action.
+// approval — the orchestrated, one-shot `claude -p` sessions run unattended
+// inside a checkout and must commit and push without a human confirming each
+// step, while the auto-mode classifier still vets every action. The sessions
+// without a terminal-report contract (verify-implementation, address, the
+// rebase sessions) call it directly; the report-bearing mutating sessions go
+// through runClaudeAutoReport, which adds the completion nudge on top of the
+// same autoSpec.
 func (c *Client) runClaudeAuto(dir, prompt, label string) (text, model string, err error) {
 	return c.runClaudeWithPermission(c.autoSpec(dir, label), prompt)
 }
@@ -538,12 +541,14 @@ func (c *Client) autoSpec(dir, label string) runSpec {
 // carries the inline implementer-subagent definition the orchestrated mode
 // passes via --agents (see implementAgentsJSON); an empty value runs the
 // session without subagent definitions, exactly as before orchestrator mode
-// existed.
+// existed. The session runs under the completion nudge: when it ends without
+// its implementation report (heading + terminal STATUS), the same session is
+// resumed to finish and report instead of the run aborting outright.
 func (c *Client) runClaudeImplement(dir, prompt, label, agentsJSON string) (text, model string, err error) {
 	spec := c.autoSpec(dir, label)
 	spec.model = c.implementSessionModel()
 	spec.agentsJSON = agentsJSON
-	return c.runClaudeWithPermission(spec, prompt)
+	return c.runWithCompletionNudge(spec, prompt, implementReportHeading, implementReportStatusChoices)
 }
 
 // implementSessionModel resolves the model for the implement session: the
