@@ -220,7 +220,7 @@ func buildImplementerAgentPrompt() string {
 - Mirror the repository's existing conventions: layout, naming, error handling, logging, test style.
 - Tests are part of the package: add unit tests for new logic, each exercising at least one error or edge path — not the happy path only — and integration/E2E tests when the project runs them for comparable features.
 - Documentation is part of the package: update README, CHANGELOG, doc comments, or CLI help for every user-visible change the brief covers.
-- Run tests, linters, and builds in the FOREGROUND and wait for them to finish; never background a command — your result must carry their real exit status.
+- Run tests, linters, and builds in the FOREGROUND and wait for them to finish; never background a command and return while it runs — your result must carry the real exit status. If a command outlives the Bash tool's foreground time limit, background it and poll its output until it exits before returning.
 - Commit your finished work in small, reviewable commits with clean imperative messages (subject and body wrapped at 72 characters), and leave the working tree CLEAN before you return — an uncommitted change is invisible to the orchestrator and lost work.
 
 `)
@@ -282,7 +282,7 @@ func BuildImplementPrompt(ctx implement.Context) string {
 	sb.WriteString(outputLanguageBlock())
 	sb.WriteString(`You implement and commit the change on a feature branch; you do NOT open a pull request. After you finish, automated simplify and review passes run over your diff, and only then is the pull request opened — so leave the branch committed and report, nothing more.
 
-This is a single, non-interactive, one-shot session: there is NO next turn, no human to hand work back to, and nothing re-invokes you after you stop. Do everything to completion now, within this one response — read the issue, edit, run the tests in the FOREGROUND and wait for them to finish, commit every change, then output the report as the last thing you do. NEVER launch a long-running command (a test run, a build) in the background and then yield to "wait" for it or to be "notified" when it finishes: when this session ends the backgrounded job is killed, its result never arrives, and the work it gated — the next commit, the fix it would have informed — never happens. NEVER defer a step to later ("I'll commit once the tests pass", "waiting for the run to complete before committing"): anything left unfinished when you stop is finished never.
+This is a single, non-interactive, one-shot session: there is NO next turn, no human to hand work back to, and nothing re-invokes you after you stop. Do everything to completion now, within this one response — read the issue, edit, run the tests in the FOREGROUND and wait for them to finish, commit every change, then output the report as the last thing you do. NEVER launch a long-running command (a test run, a build) in the background and then yield to "wait" for it or to be "notified" when it finishes: when this session ends the backgrounded job is killed, its result never arrives, and the work it gated — the next commit, the fix it would have informed — never happens. When a single command genuinely outlives the Bash tool's foreground time limit, run it in the background and POLL its output from within this same turn — check it repeatedly until the command exits — instead of ending the turn: polling is how you wait; yielding is how the result is lost. NEVER defer a step to later ("I'll commit once the tests pass", "waiting for the run to complete before committing"): anything left unfinished when you stop is finished never.
 
 `)
 	if orchestrated {
@@ -377,7 +377,7 @@ Run these steps in order. Do not skip ahead.
 `)
 	}
 	sb.WriteString(`6. VERIFY LOCALLY before you hand off:
-   - Run every command in the FOREGROUND and wait for it to finish before the next step — never background a test or build run and move on. You need its real exit status in hand to commit and to fill in the report; a backgrounded run's result never reaches this one-shot session.
+   - Run every command in the FOREGROUND and wait for it to finish before the next step — never background a test or build run and move on. You need its real exit status in hand to commit and to fill in the report; a backgrounded run's result never reaches this one-shot session. If a command outlives the Bash tool's foreground time limit, background it and poll its output within this same turn until it exits.
    - Run the project's test suite (or the targeted subset that covers the new code).
    - Run lint / vet / formatter / type-checker as the project configures them.
    - Capture the exact commands you ran and their pass/fail status for the report below.
@@ -437,7 +437,7 @@ When you hit a circuit breaker, halt immediately and emit STATUS: PARTIAL when a
 - NEVER stop after a subset of the issue's work packages and report DONE. Implement every package the issue lists; only when a circuit breaker genuinely interrupts you, report PARTIAL (not DONE / DONE_WITH_CONCERNS) so a follow-up run resumes the branch and finishes the rest.
 - NEVER split the issue's delivery or pre-emptively descope it. The whole issue lands as exactly ONE pull request. Never propose follow-up issues or PRs as a substitute for implementing listed scope.
 - NEVER push or force-push, and do NOT open a pull request — the finalize step does that after the simplify and review passes. Your job ends at committing on the branch.
-- NEVER background a command and stop to wait for its result, and NEVER defer work to "after" something finishes — this one-shot session has no later turn. Run tests and builds in the foreground to completion, commit, then output the report, all within this single response.
+- NEVER background a command and stop to wait for its result, and NEVER defer work to "after" something finishes — this one-shot session has no later turn. Run tests and builds in the foreground to completion (polling a backgrounded run within the turn only when it outlives the foreground time limit), commit, then output the report, all within this single response.
 - If the issue is wrong (a cited file does not exist; an Acceptance Criterion is unreachable; the Non-Goals contradict the Description), STOP and post a clarifying comment on the issue instead of inventing scope. Output the report explaining what you did NOT do and why.
 - If there is nothing to commit (the issue turns out to already be implemented), do NOT create an empty commit; output the report explaining what you found.
 - It is OK to stop and report BLOCKED or NEEDS_CONTEXT. Bad work is worse than no work; escalating is not penalized. Emit the matching STATUS instead of inventing scope or shipping a half-built change.
@@ -601,7 +601,7 @@ Run these steps in order. Do not skip ahead.
    - Add or update documentation (README, CHANGELOG, doc comments, CLI help, generated API references) for every user-visible change.
    - Commit in small, reviewable steps with descriptive messages.
 6. VERIFY LOCALLY before opening the PR:
-   - Run every command in the FOREGROUND and wait for it to finish before the next step — never background a test or build run and move on. You need its real exit status in hand to commit and to fill in the report; a backgrounded run's result never reaches this one-shot session.
+   - Run every command in the FOREGROUND and wait for it to finish before the next step — never background a test or build run and move on. You need its real exit status in hand to commit and to fill in the report; a backgrounded run's result never reaches this one-shot session. If a command outlives the Bash tool's foreground time limit, background it and poll its output within this same turn until it exits.
    - Run the project's test suite (or the targeted subset that covers the new code).
    - Run lint / vet / formatter / type-checker as the project configures them.
    - Capture the exact commands you ran and their pass/fail status for the report below.
@@ -666,7 +666,7 @@ When you hit a circuit breaker, halt immediately and emit STATUS: PARTIAL when a
 - NEVER stop after a subset of the issue's work packages and report DONE, and NEVER open a pull request for partial work — the issue lands as exactly ONE complete PR. Implement every package the issue lists; only when a circuit breaker genuinely interrupts you, push the branch, open no PR, and report PARTIAL so a follow-up session finishes the rest.
 - NEVER split the issue's delivery or pre-emptively descope it. Never propose follow-up issues or PRs as a substitute for implementing listed scope.
 - NEVER force-push.
-- NEVER background a command and stop to wait for its result, and NEVER defer work to "after" something finishes — this one-shot session has no later turn. Run tests and builds in the foreground to completion, commit, push, open the PR, then output the report, all within this single response.
+- NEVER background a command and stop to wait for its result, and NEVER defer work to "after" something finishes — this one-shot session has no later turn. Run tests and builds in the foreground to completion (polling a backgrounded run within the turn only when it outlives the foreground time limit), commit, push, open the PR, then output the report, all within this single response.
 - If the issue is wrong (a cited file does not exist; an Acceptance Criterion is unreachable; the Non-Goals contradict the Description), STOP and post a clarifying comment on the issue instead of inventing scope. Output the report explaining what you did NOT do and why.
 - If there is nothing to commit (the issue turns out to already be implemented), do NOT open an empty PR; output the report explaining what you found.
 - It is OK to stop and report BLOCKED or NEEDS_CONTEXT. Bad work is worse than no work; escalating is not penalized. Emit the matching STATUS instead of inventing scope or shipping a half-built change.

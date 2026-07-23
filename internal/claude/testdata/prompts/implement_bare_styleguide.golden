@@ -115,7 +115,7 @@ Run these steps in order. Do not skip ahead.
    - Add or update documentation (README, CHANGELOG, doc comments, CLI help, generated API references) for every user-visible change.
    - Commit in small, reviewable steps with descriptive messages.
 6. VERIFY LOCALLY before opening the PR:
-   - Run every command in the FOREGROUND and wait for it to finish before the next step — never background a test or build run and move on. You need its real exit status in hand to commit and to fill in the report; a backgrounded run's result never reaches this one-shot session.
+   - Run every command in the FOREGROUND and wait for it to finish before the next step — never background a test or build run and move on. You need its real exit status in hand to commit and to fill in the report; a backgrounded run's result never reaches this one-shot session. If a command outlives the Bash tool's foreground time limit, background it and poll its output within this same turn until it exits.
    - Run the project's test suite (or the targeted subset that covers the new code).
    - Run lint / vet / formatter / type-checker as the project configures them.
    - Capture the exact commands you ran and their pass/fail status for the report below.
@@ -226,7 +226,7 @@ Each row is an excuse sessions reach for. When you catch yourself forming one, t
 - NEVER stop after a subset of the issue's work packages and report DONE, and NEVER open a pull request for partial work — the issue lands as exactly ONE complete PR. Implement every package the issue lists; only when a circuit breaker genuinely interrupts you, push the branch, open no PR, and report PARTIAL so a follow-up session finishes the rest.
 - NEVER split the issue's delivery or pre-emptively descope it. Never propose follow-up issues or PRs as a substitute for implementing listed scope.
 - NEVER force-push.
-- NEVER background a command and stop to wait for its result, and NEVER defer work to "after" something finishes — this one-shot session has no later turn. Run tests and builds in the foreground to completion, commit, push, open the PR, then output the report, all within this single response.
+- NEVER background a command and stop to wait for its result, and NEVER defer work to "after" something finishes — this one-shot session has no later turn. Run tests and builds in the foreground to completion (polling a backgrounded run within the turn only when it outlives the foreground time limit), commit, push, open the PR, then output the report, all within this single response.
 - If the issue is wrong (a cited file does not exist; an Acceptance Criterion is unreachable; the Non-Goals contradict the Description), STOP and post a clarifying comment on the issue instead of inventing scope. Output the report explaining what you did NOT do and why.
 - If there is nothing to commit (the issue turns out to already be implemented), do NOT open an empty PR; output the report explaining what you found.
 - It is OK to stop and report BLOCKED or NEEDS_CONTEXT. Bad work is worse than no work; escalating is not penalized. Emit the matching STATUS instead of inventing scope or shipping a half-built change.
