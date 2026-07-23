@@ -21,9 +21,11 @@ const reviewReportHeading = "## Review Report"
 // finalize step opens the PR afterwards. It is the findings-driven analog of Fix:
 // it runs in auto mode so the session can edit files, run tests, and commit
 // without an interactive confirmation, while the auto-mode classifier still vets
-// each action.
+// each action. The session runs under the completion nudge (runClaudeAutoReport):
+// when it ends without its report, the same session is resumed to finish and
+// report instead of the pass losing its work.
 func (c *Client) ApplyReview(dir string, ctx implement.ReviewApplyContext) (string, string, error) {
-	out, model, err := c.runClaudeAuto(dir, BuildReviewApplyPrompt(ctx), "review-apply")
+	out, model, err := c.runClaudeAutoReport(dir, BuildReviewApplyPrompt(ctx), "review-apply", reviewReportHeading, reportStatusChoices)
 	if err != nil {
 		return "", "", fmt.Errorf("running review apply: %w", err)
 	}

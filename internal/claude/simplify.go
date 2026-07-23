@@ -99,9 +99,11 @@ const simplifyReportHeading = "## Simplification Report"
 // finalize step opens the PR afterwards. It is the findings-driven analog of Fix:
 // it runs in auto mode so the session can edit files, run tests, and commit
 // without an interactive confirmation, while the auto-mode classifier still vets
-// each action.
+// each action. The session runs under the completion nudge (runClaudeAutoReport):
+// when it ends without its report, the same session is resumed to finish and
+// report instead of the pass losing its work.
 func (c *Client) ApplySimplifications(dir string, ctx implement.SimplifyApplyContext) (string, string, error) {
-	out, model, err := c.runClaudeAuto(dir, BuildSimplifyApplyPrompt(ctx), "simplify-apply")
+	out, model, err := c.runClaudeAutoReport(dir, BuildSimplifyApplyPrompt(ctx), "simplify-apply", simplifyReportHeading, reportStatusChoices)
 	if err != nil {
 		return "", "", fmt.Errorf("running simplify apply: %w", err)
 	}

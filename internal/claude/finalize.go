@@ -28,8 +28,13 @@ const finalizeReportHeading = "## Pull Request"
 // commits on the branch), the session opens no PR and says so in the report,
 // returning no error — the same shape the implement session uses for an issue
 // that turns out to be already implemented.
+//
+// The session runs under the completion nudge (runClaudeAutoReport): when it
+// ends without its report — e.g. it pushed the branch but yielded before `gh pr
+// create` — the same session is resumed to finish and report instead of the
+// run failing with the PR unopened.
 func (c *Client) FinalizePR(dir string, ctx implement.FinalizeContext) (string, string, error) {
-	out, model, err := c.runClaudeAuto(dir, BuildFinalizePrompt(ctx), "finalize")
+	out, model, err := c.runClaudeAutoReport(dir, BuildFinalizePrompt(ctx), "finalize", finalizeReportHeading, reportStatusChoices)
 	if err != nil {
 		return "", "", fmt.Errorf("running finalize: %w", err)
 	}

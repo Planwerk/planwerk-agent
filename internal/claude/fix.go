@@ -23,9 +23,12 @@ import (
 // It runs in auto mode (--permission-mode auto) so the session can edit files,
 // run tests, commit, and push the repaired branch without an interactive
 // confirmation — the same requirement the implement command has — while the
-// auto-mode classifier still vets each action.
+// auto-mode classifier still vets each action. The session runs under the
+// completion nudge (runClaudeAutoReport): when it ends without its report, the
+// same session is resumed to finish and report instead of the iteration losing
+// its work.
 func (c *Client) Fix(dir string, ctx fix.Context) (string, string, error) {
-	out, model, err := c.runClaudeAuto(dir, BuildFixPrompt(ctx), "fix")
+	out, model, err := c.runClaudeAutoReport(dir, BuildFixPrompt(ctx), "fix", fixReportHeading, reportStatusChoices)
 	if err != nil {
 		return "", "", fmt.Errorf("running fix: %w", err)
 	}

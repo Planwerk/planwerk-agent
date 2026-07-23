@@ -3,6 +3,7 @@ package claude
 import (
 	"encoding/json"
 	"errors"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -77,6 +78,65 @@ func TestWithAgents_NoFlagWhenEmpty(t *testing.T) {
 	}
 	if len(got) != len(base) {
 		t.Errorf("withAgents changed args for an empty value; got %v, want %v", got, base)
+	}
+}
+
+// TestWithSession locks the session-identity flags the completion nudge
+// depends on: a pinned fresh session emits --session-id, a resumed one emits
+// --resume with the same id, and the ordinary one-shot call (no id) emits
+// neither — keeping the historical invocation byte-for-byte unchanged. A
+// resume flag without an id must also emit nothing: --resume without a value
+// would open the CLI's interactive picker, which a headless run can never
+// answer.
+func TestWithSession(t *testing.T) {
+	base := []string{"-p", "--model", "opus"}
+	const id = "123e4567-e89b-42d3-a456-426614174000"
+
+	cases := []struct {
+		name     string
+		spec     runSpec
+		wantFlag string
+	}{
+		{"fresh pinned session", runSpec{sessionID: id}, "--session-id"},
+		{"resumed session", runSpec{sessionID: id, resume: true}, "--resume"},
+		{"no session id", runSpec{}, ""},
+		{"resume without id emits nothing", runSpec{resume: true}, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := withSession(base, tc.spec)
+			if tc.wantFlag == "" {
+				if len(got) != len(base) {
+					t.Fatalf("withSession changed args without a session id; got %v", got)
+				}
+				return
+			}
+			idx := slices.Index(got, tc.wantFlag)
+			if idx == -1 || idx+1 >= len(got) || got[idx+1] != id {
+				t.Fatalf("withSession = %v, want %s %s appended", got, tc.wantFlag, id)
+			}
+			for _, other := range []string{"--session-id", "--resume"} {
+				if other != tc.wantFlag && slices.Contains(got, other) {
+					t.Errorf("withSession emitted %s alongside %s; got %v", other, tc.wantFlag, got)
+				}
+			}
+		})
+	}
+}
+
+// TestNewSessionID verifies the generated id is the RFC 4122 version-4 UUID
+// the CLI's --session-id flag requires, and that consecutive calls do not
+// collide (each session must be individually resumable).
+func TestNewSessionID(t *testing.T) {
+	re := regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
+	a, b := newSessionID(), newSessionID()
+	for _, id := range []string{a, b} {
+		if !re.MatchString(id) {
+			t.Errorf("newSessionID() = %q, not a v4 UUID", id)
+		}
+	}
+	if a == b {
+		t.Errorf("consecutive session ids collided: %q", a)
 	}
 }
 
