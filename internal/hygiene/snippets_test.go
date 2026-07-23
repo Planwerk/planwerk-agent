@@ -264,3 +264,61 @@ func TestVerifySnippets_RecoversOutsideDiff(t *testing.T) {
 		t.Errorf("snippet stats = %+v, want {Examined:3 Demoted:1 RecoveredOutsideDiff:1}", got)
 	}
 }
+
+// TestVerifySnippets_PartialLineMatch locks the loosening in #77: a snippet that
+// is NOT present as one contiguous block — because the model elided a line,
+// reconstructed a signature, or quoted non-adjacent lines together — must still
+// pass when one real distinctive line resolves, rather than being buried in the
+// Unverified section. A snippet whose every distinctive line is fabricated is
+// still demoted, so the looser match is not a free pass.
+func TestVerifySnippets_PartialLineMatch(t *testing.T) {
+	dir := t.TempDir()
+	writeChangedFile(t, dir, "internal/api/verifier.go",
+		"func Verify(env Envelope) error {\n"+
+			"\tif time.Since(env.Timestamp) > freshnessWindow {\n"+
+			"\t\treturn ErrStale\n"+
+			"\t}\n"+
+			"\treturn verifySignature(env.Signature, env.Payload)\n"+
+			"}\n")
+	changed := []string{"internal/api/verifier.go"}
+
+	cases := []struct {
+		name    string
+		snippet string
+		want    report.Confidence
+	}{
+		// Real code with the middle elided by an ellipsis and the signature
+		// reconstructed with `...` args: no contiguous block matches, yet a
+		// distinctive line (the return) is present, so the finding stays actionable.
+		{
+			"elided middle line",
+			"func Verify(...) error {\n\t// ... omitted ...\n\treturn verifySignature(env.Signature, env.Payload)",
+			report.ConfidenceVerified,
+		},
+		// Two real lines quoted non-adjacently (the reviewer joined them).
+		{
+			"non-adjacent lines joined",
+			"if time.Since(env.Timestamp) > freshnessWindow {\n\treturn verifySignature(env.Signature, env.Payload)",
+			report.ConfidenceVerified,
+		},
+		// Every distinctive line is fabricated → still demoted.
+		{
+			"fully fabricated block",
+			"if db.DropAllTables(ctx) != nil {\n\tuser.PurgeEverything(ctx, opts)\n\treturn wipeDisk()",
+			report.ConfidenceUncertain,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := &report.ReviewResult{
+				Findings: []report.Finding{
+					{Title: tc.name, Confidence: report.ConfidenceVerified, CodeSnippet: tc.snippet},
+				},
+			}
+			VerifySnippets(result, dir, changed)
+			if got := result.Findings[0].Confidence; got != tc.want {
+				t.Errorf("confidence = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

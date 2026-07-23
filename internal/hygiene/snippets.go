@@ -30,7 +30,14 @@ import (
 // Matching is whitespace-, diff-marker-, and line-comment-marker-insensitive so
 // indentation, a leading +/- carried over from git diff output, or the interior
 // // markers a multi-line comment carries at each line break never cause a false
-// demotion. It returns the number of findings demoted.
+// demotion. And it matches line by line, not only as one contiguous block: a
+// snippet whose real code survives on even a single distinctive line passes,
+// because the gate's job is to catch a *fabricated* snippet (code nowhere in the
+// checkout), not to punish an imprecise one that elided a line with `...`,
+// quoted non-adjacent lines together, or reconstructed one line slightly wrong
+// (#77). Whether such a finding's conclusion nonetheless holds is the claim
+// gate's job (#55), which runs after this one. It returns the number of findings
+// demoted.
 //
 // The gate records what it did on the result: every examined finding is stamped
 // with its SnippetCheck outcome (SnippetCheckPassed on a match, one of the
@@ -67,31 +74,37 @@ func VerifySnippets(result *report.ReviewResult, dir string, changedFiles []stri
 		// verbatim from `git diff` output — or a multi-line // comment quoted as
 		// prose — still matches the on-disk source.
 		needle := matchableSnippet(f.CodeSnippet)
-		switch {
-		case needle == "":
+		if needle == "" {
 			// A finding with no quoted evidence cannot be confirmed.
 			f.Confidence = report.ConfidenceUncertain
 			f.SnippetCheck = snippetReasonNoQuote
 			demoted++
-		case strings.Contains(changedHaystack, needle):
-			f.SnippetCheck = report.SnippetCheckPassed
-		default:
-			// Absent from the diff — fall back to the whole checkout so a real
-			// cross-file finding (its evidence in a file the change references but
-			// did not modify) is verified rather than demoted as hallucinated.
-			if !checkoutTried {
-				checkoutHaystack = matchable(loadCheckoutContent(dir))
-				checkoutTried = true
-			}
-			if checkoutHaystack != "" && strings.Contains(checkoutHaystack, needle) {
-				f.SnippetCheck = snippetPassedOutsideDiff
-				recovered++
-			} else {
-				f.Confidence = report.ConfidenceUncertain
-				f.SnippetCheck = snippetReasonNotFound
-				demoted++
-			}
+			continue
 		}
+		// distinctiveSnippetLines lets a snippet that is not present as one
+		// contiguous block still verify line by line — the model elided a line,
+		// reconstructed one, or quoted non-adjacent lines together — as long as one
+		// real distinctive line survives. See located().
+		lines := distinctiveSnippetLines(f.CodeSnippet)
+		if located(changedHaystack, needle, lines) {
+			f.SnippetCheck = report.SnippetCheckPassed
+			continue
+		}
+		// Absent from the diff — fall back to the whole checkout so a real
+		// cross-file finding (its evidence in a file the change references but did
+		// not modify) is verified rather than demoted as hallucinated.
+		if !checkoutTried {
+			checkoutHaystack = matchable(loadCheckoutContent(dir))
+			checkoutTried = true
+		}
+		if checkoutHaystack != "" && located(checkoutHaystack, needle, lines) {
+			f.SnippetCheck = snippetPassedOutsideDiff
+			recovered++
+			continue
+		}
+		f.Confidence = report.ConfidenceUncertain
+		f.SnippetCheck = snippetReasonNotFound
+		demoted++
 	}
 	ensureGates(result).Snippet = &report.SnippetGateStats{Examined: examined, Demoted: demoted, RecoveredOutsideDiff: recovered}
 	return demoted
@@ -270,6 +283,61 @@ func matchable(s string) string {
 // both sides.
 func matchableSnippet(s string) string {
 	return normalizeForMatch(stripLineComments(stripDiffMarkers(s)))
+}
+
+// located reports whether a finding's quoted snippet can be found in the
+// already-normalized haystack. It passes on either signal:
+//
+//   - the whole normalized snippet appears as one contiguous substring — an exact
+//     quote, whitespace/comment/diff-marker aside; or
+//   - at least one of the snippet's distinctive lines appears on its own.
+//
+// The second signal is the deliberate loosening (#77): the gate's job is to
+// catch a *fabricated* snippet — code nowhere in the checkout — not to punish an
+// imprecise one. A model routinely elides a line with `...`, quotes non-adjacent
+// lines together, or reconstructs one line slightly wrong, and under a
+// whole-block contiguous match any of those sinks the entire finding into the
+// Unverified section though its evidence is real. Requiring only one real
+// distinctive line to be present keeps genuine fabrications demoted (none of
+// their lines resolve) while sparing the far larger class of grounded findings
+// that merely quoted imprecisely. Whether such a finding's conclusion holds is
+// the claim gate's job (#55), not this one's.
+func located(haystack, needle string, lines []string) bool {
+	if strings.Contains(haystack, needle) {
+		return true
+	}
+	for _, ln := range lines {
+		if strings.Contains(haystack, ln) {
+			return true
+		}
+	}
+	return false
+}
+
+// minDistinctiveLineLen is the shortest a snippet line may be, after the same
+// marker- and whitespace-stripping the whole-snippet needle gets, to count as
+// distinctive evidence in the line-level match. Below it a line is boilerplate a
+// fabricated snippet could carry by chance — `}`, `return err`, and `if err !=
+// nil {` all normalize under this length — so it neither verifies nor demotes a
+// finding; it is simply not evidence either way. Set where common scaffolding
+// lines fall below it but a line naming a real symbol clears it.
+const minDistinctiveLineLen = 16
+
+// distinctiveSnippetLines returns the snippet's individually distinctive lines,
+// each rendered into the same comparison form as the whole-snippet needle (diff
+// marker, comment marker, and whitespace stripped) and kept only when it is long
+// enough to be real evidence (see minDistinctiveLineLen). located() asks whether
+// any one of them is present, so a snippet whose real code survives on even a
+// single line is verified rather than demoted as fabricated.
+func distinctiveSnippetLines(snippet string) []string {
+	var out []string
+	for _, line := range strings.Split(snippet, "\n") {
+		n := normalizeForMatch(stripLineComments(stripDiffMarkers(line)))
+		if len(n) >= minDistinctiveLineLen {
+			out = append(out, n)
+		}
+	}
+	return out
 }
 
 // normalizeForMatch strips every whitespace character so matching ignores
