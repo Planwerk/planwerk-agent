@@ -553,20 +553,30 @@ planwerk-agent implement --wiki --capture-wiki --yes owner/repo#123
 | `--wiki-ref` | Pin the wiki to a branch, tag, or commit (env: `PLANWERK_WIKI_REF`) | - |
 | `--local` | Operate on the current working directory instead of cloning into a temp dir | `false` |
 | `--force` | With `--local`, skip the confirmation prompt when the working tree is dirty | `false` |
-| `--no-resume` | Start a fresh feature branch instead of resuming the commits an earlier aborted run for this issue left on its branch; also disables pushing partial progress after an abort | `false` |
+| `--no-resume` | Start a fresh feature branch instead of resuming the commits an earlier aborted run for this issue left on its branch; also disables pushing partial progress and posting the progress note after an abort | `false` |
 
 `--dry-run`, `--print-prompt`, `--print-bare-prompt`, and `--print-plan-prompt`
 are mutually exclusive. The implement session runs in Claude Code's auto mode
 and requires Claude Code v2.1.83+.
 
+A session that ends without its implementation report (typically it yielded to
+"wait" for a backgrounded test run whose result can never arrive in a one-shot
+session) is first resumed in place with a completion nudge — the same Claude
+session, full context intact, told to finish the outstanding verification and
+emit the report. Only when that fails does the run abort; the session's final
+output is then preserved as a `## Progress Note` comment on the issue.
+
 If an earlier run for this issue aborted mid-implementation (for example the
 Claude session hit its usage limit), it left commits on a feature branch. By
 default the next run detects that branch, checks it out, and continues from
 where it stopped — reconciling the commits already present against the plan's
-commit sequence — instead of redoing the committed work. In `--local` mode the
+commit sequence — instead of redoing the committed work, and feeds the most
+recent progress note or partial report from the issue back into the session so
+already-verified work is not re-derived. In `--local` mode the
 branch persists in your checkout; in clone/CI mode the aborted run pushes its
 partial progress to `origin` (no PR) so the next clone can fetch and resume it.
-Pass `--no-resume` to start a fresh branch and disable pushing partial progress.
+Pass `--no-resume` to start a fresh branch and disable pushing partial
+progress and the progress note.
 
 `--verify` and `--verify-adversarial` are independent verification passes that
 both run over the actual committed diff, not the implementer's self-report:
