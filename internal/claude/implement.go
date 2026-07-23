@@ -481,8 +481,11 @@ This session runs in ORCHESTRATOR mode: your job is to keep the WHOLE issue in v
 // it tells the session it is already on the feature branch an earlier aborted run
 // left behind, lists the commits already on it, and instructs it to build on that
 // work — reconciling it against the plan and finishing only what remains — rather
-// than recreating the branch and redoing committed work. Called only when
-// ctx.Resume carries commits.
+// than recreating the branch and redoing committed work. When the orchestrator
+// recovered the stopped session's last account (a progress note or partial
+// report from the issue), it is embedded too, so the resuming session starts
+// from what was already implemented and verified instead of re-deriving it.
+// Called only when ctx.Resume carries commits.
 func renderResumeSection(rc *implement.ResumeContext) string {
 	var sb strings.Builder
 	sb.WriteString("## Resuming a partial implementation\n\n")
@@ -493,6 +496,15 @@ func renderResumeSection(rc *implement.ResumeContext) string {
 			sha = sha[:7]
 		}
 		fmt.Fprintf(&sb, "- %s %s\n", sha, c.Subject)
+	}
+	if prior := strings.TrimSpace(rc.PriorReport); prior != "" {
+		sb.WriteString(`
+The stopped session's final account is preserved below. Treat it as your map, not as truth: it records what that session had already implemented and verified — commits made, verification commands that already passed, and what was still outstanding when it stopped. Focus your work on the outstanding part, re-verify the account's claims cheaply (git log, re-run a check only where doubt exists) instead of redoing every verification from scratch, and never contradict the actual repository state in its favor.
+
+<previous-session-account>
+` + prior + `
+</previous-session-account>
+`)
 	}
 	sb.WriteString(`
 Continue that work — do NOT start over:

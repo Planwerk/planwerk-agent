@@ -379,11 +379,14 @@ func TestRun_AbortsOnInvalidImplementReport(t *testing.T) {
 	cases := []struct {
 		name   string
 		report string
+		// wantNote: a non-empty output is preserved as a progress note so the
+		// next run's resume can feed it back; an empty output posts nothing.
+		wantNote bool
 	}{
-		{"empty", ""},
-		{"prose with neither heading nor status", "Both the background go test job and the Monitor will notify me when the integration tests finish. Waiting for that result before committing Commit 2."},
-		{"heading but no status line", "## Implementation Report (issue #42)\n\n### Commits\n- abc1234 wip"},
-		{"status line but no heading", "Did the work.\n\nSTATUS: DONE"},
+		{"empty", "", false},
+		{"prose with neither heading nor status", "Both the background go test job and the Monitor will notify me when the integration tests finish. Waiting for that result before committing Commit 2.", true},
+		{"heading but no status line", "## Implementation Report (issue #42)\n\n### Commits\n- abc1234 wip", true},
+		{"status line but no heading", "Did the work.\n\nSTATUS: DONE", true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -403,10 +406,73 @@ func TestRun_AbortsOnInvalidImplementReport(t *testing.T) {
 			if ff.called.Load() != 0 {
 				t.Errorf("finalizer called %d times, want 0 — no PR on an unfinished implementation", ff.called.Load())
 			}
-			if gh.commentCalls.Load() != 0 {
-				t.Errorf("AddIssueComment called %d times, want 0 — a non-report must not be posted as one", gh.commentCalls.Load())
+			if !tc.wantNote {
+				if gh.commentCalls.Load() != 0 {
+					t.Errorf("AddIssueComment called %d times, want 0 for an empty output", gh.commentCalls.Load())
+				}
+				return
+			}
+			// The output IS preserved — but as a progress note, never as a report:
+			// exactly one comment, carrying the progress-note heading and marker
+			// and NOT the report attribution footer.
+			if gh.commentCalls.Load() != 1 {
+				t.Fatalf("AddIssueComment called %d times, want 1 (the progress note)", gh.commentCalls.Load())
+			}
+			note := gh.commentBodies[0]
+			for _, want := range []string{progressNoteHeading + " (issue #42)", progressNoteMarker, tc.report} {
+				if !strings.Contains(note, want) {
+					t.Errorf("progress note missing %q:\n%s", want, note)
+				}
+			}
+			if strings.Contains(note, reportCommentMarker) {
+				t.Errorf("a non-report was posted with the report attribution footer:\n%s", note)
 			}
 		})
+	}
+}
+
+// TestRun_ProgressNoteGates locks the two off-switches: --no-resume (nothing
+// will read the note back) and --no-report-comment (the operator opted out of
+// run artifacts on the issue) each suppress the progress note on an
+// incomplete-report abort.
+func TestRun_ProgressNoteGates(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		opts Options
+	}{
+		{"no-resume", Options{IssueRef: "owner/repo#42", NoResume: true}},
+		{"no-report-comment", Options{IssueRef: "owner/repo#42", NoReportComment: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+			cl := &fakeClaude{report: "prose without a report heading or status"}
+			r := newRunner(gh, cl)
+
+			err := r.Run(&bytes.Buffer{}, tc.opts)
+			if err == nil || !strings.Contains(err.Error(), "complete implementation report") {
+				t.Fatalf("Run returned %v, want an incomplete-report error", err)
+			}
+			if gh.commentCalls.Load() != 0 {
+				t.Errorf("AddIssueComment called %d times, want 0 under %s", gh.commentCalls.Load(), tc.name)
+			}
+		})
+	}
+}
+
+// TestRun_ProgressNoteFailureKeepsAbortError locks that a failed note post
+// never masks the abort: the incomplete-report error survives unchanged.
+func TestRun_ProgressNoteFailureKeepsAbortError(t *testing.T) {
+	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir(), commentErr: errors.New("github down")}
+	cl := &fakeClaude{report: "prose without a report heading or status"}
+	r := newRunner(gh, cl)
+
+	var buf bytes.Buffer
+	err := r.Run(&buf, Options{IssueRef: "owner/repo#42"})
+	if err == nil || !strings.Contains(err.Error(), "complete implementation report") {
+		t.Fatalf("Run returned %v, want the incomplete-report error despite the failed note post", err)
+	}
+	if !strings.Contains(buf.String(), "Could not post the progress note") {
+		t.Errorf("failed note post not surfaced to the operator:\n%s", buf.String())
 	}
 }
 
@@ -475,6 +541,107 @@ func TestRun_ResumeDetectedFeedsImplement(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "Resuming on branch implement/issue-42-foo") {
 		t.Errorf("missing resume notice in output:\n%s", buf.String())
+	}
+}
+
+// TestRun_ResumeFeedsPriorSessionAccount locks the account feed: when a
+// resumable branch exists and the issue carries a progress note from the
+// aborted run, the note's body — footer stripped — reaches the implement
+// session via ctx.Resume.PriorReport, so it knows what was already verified.
+func TestRun_ResumeFeedsPriorSessionAccount(t *testing.T) {
+	const account = "Verified so far: unit tests green, lint green. Outstanding: the envtest integration run."
+	gh := &fakeGitHub{
+		issue:       sampleIssue(),
+		cloneDir:    t.TempDir(),
+		resumeState: &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "abc1234", Subject: "wip"}}},
+		comments: []github.IssueComment{
+			{Body: formatPlanComment("## Implementation Plan (issue #42)\n\nSTATUS: PLAN_READY", "")},
+			{Body: formatProgressNoteComment(account, 42, "claude-opus-4-8")},
+		},
+	}
+	cl := &fakeClaude{report: validImplReport}
+	r := newRunner(gh, cl)
+
+	if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42"}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if cl.ctx.Resume == nil {
+		t.Fatal("implement ctx.Resume is nil, want the resumed branch with the prior account")
+	}
+	if !strings.Contains(cl.ctx.Resume.PriorReport, account) {
+		t.Errorf("PriorReport = %q, want it to carry the progress note's body", cl.ctx.Resume.PriorReport)
+	}
+	if strings.Contains(cl.ctx.Resume.PriorReport, progressNoteMarker) {
+		t.Errorf("PriorReport still carries the attribution footer: %q", cl.ctx.Resume.PriorReport)
+	}
+}
+
+// TestRun_ResumeAccountFetchFailureIsNonFatal locks that a failed comment
+// lookup degrades to resuming on the commits alone rather than aborting.
+func TestRun_ResumeAccountFetchFailureIsNonFatal(t *testing.T) {
+	gh := &fakeGitHub{
+		issue:       sampleIssue(),
+		cloneDir:    t.TempDir(),
+		resumeState: &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "abc1234", Subject: "wip"}}},
+		commentsErr: errors.New("github down"),
+	}
+	cl := &fakeClaude{report: validImplReport}
+	r := newRunner(gh, cl)
+
+	if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42"}); err != nil {
+		t.Fatalf("Run returned %v, want nil (the account lookup is best-effort)", err)
+	}
+	if cl.ctx.Resume == nil || cl.ctx.Resume.Branch != testResumeBranch {
+		t.Fatalf("ctx.Resume = %+v, want the resumed branch despite the failed lookup", cl.ctx.Resume)
+	}
+	if cl.ctx.Resume.PriorReport != "" {
+		t.Errorf("PriorReport = %q, want empty after a failed lookup", cl.ctx.Resume.PriorReport)
+	}
+}
+
+// TestMostRecentSessionAccount locks the double-keyed lookup: only a progress
+// note (heading + note marker) or a posted implementation report (heading +
+// report marker) counts, the newest wins across both kinds, the footer is
+// stripped, and neither a plan comment nor a hand-written comment quoting a
+// heading is ever mistaken for an account.
+func TestMostRecentSessionAccount(t *testing.T) {
+	plan := formatPlanComment("## Implementation Plan (issue #42)\n\nSTATUS: PLAN_READY", "m")
+	note := formatProgressNoteComment("note ONE body", 42, "m")
+	newerNote := formatProgressNoteComment("note TWO body", 42, "m")
+	partialReport := "## Implementation Report (issue #42)\n\nSTATUS: PARTIAL"
+	reportComment := formatReportComment(partialReport, "m")
+
+	cases := []struct {
+		name     string
+		comments []github.IssueComment
+		want     string
+	}{
+		{"no comments", nil, ""},
+		{"plan only is not an account", []github.IssueComment{{Body: plan}}, ""},
+		{"progress note found and stripped", []github.IssueComment{{Body: note}}, "note ONE body"},
+		{"partial report found and stripped", []github.IssueComment{{Body: reportComment}}, partialReport},
+		{"newest wins: report after note", []github.IssueComment{{Body: note}, {Body: reportComment}}, partialReport},
+		{"newest wins: note after report", []github.IssueComment{{Body: reportComment}, {Body: newerNote}}, "note TWO body"},
+		{"quoted heading without marker is ignored", []github.IssueComment{{Body: "someone wrote: ## Progress Note looks odd"}}, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := mostRecentSessionAccount(tc.comments)
+			if tc.want == "" {
+				if got != "" {
+					t.Fatalf("mostRecentSessionAccount() = %q, want \"\"", got)
+				}
+				return
+			}
+			if !strings.Contains(got, tc.want) {
+				t.Errorf("mostRecentSessionAccount() = %q, want it to contain %q", got, tc.want)
+			}
+			for _, marker := range []string{progressNoteMarker, reportCommentMarker} {
+				if strings.Contains(got, marker) {
+					t.Errorf("account still carries footer marker %q: %q", marker, got)
+				}
+			}
+		})
 	}
 }
 

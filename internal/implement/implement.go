@@ -516,7 +516,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// already on it so it continues from where the earlier run stopped instead of
 	// recreating the branch and redoing the work. Off with --no-resume.
 	if !opts.NoResume {
-		r.prepareResume(w, repo.Dir, number, &ctx)
+		r.prepareResume(w, owner, name, repo.Dir, number, &ctx)
 	}
 
 	implReport, model, err := r.Claude.Implement(repo.Dir, ctx)
@@ -538,8 +538,12 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 			_, _ = fmt.Fprintf(w, "\nClaude returned no valid implementation report:\n%s\n", implReport)
 		}
 		// The session stopped mid-work (this is the aborted-run case resume exists
-		// for). Persist whatever it committed so the next run can continue from it,
-		// then abort — the branch is half-built, so no PR is opened.
+		// for). Preserve its final output as a progress note on the issue — the
+		// next run's resume feeds it back to the session so already-verified work
+		// is not redone — and persist whatever it committed so that run can
+		// continue from it, then abort: the branch is half-built, so no PR is
+		// opened.
+		r.postProgressNote(w, opts, owner, name, number, implReport, model)
 		r.persistPartialProgress(w, opts, repo.Dir)
 		return fmt.Errorf("the implement session did not produce a complete implementation report (missing the %q heading or a terminal STATUS line); the implementation did not finish and no pull request was opened", reportHeading)
 	}
@@ -656,7 +660,17 @@ func (r *Runner) openRepo(opts Options, fullName string) (*github.Repo, error) {
 // check out the branch is logged and surfaced but leaves ctx.Resume nil, so the
 // run proceeds as a normal fresh implementation. No branch to resume is the
 // silent, common case.
-func (r *Runner) prepareResume(w io.Writer, dir string, number int, ctx *Context) {
+//
+// When a branch IS resumed, it additionally feeds the stopped session's last
+// account into ctx.Resume.PriorReport: the most recent progress note (posted
+// when a session ended without its report) or implementation report (a PARTIAL
+// run posts its report before persisting the branch) on the issue. That
+// account records what was already implemented and verified — the state the
+// aborted session had in its head — so the resuming session continues from it
+// instead of re-deriving everything. The lookup is best-effort, mirroring the
+// branch detection: a failed fetch or an issue without such a comment resumes
+// on the commits alone.
+func (r *Runner) prepareResume(w io.Writer, owner, name, dir string, number int, ctx *Context) {
 	state, err := r.GitHub.PrepareResume(dir, number)
 	if err != nil {
 		slog.Warn("could not check for a resumable branch; implementing fresh", "issue", number, "err", err)
@@ -669,6 +683,17 @@ func (r *Runner) prepareResume(w io.Writer, dir string, number int, ctx *Context
 	ctx.Resume = &ResumeContext{Branch: state.Branch, Commits: state.Commits}
 	slog.Info("resuming an earlier aborted run", "issue", number, "branch", state.Branch, "commits", len(state.Commits))
 	_, _ = fmt.Fprintf(w, "\nResuming on branch %s: %d commit(s) from an earlier aborted run are already present — continuing from where it stopped.\n", state.Branch, len(state.Commits))
+
+	comments, err := r.GitHub.ListIssueComments(owner, name, number)
+	if err != nil {
+		slog.Warn("could not read issue comments for the stopped session's account; resuming on the commits alone", "issue", number, "err", err)
+		return
+	}
+	if account := mostRecentSessionAccount(comments); account != "" {
+		ctx.Resume.PriorReport = account
+		slog.Info("feeding the stopped session's last account into the resume", "issue", number)
+		_, _ = fmt.Fprintf(w, "Feeding the stopped session's last account (progress note or partial report) into the resumed session.\n")
+	}
 }
 
 // persistPartialProgress preserves the commits an aborted implement session left
@@ -782,7 +807,18 @@ func mostRecentPlanComment(comments []github.IssueComment) string {
 // regardless of which model produced the plan. A body without the footer is
 // returned trimmed but otherwise unchanged.
 func stripPlanCommentFooter(body string) string {
-	if i := strings.LastIndex(body, planCommentMarker); i >= 0 {
+	return stripCommentFooter(body, planCommentMarker)
+}
+
+// stripCommentFooter drops the "---" separator and attribution footer that
+// wrap a posted artifact in its comment body, cutting at the given
+// model-independent marker so the model-aware suffix is dropped regardless of
+// which model produced the artifact. A body without the footer is returned
+// trimmed but otherwise unchanged. Shared by the plan-reuse lookup and the
+// resume-account lookup so a re-read artifact always feeds its consumer
+// exactly as a freshly generated one would.
+func stripCommentFooter(body, marker string) string {
+	if i := strings.LastIndex(body, marker); i >= 0 {
 		body = body[:i]
 	}
 	body = strings.TrimSpace(body)
@@ -907,6 +943,91 @@ func (r *Runner) postReportComment(w io.Writer, opts Options, owner, name string
 // heading) followed by the attribution footer.
 func formatReportComment(report, model string) string {
 	return report + "\n\n---\n\n" + reportCommentFooter(model) + "\n"
+}
+
+// reportCommentMarker is the stable, version- and model-independent prefix of
+// the report comment footer, mirroring planCommentMarker: it stops at the
+// repository link, before reportCommentFooter appends the build version, the
+// " implement" word, and the model-aware suffix. mostRecentSessionAccount keys
+// its lookup on it so a report posted under one build or model is still
+// recognized after either changes.
+const reportCommentMarker = "_Implementation report generated by " + attribution.Link
+
+// progressNoteHeading is the heading every progress note opens with
+// ("## Progress Note (issue #N)"). It is deliberately distinct from
+// planHeading and reportHeading so a progress note can never be mistaken for a
+// reusable plan (mostRecentPlanComment) or a completed report.
+const progressNoteHeading = "## Progress Note"
+
+// progressNoteMarker is the stable, version- and model-independent prefix of
+// the progress note footer, mirroring planCommentMarker/reportCommentMarker.
+const progressNoteMarker = "_Progress note recorded by " + attribution.Link
+
+// progressNoteFooter attributes the posted progress note to planwerk-agent,
+// naming the model that produced it and matching the footer the plan/report
+// comments append to the artifacts they leave on GitHub.
+func progressNoteFooter(model string) string {
+	return "_Progress note recorded by " + attribution.Tool() + " implement " + attribution.AssistantWith(model) + "_"
+}
+
+// formatProgressNoteComment wraps an aborted session's final output in the
+// progress-note comment body: the distinct heading, one line explaining what
+// the note is, the output verbatim, and the attribution footer.
+func formatProgressNoteComment(output string, number int, model string) string {
+	return fmt.Sprintf("%s (issue #%d)\n\nAn implement session for this issue stopped before producing its implementation report. Its final output is preserved below so the next run resumes from where it stopped instead of redoing the already-verified work.\n\n%s\n\n---\n\n%s\n",
+		progressNoteHeading, number, strings.TrimSpace(output), progressNoteFooter(model))
+}
+
+// postProgressNote posts an aborted implement session's final output as a
+// progress-note comment on the source issue, so the account of what was
+// already done and verified survives the abort — prepareResume feeds the most
+// recent note back into the next run's session via ResumeContext.PriorReport.
+// It is part of the resume machinery, so --no-resume disables it (nothing will
+// read the note back); --no-report-comment disables it too, since an operator
+// who opted out of report comments opted out of run artifacts on the issue.
+// A blank output posts nothing.
+//
+// Posting is best-effort: a failure to reach GitHub is logged and surfaced to
+// the operator but never changes the abort error the caller is about to
+// return — the output is on stdout regardless.
+func (r *Runner) postProgressNote(w io.Writer, opts Options, owner, name string, number int, output, model string) {
+	if opts.NoResume || opts.NoReportComment || strings.TrimSpace(output) == "" {
+		return
+	}
+	url, err := r.GitHub.AddIssueComment(owner, name, number, formatProgressNoteComment(output, number, model))
+	if err != nil {
+		slog.Warn("posting progress note failed", "issue", number, "err", err)
+		_, _ = fmt.Fprintf(w, "\nCould not post the progress note as an issue comment: %v\n", err)
+		return
+	}
+	slog.Info("posted progress note comment", "issue", number, "url", url)
+	_, _ = fmt.Fprintf(w, "\nPosted the aborted session's output as a progress note on issue #%d", number)
+	if url != "" {
+		_, _ = fmt.Fprintf(w, " (%s)", url)
+	}
+	_, _ = fmt.Fprintln(w)
+}
+
+// mostRecentSessionAccount returns the body — footer stripped — of the most
+// recent comment carrying a stopped session's account: a progress note (posted
+// when a session ended without its report) or an implementation report (a
+// PARTIAL or escalated run posts its report before persisting the branch).
+// Each kind is identified by BOTH its heading and its attribution marker,
+// the same double-keyed discipline mostRecentPlanComment uses, so a plan
+// comment or a hand-written comment quoting a heading is never mistaken for an
+// account. gh lists comments oldest-first, so the walk runs newest-first and
+// returns the first match; "" when no comment is one.
+func mostRecentSessionAccount(comments []github.IssueComment) string {
+	for i := len(comments) - 1; i >= 0; i-- {
+		body := comments[i].Body
+		switch {
+		case strings.Contains(body, progressNoteHeading) && strings.Contains(body, progressNoteMarker):
+			return stripCommentFooter(body, progressNoteMarker)
+		case strings.Contains(body, reportHeading) && strings.Contains(body, reportCommentMarker):
+			return stripCommentFooter(body, reportCommentMarker)
+		}
+	}
+	return ""
 }
 
 // Terminal STATUS markers a plan or implementation report can carry, aliased

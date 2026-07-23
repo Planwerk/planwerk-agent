@@ -28,7 +28,11 @@ func swapRunSession(t *testing.T, script func(call int, spec runSpec, prompt str
 	return &calls
 }
 
-const completeImplementReport = "## Implementation Report (issue #42)\n\nSTATUS: DONE"
+const (
+	completeImplementReport = "## Implementation Report (issue #42)\n\nSTATUS: DONE"
+	// testResolvedModel stands in for the exact model id the envelope reports.
+	testResolvedModel = "claude-opus-4-8"
+)
 
 // TestRunWithCompletionNudge_CompleteFirstTry locks the happy path: a session
 // that ends with its report runs exactly once — no resume turn, no changed
@@ -36,14 +40,14 @@ const completeImplementReport = "## Implementation Report (issue #42)\n\nSTATUS:
 // possible.
 func TestRunWithCompletionNudge_CompleteFirstTry(t *testing.T) {
 	calls := swapRunSession(t, func(int, runSpec, string) (string, string, error) {
-		return completeImplementReport, "claude-opus-4-8", nil
+		return completeImplementReport, testResolvedModel, nil
 	})
 
 	out, model, err := NewClient().runWithCompletionNudge(runSpec{label: "implement"}, "do the thing", implementReportHeading, implementReportStatusChoices)
 	if err != nil {
 		t.Fatalf("runWithCompletionNudge returned error: %v", err)
 	}
-	if out != completeImplementReport || model != "claude-opus-4-8" {
+	if out != completeImplementReport || model != testResolvedModel {
 		t.Errorf("out=%q model=%q, want the session's own result", out, model)
 	}
 	if len(*calls) != 1 {
@@ -66,9 +70,9 @@ func TestRunWithCompletionNudge_CompleteFirstTry(t *testing.T) {
 func TestRunWithCompletionNudge_NudgeCompletes(t *testing.T) {
 	calls := swapRunSession(t, func(call int, _ runSpec, _ string) (string, string, error) {
 		if call == 1 {
-			return "Status so far: the envtest run exceeded the foreground cap and is finishing in the background; I'll report once the notification lands.", "claude-opus-4-8", nil
+			return "Status so far: the envtest run exceeded the foreground cap and is finishing in the background; I'll report once the notification lands.", testResolvedModel, nil
 		}
-		return completeImplementReport, "claude-opus-4-8", nil
+		return completeImplementReport, testResolvedModel, nil
 	})
 
 	spec := runSpec{dir: "/work/clone", label: "implement", permissionMode: "auto", model: "opus", agentsJSON: `{"implementer":{}}`}
@@ -147,7 +151,7 @@ func TestRunWithCompletionNudge_RunErrorPropagates(t *testing.T) {
 func TestRunWithCompletionNudge_NudgeErrorReturnsIncompleteOutput(t *testing.T) {
 	calls := swapRunSession(t, func(call int, _ runSpec, _ string) (string, string, error) {
 		if call == 1 {
-			return "partial account of the work", "claude-opus-4-8", nil
+			return "partial account of the work", testResolvedModel, nil
 		}
 		return "", "", errors.New("api error 429")
 	})
@@ -156,7 +160,7 @@ func TestRunWithCompletionNudge_NudgeErrorReturnsIncompleteOutput(t *testing.T) 
 	if err != nil {
 		t.Fatalf("runWithCompletionNudge returned error: %v", err)
 	}
-	if out != "partial account of the work" || model != "claude-opus-4-8" {
+	if out != "partial account of the work" || model != testResolvedModel {
 		t.Errorf("out=%q model=%q, want the pre-nudge output preserved", out, model)
 	}
 	if len(*calls) != 2 {
