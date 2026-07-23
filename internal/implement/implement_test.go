@@ -710,36 +710,6 @@ func TestPlanEscalation(t *testing.T) {
 	}
 }
 
-func TestImplementReportStatus(t *testing.T) {
-	const header = "## Implementation Report (issue #42)\n\n"
-	cases := []struct {
-		name   string
-		report string
-		want   string
-	}{
-		{"done", header + "STATUS: DONE", "DONE"},
-		{"done with concerns", header + "STATUS: DONE_WITH_CONCERNS", "DONE_WITH_CONCERNS"},
-		{"partial", header + "STATUS: PARTIAL", "PARTIAL"},
-		{"blocked", header + "STATUS: BLOCKED", "BLOCKED"},
-		{"needs context", header + "STATUS: NEEDS_CONTEXT", "NEEDS_CONTEXT"},
-		{"no status line", header + "### Commits\n- abc1234 wip", ""},
-		{"empty", "", ""},
-		{"yielded mid-work blurb", "Waiting for the background test job before committing Commit 2.", ""},
-		{"bold decoration", "**STATUS: DONE**", "DONE"},
-		{"list marker", "- STATUS: BLOCKED", "BLOCKED"},
-		{"trailing reason after verdict", "STATUS: DONE_WITH_CONCERNS — flaky test left skipped", "DONE_WITH_CONCERNS"},
-		{"terminal verdict wins over earlier line", "STATUS: BLOCKED\n\n(revised)\n\nSTATUS: DONE", "DONE"},
-		{"unrecognized value ignored", "STATUS: MAYBE", ""},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := implementReportStatus(tc.report); got != tc.want {
-				t.Errorf("implementReportStatus() = %q, want %q", got, tc.want)
-			}
-		})
-	}
-}
-
 func TestStripPlanCommentFooter(t *testing.T) {
 	const plan = "## Implementation Plan (issue #42)\n\n### Summary\n- do the thing\n\nSTATUS: PLAN_READY"
 	cases := []struct {

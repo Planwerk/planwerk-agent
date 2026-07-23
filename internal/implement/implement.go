@@ -909,16 +909,16 @@ func formatReportComment(report, model string) string {
 	return report + "\n\n---\n\n" + reportCommentFooter(model) + "\n"
 }
 
-// Terminal STATUS markers a plan or implementation report can carry. They are
-// shared by planEscalation and implementReportStatus rather than imported from
-// internal/fix, keeping the import direction claude -> implement intact — the
-// same reason planHeading/reportHeading are duplicated here.
+// Terminal STATUS markers a plan or implementation report can carry, aliased
+// from internal/report — the leaf package this one already imports — so the
+// vocabulary exists once (report.TerminalStatus is the shared parser; see that
+// package for why internal/fix keeps its own).
 const (
-	statusDone             = "DONE"
-	statusDoneWithConcerns = "DONE_WITH_CONCERNS"
-	statusPartial          = "PARTIAL"
-	statusBlocked          = "BLOCKED"
-	statusNeedsContext     = "NEEDS_CONTEXT"
+	statusDone             = report.StatusDone
+	statusDoneWithConcerns = report.StatusDoneWithConcerns
+	statusPartial          = report.StatusPartial
+	statusBlocked          = report.StatusBlocked
+	statusNeedsContext     = report.StatusNeedsContext
 )
 
 // planEscalation extracts the plan's terminal STATUS verdict and returns it
@@ -958,34 +958,15 @@ func planEscalation(plan string) string {
 }
 
 // implementReportStatus returns the implement report's terminal STATUS verdict
-// (DONE, DONE_WITH_CONCERNS, PARTIAL, BLOCKED, or NEEDS_CONTEXT), or "" when the
-// report carries no recognized STATUS line. Like planEscalation it scans line-anchored
-// and lets the last standalone verdict win, so a mid-sentence mention of a
-// status value is not mistaken for the verdict; it additionally tolerates the
-// markdown decoration a model sometimes adds (a leading list marker or heading,
-// surrounding bold/backticks) and a trailing reason after the verdict word.
+// via the shared report.TerminalStatus parser (see that package for the
+// scanning semantics).
 //
 // Run keys the implement guard on it: an empty result means the session
 // produced no terminal status — what a session that yielded mid-work returns —
 // so the implementation did not finish and the run must abort rather than open
 // a pull request on a half-built branch.
-func implementReportStatus(report string) string {
-	verdict := ""
-	for _, raw := range strings.Split(report, "\n") {
-		line := strings.TrimLeft(strings.TrimSpace(raw), "-*#> \t")
-		if !strings.HasPrefix(strings.ToUpper(line), "STATUS:") {
-			continue
-		}
-		fields := strings.Fields(strings.TrimSpace(line[len("STATUS:"):]))
-		if len(fields) == 0 {
-			continue
-		}
-		switch word := strings.ToUpper(strings.Trim(fields[0], "*`_")); word {
-		case statusDone, statusDoneWithConcerns, statusPartial, statusBlocked, statusNeedsContext:
-			verdict = word
-		}
-	}
-	return verdict
+func implementReportStatus(implReport string) string {
+	return report.TerminalStatus(implReport)
 }
 
 // runVerification runs the independent verification pass against the change set
