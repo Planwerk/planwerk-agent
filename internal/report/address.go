@@ -14,7 +14,7 @@ type AddressResult struct {
 	// Status is the run's terminal status, one of DONE, DONE_WITH_CONCERNS,
 	// BLOCKED, NEEDS_CONTEXT — the orchestrator escalates on the last two.
 	Status string `json:"status"`
-	// Model is the resolved Claude model id (e.g. "claude-opus-4-8") that
+	// Model is the resolved Claude model id (e.g. "claude-opus-5") that
 	// produced this result. It is threaded per-run to the attribution footer
 	// and excluded from the serialized payload.
 	Model string `json:"-"`

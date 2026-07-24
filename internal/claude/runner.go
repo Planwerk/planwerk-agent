@@ -627,7 +627,7 @@ func (c *Client) runClaudeWithPermission(spec runSpec, prompt string) (string, s
 		return "", "", claudeRunError(err, spec.model, out, exitErr.Stderr)
 	}
 	// The returned model is the exact id the envelope reports (e.g.
-	// "claude-opus-4-8"); the caller threads it per-run into the artifact
+	// "claude-opus-5"); the caller threads it per-run into the artifact
 	// footers instead of a package-level global, mirroring runClaudeStream.
 	text, resolvedModel, usage, cost, err := extractText(out)
 	if err != nil {
@@ -647,7 +647,7 @@ type claudeResponse struct {
 	// extractText, so an envelope that omits it costs nothing.
 	StructuredOutput json.RawMessage `json:"structured_output,omitempty"`
 	// Model is the resolved model id the CLI reports in the JSON envelope
-	// (e.g. "claude-opus-4-8"). It is the non-streaming counterpart of the
+	// (e.g. "claude-opus-5"). It is the non-streaming counterpart of the
 	// streamEvent init model and feeds the attribution footers.
 	Model string `json:"model,omitempty"`
 	// Usage and TotalCostUSD carry the per-call cumulative token counts and the

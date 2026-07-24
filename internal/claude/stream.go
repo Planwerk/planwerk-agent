@@ -34,7 +34,7 @@ type streamEvent struct {
 	// buffered runner uses on its envelope.
 	IsError bool `json:"is_error,omitempty"`
 	// Model is the resolved model id the CLI reports on the `system`/`init`
-	// event (e.g. "claude-opus-4-8"). The orchestrator only ever passes a model
+	// event (e.g. "claude-opus-5"). The orchestrator only ever passes a model
 	// alias ("opus") via --model, so this event is the one place the exact id
 	// becomes known; the runner records it for the attribution footers.
 	Model   string `json:"model,omitempty"`

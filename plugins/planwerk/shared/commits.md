@@ -15,7 +15,7 @@ Signed-off-by: <committer name> <committer email>
 - Pass `-s` to `git commit` so git appends the `Signed-off-by` line from the
   committer identity. It must be the very last line of the message.
 - Name yourself in an `Assisted-by` trailer. Append your exact model id when your
-  runtime provides it (`Assisted-by: Claude:claude-opus-4-8`); otherwise emit
+  runtime provides it (`Assisted-by: Claude:claude-opus-5`); otherwise emit
   `Assisted-by: Claude` alone — never guess the id. Pass it as the final `-m`
   paragraph, not via `--trailer`: git places `--trailer` values *after* the
   sign-off, which breaks the order.

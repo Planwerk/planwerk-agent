@@ -90,7 +90,7 @@ const envImplementModel = "PLANWERK_IMPLEMENT_MODEL"
 
 // envImplementWorkerModel overrides the model the implementer subagents run on
 // in the implement/ship commands' orchestrated mode (e.g. "opus",
-// "claude-opus-4-8"). Empty or unset keeps orchestrator mode OFF and the
+// "claude-opus-5"). Empty or unset keeps orchestrator mode OFF and the
 // implement session writes the code itself, as before the worker tier existed.
 // The --implement-worker-model CLI flag takes precedence when explicitly set.
 const envImplementWorkerModel = "PLANWERK_IMPLEMENT_WORKER_MODEL"
@@ -252,7 +252,7 @@ func resolveImplementModel(flagValue string, flagSet bool) string {
 // "orchestrator mode off": the implement session writes the code itself. The
 // value is passed through verbatim — model names are validated by Claude Code
 // itself, so an unknown name surfaces as a claude error rather than being
-// rejected here. Passing an exact model id (e.g. "claude-opus-4-8") instead of
+// rejected here. Passing an exact model id (e.g. "claude-opus-5") instead of
 // an alias makes the report footer's attribution name that exact id.
 func resolveImplementWorkerModel(flagValue string, flagSet bool) string {
 	if flagSet && flagValue != "" {

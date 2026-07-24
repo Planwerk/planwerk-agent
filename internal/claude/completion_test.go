@@ -31,7 +31,7 @@ func swapRunSession(t *testing.T, script func(call int, spec runSpec, prompt str
 const (
 	completeImplementReport = "## Implementation Report (issue #42)\n\nSTATUS: DONE"
 	// testResolvedModel stands in for the exact model id the envelope reports.
-	testResolvedModel = "claude-opus-4-8"
+	testResolvedModel = "claude-opus-5"
 )
 
 // TestRunWithCompletionNudge_CompleteFirstTry locks the happy path: a session

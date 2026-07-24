@@ -10,7 +10,7 @@
 // Assisted-by commit-trailer convention (see commitTrailerBlock in the claude
 // package): every artifact names the exact Claude model that produced it. The
 // orchestrator passes Claude Code only a model alias ("opus"); the resolved id
-// ("claude-opus-4-8") is known only at runtime, so each Claude session returns
+// ("claude-opus-5") is known only at runtime, so each Claude session returns
 // it to the caller, which threads it per-run into AssistantWith. Keeping the
 // model out of package-level state lets concurrent runners render their own
 // model without leaking each other's. When no model is known — a footer
@@ -93,7 +93,7 @@ func ToolWithVersion(version string) string {
 }
 
 // AssistantWith renders the assistant attribution clause for an explicit model
-// id: "with Claude:claude-opus-4-8" when model is non-empty, and a bare
+// id: "with Claude:claude-opus-5" when model is non-empty, and a bare
 // "with Claude" otherwise. It never guesses an id, mirroring the Assisted-by
 // commit-trailer convention. Callers thread the resolved model per-run (from the
 // Claude session that produced the artifact) so concurrent runners cannot leak

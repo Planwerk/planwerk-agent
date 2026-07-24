@@ -97,7 +97,7 @@ End every GitHub artifact you author yourself — the pull request description, 
 
     _Implemented by [planwerk-agent](https://github.com/planwerk/planwerk-agent) with Claude:<your model id>_
 
-- Append your exact model id when your runtime context provides it (e.g. `with Claude:claude-opus-4-8`); otherwise write a bare `with Claude` — never guess the id. This mirrors the Assisted-by commit trailer.
+- Append your exact model id when your runtime context provides it (e.g. `with Claude:claude-opus-5`); otherwise write a bare `with Claude` — never guess the id. This mirrors the Assisted-by commit trailer.
 - Keep the `[planwerk-agent]` link intact so the artifact points back at the tool that produced it.
 - Add the footer once, as the last line of the artifact — do NOT repeat it per section.
 

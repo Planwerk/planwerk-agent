@@ -556,7 +556,7 @@ func TestRun_ResumeFeedsPriorSessionAccount(t *testing.T) {
 		resumeState: &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "abc1234", Subject: "wip"}}},
 		comments: []github.IssueComment{
 			{Body: formatPlanComment("## Implementation Plan (issue #42)\n\nSTATUS: PLAN_READY", "")},
-			{Body: formatProgressNoteComment(account, 42, "claude-opus-4-8")},
+			{Body: formatProgressNoteComment(account, 42, "claude-opus-5")},
 		},
 	}
 	cl := &fakeClaude{report: validImplReport}

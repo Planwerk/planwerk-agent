@@ -178,6 +178,6 @@ a Sub Issue's parent is a native GitHub relationship, not the `Split from #N`
 prose.
 
 Append your exact model id when your runtime context provides it (for example
-`with Claude:claude-opus-4-8`). Otherwise write a bare `with Claude` — never
+`with Claude:claude-opus-5`). Otherwise write a bare `with Claude` — never
 guess the id. Keep the `[planwerk-agent]` link intact so the issue points back
 at the tool that produced it. Add the footer once, as the last line.

@@ -83,7 +83,7 @@ auto mode, so the permission classifier keeps vetting their actions.
 Attribution follows the code, not the reviewer: the report footer names the
 worker model, and the workers' commits carry their exact model id in the
 `Assisted-by` trailer. Pass an exact model id (e.g.
-`--implement-worker-model claude-opus-4-8`) when you want the footer to name
+`--implement-worker-model claude-opus-5`) when you want the footer to name
 it precisely. Without `--implement-worker-model` the implement session writes
 the code itself, exactly as before. `ship` accepts the same two flags for its
 per–Sub Issue implement runs.
