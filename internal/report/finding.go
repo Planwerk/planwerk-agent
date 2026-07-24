@@ -261,7 +261,7 @@ type ReviewResult struct {
 	Findings       []Finding `json:"findings"`
 	Summary        string    `json:"summary"`
 	Recommendation string    `json:"recommendation"`
-	// Model is the resolved Claude model id (e.g. "claude-opus-4-8") that
+	// Model is the resolved Claude model id (e.g. "claude-opus-5") that
 	// produced this result. It is threaded per-run to the attribution footer
 	// and excluded from the serialized payload.
 	Model string `json:"-"`

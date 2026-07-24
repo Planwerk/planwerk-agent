@@ -85,7 +85,7 @@ func TestReadStream_PrefersStructuredOutputOnResultEvent(t *testing.T) {
 }
 
 func TestReadStream_CapturesResolvedModelFromInitEvent(t *testing.T) {
-	const stream = `{"type":"system","subtype":"init","model":"claude-opus-4-8"}
+	const stream = `{"type":"system","subtype":"init","model":"claude-opus-5"}
 {"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}
 {"type":"result","result":"ok"}
 `
@@ -93,8 +93,8 @@ func TestReadStream_CapturesResolvedModelFromInitEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("readStream: %v", err)
 	}
-	if model != "claude-opus-4-8" {
-		t.Errorf("resolved model = %q, want %q", model, "claude-opus-4-8")
+	if model != "claude-opus-5" {
+		t.Errorf("resolved model = %q, want %q", model, "claude-opus-5")
 	}
 }
 

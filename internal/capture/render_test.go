@@ -40,7 +40,7 @@ func goldenProvenance() Provenance {
 
 func goldenResult() CaptureResult {
 	return CaptureResult{
-		Model:      "claude-opus-4-8",
+		Model:      "claude-opus-5",
 		WikiRepo:   "planwerk/planwerk-agent",
 		WikiCommit: "abc1234def5678",
 		Patterns: []ProposedPage{
@@ -79,7 +79,7 @@ func TestRenderMarkdown_Populated(t *testing.T) {
 // still renders, with no sections and no footer noise.
 func TestRenderMarkdown_Empty(t *testing.T) {
 	var buf bytes.Buffer
-	NewRenderer(&buf).RenderMarkdown(CaptureResult{Model: "claude-opus-4-8"}, goldenProvenance(), "e1efd0d")
+	NewRenderer(&buf).RenderMarkdown(CaptureResult{Model: "claude-opus-5"}, goldenProvenance(), "e1efd0d")
 	assertGolden(t, "render_empty", buf.String())
 }
 
@@ -89,7 +89,7 @@ func TestRenderMarkdown_Empty(t *testing.T) {
 // verbatim instead of closing the block and spilling the rest as live markdown.
 func TestRenderMarkdown_BodyWithInnerFenceIsNotCorrupted(t *testing.T) {
 	result := CaptureResult{
-		Model: "claude-opus-4-8",
+		Model: "claude-opus-5",
 		Patterns: []ProposedPage{
 			{
 				Path:  "review_patterns/fence-aware.md",

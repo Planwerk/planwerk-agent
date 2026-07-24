@@ -13,7 +13,7 @@ func TestAssistantWith_FallsBackToBareClaudeWithoutModel(t *testing.T) {
 }
 
 func TestAssistantWith_NamesResolvedModel(t *testing.T) {
-	if got, want := AssistantWith("claude-opus-4-8"), "with Claude:claude-opus-4-8"; got != want {
+	if got, want := AssistantWith("claude-opus-5"), "with Claude:claude-opus-5"; got != want {
 		t.Errorf("AssistantWith() = %q, want %q", got, want)
 	}
 }
@@ -81,7 +81,7 @@ func TestSetVersion_TrimsWhitespaceAndClears(t *testing.T) {
 func TestAssistantMarker_IsPrefixOfNamedClause(t *testing.T) {
 	// The detection marker must be a prefix of the rendered clause, so a footer
 	// posted under one model is still matched after the default model changes.
-	if got := AssistantWith("claude-opus-4-8"); got[:len(AssistantMarker)] != AssistantMarker {
+	if got := AssistantWith("claude-opus-5"); got[:len(AssistantMarker)] != AssistantMarker {
 		t.Errorf("AssistantWith() = %q does not start with AssistantMarker %q", got, AssistantMarker)
 	}
 }

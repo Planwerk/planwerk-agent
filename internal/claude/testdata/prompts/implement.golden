@@ -194,7 +194,7 @@ EVERY commit you create MUST end with exactly these two trailers, in this order:
     Signed-off-by: <committer name> <committer email>
 
 - Pass `-s` to `git commit` so git appends the `Signed-off-by` line from the committer identity. It MUST be the very last line of the message.
-- Add an `Assisted-by: Claude` trailer naming yourself as the assistant. Append your exact model id when your runtime context provides it (e.g. `Assisted-by: Claude:claude-opus-4-8`); otherwise emit `Assisted-by: Claude` alone — never guess the id. Pass it as the final `-m` paragraph, NOT via `--trailer` (git places `--trailer` values after the sign-off), so it lands directly above `Signed-off-by`.
+- Add an `Assisted-by: Claude` trailer naming yourself as the assistant. Append your exact model id when your runtime context provides it (e.g. `Assisted-by: Claude:claude-opus-5`); otherwise emit `Assisted-by: Claude` alone — never guess the id. Pass it as the final `-m` paragraph, NOT via `--trailer` (git places `--trailer` values after the sign-off), so it lands directly above `Signed-off-by`.
 - NEVER add a `Co-authored-by` trailer — not for Claude, not for planwerk-agent, not for anyone.
 
 ## Attribution footer
@@ -205,7 +205,7 @@ End every GitHub artifact you author yourself — the pull request description, 
 
     _Implemented by [planwerk-agent](https://github.com/planwerk/planwerk-agent) with Claude:<your model id>_
 
-- Append your exact model id when your runtime context provides it (e.g. `with Claude:claude-opus-4-8`); otherwise write a bare `with Claude` — never guess the id. This mirrors the Assisted-by commit trailer.
+- Append your exact model id when your runtime context provides it (e.g. `with Claude:claude-opus-5`); otherwise write a bare `with Claude` — never guess the id. This mirrors the Assisted-by commit trailer.
 - Keep the `[planwerk-agent]` link intact so the artifact points back at the tool that produced it.
 - Add the footer once, as the last line of the artifact — do NOT repeat it per section.
 
