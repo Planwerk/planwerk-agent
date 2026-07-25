@@ -50,16 +50,16 @@ const (
 	// for the largest thinking budget on latency-tolerant one-off runs.
 	DefaultClaudeEffort = "xhigh"
 	// DefaultPlanEffort is the compiled-in default reasoning effort for the
-	// implement command's planning session. "max" buys the largest thinking
-	// budget: planning is a single read-only session whose output steers the
-	// entire implementation, so the deepest reasoning pays off most there —
-	// the same reasoning behind running it on the stronger DefaultPlanModel
-	// while the implement session stays on the cheaper DefaultClaudeEffort.
-	// The latency "max" adds is also tolerable here because planning is
-	// one-shot and not on the implement session's critical loop. Override
-	// with SetPlanEffort (driven by the implement command's --plan-effort
-	// flag / PLANWERK_PLAN_EFFORT env var).
-	DefaultPlanEffort = "max"
+	// implement command's planning session. "xhigh" matches
+	// DefaultClaudeEffort: on DefaultPlanModel it already delivers the depth
+	// planning needs, and "max" on top of it tends toward overthinking — a
+	// planner that keeps re-deriving alternatives rather than committing to a
+	// change set — for a latency and token cost the extra depth does not repay.
+	// The plan still gets the stronger model (DefaultPlanModel), which is where
+	// the real gain sits. Override with SetPlanEffort (driven by the implement
+	// command's --plan-effort flag / PLANWERK_PLAN_EFFORT env var), e.g. "max"
+	// for an unusually intricate issue.
+	DefaultPlanEffort = "xhigh"
 	// DefaultImplementWorkerEffort is the compiled-in default reasoning effort
 	// for the implementer subagents an orchestrated implement session
 	// delegates its work packages to (--implement-worker-model). "xhigh"
