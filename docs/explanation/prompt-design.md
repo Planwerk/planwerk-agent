@@ -261,6 +261,15 @@ as prompts that cost more without reviewing better. Trimming no-ops and sediment
 lowers that cost as a side benefit, but the primary goal is a prompt that steers
 the model predictably — cost is the thermometer, not the disease.
 
+The summary reads per pass, not only per run (`usage.passes` in the data block
+carries the same breakdown). A run fans out over a dozen sessions, so a per-run
+total can say a review cost $12.80 and nothing about which prompt to open. The
+resolution matters for sprawl specifically: the review-pattern catalog was ~31k
+tokens of prompt injected into eight of them before the specialists were scoped
+to their own areas ([decision 79](./design-decisions.md)), and that is the shape
+of finding sprawl at the resolution of a *pass* — text a prompt tells the model
+to ignore, paid for once per session that carries it.
+
 ## Attribution
 
 The vocabulary on this page — predictability, information hierarchy, the no-op /
