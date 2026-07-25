@@ -236,3 +236,33 @@ func TestImplementReportHasNegativeSpaceSection(t *testing.T) {
 		}
 	}
 }
+
+// TestFixScopeLinesNamesTheCommit locks the re-review scope: it points the pass
+// at the difference between the recorded commit and HEAD, and says why — a
+// previous round already reviewed the branch in full.
+func TestFixScopeLinesNamesTheCommit(t *testing.T) {
+	got := fixScopeLines("abc1234")
+	for _, want := range []string{"abc1234", "git diff abc1234 --name-only", "already reviewed this branch in full"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("fixScopeLines is missing %q:\n%s", want, got)
+		}
+	}
+}
+
+// TestAdversarialPromptScopeSwitchesOnSinceRef proves the finder reviews the
+// whole branch without a sinceRef and only the fixes with one — the two scopes
+// are mutually exclusive, so a re-review cannot silently widen back to the branch.
+func TestAdversarialPromptScopeSwitchesOnSinceRef(t *testing.T) {
+	branchWide := buildAdversarialPrompt("main", "", nil, 0)
+	if !strings.Contains(branchWide, "git diff origin/main --name-only") {
+		t.Error("without a sinceRef the finder must review the whole branch diff")
+	}
+
+	fixesOnly := buildAdversarialPrompt("main", "abc1234", nil, 0)
+	if !strings.Contains(fixesOnly, "git diff abc1234 --name-only") {
+		t.Error("with a sinceRef the finder must review only what changed since it")
+	}
+	if strings.Contains(fixesOnly, "git diff origin/main --name-only") {
+		t.Error("the re-review still carries the branch-wide scope line")
+	}
+}

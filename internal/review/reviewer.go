@@ -311,7 +311,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	})
 	if opts.Thorough {
 		g.Go(func() error {
-			advResult, advErr = r.Claude.AdversarialReview(pr.Dir, pr.BaseBranch, pats, opts.MaxPatterns)
+			advResult, advErr = r.Claude.AdversarialReview(pr.Dir, pr.BaseBranch, "", pats, opts.MaxPatterns)
 			return nil
 		})
 	}

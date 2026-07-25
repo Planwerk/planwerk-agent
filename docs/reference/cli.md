@@ -627,14 +627,22 @@ quote-or-demote snippet gate, and claim verification — and only findings that
 source issue but **never applied** — the restriction is enforced by the harness,
 not requested in the editing session's prompt.
 
-It runs as a **bounded loop**: after each apply it re-reviews the branch it just
-changed and, while the finder still reports actionable findings, fixes them again
-— stopping when the finder comes back clean, when a round yields no findings that
+It runs as a **bounded loop**: after each apply it re-reviews and, while the
+finder still reports actionable findings, fixes them again — stopping when the
+finder comes back clean, when a round yields no findings that
 survive hygiene, when an apply escalates (`STATUS: BLOCKED` / `NEEDS_CONTEXT`), or
 after `--max-review-iterations` rounds (default 3), noting any findings still
 unresolved when the budget runs out. Each round's report is posted as a comment
 on the source issue (best-effort). Nothing to fix on the first round is a clean
-no-op (no commit, no issue comment beyond a short stdout note). The pass is
+no-op (no commit, no issue comment beyond a short stdout note).
+
+Each round re-reviews at a **narrower scope** than the last. The first round
+reviews the whole branch diff with the full fan-out; from the second round on,
+the adversarial finder reviews only what the previous round's fixes changed —
+`git diff <pre-fix commit>`, recorded before the editing session ran — since the
+whole branch was already reviewed and the open question is whether those fixes
+hold. If the pre-fix commit cannot be recorded the round falls back to the
+branch-wide scope. The pass is
 non-fatal — a failed or escalated review never changes the run's exit code. The
 read-only `--verify` / `--verify-adversarial` flags remain available for a
 report-only run. Disable the whole pass with `--no-review`, or just the

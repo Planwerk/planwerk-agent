@@ -448,14 +448,14 @@ func TestBuildGlossaryPrompt_Golden(t *testing.T) {
 }
 
 func TestBuildAdversarialPrompt_Golden(t *testing.T) {
-	assertGoldenPrompt(t, "adversarial", buildAdversarialPrompt("develop", nil, 0))
+	assertGoldenPrompt(t, "adversarial", buildAdversarialPrompt("develop", "", nil, 0))
 }
 
 // TestBuildAdversarialPrompt_Patterns_Golden locks the adversarial prompt when
 // the finder is grounded in the project review-pattern catalog: the
 // <review-patterns> block appears with its grounding-not-widening framing.
 func TestBuildAdversarialPrompt_Patterns_Golden(t *testing.T) {
-	assertGoldenPrompt(t, "adversarial_patterns", buildAdversarialPrompt("develop", goldenPatterns(), 0))
+	assertGoldenPrompt(t, "adversarial_patterns", buildAdversarialPrompt("develop", "", goldenPatterns(), 0))
 }
 
 func TestBuildCompliancePrompt_Golden(t *testing.T) {
