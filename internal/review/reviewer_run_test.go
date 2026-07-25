@@ -426,12 +426,12 @@ func (c *configurableClaude) FeatureCompliance(dir, baseBranch string, feature *
 	return c.featureCompliance(dir, baseBranch, feature)
 }
 
-func (c *configurableClaude) SpecialistReview(dir, baseBranch, key, focus string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
+func (c *configurableClaude) SpecialistReview(dir, baseBranch string, sp claude.Specialist, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
 	atomic.AddInt32(&c.specialistCalls, 1)
 	if c.specialist == nil {
 		return &report.ReviewResult{}, nil
 	}
-	return c.specialist(dir, baseBranch, key, focus)
+	return c.specialist(dir, baseBranch, sp.Key, sp.Focus)
 }
 
 func (c *configurableClaude) DedupFindings(findings []report.Finding) ([][]int, error) {

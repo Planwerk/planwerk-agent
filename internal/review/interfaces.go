@@ -19,7 +19,10 @@ type ClaudeRunner interface {
 	AdversarialReview(dir, baseBranch string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error)
 	CoverageMap(dir, baseBranch string) (*report.CoverageResult, error)
 	FeatureCompliance(dir, baseBranch string, feature *planwerk.Feature) (*report.ReviewResult, error)
-	SpecialistReview(dir, baseBranch, key, focus string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error)
+	// SpecialistReview runs one domain reviewer over the diff. It takes the whole
+	// Specialist rather than its key and focus so the prompt can also read the
+	// review areas it declares, which scope the pattern catalog it is handed.
+	SpecialistReview(dir, baseBranch string, sp claude.Specialist, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error)
 	// DedupFindings groups findings that describe the same underlying issue,
 	// returning index groups into the passed slice. It backstops the fuzzy
 	// merge matcher for findings with no file to anchor on.
@@ -65,8 +68,8 @@ func (r defaultClaudeRunner) CoverageMap(dir, baseBranch string) (*report.Covera
 	return r.client.CoverageMap(dir, baseBranch)
 }
 
-func (r defaultClaudeRunner) SpecialistReview(dir, baseBranch, key, focus string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
-	return r.client.SpecialistReview(dir, baseBranch, key, focus, pats, maxPatterns)
+func (r defaultClaudeRunner) SpecialistReview(dir, baseBranch string, sp claude.Specialist, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
+	return r.client.SpecialistReview(dir, baseBranch, sp, pats, maxPatterns)
 }
 
 func (r defaultClaudeRunner) FeatureCompliance(dir, baseBranch string, feature *planwerk.Feature) (*report.ReviewResult, error) {

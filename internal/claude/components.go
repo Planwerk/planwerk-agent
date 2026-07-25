@@ -25,6 +25,32 @@ func finderPatternCatalog(intro string, pats []patterns.Pattern, maxPatterns int
 		"</review-patterns>\n\n"
 }
 
+// domainPatternCatalog is finderPatternCatalog for a finder whose scope is one
+// or more review areas rather than the whole diff: it renders only the catalog's
+// patterns for those areas. The rest are not summarized, indexed, or otherwise
+// alluded to — they are simply absent, because the specialist prompt already
+// tells the pass to review ONLY its domain, so an out-of-domain pattern is text
+// the pass is instructed to ignore. Injecting it costs ~2 KB of prompt and, per
+// the sprawl failure mode, dilutes the patterns the pass is meant to apply.
+//
+// Nothing is lost from the run: a diff-scoped review pass and the adversarial
+// pass both carry the full catalog, so every pattern is still applied in full by
+// a pass that covers every area — only the narrow passes stop paying for the
+// areas they were told not to act on.
+//
+// An empty areas list, or an area no loaded pattern carries, falls back to the
+// full catalog: a scope that selects nothing is a mapping mistake, and grounding
+// the pass in the whole catalog is what it did before this existed. The fallback
+// is what keeps a project- or wiki-authored pattern with an unrecognized area
+// from silently vanishing from every specialist.
+func domainPatternCatalog(intro string, pats []patterns.Pattern, maxPatterns int, areas []string) string {
+	scoped, _ := patterns.PartitionByArea(pats, areas...)
+	if len(scoped) == 0 {
+		return finderPatternCatalog(intro, pats, maxPatterns)
+	}
+	return finderPatternCatalog(intro, scoped, maxPatterns)
+}
+
 // This file holds prompt building blocks that are shared across more than one
 // prompt builder. Keeping them in one place stops the copies from drifting
 // (the failure mode that motivated extracting them): before this, the audit

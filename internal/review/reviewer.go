@@ -336,7 +336,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 				continue
 			}
 			g.Go(func() error {
-				res, err := r.Claude.SpecialistReview(pr.Dir, pr.BaseBranch, sp.Key, sp.Focus, pats, opts.MaxPatterns)
+				res, err := r.Claude.SpecialistReview(pr.Dir, pr.BaseBranch, sp, pats, opts.MaxPatterns)
 				if err != nil {
 					// A failed specialist must not sink the whole review.
 					slog.Warn("specialist review failed", "specialist", sp.Key, "err", err)
