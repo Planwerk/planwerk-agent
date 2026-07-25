@@ -141,6 +141,24 @@ claude usage: 13.4k in / 4.2k out across 6 calls, est. $0.42
 Claude Code's own reported per-call cost. The line is omitted when a Run made no
 Claude call (for example `--version`, a dry run, or `--print-prompt`).
 
+A run that spent its tokens across more than one pass follows the totals with a
+per-pass breakdown, most expensive first:
+
+```text
+claude usage: 412.0k in / 38.1k out across 14 calls, est. $12.80
+  implement                 1 call   180.0k in / 21.0k out, est. $7.40
+  plan                      1 call   96.0k in / 8.0k out, est. $2.90
+  specialist-security       1 call   38.0k in / 1.4k out, est. $0.62
+  structure                 7 calls  62.0k in / 5.1k out, est. $0.51
+  +4 further passes         4 calls  36.0k in / 2.6k out, est. $1.37
+```
+
+The pass name is the label the runner tags the `claude -p` invocation with, so
+calls that belong to the same pass (the structuring call behind every finder, the
+finder rounds of a review loop) accumulate together. At most eight rows are
+shown; the rest are summed into a trailing `+N further passes` line, so the
+breakdown always accounts for the whole run.
+
 When a review is posted (`--post-review` / `--inline`), the same totals are
 embedded in the `<!-- planwerk-agent-data ... -->` comment as a `usage` object
 for CI extraction, alongside the findings:
@@ -159,13 +177,26 @@ for CI extraction, alongside the findings:
     "output_tokens": 4200,
     "cache_read_input_tokens": 15626,
     "cache_creation_input_tokens": 2464,
-    "est_cost_usd": 0.42
+    "est_cost_usd": 0.42,
+    "passes": [
+      {
+        "pass": "review",
+        "calls": 1,
+        "input_tokens": 9800,
+        "output_tokens": 3600,
+        "cache_read_input_tokens": 12000,
+        "cache_creation_input_tokens": 2464,
+        "est_cost_usd": 0.31
+      }
+    ]
   }
 }
 ```
 
 `est_cost_usd` is the literal estimate Claude Code reports, summed across calls —
-not a recomputed tokens × price figure.
+not a recomputed tokens × price figure. `passes` carries the same six counters
+per pass, ordered as in the stderr breakdown and complete (never truncated); it
+is omitted when no pass was recorded.
 
 ## Demotion-Gate Records
 

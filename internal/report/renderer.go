@@ -334,7 +334,30 @@ func (r *Renderer) renderAuditVerdict(cf CategorizedFindings) {
 // and, embedded in the report data block, a machine-readable totals object for
 // CI extraction. CostUSD is the sum of Claude Code's own per-call
 // total_cost_usd, the literal estimate (not a recomputed tokens×price figure).
+//
+// Passes breaks the same totals down by the pass that spent them. A run fans
+// out over a dozen sessions — a review runs the primary pass, the adversarial
+// pass, one session per domain specialist, and a structuring call behind each —
+// so the totals alone cannot say which pass a cost belongs to, and a change
+// meant to make one pass cheaper cannot be shown to have worked. It is omitted
+// from the wire form when empty, so a payload written before this existed (or
+// by a caller that tracks no passes) is unchanged.
 type Usage struct {
+	Calls               int         `json:"calls"`
+	InputTokens         int64       `json:"input_tokens"`
+	OutputTokens        int64       `json:"output_tokens"`
+	CacheReadTokens     int64       `json:"cache_read_input_tokens"`
+	CacheCreationTokens int64       `json:"cache_creation_input_tokens"`
+	CostUSD             float64     `json:"est_cost_usd"`
+	Passes              []PassUsage `json:"passes,omitempty"`
+}
+
+// PassUsage is one pass's share of a Run's Usage, named by the label the runner
+// tags its `claude -p` invocation with ("review", "adversarial",
+// "specialist-security", "structure", …). The counters mean exactly what their
+// Usage counterparts do; only the scope is narrower.
+type PassUsage struct {
+	Pass                string  `json:"pass"`
 	Calls               int     `json:"calls"`
 	InputTokens         int64   `json:"input_tokens"`
 	OutputTokens        int64   `json:"output_tokens"`

@@ -333,12 +333,16 @@ type Client struct {
 	// ~/.claude happens to be present. Set via WithInheritUserConfig.
 	inheritUserConfig bool
 
-	// usageMu guards the per-Run usage accumulator. The review fan-out runs
+	// usageMu guards the per-Run usage accumulators. The review fan-out runs
 	// several Claude calls concurrently on one shared Client (errgroup over
 	// Review/AdversarialReview/CoverageMap/…), so addUsage must be safe to call
 	// from multiple goroutines.
 	usageMu sync.Mutex
 	usage   report.Usage
+	// usageByPass accumulates the same counts keyed by the runner label of the
+	// invocation that spent them, so a run's cost can be attributed to the pass
+	// it belongs to. Lazily created by addUsage; nil until the first call.
+	usageByPass map[string]report.PassUsage
 }
 
 // Option configures a Client. Pass any number of options to NewClient; later
@@ -633,7 +637,7 @@ func (c *Client) runClaudeWithPermission(spec runSpec, prompt string) (string, s
 	if err != nil {
 		return "", "", err
 	}
-	c.addUsage(usage, cost)
+	c.addUsage(spec.label, usage, cost)
 	return text, resolvedModel, nil
 }
 

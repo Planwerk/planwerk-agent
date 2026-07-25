@@ -225,7 +225,7 @@ func (c *Client) runClaudeStream(spec runSpec, prompt string) (string, string, e
 	// Count the call once the stream read cleanly, before the empty-result
 	// check, so it mirrors the buffered path (which counts on a successful
 	// envelope parse regardless of whether the result text is empty).
-	c.addUsage(usage, cost)
+	c.addUsage(spec.label, usage, cost)
 
 	if finalResult != "" {
 		return finalResult, resolvedModel, nil
