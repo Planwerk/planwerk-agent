@@ -3,6 +3,7 @@ package patterns
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -666,4 +667,81 @@ func TestBuildCatalogReferences_Embedded(t *testing.T) {
 	if noBase[0].OriginNote != "bundled (embedded in binary)" {
 		t.Errorf("OriginNote = %q, want \"bundled (embedded in binary)\"", noBase[0].OriginNote)
 	}
+}
+
+func TestPartitionByArea(t *testing.T) {
+	pats := []Pattern{
+		{Name: "OWASP", ReviewArea: "security"},
+		{Name: "Deep Modules", ReviewArea: "architecture"},
+		{Name: "Secrets", ReviewArea: "Security"}, // free-form casing
+		{Name: "TDD", ReviewArea: " testing "},    // free-form spacing
+	}
+
+	in, out := PartitionByArea(pats, "security", "testing")
+
+	if got := names(in); !slices.Equal(got, []string{"OWASP", "Secrets", "TDD"}) {
+		t.Errorf("in = %v, want [OWASP Secrets TDD]", got)
+	}
+	if got := names(out); !slices.Equal(got, []string{"Deep Modules"}) {
+		t.Errorf("out = %v, want [Deep Modules]", got)
+	}
+}
+
+// TestPartitionByArea_NoAreasKeepsEverythingOut locks the "no scope declared"
+// case: with no areas the caller gets nothing in scope and the full list back,
+// so it can fall back to the whole catalog rather than silently rendering none.
+func TestPartitionByArea_NoAreasKeepsEverythingOut(t *testing.T) {
+	pats := []Pattern{{Name: "OWASP", ReviewArea: "security"}}
+	in, out := PartitionByArea(pats)
+	if len(in) != 0 {
+		t.Errorf("in = %v, want empty", names(in))
+	}
+	if len(out) != 1 {
+		t.Errorf("out = %v, want the full list", names(out))
+	}
+}
+
+func TestFormatIndexForPrompt(t *testing.T) {
+	pats := []Pattern{
+		{Name: "OWASP", ReviewArea: "security", Severity: "CRITICAL", DetectionHint: "unsanitized input", Body: "a very long body"},
+		{Name: "TDD", ReviewArea: "testing", Severity: "INFO", DetectionHint: "  code without a failing test first  "},
+	}
+
+	got := FormatIndexForPrompt(pats, DefaultMaxPatternsInPrompt)
+	want := "- OWASP (security, CRITICAL): unsanitized input\n" +
+		"- TDD (testing, INFO): code without a failing test first\n"
+	if got != want {
+		t.Errorf("FormatIndexForPrompt =\n%q\nwant\n%q", got, want)
+	}
+	if strings.Contains(got, "a very long body") {
+		t.Error("the index must not carry pattern bodies — that is the point of it")
+	}
+}
+
+func TestFormatIndexForPrompt_Empty(t *testing.T) {
+	if got := FormatIndexForPrompt(nil, DefaultMaxPatternsInPrompt); got != "" {
+		t.Errorf("empty patterns should render the empty string, got %q", got)
+	}
+}
+
+// TestFormatIndexForPrompt_HonorsBudget locks that the index respects
+// --max-patterns with the same severity-first priority the full rendering uses.
+func TestFormatIndexForPrompt_HonorsBudget(t *testing.T) {
+	pats := []Pattern{
+		{Name: "Low", ReviewArea: "quality", Severity: "INFO", DetectionHint: "x"},
+		{Name: "High", ReviewArea: "security", Severity: "BLOCKING", DetectionHint: "y"},
+	}
+	got := FormatIndexForPrompt(pats, 1)
+	if !strings.Contains(got, "High") || strings.Contains(got, "Low") {
+		t.Errorf("budget of 1 should keep the highest severity only, got %q", got)
+	}
+}
+
+// names extracts pattern names for order-sensitive assertions.
+func names(pats []Pattern) []string {
+	out := make([]string, 0, len(pats))
+	for _, p := range pats {
+		out = append(out, p.Name)
+	}
+	return out
 }
