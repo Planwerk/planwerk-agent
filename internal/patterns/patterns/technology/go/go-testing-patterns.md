@@ -1,6 +1,6 @@
 # Review Pattern: Go Testing Patterns
 
-**Review-Area**: quality
+**Review-Area**: testing
 **Detection-Hint**: Tests without subtests (`t.Run`), duplicated setup code, helpers without `t.Helper()`, cleanup with `defer` instead of `t.Cleanup()`, independent subtests not running with `t.Parallel()`, repeated test assertions that should be table-driven
 **Severity**: INFO
 **Category**: technology
