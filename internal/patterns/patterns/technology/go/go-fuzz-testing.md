@@ -1,6 +1,6 @@
 # Review Pattern: Go Fuzz Testing
 
-**Review-Area**: quality
+**Review-Area**: testing
 **Detection-Hint**: Parser, decoder, or input-handling functions without accompanying `FuzzXxx` tests, public functions accepting `[]byte`/`string`/`io.Reader` with only hand-written table tests, missing `testdata/fuzz/` corpus, fuzz targets without `f.Add` seeds
 **Severity**: INFO
 **Category**: technology

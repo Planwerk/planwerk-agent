@@ -1,6 +1,6 @@
 # Review Pattern: Helm Chart Testing
 
-**Review-Area**: quality
+**Review-Area**: testing
 **Detection-Hint**: Chart repository without `helm lint` in CI, no `chart-testing` (ct) integration, no `helm-unittest` coverage, charts without `templates/tests/` assets, `helm template` not exercised against multiple `--kube-version` targets
 **Severity**: WARNING
 **Category**: technology
