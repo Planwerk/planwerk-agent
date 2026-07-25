@@ -18,7 +18,7 @@ import (
 // validation, error handling, security, accessibility, tests, or assertions —
 // that hard guardrail is asserted in the prompt.
 func (c *Client) SimplifyFindings(dir, baseBranch string) (*report.ReviewResult, error) {
-	raw, model, err := c.runClaude(dir, buildSimplifyFindPrompt(baseBranch), "simplify")
+	raw, model, err := c.runClaudeFinder(dir, buildSimplifyFindPrompt(baseBranch), "simplify")
 	if err != nil {
 		return nil, fmt.Errorf("running simplify pass: %w", err)
 	}

@@ -25,7 +25,7 @@ func (c *Client) VerifyFindingClaims(dir string, findings []report.Finding) ([]h
 	if len(findings) == 0 {
 		return nil, nil
 	}
-	text, _, err := c.runClaude(dir, buildClaimVerificationPrompt(findings), "verify-claims")
+	text, _, err := c.runClaudeFinder(dir, buildClaimVerificationPrompt(findings), "verify-claims")
 	if err != nil {
 		return nil, err
 	}

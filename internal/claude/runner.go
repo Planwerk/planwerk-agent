@@ -70,6 +70,25 @@ const (
 	// with the --implement-worker-effort flag / PLANWERK_IMPLEMENT_WORKER_EFFORT
 	// env var.
 	DefaultImplementWorkerEffort = "xhigh"
+	// DefaultFinderEffort is the compiled-in default reasoning effort for the
+	// read-only finder passes — the adversarial pass, the domain specialists,
+	// the coverage map, the feature-compliance check, the simplify finder, and
+	// claim verification. Empty means "inherit the main effort", which is what
+	// the finders have always run at.
+	//
+	// It is deliberately not lowered here. The finders are where a cheaper tier
+	// would pay off most — six specialists run concurrently on every fan-out —
+	// but their output IS the product (findings a later pass acts on
+	// unattended), so the tier is the one knob that can cost recall rather than
+	// only tokens. The eval harness (`make eval`) scores exactly that: finding
+	// precision, recall, and severity accuracy over the seeded-bug corpus. Lower
+	// this default when a before/after run says the numbers hold, not before;
+	// until then --finder-effort makes the experiment a flag away.
+	DefaultFinderEffort = ""
+	// DefaultFinderModel is the compiled-in default model for the same finder
+	// passes, empty for the same reason and with the same "inherit the main
+	// model" meaning. See DefaultFinderEffort.
+	DefaultFinderModel = ""
 	// DefaultStructureModel is the compiled-in default model for the mechanical
 	// JSON-structuring passes — the secondary `claude -p` calls that cast an
 	// upstream reasoning call's already-reasoned prose into the report schema
@@ -317,9 +336,17 @@ type Client struct {
 	// structureModel it has no compiled-in default: the empty zero value means
 	// "inherit model", so --claude-model keeps steering the implement session
 	// unless --implement-model is set. Set via WithImplementModel.
-	implementModel  string
-	planModel       string
-	structureModel  string
+	implementModel string
+	planModel      string
+	structureModel string
+	// finderModel/finderEffort override model/effort for the read-only finder
+	// passes (adversarial, the domain specialists, coverage, compliance,
+	// simplify-find, claim verification). Like implementModel they have no
+	// compiled-in default: empty means "inherit the main tier", which is how the
+	// finders have always run. See DefaultFinderEffort for why the default is
+	// not lowered in the source.
+	finderModel     string
+	finderEffort    string
 	effort          string
 	planEffort      string
 	structureEffort string
@@ -397,6 +424,29 @@ func WithImplementModel(m string) Option {
 	return func(c *Client) {
 		if m != "" {
 			c.implementModel = m
+		}
+	}
+}
+
+// WithFinderModel sets the model used by the read-only finder passes (the
+// adversarial pass, the domain specialists, the coverage map, the compliance
+// check, the simplify finder, and claim verification); every other session stays
+// on the main model. An empty m is ignored, which leaves the zero value in place
+// — the finders then inherit the main model (see Client.finderModel).
+func WithFinderModel(m string) Option {
+	return func(c *Client) {
+		if m != "" {
+			c.finderModel = m
+		}
+	}
+}
+
+// WithFinderEffort sets the reasoning effort used by the finder passes. An empty
+// e is ignored, leaving the finders on the main effort.
+func WithFinderEffort(e string) Option {
+	return func(c *Client) {
+		if e != "" {
+			c.finderEffort = e
 		}
 	}
 }
@@ -480,6 +530,37 @@ func WithInheritUserConfig(b bool) Option {
 // tier instead.
 func (c *Client) runClaude(dir, prompt, label string) (text, model string, err error) {
 	return c.runClaudeWithPermission(runSpec{dir: dir, label: label, model: c.model, effort: c.effort, readOnly: true}, prompt)
+}
+
+// runClaudeFinder is runClaude on the finder tier: the read-only passes whose
+// job is to produce findings over a diff — the adversarial pass, each domain
+// specialist, the coverage map, the feature-compliance check, the simplify
+// finder, and claim verification. They share a shape (read the checkout, report
+// findings, mutate nothing) and, with six specialists running concurrently on
+// every fan-out, they are where a cheaper tier would pay off most.
+//
+// Both knobs default to empty, which inherits the main model and effort, so the
+// finders run exactly as they always have until --finder-model/--finder-effort
+// says otherwise. DefaultFinderEffort records why the compiled-in default is not
+// lowered on reasoning alone.
+func (c *Client) runClaudeFinder(dir, prompt, label string) (text, model string, err error) {
+	return c.runClaudeWithPermission(runSpec{
+		dir:      dir,
+		label:    label,
+		model:    firstNonEmpty(c.finderModel, c.model),
+		effort:   firstNonEmpty(c.finderEffort, c.effort),
+		readOnly: true,
+	}, prompt)
+}
+
+// firstNonEmpty returns override when it is set and fallback otherwise — the
+// "a tier with no compiled-in default inherits the main one" rule, in one place
+// so the model and effort halves cannot drift apart.
+func firstNonEmpty(override, fallback string) string {
+	if override != "" {
+		return override
+	}
+	return fallback
 }
 
 // runClaudePlan is runClaude on the dedicated planning model (planModel,

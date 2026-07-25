@@ -35,6 +35,8 @@ func newRootCmd(deps *runtimeDeps) *cobra.Command {
 	var claudeEffort string
 	var structureModel string
 	var structureEffort string
+	var finderModel string
+	var finderEffort string
 	var claudeInheritUserConfig bool
 	var wikiEnable, wikiDisable bool
 	var wikiRef string
@@ -89,6 +91,14 @@ or short form (owner/repo#123).`,
 				return err
 			}
 
+			// Same reason as the structuring effort: the finder passes run before
+			// the passes that act on their findings, so a typo must be caught here
+			// rather than after a six-specialist fan-out has spent its tokens.
+			findEffort, err := resolveFinderEffort(finderEffort, cmd.Flags().Changed("finder-effort"))
+			if err != nil {
+				return err
+			}
+
 			// Build the Claude Code client once from the resolved --claude-*
 			// flags and share it with every subcommand via deps. The implement
 			// command appends its --plan-* options to deps.claudeOpts.
@@ -99,6 +109,8 @@ or short form (owner/repo#123).`,
 				claude.WithEffort(resolveClaudeEffort(claudeEffort, cmd.Flags().Changed("claude-effort"))),
 				claude.WithStructureModel(resolveStructureModel(structureModel, cmd.Flags().Changed("structure-model"))),
 				claude.WithStructureEffort(structEffort),
+				claude.WithFinderModel(resolveFinderModel(finderModel, cmd.Flags().Changed("finder-model"))),
+				claude.WithFinderEffort(findEffort),
 				claude.WithInheritUserConfig(resolveClaudeInheritUserConfig(claudeInheritUserConfig, cmd.Flags().Changed("claude-inherit-user-config"))),
 			}
 			deps.claude = claude.NewClient(deps.claudeOpts...)
@@ -197,6 +209,8 @@ or short form (owner/repo#123).`,
 	persistent.StringVar(&claudeEffort, "claude-effort", claude.DefaultClaudeEffort, "Reasoning effort passed to Claude Code via --effort (low, medium, high, xhigh, max; env: "+envClaudeEffort+")")
 	persistent.StringVar(&structureModel, "structure-model", claude.DefaultStructureModel, "Model for the mechanical JSON-structuring passes (independent of --claude-model; the cheap tier that transcribes reasoned prose into the report schema; env: "+envStructureModel+")")
 	persistent.StringVar(&structureEffort, "structure-effort", claude.DefaultStructureEffort, "Reasoning effort for the JSON-structuring passes (low, medium, high, xhigh, max; env: "+envStructureEffort+")")
+	persistent.StringVar(&finderModel, "finder-model", claude.DefaultFinderModel, "Model for the read-only finder passes: the adversarial pass, the domain specialists, coverage, compliance, the simplify finder, and claim verification (empty inherits --claude-model; env: "+envFinderModel+")")
+	persistent.StringVar(&finderEffort, "finder-effort", claude.DefaultFinderEffort, "Reasoning effort for the finder passes (low, medium, high, xhigh, max; empty inherits --claude-effort; env: "+envFinderEffort+")")
 	persistent.BoolVar(&claudeInheritUserConfig, "claude-inherit-user-config", false, "Let orchestrated Claude sessions inherit your user-global ~/.claude settings and MCP servers (default: isolated for reproducible output; env: "+envClaudeInheritUserConfig+")")
 
 	flags := rootCmd.Flags()

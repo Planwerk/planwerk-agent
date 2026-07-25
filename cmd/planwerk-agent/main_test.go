@@ -19,8 +19,9 @@ const testRepoRef = "acme/widgets"
 // extracted into constants so they live in one place (and to satisfy
 // goconst, which flags strings that recur three or more times).
 const (
-	effortHigh = "high"
-	modelOpus  = "opus"
+	effortHigh  = "high"
+	modelOpus   = "opus"
+	modelSonnet = "sonnet"
 )
 
 func TestResolveBuildInfoUsesLdflagsVersion(t *testing.T) {
@@ -514,6 +515,66 @@ func TestResolveStructureEffortRejectsInvalid(t *testing.T) {
 	t.Setenv(envStructureEffort, "maximum")
 	if _, err := resolveStructureEffort("", false); err == nil {
 		t.Fatal("expected an error for an invalid PLANWERK_STRUCTURE_EFFORT value")
+	}
+}
+
+func TestResolveFinderModel(t *testing.T) {
+	t.Setenv(envFinderModel, modelSonnet)
+	if got := resolveFinderModel(modelOpus, true); got != modelOpus {
+		t.Fatalf("got %q, want the flag value %q", got, modelOpus)
+	}
+	if got := resolveFinderModel("", false); got != modelSonnet {
+		t.Fatalf("got %q, want the env value %q", got, modelSonnet)
+	}
+	t.Setenv(envFinderModel, "")
+	if got := resolveFinderModel("", false); got != claude.DefaultFinderModel {
+		t.Fatalf("got %q, want the default %q (inherit the main model)", got, claude.DefaultFinderModel)
+	}
+}
+
+func TestResolveFinderEffort(t *testing.T) {
+	t.Setenv(envFinderEffort, "medium")
+	got, err := resolveFinderEffort(effortHigh, true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != effortHigh {
+		t.Fatalf("got %q, want the flag value %q", got, effortHigh)
+	}
+
+	t.Setenv(envFinderEffort, "  high  ")
+	if got, err = resolveFinderEffort("", false); err != nil || got != effortHigh {
+		t.Fatalf("got %q (err %v), want the trimmed env value %q", got, err, effortHigh)
+	}
+}
+
+// TestResolveFinderEffortDefaultIsInherit locks the one way the finder tier
+// differs from the structuring tier: its empty default means "inherit
+// --claude-effort", so the empty value must pass validation rather than be
+// rejected as an off-vocabulary level.
+func TestResolveFinderEffortDefaultIsInherit(t *testing.T) {
+	t.Setenv(envFinderEffort, "")
+	got, err := resolveFinderEffort("", false)
+	if err != nil {
+		t.Fatalf("unexpected error for the inherit default: %v", err)
+	}
+	if got != "" {
+		t.Fatalf("got %q, want empty (inherit the main effort)", got)
+	}
+}
+
+// TestResolveFinderEffortRejectsInvalid pins the fail-fast guard: a typo is
+// caught before any claude call rather than after a six-specialist fan-out has
+// already spent its tokens.
+func TestResolveFinderEffortRejectsInvalid(t *testing.T) {
+	t.Setenv(envFinderEffort, "")
+	if _, err := resolveFinderEffort("maximum", true); err == nil {
+		t.Fatal("expected an error for an invalid --finder-effort flag value")
+	}
+
+	t.Setenv(envFinderEffort, "maximum")
+	if _, err := resolveFinderEffort("", false); err == nil {
+		t.Fatal("expected an error for an invalid PLANWERK_FINDER_EFFORT value")
 	}
 }
 
