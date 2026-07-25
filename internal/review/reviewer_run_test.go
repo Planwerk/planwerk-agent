@@ -402,7 +402,7 @@ func (c *configurableClaude) Review(dir string, ctx claude.ReviewContext) (*repo
 	return c.review(dir, ctx)
 }
 
-func (c *configurableClaude) AdversarialReview(dir, baseBranch string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
+func (c *configurableClaude) AdversarialReview(dir, baseBranch, sinceRef string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
 	atomic.AddInt32(&c.adversarialCalls, 1)
 	if c.adversarial == nil {
 		return nil, nil

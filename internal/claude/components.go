@@ -652,6 +652,21 @@ func diffScopeLines(baseBranch string) string {
 	return fmt.Sprintf("SCOPE: Only review files changed in the current branch compared to origin/%[1]s.\nFirst run: git diff origin/%[1]s --name-only\n", baseBranch)
 }
 
+// fixScopeLines is diffScopeLines for a re-review: it scopes the pass to what an
+// editing pass changed since sinceRef instead of to the whole branch. The
+// implement command's review loop uses it from its second round on, where the
+// question is no longer "what is wrong with this branch" — the previous round
+// asked that over the whole diff, with the specialist fan-out — but "did the
+// fixes just applied hold, and did they break anything".
+//
+// sinceRef is a commit id, not a branch name or a HEAD~n offset: the editing
+// passes fold their fixes into the commits that introduced them, so the branch is
+// rewritten between rounds and only the recorded object still names the state
+// before the fixes.
+func fixScopeLines(sinceRef string) string {
+	return fmt.Sprintf("SCOPE: A previous review round already reviewed this branch in full and its findings were fixed. Review ONLY what those fixes changed: the difference between commit %[1]s and the current HEAD.\nFirst run: git diff %[1]s --name-only\n", sinceRef)
+}
+
 // emptyIDLine returns the "leave the id field empty" line shared by the propose,
 // gap-analysis, and review-prepared structuring prompts. The propose copy had
 // drifted to "Leave the \"id\" field as an empty string — it will be assigned

@@ -65,7 +65,7 @@ func (mockClaude) Review(dir string, ctx claude.ReviewContext) (*report.ReviewRe
 	panic("mockClaude.Review called unexpectedly")
 }
 
-func (mockClaude) AdversarialReview(dir, baseBranch string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
+func (mockClaude) AdversarialReview(dir, baseBranch, sinceRef string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
 	panic("mockClaude.AdversarialReview called unexpectedly")
 }
 

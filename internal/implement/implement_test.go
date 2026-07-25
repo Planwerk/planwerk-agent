@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -43,12 +44,20 @@ type fakeAdversarialVerifier struct {
 	result  *report.ReviewResult
 	results []*report.ReviewResult
 	err     error
+	// sinceRefs records the sinceRef of every call in order, so a test can assert
+	// the review loop reviews the whole branch first and only the applied fixes
+	// afterwards.
+	mu        sync.Mutex
+	sinceRefs []string
 }
 
-func (f *fakeAdversarialVerifier) AdversarialReview(dir, baseBranch string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
+func (f *fakeAdversarialVerifier) AdversarialReview(dir, baseBranch, sinceRef string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
 	n := int(f.called.Add(1))
 	f.base = baseBranch
 	f.pats = pats
+	f.mu.Lock()
+	f.sinceRefs = append(f.sinceRefs, sinceRef)
+	f.mu.Unlock()
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -2535,6 +2544,10 @@ type fakeGitHub struct {
 	branchRefErr   error
 	branchRefCalls atomic.Int32
 
+	// headSHACalls/headSHAErr drive HeadSHA, which the review loop records before
+	// each editing pass to scope the next round's re-review.
+	headSHACalls atomic.Int32
+	headSHAErr   error
 	// changedFiles/changedFilesErr drive ChangedFiles (the review pass's specialist
 	// gate + snippet-gate scope). Default nil/nil means "no changed files", so the
 	// snippet gate skips on an empty haystack and the specialist gate fails open.
@@ -2677,6 +2690,17 @@ func (f *fakeGitHub) ChangedFiles(_, baseBranch string) ([]string, error) {
 		return nil, f.changedFilesErr
 	}
 	return f.changedFiles, nil
+}
+
+// HeadSHA returns a canned commit id per call so a review-loop test can assert
+// which commit the next round scoped its re-review to. headSHAErr exercises the
+// fail-open path, where the loop falls back to the branch-wide scope.
+func (f *fakeGitHub) HeadSHA(string) (string, error) {
+	n := f.headSHACalls.Add(1)
+	if f.headSHAErr != nil {
+		return "", f.headSHAErr
+	}
+	return fmt.Sprintf("sha%d", n), nil
 }
 
 type fakeClaude struct {
@@ -3352,5 +3376,65 @@ func TestRunReview_GroundsFindersInPatterns(t *testing.T) {
 	}
 	if len(spec.pats) != 1 || spec.pats[0].Name != "Go Error Wrapping" {
 		t.Errorf("specialist fan-out got pats %+v, want the loaded catalog", spec.pats)
+	}
+}
+
+// TestRun_ReviewLoopRereviewsOnlyTheFixes proves the loop's scope narrows after
+// the first round: round 1 reviews the whole branch (no sinceRef), and round 2
+// reviews only what round 1's fixes changed — the commit recorded before the
+// editing pass ran.
+func TestRun_ReviewLoopRereviewsOnlyTheFixes(t *testing.T) {
+	gh := reviewGH(t)
+	cl := &fakeClaude{}
+	av := &fakeAdversarialVerifier{results: []*report.ReviewResult{
+		{Findings: []report.Finding{criticalFinding("real bug", reviewTestProdFile)}},
+		{}, // round 2 is clean, so the loop converges
+	}}
+	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
+	r := reviewRunner(gh, cl, av, ra)
+
+	if err := r.Run(io.Discard, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+
+	av.mu.Lock()
+	defer av.mu.Unlock()
+	if len(av.sinceRefs) != 2 {
+		t.Fatalf("adversarial finder ran %d times, want 2", len(av.sinceRefs))
+	}
+	if av.sinceRefs[0] != "" {
+		t.Errorf("round 1 scoped to %q, want the whole branch diff (empty sinceRef)", av.sinceRefs[0])
+	}
+	// The first HeadSHA call happens just before the round-1 apply.
+	if av.sinceRefs[1] != "sha1" {
+		t.Errorf("round 2 scoped to %q, want the commit recorded before round 1's fixes (sha1)", av.sinceRefs[1])
+	}
+}
+
+// TestRun_ReviewLoopFallsBackToBranchScopeWhenHeadUnknown proves the fail-open:
+// when the pre-fix commit cannot be recorded, the next round re-reviews the whole
+// branch — the round costs what it always did rather than reviewing nothing.
+func TestRun_ReviewLoopFallsBackToBranchScopeWhenHeadUnknown(t *testing.T) {
+	gh := reviewGH(t)
+	gh.headSHAErr = errors.New("rev-parse exploded")
+	cl := &fakeClaude{}
+	av := &fakeAdversarialVerifier{results: []*report.ReviewResult{
+		{Findings: []report.Finding{criticalFinding("real bug", reviewTestProdFile)}},
+		{},
+	}}
+	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
+	r := reviewRunner(gh, cl, av, ra)
+
+	if err := r.Run(io.Discard, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+
+	av.mu.Lock()
+	defer av.mu.Unlock()
+	if len(av.sinceRefs) != 2 {
+		t.Fatalf("adversarial finder ran %d times, want 2", len(av.sinceRefs))
+	}
+	if av.sinceRefs[1] != "" {
+		t.Errorf("round 2 scoped to %q, want the branch-wide fallback (empty sinceRef)", av.sinceRefs[1])
 	}
 }

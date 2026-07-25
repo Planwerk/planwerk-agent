@@ -157,6 +157,11 @@ survive the same stages — merge, dedup, snippet gate, claim verification — b
 reported (on stdout and on the issue) but never applied: the restriction is
 enforced by the harness, not requested in the editing session's prompt. To bound
 the cost, `implement` runs the fan-out on the first round of its review loop only;
-later rounds re-check the applied fixes with the cheaper adversarial finder alone.
+later rounds re-check the applied fixes with the cheaper adversarial finder alone,
+and at a narrower scope: the first round reviews the whole branch diff, while
+every round after it reviews only what the previous round's fixes changed
+(`git diff <pre-fix commit>`). The branch has already been reviewed in full by
+then, so the question a later round answers is whether the fixes hold — not the
+one the first round already asked.
 See [Review-and-Fix Pass](/how-to/implement-an-issue) for the operator's view and
 [design decision 72](/explanation/design-decisions) for the rationale.

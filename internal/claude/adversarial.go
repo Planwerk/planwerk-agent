@@ -13,8 +13,13 @@ import (
 // the project review-pattern catalog, injected so a pass inspecting a fresh diff
 // applies the same patterns a later review of that diff would (maxPatterns
 // budgets how many are rendered); an empty catalog leaves the prompt unchanged.
-func (c *Client) AdversarialReview(dir, baseBranch string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
-	rawReview, model, err := c.runAdversarialReview(dir, baseBranch, pats, maxPatterns)
+//
+// sinceRef narrows a re-review: when it names a commit, the pass reviews what
+// changed since it rather than the whole branch, which is what the implement
+// command's review loop wants from its second round on. Empty — every other
+// caller — leaves the branch-wide scope unchanged.
+func (c *Client) AdversarialReview(dir, baseBranch, sinceRef string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
+	rawReview, model, err := c.runAdversarialReview(dir, baseBranch, sinceRef, pats, maxPatterns)
 	if err != nil {
 		return nil, fmt.Errorf("running adversarial review: %w", err)
 	}
@@ -36,18 +41,22 @@ func (c *Client) AdversarialReview(dir, baseBranch string, pats []patterns.Patte
 	return result, nil
 }
 
-func (c *Client) runAdversarialReview(dir, baseBranch string, pats []patterns.Pattern, maxPatterns int) (text, model string, err error) {
-	return c.runClaude(dir, buildAdversarialPrompt(baseBranch, pats, maxPatterns), "adversarial")
+func (c *Client) runAdversarialReview(dir, baseBranch, sinceRef string, pats []patterns.Pattern, maxPatterns int) (text, model string, err error) {
+	return c.runClaude(dir, buildAdversarialPrompt(baseBranch, sinceRef, pats, maxPatterns), "adversarial")
 }
 
-func buildAdversarialPrompt(baseBranch string, pats []patterns.Pattern, maxPatterns int) string {
+func buildAdversarialPrompt(baseBranch, sinceRef string, pats []patterns.Pattern, maxPatterns int) string {
 	if baseBranch == "" {
 		baseBranch = DefaultBaseBranch
+	}
+	scope := diffScopeLines(baseBranch)
+	if sinceRef != "" {
+		scope = fixScopeLines(sinceRef)
 	}
 	return `You are a security researcher and chaos engineer performing an adversarial code review.
 Your job is to find ways this code will fail in production.
 
-` + diffScopeLines(baseBranch) + `Then focus your adversarial analysis ONLY on those files.
+` + scope + `Then focus your adversarial analysis ONLY on those files.
 
 Think like:
 - An attacker: How can this code be exploited? SQL injection, auth bypass, SSRF, path traversal, XSS, CSRF?

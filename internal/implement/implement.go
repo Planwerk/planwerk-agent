@@ -1170,7 +1170,7 @@ func renderVerification(w io.Writer, result *report.ReviewResult) {
 // catalog the review-and-fix pass uses (ctx.Patterns/MaxPatterns).
 func (r *Runner) runAdversarialVerification(w io.Writer, dir string, ctx Context) {
 	slog.Info("running adversarial verification over the produced diff")
-	result, err := r.AdversarialVerifier.AdversarialReview(dir, "", ctx.Patterns, ctx.MaxPatterns)
+	result, err := r.AdversarialVerifier.AdversarialReview(dir, "", "", ctx.Patterns, ctx.MaxPatterns)
 	if err != nil {
 		slog.Warn("adversarial verification failed", "err", err)
 		_, _ = fmt.Fprintf(w, "\nAdversarial verification could not run: %v\n", err)
@@ -1394,6 +1394,11 @@ func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx
 	}
 
 	var allFindings []report.Finding
+	// sinceRef is the commit the previous round's fixes were applied on top of.
+	// Empty on the first round, which reviews the whole branch diff; set from the
+	// second round on, which re-reviews only what the fixes changed. See
+	// gatherReviewFindings.
+	var sinceRef string
 	for i := 1; i <= maxIter; i++ {
 		// The changed-file set scopes the specialist gate and the snippet gate. A
 		// failure fails open (nil): the specialist gate runs every specialist and
@@ -1405,7 +1410,7 @@ func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx
 			changedFiles = nil
 		}
 
-		result, err := r.gatherReviewFindings(dir, branch.BaseBranch, changedFiles, ctx, opts, i == 1)
+		result, err := r.gatherReviewFindings(dir, branch.BaseBranch, sinceRef, changedFiles, ctx, opts, i == 1)
 		if err != nil {
 			slog.Warn("review finder failed", "iteration", i, "err", err)
 			_, _ = fmt.Fprintf(w, "\nReview pass could not run: %v\n", err)
@@ -1450,6 +1455,16 @@ func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx
 			return allFindings
 		}
 
+		// Record the pre-fix commit before the editing pass runs, so the next round
+		// re-reviews the fixes rather than the whole branch again. A failure leaves
+		// it empty, which falls back to the branch-wide scope: the round costs what
+		// it always did rather than reviewing nothing.
+		preFix, err := r.GitHub.HeadSHA(dir)
+		if err != nil {
+			slog.Warn("could not record the pre-fix commit; the next round re-reviews the whole branch", "iteration", i, "err", err)
+			preFix = ""
+		}
+
 		reviewReport, model, err := r.ReviewApplier.ApplyReview(dir, ReviewApplyContext{
 			RepoFullName: ctx.RepoFullName,
 			BaseBranch:   branch.BaseBranch,
@@ -1473,7 +1488,8 @@ func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx
 			_, _ = fmt.Fprintf(w, "\nClaude reported %s — stopping the review pass.\n", status)
 			return allFindings
 		}
-		slog.Info("review iteration applied; re-reviewing", "issue", number, "iteration", i)
+		sinceRef = preFix
+		slog.Info("review iteration applied; re-reviewing the fixes", "issue", number, "iteration", i, "since", preFix)
 	}
 
 	// Budget exhausted with the finder still reporting findings on the last round.
@@ -1493,7 +1509,11 @@ func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx
 // adversarial-only). The merged findings are tagged with provenance, deduplicated
 // (only when a specialist contributed), snippet-checked, and claim-verified — the
 // same gates, in the same order, the review command runs.
-func (r *Runner) gatherReviewFindings(dir, baseBranch string, changedFiles []string, ctx Context, opts Options, firstRound bool) (*report.ReviewResult, error) {
+//
+// sinceRef is empty on the first round, which reviews the whole branch diff, and
+// carries the commit the previous round's fixes were applied on top of from the
+// second round on, which reviews only those fixes.
+func (r *Runner) gatherReviewFindings(dir, baseBranch, sinceRef string, changedFiles []string, ctx Context, opts Options, firstRound bool) (*report.ReviewResult, error) {
 	fanOut := firstRound && !opts.NoSpecialists && r.SpecialistReviewer != nil
 	var (
 		advResult   *report.ReviewResult
@@ -1505,7 +1525,7 @@ func (r *Runner) gatherReviewFindings(dir, baseBranch string, changedFiles []str
 			specErr error
 		)
 		g.Go(func() error {
-			res, err := r.AdversarialVerifier.AdversarialReview(dir, baseBranch, ctx.Patterns, ctx.MaxPatterns)
+			res, err := r.AdversarialVerifier.AdversarialReview(dir, baseBranch, sinceRef, ctx.Patterns, ctx.MaxPatterns)
 			if err != nil {
 				return err
 			}
@@ -1526,7 +1546,7 @@ func (r *Runner) gatherReviewFindings(dir, baseBranch string, changedFiles []str
 			specResults = nil
 		}
 	} else {
-		res, err := r.AdversarialVerifier.AdversarialReview(dir, baseBranch, ctx.Patterns, ctx.MaxPatterns)
+		res, err := r.AdversarialVerifier.AdversarialReview(dir, baseBranch, sinceRef, ctx.Patterns, ctx.MaxPatterns)
 		if err != nil {
 			return nil, err
 		}

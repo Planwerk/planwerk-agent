@@ -69,6 +69,21 @@ func CurrentBranchRef(dir string) (*BranchRef, error) {
 	return &BranchRef{BaseBranch: base, HeadBranch: head}, nil
 }
 
+// HeadSHA resolves the checkout's current commit in dir. The implement command's
+// review loop records it before an editing pass runs, so the next round can scope
+// its re-review to what that pass changed (`git diff <sha>`). The full object id
+// is returned rather than a ref name because the editing passes fold their fixes
+// into the commits that introduced them, rewriting the branch: a branch name or a
+// HEAD~n offset would move under that rewrite, while the recorded object stays
+// diffable against the rewritten HEAD.
+func HeadSHA(dir string) (string, error) {
+	sha, err := gitOutput(dir, "rev-parse", "HEAD")
+	if err != nil {
+		return "", fmt.Errorf("resolving HEAD: %w", err)
+	}
+	return sha, nil
+}
+
 // defaultBranch resolves the repository's default branch name (e.g. "main" or
 // "master") for the checkout in dir from refs/remotes/origin/HEAD, which clone
 // points at the remote's default branch. The symbolic ref reads back as

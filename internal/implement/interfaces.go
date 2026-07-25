@@ -222,19 +222,23 @@ func (a verifyFnAdapter) VerifyImplementation(dir, issueTitle, issueBody string)
 // review-and-fix pass (paired with ReviewApplier) it is always wired, so the
 // review pass runs unless --no-review disables it.
 type AdversarialVerifier interface {
-	AdversarialReview(dir, baseBranch string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error)
+	// AdversarialReview red-teams the produced diff. sinceRef, when set, narrows
+	// it to what changed since that commit — the review loop's later rounds re-run
+	// it over the fixes the previous round applied rather than over the whole
+	// branch; every other caller passes "" for the branch-wide scope.
+	AdversarialReview(dir, baseBranch, sinceRef string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error)
 }
 
 // AdversarialFn is the bare-function form of AdversarialVerifier. It matches
 // claude.AdversarialReview so the CLI can wire it directly.
-type AdversarialFn func(dir, baseBranch string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error)
+type AdversarialFn func(dir, baseBranch, sinceRef string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error)
 
 type adversarialFnAdapter struct {
 	fn AdversarialFn
 }
 
-func (a adversarialFnAdapter) AdversarialReview(dir, baseBranch string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
-	return a.fn(dir, baseBranch, pats, maxPatterns)
+func (a adversarialFnAdapter) AdversarialReview(dir, baseBranch, sinceRef string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
+	return a.fn(dir, baseBranch, sinceRef, pats, maxPatterns)
 }
 
 // SpecialistResult pairs a domain specialist's key with the findings its pass
@@ -469,6 +473,11 @@ type GitHubClient interface {
 	// git diff FetchAndCheckout runs; an empty base yields nil (both gates fail
 	// open on a missing signal).
 	ChangedFiles(dir, baseBranch string) ([]string, error)
+	// HeadSHA resolves the checkout's current commit. The review loop records it
+	// before each editing pass so the next round can scope its re-review to what
+	// that pass changed; the editing passes rewrite the branch, so only a commit
+	// id survives as a diff base.
+	HeadSHA(dir string) (string, error)
 }
 
 // defaultGitHubClient is the production GitHubClient backed by the github
@@ -513,6 +522,10 @@ func (defaultGitHubClient) CurrentFeatureProgress(dir string) (*github.ResumeSta
 
 func (defaultGitHubClient) PushBranch(dir, branch string) error {
 	return github.PushHead(dir, branch)
+}
+
+func (defaultGitHubClient) HeadSHA(dir string) (string, error) {
+	return github.HeadSHA(dir)
 }
 
 func (defaultGitHubClient) ChangedFiles(dir, baseBranch string) ([]string, error) {

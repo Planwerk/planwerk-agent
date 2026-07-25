@@ -16,7 +16,11 @@ import (
 // review pipeline.
 type ClaudeRunner interface {
 	Review(dir string, ctx claude.ReviewContext) (*report.ReviewResult, error)
-	AdversarialReview(dir, baseBranch string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error)
+	// AdversarialReview red-teams the diff. The review command always scopes it
+	// to the whole branch, so it passes no sinceRef; the parameter exists for the
+	// implement command's review loop, which re-reviews only what its fixes
+	// changed.
+	AdversarialReview(dir, baseBranch, sinceRef string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error)
 	CoverageMap(dir, baseBranch string) (*report.CoverageResult, error)
 	FeatureCompliance(dir, baseBranch string, feature *planwerk.Feature) (*report.ReviewResult, error)
 	// SpecialistReview runs one domain reviewer over the diff. It takes the whole
@@ -60,8 +64,8 @@ func (r defaultClaudeRunner) Review(dir string, ctx claude.ReviewContext) (*repo
 	return r.client.Review(dir, ctx)
 }
 
-func (r defaultClaudeRunner) AdversarialReview(dir, baseBranch string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
-	return r.client.AdversarialReview(dir, baseBranch, pats, maxPatterns)
+func (r defaultClaudeRunner) AdversarialReview(dir, baseBranch, sinceRef string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
+	return r.client.AdversarialReview(dir, baseBranch, sinceRef, pats, maxPatterns)
 }
 
 func (r defaultClaudeRunner) CoverageMap(dir, baseBranch string) (*report.CoverageResult, error) {
