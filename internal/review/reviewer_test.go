@@ -77,7 +77,7 @@ func (mockClaude) FeatureCompliance(dir, baseBranch string, feature *planwerk.Fe
 	panic("mockClaude.FeatureCompliance called unexpectedly")
 }
 
-func (mockClaude) SpecialistReview(dir, baseBranch, key, focus string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
+func (mockClaude) SpecialistReview(dir, baseBranch string, sp claude.Specialist, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
 	panic("mockClaude.SpecialistReview called unexpectedly")
 }
 

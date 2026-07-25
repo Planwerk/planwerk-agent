@@ -1029,14 +1029,40 @@ func TestBuildValidationRepairPrompt_Golden(t *testing.T) {
 // security domain: the domain-scoped framing, the shared communication/output
 // blocks, and the finding-enrichment tail.
 func TestBuildSpecialistPrompt_Golden(t *testing.T) {
-	assertGoldenPrompt(t, "specialist_security", buildSpecialistPrompt("develop", Specialists[0].Key, Specialists[0].Focus, nil, 0))
+	assertGoldenPrompt(t, "specialist_security", buildSpecialistPrompt("develop", specialistByKey(t, "security"), nil, 0))
 }
 
 // TestBuildSpecialistPrompt_Patterns_Golden locks a domain specialist's prompt
 // when it is grounded in the project review-pattern catalog: the
-// <review-patterns> block appears with its in-domain framing.
+// <review-patterns> block appears with its in-domain framing, carrying only the
+// patterns of the areas the specialist declares — the security specialist gets
+// the security pattern, not the reliability one.
 func TestBuildSpecialistPrompt_Patterns_Golden(t *testing.T) {
-	assertGoldenPrompt(t, "specialist_security_patterns", buildSpecialistPrompt("develop", Specialists[0].Key, Specialists[0].Focus, goldenPatterns(), 0))
+	assertGoldenPrompt(t, "specialist_security_patterns", buildSpecialistPrompt("develop", specialistByKey(t, "security"), goldenPatterns(), 0))
+}
+
+// TestBuildSpecialistPrompt_UnscopedPatterns_Golden locks the fallback a
+// specialist that declares no areas gets: the whole catalog, exactly as every
+// specialist did before areas existed. Every registered specialist declares its
+// areas today, so the golden is built from a synthetic one — the fallback exists
+// for the specialist added next, before anyone has decided what it covers.
+func TestBuildSpecialistPrompt_UnscopedPatterns_Golden(t *testing.T) {
+	sp := Specialist{Key: "unscoped", Focus: "Everything the catalog covers."}
+	assertGoldenPrompt(t, "specialist_unscoped_patterns", buildSpecialistPrompt("develop", sp, goldenPatterns(), 0))
+}
+
+// specialistByKey looks a specialist up by key so the goldens name the domain
+// they lock instead of indexing into the registry, where inserting a specialist
+// would silently repoint them at a different one.
+func specialistByKey(t *testing.T, key string) Specialist {
+	t.Helper()
+	for _, sp := range Specialists {
+		if sp.Key == key {
+			return sp
+		}
+	}
+	t.Fatalf("no specialist with key %q in the registry", key)
+	return Specialist{}
 }
 
 // TestBuildVerifyImplementationPrompt_Golden locks the independent

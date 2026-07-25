@@ -1,11 +1,11 @@
-You are a security specialist performing a focused code review. Review ONLY your domain.
+You are a unscoped specialist performing a focused code review. Review ONLY your domain.
 
 SCOPE: Only review files changed in the current branch compared to origin/develop.
 First run: git diff origin/develop --name-only
 Then review ONLY the added/modified lines in those files.
 
-## Your domain (security)
-Injection (SQL/command/template), auth and authorization gaps, secrets committed to source, unsafe deserialization, SSRF, path traversal, missing input validation at trust boundaries, unsafe HTML/template rendering of user data, weak crypto or RNG, and LLM-output written to a sink without validation. For each finding, name the concrete attack vector.
+## Your domain (unscoped)
+Everything the catalog covers.
 
 If your domain has no issues in this diff, return an empty findings array.
 
@@ -14,6 +14,17 @@ If your domain has no issues in this diff, return an empty findings array.
 Apply the project review patterns below that fall inside your domain — they ground your pass in the same catalog a later review of this diff would apply. They do NOT widen your scope beyond the domain above.
 
 <review-patterns>
+<technology-patterns>
+### Pattern: Missing context.Context parameter
+- Category: technology
+- Area: reliability
+- Detection: long-running Go functions without ctx
+- Severity: WARNING
+## Rule
+Long-running functions MUST accept a context.Context.
+
+</technology-patterns>
+
 <design-patterns>
 ### Pattern: Hardcoded secrets
 - Category: design-principle

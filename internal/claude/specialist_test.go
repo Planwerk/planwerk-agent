@@ -3,9 +3,11 @@ package claude
 import (
 	"errors"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 
+	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
@@ -98,4 +100,50 @@ func resultKeys(results []specResultKV) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// TestSpecialistAreasSelectPatterns verifies the catalog a specialist is handed
+// is narrowed to the areas it declares — the security specialist gets the
+// security pattern and not the reliability one — so an out-of-domain pattern is
+// not paid for in a pass that is told to ignore it.
+func TestSpecialistAreasSelectPatterns(t *testing.T) {
+	pats := []patterns.Pattern{
+		{Name: "Hardcoded secrets", ReviewArea: "security", Severity: "CRITICAL", DetectionHint: "h", Body: "SECURITY BODY"},
+		{Name: "Missing context", ReviewArea: "reliability", Severity: "WARNING", DetectionHint: "h", Body: "RELIABILITY BODY"},
+	}
+	got := buildSpecialistPrompt("main", Specialist{Key: "security", Areas: []string{"security"}}, pats, 0)
+
+	if !strings.Contains(got, "SECURITY BODY") {
+		t.Error("the specialist lost its own area's pattern")
+	}
+	if strings.Contains(got, "RELIABILITY BODY") {
+		t.Error("an out-of-area pattern body is still in the prompt")
+	}
+}
+
+// TestSpecialistAreasFallBackToFullCatalog locks the fail-open: a specialist
+// whose declared areas match no loaded pattern — a mapping mistake, or a repo
+// that only ships patterns with hand-written areas — keeps the whole catalog
+// rather than being handed none.
+func TestSpecialistAreasFallBackToFullCatalog(t *testing.T) {
+	pats := []patterns.Pattern{
+		{Name: "House rule", ReviewArea: "our-own-area", Severity: "WARNING", DetectionHint: "h", Body: "PROJECT BODY"},
+	}
+	got := buildSpecialistPrompt("main", Specialist{Key: "security", Areas: []string{"security"}}, pats, 0)
+
+	if !strings.Contains(got, "PROJECT BODY") {
+		t.Error("a catalog whose areas do not match must fall back to the full catalog, not to none")
+	}
+}
+
+// TestEverySpecialistDeclaresAreas is a review aid, not a constraint on the
+// registry: it fails when a specialist is added without a decision about which
+// review areas its domain reads on, so the choice is made deliberately rather
+// than defaulted into the full catalog by omission.
+func TestEverySpecialistDeclaresAreas(t *testing.T) {
+	for _, sp := range Specialists {
+		if len(sp.Areas) == 0 {
+			t.Errorf("specialist %q declares no review areas: decide which areas its domain reads on, or state here why it needs the whole catalog", sp.Key)
+		}
+	}
 }
