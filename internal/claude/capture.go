@@ -125,10 +125,14 @@ Every candidate MUST be checked against the existing wiki entries AND the patter
 
 	if len(ctx.Patterns) > 0 {
 		sb.WriteString("## Pattern catalog (deduplicate against these too)\n\n")
-		sb.WriteString("These are the review patterns already in the catalog. Do NOT propose a new pattern that duplicates one of them.\n\n")
-		sb.WriteString("<review-patterns>\n")
-		sb.WriteString(patterns.FormatGroupedForPrompt(ctx.Patterns, 0))
-		sb.WriteString("</review-patterns>\n\n")
+		sb.WriteString("These are the review patterns already in the catalog, one line each: name, review area, severity, and the detection hint that states what triggers the pattern. Do NOT propose a new pattern that duplicates one of them — a candidate whose trigger is already covered by a detection hint below is a duplicate, whatever it is called.\n\n")
+		sb.WriteString("<review-patterns-index>\n")
+		// Deliberately unbudgeted: a dedup target that is missing entries produces
+		// duplicate proposals, which is the one outcome this block exists to
+		// prevent. The index is cheap enough not to need a budget — the catalog a
+		// Go repository loads indexes in ~14 KB where its bodies run to ~100 KB.
+		sb.WriteString(patterns.FormatIndexForPrompt(ctx.Patterns, 0))
+		sb.WriteString("</review-patterns-index>\n\n")
 	}
 
 	sb.WriteString(communicationStyleBlock())
