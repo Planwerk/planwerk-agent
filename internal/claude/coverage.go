@@ -11,7 +11,7 @@ import (
 func (c *Client) CoverageMap(dir, baseBranch string) (*report.CoverageResult, error) {
 	// The coverage map renders no attribution footer, so the resolved model is
 	// not threaded out.
-	text, _, err := c.runClaude(dir, buildCoveragePrompt(baseBranch), "coverage")
+	text, _, err := c.runClaudeFinder(dir, buildCoveragePrompt(baseBranch), "coverage")
 	if err != nil {
 		return nil, err
 	}

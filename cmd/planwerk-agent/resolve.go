@@ -101,6 +101,18 @@ const envImplementWorkerModel = "PLANWERK_IMPLEMENT_WORKER_MODEL"
 // flag takes precedence when explicitly set.
 const envImplementWorkerEffort = "PLANWERK_IMPLEMENT_WORKER_EFFORT"
 
+// envFinderModel overrides the model used by the read-only finder passes (the
+// adversarial pass, the domain specialists, coverage, compliance, the simplify
+// finder, and claim verification) for every subcommand. The --finder-model CLI
+// flag takes precedence when explicitly set. Unset leaves the finders on the
+// main model.
+const envFinderModel = "PLANWERK_FINDER_MODEL"
+
+// envFinderEffort overrides the reasoning effort used by the finder passes
+// (low, medium, high, xhigh, max). The --finder-effort CLI flag takes precedence
+// when explicitly set. Unset leaves the finders on the main effort.
+const envFinderEffort = "PLANWERK_FINDER_EFFORT"
+
 // envStructureModel overrides the model used by the JSON-structuring passes
 // for every subcommand (e.g. "sonnet", "opus"). The --structure-model CLI
 // flag takes precedence when explicitly set.
@@ -318,6 +330,46 @@ func resolveStructureModel(flagValue string, flagSet bool) string {
 		}
 	}
 	return claude.DefaultStructureModel
+}
+
+// resolveFinderModel returns the effective model for the read-only finder
+// passes. Precedence: explicit CLI flag, then PLANWERK_FINDER_MODEL, then the
+// compiled-in default — which is empty, meaning the finders inherit
+// --claude-model. The value is passed through verbatim, like the other model
+// resolvers: Claude Code validates model names itself.
+func resolveFinderModel(flagValue string, flagSet bool) string {
+	if flagSet && flagValue != "" {
+		return flagValue
+	}
+	if raw, ok := os.LookupEnv(envFinderModel); ok {
+		if v := strings.TrimSpace(raw); v != "" {
+			return v
+		}
+	}
+	return claude.DefaultFinderModel
+}
+
+// resolveFinderEffort returns the effective reasoning effort for the finder
+// passes. Precedence: explicit CLI flag, then PLANWERK_FINDER_EFFORT, then the
+// compiled-in default (empty: inherit --claude-effort). A set-but-invalid value
+// is rejected here, in PersistentPreRunE before any claude call, for the same
+// reason the structuring effort is: the finders run before the passes that act
+// on their findings, and discovering a typo after an expensive fan-out has
+// already burned its tokens is the outcome the up-front check exists to avoid.
+// The empty default is not validated — it means "inherit", not "a level".
+func resolveFinderEffort(flagValue string, flagSet bool) (string, error) {
+	effort := claude.DefaultFinderEffort
+	if flagSet && flagValue != "" {
+		effort = flagValue
+	} else if raw, ok := os.LookupEnv(envFinderEffort); ok {
+		if v := strings.TrimSpace(raw); v != "" {
+			effort = v
+		}
+	}
+	if effort != "" && !validEfforts[effort] {
+		return "", fmt.Errorf("invalid --finder-effort %q: must be one of low, medium, high, xhigh, max (env: %s)", effort, envFinderEffort)
+	}
+	return effort, nil
 }
 
 // validEfforts is the closed set of reasoning-effort levels Claude Code accepts.

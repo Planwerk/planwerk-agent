@@ -844,3 +844,53 @@ func TestBuildImplementPrompt_RequiresEdgeOrErrorTest(t *testing.T) {
 		t.Error("implement report evidence should cite the edge or error test, not a happy-path one")
 	}
 }
+
+// TestFinderTierInheritsMainByDefault locks the compiled-in default: with no
+// --finder-model/--finder-effort the finder passes run on the main tier, exactly
+// as they did before the tier existed.
+func TestFinderTierInheritsMainByDefault(t *testing.T) {
+	c := NewClient(WithModel(testTierOverride), WithEffort(DefaultClaudeEffort))
+	if c.finderModel != "" || c.finderEffort != "" {
+		t.Fatalf("finder tier = %q/%q, want empty (inherit the main tier)", c.finderModel, c.finderEffort)
+	}
+	if got := firstNonEmpty(c.finderModel, c.model); got != testTierOverride {
+		t.Errorf("resolved finder model = %q, want the main model %q", got, testTierOverride)
+	}
+	if got := firstNonEmpty(c.finderEffort, c.effort); got != DefaultClaudeEffort {
+		t.Errorf("resolved finder effort = %q, want the main effort %q", got, DefaultClaudeEffort)
+	}
+}
+
+// TestFinderTierOverridesOnlyTheFinders proves --finder-model/--finder-effort
+// recolor the finder passes without touching the sessions around them: the main
+// model still drives the mutating sessions, and the structuring tier is
+// untouched.
+func TestFinderTierOverridesOnlyTheFinders(t *testing.T) {
+	c := NewClient(
+		WithModel(testTierOverride),
+		WithEffort(DefaultClaudeEffort),
+		WithFinderModel(testImplementOverride),
+		WithFinderEffort(testWorkerEffort),
+	)
+	if got := firstNonEmpty(c.finderModel, c.model); got != testImplementOverride {
+		t.Errorf("resolved finder model = %q, want %q", got, testImplementOverride)
+	}
+	if got := firstNonEmpty(c.finderEffort, c.effort); got != testWorkerEffort {
+		t.Errorf("resolved finder effort = %q, want %q", got, testWorkerEffort)
+	}
+	if c.model != testTierOverride || c.effort != DefaultClaudeEffort {
+		t.Errorf("main tier = %q/%q, want the main model and effort — the finder tier must not recolor it", c.model, c.effort)
+	}
+	if c.structureModel != DefaultStructureModel || c.structureEffort != DefaultStructureEffort {
+		t.Errorf("structuring tier = %q/%q, want the defaults untouched", c.structureModel, c.structureEffort)
+	}
+}
+
+// TestFinderTierIgnoresEmptyOverrides mirrors the other tier options: an empty
+// value is a misconfigured flag, not a request to run with no model.
+func TestFinderTierIgnoresEmptyOverrides(t *testing.T) {
+	c := NewClient(WithFinderModel(testImplementOverride), WithFinderEffort(testWorkerEffort), WithFinderModel(""), WithFinderEffort(""))
+	if c.finderModel != testImplementOverride || c.finderEffort != testWorkerEffort {
+		t.Errorf("finder tier = %q/%q, want the earlier non-empty values kept", c.finderModel, c.finderEffort)
+	}
+}
