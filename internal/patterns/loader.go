@@ -181,6 +181,75 @@ func FormatAllForPrompt(patterns []Pattern) string {
 	return sb.String()
 }
 
+// PartitionByArea splits pats into the ones whose Review-Area is listed in
+// areas and the ones that are not, preserving the input order within each half.
+// Matching is case- and space-insensitive because the area is free-form
+// front-matter: the embedded catalog writes it lowercase, but a repo- or
+// wiki-authored pattern is written by hand.
+//
+// It exists so a narrowly scoped pass can render its own area's patterns in full
+// and the rest as an index (see FormatIndexForPrompt) instead of carrying the
+// whole catalog: for a Go repo the full catalog is ~123 KB of prompt, and a
+// domain specialist needs a fraction of it in full. An empty areas list puts
+// everything in out, which is the "no scope declared" case and leaves the caller
+// free to fall back to the full catalog.
+func PartitionByArea(pats []Pattern, areas ...string) (in, out []Pattern) {
+	if len(areas) == 0 {
+		return nil, pats
+	}
+	want := make(map[string]bool, len(areas))
+	for _, a := range areas {
+		want[normalizeArea(a)] = true
+	}
+	for _, p := range pats {
+		if want[normalizeArea(p.ReviewArea)] {
+			in = append(in, p)
+		} else {
+			out = append(out, p)
+		}
+	}
+	return in, out
+}
+
+// normalizeArea folds a Review-Area value to the form PartitionByArea compares
+// on, so "Security", " security " and "security" are one area.
+func normalizeArea(area string) string {
+	return strings.ToLower(strings.TrimSpace(area))
+}
+
+// FormatIndexForPrompt renders one line per pattern — name, area, severity, and
+// detection hint — instead of the full body FormatGroupedForPrompt emits. The
+// line is what a reader needs to recognize that a pattern applies: the detection
+// hint is the pattern's own statement of what triggers it.
+//
+// It is the cheap half of the scoped catalog. A pattern body averages ~2 KB; its
+// index line is under 300 bytes, so a pass that needs one area in full can still
+// be told the whole catalog exists for a twentieth of the tokens. maxPatterns
+// bounds the list the same way FormatGroupedForPrompt does (severity first);
+// <= 0 renders every pattern. An empty slice renders the empty string, so a
+// caller can append the block unconditionally.
+func FormatIndexForPrompt(pats []Pattern, maxPatterns int) string {
+	if len(pats) == 0 {
+		return ""
+	}
+	pats = truncatePatterns(pats, maxPatterns)
+	var sb strings.Builder
+	for _, p := range pats {
+		sb.WriteString("- ")
+		sb.WriteString(p.Name)
+		sb.WriteString(" (")
+		sb.WriteString(p.ReviewArea)
+		if p.Severity != "" {
+			sb.WriteString(", ")
+			sb.WriteString(p.Severity)
+		}
+		sb.WriteString("): ")
+		sb.WriteString(strings.TrimSpace(p.DetectionHint))
+		sb.WriteString("\n")
+	}
+	return sb.String()
+}
+
 // FormatGroupedForPrompt groups patterns by category and formats them with XML tags
 // for structured prompt injection. If maxPatterns > 0, patterns are truncated
 // to that limit, prioritizing by severity. A value <= 0 disables truncation.
