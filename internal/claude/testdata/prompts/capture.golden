@@ -81,33 +81,12 @@ We pin every dependency and never float a version range.
 
 ## Pattern catalog (deduplicate against these too)
 
-These are the review patterns already in the catalog. Do NOT propose a new pattern that duplicates one of them.
+These are the review patterns already in the catalog, one line each: name, review area, severity, and the detection hint that states what triggers the pattern. Do NOT propose a new pattern that duplicates one of them — a candidate whose trigger is already covered by a detection hint below is a duplicate, whatever it is called.
 
-<review-patterns>
-<technology-patterns>
-### Pattern: Missing context.Context parameter
-- Category: technology
-- Area: reliability
-- Detection: long-running Go functions without ctx
-- Severity: WARNING
-## Rule
-Long-running functions MUST accept a context.Context.
-
-</technology-patterns>
-
-<design-patterns>
-### Pattern: Hardcoded secrets
-- Category: design-principle
-- Area: security
-- Detection: literal API keys or passwords in source
-- Severity: CRITICAL
-- Sources: OWASP ASVS
-## Rule
-Secrets MUST be loaded from environment variables or a secret manager.
-
-</design-patterns>
-
-</review-patterns>
+<review-patterns-index>
+- Hardcoded secrets (security, CRITICAL): literal API keys or passwords in source
+- Missing context.Context parameter (reliability, WARNING): long-running Go functions without ctx
+</review-patterns-index>
 
 ## Communication Style
 
