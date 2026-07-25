@@ -93,7 +93,15 @@ The same fan-out runs inside `implement`'s self-review, on the first round of
 its review-and-fix loop (see [Shared with `implement`'s self-review](#shared-with-the-implement-self-review)).
 Both the adversarial finder and each specialist are also grounded in the
 project's review-pattern catalog, so a pass inspecting a fresh diff applies the
-same patterns a later review of that diff would.
+same patterns a later review of that diff would. A specialist gets the part of
+the catalog its domain reads on rather than all of it: each declares its review
+areas (security → `security`, testing → `testing`, maintainability → `quality`,
+`architecture`, `documentation`, and so on), and the prompt renders only those
+patterns. The rest are patterns the prompt already tells the pass not to act on,
+since it reviews ONLY its domain — and they are still applied in full by the
+primary review and adversarial passes, which carry the whole catalog. A
+specialist that declares no areas, or whose areas match no loaded pattern, falls
+back to the full catalog.
 
 ## Cross-Pass Merge and Dedup
 
