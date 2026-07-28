@@ -21,13 +21,16 @@ const (
 
 // Per-Sub-Issue outcome labels surfaced in the progress comments and the final
 // summary. statusMerged / statusAlreadyDone / statusNothingToShip count as
-// "delivered" and unblock dependents; the rest do not.
+// "delivered" and unblock dependents; the rest do not. statusNotDriven marks a
+// Sub Issue in another repository, which counts as delivered only when it is
+// already closed there.
 const (
 	statusMerged        = "merged"
 	statusAlreadyDone   = "already merged"
 	statusNothingToShip = "nothing to ship"
 	statusStopped       = "stopped at green CI"
 	statusSkipped       = "skipped"
+	statusNotDriven     = "not driven"
 )
 
 // Options configures a ship run.
@@ -67,13 +70,26 @@ func Run(w io.Writer, opts Options, implementFn ImplementFn, fixFn FixFn) error 
 
 // subResult records one Sub Issue's outcome for the final summary. done marks the
 // "delivered" outcomes (merged, already merged, nothing to ship) that unblock the
-// Sub Issues depending on it.
+// Sub Issues depending on it. repo is set only for a Sub Issue outside the Meta
+// Issue's repository, so the summary can qualify its number: a bare "#58" in a
+// comment resolves against the repo the comment is posted in, which would point
+// at an unrelated issue.
 type subResult struct {
 	number int
 	title  string
 	status string
 	detail string
 	done   bool
+	repo   string
+}
+
+// ref renders the Sub Issue as it should appear in a comment on the Meta Issue:
+// bare within the same repository, fully qualified across repositories.
+func (s subResult) ref() string {
+	if s.repo == "" {
+		return fmt.Sprintf("#%d", s.number)
+	}
+	return fmt.Sprintf("%s#%d", s.repo, s.number)
 }
 
 // Run executes the ship pipeline: resolve the Meta Issue, discover its Sub Issues
@@ -114,13 +130,18 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	if err != nil {
 		return fmt.Errorf("fetching sub-issue relations: %w", err)
 	}
-	children := relations.Children
+	children, foreign := partitionByRepo(owner, name, relations.Children)
+	reportForeign(w, fullName, foreign)
 	if len(children) == 0 {
+		if len(foreign) > 0 {
+			_, _ = fmt.Fprintf(w, "Meta Issue #%d (%s) has no Sub Issues in %s; nothing to ship.\n", number, metaIssue.Title, fullName)
+			return nil
+		}
 		_, _ = fmt.Fprintf(w, "Meta Issue #%d (%s) has no Sub Issues; nothing to ship.\n", number, metaIssue.Title)
 		return nil
 	}
 
-	edges, err := r.buildEdges(owner, name, children)
+	edges, blockedByForeign, err := r.buildEdges(owner, name, children)
 	if err != nil {
 		return fmt.Errorf("reading sub-issue dependencies: %w", err)
 	}
@@ -130,6 +151,10 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	}
 
 	if opts.StartAt != 0 && !nodeInOrder(order, opts.StartAt) {
+		if f, ok := foreignByNumber(foreign, opts.StartAt); ok {
+			return fmt.Errorf("--start-at #%d is a Sub Issue of %s/%s, which ship does not drive; run ship against that repository's own Meta Issue",
+				opts.StartAt, f.Owner, f.Name)
+		}
 		return fmt.Errorf("--start-at #%d is not a Sub Issue of Meta Issue #%d", opts.StartAt, number)
 	}
 
@@ -138,7 +163,8 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		return nil
 	}
 
-	results := r.walk(w, owner, name, number, opts, order)
+	results := r.walk(w, owner, name, number, opts, order, blockedByForeign)
+	results = append(results, foreignResults(foreign)...)
 	r.postSummary(w, owner, name, number, opts, results)
 	r.maybeCloseMeta(w, owner, name, number, opts, results)
 	return nil
@@ -150,24 +176,130 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 // indistinguishable from a repo that genuinely exposes no dependencies, so
 // defaulting a failed read to "no blockers" could merge a dependent ahead of its
 // blocker — onto a default branch missing the blocker's changes.
-func (r *Runner) buildEdges(owner, name string, children []github.Issue) (map[int][]int, error) {
+//
+// It also returns, per Sub Issue, the blockers that live outside the Meta
+// Issue's repository. Those are split out before the number-keyed edge map is
+// built: Schedule matches blockers to siblings by bare issue number, so a
+// blocker in another repo that happens to share a number with a sibling would
+// invent an ordering edge between two unrelated issues.
+func (r *Runner) buildEdges(owner, name string, children []github.Issue) (map[int][]int, map[int][]github.Issue, error) {
 	edges := make(map[int][]int)
+	foreignBlockers := make(map[int][]github.Issue)
 	for _, c := range children {
 		blockers, err := r.GitHub.BlockedByIssues(owner, name, c.Number)
 		if err != nil {
-			return nil, fmt.Errorf("reading dependencies of #%d: %w", c.Number, err)
+			return nil, nil, fmt.Errorf("reading dependencies of #%d: %w", c.Number, err)
 		}
 		for _, b := range blockers {
+			if !sameRepo(owner, name, b) {
+				foreignBlockers[c.Number] = append(foreignBlockers[c.Number], b)
+				continue
+			}
 			edges[c.Number] = append(edges[c.Number], b.Number)
 		}
 	}
-	return edges, nil
+	return edges, foreignBlockers, nil
+}
+
+// sameRepo reports whether the issue belongs to the given repository. The
+// comparison folds case because GitHub treats owner and repo names that way and
+// the Meta Issue's coordinates come from the command line: a strict comparison
+// would read every Sub Issue of "Acme/Widgets#42" as foreign and ship nothing.
+//
+// An issue with no coordinates counts as belonging: they are only ever empty on
+// a deployment that does not report a node's repository, and such a deployment
+// has no cross-repo sub-issues to confuse in the first place.
+func sameRepo(owner, name string, issue github.Issue) bool {
+	if issue.Owner == "" || issue.Name == "" {
+		return true
+	}
+	return strings.EqualFold(issue.Owner, owner) && strings.EqualFold(issue.Name, name)
+}
+
+// issueRef renders an issue as owner/name#number from its own coordinates,
+// falling back to the given repository when it carries none. Building the ref
+// from the issue rather than from the ambient pair is what keeps a Sub Issue
+// from being resolved against a repository it does not live in.
+func issueRef(owner, name string, issue github.Issue) string {
+	if issue.Owner != "" && issue.Name != "" {
+		owner, name = issue.Owner, issue.Name
+	}
+	return fmt.Sprintf("%s/%s#%d", owner, name, issue.Number)
+}
+
+// partitionByRepo splits a Meta Issue's Sub Issues into the ones ship can drive
+// (those in the Meta Issue's own repository) and the ones it cannot. GitHub
+// permits a sub-issue in another repository, and ship resolves everything
+// downstream — the clone, the issue fetch, the pull request, the merge — against
+// one repository, so a foreign Sub Issue is reported rather than driven.
+func partitionByRepo(owner, name string, children []github.Issue) (local, foreign []github.Issue) {
+	for _, c := range children {
+		if sameRepo(owner, name, c) {
+			local = append(local, c)
+			continue
+		}
+		foreign = append(foreign, c)
+	}
+	return local, foreign
+}
+
+// reportForeign names the Sub Issues ship will not drive, so a run that silently
+// covers less than the Meta Issue is impossible to mistake for a complete one.
+func reportForeign(w io.Writer, fullName string, foreign []github.Issue) {
+	for _, f := range foreign {
+		slog.Info("sub-issue lives in another repository; not driving it",
+			"issue", fmt.Sprintf("%s/%s#%d", f.Owner, f.Name, f.Number), "meta_repo", fullName)
+		_, _ = fmt.Fprintf(w, "Sub Issue %s/%s#%d (%s) lives outside %s; ship does not drive it.\n",
+			f.Owner, f.Name, f.Number, f.Title, fullName)
+	}
+}
+
+// foreignResults renders the undriven Sub Issues as results so they appear in
+// the summary and are counted when deciding whether to close the Meta Issue.
+//
+// One that is already closed in its own repository counts as delivered: the work
+// is done, just not by this run. An open one does not, which is what keeps ship
+// from closing a Meta Issue whose counterpart work is still outstanding.
+func foreignResults(foreign []github.Issue) []subResult {
+	results := make([]subResult, 0, len(foreign))
+	for _, f := range foreign {
+		repo := fmt.Sprintf("%s/%s", f.Owner, f.Name)
+		detail := "lives in " + repo + "; ship drives one repository per run"
+		if isClosed(f) {
+			detail = "lives in " + repo + ", where it is already closed"
+		}
+		results = append(results, subResult{
+			number: f.Number,
+			title:  f.Title,
+			status: statusNotDriven,
+			detail: detail,
+			done:   isClosed(f),
+			repo:   repo,
+		})
+	}
+	return results
+}
+
+// foreignByNumber finds an undriven Sub Issue by number, so --start-at pointed
+// at one can say why it is not in the schedule instead of claiming it is not a
+// Sub Issue at all.
+func foreignByNumber(foreign []github.Issue, number int) (github.Issue, bool) {
+	for _, f := range foreign {
+		if f.Number == number {
+			return f, true
+		}
+	}
+	return github.Issue{}, false
 }
 
 // walk drives each Sub Issue in dependency order, propagating skips: a Sub Issue
 // whose blocker did not get delivered is skipped, which keeps its own dependents
 // from being delivered, so the skip cascades through the DAG.
-func (r *Runner) walk(w io.Writer, owner, name string, metaNumber int, opts Options, order []SubNode) []subResult {
+//
+// A Sub Issue blocked by an issue in another repository is skipped too: ship
+// cannot deliver that blocker, so running the dependent anyway would merge it
+// ahead of work it was declared to depend on.
+func (r *Runner) walk(w io.Writer, owner, name string, metaNumber int, opts Options, order []SubNode, blockedByForeign map[int][]github.Issue) []subResult {
 	delivered := make(map[int]bool)
 	started := opts.StartAt == 0
 	results := make([]subResult, 0, len(order))
@@ -182,20 +314,27 @@ func (r *Runner) walk(w io.Writer, owner, name string, metaNumber int, opts Opti
 		// dependents can still run, and skip straight past it.
 		if isClosed(node.Issue) {
 			delivered[n] = true
-			results = append(results, subResult{n, node.Issue.Title, statusAlreadyDone, "Sub Issue already closed", true})
+			results = append(results, subResult{number: n, title: node.Issue.Title, status: statusAlreadyDone, detail: "Sub Issue already closed", done: true})
 			slog.Info("sub-issue already closed; skipping", "issue", n)
 			continue
 		}
 
 		if !started {
-			results = append(results, subResult{n, node.Issue.Title, statusSkipped, "before --start-at", false})
+			results = append(results, subResult{number: n, title: node.Issue.Title, status: statusSkipped, detail: "before --start-at"})
+			continue
+		}
+
+		if blocker, blocked := firstOpenForeignBlocker(blockedByForeign[n]); blocked {
+			detail := fmt.Sprintf("blocked by %s/%s#%d, which ship does not drive", blocker.Owner, blocker.Name, blocker.Number)
+			r.postComment(w, owner, name, metaNumber, fmt.Sprintf("Skipping Sub Issue #%d (%s): %s.", n, node.Issue.Title, detail))
+			results = append(results, subResult{number: n, title: node.Issue.Title, status: statusSkipped, detail: detail})
 			continue
 		}
 
 		if blocker, blocked := firstUnmetBlocker(node, delivered); blocked {
 			detail := fmt.Sprintf("blocked by #%d, which was not delivered", blocker)
 			r.postComment(w, owner, name, metaNumber, fmt.Sprintf("Skipping Sub Issue #%d (%s): %s.", n, node.Issue.Title, detail))
-			results = append(results, subResult{n, node.Issue.Title, statusSkipped, detail, false})
+			results = append(results, subResult{number: n, title: node.Issue.Title, status: statusSkipped, detail: detail})
 			continue
 		}
 
@@ -214,11 +353,19 @@ func (r *Runner) walk(w io.Writer, owner, name string, metaNumber int, opts Opti
 func (r *Runner) processSubIssue(w io.Writer, owner, name string, metaNumber int, opts Options, node SubNode) subResult {
 	n := node.Issue.Number
 	title := node.Issue.Title
-	subRef := fmt.Sprintf("%s/%s#%d", owner, name, n)
 	skip := func(detail string) subResult {
 		r.postComment(w, owner, name, metaNumber, fmt.Sprintf("Skipping Sub Issue #%d (%s) and everything blocked by it: %s.", n, title, detail))
-		return subResult{n, title, statusSkipped, detail, false}
+		return subResult{number: n, title: title, status: statusSkipped, detail: detail}
 	}
+
+	// Run partitions foreign Sub Issues out before scheduling, so this cannot
+	// trigger today. It stays because nothing type-level ties that partition to
+	// this line: if it ever regresses, the result must be a loud skip, not
+	// implementing this repository's issue #N because another repository has one.
+	if !sameRepo(owner, name, node.Issue) {
+		return skip(fmt.Sprintf("lives in %s/%s; ship drives one repository per run", node.Issue.Owner, node.Issue.Name))
+	}
+	subRef := issueRef(owner, name, node.Issue)
 
 	r.postComment(w, owner, name, metaNumber, fmt.Sprintf("Picking up Sub Issue #%d (%s).", n, title))
 	slog.Info("shipping sub-issue", "issue", n)
@@ -234,7 +381,7 @@ func (r *Runner) processSubIssue(w io.Writer, owner, name string, metaNumber int
 	if prNumber == 0 {
 		detail := "implement opened no pull request (empty change set or already implemented)"
 		r.postComment(w, owner, name, metaNumber, fmt.Sprintf("Sub Issue #%d (%s): %s; treating it as delivered.", n, title, detail))
-		return subResult{n, title, statusNothingToShip, detail, true}
+		return subResult{number: n, title: title, status: statusNothingToShip, detail: detail, done: true}
 	}
 	prRef := fmt.Sprintf("%s/%s#%d", owner, name, prNumber)
 
@@ -251,7 +398,7 @@ func (r *Runner) processSubIssue(w io.Writer, owner, name string, metaNumber int
 	if opts.NoMerge {
 		detail := fmt.Sprintf("--no-merge: PR #%d is green; left for a human to merge", prNumber)
 		r.postComment(w, owner, name, metaNumber, fmt.Sprintf("Sub Issue #%d (%s): %s.", n, title, detail))
-		return subResult{n, title, statusStopped, detail, false}
+		return subResult{number: n, title: title, status: statusStopped, detail: detail}
 	}
 
 	mg, err := r.GitHub.PRMergeability(owner, name, prNumber)
@@ -273,7 +420,7 @@ func (r *Runner) processSubIssue(w io.Writer, owner, name string, metaNumber int
 	detail := fmt.Sprintf("PR #%d merged with --%s", prNumber, opts.MergeMethod)
 	r.postComment(w, owner, name, metaNumber, fmt.Sprintf("Merged Sub Issue #%d (%s): %s.", n, title, detail))
 	slog.Info("merged sub-issue", "issue", n, "pr", prNumber)
-	return subResult{n, title, statusMerged, detail, true}
+	return subResult{number: n, title: title, status: statusMerged, detail: detail, done: true}
 }
 
 // findOpenPR re-reads the Meta Issue's relations to find the open pull request
@@ -294,7 +441,13 @@ func (r *Runner) findOpenPR(owner, name string, metaNumber, subNumber int) (int,
 		return 0, fmt.Errorf("could not resolve the authenticated account to verify pull-request authorship")
 	}
 	for _, c := range relations.Children {
-		if c.Number != subNumber {
+		// The repo check is not redundant with Run's partition: this re-reads the
+		// relations, so the partition is gone by here. A Sub Issue in another repo
+		// that happens to share this number would otherwise contribute its own
+		// linked PRs, and the caller applies the PR number it gets back to THIS
+		// repo — undrafting and merging an unrelated pull request. The authorship
+		// gate below does not catch it, since the same account opened both.
+		if c.Number != subNumber || !sameRepo(owner, name, c) {
 			continue
 		}
 		for _, pr := range c.LinkedPRs {
@@ -332,6 +485,18 @@ func (r *Runner) maybeCloseMeta(w io.Writer, owner, name string, number int, opt
 	}
 	slog.Info("closed meta issue; every sub-issue delivered", "issue", number)
 	_, _ = fmt.Fprintf(w, "\nEvery Sub Issue delivered; closed Meta Issue #%d.\n", number)
+}
+
+// firstOpenForeignBlocker returns the first still-open blocker from another
+// repository, and whether one exists. A closed foreign blocker is satisfied
+// work, so it does not hold its dependent back.
+func firstOpenForeignBlocker(blockers []github.Issue) (github.Issue, bool) {
+	for _, b := range blockers {
+		if !strings.EqualFold(b.State, "closed") {
+			return b, true
+		}
+	}
+	return github.Issue{}, false
 }
 
 // firstUnmetBlocker returns the first of node's blockers that has not been
@@ -393,7 +558,7 @@ func (r *Runner) postSummary(w io.Writer, owner, name string, number int, opts O
 	var b strings.Builder
 	fmt.Fprintf(&b, "## Ship summary for Meta Issue #%d\n\n", number)
 	for _, res := range results {
-		fmt.Fprintf(&b, "- #%d %s — **%s**", res.number, res.title, res.status)
+		fmt.Fprintf(&b, "- %s %s — **%s**", res.ref(), res.title, res.status)
 		if res.detail != "" {
 			fmt.Fprintf(&b, " (%s)", res.detail)
 		}

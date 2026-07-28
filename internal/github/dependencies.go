@@ -76,24 +76,35 @@ func blockedByIssuesArgs(owner, name string, number int) []string {
 }
 
 // parseBlockedByIssues decodes the REST array the blocked_by endpoint returns
-// into []Issue, stamping the repo coordinates and lowercasing the state enum to
-// match GetIssue's convention. Kept separate from BlockedByIssues so the decode
-// is unit-testable without invoking gh.
+// into []Issue, lowercasing the state enum to match GetIssue's convention. Kept
+// separate from BlockedByIssues so the decode is unit-testable without invoking
+// gh.
+//
+// A blocker may live in another repository, so each entry's repo coordinates
+// come from the `repository` object the endpoint returns rather than from the
+// queried pair; owner/name are the fallback when it is absent.
 func parseBlockedByIssues(out []byte, owner, name string) ([]Issue, error) {
 	var raw []struct {
-		Number int    `json:"number"`
-		Title  string `json:"title"`
-		URL    string `json:"html_url"`
-		State  string `json:"state"`
+		Number     int    `json:"number"`
+		Title      string `json:"title"`
+		URL        string `json:"html_url"`
+		State      string `json:"state"`
+		Repository struct {
+			FullName string `json:"full_name"`
+		} `json:"repository"`
 	}
 	if err := json.Unmarshal(out, &raw); err != nil {
 		return nil, fmt.Errorf("parsing gh api dependencies/blocked_by output: %w", err)
 	}
 	var issues []Issue
 	for _, r := range raw {
+		blockerOwner, blockerName := owner, name
+		if o, n, ok := splitFullName(r.Repository.FullName); ok {
+			blockerOwner, blockerName = o, n
+		}
 		issues = append(issues, Issue{
-			Owner:  owner,
-			Name:   name,
+			Owner:  blockerOwner,
+			Name:   blockerName,
 			Number: r.Number,
 			Title:  r.Title,
 			URL:    r.URL,

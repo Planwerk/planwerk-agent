@@ -20,6 +20,7 @@ Read these before you start, in full:
 - `${CLAUDE_SKILL_DIR}/../../shared/issue-format.md` — the draft format and its hard non-goals
 - `${CLAUDE_SKILL_DIR}/../../shared/house-style.md` — prose rules and the language pin
 - `${CLAUDE_SKILL_DIR}/../../shared/github.md` — sub-issue and blocked-by wiring
+- `${CLAUDE_SKILL_DIR}/../../shared/cross-repo.md` — when a package belongs in another repository
 
 **Make the breakdown yourself.** Do not ask the author what to split or how.
 Read the Meta Issue and decide. What you bring to the author in Phase 4 is a
@@ -34,6 +35,10 @@ Write that enumeration down; Phase 3 checks your split against it.
 If the issue names no work packages at all, it may not be a Meta Issue. Say what
 you see and ask before proceeding.
 
+Read the repository's `.planwerk/related-repos.md`, if it has one. A Meta Issue
+that spans a service and its client is the common case for a counterpart, and
+Phase 2 needs the map to place a package.
+
 ## Phase 2 — Carve the split
 
 For each Sub Issue, decide:
@@ -47,6 +52,10 @@ For each Sub Issue, decide:
 - **A Scope**: exactly one of Small, Medium, Large.
 - **A `blockedBy` list**: the keys of the siblings this package genuinely cannot
   start without, or empty when it is unblocked.
+- **A `repo`**, only when the package belongs in another repository: the Meta
+  Issue's own repository is the default and needs no entry. Place a package
+  elsewhere only when the Meta Issue says so, or when the map names that
+  repository and the package meets its `When:` condition.
 
 Two rules govern how many Sub Issues you carve, and they do not conflict:
 
@@ -91,15 +100,23 @@ state.
    acceptance criterion, or an implementation step.
 6. **Keys unique and ordered.** Keys are unique, and their form matches the order
    the Meta Issue implies.
+7. **Foreign repositories are real and warranted.** Every `repo` you named exists
+   (`gh repo view <owner/repo>`) and is either named in the map or named by the
+   Meta Issue itself. A repository you inferred from a package's subject matter
+   is not warranted; drop it back to the default.
+8. **Cross-repo edges point the right way.** A package in another repository is
+   blocked by the work it consumes, not the reverse. An edge claiming the Meta
+   Issue's own repository waits on a counterpart is almost always backwards.
 
-Fix what fails, then re-run the checks. Only a split that passes all six reaches
-Phase 4.
+Fix what fails, then re-run the checks. Only a split that passes all eight
+reaches Phase 4.
 
 ## Phase 4 — Present it and get approval
 
 Show the author:
 
-- A table: key, title, scope, and the keys it is blocked by.
+- A table: key, title, scope, the repository when it is not the Meta Issue's, and
+  the keys it is blocked by.
 - The dependency graph, as a small ASCII diagram, plus one sentence on why the
   order is what it is.
 - The full body of each Sub Issue.
@@ -116,8 +133,9 @@ File nothing until you have an explicit yes.
 In the order you declared them:
 
 1. Create each Sub Issue with `gh issue create --body-file`, in the house draft
-   format, with the `Split from #<meta number> by` footer. Record its number and
-   URL from the printed URL.
+   format, with the `Split from #<meta number> by` footer. Create it in its own
+   `repo`, resolving the target per Sub Issue rather than once for the run.
+   Record its number and URL from the printed URL.
 2. Link it under the Meta Issue as a native sub-issue.
 3. Once every Sub Issue exists, set each `blockedBy` edge as a native blocked-by
    dependency — this needs the full key-to-number mapping, so it cannot happen
@@ -136,7 +154,9 @@ referencing an issue that is not there.
 Edit the Meta Issue body so its prose and its sub-issue list agree:
 
 - Reproduce the body verbatim. Change nothing except inserting one `#<number>`
-  reference on the existing line that describes each work package.
+  reference on the existing line that describes each work package. A Sub Issue in
+  another repository is inserted as `owner/repo#<number>`; a bare `#<number>`
+  there would point at whatever issue carries it in the Meta Issue's repository.
 - One reference per work-package line, only on lines that already describe a
   package. Do not add, remove, reorder, or reword any line.
 - Write the edited body back **only when every Sub Issue you created resolved to
@@ -150,6 +170,10 @@ Open with one line: how many Sub Issues were filed and whether every link,
 dependency, and body sync landed. Then state what was created, what was linked,
 which dependencies were set, and whether the Meta body was synced. Name every
 failure explicitly.
+
+When any Sub Issue landed in another repository, say so plainly and say that
+`ship` will report it rather than drive it: `ship` works one repository per run,
+and an author who expects otherwise will wait for a delivery that never comes.
 
 End with the next step as the last line, nothing after it — no closers, no
 recap: each Sub Issue is at draft depth, so `/planwerk:elaborate <sub-issue-ref>`

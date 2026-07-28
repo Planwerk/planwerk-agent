@@ -2,7 +2,7 @@
 name: elaborate
 description: Expands a high-level GitHub issue into a deeply detailed engineering plan grounded in the actual repository, with the open decisions resolved by its author. Use when an issue needs a plan before it can be implemented, or when the user asks to elaborate, deepen, or flesh out an issue.
 argument-hint: "<issue-ref>"
-allowed-tools: AskUserQuestion Read Grep Glob Write Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue view:*) Bash(gh issue edit:*) Bash(gh issue comment:*) Bash(gh api:*)
+allowed-tools: AskUserQuestion Read Grep Glob Write Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue view:*) Bash(gh issue edit:*) Bash(gh issue comment:*) Bash(gh issue create:*) Bash(gh api:*)
 ---
 
 # Elaborate an issue
@@ -24,6 +24,7 @@ Read these before you start, in full:
 - `${CLAUDE_SKILL_DIR}/../../shared/issue-format.md` — the elaborated format and the edge-case rules
 - `${CLAUDE_SKILL_DIR}/../../shared/house-style.md` — prose, citations, anti-hallucination
 - `${CLAUDE_SKILL_DIR}/../../shared/github.md` — the `gh` commands
+- `${CLAUDE_SKILL_DIR}/../../shared/cross-repo.md` — when the plan implies work in another repository
 
 You must be inside a checkout of the issue's repository. If the working tree
 belongs to a different repo, say so and stop.
@@ -44,6 +45,9 @@ its sibling Sub Issues before planning, and obey these rules:
   under Non-Goals.
 - A closed sibling is already-implemented context you build on. An open sibling
   may land in parallel — coordinate rather than collide.
+- A parent or sibling in another repository is context, not scope. Read it: when
+  this issue is a counterpart, the issue blocking it is where its contract is
+  settled. Never plan a change to a repository you are not inside.
 
 When the issue **is itself** a Meta Issue (it has Sub Issues), it does not want
 an elaboration. Say so and point at `/planwerk:meta`.
@@ -81,6 +85,13 @@ correct change already settles. Decide those yourself.
 If the author declines to answer, record the open question under Non-Goals or as
 an explicit assumption in the Description. Never resolve it silently.
 
+Phase 2 is also where a counterpart first becomes visible: you now know which
+interfaces the plan moves, which the draft could only guess at. When the map
+names a repository whose `When:` condition this plan meets, and no counterpart
+issue is linked yet, offer to file one at draft depth — its own question, gated
+like any other write. Filing it here is catching what the draft missed, so if
+one already exists, say so and move on.
+
 ## Phase 4 — Write the plan
 
 Emit the elaborated body in the house format: the `Category` / `Scope` header
@@ -91,6 +102,11 @@ an optional `## User Stories`, `## Affected Areas`, `## Acceptance Criteria`,
 Plan the smallest change that satisfies the issue. Do not invent scope.
 Enumerate every affected area — source, tests, docs, schema, generated
 artifacts, CI. A surprise file in a PR is a process smell.
+
+Record a counterpart under Non-Goals, citing it as `owner/repo#N`. That is
+scoping, not delivery-splitting: a pull request cannot span repositories, so the
+work was never part of this delivery. The single-delivery rule in Phase 5 is
+about work in *this* repository.
 
 Every data-flow acceptance criterion spells out its empty, nil, and
 upstream-error paths as separate criteria, each naming the concrete error. The
@@ -123,7 +139,8 @@ Check, in order:
    upstream-error entries, each naming the concrete error.
 6. **Single delivery** — no note splitting the work across PRs or deferring part
    of it to a follow-up issue, and no Non-Goal that defers work the Description
-   requires.
+   requires. A Non-Goal pointing at a counterpart in another repository is not a
+   violation: that work could never have shipped in this pull request.
 
 Only gaps that would make an implementer build the wrong thing or get stuck
 count. Wording preferences are not gaps.

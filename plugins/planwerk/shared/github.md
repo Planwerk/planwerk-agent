@@ -146,6 +146,46 @@ issue dependencies returns an error here. That is not fatal: the issues already
 exist, so report which link could not be set and tell the author to add it by
 hand. Never delete a created issue because a link failed.
 
+## Linking across repositories
+
+Both relationships work between repositories, which is what makes a counterpart
+issue in another repository trackable (see `cross-repo.md`). The calls are the
+ones above, with one rule that decides every argument:
+
+**The URL carries the anchor issue; the body carries the other side, by database
+id.** The anchor is the parent for a sub-issue link, and the blocked issue for a
+dependency. So a sub-issue link is POSTed to the *parent's* repository, and a
+blocked-by dependency to the *blocked* issue's repository.
+
+The database id is global, so it identifies an issue in any repository — but it
+must be resolved in the repository that issue actually lives in:
+
+```bash
+# Link acme/gadgets#58 under the Meta Issue acme/widgets#607
+CHILD_ID=$(gh api repos/acme/gadgets/issues/58 --jq .id)
+gh api --method POST repos/acme/widgets/issues/607/sub_issues -F sub_issue_id="$CHILD_ID"
+
+# Record that acme/gadgets#58 is blocked by acme/widgets#607
+BLOCKER_ID=$(gh api repos/acme/widgets/issues/607 --jq .id)
+gh api --method POST repos/acme/gadgets/issues/58/dependencies/blocked_by -F issue_id="$BLOCKER_ID"
+```
+
+Resolving the id against the wrong repository is the mistake to watch for: issue
+numbers are unique per repository, so the lookup usually succeeds and links a
+different issue. It does not fail loudly.
+
+Reading back, a returned issue belongs to its own repository, not the one you
+queried. The REST dependency endpoints report each entry's `repository.full_name`
+and the GraphQL query selects `repository { nameWithOwner }` per node. Use those
+rather than assuming the queried repository.
+
+Write a reference to an issue in another repository as `owner/repo#N`. A bare
+`#N` resolves against the repository the text is written to, so it silently
+points at an unrelated issue.
+
+Use `gh api` for this, not the `--blocked-by` flag on `gh issue create`: the flag
+needs gh 2.94 or newer, while the API calls work on any version.
+
 ## Writing
 
 Always pass a body through a file, never through `-b "$(cat …)"` — issue bodies

@@ -128,6 +128,21 @@ func ParseIssueRef(ref string) (owner, repo string, number int, err error) {
 	return "", "", 0, fmt.Errorf("invalid issue reference %q: expected URL (https://github.com/owner/repo/issues/123) or short form (owner/repo#123)", ref)
 }
 
+// splitFullName splits an "owner/name" pair, reporting whether both halves are
+// present and valid. It is how the relations and dependencies decoders recover
+// an issue's own repository from the API rather than assuming the queried one;
+// an unparsable or absent value reports false so the caller can fall back.
+func splitFullName(full string) (owner, name string, ok bool) {
+	o, n, found := strings.Cut(strings.TrimSpace(full), "/")
+	if !found {
+		return "", "", false
+	}
+	if err := validateOwnerRepo(o, n); err != nil {
+		return "", "", false
+	}
+	return o, n, true
+}
+
 // GetIssue fetches the title, body, URL, and state of an issue via gh.
 func GetIssue(owner, name string, number int) (*Issue, error) {
 	repo := fmt.Sprintf("%s/%s", owner, name)

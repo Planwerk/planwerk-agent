@@ -47,6 +47,30 @@ func TestParseBlockedByIssues(t *testing.T) {
 	}
 }
 
+// A blocker may live in another repository — GitHub accepts a blocked_by edge
+// across repos, and the endpoint reports each blocker's own repository. Reading
+// the queried pair instead would let ship resolve the blocker against the wrong
+// repo, where the same number is a different issue.
+func TestParseBlockedByIssues_ForeignBlocker(t *testing.T) {
+	out := []byte(`[
+	  {"number": 607, "title": "Server feature", "html_url": "https://github.com/acme/widgets/issues/607", "state": "OPEN",
+	   "repository": {"full_name": "acme/widgets"}},
+	  {"number": 59, "title": "Local blocker", "html_url": "https://github.com/acme/gadgets/issues/59", "state": "OPEN",
+	   "repository": {"full_name": "acme/gadgets"}}
+	]`)
+	got, err := parseBlockedByIssues(out, relOwner, relOtherRepo)
+	if err != nil {
+		t.Fatalf("parseBlockedByIssues() error: %v", err)
+	}
+	want := []Issue{
+		{Owner: relOwner, Name: relRepo, Number: 607, Title: "Server feature", URL: "https://github.com/acme/widgets/issues/607", State: "open"},
+		{Owner: relOwner, Name: relOtherRepo, Number: 59, Title: "Local blocker", URL: "https://github.com/acme/gadgets/issues/59", State: "open"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("parseBlockedByIssues() = %+v, want %+v", got, want)
+	}
+}
+
 // An empty dependency list (the common case for an unblocked issue) decodes to
 // no issues, not an error.
 func TestParseBlockedByIssues_Empty(t *testing.T) {
