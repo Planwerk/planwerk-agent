@@ -178,11 +178,20 @@ _<verb> [planwerk-agent](https://github.com/planwerk/planwerk-agent) with Claude
 | `meta` (each Sub Issue) | `Split from #<meta issue number> by` |
 | `revisit` | `Revisited by` |
 | `clarify` | `Clarified by` |
+| `decide` (each issue it corrects) | `Decided by` |
 
-The footer names the skill that last wrote the body, so `revisit` and `clarify`
-replace the verb they find rather than appending a second line. Nothing is lost:
-a Sub Issue's parent is a native GitHub relationship, not the `Split from #N`
-prose.
+The footer names the skill that last wrote the body, so `revisit`, `clarify`,
+and `decide` replace the verb they find rather than appending a second line.
+Nothing is lost: a Sub Issue's parent is a native GitHub relationship, not the
+`Split from #N` prose.
+
+`decide` is narrower than the other two: it only ever touches one section of a
+Meta Issue's body (its decisions block) rather than the whole document, so it
+signs the Meta Issue only when a footer already exists there. Many Meta Issues
+are hand-authored and never ran through a planwerk skill; adding a footer to
+prose `decide` did not otherwise write would misattribute the rest of the
+document. Every Sub Issue it actually corrects still gets the verb swap, since
+`meta` already left one to replace.
 
 Append your exact model id when your runtime context provides it (for example
 `with Claude:claude-opus-5`). Otherwise write a bare `with Claude` — never

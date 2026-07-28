@@ -11,9 +11,9 @@ import (
 )
 
 // pluginRoot is the Claude Code plugin this repository ships as a marketplace:
-// the interactive clarify/draft/elaborate/fix/humanize/meta/revisit skills.
-// Three replaced the subcommands of the same names; elaborate and fix stand
-// beside theirs, which still run unattended.
+// the interactive clarify/decide/draft/elaborate/fix/humanize/meta/revisit
+// skills. Three replaced the subcommands of the same names; elaborate and fix
+// stand beside theirs, which still run unattended.
 const pluginRoot = "../../plugins/planwerk"
 
 // marketplaceManifest is the repo-root marketplace catalog Claude Code reads
@@ -23,7 +23,7 @@ const marketplaceManifest = "../../.claude-plugin/marketplace.json"
 // wantSkills is the skill set the plugin ships, in the sorted order the
 // discovered set is compared against. Adding or removing one is a deliberate
 // act, so it is pinned here rather than discovered.
-var wantSkills = []string{"clarify", "draft", "elaborate", "fix", "humanize", "meta", "revisit"}
+var wantSkills = []string{"clarify", "decide", "draft", "elaborate", "fix", "humanize", "meta", "revisit"}
 
 // skillDirRef matches a `${CLAUDE_SKILL_DIR}/<path>` reference in a SKILL.md
 // body. Claude Code expands the variable to the skill's own directory, so every
