@@ -1,7 +1,8 @@
 # Use the skills
 
-planwerk-agent ships six Claude Code Skills. Five author the issues the rest of
-the pipeline consumes; the sixth repairs a pull request whose checks went red:
+planwerk-agent ships seven Claude Code Skills. Five author the issues the rest
+of the pipeline consumes, one repairs a pull request whose checks went red, and
+one rewrites prose that reads machine-written:
 
 | Skill | What it does |
 |-------|--------------|
@@ -11,6 +12,7 @@ the pipeline consumes; the sixth repairs a pull request whose checks went red:
 | `/planwerk:revisit` | Re-checks a prepared issue against what has actually landed since, and corrects what went stale |
 | `/planwerk:clarify` | Answers the open questions that stopped a planning session, and records them in the issue body |
 | `/planwerk:fix` | Repairs a pull request's failing CI checks, and asks you at the forks a diagnosis cannot settle |
+| `/planwerk:humanize` | Rewrites existing prose to remove the signs of AI writing, preserving every fact |
 
 `draft` and `meta` replace the subcommands of the same names, which were
 removed. Each skill needs decisions only a human can make, and a skill can ask
@@ -33,8 +35,8 @@ claude plugin install planwerk@planwerk-agent
 ```
 
 Restart Claude Code. `/planwerk:draft`, `/planwerk:elaborate`, `/planwerk:meta`,
-`/planwerk:revisit`, `/planwerk:clarify`, and `/planwerk:fix` are now available
-in any session.
+`/planwerk:revisit`, `/planwerk:clarify`, `/planwerk:fix`, and
+`/planwerk:humanize` are now available in any session.
 
 To update after a new release:
 
@@ -59,7 +61,8 @@ succeed. `/planwerk:elaborate`, `/planwerk:revisit`, and `/planwerk:clarify` rea
 the repository, so run them from inside a checkout of the repo whose issue you are
 working on. `/planwerk:fix` goes further and needs the PR's own head branch
 checked out, with a clean working tree. `/planwerk:draft` and `/planwerk:meta`
-only talk to the GitHub API and need no checkout.
+only talk to the GitHub API and need no checkout. `/planwerk:humanize` is the
+inverse: it works on files in your checkout and needs no GitHub access at all.
 
 ## Draft an idea
 
@@ -145,11 +148,27 @@ one is right. It folds the repair into the commit that introduced the bug and
 pushes only once you say so. See
 [Fix failing checks](/how-to/fix-failing-checks).
 
+## Humanize prose that reads machine-written
+
+```
+/planwerk:humanize docs/ README.md
+```
+
+The skill rewrites existing documents against a curated catalog of the
+patterns that mark text as AI-generated — inflated significance, the AI
+vocabulary, forced triads, em dashes, filler — while preserving every fact,
+the document's language, and its register. A committed `STYLE_GUIDE.md`
+outranks the catalog. It edits your working tree only and never touches
+GitHub; you review the result with `git diff`. See
+[Humanize documentation](/how-to/humanize-documentation).
+
 ## Nothing reaches GitHub without a yes
 
 Every skill reads GitHub freely and writes only once, behind an explicit
 confirmation. If you decline, nothing is created, and `/planwerk:fix` pushes
-nothing. If you skip a question, the skill records it as an unresolved decision
+nothing. `/planwerk:humanize` never writes to GitHub at all: it edits files in
+your working tree, and confirms the file list first when it inferred one
+rather than being given it. If you skip a question, the skill records it as an unresolved decision
 in the issue — or, for `fix`, as a concern in its report — rather than quietly
 picking an answer.
 
