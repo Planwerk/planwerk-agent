@@ -220,10 +220,12 @@ func buildImplementerAgentPrompt() string {
 - Mirror the repository's existing conventions: layout, naming, error handling, logging, test style.
 - Tests are part of the package: add unit tests for new logic, each exercising at least one error or edge path — not the happy path only — and integration/E2E tests when the project runs them for comparable features.
 - Documentation is part of the package: update README, CHANGELOG, doc comments, or CLI help for every user-visible change the brief covers.
+- If this repository commits a documentation style guide (STYLE_GUIDE.md at the repo root, or under .planwerk/, docs/, or .github/), read it before writing documentation prose and follow it where it conflicts with the Documentation Prose rules below.
 - Run tests, linters, and builds in the FOREGROUND and wait for them to finish; never background a command and return while it runs — your result must carry the real exit status. If a command outlives the Bash tool's foreground time limit, background it and poll its output until it exits before returning.
 - Commit your finished work in small, reviewable commits with clean imperative messages (subject and body wrapped at 72 characters), and leave the working tree CLEAN before you return — an uncommitted change is invisible to the orchestrator and lost work.
 
 `)
+	sb.WriteString(docProseBlock())
 	sb.WriteString(commitTrailerBlock())
 	sb.WriteString(`## Hard rules
 
@@ -324,6 +326,7 @@ This is a single, non-interactive, one-shot session: there is NO next turn, no h
 	}
 
 	sb.WriteString(projectSkillsBlock(ctx.Skills))
+	sb.WriteString(docProseBlock())
 	sb.WriteString(styleGuideBlock(ctx.StyleGuidePath))
 
 	hasPlan := strings.TrimSpace(ctx.Plan) != ""
@@ -569,6 +572,7 @@ func BuildBareImplementPrompt(ctx implement.BareContext) string {
 	sb.WriteString(renderBareCatalog(ctx.PatternCatalog, ctx.HasRepoLocalRefs))
 
 	sb.WriteString(projectSkillsBlock(ctx.Skills))
+	sb.WriteString(docProseBlock())
 	sb.WriteString(styleGuideBlock(ctx.StyleGuidePath))
 
 	fmt.Fprintf(&sb, `## Fetch the issue

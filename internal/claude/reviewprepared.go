@@ -138,7 +138,7 @@ Rules for the rewrite:
 
 	sb.WriteString(`## Output format
 
-When you are done, emit a comprehensive review grouped by feature_id. For every feature provide:
+When you are done, emit a review grouped by feature_id. For every feature provide:
 - Per-finding entries with the fields described above.
 - A 1-3 sentence "summary" of the spec's overall state.
 `)

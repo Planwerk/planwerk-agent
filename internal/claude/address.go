@@ -68,6 +68,7 @@ func BuildAddressPrompt(ctx address.Context) string {
 		"These patterns are the catalog the project's review/audit tools share. Your change MUST stay consistent with them: do not address a comment in a way that would itself be flagged by a pattern below.")
 
 	sb.WriteString(projectSkillsBlock(ctx.Skills))
+	sb.WriteString(docProseBlock())
 	sb.WriteString(styleGuideBlock(ctx.StyleGuidePath))
 
 	sb.WriteString("## What to do\n\n")

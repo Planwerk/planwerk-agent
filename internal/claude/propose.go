@@ -39,7 +39,7 @@ func (c *Client) runAnalysis(dir string, ctx propose.AnalysisContext) (text, mod
 func buildAnalysisPrompt(ctx propose.AnalysisContext) string {
 	var sb strings.Builder
 
-	sb.WriteString(`You are a senior software architect performing a comprehensive codebase analysis. Your goal is to deeply understand this project and generate concrete, actionable feature proposals.
+	sb.WriteString(`You are a senior software architect performing a codebase analysis. Your goal is to deeply understand this project and generate concrete, actionable feature proposals.
 
 `)
 
