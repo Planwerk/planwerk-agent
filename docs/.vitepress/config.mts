@@ -58,6 +58,10 @@ export default defineConfig({
             { text: 'Draft an issue', link: '/how-to/draft-an-issue' },
             { text: 'Elaborate an issue', link: '/how-to/elaborate-an-issue' },
             { text: 'Split a Meta Issue', link: '/how-to/split-a-meta-issue' },
+            {
+              text: "Settle a Meta Issue's decisions",
+              link: '/how-to/settle-meta-issue-decisions',
+            },
             { text: 'Revisit an issue', link: '/how-to/revisit-an-issue' },
             { text: 'Clarify an issue', link: '/how-to/clarify-an-issue' },
             {

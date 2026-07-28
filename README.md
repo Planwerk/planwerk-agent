@@ -31,6 +31,7 @@ than subcommands:
 - **`/planwerk:draft`** turns a one-line idea into a ready-to-file GitHub issue
 - **`/planwerk:elaborate`** expands an issue into an engineering plan grounded in the repository
 - **`/planwerk:meta`** splits a Meta Issue into linked, dependency-ordered Sub Issues
+- **`/planwerk:decide`** verifies the decisions a Meta Issue's split deferred to a spike, and folds the outcomes into the Meta Issue and every Sub Issue that assumed one
 - **`/planwerk:revisit`** re-checks a prepared issue against what has actually landed since, and corrects what went stale
 - **`/planwerk:clarify`** answers the open questions that stopped a planning session, and records them where the next one reads them
 - **`/planwerk:fix`** repairs a pull request's failing CI checks, asking you whether the code or the test is the wrong one

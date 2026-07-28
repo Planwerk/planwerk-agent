@@ -1,14 +1,16 @@
 # Use the skills
 
-planwerk-agent ships seven Claude Code Skills. Five author the issues the rest
-of the pipeline consumes, one repairs a pull request whose checks went red, and
-one rewrites prose that reads machine-written:
+planwerk-agent ships eight Claude Code Skills. Five author the issues the rest
+of the pipeline consumes, one settles the decisions a Meta Issue deferred to a
+spike, one repairs a pull request whose checks went red, and one rewrites
+prose that reads machine-written:
 
 | Skill | What it does |
 |-------|--------------|
 | `/planwerk:draft` | Turns a rough idea into a ready-to-file issue through a short clarifying conversation |
 | `/planwerk:elaborate` | Expands an issue into an engineering plan grounded in the repository |
 | `/planwerk:meta` | Splits a Meta Issue into linked, dependency-ordered Sub Issues |
+| `/planwerk:decide` | Verifies the decisions a Meta Issue's split deferred to a spike, and folds the outcomes into the Meta Issue and every Sub Issue that assumed one |
 | `/planwerk:revisit` | Re-checks a prepared issue against what has actually landed since, and corrects what went stale |
 | `/planwerk:clarify` | Answers the open questions that stopped a planning session, and records them in the issue body |
 | `/planwerk:fix` | Repairs a pull request's failing CI checks, and asks you at the forks a diagnosis cannot settle |
@@ -35,8 +37,8 @@ claude plugin install planwerk@planwerk-agent
 ```
 
 Restart Claude Code. `/planwerk:draft`, `/planwerk:elaborate`, `/planwerk:meta`,
-`/planwerk:revisit`, `/planwerk:clarify`, `/planwerk:fix`, and
-`/planwerk:humanize` are now available in any session.
+`/planwerk:decide`, `/planwerk:revisit`, `/planwerk:clarify`, `/planwerk:fix`,
+and `/planwerk:humanize` are now available in any session.
 
 To update after a new release:
 
@@ -57,12 +59,13 @@ Confirm what got installed with `claude plugin details planwerk`.
 ## Prerequisites
 
 The skills call the [`gh` CLI](https://cli.github.com/), so `gh auth status` must
-succeed. `/planwerk:elaborate`, `/planwerk:revisit`, and `/planwerk:clarify` read
-the repository, so run them from inside a checkout of the repo whose issue you are
-working on. `/planwerk:fix` goes further and needs the PR's own head branch
-checked out, with a clean working tree. `/planwerk:draft` and `/planwerk:meta`
-only talk to the GitHub API and need no checkout. `/planwerk:humanize` is the
-inverse: it works on files in your checkout and needs no GitHub access at all.
+succeed. `/planwerk:elaborate`, `/planwerk:decide`, `/planwerk:revisit`, and
+`/planwerk:clarify` read the repository, so run them from inside a checkout of
+the repo whose issue you are working on. `/planwerk:fix` goes further and needs
+the PR's own head branch checked out, with a clean working tree. `/planwerk:draft`
+and `/planwerk:meta` only talk to the GitHub API and need no checkout.
+`/planwerk:humanize` is the inverse: it works on files in your checkout and
+needs no GitHub access at all.
 
 ## Draft an idea
 
@@ -100,6 +103,24 @@ draft depth — and shows you the result before filing anything. On your approva
 files each Sub Issue, links it natively under the Meta Issue, records the
 `blocked by` dependencies, and back-fills the Meta Issue body with the new issue
 references. See [Split a Meta Issue](/how-to/split-a-meta-issue).
+
+## Settle a Meta Issue's decisions
+
+```
+/planwerk:decide owner/repo#767
+```
+
+Some Meta Issues defer a block of decisions to a spike when they are split —
+each item pairing a recommendation with something nobody has checked yet, and
+`/planwerk:meta` already filed a Sub Issue whose job is verifying and recording
+the outcomes. The skill verifies every item against the repository and
+whatever it names as its own source, puts the genuine judgment calls to you —
+largest blast radius first, citing what a sibling Sub Issue already assumes —
+and records the outcomes in the Meta Issue's own decisions block. It then
+corrects every open sibling whose body cites a decision that turned out
+different from what it assumed, minimal diff, and leaves closed siblings and
+Sub Issue depth alone. See
+[Settle a Meta Issue's decisions](/how-to/settle-meta-issue-decisions).
 
 ## Revisit it once it has aged
 
@@ -240,3 +261,7 @@ issue has been sitting long enough for the branch to move under it, and
 Issue to merged in dependency order. `ship` reads the native sub-issue and
 `blocked by` relationships `/planwerk:meta` writes, which is why the skill
 records the dependency graph as real GitHub relationships and not as prose.
+
+When the split produced a decisions or spike Sub Issue, run `/planwerk:decide`
+on it before elaborating the siblings that assume its outcomes — an
+unverified recommendation is a guess, and a plan built on a guess inherits it.
