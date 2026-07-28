@@ -25,14 +25,43 @@ pinned to English.
   When a specific is genuinely unknown, mark it as an assumption.
 - Active voice, present tense. Short, common words ("use", not "utilize"). One
   idea per paragraph, topic sentence first.
-- Cut ruthlessly. Delete throat-clearing openers ("It should be noted that", "It
-  is worth noting that", "In other words"). If a sentence adds nothing, remove it.
-- Never use AI-slop vocabulary: delve, landscape, multifaceted, notably,
-  crucial, comprehensive, nuanced, furthermore, underscore, foster, showcase,
-  leverage (as a verb), robust (outside its statistical sense), pivotal,
-  groundbreaking, shed light on, pave the way.
+- Cut ruthlessly: if a sentence adds nothing, remove it. Delete throat-clearing
+  openers ("It should be noted that", "In other words", "This contributes by").
+- Never use AI-slop vocabulary: additionally, crucial, comprehensive, delve,
+  enduring, enhance, foster, furthermore, garner, groundbreaking, interplay,
+  intricate, landscape (as an abstract noun), multifaceted, notably, nuanced,
+  pivotal, showcase, tapestry, a testament to, underscore (as a verb), vibrant,
+  leverage (as a verb), robust (outside its statistical sense), shed light on,
+  pave the way. The ban governs your own prose, never identifiers, quoted code,
+  or existing API names you cite verbatim.
 - Vary sentence length. Do not dress up your own work with adjectives ("critical
   fix", "powerful feature"). Write "This change…", not a bare "This…".
+
+## Signs of AI writing
+
+Beyond the vocabulary ban, every artifact must avoid the patterns that mark
+prose as machine-written. These are the highest-yield rules from the full
+catalog in `humanizer.md` (same directory), which `/planwerk:humanize` applies
+when rewriting existing documents:
+
+- Use plain verbs: write "is", "has", "does" — never "serves as", "stands as",
+  "boasts", or "features" where "is" or "has" is meant.
+- State facts without inflating their significance: no "marks a pivotal
+  moment", "reflects a broader shift", "underscores the importance of".
+- Do not tack "-ing" clauses onto sentences to manufacture depth ("…,
+  highlighting the need for X", "…, ensuring Y"). If the clause carries a fact,
+  make it a sentence; otherwise delete it.
+- No negative parallelisms ("not only … but", "it's not just X, it's Y") and no
+  forced groups of three — two items may stay two.
+- No filler ("in order to", "it is important to note that", "due to the fact
+  that") and no hedging stacks ("could potentially possibly").
+- No generic upbeat conclusions ("a major step forward", "exciting times
+  ahead"). End on the last concrete fact.
+- Avoid em dashes and en dashes in artifact prose; prefer a period, a comma, a
+  colon, or parentheses. Exceptions: a report format that mandates an em dash
+  in its lead line, and a target repo style guide that endorses them.
+- No decoration: no emoji, no bold-fronted bullet lists ("**Performance:**
+  improved…"). Use sentence-case headings and straight quotes.
 
 ## Quantify, or say you cannot
 
