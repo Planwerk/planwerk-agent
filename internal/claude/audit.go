@@ -35,7 +35,7 @@ func buildAuditPrompt(ctx audit.AuditContext) string {
 	var sb strings.Builder
 
 	// Staff Engineer persona (same cognitive frame as /review, applied to the whole codebase)
-	sb.WriteString(`You are a Staff Engineer performing a comprehensive codebase audit. Apply these thinking patterns:
+	sb.WriteString(`You are a Staff Engineer performing a codebase audit. Apply these thinking patterns:
 - "What happens at 10x scale?" — Consider load, data volume, and concurrent users
 - "What's the blast radius?" — If this code fails, what else breaks?
 - "What happens at 3am?" — Is the error path clear? Will oncall understand the logs?
