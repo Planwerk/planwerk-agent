@@ -76,6 +76,22 @@ Issue whose blockers have all merged. The failed Sub Issue's PR is left open wit
 its report attached for a human to pick up. The run ends when no eligible Sub
 Issue remains.
 
+## Sub Issues in another repository are reported, not driven
+
+`ship` resolves the clone, the issue, the pull request, and the merge against one
+repository. A Meta Issue may still have Sub Issues elsewhere — GitHub allows it,
+and `meta` files them that way when a work package belongs to a client. Those are
+named in the run output and in the summary comment as `owner/repo#N`, marked
+**not driven**, and left alone.
+
+An undelivered Sub Issue in another repository also keeps `ship` from closing the
+Meta Issue: the effort is not finished just because the part in this repository
+is. One already closed in its own repository counts as delivered.
+
+A Sub Issue here that is blocked by an open issue in another repository is
+skipped rather than merged ahead of the work it depends on, and everything
+blocked by it is skipped in turn.
+
 ## Resuming an interrupted run
 
 Because state lives in GitHub — closed Sub Issues, merged PRs — a re-run is
