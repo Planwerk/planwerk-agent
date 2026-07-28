@@ -150,6 +150,13 @@ issue is implemented by one session and lands as exactly one pull request. Never
 prescribe another delivery structure, and never move work the Description
 requires into Non-Goals to shrink that delivery.
 
+The rule holds **per repository**. A pull request cannot span repositories, so
+work that belongs to a different repository was never part of this delivery to
+begin with. A Non-Goal that hands it to a counterpart issue there — "the client
+side is tracked in `owner/repo#N`" — is scoping, not delivery-splitting, and is
+the correct way to record it. See `cross-repo.md`. What stays banned is deferring
+work in **this** repository to a later issue or a second pull request.
+
 ## Titles
 
 Descriptive and specific, imperative mood, no severity or priority prefix.

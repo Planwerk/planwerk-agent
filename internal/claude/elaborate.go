@@ -52,7 +52,7 @@ Calibrate the detail to the reader: write for an engineer who is competent with 
 		sb.WriteString("\n</issue-body>\n\n")
 	}
 
-	renderIssueRelations(&sb, ctx.MetaIssue, ctx.SiblingIssues, ctx.ChildIssues)
+	renderIssueRelations(&sb, ctx.RepoName, ctx.MetaIssue, ctx.SiblingIssues, ctx.ChildIssues)
 
 	if len(ctx.Patterns) > 0 {
 		sb.WriteString("## Review Patterns to Ground the Elaboration In\n\n")

@@ -81,7 +81,7 @@ func BuildPlanPrompt(ctx implement.Context) string {
 	sb.WriteString(strings.TrimSpace(ctx.IssueBody))
 	sb.WriteString("\n</issue-body>\n\n")
 
-	renderIssueRelations(&sb, ctx.MetaIssue, ctx.SiblingIssues, ctx.ChildIssues)
+	renderIssueRelations(&sb, ctx.RepoFullName, ctx.MetaIssue, ctx.SiblingIssues, ctx.ChildIssues)
 
 	if len(ctx.Patterns) > 0 {
 		sb.WriteString("## Project Review Patterns to Honor\n\n")

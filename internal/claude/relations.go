@@ -22,7 +22,12 @@ import (
 // is deliberately artifact-agnostic ("where your output captures out-of-scope
 // work") so it reads correctly for both the elaborate Non-Goals and the plan's
 // Risks & Open Questions.
-func renderIssueRelations(sb *strings.Builder, meta *github.Issue, siblings, children []github.Issue) {
+//
+// repoFullName is the "owner/name" of the repository being planned. A related
+// issue outside it is rendered as owner/name#N: in GitHub markdown a bare "#N"
+// resolves against the repository the text ends up in, so an unqualified
+// cross-repo reference silently points at a different issue.
+func renderIssueRelations(sb *strings.Builder, repoFullName string, meta *github.Issue, siblings, children []github.Issue) {
 	if meta == nil && len(children) == 0 {
 		return
 	}
@@ -32,19 +37,19 @@ func renderIssueRelations(sb *strings.Builder, meta *github.Issue, siblings, chi
 	if meta != nil {
 		sb.WriteString("This issue is a **Sub Issue** of a Meta Issue — a larger effort split into work packages. Plan ONLY this issue's slice of that effort, grounded in the Meta Issue and the sibling Sub Issues below:\n\n")
 		sb.WriteString("- Honor the Meta Issue's framing and shared decisions; do not re-litigate or contradict them.\n")
-		sb.WriteString("- Do not duplicate or absorb work a sibling Sub Issue owns. When this issue implements only PART of a shared task because the remaining part lands in another Sub Issue, scope this issue to its part and cross-reference the sibling that carries the rest by number (e.g. \"the remaining X is handled by #K\") — record the deferral where your output captures out-of-scope work.\n")
+		sb.WriteString("- Do not duplicate or absorb work a sibling Sub Issue owns. When this issue implements only PART of a shared task because the remaining part lands in another Sub Issue, scope this issue to its part and cross-reference the sibling that carries the rest by number (e.g. \"the remaining X is handled by #K\") — record the deferral where your output captures out-of-scope work. Cross-reference a sibling in another repository by its full `owner/repo#K`, exactly as it is labelled below; a bare `#K` resolves against this repository and points at an unrelated issue.\n")
 		sb.WriteString("- A closed sibling is already-implemented context you build on, not work to redo; an open sibling is work that may land in parallel or later, so coordinate rather than collide.\n")
 		sb.WriteString("- A sibling Sub Issue may already carry an open pull request (listed under `<linked-prs>` in its block) — a prepared implementation not yet merged to the default branch. Treat that PR as the source of truth for the sibling's slice: build on its direction, do not duplicate or contradict it, and cross-reference it by PR number rather than re-implementing the work.\n\n")
 
 		fmt.Fprintf(sb, "<meta-issue number=%d state=%s>\n", meta.Number, issueState(meta.State))
-		fmt.Fprintf(sb, "**Meta Issue #%d**: %s\n", meta.Number, meta.Title)
+		fmt.Fprintf(sb, "**Meta Issue %s**: %s\n", promptIssueRef(repoFullName, *meta), meta.Title)
 		writeIssueBody(sb, meta.Body)
 		sb.WriteString("</meta-issue>\n\n")
 
 		if len(siblings) > 0 {
 			sb.WriteString("<sibling-sub-issues>\n")
 			for _, s := range siblings {
-				writeRelatedSubIssue(sb, "sibling", s)
+				writeRelatedSubIssue(sb, "sibling", repoFullName, s)
 			}
 			sb.WriteString("</sibling-sub-issues>\n\n")
 		} else {
@@ -57,7 +62,7 @@ func renderIssueRelations(sb *strings.Builder, meta *github.Issue, siblings, chi
 		sb.WriteString("A Sub Issue listed below may already carry an open pull request (listed under `<linked-prs>` in its block) — a prepared implementation not yet merged to the default branch. Account for it when checking that the slices compose, and reference it by PR number instead of assuming the work is unstarted.\n\n")
 		sb.WriteString("<child-sub-issues>\n")
 		for _, c := range children {
-			writeRelatedSubIssue(sb, "sub-issue", c)
+			writeRelatedSubIssue(sb, "sub-issue", repoFullName, c)
 		}
 		sb.WriteString("</child-sub-issues>\n\n")
 	}
@@ -65,10 +70,12 @@ func renderIssueRelations(sb *strings.Builder, meta *github.Issue, siblings, chi
 
 // writeRelatedSubIssue writes one sibling or child Sub Issue block: a tagged
 // element carrying the issue number and state, the title, and the full body so
-// the session can read the Sub Issue's content, not just its title.
-func writeRelatedSubIssue(sb *strings.Builder, tag string, issue github.Issue) {
+// the session can read the Sub Issue's content, not just its title. A Sub Issue
+// outside repoFullName is labelled with its full owner/repo#N, which is the form
+// the session is told to cross-reference it by.
+func writeRelatedSubIssue(sb *strings.Builder, tag, repoFullName string, issue github.Issue) {
 	fmt.Fprintf(sb, "<%s number=%d state=%s>\n", tag, issue.Number, issueState(issue.State))
-	fmt.Fprintf(sb, "**#%d**: %s\n", issue.Number, issue.Title)
+	fmt.Fprintf(sb, "**%s**: %s\n", promptIssueRef(repoFullName, issue), issue.Title)
 	writeIssueBody(sb, issue.Body)
 	writeLinkedPRs(sb, issue.LinkedPRs)
 	fmt.Fprintf(sb, "</%s>\n", tag)
@@ -114,4 +121,19 @@ func issueState(state string) string {
 		return "unknown"
 	}
 	return state
+}
+
+// promptIssueRef renders a related issue the way the session must cite it: bare
+// "#N" inside the repository being planned, and the full "owner/repo#N" outside
+// it. An issue whose coordinates are unknown is treated as local, since that is
+// the only shape single-repo neighborhoods produce.
+func promptIssueRef(repoFullName string, issue github.Issue) string {
+	if issue.Owner == "" || issue.Name == "" {
+		return fmt.Sprintf("#%d", issue.Number)
+	}
+	full := issue.Owner + "/" + issue.Name
+	if repoFullName == "" || strings.EqualFold(full, repoFullName) {
+		return fmt.Sprintf("#%d", issue.Number)
+	}
+	return fmt.Sprintf("%s#%d", full, issue.Number)
 }

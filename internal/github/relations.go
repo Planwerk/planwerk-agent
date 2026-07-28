@@ -67,16 +67,20 @@ type IssueRelations struct {
 // (Meta Issue) is not queried for PRs since it has no implementing PR of its
 // own. Page sizes are interpolated from maxRelatedSubIssues and
 // maxLinkedPRsPerSubIssue so each cap has one source.
+//
+// Every issue node also selects its own repository { nameWithOwner }: GitHub
+// permits a sub-issue to live in a different repository than its parent, so the
+// queried repo is not a safe answer for a node's coordinates.
 var relationsQuery = fmt.Sprintf(`query($owner: String!, $name: String!, $number: Int!) {
   viewer { login }
   repository(owner: $owner, name: $name) {
     issue(number: $number) {
       number
       parent {
-        number title body url state
-        subIssues(first: %[1]d) { totalCount nodes { number title body url state closedByPullRequestsReferences(first: %[2]d, includeClosedPrs: false) { totalCount nodes { number title url state isDraft author { login } } } } }
+        number title body url state repository { nameWithOwner }
+        subIssues(first: %[1]d) { totalCount nodes { number title body url state repository { nameWithOwner } closedByPullRequestsReferences(first: %[2]d, includeClosedPrs: false) { totalCount nodes { number title url state isDraft author { login } } } } }
       }
-      subIssues(first: %[1]d) { totalCount nodes { number title body url state closedByPullRequestsReferences(first: %[2]d, includeClosedPrs: false) { totalCount nodes { number title url state isDraft author { login } } } } }
+      subIssues(first: %[1]d) { totalCount nodes { number title body url state repository { nameWithOwner } closedByPullRequestsReferences(first: %[2]d, includeClosedPrs: false) { totalCount nodes { number title url state isDraft author { login } } } } }
     }
   }
 }`, maxRelatedSubIssues, maxLinkedPRsPerSubIssue)
@@ -105,13 +109,23 @@ func GetIssueRelations(owner, name string, number int) (*IssueRelations, error) 
 // for the parent and for each sub-issue node. ClosedByPRs carries the open
 // linked PRs requested for sub-issue nodes; it stays zero-valued for the parent,
 // which the query does not ask for PRs.
+// Repository carries the node's own repository, which may differ from the
+// queried one; it stays zero-valued on a deployment that does not expose the
+// field, which toIssue treats as "same repo as the query".
 type graphqlIssueNode struct {
 	Number      int              `json:"number"`
 	Title       string           `json:"title"`
 	Body        string           `json:"body"`
 	URL         string           `json:"url"`
 	State       string           `json:"state"`
+	Repository  graphqlRepoRef   `json:"repository"`
 	ClosedByPRs graphqlLinkedPRs `json:"closedByPullRequestsReferences"`
+}
+
+// graphqlRepoRef is the repository projection each issue node carries, in the
+// owner/name form GitHub returns for nameWithOwner.
+type graphqlRepoRef struct {
+	NameWithOwner string `json:"nameWithOwner"`
 }
 
 // graphqlLinkedPRNode is the minimal PR projection the relations query returns
@@ -206,10 +220,18 @@ func nodesToIssues(nodes []graphqlIssueNode, owner, name string, exclude int) []
 	return issues
 }
 
-// toIssue maps a GraphQL node onto the package's Issue type, stamping the repo
-// coordinates, lowercasing the state enum to match GetIssue's convention, and
-// attaching any open linked PRs the node carries.
+// toIssue maps a GraphQL node onto the package's Issue type, lowercasing the
+// state enum to match GetIssue's convention and attaching any open linked PRs
+// the node carries.
+//
+// The repo coordinates come from the node's own repository when the query
+// returned one, since a parent or sub-issue may live in a different repository.
+// owner/name are the fallback for a deployment that does not expose the field,
+// which keeps single-repo neighborhoods behaving exactly as before.
 func toIssue(n graphqlIssueNode, owner, name string) Issue {
+	if o, nm, ok := splitFullName(n.Repository.NameWithOwner); ok {
+		owner, name = o, nm
+	}
 	return Issue{
 		Owner:     owner,
 		Name:      name,

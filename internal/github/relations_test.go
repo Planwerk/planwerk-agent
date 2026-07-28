@@ -10,6 +10,8 @@ const (
 	// stateOpen is the lowercase issue/PR state the parser normalizes to; held as
 	// a constant so the literal is not repeated across assertions (goconst).
 	stateOpen = "open"
+	// relOtherRepo is the second repository the cross-repo cases place nodes in.
+	relOtherRepo = "gadgets"
 )
 
 // parentWithSiblings is a relations envelope where issue #3 is a Sub Issue of
@@ -111,6 +113,91 @@ func TestParseIssueRelations_Children(t *testing.T) {
 	}
 	if rel.Children[1].State != "closed" {
 		t.Errorf("Children[1].State = %q, want lowercase closed", rel.Children[1].State)
+	}
+	// No node carries a repository, so every child falls back to the queried repo.
+	for _, c := range rel.Children {
+		if c.Owner != relOwner || c.Name != relRepo {
+			t.Errorf("child #%d repo coords = %q/%q, want the queried acme/widgets", c.Number, c.Owner, c.Name)
+		}
+	}
+}
+
+// GitHub lets a sub-issue live in a different repository than its parent, so a
+// child's coordinates come from its own repository field. Stamping the queried
+// repo onto a foreign child is what would send ship to clone the wrong repo and
+// implement whatever issue happens to carry that number.
+func TestParseIssueRelations_ForeignChild(t *testing.T) {
+	const metaWithForeignChild = `{"data":{"repository":{"issue":{
+      "number":1,"parent":null,
+      "subIssues":{"totalCount":2,"nodes":[
+        {"number":2,"title":"Local","body":"b","url":"https://github.com/acme/widgets/issues/2","state":"OPEN","repository":{"nameWithOwner":"acme/widgets"}},
+        {"number":58,"title":"Client counterpart","body":"b","url":"https://github.com/acme/gadgets/issues/58","state":"OPEN","repository":{"nameWithOwner":"acme/gadgets"}}
+      ]}
+    }}}}`
+	rel, err := parseIssueRelations([]byte(metaWithForeignChild), relOwner, relRepo, 1)
+	if err != nil {
+		t.Fatalf("parseIssueRelations() error = %v", err)
+	}
+	if len(rel.Children) != 2 {
+		t.Fatalf("len(Children) = %d, want 2", len(rel.Children))
+	}
+	if rel.Children[0].Owner != relOwner || rel.Children[0].Name != relRepo {
+		t.Errorf("local child repo coords = %q/%q, want acme/widgets", rel.Children[0].Owner, rel.Children[0].Name)
+	}
+	foreign := rel.Children[1]
+	if foreign.Owner != relOwner || foreign.Name != relOtherRepo {
+		t.Errorf("foreign child repo coords = %q/%q, want acme/gadgets", foreign.Owner, foreign.Name)
+	}
+}
+
+// The mirror case: a counterpart issue reads its Meta Issue, which lives in the
+// repo the work originated in. Its siblings may sit in either repo.
+func TestParseIssueRelations_ForeignParent(t *testing.T) {
+	const foreignParent = `{"data":{"repository":{"issue":{
+      "number":58,
+      "parent":{
+        "number":607,"title":"Server feature","body":"b","url":"https://github.com/acme/widgets/issues/607","state":"OPEN","repository":{"nameWithOwner":"acme/widgets"},
+        "subIssues":{"totalCount":2,"nodes":[
+          {"number":58,"title":"Client","body":"b","url":"https://github.com/acme/gadgets/issues/58","state":"OPEN","repository":{"nameWithOwner":"acme/gadgets"}},
+          {"number":9,"title":"Server side","body":"b","url":"https://github.com/acme/widgets/issues/9","state":"OPEN","repository":{"nameWithOwner":"acme/widgets"}}
+        ]}
+      },
+      "subIssues":{"totalCount":0,"nodes":[]}
+    }}}}`
+	rel, err := parseIssueRelations([]byte(foreignParent), relOwner, relOtherRepo, 58)
+	if err != nil {
+		t.Fatalf("parseIssueRelations() error = %v", err)
+	}
+	if rel.Parent == nil {
+		t.Fatal("Parent is nil, want Meta Issue #607")
+	}
+	if rel.Parent.Owner != relOwner || rel.Parent.Name != relRepo {
+		t.Errorf("Parent repo coords = %q/%q, want acme/widgets", rel.Parent.Owner, rel.Parent.Name)
+	}
+	// #58 is the target issue and must be filtered out, leaving the server sibling.
+	if len(rel.Siblings) != 1 {
+		t.Fatalf("len(Siblings) = %d, want 1 (#58 filtered out)", len(rel.Siblings))
+	}
+	if rel.Siblings[0].Owner != relOwner || rel.Siblings[0].Name != relRepo {
+		t.Errorf("sibling #%d repo coords = %q/%q, want acme/widgets",
+			rel.Siblings[0].Number, rel.Siblings[0].Owner, rel.Siblings[0].Name)
+	}
+}
+
+// A deployment that does not expose the repository field must keep behaving as
+// it did: every node belongs to the repo that was queried.
+func TestParseIssueRelations_MissingRepositoryFallsBackToQueried(t *testing.T) {
+	rel, err := parseIssueRelations([]byte(parentWithSiblings), relOwner, relRepo, 3)
+	if err != nil {
+		t.Fatalf("parseIssueRelations() error = %v", err)
+	}
+	if rel.Parent.Owner != relOwner || rel.Parent.Name != relRepo {
+		t.Errorf("Parent repo coords = %q/%q, want the queried acme/widgets", rel.Parent.Owner, rel.Parent.Name)
+	}
+	for _, s := range rel.Siblings {
+		if s.Owner != relOwner || s.Name != relRepo {
+			t.Errorf("sibling #%d repo coords = %q/%q, want the queried acme/widgets", s.Number, s.Owner, s.Name)
+		}
 	}
 }
 

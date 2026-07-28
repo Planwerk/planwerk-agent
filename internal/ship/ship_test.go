@@ -33,8 +33,13 @@ type fakeGitHub struct {
 	children []github.Issue // returned as the Meta Issue's Sub Issues
 	viewer   string         // authenticated login; defaults to shipViewer when empty
 
-	linkedPRs    map[int][]github.LinkedPR    // sub number -> open linked PRs
-	blockedBy    map[int][]github.Issue       // sub number -> blockers
+	linkedPRs map[int][]github.LinkedPR // sub number -> open linked PRs
+	// foreignLinkedPRs keys the same map for Sub Issues outside the Meta Issue's
+	// repository, so a test can give a local and a foreign child that share a
+	// number different pull requests — which is the whole point of the
+	// wrong-repo-right-number cases.
+	foreignLinkedPRs map[int][]github.LinkedPR
+	blockedBy        map[int][]github.Issue // sub number -> blockers
 	blockedByErr map[int]error                // sub number -> BlockedByIssues error
 	mergeability map[int]*github.Mergeability // PR number -> mergeability
 	mergeErr     map[int]error                // PR number -> MergePR error
@@ -66,7 +71,11 @@ func (f *fakeGitHub) GetIssueRelations(owner, name string, number int) (*github.
 	kids := make([]github.Issue, 0, len(f.children))
 	for _, c := range f.children {
 		cc := c
-		cc.LinkedPRs = f.linkedPRs[c.Number]
+		if cc.Name != "" && !strings.EqualFold(cc.Name, name) {
+			cc.LinkedPRs = f.foreignLinkedPRs[c.Number]
+		} else {
+			cc.LinkedPRs = f.linkedPRs[c.Number]
+		}
 		kids = append(kids, cc)
 	}
 	return &github.IssueRelations{Viewer: viewer, Children: kids}, nil

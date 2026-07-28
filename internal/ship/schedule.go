@@ -15,6 +15,7 @@ package ship
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/planwerk/planwerk-agent/internal/github"
 )
@@ -24,6 +25,28 @@ import (
 type SubNode struct {
 	Issue     github.Issue
 	BlockedBy []int
+}
+
+// assertOneRepo reports an error when the Sub Issues span repositories, which
+// the number-keyed schedule cannot represent. Children with no coordinates are
+// ignored: they come from a deployment that does not report a node's repository,
+// where cross-repo sub-issues cannot arise.
+func assertOneRepo(children []github.Issue) error {
+	var owner, name string
+	for _, c := range children {
+		if c.Owner == "" || c.Name == "" {
+			continue
+		}
+		if owner == "" {
+			owner, name = c.Owner, c.Name
+			continue
+		}
+		if !strings.EqualFold(c.Owner, owner) || !strings.EqualFold(c.Name, name) {
+			return fmt.Errorf("sub-issues span repositories (%s/%s and %s/%s); ship schedules one repository at a time",
+				owner, name, c.Owner, c.Name)
+		}
+	}
+	return nil
 }
 
 // Schedule orders a Meta Issue's Sub Issues so each appears after every sibling
@@ -37,7 +60,17 @@ type SubNode struct {
 // emitted, the lowest issue number goes next. A cycle (some Sub Issues can never
 // become ready) is reported as an error rather than hung, which together with
 // meta's acyclic-Validate keeps ship's schedule always well-defined.
+//
+// Every child must live in the same repository. The DAG is keyed by bare issue
+// number, and numbers are unique only within a repository, so two repositories'
+// issues sharing a number would collapse into one node here — silently, since
+// the duplicate is dropped below. Run guarantees this by partitioning foreign
+// Sub Issues out; the check makes a regression there abort the run instead of
+// inventing an ordering edge between unrelated issues.
 func Schedule(children []github.Issue, edges map[int][]int) ([]SubNode, error) {
+	if err := assertOneRepo(children); err != nil {
+		return nil, err
+	}
 	inMeta := make(map[int]github.Issue, len(children))
 	numbers := make([]int, 0, len(children))
 	for _, c := range children {

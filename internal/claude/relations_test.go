@@ -7,9 +7,13 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/github"
 )
 
+// testRepoFullName is the repository these tests render relations for; a
+// related issue outside it must be cited as owner/repo#N.
+const testRepoFullName = "acme/widgets"
+
 func TestRenderIssueRelations_StandaloneRendersNothing(t *testing.T) {
 	var sb strings.Builder
-	renderIssueRelations(&sb, nil, nil, nil)
+	renderIssueRelations(&sb, testRepoFullName, nil, nil, nil)
 	if sb.Len() != 0 {
 		t.Fatalf("renderIssueRelations rendered %q for a standalone issue, want nothing", sb.String())
 	}
@@ -22,7 +26,7 @@ func TestRenderIssueRelations_MetaAndSiblings(t *testing.T) {
 		{Number: 2, Title: "Open sibling", Body: "open body", State: "open"},
 		{Number: 3, Title: "Closed sibling", Body: "closed body", State: "closed"},
 	}
-	renderIssueRelations(&sb, meta, siblings, nil)
+	renderIssueRelations(&sb, testRepoFullName, meta, siblings, nil)
 	got := sb.String()
 
 	for _, want := range []string{
@@ -45,7 +49,7 @@ func TestRenderIssueRelations_MetaAndSiblings(t *testing.T) {
 func TestRenderIssueRelations_NoSiblingsNote(t *testing.T) {
 	var sb strings.Builder
 	meta := &github.Issue{Number: 1, Title: "Meta", Body: "Meta body", State: "open"}
-	renderIssueRelations(&sb, meta, nil, nil)
+	renderIssueRelations(&sb, testRepoFullName, meta, nil, nil)
 	if !strings.Contains(sb.String(), "no siblings yet") {
 		t.Errorf("expected the no-siblings note for a lone Sub Issue\n%s", sb.String())
 	}
@@ -56,7 +60,7 @@ func TestRenderIssueRelations_ChildrenWhenIssueIsItselfMeta(t *testing.T) {
 	children := []github.Issue{
 		{Number: 2, Title: "Child one", Body: "child body", State: "open"},
 	}
-	renderIssueRelations(&sb, nil, nil, children)
+	renderIssueRelations(&sb, testRepoFullName, nil, nil, children)
 	got := sb.String()
 	for _, want := range []string{
 		"## Meta / Sub-Issue Context",
@@ -80,7 +84,7 @@ func TestRenderIssueRelations_LinkedPRsRendered(t *testing.T) {
 		}},
 		{Number: 3, Title: "Sibling without PRs", Body: "body", State: "open"},
 	}
-	renderIssueRelations(&sb, meta, siblings, nil)
+	renderIssueRelations(&sb, testRepoFullName, meta, siblings, nil)
 	got := sb.String()
 
 	for _, want := range []string{
@@ -105,7 +109,7 @@ func TestRenderIssueRelations_NoLinkedPRsEmitsNoBlock(t *testing.T) {
 	var sb strings.Builder
 	meta := &github.Issue{Number: 1, Title: "Meta", Body: "Meta body", State: "open"}
 	siblings := []github.Issue{{Number: 2, Title: "Sibling", Body: "body", State: "open"}}
-	renderIssueRelations(&sb, meta, siblings, nil)
+	renderIssueRelations(&sb, testRepoFullName, meta, siblings, nil)
 	// Match the opening tag as its own line so the guidance prose's inline
 	// mention of `<linked-prs>` does not register as a rendered block.
 	if strings.Contains(sb.String(), "<linked-prs>\n") {
@@ -116,8 +120,45 @@ func TestRenderIssueRelations_NoLinkedPRsEmitsNoBlock(t *testing.T) {
 func TestRenderIssueRelations_EmptyStateFallsBackToUnknown(t *testing.T) {
 	var sb strings.Builder
 	meta := &github.Issue{Number: 1, Title: "Meta", Body: "", State: ""}
-	renderIssueRelations(&sb, meta, nil, nil)
+	renderIssueRelations(&sb, testRepoFullName, meta, nil, nil)
 	if !strings.Contains(sb.String(), "<meta-issue number=1 state=unknown>") {
 		t.Errorf("expected state=unknown fallback\n%s", sb.String())
+	}
+}
+
+// A sibling or child in another repository must be labelled with its full
+// owner/repo#N. In GitHub markdown a bare "#N" resolves against the repository
+// the elaborated body is written to, so an unqualified cross-repo reference
+// would link to whatever issue happens to carry that number there.
+func TestRenderIssueRelations_QualifiesForeignSubIssues(t *testing.T) {
+	var sb strings.Builder
+	meta := &github.Issue{Owner: "acme", Name: "widgets", Number: 40, Title: "Meta", State: "open"}
+	siblings := []github.Issue{
+		{Owner: "acme", Name: "widgets", Number: 43, Title: "Server side", State: "open"},
+		{Owner: "acme", Name: "gadgets", Number: 58, Title: "Client counterpart", State: "open"},
+	}
+	renderIssueRelations(&sb, testRepoFullName, meta, siblings, nil)
+	got := sb.String()
+
+	if !strings.Contains(got, "**acme/gadgets#58**") {
+		t.Errorf("foreign sibling is not qualified with its repository:\n%s", got)
+	}
+	if !strings.Contains(got, "**#43**") {
+		t.Errorf("same-repo sibling should stay a bare #43:\n%s", got)
+	}
+	if strings.Contains(got, "**#58**") {
+		t.Errorf("foreign sibling rendered as a bare #58, which resolves to the wrong repository:\n%s", got)
+	}
+}
+
+// The repository is not always known to the prompt builder. With no repository
+// to compare against, every issue renders bare — the pre-existing shape.
+func TestRenderIssueRelations_UnknownRepoRendersBareNumbers(t *testing.T) {
+	var sb strings.Builder
+	meta := &github.Issue{Number: 40, Title: "Meta", State: "open"}
+	siblings := []github.Issue{{Number: 43, Title: "Sibling", State: "open"}}
+	renderIssueRelations(&sb, "", meta, siblings, nil)
+	if got := sb.String(); !strings.Contains(got, "**#43**") {
+		t.Errorf("want a bare #43 when the repository is unknown:\n%s", got)
 	}
 }
