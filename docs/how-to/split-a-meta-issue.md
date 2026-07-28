@@ -88,6 +88,23 @@ sibling Sub Issues so each Sub Issue is planned as a coherent slice of the whole
 scoped to its part, deferring adjacent work to the sibling that owns it. See
 [Sub Issues are elaborated against their Meta Issue](/how-to/elaborate-an-issue#sub-issues-are-elaborated-against-their-meta-issue).
 
+## A Sub Issue can live in another repository
+
+When a Meta Issue spans a service and its client, a work package belongs in the
+client's repository. Give that Sub Issue a `repo` and `meta` files it there,
+links it under the Meta Issue, and sets its dependencies — GitHub's sub-issue and
+blocked-by relationships both work across repositories, so the Meta Issue's
+progress reflects the whole effort.
+
+`meta` places a package elsewhere only when the Meta Issue says so, or when
+`.planwerk/related-repos.md` names that repository and the package meets its
+condition. It does not infer a repository from a package's subject matter.
+
+One boundary matters when you plan the delivery: `ship` works one repository per
+run. It reports a Sub Issue outside the Meta Issue's repository and does not
+implement it, so a cross-repo Sub Issue is picked up on its own rather than by
+the fleet run. `meta` says so in its report.
+
 ## What it does not do
 
 `meta` mirrors `draft`: it clones nothing, loads no review patterns, and does not

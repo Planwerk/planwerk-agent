@@ -196,6 +196,40 @@ The specification lives in `plugins/planwerk/shared/issue-format.md`. A Go test
 (`TestBuildIssueBody_MatchesSharedFormat`) fails when the `elaborate` command's
 renderer and that document disagree, so the two `elaborate` paths cannot drift.
 
+## Declare the repositories that follow this one
+
+Work in one repository often implies work in another: a service changes its API
+surface, and its client or provider has to follow. That second piece needs its
+own issue, because a pull request cannot span repositories.
+
+Declare those repositories in `.planwerk/related-repos.md`, beside the other
+per-repository conventions (`.planwerk/STYLE_GUIDE.md`,
+`.planwerk/review_patterns/`, `.planwerk/out-of-scope/`). One `##` heading per
+counterpart, in `owner/repo` form, each with the condition that warrants an issue
+there:
+
+```markdown
+# Related repositories
+
+## acme/gadgets
+
+When: the change alters the control-plane API surface, the registration
+handshake, or the policy wire format.
+Not when: the change is confined to storage, scheduling, or the admin UI.
+
+## acme/terraform-provider-acme
+
+When: the change adds or removes a user-facing resource type, or a field on one.
+```
+
+`draft`, `meta` and `elaborate` read it. They propose a counterpart only when the
+map names the repository *and* the work meets its condition, so a generated
+client is left out of the map rather than listed with a caveat. A repository with
+no map has no counterparts, and the skills say nothing about them.
+
+Each repository declares its own, so a client can name the service it consumes
+for work flowing the other way.
+
 ## Where the pipeline goes next
 
 `/planwerk:draft` → `/planwerk:elaborate` → `planwerk-agent implement` →

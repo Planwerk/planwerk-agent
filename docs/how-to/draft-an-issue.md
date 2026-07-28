@@ -72,6 +72,33 @@ and asks once more. It stops there. Tell it to skip the questions and it asks th
 two that matter most, explains why, then proceeds. Anything you leave unanswered
 is recorded as an unresolved decision rather than silently guessed.
 
+## Counterparts are filed in the repo that owns them
+
+A change to one repository often leaves another out of date: a service alters its
+API surface and its client, Terraform provider, or CLI has to follow. That second
+piece cannot ride along, because a pull request cannot span repositories.
+
+List the repositories that follow in `.planwerk/related-repos.md`, one `##`
+heading per `owner/repo`, each with the condition that warrants a counterpart:
+
+```markdown
+## acme/gadgets
+
+When: the change alters the control-plane API surface or the policy wire format.
+Not when: the change is confined to storage, scheduling, or the admin UI.
+```
+
+When your idea meets a condition, `draft` names the entry it matched and asks
+whether to file the counterpart too. It files the issue in this repository first,
+then the counterpart in the other one, then records that the counterpart is
+blocked by the original. Both are GitHub-native relationships, so the link shows
+in the sidebar of each issue.
+
+The counterpart stays at draft depth. What it has to do is decided by the plan
+for the issue blocking it, which does not exist yet — that is what the blocked-by
+edge records. A repository with no map has no counterparts, and the skill says
+nothing about them.
+
 ## Hand off to elaborate and implement
 
 Once the issue exists, take it through the rest of the pipeline:

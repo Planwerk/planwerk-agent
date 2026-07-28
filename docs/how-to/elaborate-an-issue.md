@@ -96,6 +96,23 @@ one as work that may land in parallel. This is automatic — there is no flag �
 best-effort: an issue that is not a Sub Issue, or a repo where the relationship
 cannot be read, elaborates exactly as before.
 
+## Counterpart work is scoped out, not deferred
+
+The repository walk is where you first see which interfaces a plan actually
+moves, so it is where a counterpart in another repository first becomes obvious —
+often after the draft was written. When `.planwerk/related-repos.md` names a
+repository whose condition the plan meets and no counterpart issue is linked yet,
+the skill offers to file one at draft depth, then records it under Non-Goals as
+`owner/repo#N`.
+
+That is not a delivery split. A pull request cannot span repositories, so the
+work was never part of this one, and the plan's own single-delivery check treats
+it as scoping. Deferring work in *this* repository to a follow-up issue is still
+a plan failure.
+
+Running on a counterpart works the other way round: its blocker is where the
+contract it consumes is settled, so the skill reads that issue before planning.
+
 ## The issue body keeps its header
 
 An elaboration replaces the whole issue body, so it carries the source issue's
