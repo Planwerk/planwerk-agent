@@ -102,6 +102,23 @@ doctrine lives in `plugins/planwerk/shared/commits.md`, and a Go test
 (`TestSharedCommitsDocMatchesFoldDiscipline`) fails when it and the `fix` command's
 prompt disagree.
 
+## The fold takes the PR description with it
+
+A fold gives every commit it touches a new SHA, and a description that walks the
+change set in commit order — the shape `finalize` writes — often cites those
+commits by SHA. After the push, both the skill and the command repair the body:
+each hex token in it is tested with `git merge-base --is-ancestor <sha> HEAD`,
+the ones that no longer reach the branch are mapped to their successor by
+subject, and those tokens are rewritten through `gh pr edit --body-file`. A SHA
+that still reaches `HEAD`, one that belongs to another repository, and one that
+is no commit at all are left untouched, as is every other word of the
+description — it is yours, and what is being corrected is a pointer.
+
+When a rewritten commit has no successor, because it was dropped or squashed into
+another, the reference stays as it is and the report says so rather than guessing.
+The report's `PR body:` line records which of these happened. A follow-up commit
+on top rewrites no SHA, so it needs none of this.
+
 ## The report
 
 The skill emits the same `## Fix Report` shape the command posts — per check a
