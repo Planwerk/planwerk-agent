@@ -133,9 +133,11 @@ File nothing until you have an explicit yes.
 In the order you declared them:
 
 1. Create each Sub Issue with `gh issue create --body-file`, in the house draft
-   format, with the `Split from #<meta number> by` footer. Create it in its own
-   `repo`, resolving the target per Sub Issue rather than once for the run.
-   Record its number and URL from the printed URL.
+   format, with the `Split from #<meta number> by` footer — written
+   `Split from <owner/repo>#<meta number> by` for a Sub Issue filed in another
+   repository, where a bare number would credit that repository's own issue.
+   Create it in its own `repo`, resolving the target per Sub Issue rather than
+   once for the run. Record its number and URL from the printed URL.
 2. Link it under the Meta Issue as a native sub-issue.
 3. Once every Sub Issue exists, set each `blockedBy` edge as a native blocked-by
    dependency — this needs the full key-to-number mapping, so it cannot happen

@@ -77,9 +77,13 @@ need do not exist yet: they are settled by the plan for the originating issue.
 The blocked-by edge below records exactly that order.
 
 The counterpart's body carries one sentence naming the issue it came from,
-written `owner/repo#N`. A bare `#N` resolves against whichever repository the
-text lives in, so an unqualified cross-repo reference points at an unrelated
-issue.
+written `owner/repo#N`. That is the general rule in `github.md` under "Referring
+to another repository", and it applies to everything the body names from the
+other side: the originating issue and its pull request as `owner/repo#N`, a
+commit as `owner/repo@<sha>`, anything else by URL. A bare `#N` resolves against
+whichever repository the text lives in, so an unqualified cross-repo reference
+points at an unrelated issue. You are writing into the counterpart's repository
+now, so it is the originating side that needs the prefix.
 
 The reverse direction needs no prose: the blocked-by edge below shows on the
 originating issue as a "blocking" relationship. Do not edit an already-filed body

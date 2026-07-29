@@ -151,6 +151,31 @@ func TestRenderIssueRelations_QualifiesForeignSubIssues(t *testing.T) {
 	}
 }
 
+// A linked pull request outside the repository being planned must be labelled
+// with its full owner/repo#N too. GitHub's closing keywords resolve across
+// repositories, so a Sub Issue's linked PR need not live where the Sub Issue
+// does — and the prompt tells the session to cite the PR by the reference it is
+// labelled with.
+func TestRenderIssueRelations_QualifiesForeignLinkedPRs(t *testing.T) {
+	var sb strings.Builder
+	meta := &github.Issue{Owner: "acme", Name: "widgets", Number: 40, Title: "Meta", State: "open"}
+	siblings := []github.Issue{
+		{Owner: "acme", Name: "widgets", Number: 43, Title: "Server side", State: "open", LinkedPRs: []github.LinkedPR{
+			{Owner: "acme", Name: "widgets", Number: 20, Title: "Local", URL: "https://example.com/pull/20", State: "open"},
+			{Owner: "acme", Name: "gadgets", Number: 21, Title: "Foreign", URL: "https://example.com/pull/21", State: "open"},
+		}},
+	}
+	renderIssueRelations(&sb, testRepoFullName, meta, siblings, nil)
+	got := sb.String()
+
+	if !strings.Contains(got, "- PR acme/gadgets#21 (open): Foreign") {
+		t.Errorf("foreign linked PR is not qualified with its repository:\n%s", got)
+	}
+	if !strings.Contains(got, "- PR #20 (open): Local") {
+		t.Errorf("same-repo linked PR should stay a bare #20:\n%s", got)
+	}
+}
+
 // The repository is not always known to the prompt builder. With no repository
 // to compare against, every issue renders bare — the pre-existing shape.
 func TestRenderIssueRelations_UnknownRepoRendersBareNumbers(t *testing.T) {

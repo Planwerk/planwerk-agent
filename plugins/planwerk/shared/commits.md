@@ -24,6 +24,15 @@ Signed-off-by: <committer name> <committer email>
 - Never pass `--no-verify` or `--no-gpg-sign`. A pre-commit hook that rejects
   your commit has found something; it is not an obstacle to route around.
 
+## References in a commit message
+
+A commit message resolves its references against the repository the commit lands
+in. Anything from another repository is written out in full — `owner/repo#123`
+for an issue or pull request, `owner/repo@<sha>` for a commit, a URL for
+everything else. The same holds for a closing keyword: `Closes owner/repo#123`
+links and closes across repositories, while `Closes #123` closes whatever issue
+carries that number here.
+
 ## Folding a change into the commit that caused it
 
 A branch carries more than one commit, and a repair for code that an earlier

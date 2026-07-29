@@ -179,12 +179,36 @@ queried. The REST dependency endpoints report each entry's `repository.full_name
 and the GraphQL query selects `repository { nameWithOwner }` per node. Use those
 rather than assuming the queried repository.
 
-Write a reference to an issue in another repository as `owner/repo#N`. A bare
-`#N` resolves against the repository the text is written to, so it silently
-points at an unrelated issue.
-
 Use `gh api` for this, not the `--blocked-by` flag on `gh issue create`: the flag
 needs gh 2.94 or newer, while the API calls work on any version.
+
+## Referring to another repository
+
+Anything you name that lives outside the repository the text is written to gets
+its repository with it — in issue bodies, comments, commit messages, pull request
+descriptions, and the report you print at the end:
+
+| What | Form |
+|------|------|
+| Issue or pull request | `owner/repo#123` |
+| Commit | `owner/repo@<sha>` |
+| Anything else — a workflow run, a file at a ref, a discussion, a release | its URL |
+
+A bare `#123` resolves against the repository the text ends up in, and a bare
+`<sha>` against the repository the reader is browsing. Neither fails: they
+silently point at something unrelated, which is why this is a rule and not a
+preference. A full URL is always correct and is the only form that survives being
+copied into a release note, a chat message, or another repository's issue.
+
+Qualify by **where the text lands**, not by where you read it. A comment you post
+on a Sub Issue in another repository refers to that repository's issues bare, and
+to the one you came from as `owner/repo#N`. The same sentence written into your
+own repository's issue reverses which side carries the prefix.
+
+The rule holds for every reference you copy forward, too: a plan quoting a PR it
+found, a report naming the commit that introduced a change, a Non-Goal handing
+work to a counterpart issue. Only shorten a reference when you have confirmed
+that its repository is the one the text is written to.
 
 ## Writing
 

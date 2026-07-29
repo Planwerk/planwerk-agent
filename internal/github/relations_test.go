@@ -301,6 +301,43 @@ func TestParseIssueRelations_LinkedPRsLowercasesState(t *testing.T) {
 	}
 }
 
+// A closing keyword resolves across repositories, so a Sub Issue's linked PR can
+// live in another one. Its own repository is decoded, since ship applies the PR
+// number to the repository it drives and the prompts qualify the reference by it.
+// A PR node without a repository falls back to the Sub Issue's, matching the
+// issue-node fallback for deployments that do not expose the field.
+func TestParseIssueRelations_LinkedPRRepository(t *testing.T) {
+	const env = `{"data":{"repository":{"issue":{
+      "number":1,"parent":null,
+      "subIssues":{"totalCount":1,"nodes":[
+        {"number":2,"title":"Sub","body":"b","url":"https://example.com/2","state":"OPEN",
+          "repository":{"nameWithOwner":"acme/widgets"},
+          "closedByPullRequestsReferences":{"totalCount":3,"nodes":[
+            {"number":5,"title":"Local","url":"https://example.com/pull/5","state":"OPEN","repository":{"nameWithOwner":"acme/widgets"}},
+            {"number":6,"title":"Foreign","url":"https://example.com/pull/6","state":"OPEN","repository":{"nameWithOwner":"acme/gadgets"}},
+            {"number":7,"title":"No repo","url":"https://example.com/pull/7","state":"OPEN"}
+          ]}}
+      ]}
+    }}}}`
+	rel, err := parseIssueRelations([]byte(env), relOwner, relRepo, 1)
+	if err != nil {
+		t.Fatalf("parseIssueRelations() error = %v", err)
+	}
+	if len(rel.Children) != 1 || len(rel.Children[0].LinkedPRs) != 3 {
+		t.Fatalf("Children = %+v, want one child with three linked PRs", rel.Children)
+	}
+	prs := rel.Children[0].LinkedPRs
+	if prs[0].Owner != relOwner || prs[0].Name != relRepo {
+		t.Errorf("LinkedPRs[0] = %s/%s, want %s/%s", prs[0].Owner, prs[0].Name, relOwner, relRepo)
+	}
+	if prs[1].Owner != relOwner || prs[1].Name != "gadgets" {
+		t.Errorf("LinkedPRs[1] = %s/%s, want the PR's own repository %s/gadgets", prs[1].Owner, prs[1].Name, relOwner)
+	}
+	if prs[2].Owner != relOwner || prs[2].Name != relRepo {
+		t.Errorf("LinkedPRs[2] = %s/%s, want the fallback %s/%s", prs[2].Owner, prs[2].Name, relOwner, relRepo)
+	}
+}
+
 // TestParseIssueRelations_ViewerAndPRAuthor confirms the authenticated account
 // (GraphQL viewer) and each linked PR's author login are decoded — ship gates an
 // autonomous merge on the PR being authored by the authenticated account.

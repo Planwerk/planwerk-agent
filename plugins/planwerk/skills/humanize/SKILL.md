@@ -57,8 +57,11 @@ For each file, run the rewrite loop from `humanizer.md`:
 
 1. Identify every pattern instance.
 2. Draft the rewrite. Prose only: code blocks, identifiers, frontmatter, data
-   tables, and link targets stay byte-identical. In source files, only comments
-   and docstrings change.
+   tables, and link targets stay byte-identical. A reference to an issue, pull
+   request, or commit is one of those identifiers — never shorten `owner/repo#N`
+   to `#N` or a commit to its bare sha to make a sentence read better; the
+   repository is part of what it points at. In source files, only comments and
+   docstrings change.
 3. Audit the draft: what still reads machine-written, and does it state any
    fact not in the source? Fix both.
 4. Write the final text back to the file in place.

@@ -185,6 +185,10 @@ and `decide` replace the verb they find rather than appending a second line.
 Nothing is lost: a Sub Issue's parent is a native GitHub relationship, not the
 `Split from #N` prose.
 
+A Sub Issue filed in another repository is signed `Split from owner/repo#N by`,
+naming the Meta Issue's repository. The bare `#N` in that footer would otherwise
+resolve against the Sub Issue's own repository and credit an unrelated issue.
+
 `decide` is narrower than the other two: it only ever touches one section of a
 Meta Issue's body (its decisions block) rather than the whole document, so it
 signs the Meta Issue only when a footer already exists there. Many Meta Issues

@@ -222,6 +222,11 @@ design; if the corrected fact cannot be stated without naming one, say the
 sibling needs `/planwerk:elaborate` and describe the correction at whatever the
 sibling's depth allows instead.
 
+A sibling may live in another repository — the neighborhood query reports each
+one's own. You are then writing into *its* repository, so the Meta Issue you cite
+the decision back to is the foreign side: write it `owner/repo#N`, and the same
+for any pull request or commit you name from here. `github.md` has the forms.
+
 Never grow a sibling's scope here. A settled decision that implies work no
 sibling's body covers is a gap — name it in the report, do not add it.
 

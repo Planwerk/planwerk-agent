@@ -103,7 +103,8 @@ the sibling and the path that produced it.
    Confirm it against the checkout before you claim it, and name what is missing.
 3. **A closed sibling delivered more than it promised.** It absorbed part of this
    issue's work. Shrink this issue to what genuinely remains, and cross-reference
-   the sibling by number.
+   the sibling by number — `owner/repo#K` when it lives in another repository,
+   which the neighborhood query reports per issue.
 4. **An orphaned deferral.** This issue's Non-Goals say "the remaining X is
    handled by #K". #K is closed and X is nowhere in the code. X is now nobody's
    work. Surface it — never let it stay buried in a Non-Goal that has quietly
@@ -176,6 +177,8 @@ Otherwise, edit the body under these rules:
   makes a criterion unimplementable as written, and satisfying the Description now
   needs a larger change. Say that out loud in Phase 6. Never slip it in.
 - **Cross-reference by number.** "Delivered by #K", never "handled elsewhere".
+  A sibling, pull request, or commit outside this repository carries its
+  repository with it — `owner/repo#K`, `owner/repo@<sha>` — per `github.md`.
 - **Correct the `Scope`** in the header line when what is left changed size.
 - **An executability score is a claim about text you just changed.** When the
   body carries the `Executability score:` annotation, re-score the corrected body
@@ -232,7 +235,8 @@ the author to close: `revisit` does not close issues.
 - The depth is unchanged. No section was added that its depth forbids, and none
   was removed except a criterion or boundary a named check retired.
 - Every file path in the new body exists in the checkout.
-- Every `#<number>` cross-reference points at an issue you actually read.
+- Every `#<number>` cross-reference points at an issue you actually read, and
+  every one outside this repository is written `owner/repo#<number>`.
 - Every changed line traces to a named failing check.
 - The body is English, whatever language the conversation used.
 - The footer is a single `Revisited by` line, last in the body.
