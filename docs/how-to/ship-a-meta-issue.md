@@ -92,6 +92,13 @@ A Sub Issue here that is blocked by an open issue in another repository is
 skipped rather than merged ahead of the work it depends on, and everything
 blocked by it is skipped in turn.
 
+The same holds one level down, for the pull request `ship` picks up after
+`implement`. A closing keyword works across repositories (`Closes owner/repo#N`),
+so a local Sub Issue can be linked to a pull request that lives elsewhere. `ship`
+applies a PR number to the repository it drives, so it ignores a linked PR from
+another repository rather than marking ready and merging whichever local pull
+request carries that number.
+
 ## Resuming an interrupted run
 
 Because state lives in GitHub — closed Sub Issues, merged PRs — a re-run is

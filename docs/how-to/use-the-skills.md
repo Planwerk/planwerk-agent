@@ -251,6 +251,16 @@ no map has no counterparts, and the skills say nothing about them.
 Each repository declares its own, so a client can name the service it consumes
 for work flowing the other way.
 
+Anything the skills write about another repository carries that repository with
+it: `owner/repo#123` for an issue or pull request, `owner/repo@<sha>` for a
+commit, a URL for everything else. A bare `#123` resolves against the repository
+the text was written into, and a bare sha against whatever the reader is
+browsing, so an unqualified reference does not fail — it points somewhere else.
+The rule is in `shared/github.md` and applies to issue bodies, comments, commit
+messages, and the reports the skills print. The headless `elaborate` and planning
+prompts label a Sub Issue and its linked pull requests that way before the
+session ever cites them.
+
 ## Where the pipeline goes next
 
 `/planwerk:draft` → `/planwerk:elaborate` → `planwerk-agent implement` →
