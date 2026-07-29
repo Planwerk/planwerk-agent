@@ -176,6 +176,12 @@ Then follow `commits.md` exactly: the fold is bounded by the merge-base, the
 push is `--force-with-lease` to the PR's own head branch, and every commit
 carries `Assisted-by` above `Signed-off-by`.
 
+A fold rewrites the branch's own SHAs, so a SHA the PR body cites for one of
+those commits now points at nothing. Repair those references after the push, as
+`commits.md` describes: the reachability test tells a surviving SHA from a
+replaced one, the subject maps a replaced one to its successor, and nothing else
+in the body changes. The other two landings rewrite no SHA and need none of it.
+
 Write only on an explicit yes. If there is nothing to commit, create no empty
 commit — report and stop.
 
@@ -199,7 +205,8 @@ report format whichever produced it:
 ### Diff summary
 - Files: <comma-separated list>
 - Approx lines added/removed: <+N/-M>
-- Commit strategy: <per change: "folded into <sha> <subject>", OR "new commit — <why it belonged to no existing commit>", OR "not committed — left in the working tree">
+- Commit strategy: <per change: "folded into <sha> <subject>" — the SHA the commit carries after the fold, OR "new commit — <why it belonged to no existing commit>", OR "not committed — left in the working tree">
+- PR body: <"rewrote N stale SHA reference(s)", OR "no SHA reference to a rewritten commit", OR "left <sha> — its commit has no successor after the fold", OR "n/a — no SHA was rewritten">
 ### Status
 STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT>
 Next: <on any verdict but DONE only: the single action a human takes next; omit this line on DONE>
@@ -231,6 +238,8 @@ the author, or to `planwerk-agent fix <pr-ref>` for the unattended loop.
 - The fold is bounded by `git merge-base`, and no commit that already exists on
   the base branch was rewritten.
 - The push targets the PR's own head branch, with `--force-with-lease`.
+- After a fold, no SHA left in the PR body points at a commit the fold replaced,
+  and nothing else in that body was edited.
 - Every commit ends with `Assisted-by` and then `Signed-off-by`, and carries no
   `Co-authored-by`.
 - The report is English, whatever language the conversation used.

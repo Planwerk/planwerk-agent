@@ -222,6 +222,8 @@ gh issue create --repo <owner/repo> --title "<title>" --body-file <path> \
 gh issue edit <number> --repo <owner/repo> --body-file <path>
 
 gh issue comment <number> --repo <owner/repo> --body-file <path>
+
+gh pr edit <number> --repo <owner/repo> --body-file <path>
 ```
 
 Write the body to a temporary file first, then pass its path. `gh issue create`
