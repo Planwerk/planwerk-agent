@@ -1,9 +1,10 @@
 # Use the skills
 
-planwerk-agent ships eight Claude Code Skills. Five author the issues the rest
+planwerk-agent ships nine Claude Code Skills. Five author the issues the rest
 of the pipeline consumes, one settles the decisions a Meta Issue deferred to a
-spike, one repairs a pull request whose checks went red, and one rewrites
-prose that reads machine-written:
+spike, one implements a prepared issue directly in your checkout, one repairs
+a pull request whose checks went red, and one rewrites prose that reads
+machine-written:
 
 | Skill | What it does |
 |-------|--------------|
@@ -13,6 +14,7 @@ prose that reads machine-written:
 | `/planwerk:decide` | Verifies the decisions a Meta Issue's split deferred to a spike, and folds the outcomes into the Meta Issue and every Sub Issue that assumed one |
 | `/planwerk:revisit` | Re-checks a prepared issue against what has actually landed since, and corrects what went stale |
 | `/planwerk:clarify` | Answers the open questions that stopped a planning session, and records them in the issue body |
+| `/planwerk:implement` | Implements a prepared issue in your checkout — a plan you approve in plan mode, one complete pull request behind your yes, none of the pipeline's passes |
 | `/planwerk:fix` | Repairs a pull request's failing CI checks, and asks you at the forks a diagnosis cannot settle |
 | `/planwerk:humanize` | Rewrites existing prose to remove the signs of AI writing, preserving every fact |
 
@@ -20,11 +22,14 @@ prose that reads machine-written:
 removed. Each skill needs decisions only a human can make, and a skill can ask
 for them mid-run in a way a one-shot subcommand never could.
 
-Two exist both ways. `elaborate` is also the
+Three exist both ways. `elaborate` is also the
 [`elaborate` command](/reference/cli#elaborate), and `fix` is also the
 [`fix` command](/reference/cli#fix), for unattended use in CI. Reach for a
 command when nobody is watching — it has to guess where the skill would have
-asked.
+asked. For `implement` the difference is more than supervision: the
+[`implement` command](/reference/cli#implement) runs simplify, review, and
+verification passes over the result, which the skill deliberately omits — you
+approve the plan and read the diff instead.
 
 ## Install
 
@@ -37,8 +42,9 @@ claude plugin install planwerk@planwerk-agent
 ```
 
 Restart Claude Code. `/planwerk:draft`, `/planwerk:elaborate`, `/planwerk:meta`,
-`/planwerk:decide`, `/planwerk:revisit`, `/planwerk:clarify`, `/planwerk:fix`,
-and `/planwerk:humanize` are now available in any session.
+`/planwerk:decide`, `/planwerk:revisit`, `/planwerk:clarify`,
+`/planwerk:implement`, `/planwerk:fix`, and `/planwerk:humanize` are now
+available in any session.
 
 To update after a new release:
 
@@ -61,8 +67,10 @@ Confirm what got installed with `claude plugin details planwerk`.
 The skills call the [`gh` CLI](https://cli.github.com/), so `gh auth status` must
 succeed. `/planwerk:elaborate`, `/planwerk:decide`, `/planwerk:revisit`, and
 `/planwerk:clarify` read the repository, so run them from inside a checkout of
-the repo whose issue you are working on. `/planwerk:fix` goes further and needs
-the PR's own head branch checked out, with a clean working tree. `/planwerk:draft`
+the repo whose issue you are working on. `/planwerk:implement` goes further: it
+writes code, so it needs a clean working tree it can branch in, on an
+up-to-date default branch. `/planwerk:fix` needs the PR's own head branch
+checked out, with a clean working tree. `/planwerk:draft`
 and `/planwerk:meta` only talk to the GitHub API and need no checkout.
 `/planwerk:humanize` is the inverse: it works on files in your checkout and
 needs no GitHub access at all.
@@ -153,6 +161,23 @@ you, largest blast radius first, each one saying which option the plan already
 assumed and what the other one invalidates. The answers land in the issue body,
 never in the plan. See [Clarify an issue](/how-to/clarify-an-issue).
 
+## Implement it in your checkout
+
+```
+/planwerk:implement owner/repo#42
+```
+
+For the change small enough that a full `planwerk-agent implement` run costs
+more than it catches. The skill reads the issue, enters plan mode, and grounds
+a short plan in the actual code: the change set, the change and verification
+command behind every Acceptance Criterion, the tests to write. You approve the
+plan before anything is edited. It then implements on an
+`implement/issue-<N>-<slug>` branch — small commits, regression test first
+watched failing, every criterion exercised — and opens one complete pull
+request only after you have seen the diff and said yes. It never ships partial
+work: what cannot complete stops as `BLOCKED` with the branch left local. See
+[Implement an issue interactively](/how-to/implement-an-issue-interactively).
+
 ## Fix the pull request when its checks go red
 
 ```
@@ -186,8 +211,8 @@ GitHub; you review the result with `git diff`. See
 ## Nothing reaches GitHub without a yes
 
 Every skill reads GitHub freely and writes only once, behind an explicit
-confirmation. If you decline, nothing is created, and `/planwerk:fix` pushes
-nothing. `/planwerk:humanize` never writes to GitHub at all: it edits files in
+confirmation. If you decline, nothing is created, `/planwerk:fix` pushes
+nothing, and `/planwerk:implement` leaves its branch local. `/planwerk:humanize` never writes to GitHub at all: it edits files in
 your working tree, and confirms the file list first when it inferred one
 rather than being given it. If you skip a question, the skill records it as an unresolved decision
 in the issue — or, for `fix`, as a concern in its report — rather than quietly
@@ -267,7 +292,9 @@ session ever cites them.
 `/planwerk:fix`, with `/planwerk:revisit` before the implement step when the
 issue has been sitting long enough for the branch to move under it, and
 `/planwerk:clarify` after it when the planning session stopped at
-`NEEDS_CONTEXT`. Or `/planwerk:meta` → `planwerk-agent ship` to drive every Sub
+`NEEDS_CONTEXT`. For a change small enough that the unattended pipeline costs
+more than it catches, `/planwerk:implement` takes the implement step
+interactively, in your own checkout. Or `/planwerk:meta` → `planwerk-agent ship` to drive every Sub
 Issue to merged in dependency order. `ship` reads the native sub-issue and
 `blocked by` relationships `/planwerk:meta` writes, which is why the skill
 records the dependency graph as real GitHub relationships and not as prose.

@@ -34,6 +34,7 @@ than subcommands:
 - **`/planwerk:decide`** verifies the decisions a Meta Issue's split deferred to a spike, and folds the outcomes into the Meta Issue and every Sub Issue that assumed one
 - **`/planwerk:revisit`** re-checks a prepared issue against what has actually landed since, and corrects what went stale
 - **`/planwerk:clarify`** answers the open questions that stopped a planning session, and records them where the next one reads them
+- **`/planwerk:implement`** implements a prepared issue in your checkout — a plan you approve in plan mode, one complete pull request behind your yes, none of the pipeline's passes
 - **`/planwerk:fix`** repairs a pull request's failing CI checks, asking you whether the code or the test is the wrong one
 - **`/planwerk:humanize`** rewrites existing prose to remove the signs of AI writing, preserving every fact
 

@@ -7,6 +7,11 @@ commits on a feature branch), the simplify and review passes clean up the diff,
 and a finalize session opens the PR last — so it lands already simplified and
 self-reviewed.
 
+For a change small enough that this pipeline costs more than it catches, the
+[`/planwerk:implement` skill](/how-to/implement-an-issue-interactively) does
+the same delivery interactively in your own checkout — a plan you approve in
+plan mode, one complete pull request behind your yes, none of the passes.
+
 ```bash
 # Plan and implement an elaborated issue
 planwerk-agent implement owner/repo#123

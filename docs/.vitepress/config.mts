@@ -70,6 +70,10 @@ export default defineConfig({
             },
             { text: 'Generate a prompt', link: '/how-to/generate-a-prompt' },
             { text: 'Implement an issue', link: '/how-to/implement-an-issue' },
+            {
+              text: 'Implement an issue interactively',
+              link: '/how-to/implement-an-issue-interactively',
+            },
             { text: 'Ship a Meta Issue', link: '/how-to/ship-a-meta-issue' },
             { text: 'Fix failing checks', link: '/how-to/fix-failing-checks' },
             { text: 'Rebase a PR', link: '/how-to/rebase-a-pr' },
