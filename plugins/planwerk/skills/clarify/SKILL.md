@@ -120,7 +120,8 @@ Then work three sources, in order:
    works are answered by the thing.
 2. **The Meta Issue.** Run the neighborhood query from `github.md`. A shared
    decision the Meta Issue already made is not the author's to make a second
-   time. Honor it, and cite where it was made.
+   time. Honor it, and cite where it was made — `owner/repo#N` when the Meta
+   Issue lives in another repository, which the query reports per issue.
 3. **The issue's own body.** A question the Description already answers means the
    planner missed a sentence, not that the sentence is missing.
 

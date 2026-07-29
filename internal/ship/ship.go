@@ -425,10 +425,12 @@ func (r *Runner) processSubIssue(w io.Writer, owner, name string, metaNumber int
 
 // findOpenPR re-reads the Meta Issue's relations to find the open pull request
 // the just-run implement pipeline opened for the Sub Issue (the PR that closes
-// it). It accepts only a PR authored by the authenticated account: the closed-by
-// link is created by any "Closes #N" reference, so an unrelated or attacker
-// opened PR (a fork PR on a public repo) would otherwise be picked up, undrafted,
-// and merged to the default branch. Returns (0, nil) when no such PR is linked
+// it). It accepts only a PR authored by the authenticated account and living in
+// the repository being driven: the closed-by link is created by any "Closes #N"
+// reference — cross-repository when written "Closes owner/repo#N" — so an
+// unrelated, foreign, or attacker-opened PR (a fork PR on a public repo) would
+// otherwise be picked up, undrafted, and merged to the default branch. Returns
+// (0, nil) when no such PR is linked
 // yet — an empty change set — which the caller treats as "nothing to ship". A
 // relations read failure is returned as an error so the caller skips the Sub
 // Issue rather than mistaking a transient 502 for "nothing to ship".
@@ -452,6 +454,16 @@ func (r *Runner) findOpenPR(owner, name string, metaNumber, subNumber int) (int,
 		}
 		for _, pr := range c.LinkedPRs {
 			if pr.State != "open" && pr.State != "" {
+				continue
+			}
+			// A local Sub Issue can be closed by a PR in another repository: the
+			// closing keyword resolves across repositories when it is written
+			// "owner/repo#N". The caller applies this number to THIS repo, so
+			// accepting a foreign one would mark ready and merge whichever local
+			// PR happens to carry it. The number is not this run's to drive.
+			if pr.Owner != "" && pr.Name != "" && !strings.EqualFold(pr.Owner+"/"+pr.Name, owner+"/"+name) {
+				slog.Warn("ignoring linked PR in another repository; ship drives one repository per run",
+					"issue", subNumber, "pr", fmt.Sprintf("%s/%s#%d", pr.Owner, pr.Name, pr.Number), "repo", owner+"/"+name)
 				continue
 			}
 			if !strings.EqualFold(pr.Author, relations.Viewer) {

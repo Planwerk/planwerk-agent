@@ -28,6 +28,13 @@ const maxLinkedPRsPerSubIssue = 10
 // so a Sub Issue's already-prepared implementation — opened as a PR but not yet
 // merged to the default branch — is accounted for instead of rebuilt.
 type LinkedPR struct {
+	// Owner and Name are the repository the pull request itself lives in, which
+	// is not necessarily the Sub Issue's: a closing keyword works across
+	// repositories, so a PR in another repository can close this issue. Callers
+	// that apply a PR number to a repository — ship marking one ready and merging
+	// it — must check these first, and prompts must qualify the reference.
+	Owner   string
+	Name    string
 	Number  int
 	Title   string
 	URL     string
@@ -70,7 +77,9 @@ type IssueRelations struct {
 //
 // Every issue node also selects its own repository { nameWithOwner }: GitHub
 // permits a sub-issue to live in a different repository than its parent, so the
-// queried repo is not a safe answer for a node's coordinates.
+// queried repo is not a safe answer for a node's coordinates. Each linked PR
+// node selects it for the same reason — a closing keyword resolves across
+// repositories, so a PR closing this Sub Issue may live in a third one.
 var relationsQuery = fmt.Sprintf(`query($owner: String!, $name: String!, $number: Int!) {
   viewer { login }
   repository(owner: $owner, name: $name) {
@@ -78,9 +87,9 @@ var relationsQuery = fmt.Sprintf(`query($owner: String!, $name: String!, $number
       number
       parent {
         number title body url state repository { nameWithOwner }
-        subIssues(first: %[1]d) { totalCount nodes { number title body url state repository { nameWithOwner } closedByPullRequestsReferences(first: %[2]d, includeClosedPrs: false) { totalCount nodes { number title url state isDraft author { login } } } } }
+        subIssues(first: %[1]d) { totalCount nodes { number title body url state repository { nameWithOwner } closedByPullRequestsReferences(first: %[2]d, includeClosedPrs: false) { totalCount nodes { number title url state isDraft repository { nameWithOwner } author { login } } } } }
       }
-      subIssues(first: %[1]d) { totalCount nodes { number title body url state repository { nameWithOwner } closedByPullRequestsReferences(first: %[2]d, includeClosedPrs: false) { totalCount nodes { number title url state isDraft author { login } } } } }
+      subIssues(first: %[1]d) { totalCount nodes { number title body url state repository { nameWithOwner } closedByPullRequestsReferences(first: %[2]d, includeClosedPrs: false) { totalCount nodes { number title url state isDraft repository { nameWithOwner } author { login } } } } }
     }
   }
 }`, maxRelatedSubIssues, maxLinkedPRsPerSubIssue)
@@ -131,12 +140,13 @@ type graphqlRepoRef struct {
 // graphqlLinkedPRNode is the minimal PR projection the relations query returns
 // for each entry of a sub-issue's closedByPullRequestsReferences connection.
 type graphqlLinkedPRNode struct {
-	Number  int    `json:"number"`
-	Title   string `json:"title"`
-	URL     string `json:"url"`
-	State   string `json:"state"`
-	IsDraft bool   `json:"isDraft"`
-	Author  struct {
+	Number     int            `json:"number"`
+	Title      string         `json:"title"`
+	URL        string         `json:"url"`
+	State      string         `json:"state"`
+	IsDraft    bool           `json:"isDraft"`
+	Repository graphqlRepoRef `json:"repository"`
+	Author     struct {
 		Login string `json:"login"`
 	} `json:"author"`
 }
@@ -240,7 +250,7 @@ func toIssue(n graphqlIssueNode, owner, name string) Issue {
 		Body:      n.Body,
 		URL:       n.URL,
 		State:     strings.ToLower(n.State),
-		LinkedPRs: nodeLinkedPRs(n),
+		LinkedPRs: nodeLinkedPRs(n, owner, name),
 	}
 }
 
@@ -251,7 +261,11 @@ func toIssue(n graphqlIssueNode, owner, name string) Issue {
 // maxLinkedPRsPerSubIssue does not silently drop the overflow from the planning
 // context. Returns nil when the node has no linked PRs (the parent node always
 // does, since the query does not request PRs for it).
-func nodeLinkedPRs(n graphqlIssueNode) []LinkedPR {
+//
+// Each PR's coordinates come from its own repository, since a closing keyword
+// crosses repositories: the Sub Issue's repo (issueOwner/issueName) is only the
+// fallback for a deployment that does not return the field.
+func nodeLinkedPRs(n graphqlIssueNode, issueOwner, issueName string) []LinkedPR {
 	conn := n.ClosedByPRs
 	if conn.TotalCount > len(conn.Nodes) {
 		slog.Warn("linked PRs truncated; some are omitted from the planning context",
@@ -259,7 +273,13 @@ func nodeLinkedPRs(n graphqlIssueNode) []LinkedPR {
 	}
 	var prs []LinkedPR
 	for _, p := range conn.Nodes {
+		owner, name := issueOwner, issueName
+		if o, nm, ok := splitFullName(p.Repository.NameWithOwner); ok {
+			owner, name = o, nm
+		}
 		prs = append(prs, LinkedPR{
+			Owner:   owner,
+			Name:    name,
 			Number:  p.Number,
 			Title:   p.Title,
 			URL:     p.URL,

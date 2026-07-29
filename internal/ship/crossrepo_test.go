@@ -270,6 +270,49 @@ func TestSchedule_RejectsChildrenSpanningRepositories(t *testing.T) {
 	}
 }
 
+// One level below the colliding-child case: the Sub Issue is local, but a
+// closing keyword resolves across repositories ("Closes acme/widgets#101" in a
+// PR filed in acme/gadgets), so GitHub reports a linked PR that lives elsewhere.
+// findOpenPR's number is applied to THIS repository, so accepting it would mark
+// ready and merge whichever local PR happens to carry that number. The foreign
+// PR is listed first so it would win the loop without the repo check.
+func TestRun_ForeignLinkedPRDoesNotSupplyThePR(t *testing.T) {
+	foreign := github.LinkedPR{Owner: "acme", Name: foreignRepo, Number: 999, State: "open", IsDraft: true, Author: shipViewer}
+	local := github.LinkedPR{Owner: "acme", Name: "widgets", Number: 201, State: "open", IsDraft: true, Author: shipViewer}
+	gh := &fakeGitHub{
+		meta:      github.Issue{Title: "Meta", State: "open"},
+		children:  []github.Issue{sub(101, "open")},
+		linkedPRs: map[int][]github.LinkedPR{101: {foreign, local}},
+	}
+	rec := &recorder{}
+	runShip(t, gh, rec, baseOpts())
+
+	if len(gh.readied) != 1 || gh.readied[0] != 201 {
+		t.Errorf("readied = %v, want only PR 201; PR 999 lives in another repository", gh.readied)
+	}
+	if len(gh.merged) != 1 || gh.merged[0].number != 201 {
+		t.Errorf("merged = %v, want only PR 201; merging 999 would merge an unrelated pull request", gh.merged)
+	}
+}
+
+// A Sub Issue whose only linked PR lives in another repository has nothing this
+// run can ship. It must not fall back to the foreign number: that would drive an
+// unrelated local PR under this Sub Issue's name.
+func TestRun_OnlyForeignLinkedPRShipsNothing(t *testing.T) {
+	foreign := github.LinkedPR{Owner: "acme", Name: foreignRepo, Number: 999, State: "open", IsDraft: true, Author: shipViewer}
+	gh := &fakeGitHub{
+		meta:      github.Issue{Title: "Meta", State: "open"},
+		children:  []github.Issue{sub(101, "open")},
+		linkedPRs: map[int][]github.LinkedPR{101: {foreign}},
+	}
+	rec := &recorder{}
+	runShip(t, gh, rec, baseOpts())
+
+	if len(gh.readied) != 0 || len(gh.merged) != 0 {
+		t.Errorf("readied = %v, merged = %v; want neither, the only linked PR is in another repository", gh.readied, gh.merged)
+	}
+}
+
 // A deployment that does not report a node's repository leaves the coordinates
 // empty. That cannot mean "foreign": such a deployment has no cross-repo
 // sub-issues, and treating it as foreign would make ship refuse every Sub Issue.

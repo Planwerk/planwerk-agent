@@ -47,7 +47,9 @@ its sibling Sub Issues before planning, and obey these rules:
   may land in parallel — coordinate rather than collide.
 - A parent or sibling in another repository is context, not scope. Read it: when
   this issue is a counterpart, the issue blocking it is where its contract is
-  settled. Never plan a change to a repository you are not inside.
+  settled. Never plan a change to a repository you are not inside. Cite it as
+  `owner/repo#K`, and its pull request or commit the same way — a bare `#K` in a
+  body written here points at this repository's issue K.
 
 When the issue **is itself** a Meta Issue (it has Sub Issues), it does not want
 an elaboration. Say so and point at `/planwerk:meta`.
