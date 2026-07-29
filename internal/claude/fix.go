@@ -165,8 +165,30 @@ Run these steps for EACH failing check above before editing any code:
 			"      git push --force-with-lease origin HEAD:%[2]s\n\n"+
 			"   The autosquash rebase rewrote the branch's commit SHAs, so a plain push is\n"+
 			"   rejected. Use --force-with-lease (never plain --force): it publishes the\n"+
-			"   fold while refusing to clobber commits you have not seen.\n\n",
-			ctx.BaseBranch, ctx.HeadBranch)
+			"   fold while refusing to clobber commits you have not seen.\n\n"+
+			"4. Repair what the rewritten SHAs left behind. The fold gave every commit it\n"+
+			"   touched a new SHA, so a SHA the PR body cites for one of them now points at\n"+
+			"   nothing.\n\n"+
+			"   a. Read the body:\n\n"+
+			"      gh pr view %[3]d --repo %[4]s --json body -q .body\n\n"+
+			"   b. For every hex token of seven characters or more in it — bare, inside an\n"+
+			"      owner/repo@<sha> reference, or at the end of a .../commit/<sha> URL —\n"+
+			"      ask git whether it still reaches the branch:\n\n"+
+			"      git merge-base --is-ancestor <sha> HEAD\n\n"+
+			"      Exit 0: the commit survived, leave the reference alone. Exit 1: the\n"+
+			"      fold replaced it. An error (\"Not a valid object name\"): the token is no\n"+
+			"      commit of this repository — a checksum, a hash quoted from a log, a\n"+
+			"      commit elsewhere — and it is not yours to touch.\n"+
+			"   c. Map each replaced SHA to its successor by subject — the fold changed the\n"+
+			"      SHA, not the commit — keeping the abbreviation length the body used:\n\n"+
+			"      git log -1 --format=%%s <old-sha>\n"+
+			"      git log --format='%%H %%s' \"$(git merge-base origin/%[1]s HEAD)\"..HEAD\n\n"+
+			"   d. Rewrite those tokens and NO other word of the body, then put it back:\n\n"+
+			"      gh pr edit %[3]d --repo %[4]s --body-file <path>\n\n"+
+			"   When a replaced SHA has no successor (its commit was dropped, or two were\n"+
+			"   squashed into one), do NOT guess a replacement: leave the reference and say\n"+
+			"   so in the report.\n\n",
+			ctx.BaseBranch, ctx.HeadBranch, ctx.PRNumber, ctx.RepoFullName)
 	} else {
 		fmt.Fprintf(&sb, "2. Stage your changes, create ONE follow-up commit using:\n\n"+
 			"   git add -A\n"+
@@ -176,7 +198,14 @@ Run these steps for EACH failing check above before editing any code:
 			ctx.Iteration, ctx.HeadBranch)
 	}
 
-	fmt.Fprintf(&sb, `4. After pushing, output a structured fix report in this exact shape:
+	// The fold adds the PR-body repair as its own step, so the report step is one
+	// further down in that variant.
+	reportStep := 4
+	if ctx.Fixup {
+		reportStep = 5
+	}
+
+	fmt.Fprintf(&sb, `%d. After pushing, output a structured fix report in this exact shape:
 
    ## Fix Report (iteration %d)
 
@@ -192,10 +221,11 @@ Run these steps for EACH failing check above before editing any code:
    ### Diff summary
    - Files: <comma-separated list>
    - Approx lines added/removed: <+N/-M>
-`, ctx.Iteration)
+`, reportStep, ctx.Iteration)
 
 	if ctx.Fixup {
-		sb.WriteString("   - Commit strategy: <per change: \"folded into <sha> <subject>\" via fixup/autosquash, OR \"new commit — <why it belonged to no existing commit>\">\n")
+		sb.WriteString("   - Commit strategy: <per change: \"folded into <sha> <subject>\" via fixup/autosquash — the SHA the commit carries AFTER the fold, not the one you passed to --fixup — OR \"new commit — <why it belonged to no existing commit>\">\n")
+		sb.WriteString("   - PR body: <\"rewrote N stale SHA reference(s)\", OR \"no SHA reference to a rewritten commit\", OR \"left <sha> — its commit has no successor after the fold\">\n")
 	}
 
 	sb.WriteString(`   ### Status
@@ -209,6 +239,7 @@ Run these steps for EACH failing check above before editing any code:
 
 	if ctx.Fixup {
 		fmt.Fprintf(&sb, "- Force-push ONLY with --force-with-lease, ONLY to the PR's own head branch (%[1]s), and ONLY to publish the autosquash rebase above. NEVER use plain --force. NEVER rebase, reorder, drop, or rewrite commits that already exist on the base branch (origin/%[2]s) — only this branch's own commits (origin/%[2]s..HEAD) may be folded.\n", ctx.HeadBranch, ctx.BaseBranch)
+		sb.WriteString("- In the PR body, edit ONLY the SHA tokens the fold invalidated. The description is the author's: never rewrite, summarize, extend, or reformat any other part of it, and never touch a SHA that still reaches HEAD.\n")
 	} else {
 		sb.WriteString("- NEVER force-push.\n")
 	}
@@ -366,6 +397,37 @@ Run these steps for EACH failing check before editing any code:
    rejected. Use --force-with-lease (never plain --force): it publishes the fold
    while refusing to clobber commits you have not seen.
 
+9. Repair what the rewritten SHAs left behind. The fold gave every commit it
+   touched a new SHA, so a SHA the PR body cites for one of them now points at nothing.
+
+   a. Read the body:
+
+      gh pr view %[1]d --repo %[2]s --json body -q .body
+
+   b. For every hex token of seven characters or more in it — bare, inside an
+      owner/repo@<sha> reference, or at the end of a .../commit/<sha> URL — ask
+      git whether it still reaches the branch:
+
+      git merge-base --is-ancestor <sha> HEAD
+
+      Exit 0: the commit survived, leave the reference alone. Exit 1: the fold
+      replaced it. An error ("Not a valid object name"): the token is no commit
+      of this repository — a checksum, a hash quoted from a log, a commit
+      elsewhere — and it is not yours to touch.
+   c. Map each replaced SHA to its successor by subject — the fold changed the
+      SHA, not the commit — keeping the abbreviation length the body used:
+
+      git log -1 --format=%%s <old-sha>
+      git log --format='%%H %%s' "$(git merge-base origin/<base> HEAD)"..HEAD
+
+   d. Rewrite those tokens and NO other word of the body, then put it back:
+
+      gh pr edit %[1]d --repo %[2]s --body-file <path>
+
+   When a replaced SHA has no successor (its commit was dropped, or two were
+   squashed into one), do NOT guess a replacement: leave the reference and say so
+   in the report.
+
 `, ctx.PRNumber, ctx.RepoFullName)
 	} else {
 		sb.WriteString("6. Stage your changes and create ONE follow-up commit:\n\n" +
@@ -394,7 +456,8 @@ Run these steps for EACH failing check before editing any code:
 `)
 
 	if ctx.Fixup {
-		sb.WriteString("   - Commit strategy: <per change: \"folded into <sha> <subject>\" via fixup/autosquash, OR \"new commit — <why it belonged to no existing commit>\">\n")
+		sb.WriteString("   - Commit strategy: <per change: \"folded into <sha> <subject>\" via fixup/autosquash — the SHA the commit carries AFTER the fold, not the one you passed to --fixup — OR \"new commit — <why it belonged to no existing commit>\">\n")
+		sb.WriteString("   - PR body: <\"rewrote N stale SHA reference(s)\", OR \"no SHA reference to a rewritten commit\", OR \"left <sha> — its commit has no successor after the fold\">\n")
 	}
 
 	sb.WriteString(`   ### Status
@@ -408,6 +471,7 @@ Run these steps for EACH failing check before editing any code:
 
 	if ctx.Fixup {
 		sb.WriteString("- Force-push ONLY with --force-with-lease, ONLY to the PR's own head branch, and ONLY to publish the autosquash rebase above. NEVER use plain --force. NEVER rebase, reorder, drop, or rewrite commits that already exist on the base branch — only this branch's own commits (origin/<base>..HEAD) may be folded.\n")
+		sb.WriteString("- In the PR body, edit ONLY the SHA tokens the fold invalidated. The description is the author's: never rewrite, summarize, extend, or reformat any other part of it, and never touch a SHA that still reaches HEAD.\n")
 	} else {
 		sb.WriteString("- NEVER force-push.\n")
 	}
