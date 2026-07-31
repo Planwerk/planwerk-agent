@@ -334,6 +334,24 @@ func TestPlanPromptLandsTheSweepInItsSection(t *testing.T) {
 	}
 }
 
+// TestPlanPromptSeparatesAssumptionsFromRisks locks the section and the rule
+// that keeps an assumption out of Risks, plus their order: a reader who scans
+// the plan for what was taken on faith reads it before what may go wrong.
+func TestPlanPromptSeparatesAssumptionsFromRisks(t *testing.T) {
+	got := BuildPlanPrompt(implement.Context{RepoFullName: "acme/app", IssueNumber: 7})
+	for _, want := range []string{
+		"### Assumptions",
+		`Record every belief the plan rests on but did not verify under "Assumptions"`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the planning prompt is missing %q", want)
+		}
+	}
+	if strings.Index(got, "### Assumptions") > strings.Index(got, "### Risks & Open Questions") {
+		t.Error("Assumptions must precede Risks & Open Questions in the plan format")
+	}
+}
+
 // TestElaboratePromptForbidsASweepSection guards the one way the elaboration
 // could obey the sweep and still break: emitting a Domain Sweep section its
 // structuring pass has no field for, which would drop it on the floor.
