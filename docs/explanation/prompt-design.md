@@ -290,3 +290,15 @@ substantive findings and zero were actionable: you are validating, not doubting"
 description rule is from its `docs/skill-anatomy.md`: "do not summarize the
 workflow — if the description contains process steps, the agent may follow the
 summary instead of reading the full skill."
+
+The planning-side domain sweep, the plan's `### Assumptions` section, and the
+authority kinds in `interaction.md` are adapted from
+[m4vic/socratic](https://github.com/m4vic/socratic) (MIT) — decisions 86 to 88.
+What was taken is the collection's *scaffolding*: routing a change through the
+domains it touches, naming what was assumed apart from what was risked, and
+escalating only the decisions a repository cannot settle. What was left is its
+697-question bank. Six of its domain files are ~25 KB of prompt, the shape of
+sprawl [decision 79](./design-decisions.md) removed from the specialists, and
+the rule that a line must be earned applies to a borrowed line as much as to one
+we wrote. The adaptation is the doctrine working: an idea arrives as a question
+bank and lands as a checkable, exhaustive completion criterion.

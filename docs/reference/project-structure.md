@@ -28,6 +28,10 @@ planwerk-agent/
 │   │   └── checklist_test.go
 │   ├── cli/
 │   │   └── cli.go              # Flag parsing, configuration
+│   ├── domains/
+│   │   ├── domains.go          # Load planning domain sweep (embedded default + override)
+│   │   ├── domains.md          # Default domain list (embedded)
+│   │   └── domains_test.go
 │   ├── claude/
 │   │   ├── claude.go           # Review command entry point (Review, ReviewContext)
 │   │   ├── prompt.go           # /review prompt builder (buildReviewPrompt)

@@ -43,8 +43,19 @@ question lands in exactly one bucket:
 | Bucket | What it means | Who settles it |
 |--------|---------------|----------------|
 | **Answered** | The repository, the Meta Issue, or the body settles it | The skill, citing `path:line` |
-| **Decision** | Two or more defensible options, and the choice changes what gets built | You |
+| **Decision** | Two or more defensible options, the choice changes what gets built, and it turns on priority, vendor, audience, legal risk, or irreversibility | You |
 | **Beyond the repository** | It turns on infrastructure, policy, or cost | You, as an open question |
+
+Two defensible options are not enough on their own. A fork the repository's own
+evidence settles is **Answered**, and deciding it is the skill's job — the
+authority kinds in the middle row are what make a fork yours.
+
+The plan's `### Assumptions` section is where the unasked questions hide: it
+lists what the planner took as true without opening the file that would have
+proved it, each naming the part of the plan that rests on it. Most are the
+skill's to verify. One the repository cannot settle, that also appears under
+`### Risks & Open Questions`, is a decision the planner could not make — those
+reach you first.
 
 The planner's own `OPEN QUESTION` marker is treated as a guess, not a verdict. An
 entry carrying it that the repository answers is answered, and a risk carrying no
