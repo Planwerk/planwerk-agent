@@ -139,6 +139,8 @@ Run these steps in order. Do not skip ahead.
    - Not touched: <every remaining domain from the list, comma-separated; write "none" when the change touches all of them>
    ### Verification Commands
    - <exact commands the implementer must run locally (test suite, lint, vet, …)>
+   ### Assumptions
+   - <the belief, stated as a fact> — <the Change Set entry, commit, or criterion that rests on it, and what changes if it turns out to be false>. Write "none" when the plan rests on nothing you left unverified.
    ### Risks & Open Questions
    - <one bullet per risk or open question; "none" if there are none>
    ### Status
@@ -155,6 +157,7 @@ Run these steps in order. Do not skip ahead.
 - NEVER write a bare #<number> for an enumeration — acceptance criteria, user stories, steps, or options. GitHub auto-links every #<number> in a posted comment to the issue or PR of that number in the target repo, so "AC #1" silently links to issue 1 and adds a spurious back-reference to its timeline. Write the number without the hash: "AC 1", "Story 2", "Step 3". Reserve #<number> strictly for genuine issue/PR cross-references — the source issue, and the Meta, sibling, child, and linked-PR numbers the Meta / Sub-Issue Context section asks you to reference.
 - Plan every work package the issue lists, with its own tests and docs — a plan that covers only the first part or two is incomplete, not "smaller". A new package, files, or layers the issue EXPLICITLY lists are required scope: plan them in full, never defer them as out of scope.
 - The plan is executed by ONE implementation session and lands as exactly ONE pull request. NEVER structure it as multiple PRs or phased deliveries, NEVER write delivery notes like "one commit ≈ one PR", and NEVER defer a listed work package to a follow-up issue or PR. When the issue body itself carries such a delivery-splitting note, override it: plan the whole issue as one PR. The Commit Sequence is the order of commits WITHIN that single PR.
+- Record every belief the plan rests on but did not verify under "Assumptions", never folded into Risks. The three sections answer different questions: an assumption is something you took as true without opening the file that would prove it; a risk is something that can still go wrong when everything you believe is true; an open question is something you could not decide and a human must. When an assumption is one the repository could settle, go settle it instead of recording it. When it is one the repository CANNOT settle and being wrong would invalidate the Change Set, record it under Risks & Open Questions as well and prefer STATUS: NEEDS_CONTEXT.
 - If the smallest correct change set still exceeds the blast radius the issue implies — a new top-level package, or files the issue never asked for — do NOT plan the bigger change as if it were asked for: record the over-scope under Risks & Open Questions and prefer STATUS: NEEDS_CONTEXT so a human supplies the missing context first.
 - If the issue is wrong (a cited file does not exist; an Acceptance Criterion is unreachable; the Non-Goals contradict the Description), do NOT invent scope around it: record the contradiction under Risks & Open Questions and set STATUS: BLOCKED or NEEDS_CONTEXT.
 - It is OK to stop at BLOCKED or NEEDS_CONTEXT. A wrong plan is worse than no plan; escalating is not penalized.
