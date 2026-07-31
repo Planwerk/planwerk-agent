@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/planwerk/planwerk-agent/internal/attribution"
+	"github.com/planwerk/planwerk-agent/internal/domains"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/skills"
 )
@@ -87,6 +88,10 @@ func domainPatternCatalog(intro string, pats []patterns.Pattern, maxPatterns int
 //   - docProseBlock / aiWritingTellsBullets — the de-AI documentation-prose
 //     rules (implement, bare-implement, the implementer worker, fix, address)
 //     and the tells the block shares with proseStyleBlock (decision #80).
+//   - domainSweepBlock — the domain list the elaboration and the planning
+//     session sweep before committing to a change set (decision #86). Only the
+//     list is shared; each caller passes its own landing sentence, for the
+//     reason spelled out at the function.
 //
 // A few near-copies stay per-builder on purpose and are NOT shared here:
 //   - The fifth simplify-guardrail bullet differs between the find and apply
@@ -419,6 +424,35 @@ func escapeFence(tag, body string) string {
 		"</"+tag+">", "&lt;/"+tag+"&gt;",
 		"<"+tag, "&lt;"+tag,
 	).Replace(body)
+}
+
+// domainSweepBlock returns the "## Domain Sweep" section shared by the two
+// prompts that decide what a change will contain — the elaboration and the
+// planning session. It carries the domain list (the target repo's
+// .planwerk/domains.md when it has one, otherwise the embedded default) plus
+// the caller's own landing sentence.
+//
+// The split is deliberate and follows the same rule as finderPatternCatalog's
+// intro parameter: the list is one instruction and is shared, but WHERE a swept
+// domain has to surface is genuinely different per builder. The plan reports its
+// sweep in a "### Domain Sweep" section of a free-form Markdown artifact; the
+// elaboration has no such section and must not grow one, because its output is
+// transcribed into the fixed house issue format — so a domain it touches lands
+// as an Acceptance Criterion or an Affected Area instead. Forcing one landing
+// sentence on both would tell the elaboration to emit a section its structuring
+// pass would drop on the floor.
+//
+// An empty list falls back to the embedded default rather than to the empty
+// string, unlike every other repo-sourced block here. The sweep is part of what
+// a plan must contain, not an optional enrichment, and --print-plan-prompt
+// renders before any clone exists — a caller with no checkout must still get the
+// sweep it will be held to.
+func domainSweepBlock(list, landing string) string {
+	body := strings.TrimSpace(list)
+	if body == "" {
+		body = strings.TrimSpace(domains.Default())
+	}
+	return "## Domain Sweep\n\n" + body + "\n\n" + landing + "\n\n"
 }
 
 // codebaseDesignBlock returns the "## Design Vocabulary" section shared by the

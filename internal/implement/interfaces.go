@@ -48,6 +48,15 @@ type Context struct {
 	// unchanged — the plan carries any memory-derived context forward). Empty
 	// when the repo has no wiki memory.
 	Memory string
+	// Domains is the domain list the planning session sweeps before committing
+	// to a change set, loaded by domains.Load from the target repo's
+	// .planwerk/domains.md. Like Memory it feeds BuildPlanPrompt only — the
+	// implement prompt stays unchanged, since the plan carries the swept
+	// consequences forward as ordinary Change Set and Test Plan entries. Empty
+	// means "no override": the prompt falls back to the embedded default list,
+	// so --print-plan-prompt (which renders before any clone exists) still shows
+	// the sweep the live session will be held to.
+	Domains string
 	// MetaIssue, SiblingIssues, and ChildIssues place the source issue in its
 	// Meta/Sub-Issue neighborhood so the planning session grounds a Sub Issue in
 	// its larger effort instead of in isolation. They feed BuildPlanPrompt (the

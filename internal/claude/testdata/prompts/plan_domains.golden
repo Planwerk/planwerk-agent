@@ -78,41 +78,6 @@ Lock the prompt surface with golden files so drift shows up in PR diffs.
 - Golden file exists for every builder
 </issue-body>
 
-## Meta / Sub-Issue Context
-
-This issue is a **Sub Issue** of a Meta Issue — a larger effort split into work packages. Plan ONLY this issue's slice of that effort, grounded in the Meta Issue and the sibling Sub Issues below:
-
-- Honor the Meta Issue's framing and shared decisions; do not re-litigate or contradict them.
-- Do not duplicate or absorb work a sibling Sub Issue owns. When this issue implements only PART of a shared task because the remaining part lands in another Sub Issue, scope this issue to its part and cross-reference the sibling that carries the rest by number (e.g. "the remaining X is handled by #K") — record the deferral where your output captures out-of-scope work. Cross-reference a sibling in another repository by its full `owner/repo#K`, exactly as it is labelled below; a bare `#K` resolves against this repository and points at an unrelated issue.
-- A closed sibling is already-implemented context you build on, not work to redo; an open sibling is work that may land in parallel or later, so coordinate rather than collide.
-- A sibling Sub Issue may already carry an open pull request (listed under `<linked-prs>` in its block) — a prepared implementation not yet merged to the default branch. Treat that PR as the source of truth for the sibling's slice: build on its direction, do not duplicate or contradict it, and cross-reference it by the reference it is labelled with rather than re-implementing the work. A PR outside this repository is labelled `owner/repo#N`; cite it that way, since a bare `#N` resolves against this repository.
-
-<meta-issue number=40 state=open>
-**Meta Issue #40**: Lock the prompt surface against drift
-
-Split the prompt-safety work into self-contained Sub Issues.
-
-- Golden snapshot tests (this batch)
-- Mutation tests over the goldens (follow-up)
-</meta-issue>
-
-<sibling-sub-issues>
-<sibling number=43 state=open>
-**#43**: Add mutation tests for prompt builders
-
-Follow-up to the golden tests: ensure the goldens actually fail on meaningful prompt drift.
-<linked-prs>
-- PR #57 (open): Add mutation testing harness — https://github.com/planwerk/planwerk-agent/pull/57
-- PR #58 (draft): WIP: mutate prompt builders — https://github.com/planwerk/planwerk-agent/pull/58
-</linked-prs>
-</sibling>
-<sibling number=41 state=closed>
-**#41**: Extract shared prompt blocks
-
-Already done: the shared prompt blocks live in components.go.
-</sibling>
-</sibling-sub-issues>
-
 ## Project Review Patterns to Honor
 
 These patterns are the catalog the project's review/audit/elaborate tools share — including any project-specific patterns shipped under `.planwerk/review_patterns/` in this repository. Treat them as binding constraints on the planned change set: when a pattern covers an area the plan touches, plan the resolution the pattern endorses.
@@ -145,15 +110,8 @@ Secrets MUST be loaded from environment variables or a secret manager.
 
 ## Domain Sweep
 
-Walk this list once, in order. Plan the change against every domain it touches, not only against the sections the issue happened to write down.
-
-- **Data & schema** — the change stores, migrates, or reinterprets persisted state. Name the migration and its rollback path, the backfill for rows the old code wrote, and the order against the code deploy.
-- **Compatibility & contracts** — the change alters something a caller already depends on: an exported signature, an HTTP route, a CLI flag, a config key, a serialized format, or data an older version wrote. Name what must still read the old form, and until when.
-- **Failure & recovery** — the change adds a step that can fail partway through. Name the concrete error, the state it leaves behind, and whether re-running is safe.
-- **Observability** — the change adds behavior an operator must be able to see succeed or fail in production. Name the log line, metric, or exit code that shows it.
-- **Security & trust boundaries** — the change accepts new input, holds a new secret, reads new external content, or widens what a caller may do. Name the boundary it crosses and what validates it there.
-- **Performance & cost** — the change adds work per request or per run: a query, an external call, an allocation that grows with input, or paid API and token spend. Name the added cost and what bounds it.
-- **Operability & configuration** — the change adds or changes a flag, environment variable, config key, or default. Name what an existing deployment must set, and what happens when it sets nothing.
+- **Tenancy** — the change reads or writes data another tenant can see. Name the scoping predicate.
+- **Clock** — the change depends on wall-clock time or a time zone. Name the fixed instant the tests pin.
 
 Report the sweep in the "### Domain Sweep" section of the plan: one bullet per domain the change touches, naming the concrete consequence and the Change Set, Commit Sequence, Test Plan, or Documentation Plan entry that carries it, then a single "Not touched:" line naming every remaining domain. Every domain above appears exactly once, on its own bullet or in that line — a domain you can place in neither is a domain you have not swept. Sweeping a domain never widens the change: a consequence you find is either already required by an Acceptance Criterion, or it is over-scope and belongs under Risks & Open Questions.
 

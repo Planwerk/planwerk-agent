@@ -36,6 +36,12 @@ type Context struct {
 	// CONTEXT.md / .planwerk/context.md so the elaborated issue uses the repo's
 	// own terms. Empty when the repo carries no glossary.
 	Glossary string
+	// Domains is the domain list the elaboration and its reviewer sweep before
+	// settling the acceptance criteria, loaded by domains.Load from the target
+	// repo's .planwerk/domains.md. Empty means "no override": the prompt falls
+	// back to the embedded default list, since the sweep is part of what an
+	// elaboration must do rather than an optional enrichment.
+	Domains string
 }
 
 // ReviewResult is the verdict of the optional reviewer pass over an

@@ -131,6 +131,20 @@ These are MANDATORY:
 
 Be direct. State what IS, not what "could be considered". Match the density and precision of a senior engineer's design doc, not a marketing brief.
 
+## Domain Sweep
+
+Walk this list once, in order. Plan the change against every domain it touches, not only against the sections the issue happened to write down.
+
+- **Data & schema** — the change stores, migrates, or reinterprets persisted state. Name the migration and its rollback path, the backfill for rows the old code wrote, and the order against the code deploy.
+- **Compatibility & contracts** — the change alters something a caller already depends on: an exported signature, an HTTP route, a CLI flag, a config key, a serialized format, or data an older version wrote. Name what must still read the old form, and until when.
+- **Failure & recovery** — the change adds a step that can fail partway through. Name the concrete error, the state it leaves behind, and whether re-running is safe.
+- **Observability** — the change adds behavior an operator must be able to see succeed or fail in production. Name the log line, metric, or exit code that shows it.
+- **Security & trust boundaries** — the change accepts new input, holds a new secret, reads new external content, or widens what a caller may do. Name the boundary it crosses and what validates it there.
+- **Performance & cost** — the change adds work per request or per run: a query, an external call, an allocation that grows with input, or paid API and token spend. Name the added cost and what bounds it.
+- **Operability & configuration** — the change adds or changes a flag, environment variable, config key, or default. Name what an existing deployment must set, and what happens when it sets nothing.
+
+A domain the issue touches must surface in the issue itself: as an Acceptance Criterion when it adds an observable check, and as an Affected Areas entry when it adds a file to touch. A domain the issue does not touch needs nothing at all. Do NOT add a Domain Sweep section, list, or note to the output — the sweep is how you arrive at the criteria, never something the issue reports. Sweeping never widens scope either: a consequence you find is either already required by the issue, or it belongs under Non-Goals with its one sentence of why.
+
 ## Prose Style
 
 Apply these rules to all prose you write (descriptions, motivations, summaries, issue bodies):
@@ -161,6 +175,7 @@ Before you output the elaborated issue, review your own draft and fix what you f
 3. Name consistency — each symbol is named identically everywhere. A function called clearLayers() in one section and clearFullLayers() in another is a bug; reconcile it.
 4. Citation check — every cited file path, symbol, and migration exists in the repository, or is explicitly marked as an assumption per the Anti-Hallucination Rules.
 5. Edge-case coverage — every data-flow acceptance criterion enumerates its empty/zero-length, nil/absent, and upstream-error shadow paths as separate entries, each naming the concrete error (see Edge-Case Enumeration).
+6. Domain sweep — walk the Domain Sweep list once more against the finished draft. For each domain, either name the Acceptance Criterion or Affected Areas entry that carries it, or state to yourself that the issue does not touch it. A domain you can do neither for is a gap; close it before emitting.
 
 
 Now walk the repository, then produce the elaborated issue. Use the section headings above (**Description**, **Motivation**, **User Stories**, **Affected Areas**, **Acceptance Criteria**, **Non-Goals**, **References**) so the structuring step can extract them reliably.

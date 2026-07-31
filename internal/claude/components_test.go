@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/planwerk/planwerk-agent/internal/elaborate"
 	"github.com/planwerk/planwerk-agent/internal/implement"
 	"github.com/planwerk/planwerk-agent/internal/skills"
 )
@@ -264,5 +265,81 @@ func TestAdversarialPromptScopeSwitchesOnSinceRef(t *testing.T) {
 	}
 	if strings.Contains(fixesOnly, "git diff origin/main --name-only") {
 		t.Error("the re-review still carries the branch-wide scope line")
+	}
+}
+
+// TestDomainSweepBlock_FallsBackToDefault proves the sweep is unconditional.
+// Every other repo-sourced block here returns "" when the repo carries nothing;
+// this one falls back to the embedded list, because --print-plan-prompt renders
+// before any clone exists and the sweep is part of the plan contract.
+func TestDomainSweepBlock_FallsBackToDefault(t *testing.T) {
+	for _, empty := range []string{"", "   \n\t\n"} {
+		got := domainSweepBlock(empty, "land it here.")
+		if !strings.HasPrefix(got, "## Domain Sweep\n\n") {
+			t.Errorf("domain sweep block is missing its heading:\n%s", got)
+		}
+		if !strings.Contains(got, "**Observability**") {
+			t.Errorf("an empty list must fall back to the embedded default, got:\n%s", got)
+		}
+		if !strings.Contains(got, "land it here.") {
+			t.Errorf("domain sweep block dropped the caller's landing sentence:\n%s", got)
+		}
+	}
+}
+
+// TestDomainSweepBlock_OverrideReplacesDefault proves a repo's own list replaces
+// the embedded one rather than being appended to it — a sweep carrying both
+// would hold the plan to domains its maintainers deliberately dropped.
+func TestDomainSweepBlock_OverrideReplacesDefault(t *testing.T) {
+	got := domainSweepBlock("- **Tenancy** — cross-tenant reads.\n", "land it here.")
+	if !strings.Contains(got, "**Tenancy**") {
+		t.Errorf("override is missing from the rendered block:\n%s", got)
+	}
+	if strings.Contains(got, "**Observability**") {
+		t.Errorf("override must replace the embedded default, not extend it:\n%s", got)
+	}
+}
+
+// TestDomainSweepReachesEveryBuilder pins the three prompts the sweep is wired
+// into: the elaboration that writes the criteria, the reviewer that scores them,
+// and the planning session. A builder that quietly stopped rendering it would
+// otherwise only show up as a golden diff nobody reads as a regression.
+func TestDomainSweepReachesEveryBuilder(t *testing.T) {
+	const marker = "**Tenancy**"
+	list := "- **Tenancy** — cross-tenant reads.\n"
+
+	planCtx := implement.Context{RepoFullName: "acme/app", IssueNumber: 7, Domains: list}
+	if got := BuildPlanPrompt(planCtx); !strings.Contains(got, marker) {
+		t.Error("the planning prompt does not carry the domain list")
+	}
+
+	elabCtx := elaborate.Context{RepoName: "acme/app", Domains: list}
+	if got := buildElaboratePrompt(elabCtx); !strings.Contains(got, marker) {
+		t.Error("the elaboration prompt does not carry the domain list")
+	}
+	if got := buildElaborateReviewPrompt(elabCtx, "## Description\n\nA draft.\n"); !strings.Contains(got, marker) {
+		t.Error("the elaboration reviewer prompt does not carry the domain list")
+	}
+}
+
+// TestPlanPromptLandsTheSweepInItsSection locks the output section against the
+// sweep rule that fills it, so the section cannot be renamed out from under the
+// instruction, and the "exactly once" rule keeps its second half.
+func TestPlanPromptLandsTheSweepInItsSection(t *testing.T) {
+	got := BuildPlanPrompt(implement.Context{RepoFullName: "acme/app", IssueNumber: 7})
+	for _, want := range []string{"### Domain Sweep", "Not touched:"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the planning prompt is missing %q", want)
+		}
+	}
+}
+
+// TestElaboratePromptForbidsASweepSection guards the one way the elaboration
+// could obey the sweep and still break: emitting a Domain Sweep section its
+// structuring pass has no field for, which would drop it on the floor.
+func TestElaboratePromptForbidsASweepSection(t *testing.T) {
+	got := buildElaboratePrompt(elaborate.Context{RepoName: "acme/app"})
+	if !strings.Contains(got, "Do NOT add a Domain Sweep section") {
+		t.Error("the elaboration prompt must forbid emitting a Domain Sweep section")
 	}
 }
