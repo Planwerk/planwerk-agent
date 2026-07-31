@@ -439,6 +439,33 @@ func TestBuildPlanPrompt_Memory(t *testing.T) {
 	assertGoldenPrompt(t, "plan_memory", BuildPlanPrompt(ctx))
 }
 
+// goldenDomains is a deterministic .planwerk/domains.md override, deliberately
+// unlike the embedded default so a golden that silently fell back to the default
+// list is visible as one.
+func goldenDomains() string {
+	return "- **Tenancy** — the change reads or writes data another tenant can see. Name the scoping predicate.\n" +
+		"- **Clock** — the change depends on wall-clock time or a time zone. Name the fixed instant the tests pin.\n"
+}
+
+// TestBuildPlanPrompt_Domains locks the "## Domain Sweep" block when the target
+// repo overrides the list via .planwerk/domains.md. The embedded-default branch
+// is covered by plan.golden, which renders the sweep unconditionally — unlike
+// the glossary and memory blocks, an absent override does not remove it.
+func TestBuildPlanPrompt_Domains(t *testing.T) {
+	ctx := goldenImplementContext()
+	ctx.Domains = goldenDomains()
+	assertGoldenPrompt(t, "plan_domains", BuildPlanPrompt(ctx))
+}
+
+// TestBuildElaboratePrompt_Domains locks the same override in the elaboration
+// prompt, whose landing sentence differs from the plan's. The default branch is
+// covered by elaborate.golden.
+func TestBuildElaboratePrompt_Domains(t *testing.T) {
+	ctx := goldenElaborateContext()
+	ctx.Domains = goldenDomains()
+	assertGoldenPrompt(t, "elaborate_domains", buildElaboratePrompt(ctx))
+}
+
 // TestBuildGlossaryPrompt_Golden locks the EMIT-stage glossary-generation
 // prompt: the CONTEXT-FORMAT schema, the inclusion rules (be opinionated, only
 // context-specific terms), and the "output the Markdown only" tail.

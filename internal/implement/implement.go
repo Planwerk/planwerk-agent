@@ -21,6 +21,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/attribution"
 	"github.com/planwerk/planwerk-agent/internal/capture"
 	"github.com/planwerk/planwerk-agent/internal/detect"
+	"github.com/planwerk/planwerk-agent/internal/domains"
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/hygiene"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
@@ -503,6 +504,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	ctx.Skills = skills.Load(repo.Dir)
 	ctx.StyleGuidePath = styleguide.Find(repo.Dir)
 	ctx.Memory = wiki.Memory
+	ctx.Domains = domains.Load(repo.Dir)
 
 	if planEnabled {
 		if err := r.preparePlan(w, opts, owner, name, repo.Dir, &ctx); err != nil {

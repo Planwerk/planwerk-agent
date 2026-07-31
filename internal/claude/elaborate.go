@@ -135,6 +135,7 @@ Be direct. State what IS, not what "could be considered". Match the density and 
 `)
 
 	sb.WriteString("\n")
+	sb.WriteString(domainSweepBlock(ctx.Domains, `A domain the issue touches must surface in the issue itself: as an Acceptance Criterion when it adds an observable check, and as an Affected Areas entry when it adds a file to touch. A domain the issue does not touch needs nothing at all. Do NOT add a Domain Sweep section, list, or note to the output — the sweep is how you arrive at the criteria, never something the issue reports. Sweeping never widens scope either: a consequence you find is either already required by the issue, or it belongs under Non-Goals with its one sentence of why.`))
 	sb.WriteString(proseStyleBlock())
 	sb.WriteString(outputLanguageBlock())
 	sb.WriteString(domainGlossaryBlock(ctx.Glossary))
@@ -147,6 +148,7 @@ Before you output the elaborated issue, review your own draft and fix what you f
 3. Name consistency — each symbol is named identically everywhere. A function called clearLayers() in one section and clearFullLayers() in another is a bug; reconcile it.
 4. Citation check — every cited file path, symbol, and migration exists in the repository, or is explicitly marked as an assumption per the Anti-Hallucination Rules.
 5. Edge-case coverage — every data-flow acceptance criterion enumerates its empty/zero-length, nil/absent, and upstream-error shadow paths as separate entries, each naming the concrete error (see Edge-Case Enumeration).
+6. Domain sweep — walk the Domain Sweep list once more against the finished draft. For each domain, either name the Acceptance Criterion or Affected Areas entry that carries it, or state to yourself that the issue does not touch it. A domain you can do neither for is a gap; close it before emitting.
 
 `)
 
@@ -257,6 +259,8 @@ Do NOT rewrite the plan. Do NOT assume it is correct because it looks thorough �
 	sb.WriteString(strings.TrimSpace(draftBody))
 	sb.WriteString("\n</draft-plan>\n\n")
 
+	sb.WriteString(domainSweepBlock(ctx.Domains, `The draft was written against this list. You are checking whether it actually was — check 8 below is scored against these domains and nothing else. Judge each one against the repository, not against how thorough the draft reads: a domain the change plainly touches and no criterion covers is a gap even when the draft never mentions the domain at all.`))
+
 	sb.WriteString(`## What to check
 
 1. Spec coverage — every Acceptance Criterion maps to a concrete, named change in Description or Affected Areas. A criterion with no corresponding change is a gap.
@@ -266,6 +270,7 @@ Do NOT rewrite the plan. Do NOT assume it is correct because it looks thorough �
 5. Executable acceptance criteria — each criterion is an observable check, not a vague goal.
 6. Edge-case coverage — every data-flow acceptance criterion enumerates its empty/zero-length, nil/absent, and upstream-error shadow paths as separate entries, each naming the concrete error (e.g. io.EOF, sql.ErrNoRows, a wrapped fmt.Errorf). A data-flow criterion that covers only the happy path is a gap.
 7. Single-delivery contract — the issue is implemented by ONE session and lands as exactly ONE pull request. Any note prescribing a different delivery structure — "one commit ≈ one PR", "split into separate PRs", deferring described work to a follow-up issue or PR — is a gap, as is a Non-Goal that defers work the Description requires.
+8. Domain coverage — for each domain of the sweep above, decide from the repository whether this change touches it. When it does, an Acceptance Criterion or an Affected Areas entry must carry its consequence; when it does not, the draft owes it nothing. An uncovered touched domain is a gap: name the domain and the specific consequence that has no home. A domain the change does not touch is never a gap — do NOT report one to look thorough, and do NOT ask for a Domain Sweep section in the body, which the house format has no room for.
 
 ## Scoring rubric
 

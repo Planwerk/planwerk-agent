@@ -10,6 +10,7 @@ import (
 
 	"github.com/planwerk/planwerk-agent/internal/cache"
 	"github.com/planwerk/planwerk-agent/internal/detect"
+	"github.com/planwerk/planwerk-agent/internal/domains"
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/glossary"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
@@ -190,6 +191,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		SiblingIssues: relations.Siblings,
 		ChildIssues:   relations.Children,
 		Glossary:      glossaryBody,
+		Domains:       domains.Load(repo.Dir),
 	}
 	result, err := r.Claude.Elaborate(repo.Dir, baseCtx)
 	if err != nil {

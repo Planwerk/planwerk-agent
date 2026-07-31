@@ -95,6 +95,8 @@ func BuildPlanPrompt(ctx implement.Context) string {
 	// no memory pages)
 	sb.WriteString(projectMemoryBlock(ctx.Memory))
 
+	sb.WriteString(domainSweepBlock(ctx.Domains, `Report the sweep in the "### Domain Sweep" section of the plan: one bullet per domain the change touches, naming the concrete consequence and the Change Set, Commit Sequence, Test Plan, or Documentation Plan entry that carries it, then a single "Not touched:" line naming every remaining domain. Every domain above appears exactly once, on its own bullet or in that line — a domain you can place in neither is a domain you have not swept. Sweeping a domain never widens the change: a consequence you find is either already required by an Acceptance Criterion, or it is over-scope and belongs under Risks & Open Questions.`))
+
 	sb.WriteString(`## Planning Workflow
 
 Run these steps in order. Do not skip ahead.
@@ -106,8 +108,9 @@ Run these steps in order. Do not skip ahead.
    - Identify the project's test conventions (unit, integration, E2E) and where tests live.
    - Identify the project's documentation conventions (README, docs/, CHANGELOG, generated API docs).
 3. DESIGN the smallest change set that satisfies every Acceptance Criterion AND covers every work package the issue lists, file by file. OVER-SCOPE GATE: over-scope is work the issue did NOT ask for — a new top-level package, or files the issue never mentions, that you would add to force something to work. Delivering a new package, files, or layers the issue EXPLICITLY lists (in its Work breakdown, Affected Areas, or Acceptance Criteria) is REQUIRED scope, never over-scope — plan it in full. Only when the smallest correct change set still exceeds the issue's stated blast radius is that a signal the issue is underspecified: record the over-scope under "Risks & Open Questions" and prefer STATUS: NEEDS_CONTEXT over PLAN_READY.
-4. SEQUENCE the work into small, reviewable commits. Wrap every planned commit subject at 72 characters or fewer.
-5. WRITE the plan in the exact output format below. Output ONLY the plan — no preamble, no commentary around it.
+4. SWEEP the domains listed above against the change set you just designed, one by one. A domain the change touches whose consequence no Change Set, Commit Sequence, Test Plan, or Documentation Plan entry carries yet is an incomplete design, not a note for later: go back to step 3 and close it, or record it under "Risks & Open Questions" when closing it would exceed the issue's blast radius.
+5. SEQUENCE the work into small, reviewable commits. Wrap every planned commit subject at 72 characters or fewer.
+6. WRITE the plan in the exact output format below. Output ONLY the plan — no preamble, no commentary around it.
 
 ## Implementation Plan (final output)
 
@@ -131,13 +134,16 @@ Run these steps in order. Do not skip ahead.
    - <test file / function to add or extend> — <behavior it locks down; reference the user story it verifies when stories are present>
    ### Documentation Plan
    - <doc file / section> — <what to update; "none" only if the change has no user-visible behavior>
+   ### Domain Sweep
+   - <domain the change touches, verbatim from the list above> — <the concrete consequence, and the Change Set, Commit Sequence, Test Plan, or Documentation Plan entry that carries it>
+   - Not touched: <every remaining domain from the list, comma-separated; write "none" when the change touches all of them>
    ### Verification Commands
    - <exact commands the implementer must run locally (test suite, lint, vet, …)>
    ### Risks & Open Questions
    - <one bullet per risk or open question; "none" if there are none>
    ### Status
    STATUS: <PLAN_READY | BLOCKED | NEEDS_CONTEXT>
-   (PLAN_READY = the plan is executable as written and covers every work package the issue lists; BLOCKED = the issue cannot be implemented as specified — explain why under Risks; NEEDS_CONTEXT = the issue is underspecified and a human must clarify before implementation.)
+   (PLAN_READY = the plan is executable as written, covers every work package the issue lists, and places every domain of the sweep; BLOCKED = the issue cannot be implemented as specified — explain why under Risks; NEEDS_CONTEXT = the issue is underspecified and a human must clarify before implementation.)
    Next: <on BLOCKED or NEEDS_CONTEXT only: the single action a human takes next; omit this line on PLAN_READY>
 
 ` + reportShapeBlock("PLAN_READY") + `## Hard rules
