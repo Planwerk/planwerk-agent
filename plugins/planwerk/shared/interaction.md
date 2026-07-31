@@ -66,6 +66,25 @@ the file raised.
 This applies to any skill running inside a checkout. A question grounded in a
 real path is the difference between an interrogation and a form.
 
+## What is actually theirs to decide
+
+The rule above says what not to ask. This says what survives it. A question
+reaches the author when the repository cannot settle it **and** it turns on
+something only they hold:
+
+- **Priority and cost** — what ships first, what it may spend, what it may take
+  longer for.
+- **Vendor and dependency** — which third party, library, or service to bind to.
+- **Audience and market** — who this is for, and which users may be broken.
+- **Legal and policy risk** — what the project is willing to be exposed to.
+- **Irreversibility** — anything that cannot be walked back: deleted data, a
+  published interface, a migration that has already run.
+
+Everything else is engineering, and engineering is yours. Two defensible options
+do not make a question for the author; they make a decision you owe them, stated
+out loud with its reason. Escalating a choice you could have made teaches the
+author their attention is cheap, and the next real question gets skimmed.
+
 ## Push once, then push again
 
 The first answer is the polished one. The real answer comes after the second

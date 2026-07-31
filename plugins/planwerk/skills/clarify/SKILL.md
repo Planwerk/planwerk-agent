@@ -138,8 +138,10 @@ Sort every question into exactly one bucket:
 
 - **Answered** — the repository, the Meta Issue, or the body settles it. Record
   the answer with the `path:line` that proves it. Do not ask the author.
-- **Decision** — two or more defensible options, and the choice changes what gets
-  built. It goes to the author.
+- **Decision** — two or more defensible options, the choice changes what gets
+  built, and it turns on one of the authority kinds in `interaction.md`. It goes
+  to the author. Two options alone are not enough: a fork you could settle on the
+  repository's own evidence is **Answered**, and deciding it is your job.
 - **Beyond the repository** — it turns on infrastructure, policy, cost, or a
   system you cannot read. It goes to the author as an open question, never as
   options you invented.
