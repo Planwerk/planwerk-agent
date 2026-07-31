@@ -107,6 +107,10 @@ export default defineConfig({
               link: '/how-to/sync-the-wiki',
             },
             {
+              text: 'Customize the domain sweep',
+              link: '/how-to/customize-the-domain-sweep',
+            },
+            {
               text: 'Configure the project',
               link: '/how-to/configure-the-project',
             },
