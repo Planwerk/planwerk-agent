@@ -1,6 +1,6 @@
 # Use the skills
 
-planwerk-agent ships nine Claude Code Skills. Five author the issues the rest
+planwerk-agent ships ten Claude Code Skills. Six author the issues the rest
 of the pipeline consumes, one settles the decisions a Meta Issue deferred to a
 spike, one implements a prepared issue directly in your checkout, one repairs
 a pull request whose checks went red, and one rewrites prose that reads
@@ -10,6 +10,7 @@ machine-written:
 |-------|--------------|
 | `/planwerk:draft` | Turns a rough idea into a ready-to-file issue through a short clarifying conversation |
 | `/planwerk:elaborate` | Expands an issue into an engineering plan grounded in the repository |
+| `/planwerk:cleanup` | Surveys a codebase for dead and duplicated code, and files a Meta Issue with a phased, evidence-backed cleanup plan |
 | `/planwerk:meta` | Splits a Meta Issue into linked, dependency-ordered Sub Issues |
 | `/planwerk:decide` | Verifies the decisions a Meta Issue's split deferred to a spike, and folds the outcomes into the Meta Issue and every Sub Issue that assumed one |
 | `/planwerk:revisit` | Re-checks a prepared issue against what has actually landed since, and corrects what went stale |
@@ -41,10 +42,10 @@ claude plugin marketplace add planwerk/planwerk-agent
 claude plugin install planwerk@planwerk-agent
 ```
 
-Restart Claude Code. `/planwerk:draft`, `/planwerk:elaborate`, `/planwerk:meta`,
-`/planwerk:decide`, `/planwerk:revisit`, `/planwerk:clarify`,
-`/planwerk:implement`, `/planwerk:fix`, and `/planwerk:humanize` are now
-available in any session.
+Restart Claude Code. `/planwerk:draft`, `/planwerk:elaborate`,
+`/planwerk:cleanup`, `/planwerk:meta`, `/planwerk:decide`, `/planwerk:revisit`,
+`/planwerk:clarify`, `/planwerk:implement`, `/planwerk:fix`, and
+`/planwerk:humanize` are now available in any session.
 
 To update after a new release:
 
@@ -70,7 +71,9 @@ succeed. `/planwerk:elaborate`, `/planwerk:decide`, `/planwerk:revisit`, and
 the repo whose issue you are working on. `/planwerk:implement` goes further: it
 writes code, so it needs a clean working tree it can branch in, on an
 up-to-date default branch. `/planwerk:fix` needs the PR's own head branch
-checked out, with a clean working tree. `/planwerk:draft`
+checked out, with a clean working tree. `/planwerk:cleanup` surveys the code
+itself, so it always runs from inside a checkout, on an up-to-date default
+branch. `/planwerk:draft`
 and `/planwerk:meta` only talk to the GitHub API and need no checkout.
 `/planwerk:humanize` is the inverse: it works on files in your checkout and
 needs no GitHub access at all.
@@ -98,6 +101,25 @@ own — each one grounded in a concrete file it just read. It scores its own dra
 for executability and refines until the score clears 8, then asks whether to
 replace the issue body or post a comment. See
 [Elaborate an issue](/how-to/elaborate-an-issue).
+
+## Plan a codebase cleanup
+
+```
+/planwerk:cleanup
+```
+
+Run it from inside a checkout. The skill surveys the repository for dead code
+and duplicated code — read-only detectors already on `PATH` first, hand
+searches for what tools miss — and treats every hit as a lead: a finding
+reaches the Meta Issue only after the searches that would refute it (the
+identifier as a word, as a string literal, across build variants) come back
+empty. Verified findings are grouped into compact phases sized one pull
+request each, deletions before the consolidations they dissolve. A public
+surface is never asserted dead from an internal search alone: those
+candidates come to you as questions, and what you leave open lands in an
+`## Open decisions` block `/planwerk:decide` can settle later. It files one
+Meta Issue on your yes and deletes nothing. See
+[Plan a codebase cleanup](/how-to/plan-a-codebase-cleanup).
 
 ## Split a Meta Issue
 
@@ -220,7 +242,7 @@ picking an answer.
 
 ## One format, every issue skill
 
-The five issue skills share their format specification rather than each restating
+The six issue skills share their format specification rather than each restating
 it, so an issue is the same shape whichever produced it. That matters because
 [`plan`](/reference/cli#implement), [`implement`](/reference/cli#implement), and
 [`ship`](/reference/cli#ship) read these issues:
@@ -231,6 +253,11 @@ it, so an issue is the same shape whichever produced it. That matters because
 - An elaborated issue adds `## User Stories` (when the work serves a persona),
   `## Affected Areas`, `## Acceptance Criteria` as `- [ ]` checkboxes,
   `## Non-Goals`, and `## References`.
+- The survey Meta Issue `cleanup` files keeps the draft sections and adds
+  `## Cleanup phases` — the work-package list `meta` splits — plus, when the
+  survey left open calls, an `## Open decisions` block. Its findings name
+  files and symbols, pinned to the surveyed commit, because dead code has no
+  behavior to describe it by; the Sub Issues split from it stay path-free.
 - Every body ends with an attribution footer naming planwerk-agent and the exact
   Claude model that wrote it.
 
@@ -298,6 +325,8 @@ interactively, in your own checkout. Or `/planwerk:meta` → `planwerk-agent shi
 Issue to merged in dependency order. `ship` reads the native sub-issue and
 `blocked by` relationships `/planwerk:meta` writes, which is why the skill
 records the dependency graph as real GitHub relationships and not as prose.
+A cleanup enters that chain one step earlier: `/planwerk:cleanup` surveys the
+checkout and files the Meta Issue that `/planwerk:meta` then splits.
 
 When the split produced a decisions or spike Sub Issue, run `/planwerk:decide`
 on it before elaborating the siblings that assume its outcomes — an

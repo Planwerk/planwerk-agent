@@ -9,6 +9,8 @@ elaborated issue plans it. Nothing in between.
 
 `draft` and `meta` write depth 1. `elaborate` promotes depth 1 to depth 2.
 `revisit` re-checks an issue at the depth it already has and leaves it there.
+`cleanup` files a Meta Issue at depth 1 plus the sections its findings need —
+see [The survey Meta Issue](#the-survey-meta-issue).
 
 ## Depth 1 — draft
 
@@ -109,6 +111,62 @@ headings, because they annotate the plan rather than belonging to the issue:
 - <gap the refine loop could not close>
 ```
 
+## The survey Meta Issue
+
+`cleanup` files the one Meta Issue the skills author themselves: the record of
+a dead-code and duplication survey, shaped so `meta` can split it. It is a
+draft-depth body carrying up to two extra sections:
+
+```markdown
+**Category**: feature | **Scope**: Large
+
+## Description
+
+What was surveyed, the surveyed commit, the tools and searches used, and the
+totals.
+
+## Motivation
+
+What this specific dead and duplicated code costs, quantified.
+
+## Cleanup phases
+
+### 1 — <imperative phase title>
+
+One paragraph describing the package by what it removes or consolidates —
+this paragraph is what the Sub Issue split from it will say. Then the
+findings it carries:
+
+- `path/to/file.go` — `SymbolName`: what proves it dead, or the cluster it
+  belongs to.
+
+### 2 — <next phase>
+
+## Open decisions
+
+- [ ] D1 — <the candidate>. Recommended: <answer>. Verify: <what must still
+  check it>.
+
+---
+
+_Surveyed by [planwerk-agent](https://github.com/planwerk/planwerk-agent) with Claude:<your model id>_
+```
+
+- `## Cleanup phases` is the work-package enumeration `meta` reads for its
+  coverage check: one `###` section per package, in the order the phases must
+  land.
+- The findings under a phase name files and symbols, pinned to the surveyed
+  commit the Description records. This is a deliberate exception to the
+  draft-depth no-paths rule: a draft describes work by its behavior, and dead
+  code has no behavior to describe — the paths are the finding's evidence,
+  not an implementation plan. `elaborate` re-verifies every one against the
+  checkout it plans in.
+- The Sub Issues `meta` splits from it stay path-free like any other: each
+  describes its package in the phase paragraph's terms and relies on
+  `elaborate` reading the Meta Issue through the issue's parent.
+- `## Open decisions` is optional and uses the checkbox shape `decide` works
+  on: a proposed answer paired with what must still verify it.
+
 ## Acceptance criteria must be executable
 
 Every Acceptance Criterion maps to a concrete, named change in Description or
@@ -179,6 +237,7 @@ _<verb> [planwerk-agent](https://github.com/planwerk/planwerk-agent) with Claude
 | `revisit` | `Revisited by` |
 | `clarify` | `Clarified by` |
 | `decide` (each issue it corrects) | `Decided by` |
+| `cleanup` (the Meta Issue it files) | `Surveyed by` |
 
 The footer names the skill that last wrote the body, so `revisit`, `clarify`,
 and `decide` replace the verb they find rather than appending a second line.

@@ -14,6 +14,11 @@ deliberately **not** elaborated. Pick a Sub Issue and run
 [`elaborate`](/how-to/elaborate-an-issue) / [`implement`](/how-to/implement-an-issue)
 on it when you are ready; `meta` itself stops at creating and linking.
 
+The Meta Issue may be hand-written, or the one
+[`/planwerk:cleanup`](/how-to/plan-a-codebase-cleanup) files from a dead-code
+and duplication survey — its `## Cleanup phases` sections are the work-package
+list `meta` reads.
+
 Install the skills first: see [Use the issue skills](/how-to/use-the-skills).
 
 ```

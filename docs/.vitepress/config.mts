@@ -57,6 +57,10 @@ export default defineConfig({
             { text: 'Use the skills', link: '/how-to/use-the-skills' },
             { text: 'Draft an issue', link: '/how-to/draft-an-issue' },
             { text: 'Elaborate an issue', link: '/how-to/elaborate-an-issue' },
+            {
+              text: 'Plan a codebase cleanup',
+              link: '/how-to/plan-a-codebase-cleanup',
+            },
             { text: 'Split a Meta Issue', link: '/how-to/split-a-meta-issue' },
             {
               text: "Settle a Meta Issue's decisions",
