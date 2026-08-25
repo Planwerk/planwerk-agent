@@ -89,6 +89,10 @@ state.
 1. **Coverage, both directions.** List every enumerated work package from Phase 1
    next to the Sub Issue key that owns it. Every package has exactly one key;
    every key has exactly one package. Report any package with zero or two keys.
+   When a package enumerates individual items — the findings under a survey
+   Meta Issue's phase — the Sub Issue that owns it covers all of them. Count
+   them and state the count. A description that narrows to the largest item
+   drops the rest, and nothing downstream will notice.
 2. **No cycles.** Walk the `blockedBy` graph. A cycle means at least one edge is
    wrong; find it and cut it. Do not present a cyclic split.
 3. **Every blocker exists.** Every key in a `blockedBy` list is a key you

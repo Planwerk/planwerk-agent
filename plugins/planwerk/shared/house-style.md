@@ -70,6 +70,12 @@ them. "Improves performance" is not acceptable without a metric and a target. If
 you lack the number, say so and say how to get it — never round an adjective up
 into a fake specific.
 
+An inventory is enumerated or it is not summarized. Never write "most of the
+findings", "the main items", or "nothing else notable" unless you listed the
+full set first. When the set is too large to list, give its count and name what
+you left out: a partial list presented as a whole one reads as coverage the work
+never had.
+
 ## Be direct
 
 State what is, not what "could be considered".
