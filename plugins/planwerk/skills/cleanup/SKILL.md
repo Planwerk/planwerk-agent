@@ -186,7 +186,10 @@ Then run these checks — each a pass/fail you can state:
 1. Every Dead and Test-only finding names its definition site and the
    refutation searches that came back empty.
 2. Every cluster names at least two sites and why they change together.
-3. Every finding sits in exactly one phase; no phase is empty.
+3. Every finding sits in exactly one phase; no phase is empty. A phase
+   carrying several findings keeps each as its own line, and its paragraph
+   describes the whole set rather than its largest member — grouping sizes the
+   pull request, it does not merge the findings.
 4. Deletions precede the consolidations they dissolve; the `blocked by` graph
    is acyclic and minimal.
 5. Every path exists at the surveyed commit.

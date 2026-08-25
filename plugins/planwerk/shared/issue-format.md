@@ -164,6 +164,10 @@ _Surveyed by [planwerk-agent](https://github.com/planwerk/planwerk-agent) with C
 - The Sub Issues `meta` splits from it stay path-free like any other: each
   describes its package in the phase paragraph's terms and relies on
   `elaborate` reading the Meta Issue through the issue's parent.
+- A phase that carries several findings keeps each one as its own line, and its
+  paragraph describes the whole set rather than its largest member. Grouping
+  sizes the pull request; it does not merge the findings. The Sub Issue split
+  from that phase inherits every one of them.
 - `## Open decisions` is optional and uses the checkbox shape `decide` works
   on: a proposed answer paired with what must still verify it.
 

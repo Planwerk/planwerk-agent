@@ -100,6 +100,8 @@ func TestSharedHouseStyleMatchesProseStyleBlock(t *testing.T) {
 		{"unknowns are marked, not invented", "mark it as an assumption"},
 		{"filler openers are cut", "throat-clearing"},
 		{"the example lists agree", `"It should be noted that"`},
+		{"inventories are enumerated, not summarized", "enumerated or it is not summarized"},
+		{"the partial-summary examples agree", `"nothing else notable"`},
 		{"rhythm varies", "Vary sentence length"},
 	} {
 		for name, text := range surfaces {
