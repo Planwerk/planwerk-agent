@@ -80,9 +80,12 @@ func BranchHeadSHA(owner, repo, branch string) (string, error) {
 func DefaultBranchHEAD(owner, repo string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), gitRemoteTimeout)
 	defer cancel()
+	// owner/name go through -f (verbatim string), not -F: -F type-coerces its
+	// value, so a repository literally named "2048", "404" or "null" would reach
+	// GraphQL as a number or null and be rejected against String!.
 	cmd := exec.CommandContext(ctx, "gh", "api", "graphql",
-		"-F", "owner="+owner,
-		"-F", "name="+repo,
+		"-f", "owner="+owner,
+		"-f", "name="+repo,
 		"-f", `query=query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { defaultBranchRef { target { oid } } } }`,
 		"--jq", ".data.repository.defaultBranchRef.target.oid")
 	out, err := cmd.Output()
