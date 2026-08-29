@@ -42,7 +42,7 @@ type ImprovementPROptions struct {
 // does not handle merge conflicts, and does not retry on a remote-side
 // rejection — the caller is expected to invoke it on a fresh clone whose
 // working tree has not been touched by anything else.
-func OpenImprovementPR(repo *Repo, opts ImprovementPROptions) (string, error) {
+func (Client) OpenImprovementPR(repo *Repo, opts ImprovementPROptions) (string, error) {
 	if repo == nil || repo.Dir == "" {
 		return "", fmt.Errorf("OpenImprovementPR: repo with a working directory is required")
 	}

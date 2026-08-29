@@ -48,38 +48,6 @@ type GitHubClient interface {
 	CloseIssue(owner, name string, number int) error
 }
 
-// defaultGitHubClient is the production GitHubClient backed by the github
-// package. Mirrors the implement/fix/meta adapter shape.
-type defaultGitHubClient struct{}
-
-func (defaultGitHubClient) GetIssue(owner, name string, number int) (*github.Issue, error) {
-	return github.GetIssue(owner, name, number)
-}
-
-func (defaultGitHubClient) GetIssueRelations(owner, name string, number int) (*github.IssueRelations, error) {
-	return github.GetIssueRelations(owner, name, number)
-}
-
-func (defaultGitHubClient) BlockedByIssues(owner, name string, number int) ([]github.Issue, error) {
-	return github.BlockedByIssues(owner, name, number)
-}
-
-func (defaultGitHubClient) AddIssueComment(owner, name string, number int, body string) (string, error) {
-	return github.AddIssueComment(owner, name, number, body)
-}
-
-func (defaultGitHubClient) MarkPRReady(owner, name string, number int) error {
-	return github.MarkPRReady(owner, name, number)
-}
-
-func (defaultGitHubClient) PRMergeability(owner, name string, number int) (*github.Mergeability, error) {
-	return github.PRMergeability(owner, name, number)
-}
-
-func (defaultGitHubClient) MergePR(owner, name string, number int, method, headSHA string) error {
-	return github.MergePR(owner, name, number, method, headSHA)
-}
-
-func (defaultGitHubClient) CloseIssue(owner, name string, number int) error {
-	return github.CloseIssue(owner, name, number)
-}
+// The production client satisfies the interface structurally; a drift in
+// either fails the build here rather than at the call site.
+var _ GitHubClient = github.Client{}

@@ -38,7 +38,7 @@ type evalGitHubClient struct {
 
 func (c *evalGitHubClient) FetchAndCheckout(string) (*github.PR, error) { return c.pr, nil }
 
-func (c *evalGitHubClient) FetchAndCheckoutLocal(string, github.LocalOptions) (*github.PR, error) {
+func (c *evalGitHubClient) OpenLocalPR(string, github.LocalOptions) (*github.PR, error) {
 	return c.pr, nil
 }
 

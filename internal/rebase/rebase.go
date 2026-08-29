@@ -76,7 +76,7 @@ type Runner struct {
 func NewRunner(resolve ResolveConflictFn, analyze AnalyzeFn, analysisPrompt AnalysisPromptFn, apply ApplyFn) *Runner {
 	return &Runner{
 		Claude:         claudeFns{resolve: resolve, analyze: analyze, apply: apply},
-		GitHub:         defaultGitClient{},
+		GitHub:         github.Client{},
 		AnalysisPrompt: analysisPrompt,
 	}
 }
@@ -360,7 +360,7 @@ func (r *Runner) applyDefaults(opts *Options) {
 		opts.MaxIterations = DefaultMaxIterations
 	}
 	if r.GitHub == nil {
-		r.GitHub = defaultGitClient{}
+		r.GitHub = github.Client{}
 	}
 }
 
@@ -368,7 +368,7 @@ func (r *Runner) applyDefaults(opts *Options) {
 // is set, otherwise a temp-dir clone+checkout.
 func (r *Runner) fetchPR(opts Options) (*github.PR, error) {
 	if opts.Local {
-		return r.GitHub.FetchAndCheckoutLocal(opts.PRRef, localOptions(opts))
+		return r.GitHub.OpenLocalPR(opts.PRRef, localOptions(opts))
 	}
 	return r.GitHub.FetchAndCheckout(opts.PRRef)
 }

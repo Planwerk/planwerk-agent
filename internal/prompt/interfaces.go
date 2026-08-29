@@ -8,10 +8,6 @@ type GitHubClient interface {
 	GetIssue(owner, name string, number int) (*github.Issue, error)
 }
 
-// defaultGitHubClient is the production GitHubClient backed by the github
-// package.
-type defaultGitHubClient struct{}
-
-func (defaultGitHubClient) GetIssue(owner, name string, number int) (*github.Issue, error) {
-	return github.GetIssue(owner, name, number)
-}
+// The production client satisfies the interface structurally; a drift in
+// either fails the build here rather than at the call site.
+var _ GitHubClient = github.Client{}

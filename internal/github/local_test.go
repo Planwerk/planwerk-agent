@@ -48,7 +48,7 @@ func initLocalRepo(t *testing.T, remote string) string {
 func TestUseLocalRepoInfersOrigin(t *testing.T) {
 	dir := initLocalRepo(t, "git@github.com:acme/widgets.git")
 
-	repo, err := UseLocalRepo("", LocalOptions{})
+	repo, err := client.UseLocalRepo("", LocalOptions{})
 	if err != nil {
 		t.Fatalf("UseLocalRepo: %v", err)
 	}
@@ -71,7 +71,7 @@ func TestUseLocalRepoInfersOrigin(t *testing.T) {
 
 func TestUseLocalRepoMatchingRefAccepted(t *testing.T) {
 	initLocalRepo(t, "https://github.com/acme/widgets.git")
-	repo, err := UseLocalRepo("acme/widgets", LocalOptions{})
+	repo, err := client.UseLocalRepo("acme/widgets", LocalOptions{})
 	if err != nil {
 		t.Fatalf("UseLocalRepo with matching ref: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestUseLocalRepoMatchingRefAccepted(t *testing.T) {
 
 func TestUseLocalRepoOriginMismatch(t *testing.T) {
 	initLocalRepo(t, "git@github.com:acme/widgets.git")
-	_, err := UseLocalRepo("other/repo", LocalOptions{})
+	_, err := client.UseLocalRepo("other/repo", LocalOptions{})
 	if !errors.Is(err, ErrOriginMismatch) {
 		t.Fatalf("UseLocalRepo with mismatched ref = %v, want ErrOriginMismatch", err)
 	}
@@ -90,7 +90,7 @@ func TestUseLocalRepoOriginMismatch(t *testing.T) {
 
 func TestUseLocalRepoMissingOrigin(t *testing.T) {
 	initLocalRepo(t, "")
-	if _, err := UseLocalRepo("", LocalOptions{}); err == nil {
+	if _, err := client.UseLocalRepo("", LocalOptions{}); err == nil {
 		t.Fatal("UseLocalRepo without an origin remote should error")
 	}
 }
@@ -99,7 +99,7 @@ func TestOpenLocalPROriginMismatch(t *testing.T) {
 	// An explicit ref whose owner/repo differs from origin must be rejected
 	// before any gh invocation, so this is safe to run without gh installed.
 	initLocalRepo(t, "git@github.com:acme/widgets.git")
-	_, err := OpenLocalPR("other/repo#1", LocalOptions{})
+	_, err := client.OpenLocalPR("other/repo#1", LocalOptions{})
 	if !errors.Is(err, ErrOriginMismatch) {
 		t.Fatalf("OpenLocalPR with mismatched ref = %v, want ErrOriginMismatch", err)
 	}

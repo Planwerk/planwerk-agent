@@ -57,7 +57,7 @@ type BranchRef struct {
 // by clone). It is the no-PR replacement for the old CurrentPR: the implement
 // command now runs its simplify and review passes on the local feature branch
 // before any pull request exists, so it cannot ask gh for a PR's base/head.
-func CurrentBranchRef(dir string) (*BranchRef, error) {
+func (Client) CurrentBranchRef(dir string) (*BranchRef, error) {
 	head, err := gitOutput(dir, "rev-parse", "--abbrev-ref", "HEAD")
 	if err != nil {
 		return nil, fmt.Errorf("resolving current branch: %w", err)
@@ -76,7 +76,7 @@ func CurrentBranchRef(dir string) (*BranchRef, error) {
 // into the commits that introduced them, rewriting the branch: a branch name or a
 // HEAD~n offset would move under that rewrite, while the recorded object stays
 // diffable against the rewritten HEAD.
-func HeadSHA(dir string) (string, error) {
+func (Client) HeadSHA(dir string) (string, error) {
 	sha, err := gitOutput(dir, "rev-parse", "HEAD")
 	if err != nil {
 		return "", fmt.Errorf("resolving HEAD: %w", err)
@@ -120,7 +120,7 @@ func gitOutput(dir string, args ...string) (string, error) {
 }
 
 // FetchAndCheckout retrieves PR metadata and checks out the PR locally into a temp directory.
-func FetchAndCheckout(ref string) (*PR, error) {
+func (c Client) FetchAndCheckout(ref string) (*PR, error) {
 	owner, repo, number, err := ParseRef(ref)
 	if err != nil {
 		return nil, err
@@ -151,7 +151,7 @@ func FetchAndCheckout(ref string) (*PR, error) {
 		return nil, fmt.Errorf("checking out PR: %w", err)
 	}
 	pr.Dir = dir
-	changed, err := DiffNames(dir, pr.BaseBranch)
+	changed, err := c.DiffNames(dir, pr.BaseBranch)
 	if err != nil {
 		slog.Warn("listing changed files failed; feature detection and specialist gating may be degraded", "err", err, "dir", dir, "base", pr.BaseBranch)
 	}
@@ -166,7 +166,7 @@ func FetchAndCheckout(ref string) (*PR, error) {
 // and an error wrapping git's stderr, so callers can log the cause before
 // degrading gracefully. It is exported so the implement command's review pass
 // can adaptively gate its specialist fan-out on the branch's changed files.
-func DiffNames(dir, baseBranch string) ([]string, error) {
+func (Client) DiffNames(dir, baseBranch string) ([]string, error) {
 	if dir == "" || baseBranch == "" {
 		return nil, nil
 	}

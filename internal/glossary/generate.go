@@ -35,7 +35,7 @@ type Runner struct {
 func NewRunner(generateFn GenerateFn) *Runner {
 	return &Runner{
 		Claude: generateFnAdapter{fn: generateFn},
-		GitHub: defaultGitHubClient{},
+		GitHub: github.Client{},
 	}
 }
 
@@ -114,7 +114,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 // set (no clone, Cleanup is a no-op), otherwise a fresh temp-dir clone.
 func (r *Runner) openRepo(opts Options) (*github.Repo, error) {
 	if opts.Local {
-		repo, err := r.GitHub.CloneRepoLocal(opts.RepoRef, github.LocalOptions{Force: opts.Force, Prompter: workspace.NewStdinPrompter()})
+		repo, err := r.GitHub.UseLocalRepo(opts.RepoRef, github.LocalOptions{Force: opts.Force, Prompter: workspace.NewStdinPrompter()})
 		if err != nil {
 			return nil, err
 		}

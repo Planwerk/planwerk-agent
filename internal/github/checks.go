@@ -95,7 +95,7 @@ var actionsRunIDRe = regexp.MustCompile(`/actions/runs/(\d+)`)
 // ListChecks returns the most recent check runs for the given commit SHA.
 // It pages through the Checks API so check suites with > 100 runs are not
 // silently truncated.
-func ListChecks(owner, name, sha string) ([]CheckRun, error) {
+func (Client) ListChecks(owner, name, sha string) ([]CheckRun, error) {
 	var all []CheckRun
 	page := 1
 	for {
@@ -200,7 +200,7 @@ func SummarizeChecks(runs []CheckRun) CheckRunSummary {
 // FailedRunLogs returns the failed-step logs for the given GitHub Actions
 // workflow run. Returns ("", nil) when the run has no associated logs (for
 // example, third-party check providers without an Actions backing).
-func FailedRunLogs(owner, name string, runID int64) (string, error) {
+func (Client) FailedRunLogs(owner, name string, runID int64) (string, error) {
 	if runID == 0 {
 		return "", nil
 	}

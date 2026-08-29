@@ -85,7 +85,7 @@ type Runner struct {
 func NewRunner(fn AddressFn, build PromptBuildFn) *Runner {
 	return &Runner{
 		Claude:      addressFnAdapter{fn: fn},
-		GitHub:      defaultGitHubClient{},
+		GitHub:      github.Client{},
 		BuildPrompt: build,
 		In:          os.Stdin,
 		IsTTY:       workspace.IsStdinTTY,
@@ -379,7 +379,7 @@ func (r *Runner) contextFor(opts Options, pr *github.PR, threads []github.Review
 // set, otherwise a temp-dir clone+checkout.
 func (r *Runner) fetchPR(opts Options) (*github.PR, error) {
 	if opts.Local {
-		return r.GitHub.FetchAndCheckoutLocal(opts.PRRef, github.LocalOptions{Force: opts.Force, Prompter: workspace.NewStdinPrompter()})
+		return r.GitHub.OpenLocalPR(opts.PRRef, github.LocalOptions{Force: opts.Force, Prompter: workspace.NewStdinPrompter()})
 	}
 	return r.GitHub.FetchAndCheckout(opts.PRRef)
 }
@@ -391,7 +391,7 @@ func (r *Runner) applyDefaults(opts *Options) {
 		opts.MaxIterations = DefaultMaxIterations
 	}
 	if r.GitHub == nil {
-		r.GitHub = defaultGitHubClient{}
+		r.GitHub = github.Client{}
 	}
 	if r.In == nil {
 		r.In = os.Stdin

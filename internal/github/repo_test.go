@@ -103,7 +103,7 @@ func TestDefaultBranchHEAD_PassesOwnerAndNameAsStrings(t *testing.T) {
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	sha, err := DefaultBranchHEAD("2048", "404")
+	sha, err := client.DefaultBranchHEAD("2048", "404")
 	if err != nil {
 		t.Fatalf("DefaultBranchHEAD: %v", err)
 	}

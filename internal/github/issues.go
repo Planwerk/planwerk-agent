@@ -12,7 +12,7 @@ import (
 
 // SearchIssues searches for existing issues in the given repo whose title
 // matches the query string. It returns matching issue titles and URLs.
-func SearchIssues(owner, name, query string) ([]string, error) {
+func (Client) SearchIssues(owner, name, query string) ([]string, error) {
 	repo := fmt.Sprintf("%s/%s", owner, name)
 	// Quote the query and restrict search to title field for accurate matching
 	search := fmt.Sprintf(`"%s" in:title`, query)
@@ -41,15 +41,15 @@ func SearchIssues(owner, name, query string) ([]string, error) {
 
 // CreateIssue creates a GitHub issue in the given repo via the gh CLI.
 // It returns the URL of the created issue.
-func CreateIssue(owner, name, title, body string) (string, error) {
-	return CreateIssueWithLabels(owner, name, title, body, nil)
+func (c Client) CreateIssue(owner, name, title, body string) (string, error) {
+	return c.CreateIssueWithLabels(owner, name, title, body, nil)
 }
 
 // CreateIssueWithLabels creates a GitHub issue with zero or more labels via the
 // gh CLI. Each label is passed as a repeated --label flag. A label that does
 // not exist on the target repo surfaces as a gh error. It returns the URL of
 // the created issue.
-func CreateIssueWithLabels(owner, name, title, body string, labels []string) (string, error) {
+func (Client) CreateIssueWithLabels(owner, name, title, body string, labels []string) (string, error) {
 	repo := fmt.Sprintf("%s/%s", owner, name)
 
 	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
@@ -144,7 +144,7 @@ func splitFullName(full string) (owner, name string, ok bool) {
 }
 
 // GetIssue fetches the title, body, URL, and state of an issue via gh.
-func GetIssue(owner, name string, number int) (*Issue, error) {
+func (Client) GetIssue(owner, name string, number int) (*Issue, error) {
 	repo := fmt.Sprintf("%s/%s", owner, name)
 	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
 	defer cancel()
@@ -174,7 +174,7 @@ type IssueComment struct {
 // ListIssueComments fetches the comments on an issue via gh, in the order gh
 // returns them (oldest first). Used by the implement command to detect and
 // reuse an implementation plan it posted on an earlier run.
-func ListIssueComments(owner, name string, number int) ([]IssueComment, error) {
+func (Client) ListIssueComments(owner, name string, number int) ([]IssueComment, error) {
 	repo := fmt.Sprintf("%s/%s", owner, name)
 	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
 	defer cancel()
@@ -203,7 +203,7 @@ func parseIssueComments(out []byte) ([]IssueComment, error) {
 
 // EditIssueBody replaces the body of an existing issue. The body is passed
 // via stdin so it is not subject to argv length limits or shell quoting.
-func EditIssueBody(owner, name string, number int, body string) error {
+func (Client) EditIssueBody(owner, name string, number int, body string) error {
 	repo := fmt.Sprintf("%s/%s", owner, name)
 	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
 	defer cancel()
@@ -220,7 +220,7 @@ func EditIssueBody(owner, name string, number int, body string) error {
 
 // CloseIssue closes an issue via gh. The ship command uses it to close a Meta
 // Issue once every one of its Sub Issues has merged.
-func CloseIssue(owner, name string, number int) error {
+func (Client) CloseIssue(owner, name string, number int) error {
 	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "gh", closeIssueArgs(owner, name, number)...)
@@ -241,7 +241,7 @@ func closeIssueArgs(owner, name string, number int) []string {
 
 // AddIssueComment posts a new comment on an issue. The body is passed via
 // stdin so it is not subject to argv length limits or shell quoting.
-func AddIssueComment(owner, name string, number int, body string) (string, error) {
+func (Client) AddIssueComment(owner, name string, number int, body string) (string, error) {
 	repo := fmt.Sprintf("%s/%s", owner, name)
 	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
 	defer cancel()

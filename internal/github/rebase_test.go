@@ -81,7 +81,7 @@ func TestMergeBase(t *testing.T) {
 
 	advanceOrigin(t, dir, "upstream.txt", "u\n", "upstream commit")
 
-	got, err := MergeBase(dir, "feature", "origin/main")
+	got, err := client.MergeBase(dir, "feature", "origin/main")
 	if err != nil {
 		t.Fatalf("MergeBase: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestCommitsInRange(t *testing.T) {
 	advanceOrigin(t, dir, "u1.txt", "u\n", "upstream one")
 
 	// Replay range: feature commits not on origin/main, oldest first.
-	replay, err := CommitsInRange(dir, "origin/main..feature")
+	replay, err := client.CommitsInRange(dir, "origin/main..feature")
 	if err != nil {
 		t.Fatalf("CommitsInRange replay: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestCommitsInRange(t *testing.T) {
 	}
 
 	// Upstream range: commits that entered the base after the fork point.
-	upstream, err := CommitsInRange(dir, baseSHA+"..origin/main")
+	upstream, err := client.CommitsInRange(dir, baseSHA+"..origin/main")
 	if err != nil {
 		t.Fatalf("CommitsInRange upstream: %v", err)
 	}
@@ -140,7 +140,7 @@ func TestStartRebaseClean(t *testing.T) {
 	advanceOrigin(t, dir, "upstream.txt", "u\n", "upstream commit")
 	git(t, dir, "checkout", "-q", "feature")
 
-	state, err := StartRebase(dir, "main")
+	state, err := client.StartRebase(dir, "main")
 	if err != nil {
 		t.Fatalf("StartRebase: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestStartRebaseClean(t *testing.T) {
 	}
 	// The rebased branch now sits on top of origin/main and still carries its
 	// own commit (preserved, not squashed).
-	rebased, err := CommitsInRange(dir, "origin/main..HEAD")
+	rebased, err := client.CommitsInRange(dir, "origin/main..HEAD")
 	if err != nil {
 		t.Fatalf("CommitsInRange: %v", err)
 	}
@@ -171,7 +171,7 @@ func TestStartRebaseConflictThenAbort(t *testing.T) {
 	advanceOrigin(t, dir, "base.txt", "line1\nUPSTREAM\nline3\n", "upstream edits line2")
 	git(t, dir, "checkout", "-q", "feature")
 
-	state, err := StartRebase(dir, "main")
+	state, err := client.StartRebase(dir, "main")
 	if err != nil {
 		t.Fatalf("StartRebase: %v", err)
 	}
@@ -185,7 +185,7 @@ func TestStartRebaseConflictThenAbort(t *testing.T) {
 		t.Errorf("StoppedSubject = %q, want 'feature edits line2'", state.StoppedSubject)
 	}
 
-	if err := RebaseAbort(dir); err != nil {
+	if err := client.RebaseAbort(dir); err != nil {
 		t.Fatalf("RebaseAbort: %v", err)
 	}
 	if got := gitOut(t, dir, "rev-parse", "HEAD"); got != featureTip {
@@ -201,7 +201,7 @@ func TestResetHard(t *testing.T) {
 	git(t, dir, "add", ".")
 	git(t, dir, "commit", "-q", "-m", "scratch")
 
-	if err := ResetHard(dir, orig); err != nil {
+	if err := client.ResetHard(dir, orig); err != nil {
 		t.Fatalf("ResetHard: %v", err)
 	}
 	if got := gitOut(t, dir, "rev-parse", "HEAD"); got != orig {
@@ -224,7 +224,7 @@ func TestPushHead(t *testing.T) {
 	git(t, dir, "commit", "-q", "-m", "follow-up commit")
 	want := gitOut(t, dir, "rev-parse", "HEAD")
 
-	if err := PushHead(dir, "feature"); err != nil {
+	if err := client.PushHead(dir, "feature"); err != nil {
 		t.Fatalf("PushHead: %v", err)
 	}
 	if got := gitOut(t, bare, "rev-parse", "feature"); got != want {
@@ -246,7 +246,7 @@ func TestPushHead_RejectsNonFastForward(t *testing.T) {
 	git(t, dir, "add", ".")
 	git(t, dir, "commit", "-q", "--amend", "-m", "rewritten base")
 
-	if err := PushHead(dir, "feature"); err == nil {
+	if err := client.PushHead(dir, "feature"); err == nil {
 		t.Fatal("PushHead should fail on a non-fast-forward push, got nil")
 	}
 }
@@ -263,12 +263,12 @@ func TestForceWithLeasePush(t *testing.T) {
 	advanceOrigin(t, dir, "upstream.txt", "u\n", "upstream commit")
 	git(t, dir, "checkout", "-q", "feature")
 
-	if state, err := StartRebase(dir, "main"); err != nil || !state.Done {
+	if state, err := client.StartRebase(dir, "main"); err != nil || !state.Done {
 		t.Fatalf("StartRebase state=%+v err=%v", state, err)
 	}
 	rewritten := gitOut(t, dir, "rev-parse", "HEAD")
 
-	if err := ForceWithLeasePush(dir, "feature"); err != nil {
+	if err := client.ForceWithLeasePush(dir, "feature"); err != nil {
 		t.Fatalf("ForceWithLeasePush: %v", err)
 	}
 	if got := gitOut(t, bare, "rev-parse", "feature"); got != rewritten {

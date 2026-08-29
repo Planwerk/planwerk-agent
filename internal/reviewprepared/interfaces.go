@@ -41,62 +41,13 @@ func (a analyzeFnAdapter) ReviewPrepared(dir string, ctx AnalysisContext) (*Resu
 // pull the push/PR code paths into its dependency graph.
 type GitHubClient interface {
 	CloneRepo(ref string) (*github.Repo, error)
-	CloneRepoLocal(ref string, opts github.LocalOptions) (*github.Repo, error)
+	UseLocalRepo(ref string, opts github.LocalOptions) (*github.Repo, error)
 	DefaultBranchHEAD(owner, name string) (string, error)
-	OpenImprovementPR(repo *github.Repo, opts PROptions) (string, error)
+	OpenImprovementPR(repo *github.Repo, opts github.ImprovementPROptions) (string, error)
 }
 
-// PROptions configures the PR side-effect.
-type PROptions struct {
-	Branch  string
-	Base    string
-	Title   string
-	Body    string
-	Files   []ImprovedFile
-	Commit  string // commit message subject + body
-}
 
-// ImprovedFile is one file the runner is asking the GitHub client to write,
-// stage, commit, and push.
-type ImprovedFile struct {
-	// RelativePath is repo-relative (e.g. ".planwerk/features/PX-0028-...json").
-	RelativePath string
-	// Content is the new file contents — UTF-8, byte-for-byte, no shell escaping.
-	Content []byte
-}
 
-type defaultGitHubClient struct{}
-
-func (defaultGitHubClient) CloneRepo(ref string) (*github.Repo, error) {
-	return github.CloneRepo(ref)
-}
-
-func (defaultGitHubClient) CloneRepoLocal(ref string, opts github.LocalOptions) (*github.Repo, error) {
-	return github.UseLocalRepo(ref, opts)
-}
-
-func (defaultGitHubClient) DefaultBranchHEAD(owner, name string) (string, error) {
-	return github.DefaultBranchHEAD(owner, name)
-}
-
-func (defaultGitHubClient) OpenImprovementPR(repo *github.Repo, opts PROptions) (string, error) {
-	return github.OpenImprovementPR(repo, github.ImprovementPROptions{
-		Branch:  opts.Branch,
-		Base:    opts.Base,
-		Title:   opts.Title,
-		Body:    opts.Body,
-		Commit:  opts.Commit,
-		Files:   convertFiles(opts.Files),
-	})
-}
-
-func convertFiles(files []ImprovedFile) []github.ImprovementFile {
-	out := make([]github.ImprovementFile, 0, len(files))
-	for _, f := range files {
-		out = append(out, github.ImprovementFile{
-			RelativePath: f.RelativePath,
-			Content:      f.Content,
-		})
-	}
-	return out
-}
+// The production client satisfies the interface structurally; a drift in
+// either fails the build here rather than at the call site.
+var _ GitHubClient = github.Client{}

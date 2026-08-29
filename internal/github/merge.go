@@ -60,7 +60,7 @@ func (m Mergeability) CanMerge() bool {
 }
 
 // PRMergeability reads the pull request's mergeability state via gh.
-func PRMergeability(owner, name string, number int) (*Mergeability, error) {
+func (Client) PRMergeability(owner, name string, number int) (*Mergeability, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "gh", prMergeabilityArgs(owner, name, number)...)
@@ -86,7 +86,7 @@ func prMergeabilityArgs(owner, name string, number int) []string {
 
 // MarkPRReady takes a draft pull request out of draft so its checks become the
 // real merge gate rather than a draft placeholder.
-func MarkPRReady(owner, name string, number int) error {
+func (Client) MarkPRReady(owner, name string, number int) error {
 	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "gh", markPRReadyArgs(owner, name, number)...)
@@ -109,7 +109,7 @@ func markPRReadyArgs(owner, name string, number int) []string {
 // "merge"). An unknown method is rejected rather than silently defaulted. When
 // headSHA is non-empty the merge is pinned to it (--match-head-commit), so
 // GitHub refuses the merge if the PR head moved after the SHA was validated.
-func MergePR(owner, name string, number int, method, headSHA string) error {
+func (Client) MergePR(owner, name string, number int, method, headSHA string) error {
 	args, err := mergePRArgs(owner, name, number, method, headSHA)
 	if err != nil {
 		return err

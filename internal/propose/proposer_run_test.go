@@ -16,7 +16,7 @@ import (
 )
 
 // fakeGitHub is a test GitHubClient whose CloneRepo / DefaultBranchHEAD /
-// ListExistingIssues behavior is configured per-test via closures. A nil
+// ListAllIssues behavior is configured per-test via closures. A nil
 // listExistingIssues returns no existing issues so dedupe is a no-op.
 type fakeGitHub struct {
 	cloneRepo          func(ref string) (*github.Repo, error)
@@ -32,9 +32,9 @@ func (f *fakeGitHub) CloneRepo(ref string) (*github.Repo, error) {
 	return f.cloneRepo(ref)
 }
 
-// CloneRepoLocal mirrors github.UseLocalRepo: it returns a Local repo rooted
+// UseLocalRepo mirrors github.UseLocalRepo: it returns a Local repo rooted
 // at the same dir the temp-clone factory would, so Cleanup is a no-op.
-func (f *fakeGitHub) CloneRepoLocal(ref string, _ github.LocalOptions) (*github.Repo, error) {
+func (f *fakeGitHub) UseLocalRepo(ref string, _ github.LocalOptions) (*github.Repo, error) {
 	f.cloneLocalCalls.Add(1)
 	repo, err := f.cloneRepo(ref)
 	if err != nil {
@@ -48,7 +48,7 @@ func (f *fakeGitHub) DefaultBranchHEAD(owner, name string) (string, error) {
 	return f.defaultBranchHEAD(owner, name)
 }
 
-func (f *fakeGitHub) ListExistingIssues(owner, name string) ([]github.ExistingIssue, error) {
+func (f *fakeGitHub) ListAllIssues(owner, name string) ([]github.ExistingIssue, error) {
 	if f.listExistingIssues == nil {
 		return nil, nil
 	}
@@ -395,7 +395,7 @@ func TestProposeRun_DedupeDisabledByFlag(t *testing.T) {
 		t.Fatalf("Run returned error: %v", err)
 	}
 	if listerCalled {
-		t.Error("ListExistingIssues must not be called when NoIssueDedupe=true")
+		t.Error("ListAllIssues must not be called when NoIssueDedupe=true")
 	}
 	if !strings.Contains(out.String(), "Add logging") {
 		t.Errorf("proposal must be kept when dedupe is disabled:\n%s", out.String())
@@ -634,7 +634,7 @@ func TestProposeRun_LocalUsesCwdAndKeepsTree(t *testing.T) {
 		t.Fatalf("Run returned error: %v", err)
 	}
 	if gh.cloneLocalCalls.Load() != 1 {
-		t.Errorf("CloneRepoLocal calls = %d, want 1", gh.cloneLocalCalls.Load())
+		t.Errorf("UseLocalRepo calls = %d, want 1", gh.cloneLocalCalls.Load())
 	}
 	if gh.cloneCalls.Load() != 0 {
 		t.Errorf("CloneRepo (temp-dir clone) calls = %d, want 0 in local mode", gh.cloneCalls.Load())

@@ -50,7 +50,7 @@ type Context struct {
 	StyleGuidePath string
 
 	// Local marks a --local run: the fix operates on the user's own checkout
-	// (PullOnBranch each iteration) instead of a throw-away temp-dir clone. It
+	// (PullFFOnly each iteration) instead of a throw-away temp-dir clone. It
 	// controls only WHERE the fix happens, not HOW it is committed — the commit
 	// strategy is selected by Fixup.
 	Local bool
@@ -133,49 +133,17 @@ func (a fixFnAdapter) Fix(dir string, ctx Context) (string, string, error) {
 // method maps to a single gh CLI invocation.
 type GitHubClient interface {
 	FetchAndCheckout(ref string) (*github.PR, error)
-	FetchAndCheckoutLocal(ref string, opts github.LocalOptions) (*github.PR, error)
+	OpenLocalPR(ref string, opts github.LocalOptions) (*github.PR, error)
 	ListChecks(owner, name, sha string) ([]github.CheckRun, error)
 	FailedRunLogs(owner, name string, runID int64) (string, error)
-	HeadSHA(owner, name string, branch string) (string, error)
-	// PullOnBranch fast-forwards the local checkout in dir to the latest
+	BranchHeadSHA(owner, name string, branch string) (string, error)
+	// PullFFOnly fast-forwards the local checkout in dir to the latest
 	// commits on branch. Used in --local mode to pick up the previous
 	// iteration's follow-up commit without re-cloning.
-	PullOnBranch(dir, branch string) error
+	PullFFOnly(dir, branch string) error
 	// AddPRComment posts a fresh comment on the PR — one per fix iteration —
 	// recording what the pushed follow-up commit changed.
 	AddPRComment(owner, name string, number int, body string) (string, error)
-}
-
-// defaultGitHubClient is the production GitHubClient backed by the github
-// package. Mirrors the elaborate package's adapter shape.
-type defaultGitHubClient struct{}
-
-func (defaultGitHubClient) FetchAndCheckout(ref string) (*github.PR, error) {
-	return github.FetchAndCheckout(ref)
-}
-
-func (defaultGitHubClient) FetchAndCheckoutLocal(ref string, opts github.LocalOptions) (*github.PR, error) {
-	return github.OpenLocalPR(ref, opts)
-}
-
-func (defaultGitHubClient) PullOnBranch(dir, branch string) error {
-	return github.PullFFOnly(dir, branch)
-}
-
-func (defaultGitHubClient) ListChecks(owner, name, sha string) ([]github.CheckRun, error) {
-	return github.ListChecks(owner, name, sha)
-}
-
-func (defaultGitHubClient) FailedRunLogs(owner, name string, runID int64) (string, error) {
-	return github.FailedRunLogs(owner, name, runID)
-}
-
-func (defaultGitHubClient) HeadSHA(owner, name string, branch string) (string, error) {
-	return github.BranchHeadSHA(owner, name, branch)
-}
-
-func (defaultGitHubClient) AddPRComment(owner, name string, number int, body string) (string, error) {
-	return github.AddPRComment(owner, name, number, body)
 }
 
 // Prompter abstracts the "should we continue?" question asked between
@@ -183,3 +151,7 @@ func (defaultGitHubClient) AddPRComment(owner, name string, number int, body str
 type Prompter interface {
 	Confirm(message string) (bool, error)
 }
+
+// The production client satisfies the interface structurally; a drift in
+// either fails the build here rather than at the call site.
+var _ GitHubClient = github.Client{}

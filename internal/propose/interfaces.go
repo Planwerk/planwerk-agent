@@ -40,9 +40,9 @@ type ClaudeAnalyzer interface {
 // clients to avoid touching the real git or gh CLI.
 type GitHubClient interface {
 	CloneRepo(ref string) (*github.Repo, error)
-	CloneRepoLocal(ref string, opts github.LocalOptions) (*github.Repo, error)
+	UseLocalRepo(ref string, opts github.LocalOptions) (*github.Repo, error)
 	DefaultBranchHEAD(owner, name string) (string, error)
-	ListExistingIssues(owner, name string) ([]github.ExistingIssue, error)
+	ListAllIssues(owner, name string) ([]github.ExistingIssue, error)
 }
 
 // AnalyzeFn is the bare-function form of ClaudeAnalyzer that existing callers
@@ -57,21 +57,6 @@ func (a analyzeFnAdapter) Analyze(dir string, ctx AnalysisContext) (*ProposalRes
 	return a.fn(dir, ctx)
 }
 
-// defaultGitHubClient is the production GitHubClient backed by the github package.
-type defaultGitHubClient struct{}
-
-func (defaultGitHubClient) CloneRepo(ref string) (*github.Repo, error) {
-	return github.CloneRepo(ref)
-}
-
-func (defaultGitHubClient) CloneRepoLocal(ref string, opts github.LocalOptions) (*github.Repo, error) {
-	return github.UseLocalRepo(ref, opts)
-}
-
-func (defaultGitHubClient) DefaultBranchHEAD(owner, name string) (string, error) {
-	return github.DefaultBranchHEAD(owner, name)
-}
-
-func (defaultGitHubClient) ListExistingIssues(owner, name string) ([]github.ExistingIssue, error) {
-	return github.ListAllIssues(owner, name)
-}
+// The production client satisfies the interface structurally; a drift in
+// either fails the build here rather than at the call site.
+var _ GitHubClient = github.Client{}

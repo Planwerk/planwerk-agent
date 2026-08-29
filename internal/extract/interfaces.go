@@ -9,22 +9,10 @@ import "github.com/planwerk/planwerk-agent/internal/github"
 // Mirrors reviewprepared.GitHubClient.
 type GitHubClient interface {
 	CloneRepo(ref string) (*github.Repo, error)
-	CloneRepoLocal(ref string, opts github.LocalOptions) (*github.Repo, error)
+	UseLocalRepo(ref string, opts github.LocalOptions) (*github.Repo, error)
 	OpenImprovementPR(repo *github.Repo, opts github.ImprovementPROptions) (string, error)
 }
 
-// defaultGitHubClient is the production GitHubClient backed by the github
-// package.
-type defaultGitHubClient struct{}
-
-func (defaultGitHubClient) CloneRepo(ref string) (*github.Repo, error) {
-	return github.CloneRepo(ref)
-}
-
-func (defaultGitHubClient) CloneRepoLocal(ref string, opts github.LocalOptions) (*github.Repo, error) {
-	return github.UseLocalRepo(ref, opts)
-}
-
-func (defaultGitHubClient) OpenImprovementPR(repo *github.Repo, opts github.ImprovementPROptions) (string, error) {
-	return github.OpenImprovementPR(repo, opts)
-}
+// The production client satisfies the interface structurally; a drift in
+// either fails the build here rather than at the call site.
+var _ GitHubClient = github.Client{}

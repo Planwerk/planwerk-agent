@@ -33,7 +33,7 @@ type RebaseState struct {
 // MergeBase returns the best common ancestor of ref1 and ref2 (`git
 // merge-base`). The rebase command uses it to pin the PR's original fork point
 // before replaying onto a freshly fetched base.
-func MergeBase(dir, ref1, ref2 string) (string, error) {
+func (Client) MergeBase(dir, ref1, ref2 string) (string, error) {
 	out, err := gitCapture(dir, "merge-base", ref1, ref2)
 	if err != nil {
 		return "", err
@@ -45,7 +45,7 @@ func MergeBase(dir, ref1, ref2 string) (string, error) {
 // oldest-first, each as a Commit with its full SHA and subject. The unit
 // separator (US, 0x1f) splits SHA from subject so subjects containing spaces
 // survive intact.
-func CommitsInRange(dir, rangeExpr string) ([]Commit, error) {
+func (Client) CommitsInRange(dir, rangeExpr string) ([]Commit, error) {
 	out, err := gitCapture(dir, "log", "--reverse", "--format=%H%x1f%s", rangeExpr)
 	if err != nil {
 		return nil, err
@@ -68,7 +68,7 @@ func CommitsInRange(dir, rangeExpr string) ([]Commit, error) {
 // FetchBranch fetches branch from origin so origin/<branch> reflects the latest
 // remote state before a rebase. It generalizes localFetchBase for an explicit,
 // required branch name.
-func FetchBranch(dir, branch string) error {
+func (Client) FetchBranch(dir, branch string) error {
 	if branch == "" {
 		return fmt.Errorf("fetch branch: empty branch name")
 	}
@@ -88,7 +88,7 @@ func FetchBranch(dir, branch string) error {
 // RebaseState{Done: true}; a conflict returns RebaseState{Conflicted: true}
 // with the stopped commit and its conflicted files. A non-conflict failure
 // (bad ref, dirty tree) is returned as an error.
-func StartRebase(dir, onto string) (RebaseState, error) {
+func (Client) StartRebase(dir, onto string) (RebaseState, error) {
 	runErr := runRebaseCommand(dir, "rebase", "origin/"+onto)
 	return rebaseStateFrom(dir, runErr)
 }
@@ -97,7 +97,7 @@ func StartRebase(dir, onto string) (RebaseState, error) {
 // staged. GIT_EDITOR/GIT_SEQUENCE_EDITOR are forced to `true` so git never
 // opens an interactive commit-message or todo editor. It returns the next
 // RebaseState: Done when the rebase finished, or Conflicted at the next stop.
-func RebaseContinue(dir string) (RebaseState, error) {
+func (Client) RebaseContinue(dir string) (RebaseState, error) {
 	runErr := runRebaseCommand(dir, "rebase", "--continue")
 	return rebaseStateFrom(dir, runErr)
 }
@@ -105,21 +105,21 @@ func RebaseContinue(dir string) (RebaseState, error) {
 // RebaseAbort aborts an in-progress rebase, restoring the branch and working
 // tree to their pre-rebase state. Used to back out cleanly on unrecoverable
 // failure or after a dry-run probe.
-func RebaseAbort(dir string) error {
+func (Client) RebaseAbort(dir string) error {
 	return runGit(dir, "rebase", "--abort")
 }
 
 // ResetHard moves the current branch and working tree to ref (`git reset
 // --hard`). The dry-run probe uses it to undo a rebase that applied cleanly,
 // so --dry-run never leaves the checkout rewritten.
-func ResetHard(dir, ref string) error {
+func (Client) ResetHard(dir, ref string) error {
 	return runGit(dir, "reset", "--hard", ref)
 }
 
 // ConflictedFiles returns the repo-relative paths git marked as unmerged
 // (`git diff --name-only --diff-filter=U`) — the files a paused rebase needs
 // resolved before it can continue.
-func ConflictedFiles(dir string) ([]string, error) {
+func (Client) ConflictedFiles(dir string) ([]string, error) {
 	out, err := gitCapture(dir, "diff", "--name-only", "--diff-filter=U")
 	if err != nil {
 		return nil, err
@@ -137,7 +137,7 @@ func ConflictedFiles(dir string) ([]string, error) {
 // `git push --force-with-lease`. A rebase rewrites commit SHAs, so a plain push
 // is rejected; --force-with-lease publishes the rewrite while refusing to
 // clobber commits the local checkout has not seen. Plain --force is never used.
-func ForceWithLeasePush(dir, branch string) error {
+func (Client) ForceWithLeasePush(dir, branch string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), gitRemoteTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", "push", "--force-with-lease", "origin", "HEAD:"+branch)
@@ -154,7 +154,7 @@ func ForceWithLeasePush(dir, branch string) error {
 // `git push origin HEAD:<branch>`. The address command uses it to push the
 // follow-up commits it appends per addressed thread; unlike a rebase, address
 // only adds commits, so no force is needed.
-func PushHead(dir, branch string) error {
+func (Client) PushHead(dir, branch string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), gitRemoteTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", "push", "origin", "HEAD:"+branch)
@@ -191,7 +191,7 @@ func rebaseStateFrom(dir string, runErr error) (RebaseState, error) {
 		return RebaseState{}, err
 	}
 	if inProgress {
-		files, err := ConflictedFiles(dir)
+		files, err := Client{}.ConflictedFiles(dir)
 		if err != nil {
 			return RebaseState{}, err
 		}

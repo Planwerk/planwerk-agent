@@ -17,7 +17,7 @@ import (
 // See https://docs.github.com/en/rest/issues/sub-issues —
 // POST /repos/{owner}/{repo}/issues/{issue_number}/sub_issues with a
 // sub_issue_id body field carrying the child's database id.
-func AddSubIssue(owner, name string, parentNumber, childNumber int) error {
+func (Client) AddSubIssue(owner, name string, parentNumber, childNumber int) error {
 	childID, err := issueDatabaseID(owner, name, childNumber)
 	if err != nil {
 		return err

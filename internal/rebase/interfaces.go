@@ -114,7 +114,7 @@ func (c claudeFns) ApplyAdjustments(dir string, ctx ApplyContext) (string, error
 // method maps to one git or gh invocation. Tests substitute a fake.
 type GitClient interface {
 	FetchAndCheckout(ref string) (*github.PR, error)
-	FetchAndCheckoutLocal(ref string, opts github.LocalOptions) (*github.PR, error)
+	OpenLocalPR(ref string, opts github.LocalOptions) (*github.PR, error)
 	FetchBranch(dir, branch string) error
 	MergeBase(dir, ref1, ref2 string) (string, error)
 	CommitsInRange(dir, rangeExpr string) ([]github.Commit, error)
@@ -126,49 +126,6 @@ type GitClient interface {
 	AddPRComment(owner, repo string, number int, body string) (string, error)
 }
 
-// defaultGitClient is the production GitClient backed by the github package.
-type defaultGitClient struct{}
-
-func (defaultGitClient) FetchAndCheckout(ref string) (*github.PR, error) {
-	return github.FetchAndCheckout(ref)
-}
-
-func (defaultGitClient) FetchAndCheckoutLocal(ref string, opts github.LocalOptions) (*github.PR, error) {
-	return github.OpenLocalPR(ref, opts)
-}
-
-func (defaultGitClient) FetchBranch(dir, branch string) error {
-	return github.FetchBranch(dir, branch)
-}
-
-func (defaultGitClient) MergeBase(dir, ref1, ref2 string) (string, error) {
-	return github.MergeBase(dir, ref1, ref2)
-}
-
-func (defaultGitClient) CommitsInRange(dir, rangeExpr string) ([]github.Commit, error) {
-	return github.CommitsInRange(dir, rangeExpr)
-}
-
-func (defaultGitClient) StartRebase(dir, onto string) (github.RebaseState, error) {
-	return github.StartRebase(dir, onto)
-}
-
-func (defaultGitClient) RebaseContinue(dir string) (github.RebaseState, error) {
-	return github.RebaseContinue(dir)
-}
-
-func (defaultGitClient) RebaseAbort(dir string) error {
-	return github.RebaseAbort(dir)
-}
-
-func (defaultGitClient) ResetHard(dir, ref string) error {
-	return github.ResetHard(dir, ref)
-}
-
-func (defaultGitClient) ForceWithLeasePush(dir, branch string) error {
-	return github.ForceWithLeasePush(dir, branch)
-}
-
-func (defaultGitClient) AddPRComment(owner, repo string, number int, body string) (string, error) {
-	return github.AddPRComment(owner, repo, number, body)
-}
+// The production client satisfies the interface structurally; a drift in
+// either fails the build here rather than at the call site.
+var _ GitClient = github.Client{}

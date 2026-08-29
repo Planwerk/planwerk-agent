@@ -165,7 +165,7 @@ func RunInteractiveIssueCreation(w io.Writer, result *Result, owner, name string
 
 	return github.RunInteractiveIssueCreation(
 		w, os.Stdin, candidates, owner, name, "gap",
-		github.CreateIssue, github.SearchIssues,
+		github.Client{}.CreateIssue, github.Client{}.SearchIssues,
 	)
 }
 

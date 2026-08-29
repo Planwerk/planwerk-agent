@@ -113,7 +113,7 @@ type resolveWikiFn func(owner, name string, wopts patterns.WikiOptions, ropts pa
 func NewRunner(auditFn AuditFn, proposer capture.Proposer) *Runner {
 	return &Runner{
 		Claude:   auditFnAdapter{fn: auditFn},
-		GitHub:   defaultGitHubClient{},
+		GitHub:   github.Client{},
 		Capturer: proposer,
 	}
 }
@@ -305,7 +305,7 @@ func (r *Runner) runCapture(w io.Writer, repo *github.Repo, opts Options, result
 // set (no clone, Cleanup is a no-op), otherwise a fresh temp-dir clone.
 func (r *Runner) openRepo(opts Options) (*github.Repo, error) {
 	if opts.Local {
-		repo, err := r.GitHub.CloneRepoLocal(opts.RepoRef, github.LocalOptions{Force: opts.Force, Prompter: workspace.NewStdinPrompter()})
+		repo, err := r.GitHub.UseLocalRepo(opts.RepoRef, github.LocalOptions{Force: opts.Force, Prompter: workspace.NewStdinPrompter()})
 		if err != nil {
 			return nil, err
 		}
@@ -326,7 +326,7 @@ func (r *Runner) applyIssueDedupe(result *report.ReviewResult, owner, name strin
 	if opts.NoIssueDedupe || r.GitHub == nil {
 		return
 	}
-	existing, err := r.GitHub.ListExistingIssues(owner, name)
+	existing, err := r.GitHub.ListAllIssues(owner, name)
 	if err != nil {
 		slog.Warn("could not list existing issues, skipping dedupe", "err", err)
 		return

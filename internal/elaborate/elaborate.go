@@ -83,7 +83,7 @@ type Runner struct {
 func NewRunner(fn ElaborateFn, reviewFn ReviewFn) *Runner {
 	r := &Runner{
 		Claude: elaborateFnAdapter{fn: fn},
-		GitHub: defaultGitHubClient{},
+		GitHub: github.Client{},
 	}
 	if reviewFn != nil {
 		r.Reviewer = reviewFnAdapter{fn: reviewFn}
@@ -223,7 +223,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 // temp-dir clone of fullName.
 func (r *Runner) openRepo(opts Options, fullName string) (*github.Repo, error) {
 	if opts.Local {
-		repo, err := r.GitHub.CloneRepoLocal(fullName, github.LocalOptions{Force: opts.Force, Prompter: workspace.NewStdinPrompter()})
+		repo, err := r.GitHub.UseLocalRepo(fullName, github.LocalOptions{Force: opts.Force, Prompter: workspace.NewStdinPrompter()})
 		if err != nil {
 			return nil, err
 		}

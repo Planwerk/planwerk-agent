@@ -103,7 +103,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	var localRepo *github.Repo
 	var owner, name string
 	if opts.Local {
-		repo, err := r.GitHub.CloneRepoLocal(opts.RepoRef, github.LocalOptions{Force: opts.Force, Prompter: workspace.NewStdinPrompter()})
+		repo, err := r.GitHub.UseLocalRepo(opts.RepoRef, github.LocalOptions{Force: opts.Force, Prompter: workspace.NewStdinPrompter()})
 		if err != nil {
 			return fmt.Errorf("opening local repository: %w", err)
 		}
@@ -217,7 +217,7 @@ func (r *Runner) openPR(w io.Writer, opts Options, selected []entry, wiki patter
 // applyDefaults fills in the Runner seams with their production defaults.
 func (r *Runner) applyDefaults() {
 	if r.GitHub == nil {
-		r.GitHub = defaultGitHubClient{}
+		r.GitHub = github.Client{}
 	}
 	if r.ResolveWiki == nil {
 		r.ResolveWiki = patterns.ResolveWiki

@@ -114,7 +114,7 @@ const reviewThreadsQuery = `query($owner: String!, $name: String!, $number: Int!
 // covered. Each thread carries its resolved/outdated status, the full comment
 // chain, and the file/line/diff-hunk the thread is anchored to. Use
 // FilterReviewThreads to drop resolved threads and the tool's own findings.
-func FetchReviewThreads(owner, repo string, number int) ([]ReviewThread, error) {
+func (Client) FetchReviewThreads(owner, repo string, number int) ([]ReviewThread, error) {
 	var all []ReviewThread
 	cursor := ""
 	for {
@@ -248,7 +248,7 @@ func signReviewComments(comments []ReviewComment) []ReviewComment {
 // if the marker travels with the comment. Without it, `address` offers every
 // finding this review just posted back as if a human had written it. The marker
 // is an HTML comment, so it stays invisible in the GitHub UI.
-func SubmitPRReview(owner, repo string, number int, commitSHA string, body string, comments []ReviewComment) (string, error) {
+func (Client) SubmitPRReview(owner, repo string, number int, commitSHA string, body string, comments []ReviewComment) (string, error) {
 	fullBody := body + "\n" + reviewSignature
 
 	req := ReviewRequest{

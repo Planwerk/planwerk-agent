@@ -15,7 +15,7 @@ type DiffMap struct {
 }
 
 // FetchDiff retrieves the PR diff using gh api.
-func FetchDiff(owner, repo string, number int) (string, error) {
+func (Client) FetchDiff(owner, repo string, number int) (string, error) {
 	endpoint := fmt.Sprintf("repos/%s/%s/pulls/%d", owner, repo, number)
 	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
 	defer cancel()
