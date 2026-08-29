@@ -12,105 +12,8 @@ import (
 	"time"
 
 	"github.com/planwerk/planwerk-agent/internal/github"
+	"github.com/planwerk/planwerk-agent/internal/github/githubtest"
 )
-
-// fakeGitHub is a scripted GitHubClient. checkResponses[i] is what the i-th
-// ListChecks call returns; the head SHA the fix loop polls advances along
-// headSequence as fix iterations push commits.
-type fakeGitHub struct {
-	checkResponses [][]github.CheckRun
-	checkErr       error
-	checkIdx       atomic.Int32
-
-	logs    string
-	logsErr error
-
-	headSequence []string
-	headIdx      atomic.Int32
-
-	prTitle      string
-	prBranch     string
-	prBaseBranch string
-	prHeadSHA    string
-	cloneDir     string // optional: directory used as PR.Dir; "" → no-op cleanup
-	cloneCalls   atomic.Int32
-	localCalls   atomic.Int32
-	pullCalls    atomic.Int32
-
-	commentErr    error // when set, AddPRComment fails
-	commentCalls  atomic.Int32
-	commentBodies []string // every body passed to AddPRComment, in order
-}
-
-func (f *fakeGitHub) FetchAndCheckout(ref string) (*github.PR, error) {
-	f.cloneCalls.Add(1)
-	return f.makePR(ref, false)
-}
-
-// OpenLocalPR mirrors github.OpenLocalPR: it returns a Local PR so
-// Cleanup is a no-op and the working tree survives across iterations.
-func (f *fakeGitHub) OpenLocalPR(ref string, _ github.LocalOptions) (*github.PR, error) {
-	f.localCalls.Add(1)
-	return f.makePR(ref, true)
-}
-
-// PullFFOnly records a fast-forward refresh of the local checkout.
-func (f *fakeGitHub) PullFFOnly(_, _ string) error {
-	f.pullCalls.Add(1)
-	return nil
-}
-
-func (f *fakeGitHub) makePR(ref string, local bool) (*github.PR, error) {
-	owner, repo, number, err := github.ParseRef(ref)
-	if err != nil {
-		return nil, err
-	}
-	return &github.PR{
-		Owner:      owner,
-		Repo:       repo,
-		Number:     number,
-		Title:      f.prTitle,
-		HeadBranch: f.prBranch,
-		BaseBranch: f.prBaseBranch,
-		HeadSHA:    f.prHeadSHA,
-		Dir:        f.cloneDir,
-		Local:      local,
-	}, nil
-}
-
-func (f *fakeGitHub) ListChecks(_, _, _ string) ([]github.CheckRun, error) {
-	if f.checkErr != nil {
-		return nil, f.checkErr
-	}
-	i := int(f.checkIdx.Add(1)) - 1
-	if i >= len(f.checkResponses) {
-		i = len(f.checkResponses) - 1
-	}
-	return f.checkResponses[i], nil
-}
-
-func (f *fakeGitHub) FailedRunLogs(_, _ string, _ int64) (string, error) {
-	return f.logs, f.logsErr
-}
-
-func (f *fakeGitHub) BranchHeadSHA(_, _, _ string) (string, error) {
-	i := int(f.headIdx.Add(1)) - 1
-	if i >= len(f.headSequence) {
-		i = len(f.headSequence) - 1
-	}
-	return f.headSequence[i], nil
-}
-
-// AddPRComment records each posted fix-report body and returns a canned URL,
-// unless commentErr is set to simulate a GitHub failure.
-func (f *fakeGitHub) AddPRComment(owner, name string, number int, body string) (string, error) {
-	f.commentCalls.Add(1)
-	if f.commentErr != nil {
-		return "", f.commentErr
-	}
-	f.commentBodies = append(f.commentBodies, body)
-	return fmt.Sprintf("https://github.com/%s/%s/pull/%d#issuecomment-1", owner, name, number), nil
-}
 
 type fakeClaude struct {
 	called atomic.Int32
@@ -150,7 +53,7 @@ func failing(id int64, name string) github.CheckRun {
 		HTMLURL: "https://example.com/" + name, WorkflowRunID: 99}
 }
 
-func newRunner(gh *fakeGitHub, cl *fakeClaude, pr *fakePrompter) *Runner {
+func newRunner(gh *githubtest.Fake, cl *fakeClaude, pr *fakePrompter) *Runner {
 	return &Runner{
 		Claude:   cl,
 		GitHub:   gh,
@@ -160,12 +63,10 @@ func newRunner(gh *fakeGitHub, cl *fakeClaude, pr *fakePrompter) *Runner {
 }
 
 func TestRun_AllChecksAlreadyPassing(t *testing.T) {
-	gh := &fakeGitHub{
-		prTitle:        "demo",
-		prBranch:       "feat/x",
-		prHeadSHA:      "abc1234",
-		checkResponses: [][]github.CheckRun{{passing("lint"), passing("test")}},
-		headSequence:   []string{"abc1234"},
+	gh := &githubtest.Fake{
+		PR:       github.PR{Title: "demo", HeadBranch: "feat/x", HeadSHA: "abc1234"},
+		Checks:   [][]github.CheckRun{{passing("lint"), passing("test")}},
+		HeadSHAs: []string{"abc1234"},
 	}
 	cl := &fakeClaude{}
 	r := newRunner(gh, cl, &fakePrompter{})
@@ -183,17 +84,15 @@ func TestRun_AllChecksAlreadyPassing(t *testing.T) {
 }
 
 func TestRun_FixesFailureInOneIteration(t *testing.T) {
-	gh := &fakeGitHub{
-		prTitle:   "demo",
-		prBranch:  "feat/x",
-		prHeadSHA: "old",
+	gh := &githubtest.Fake{
+		PR: github.PR{Title: "demo", HeadBranch: "feat/x", HeadSHA: "old"},
 		// Iteration 1 sees a failure; iteration 2 (post-push) sees green.
-		checkResponses: [][]github.CheckRun{
+		Checks: [][]github.CheckRun{
 			{failing(1, "test"), passing("lint")},
 			{passing("test"), passing("lint")},
 		},
-		headSequence: []string{"new"},
-		logs:         "FAIL: TestX\n",
+		HeadSHAs: []string{"new"},
+		Logs:     "FAIL: TestX\n",
 	}
 	cl := &fakeClaude{report: "fixed TestX"}
 	r := newRunner(gh, cl, &fakePrompter{})
@@ -230,16 +129,14 @@ const fixReport = `## Fix Report (iteration 1)
 STATUS: DONE`
 
 func TestRun_PostsFixComment(t *testing.T) {
-	gh := &fakeGitHub{
-		prTitle:   "demo",
-		prBranch:  "feat/x",
-		prHeadSHA: "old",
-		checkResponses: [][]github.CheckRun{
+	gh := &githubtest.Fake{
+		PR: github.PR{Title: "demo", HeadBranch: "feat/x", HeadSHA: "old"},
+		Checks: [][]github.CheckRun{
 			{failing(1, "test")},
 			{passing("test")},
 		},
-		headSequence: []string{"new"},
-		logs:         "FAIL: TestX\n",
+		HeadSHAs: []string{"new"},
+		Logs:     "FAIL: TestX\n",
 	}
 	cl := &fakeClaude{report: fixReport}
 	r := newRunner(gh, cl, &fakePrompter{})
@@ -248,10 +145,10 @@ func TestRun_PostsFixComment(t *testing.T) {
 	if err := r.Run(&buf, Options{PRRef: "o/r#7"}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
-	if gh.commentCalls.Load() != 1 {
-		t.Fatalf("AddPRComment called %d times, want 1", gh.commentCalls.Load())
+	if gh.Count("AddPRComment") != 1 {
+		t.Fatalf("AddPRComment called %d times, want 1", gh.Count("AddPRComment"))
 	}
-	body := gh.commentBodies[0]
+	body := gh.Comments()[0]
 	if !strings.Contains(body, "## Fix Report (iteration 1)") {
 		t.Errorf("posted comment must keep the report heading as its title:\n%s", body)
 	}
@@ -267,16 +164,14 @@ func TestRun_PostsFixComment(t *testing.T) {
 }
 
 func TestRun_NoFixCommentSkipsComment(t *testing.T) {
-	gh := &fakeGitHub{
-		prTitle:   "demo",
-		prBranch:  "feat/x",
-		prHeadSHA: "old",
-		checkResponses: [][]github.CheckRun{
+	gh := &githubtest.Fake{
+		PR: github.PR{Title: "demo", HeadBranch: "feat/x", HeadSHA: "old"},
+		Checks: [][]github.CheckRun{
 			{failing(1, "test")},
 			{passing("test")},
 		},
-		headSequence: []string{"new"},
-		logs:         "FAIL: TestX\n",
+		HeadSHAs: []string{"new"},
+		Logs:     "FAIL: TestX\n",
 	}
 	cl := &fakeClaude{report: fixReport}
 	r := newRunner(gh, cl, &fakePrompter{})
@@ -284,23 +179,21 @@ func TestRun_NoFixCommentSkipsComment(t *testing.T) {
 	if err := r.Run(io.Discard, Options{PRRef: "o/r#7", NoFixComment: true}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
-	if gh.commentCalls.Load() != 0 {
-		t.Errorf("AddPRComment called %d times, want 0 with --no-fix-comment", gh.commentCalls.Load())
+	if gh.Count("AddPRComment") != 0 {
+		t.Errorf("AddPRComment called %d times, want 0 with --no-fix-comment", gh.Count("AddPRComment"))
 	}
 }
 
 func TestRun_FixCommentFailureIsNonFatal(t *testing.T) {
-	gh := &fakeGitHub{
-		prTitle:   "demo",
-		prBranch:  "feat/x",
-		prHeadSHA: "old",
-		checkResponses: [][]github.CheckRun{
+	gh := &githubtest.Fake{
+		PR: github.PR{Title: "demo", HeadBranch: "feat/x", HeadSHA: "old"},
+		Checks: [][]github.CheckRun{
 			{failing(1, "test")},
 			{passing("test")},
 		},
-		headSequence: []string{"new"},
-		logs:         "FAIL: TestX\n",
-		commentErr:   errors.New("github down"),
+		HeadSHAs:   []string{"new"},
+		Logs:       "FAIL: TestX\n",
+		CommentErr: errors.New("github down"),
 	}
 	cl := &fakeClaude{report: fixReport}
 	r := newRunner(gh, cl, &fakePrompter{})
@@ -319,13 +212,11 @@ func TestRun_FixCommentFailureIsNonFatal(t *testing.T) {
 
 func TestRun_PostsEscalatedFixComment(t *testing.T) {
 	const blocked = "## Fix Report (iteration 1)\n\n### Status\nSTATUS: BLOCKED"
-	gh := &fakeGitHub{
-		prTitle:        "demo",
-		prBranch:       "feat/x",
-		prHeadSHA:      "old",
-		checkResponses: [][]github.CheckRun{{failing(1, "test")}},
-		headSequence:   []string{"new"},
-		logs:           "FAIL: TestX\n",
+	gh := &githubtest.Fake{
+		PR:       github.PR{Title: "demo", HeadBranch: "feat/x", HeadSHA: "old"},
+		Checks:   [][]github.CheckRun{{failing(1, "test")}},
+		HeadSHAs: []string{"new"},
+		Logs:     "FAIL: TestX\n",
 	}
 	cl := &fakeClaude{report: blocked}
 	r := newRunner(gh, cl, &fakePrompter{})
@@ -336,21 +227,19 @@ func TestRun_PostsEscalatedFixComment(t *testing.T) {
 	}
 	// An escalated report must still reach the PR so the human who has to
 	// intervene sees why the loop stopped.
-	if gh.commentCalls.Load() != 1 {
-		t.Errorf("AddPRComment called %d times, want 1 — an escalated report must still be posted", gh.commentCalls.Load())
+	if gh.Count("AddPRComment") != 1 {
+		t.Errorf("AddPRComment called %d times, want 1 — an escalated report must still be posted", gh.Count("AddPRComment"))
 	}
 }
 
 func TestRun_ExhaustsMaxIterations(t *testing.T) {
 	failures := []github.CheckRun{failing(1, "test")}
-	gh := &fakeGitHub{
-		prTitle:        "demo",
-		prBranch:       "b",
-		prHeadSHA:      "sha0",
-		checkResponses: [][]github.CheckRun{failures, failures, failures},
+	gh := &githubtest.Fake{
+		PR:     github.PR{Title: "demo", HeadBranch: "b", HeadSHA: "sha0"},
+		Checks: [][]github.CheckRun{failures, failures, failures},
 		// Each iteration advances HEAD so the loop doesn't bail on
 		// "no new commit detected".
-		headSequence: []string{"sha1", "sha2"},
+		HeadSHAs: []string{"sha1", "sha2"},
 	}
 	cl := &fakeClaude{report: "tried"}
 	r := newRunner(gh, cl, &fakePrompter{})
@@ -365,13 +254,11 @@ func TestRun_ExhaustsMaxIterations(t *testing.T) {
 }
 
 func TestRun_StopsWhenNoNewCommitPushed(t *testing.T) {
-	gh := &fakeGitHub{
-		prTitle:        "demo",
-		prBranch:       "b",
-		prHeadSHA:      "stuck",
-		checkResponses: [][]github.CheckRun{{failing(1, "test")}},
+	gh := &githubtest.Fake{
+		PR:     github.PR{Title: "demo", HeadBranch: "b", HeadSHA: "stuck"},
+		Checks: [][]github.CheckRun{{failing(1, "test")}},
 		// Head never advances → waitForNewHead returns the same SHA.
-		headSequence: []string{"stuck"},
+		HeadSHAs: []string{"stuck"},
 	}
 	cl := &fakeClaude{report: "no-op"}
 	r := newRunner(gh, cl, &fakePrompter{})
@@ -384,13 +271,11 @@ func TestRun_StopsWhenNoNewCommitPushed(t *testing.T) {
 
 func TestRun_InteractiveStopsOnUserNo(t *testing.T) {
 	failures := []github.CheckRun{failing(1, "test")}
-	gh := &fakeGitHub{
-		prTitle:   "demo",
-		prBranch:  "b",
-		prHeadSHA: "sha0",
+	gh := &githubtest.Fake{
+		PR: github.PR{Title: "demo", HeadBranch: "b", HeadSHA: "sha0"},
 		// Two iterations of failures so the prompt fires before the second.
-		checkResponses: [][]github.CheckRun{failures, failures},
-		headSequence:   []string{"sha1"},
+		Checks:   [][]github.CheckRun{failures, failures},
+		HeadSHAs: []string{"sha1"},
 	}
 	cl := &fakeClaude{report: "patch"}
 	pr := &fakePrompter{answers: []bool{false}}
@@ -409,13 +294,11 @@ func TestRun_InteractiveStopsOnUserNo(t *testing.T) {
 }
 
 func TestRun_PrintPromptWritesPromptAndSkipsClaude(t *testing.T) {
-	gh := &fakeGitHub{
-		prTitle:        "demo",
-		prBranch:       "feat/x",
-		prHeadSHA:      "abc1234",
-		checkResponses: [][]github.CheckRun{{failing(1, "test"), passing("lint")}},
-		headSequence:   []string{"abc1234"},
-		logs:           "FAIL: TestX\n",
+	gh := &githubtest.Fake{
+		PR:       github.PR{Title: "demo", HeadBranch: "feat/x", HeadSHA: "abc1234"},
+		Checks:   [][]github.CheckRun{{failing(1, "test"), passing("lint")}},
+		HeadSHAs: []string{"abc1234"},
+		Logs:     "FAIL: TestX\n",
 	}
 	cl := &fakeClaude{}
 	r := newRunner(gh, cl, &fakePrompter{})
@@ -431,8 +314,8 @@ func TestRun_PrintPromptWritesPromptAndSkipsClaude(t *testing.T) {
 	if cl.called.Load() != 0 {
 		t.Errorf("Claude.Fix called %d times in print-prompt mode, want 0", cl.called.Load())
 	}
-	if gh.cloneCalls.Load() != 1 {
-		t.Errorf("FetchAndCheckout called %d times, want 1 (no fresh checkout for Claude)", gh.cloneCalls.Load())
+	if gh.Count("FetchAndCheckout") != 1 {
+		t.Errorf("FetchAndCheckout called %d times, want 1 (no fresh checkout for Claude)", gh.Count("FetchAndCheckout"))
 	}
 	out := buf.String()
 	if !strings.Contains(out, "PROMPT pr=owner/repo#7 head=abc1234 iter=1 failed=1") {
@@ -447,12 +330,10 @@ func TestRun_PrintPromptWritesPromptAndSkipsClaude(t *testing.T) {
 }
 
 func TestRun_PrintPromptWithoutBuilderErrors(t *testing.T) {
-	gh := &fakeGitHub{
-		prTitle:        "demo",
-		prBranch:       "b",
-		prHeadSHA:      "sha0",
-		checkResponses: [][]github.CheckRun{{failing(1, "test")}},
-		headSequence:   []string{"sha0"},
+	gh := &githubtest.Fake{
+		PR:       github.PR{Title: "demo", HeadBranch: "b", HeadSHA: "sha0"},
+		Checks:   [][]github.CheckRun{{failing(1, "test")}},
+		HeadSHAs: []string{"sha0"},
 	}
 	cl := &fakeClaude{}
 	r := newRunner(gh, cl, &fakePrompter{})
@@ -465,12 +346,10 @@ func TestRun_PrintPromptWithoutBuilderErrors(t *testing.T) {
 }
 
 func TestRun_PrintPromptAllGreenStillExits(t *testing.T) {
-	gh := &fakeGitHub{
-		prTitle:        "demo",
-		prBranch:       "b",
-		prHeadSHA:      "sha0",
-		checkResponses: [][]github.CheckRun{{passing("test")}},
-		headSequence:   []string{"sha0"},
+	gh := &githubtest.Fake{
+		PR:       github.PR{Title: "demo", HeadBranch: "b", HeadSHA: "sha0"},
+		Checks:   [][]github.CheckRun{{passing("test")}},
+		HeadSHAs: []string{"sha0"},
 	}
 	cl := &fakeClaude{}
 	r := newRunner(gh, cl, &fakePrompter{})
@@ -488,13 +367,11 @@ func TestRun_PrintPromptAllGreenStillExits(t *testing.T) {
 // barePromptRunner returns a fix.Runner whose GitHub fake clones into a
 // throwaway dir so PrintBarePrompt can run detect.Technologies +
 // patterns.LoadFiltered without hitting the network.
-func barePromptRunner(t *testing.T) (*Runner, *fakeGitHub) {
+func barePromptRunner(t *testing.T) (*Runner, *githubtest.Fake) {
 	t.Helper()
-	gh := &fakeGitHub{
-		prTitle:   "demo",
-		prBranch:  "feat/x",
-		prHeadSHA: "abc1234",
-		cloneDir:  t.TempDir(),
+	gh := &githubtest.Fake{
+		PR:  github.PR{Title: "demo", HeadBranch: "feat/x", HeadSHA: "abc1234"},
+		Dir: t.TempDir(),
 	}
 	r := newRunner(gh, &fakeClaude{}, &fakePrompter{})
 	return r, gh
@@ -596,12 +473,10 @@ Bare prompts must surface patterns through BareContext.
 }
 
 func TestRun_DryRunSkipsClaude(t *testing.T) {
-	gh := &fakeGitHub{
-		prTitle:        "demo",
-		prBranch:       "b",
-		prHeadSHA:      "sha0",
-		checkResponses: [][]github.CheckRun{{failing(1, "test")}},
-		headSequence:   []string{"sha0"},
+	gh := &githubtest.Fake{
+		PR:       github.PR{Title: "demo", HeadBranch: "b", HeadSHA: "sha0"},
+		Checks:   [][]github.CheckRun{{failing(1, "test")}},
+		HeadSHAs: []string{"sha0"},
 	}
 	cl := &fakeClaude{}
 	r := newRunner(gh, cl, &fakePrompter{})
@@ -620,12 +495,10 @@ func TestRun_DryRunSkipsClaude(t *testing.T) {
 
 func TestRun_PendingChecksWaitThenSucceed(t *testing.T) {
 	pending := github.CheckRun{ID: 1, Name: "test", Status: "in_progress"}
-	gh := &fakeGitHub{
-		prTitle:        "demo",
-		prBranch:       "b",
-		prHeadSHA:      "sha0",
-		checkResponses: [][]github.CheckRun{{pending}, {pending}, {passing("test")}},
-		headSequence:   []string{"sha0"},
+	gh := &githubtest.Fake{
+		PR:       github.PR{Title: "demo", HeadBranch: "b", HeadSHA: "sha0"},
+		Checks:   [][]github.CheckRun{{pending}, {pending}, {passing("test")}},
+		HeadSHAs: []string{"sha0"},
 	}
 	cl := &fakeClaude{}
 	var sleeps atomic.Int32
@@ -641,12 +514,10 @@ func TestRun_PendingChecksWaitThenSucceed(t *testing.T) {
 }
 
 func TestRun_PropagatesClaudeError(t *testing.T) {
-	gh := &fakeGitHub{
-		prTitle:        "demo",
-		prBranch:       "b",
-		prHeadSHA:      "sha0",
-		checkResponses: [][]github.CheckRun{{failing(1, "test")}},
-		headSequence:   []string{"sha1"},
+	gh := &githubtest.Fake{
+		PR:       github.PR{Title: "demo", HeadBranch: "b", HeadSHA: "sha0"},
+		Checks:   [][]github.CheckRun{{failing(1, "test")}},
+		HeadSHAs: []string{"sha1"},
 	}
 	cl := &fakeClaude{err: fmt.Errorf("boom")}
 	r := newRunner(gh, cl, &fakePrompter{})
@@ -689,16 +560,14 @@ Wired patterns must reach the fix Context.
 		t.Fatalf("seeding pattern file: %v", err)
 	}
 
-	gh := &fakeGitHub{
-		prTitle:   "demo",
-		prBranch:  "feat/x",
-		prHeadSHA: "old",
-		checkResponses: [][]github.CheckRun{
+	gh := &githubtest.Fake{
+		PR: github.PR{Title: "demo", HeadBranch: "feat/x", HeadSHA: "old"},
+		Checks: [][]github.CheckRun{
 			{failing(1, "test")},
 			{passing("test")},
 		},
-		headSequence: []string{"new"},
-		logs:         "FAIL: TestX\n",
+		HeadSHAs: []string{"new"},
+		Logs:     "FAIL: TestX\n",
 	}
 	cl := &fakeClaude{report: "fixed"}
 	r := newRunner(gh, cl, &fakePrompter{})
@@ -751,16 +620,13 @@ func TestStdinPrompter_YesNo(t *testing.T) {
 
 func TestRunLocalSkipsReclone(t *testing.T) {
 	failures := []github.CheckRun{failing(1, "test")}
-	gh := &fakeGitHub{
-		prTitle:        "demo",
-		prBranch:       "feat/x",
-		prBaseBranch:   "main",
-		prHeadSHA:      "sha0",
-		cloneDir:       t.TempDir(),
-		checkResponses: [][]github.CheckRun{failures, failures, failures},
+	gh := &githubtest.Fake{
+		PR:     github.PR{Title: "demo", HeadBranch: "feat/x", BaseBranch: "main", HeadSHA: "sha0"},
+		Dir:    t.TempDir(),
+		Checks: [][]github.CheckRun{failures, failures, failures},
 		// Each iteration advances HEAD so the loop reaches the iteration cap
 		// instead of bailing on "no new commit".
-		headSequence: []string{"s1", "s2", "s3"},
+		HeadSHAs: []string{"s1", "s2", "s3"},
 	}
 	cl := &fakeClaude{report: "tried"}
 	r := newRunner(gh, cl, &fakePrompter{})
@@ -783,29 +649,27 @@ func TestRunLocalSkipsReclone(t *testing.T) {
 	if cl.ctx.BaseBranch != "main" {
 		t.Errorf("Claude context BaseBranch = %q, want \"main\"", cl.ctx.BaseBranch)
 	}
-	if gh.localCalls.Load() != 1 {
-		t.Errorf("OpenLocalPR calls = %d, want 1 (initial metadata fetch)", gh.localCalls.Load())
+	if gh.Count("OpenLocalPR") != 1 {
+		t.Errorf("OpenLocalPR calls = %d, want 1 (initial metadata fetch)", gh.Count("OpenLocalPR"))
 	}
-	if gh.cloneCalls.Load() != 0 {
-		t.Errorf("FetchAndCheckout (temp-dir re-clone) calls = %d, want 0 in local mode", gh.cloneCalls.Load())
+	if gh.Count("FetchAndCheckout") != 0 {
+		t.Errorf("FetchAndCheckout (temp-dir re-clone) calls = %d, want 0 in local mode", gh.Count("FetchAndCheckout"))
 	}
-	if gh.pullCalls.Load() != 2 {
-		t.Errorf("PullFFOnly calls = %d, want 2 (one per iteration after the first)", gh.pullCalls.Load())
+	if gh.Count("PullFFOnly") != 2 {
+		t.Errorf("PullFFOnly calls = %d, want 2 (one per iteration after the first)", gh.Count("PullFFOnly"))
 	}
 	// The local working tree must survive: Cleanup is a no-op when Local.
-	if _, err := os.Stat(gh.cloneDir); err != nil {
+	if _, err := os.Stat(gh.Dir); err != nil {
 		t.Fatalf("local checkout must survive the fix loop: %v", err)
 	}
 }
 
 func TestRunLocalAllChecksPassingNoPull(t *testing.T) {
-	gh := &fakeGitHub{
-		prTitle:        "demo",
-		prBranch:       "feat/x",
-		prHeadSHA:      "abc1234",
-		cloneDir:       t.TempDir(),
-		checkResponses: [][]github.CheckRun{{passing("lint"), passing("test")}},
-		headSequence:   []string{"abc1234"},
+	gh := &githubtest.Fake{
+		PR:       github.PR{Title: "demo", HeadBranch: "feat/x", HeadSHA: "abc1234"},
+		Dir:      t.TempDir(),
+		Checks:   [][]github.CheckRun{{passing("lint"), passing("test")}},
+		HeadSHAs: []string{"abc1234"},
 	}
 	cl := &fakeClaude{}
 	r := newRunner(gh, cl, &fakePrompter{})
@@ -813,14 +677,14 @@ func TestRunLocalAllChecksPassingNoPull(t *testing.T) {
 	if err := r.Run(io.Discard, Options{PRRef: "o/r#1", Local: true}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
-	if gh.localCalls.Load() != 1 {
-		t.Errorf("OpenLocalPR calls = %d, want 1", gh.localCalls.Load())
+	if gh.Count("OpenLocalPR") != 1 {
+		t.Errorf("OpenLocalPR calls = %d, want 1", gh.Count("OpenLocalPR"))
 	}
-	if gh.cloneCalls.Load() != 0 {
-		t.Errorf("FetchAndCheckout calls = %d, want 0", gh.cloneCalls.Load())
+	if gh.Count("FetchAndCheckout") != 0 {
+		t.Errorf("FetchAndCheckout calls = %d, want 0", gh.Count("FetchAndCheckout"))
 	}
-	if gh.pullCalls.Load() != 0 {
-		t.Errorf("PullFFOnly calls = %d, want 0 when checks already pass", gh.pullCalls.Load())
+	if gh.Count("PullFFOnly") != 0 {
+		t.Errorf("PullFFOnly calls = %d, want 0 when checks already pass", gh.Count("PullFFOnly"))
 	}
 }
 
@@ -831,12 +695,10 @@ func TestRunLocalAllChecksPassingNoPull(t *testing.T) {
 // loop on a sleep nothing would end, and through ship the whole fleet run with
 // it.
 func TestRun_NoChecksEverReportedStopsCleanly(t *testing.T) {
-	gh := &fakeGitHub{
-		prTitle:        "demo",
-		prBranch:       "feat/x",
-		prHeadSHA:      "abc1234",
-		checkResponses: [][]github.CheckRun{{}}, // every poll: no checks at all
-		headSequence:   []string{"abc1234"},
+	gh := &githubtest.Fake{
+		PR:       github.PR{Title: "demo", HeadBranch: "feat/x", HeadSHA: "abc1234"},
+		Checks:   [][]github.CheckRun{{}}, // every poll: no checks at all
+		HeadSHAs: []string{"abc1234"},
 	}
 	cl := &fakeClaude{}
 	r := newRunner(gh, cl, &fakePrompter{})
@@ -866,8 +728,8 @@ func TestRun_NoChecksEverReportedStopsCleanly(t *testing.T) {
 // TestWaitForChecks_LateCheckStillCounts guards the other direction: a check
 // that shows up after a few empty polls resets the budget and is waited on.
 func TestWaitForChecks_LateCheckStillCounts(t *testing.T) {
-	gh := &fakeGitHub{
-		checkResponses: [][]github.CheckRun{{}, {}, {passing("lint")}},
+	gh := &githubtest.Fake{
+		Checks: [][]github.CheckRun{{}, {}, {passing("lint")}},
 	}
 	r := newRunner(gh, &fakeClaude{}, &fakePrompter{})
 
@@ -887,16 +749,14 @@ func TestRun_QuotedStatusDoesNotEscalate(t *testing.T) {
 	// standalone STATUS line counts, so the earlier BLOCKED must not stop the
 	// loop.
 	const quoted = "## Fix Report (iteration 2)\n\n### Previous iteration\n- STATUS: BLOCKED\n\n### Status\nSTATUS: DONE"
-	gh := &fakeGitHub{
-		prTitle:   "demo",
-		prBranch:  "feat/x",
-		prHeadSHA: "old",
-		checkResponses: [][]github.CheckRun{
+	gh := &githubtest.Fake{
+		PR: github.PR{Title: "demo", HeadBranch: "feat/x", HeadSHA: "old"},
+		Checks: [][]github.CheckRun{
 			{failing(1, "test")},
 			{passing("test")},
 		},
-		headSequence: []string{"new"},
-		logs:         "FAIL: TestX\n",
+		HeadSHAs: []string{"new"},
+		Logs:     "FAIL: TestX\n",
 	}
 	cl := &fakeClaude{report: quoted}
 	r := newRunner(gh, cl, &fakePrompter{})
@@ -910,13 +770,11 @@ func TestRun_StatusWithTrailingReasonEscalates(t *testing.T) {
 	// A verdict followed by a reason on the same line ("STATUS: BLOCKED — the
 	// registry is unreachable") is still that verdict.
 	const blocked = "## Fix Report (iteration 1)\n\n### Status\nSTATUS: BLOCKED — the registry is unreachable"
-	gh := &fakeGitHub{
-		prTitle:        "demo",
-		prBranch:       "feat/x",
-		prHeadSHA:      "old",
-		checkResponses: [][]github.CheckRun{{failing(1, "test")}},
-		headSequence:   []string{"new"},
-		logs:           "FAIL: TestX\n",
+	gh := &githubtest.Fake{
+		PR:       github.PR{Title: "demo", HeadBranch: "feat/x", HeadSHA: "old"},
+		Checks:   [][]github.CheckRun{{failing(1, "test")}},
+		HeadSHAs: []string{"new"},
+		Logs:     "FAIL: TestX\n",
 	}
 	cl := &fakeClaude{report: blocked}
 	r := newRunner(gh, cl, &fakePrompter{})

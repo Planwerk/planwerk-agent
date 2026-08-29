@@ -9,39 +9,11 @@ import (
 
 	"github.com/planwerk/planwerk-agent/internal/cache"
 	"github.com/planwerk/planwerk-agent/internal/github"
+	"github.com/planwerk/planwerk-agent/internal/github/githubtest"
 )
 
 // testModel is the stub model name fakeGenerator reports back to Run.
 const testModel = "model-x"
-
-// fakeGitHub is a test GitHubClient whose CloneRepo / DefaultBranchHEAD behavior
-// is configured per-test via closures.
-type fakeGitHub struct {
-	cloneRepo         func(ref string) (*github.Repo, error)
-	defaultBranchHEAD func(owner, name string) (string, error)
-
-	cloneCalls      atomic.Int32
-	cloneLocalCalls atomic.Int32
-}
-
-func (f *fakeGitHub) CloneRepo(ref string) (*github.Repo, error) {
-	f.cloneCalls.Add(1)
-	return f.cloneRepo(ref)
-}
-
-func (f *fakeGitHub) UseLocalRepo(ref string, _ github.LocalOptions) (*github.Repo, error) {
-	f.cloneLocalCalls.Add(1)
-	repo, err := f.cloneRepo(ref)
-	if err != nil {
-		return nil, err
-	}
-	repo.Local = true
-	return repo, nil
-}
-
-func (f *fakeGitHub) DefaultBranchHEAD(owner, name string) (string, error) {
-	return f.defaultBranchHEAD(owner, name)
-}
 
 // fakeGenerator is a test GlossaryGenerator tracking call count so cache-hit
 // tests can assert Claude was skipped.
@@ -73,9 +45,9 @@ func TestGlossaryRun_CacheMissThenHit(t *testing.T) {
 	t.Cleanup(restore)
 
 	repo := fakeRepo(t, "acme", "widgets")
-	gh := &fakeGitHub{
-		cloneRepo:         func(string) (*github.Repo, error) { return repo, nil },
-		defaultBranchHEAD: func(string, string) (string, error) { return "sha-1", nil },
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(string) (*github.Repo, error) { return repo, nil },
+		DefaultBranchHEADFn: func(string, string) (string, error) { return "sha-1", nil },
 	}
 	gen := &fakeGenerator{
 		fn: func(string, GenerateContext) (string, string, error) {
@@ -99,12 +71,12 @@ func TestGlossaryRun_CacheMissThenHit(t *testing.T) {
 	}
 
 	// Second run: the cache must short-circuit Claude and the clone entirely.
-	gh2 := &fakeGitHub{
-		cloneRepo: func(string) (*github.Repo, error) {
+	gh2 := &githubtest.Fake{
+		CloneRepoFn: func(string) (*github.Repo, error) {
 			t.Fatal("CloneRepo must not be called on cache hit")
 			return nil, nil
 		},
-		defaultBranchHEAD: func(string, string) (string, error) { return "sha-1", nil },
+		DefaultBranchHEADFn: func(string, string) (string, error) { return "sha-1", nil },
 	}
 	gen2 := &fakeGenerator{
 		fn: func(string, GenerateContext) (string, string, error) {
@@ -127,9 +99,9 @@ func TestGlossaryRun_EmptyGenerationIsRejectedAndNotCached(t *testing.T) {
 	restore := cache.SetDir(t.TempDir())
 	t.Cleanup(restore)
 
-	gh := &fakeGitHub{
-		cloneRepo:         func(string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
-		defaultBranchHEAD: func(string, string) (string, error) { return "sha-empty", nil },
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
+		DefaultBranchHEADFn: func(string, string) (string, error) { return "sha-empty", nil },
 	}
 	gen := &fakeGenerator{
 		// A whitespace-only response models what sanitizeGlossary returns for an
@@ -172,9 +144,9 @@ func TestGlossaryRun_LocalUsesCwdAndKeepsTree(t *testing.T) {
 	t.Cleanup(restore)
 
 	repo := fakeRepo(t, "acme", "widgets")
-	gh := &fakeGitHub{
-		cloneRepo:         func(string) (*github.Repo, error) { return repo, nil },
-		defaultBranchHEAD: func(string, string) (string, error) { return "sha-local", nil },
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(string) (*github.Repo, error) { return repo, nil },
+		DefaultBranchHEADFn: func(string, string) (string, error) { return "sha-local", nil },
 	}
 	gen := &fakeGenerator{}
 	runner := &Runner{Claude: gen, GitHub: gh}
@@ -186,11 +158,11 @@ func TestGlossaryRun_LocalUsesCwdAndKeepsTree(t *testing.T) {
 	if err := runner.Run(&bytes.Buffer{}, opts); err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
-	if gh.cloneLocalCalls.Load() != 1 {
-		t.Errorf("UseLocalRepo calls = %d, want 1", gh.cloneLocalCalls.Load())
+	if gh.Count("UseLocalRepo") != 1 {
+		t.Errorf("UseLocalRepo calls = %d, want 1", gh.Count("UseLocalRepo"))
 	}
-	if gh.cloneCalls.Load() != 0 {
-		t.Errorf("CloneRepo (temp-dir clone) calls = %d, want 0 in local mode", gh.cloneCalls.Load())
+	if gh.Count("CloneRepo") != 0 {
+		t.Errorf("CloneRepo (temp-dir clone) calls = %d, want 0 in local mode", gh.Count("CloneRepo"))
 	}
 }
 
@@ -198,9 +170,9 @@ func TestGlossaryRun_GeneratorErrorPropagates(t *testing.T) {
 	restore := cache.SetDir(t.TempDir())
 	t.Cleanup(restore)
 
-	gh := &fakeGitHub{
-		cloneRepo:         func(string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
-		defaultBranchHEAD: func(string, string) (string, error) { return "sha-err", nil },
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
+		DefaultBranchHEADFn: func(string, string) (string, error) { return "sha-err", nil },
 	}
 	gen := &fakeGenerator{
 		fn: func(string, GenerateContext) (string, string, error) {
@@ -226,9 +198,9 @@ func TestGlossaryRun_HEADFailureDisablesCaching(t *testing.T) {
 	restore := cache.SetDir(t.TempDir())
 	t.Cleanup(restore)
 
-	gh := &fakeGitHub{
-		cloneRepo: func(string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
-		defaultBranchHEAD: func(string, string) (string, error) {
+	gh := &githubtest.Fake{
+		CloneRepoFn: func(string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
+		DefaultBranchHEADFn: func(string, string) (string, error) {
 			return "", errors.New("network unreachable")
 		},
 	}
@@ -248,12 +220,12 @@ func TestGlossaryRun_HEADFailureDisablesCaching(t *testing.T) {
 }
 
 func TestGlossaryRun_InvalidRepoRefFailsBeforeHEAD(t *testing.T) {
-	gh := &fakeGitHub{
-		cloneRepo: func(string) (*github.Repo, error) {
+	gh := &githubtest.Fake{
+		CloneRepoFn: func(string) (*github.Repo, error) {
 			t.Fatal("CloneRepo must not be called for an invalid repo ref")
 			return nil, nil
 		},
-		defaultBranchHEAD: func(string, string) (string, error) {
+		DefaultBranchHEADFn: func(string, string) (string, error) {
 			t.Fatal("DefaultBranchHEAD must not be called for an invalid repo ref")
 			return "", nil
 		},

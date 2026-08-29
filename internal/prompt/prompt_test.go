@@ -7,18 +7,11 @@ import (
 	"testing"
 
 	"github.com/planwerk/planwerk-agent/internal/github"
+	"github.com/planwerk/planwerk-agent/internal/github/githubtest"
 )
 
-type fakeGH struct {
-	get func(owner, name string, number int) (*github.Issue, error)
-}
-
-func (f *fakeGH) GetIssue(owner, name string, number int) (*github.Issue, error) {
-	return f.get(owner, name, number)
-}
-
 func TestRun_AutoModePicksFixForAuditTitles(t *testing.T) {
-	gh := &fakeGH{get: func(owner, name string, number int) (*github.Issue, error) {
+	gh := &githubtest.Fake{GetIssueFn: func(owner, name string, number int) (*github.Issue, error) {
 		return &github.Issue{
 			Owner: owner, Name: name, Number: number,
 			Title: "SQL Injection (db/users.go:42)",
@@ -40,7 +33,7 @@ func TestRun_AutoModePicksFixForAuditTitles(t *testing.T) {
 }
 
 func TestRun_AutoModePicksImplementForProposalTitles(t *testing.T) {
-	gh := &fakeGH{get: func(owner, name string, number int) (*github.Issue, error) {
+	gh := &githubtest.Fake{GetIssueFn: func(owner, name string, number int) (*github.Issue, error) {
 		return &github.Issue{
 			Owner: owner, Name: name, Number: number,
 			Title: "Add label registry",
@@ -58,7 +51,7 @@ func TestRun_AutoModePicksImplementForProposalTitles(t *testing.T) {
 }
 
 func TestRun_ExplicitModeOverridesAuto(t *testing.T) {
-	gh := &fakeGH{get: func(owner, name string, number int) (*github.Issue, error) {
+	gh := &githubtest.Fake{GetIssueFn: func(owner, name string, number int) (*github.Issue, error) {
 		return &github.Issue{
 			Owner: owner, Name: name, Number: number,
 			Title: "really an audit",
@@ -76,7 +69,7 @@ func TestRun_ExplicitModeOverridesAuto(t *testing.T) {
 }
 
 func TestRun_IncludesIssueMetadata(t *testing.T) {
-	gh := &fakeGH{get: func(owner, name string, number int) (*github.Issue, error) {
+	gh := &githubtest.Fake{GetIssueFn: func(owner, name string, number int) (*github.Issue, error) {
 		return &github.Issue{
 			Owner: owner, Name: name, Number: number,
 			Title: "T", Body: "Body content.",
@@ -97,7 +90,7 @@ func TestRun_IncludesIssueMetadata(t *testing.T) {
 }
 
 func TestRun_GetIssueErrorPropagates(t *testing.T) {
-	gh := &fakeGH{get: func(owner, name string, number int) (*github.Issue, error) { return nil, errors.New("nope") }}
+	gh := &githubtest.Fake{GetIssueFn: func(owner, name string, number int) (*github.Issue, error) { return nil, errors.New("nope") }}
 	r := &Runner{GitHub: gh}
 	err := r.Run(&bytes.Buffer{}, Options{IssueRef: "acme/widgets#1"})
 	if err == nil || !strings.Contains(err.Error(), "fetching issue") {
@@ -106,7 +99,7 @@ func TestRun_GetIssueErrorPropagates(t *testing.T) {
 }
 
 func TestRun_InvalidRefFailsBeforeFetch(t *testing.T) {
-	gh := &fakeGH{get: func(owner, name string, number int) (*github.Issue, error) {
+	gh := &githubtest.Fake{GetIssueFn: func(owner, name string, number int) (*github.Issue, error) {
 		t.Fatal("GetIssue must not be called for invalid ref")
 		return nil, nil
 	}}

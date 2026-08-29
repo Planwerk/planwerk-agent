@@ -2,6 +2,8 @@ package address
 
 import (
 	"bytes"
+	"github.com/planwerk/planwerk-agent/internal/github"
+	"github.com/planwerk/planwerk-agent/internal/github/githubtest"
 	"io"
 	"strings"
 	"testing"
@@ -12,7 +14,7 @@ import (
 // without hitting the network.
 func barePromptRunner(t *testing.T) *Runner {
 	t.Helper()
-	gh := &fakeGitHub{prBranch: "feat/x", cloneDir: t.TempDir()}
+	gh := &githubtest.Fake{PR: github.PR{HeadBranch: "feat/x"}, Dir: t.TempDir()}
 	return newRunner(gh, &fakeClaude{})
 }
 

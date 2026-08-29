@@ -12,51 +12,12 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/cache"
 	"github.com/planwerk/planwerk-agent/internal/capture"
 	"github.com/planwerk/planwerk-agent/internal/github"
+	"github.com/planwerk/planwerk-agent/internal/github/githubtest"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
 const testDefaultBranchSHA = "sha"
-
-// fakeGitHub is a test GitHubClient whose CloneRepo / DefaultBranchHEAD /
-// ListAllIssues behavior is configured per-test via closures. A nil
-// listExistingIssues returns no existing issues so dedupe is a no-op.
-type fakeGitHub struct {
-	cloneRepo          func(ref string) (*github.Repo, error)
-	defaultBranchHEAD  func(owner, name string) (string, error)
-	listExistingIssues func(owner, name string) ([]github.ExistingIssue, error)
-
-	cloneCalls      atomic.Int32
-	cloneLocalCalls atomic.Int32
-}
-
-func (f *fakeGitHub) CloneRepo(ref string) (*github.Repo, error) {
-	f.cloneCalls.Add(1)
-	return f.cloneRepo(ref)
-}
-
-// UseLocalRepo mirrors github.UseLocalRepo: it returns a Local repo so
-// Cleanup is a no-op.
-func (f *fakeGitHub) UseLocalRepo(ref string, _ github.LocalOptions) (*github.Repo, error) {
-	f.cloneLocalCalls.Add(1)
-	repo, err := f.cloneRepo(ref)
-	if err != nil {
-		return nil, err
-	}
-	repo.Local = true
-	return repo, nil
-}
-
-func (f *fakeGitHub) DefaultBranchHEAD(owner, name string) (string, error) {
-	return f.defaultBranchHEAD(owner, name)
-}
-
-func (f *fakeGitHub) ListAllIssues(owner, name string) ([]github.ExistingIssue, error) {
-	if f.listExistingIssues == nil {
-		return nil, nil
-	}
-	return f.listExistingIssues(owner, name)
-}
 
 // fakeClaude is a test ClaudeAuditor. Audit records how many times it was
 // called so cache-hit tests can assert Claude was skipped.
@@ -123,9 +84,9 @@ func TestAuditRun_CacheMissThenHit(t *testing.T) {
 	patternDir := seedPatternDir(t)
 	repo := fakeRepo(t, "acme", "widgets")
 
-	gh := &fakeGitHub{
-		cloneRepo:         func(ref string) (*github.Repo, error) { return repo, nil },
-		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-audit-1", nil },
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return repo, nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return "sha-audit-1", nil },
 	}
 	claudeMock := &fakeClaude{
 		fn: func(dir string, ctx AuditContext) (*report.ReviewResult, error) {
@@ -170,9 +131,9 @@ func TestAuditRun_NoCacheRefreshesResult(t *testing.T) {
 
 	patternDir := seedPatternDir(t)
 	repo := fakeRepo(t, "acme", "widgets")
-	gh := &fakeGitHub{
-		cloneRepo:         func(ref string) (*github.Repo, error) { return repo, nil },
-		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-audit-nocache", nil },
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return repo, nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return "sha-audit-nocache", nil },
 	}
 
 	// Seed cache with sentinel to confirm NoCache bypasses it. Cache key owner/name
@@ -214,9 +175,9 @@ func TestAuditRun_HEADFailureDisablesCaching(t *testing.T) {
 	t.Cleanup(restore)
 
 	patternDir := seedPatternDir(t)
-	gh := &fakeGitHub{
-		cloneRepo: func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
-		defaultBranchHEAD: func(owner, name string) (string, error) {
+	gh := &githubtest.Fake{
+		CloneRepoFn: func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) {
 			return "", errors.New("network unreachable")
 		},
 	}
@@ -248,9 +209,9 @@ func TestAuditRun_CloneErrorFailsFast(t *testing.T) {
 	restore := cache.SetDir(t.TempDir())
 	t.Cleanup(restore)
 
-	gh := &fakeGitHub{
-		cloneRepo:         func(ref string) (*github.Repo, error) { return nil, errors.New("clone failed") },
-		defaultBranchHEAD: func(owner, name string) (string, error) { return testDefaultBranchSHA, nil },
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return nil, errors.New("clone failed") },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return testDefaultBranchSHA, nil },
 	}
 	runner := &Runner{Claude: &fakeClaude{}, GitHub: gh}
 
@@ -279,12 +240,12 @@ func TestAuditRun_CacheHitSkipsClone(t *testing.T) {
 		t.Fatalf("seeding cache: %v", err)
 	}
 
-	gh := &fakeGitHub{
-		cloneRepo: func(ref string) (*github.Repo, error) {
+	gh := &githubtest.Fake{
+		CloneRepoFn: func(ref string) (*github.Repo, error) {
 			t.Fatal("CloneRepo must not be called on cache hit")
 			return nil, nil
 		},
-		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-skip-clone", nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return "sha-skip-clone", nil },
 	}
 	claudeMock := &fakeClaude{
 		fn: func(dir string, ctx AuditContext) (*report.ReviewResult, error) {
@@ -306,12 +267,12 @@ func TestAuditRun_CacheHitSkipsClone(t *testing.T) {
 }
 
 func TestAuditRun_InvalidRepoRefFailsBeforeHEAD(t *testing.T) {
-	gh := &fakeGitHub{
-		cloneRepo: func(ref string) (*github.Repo, error) {
+	gh := &githubtest.Fake{
+		CloneRepoFn: func(ref string) (*github.Repo, error) {
 			t.Fatal("CloneRepo must not be called for invalid repo ref")
 			return nil, nil
 		},
-		defaultBranchHEAD: func(owner, name string) (string, error) {
+		DefaultBranchHEADFn: func(owner, name string) (string, error) {
 			t.Fatal("DefaultBranchHEAD must not be called for invalid repo ref")
 			return "", nil
 		},
@@ -335,9 +296,9 @@ func TestAuditRun_ClaudeErrorPropagates(t *testing.T) {
 	t.Cleanup(restore)
 
 	patternDir := seedPatternDir(t)
-	gh := &fakeGitHub{
-		cloneRepo:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
-		defaultBranchHEAD: func(owner, name string) (string, error) { return testDefaultBranchSHA, nil },
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return testDefaultBranchSHA, nil },
 	}
 	claudeMock := &fakeClaude{
 		fn: func(dir string, ctx AuditContext) (*report.ReviewResult, error) {
@@ -373,10 +334,10 @@ func TestAuditRun_FiltersFindingsMatchingExistingIssues(t *testing.T) {
 	g1 := GroupFindings([]report.Finding{findings[0]})[0]
 	trackedTitle := buildGroupTitle(g1) + "!"
 
-	gh := &fakeGitHub{
-		cloneRepo:         func(ref string) (*github.Repo, error) { return repo, nil },
-		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-audit-dedupe", nil },
-		listExistingIssues: func(owner, name string) ([]github.ExistingIssue, error) {
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return repo, nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return "sha-audit-dedupe", nil },
+		ListAllIssuesFn: func(owner, name string) ([]github.ExistingIssue, error) {
 			return []github.ExistingIssue{{Title: trackedTitle, URL: "https://example/1"}}, nil
 		},
 	}
@@ -408,10 +369,10 @@ func TestAuditRun_DedupeDisabledByFlag(t *testing.T) {
 	repo := fakeRepo(t, "acme", "widgets")
 
 	listerCalled := false
-	gh := &fakeGitHub{
-		cloneRepo:         func(ref string) (*github.Repo, error) { return repo, nil },
-		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-audit-nodedupe", nil },
-		listExistingIssues: func(owner, name string) ([]github.ExistingIssue, error) {
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return repo, nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return "sha-audit-nodedupe", nil },
+		ListAllIssuesFn: func(owner, name string) ([]github.ExistingIssue, error) {
 			listerCalled = true
 			return nil, nil
 		},
@@ -443,10 +404,10 @@ func TestAuditRun_DedupeListerErrorIsNonFatal(t *testing.T) {
 	patternDir := seedPatternDir(t)
 	repo := fakeRepo(t, "acme", "widgets")
 
-	gh := &fakeGitHub{
-		cloneRepo:         func(ref string) (*github.Repo, error) { return repo, nil },
-		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-audit-listerr", nil },
-		listExistingIssues: func(owner, name string) ([]github.ExistingIssue, error) {
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return repo, nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return "sha-audit-listerr", nil },
+		ListAllIssuesFn: func(owner, name string) ([]github.ExistingIssue, error) {
 			return nil, errors.New("gh boom")
 		},
 	}
@@ -474,9 +435,9 @@ func TestAuditRun_EmptyPatternsIsError(t *testing.T) {
 	restore := cache.SetDir(t.TempDir())
 	t.Cleanup(restore)
 
-	gh := &fakeGitHub{
-		cloneRepo:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
-		defaultBranchHEAD: func(owner, name string) (string, error) { return testDefaultBranchSHA, nil },
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return testDefaultBranchSHA, nil },
 	}
 	claudeMock := &fakeClaude{
 		fn: func(dir string, ctx AuditContext) (*report.ReviewResult, error) {
@@ -542,7 +503,7 @@ func (f *fakeCaptureWriter) ApplyAdditions(dir string, files []patterns.WikiFile
 // resolves to a temp wiki dir (so the gate's wiki.Dir != "" check passes without
 // cloning a real wiki). The fake Clone's HEAD matches the seam's commit so the
 // write-back never treats the wiki as diverged.
-func captureAuditRunner(t *testing.T, gh *fakeGitHub, cl *fakeClaude, cp *fakeCapturer) *Runner {
+func captureAuditRunner(t *testing.T, gh *githubtest.Fake, cl *fakeClaude, cp *fakeCapturer) *Runner {
 	t.Helper()
 	r := &Runner{Claude: cl, GitHub: gh, Capturer: cp}
 	wikiDir := t.TempDir()
@@ -576,9 +537,9 @@ func TestAuditRun_CaptureProposes(t *testing.T) {
 	t.Cleanup(restore)
 
 	patternDir := seedPatternDir(t)
-	gh := &fakeGitHub{
-		cloneRepo:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
-		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-cap-propose", nil },
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return "sha-cap-propose", nil },
 	}
 	cl := findingAuditClaude()
 	cp := &fakeCapturer{result: onePatternProposal()}
@@ -607,9 +568,9 @@ func TestAuditRun_CaptureSkippedWithoutWiki(t *testing.T) {
 	t.Cleanup(restore)
 
 	patternDir := seedPatternDir(t)
-	gh := &fakeGitHub{
-		cloneRepo:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
-		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-cap-nowiki", nil },
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return "sha-cap-nowiki", nil },
 	}
 	cl := findingAuditClaude()
 	cp := &fakeCapturer{result: onePatternProposal()}
@@ -632,9 +593,9 @@ func TestAuditRun_CaptureSkippedByNoCapture(t *testing.T) {
 	t.Cleanup(restore)
 
 	patternDir := seedPatternDir(t)
-	gh := &fakeGitHub{
-		cloneRepo:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
-		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-cap-nocap", nil },
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return "sha-cap-nocap", nil },
 	}
 	cl := findingAuditClaude()
 	cp := &fakeCapturer{result: onePatternProposal()}
@@ -656,9 +617,9 @@ func TestAuditRun_CaptureWikiRoutesAcceptedPages(t *testing.T) {
 	t.Cleanup(restore)
 
 	patternDir := seedPatternDir(t)
-	gh := &fakeGitHub{
-		cloneRepo:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
-		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-cap-write", nil },
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return "sha-cap-write", nil },
 	}
 	cl := findingAuditClaude()
 	cp := &fakeCapturer{result: onePatternProposal()}
@@ -694,9 +655,9 @@ func TestAuditRun_CaptureWikiBypassesCacheToWrite(t *testing.T) {
 	t.Cleanup(restore)
 
 	patternDir := seedPatternDir(t)
-	gh := &fakeGitHub{
-		cloneRepo:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
-		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-cap-cachewrite", nil },
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return "sha-cap-cachewrite", nil },
 	}
 
 	// First run: a plain audit with a resolved wiki populates the cache for this
@@ -742,9 +703,9 @@ func TestAuditRun_CaptureWikiPushFailureIsFatal(t *testing.T) {
 	t.Cleanup(restore)
 
 	patternDir := seedPatternDir(t)
-	gh := &fakeGitHub{
-		cloneRepo:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
-		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-cap-pushfail", nil },
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return "sha-cap-pushfail", nil },
 	}
 	cl := findingAuditClaude()
 	runner := captureAuditRunner(t, gh, cl, &fakeCapturer{result: onePatternProposal()})
@@ -776,11 +737,11 @@ func TestAuditRun_LocalUsesCwd(t *testing.T) {
 
 	patternDir := seedPatternDir(t)
 	dir := t.TempDir()
-	gh := &fakeGitHub{
-		cloneRepo: func(ref string) (*github.Repo, error) {
+	gh := &githubtest.Fake{
+		CloneRepoFn: func(ref string) (*github.Repo, error) {
 			return &github.Repo{Owner: "acme", Name: "widgets", Dir: dir}, nil
 		},
-		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-local-audit", nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return "sha-local-audit", nil },
 	}
 	runner := &Runner{Claude: &fakeClaude{}, GitHub: gh}
 
@@ -792,11 +753,11 @@ func TestAuditRun_LocalUsesCwd(t *testing.T) {
 	if err := runner.Run(&out, opts); err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
-	if gh.cloneLocalCalls.Load() != 1 {
-		t.Errorf("UseLocalRepo calls = %d, want 1", gh.cloneLocalCalls.Load())
+	if gh.Count("UseLocalRepo") != 1 {
+		t.Errorf("UseLocalRepo calls = %d, want 1", gh.Count("UseLocalRepo"))
 	}
-	if gh.cloneCalls.Load() != 0 {
-		t.Errorf("CloneRepo calls = %d, want 0 in local mode", gh.cloneCalls.Load())
+	if gh.Count("CloneRepo") != 0 {
+		t.Errorf("CloneRepo calls = %d, want 0 in local mode", gh.Count("CloneRepo"))
 	}
 	if _, err := os.Stat(dir); err != nil {
 		t.Fatalf("local checkout must survive the run: %v", err)

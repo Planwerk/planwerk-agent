@@ -12,47 +12,12 @@ import (
 
 	"github.com/planwerk/planwerk-agent/internal/cache"
 	"github.com/planwerk/planwerk-agent/internal/github"
+	"github.com/planwerk/planwerk-agent/internal/github/githubtest"
 	"github.com/planwerk/planwerk-agent/internal/planwerk"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
 const testFeatureID = "CC-0001"
-
-// fakeGitHub provides per-test stubs for the GitHubClient interface.
-type fakeGitHub struct {
-	cloneRepo          func(ref string) (*github.Repo, error)
-	defaultBranchHEAD  func(owner, name string) (string, error)
-	listExistingIssues func(owner, name string) ([]github.ExistingIssue, error)
-
-	cloneCalls      atomic.Int32
-	cloneLocalCalls atomic.Int32
-}
-
-func (f *fakeGitHub) CloneRepo(ref string) (*github.Repo, error) {
-	f.cloneCalls.Add(1)
-	return f.cloneRepo(ref)
-}
-
-// UseLocalRepo mirrors github.UseLocalRepo: it returns a Local repo so
-// Cleanup is a no-op.
-func (f *fakeGitHub) UseLocalRepo(ref string, _ github.LocalOptions) (*github.Repo, error) {
-	f.cloneLocalCalls.Add(1)
-	repo, err := f.cloneRepo(ref)
-	if err != nil {
-		return nil, err
-	}
-	repo.Local = true
-	return repo, nil
-}
-func (f *fakeGitHub) DefaultBranchHEAD(owner, name string) (string, error) {
-	return f.defaultBranchHEAD(owner, name)
-}
-func (f *fakeGitHub) ListAllIssues(owner, name string) ([]github.ExistingIssue, error) {
-	if f.listExistingIssues == nil {
-		return nil, nil
-	}
-	return f.listExistingIssues(owner, name)
-}
 
 // fakeClaude records call count so cache-hit tests can assert no Claude run.
 type fakeClaude struct {
@@ -110,9 +75,9 @@ func TestGapRun_CacheMissThenHit(t *testing.T) {
 	makeRepo := repoFactory(t, "acme", "widgets", map[string]planwerk.Feature{
 		"CC-0001-foo.json": {FeatureID: testFeatureID, Title: "Foo"},
 	})
-	gh := &fakeGitHub{
-		cloneRepo:         func(string) (*github.Repo, error) { return makeRepo(), nil },
-		defaultBranchHEAD: func(string, string) (string, error) { return "sha-1", nil },
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(string) (*github.Repo, error) { return makeRepo(), nil },
+		DefaultBranchHEADFn: func(string, string) (string, error) { return "sha-1", nil },
 	}
 	claudeMock := &fakeClaude{
 		fn: func(dir string, ctx AnalysisContext) (*Result, error) {
@@ -173,9 +138,9 @@ func TestGapRun_FilterFeatureUsesDifferentCacheKey(t *testing.T) {
 		"CC-0001-foo.json": {FeatureID: testFeatureID},
 		"CC-0002-bar.json": {FeatureID: "CC-0002"},
 	})
-	gh := &fakeGitHub{
-		cloneRepo:         func(string) (*github.Repo, error) { return makeRepo(), nil },
-		defaultBranchHEAD: func(string, string) (string, error) { return "sha-2", nil },
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(string) (*github.Repo, error) { return makeRepo(), nil },
+		DefaultBranchHEADFn: func(string, string) (string, error) { return "sha-2", nil },
 	}
 	claudeMock := &fakeClaude{
 		fn: func(dir string, ctx AnalysisContext) (*Result, error) {
@@ -207,9 +172,9 @@ func TestGapRun_NoCacheBypass(t *testing.T) {
 	makeRepo := repoFactory(t, "acme", "widgets", map[string]planwerk.Feature{
 		"CC-0001-foo.json": {FeatureID: testFeatureID},
 	})
-	gh := &fakeGitHub{
-		cloneRepo:         func(string) (*github.Repo, error) { return makeRepo(), nil },
-		defaultBranchHEAD: func(string, string) (string, error) { return "sha-3", nil },
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(string) (*github.Repo, error) { return makeRepo(), nil },
+		DefaultBranchHEADFn: func(string, string) (string, error) { return "sha-3", nil },
 	}
 
 	cacheKey := buildCacheKey("owner", "repo", "sha-3", baseGapOpts())
@@ -245,9 +210,9 @@ func TestGapRun_HEADFailureDisablesCaching(t *testing.T) {
 	makeRepo := repoFactory(t, "acme", "widgets", map[string]planwerk.Feature{
 		"CC-0001-foo.json": {FeatureID: testFeatureID},
 	})
-	gh := &fakeGitHub{
-		cloneRepo:         func(string) (*github.Repo, error) { return makeRepo(), nil },
-		defaultBranchHEAD: func(string, string) (string, error) { return "", errors.New("offline") },
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(string) (*github.Repo, error) { return makeRepo(), nil },
+		DefaultBranchHEADFn: func(string, string) (string, error) { return "", errors.New("offline") },
 	}
 	claudeMock := &fakeClaude{}
 	runner := &Runner{Claude: claudeMock, GitHub: gh}
@@ -268,9 +233,9 @@ func TestGapRun_LoaderErrorWhenNoFeatures(t *testing.T) {
 	t.Cleanup(restore)
 
 	dir := t.TempDir()
-	gh := &fakeGitHub{
-		cloneRepo:         func(string) (*github.Repo, error) { return &github.Repo{Owner: "owner", Name: "repo", Dir: dir}, nil },
-		defaultBranchHEAD: func(string, string) (string, error) { return "sha", nil },
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(string) (*github.Repo, error) { return &github.Repo{Owner: "owner", Name: "repo", Dir: dir}, nil },
+		DefaultBranchHEADFn: func(string, string) (string, error) { return "sha", nil },
 	}
 	runner := &Runner{Claude: &fakeClaude{}, GitHub: gh}
 
@@ -289,10 +254,10 @@ func TestGapRun_DedupeAgainstExistingIssues(t *testing.T) {
 	})
 
 	const trackedTitle = "Implement <criterion> for CC-0001"
-	gh := &fakeGitHub{
-		cloneRepo:         func(string) (*github.Repo, error) { return makeRepo(), nil },
-		defaultBranchHEAD: func(string, string) (string, error) { return "sha-dedupe", nil },
-		listExistingIssues: func(string, string) ([]github.ExistingIssue, error) {
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(string) (*github.Repo, error) { return makeRepo(), nil },
+		DefaultBranchHEADFn: func(string, string) (string, error) { return "sha-dedupe", nil },
+		ListAllIssuesFn: func(string, string) ([]github.ExistingIssue, error) {
 			return []github.ExistingIssue{{Title: trackedTitle, URL: "https://example/1"}}, nil
 		},
 	}
@@ -328,10 +293,10 @@ func TestGapRun_DedupeDisabledByFlag(t *testing.T) {
 		"CC-0001-foo.json": {FeatureID: testFeatureID},
 	})
 	listerCalled := false
-	gh := &fakeGitHub{
-		cloneRepo:         func(string) (*github.Repo, error) { return makeRepo(), nil },
-		defaultBranchHEAD: func(string, string) (string, error) { return "sha-nodedupe", nil },
-		listExistingIssues: func(string, string) ([]github.ExistingIssue, error) {
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(string) (*github.Repo, error) { return makeRepo(), nil },
+		DefaultBranchHEADFn: func(string, string) (string, error) { return "sha-nodedupe", nil },
+		ListAllIssuesFn: func(string, string) ([]github.ExistingIssue, error) {
 			listerCalled = true
 			return nil, nil
 		},
@@ -386,9 +351,9 @@ func TestGapRun_LocalUsesCwd(t *testing.T) {
 		"CC-0001-x.json": {FeatureID: testFeatureID, Title: "X"},
 	})
 	repo := makeRepo()
-	gh := &fakeGitHub{
-		cloneRepo:         func(string) (*github.Repo, error) { return repo, nil },
-		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-local-gap", nil },
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(string) (*github.Repo, error) { return repo, nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return "sha-local-gap", nil },
 	}
 	runner := &Runner{Claude: &fakeClaude{}, GitHub: gh}
 
@@ -399,11 +364,11 @@ func TestGapRun_LocalUsesCwd(t *testing.T) {
 	if err := runner.Run(&bytes.Buffer{}, opts); err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
-	if gh.cloneLocalCalls.Load() != 1 {
-		t.Errorf("UseLocalRepo calls = %d, want 1", gh.cloneLocalCalls.Load())
+	if gh.Count("UseLocalRepo") != 1 {
+		t.Errorf("UseLocalRepo calls = %d, want 1", gh.Count("UseLocalRepo"))
 	}
-	if gh.cloneCalls.Load() != 0 {
-		t.Errorf("CloneRepo calls = %d, want 0 in local mode", gh.cloneCalls.Load())
+	if gh.Count("CloneRepo") != 0 {
+		t.Errorf("CloneRepo calls = %d, want 0 in local mode", gh.Count("CloneRepo"))
 	}
 	if _, err := os.Stat(repo.Dir); err != nil {
 		t.Fatalf("local checkout must survive the run: %v", err)

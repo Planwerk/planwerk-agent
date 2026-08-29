@@ -8,6 +8,7 @@ import (
 
 	"github.com/planwerk/planwerk-agent/internal/claude"
 	"github.com/planwerk/planwerk-agent/internal/github"
+	"github.com/planwerk/planwerk-agent/internal/github/githubtest"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
@@ -28,8 +29,8 @@ func TestRunner_ConcurrentRunsDoNotLeakModel(t *testing.T) {
 				return &report.ReviewResult{Summary: "ok", Model: model}, nil
 			},
 		}
-		gh := &mockGitHub{
-			fetchAndCheckout: func(string) (*github.PR, error) { return pr, nil },
+		gh := &githubtest.Fake{
+			FetchAndCheckoutFn: func(string) (*github.PR, error) { return pr, nil },
 		}
 		return &Runner{Claude: cl, GitHub: gh}
 	}

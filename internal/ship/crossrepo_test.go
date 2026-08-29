@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/planwerk/planwerk-agent/internal/github"
+	"github.com/planwerk/planwerk-agent/internal/github/githubtest"
 )
 
 // foreignRepo is the second repository these tests place Sub Issues and blockers
@@ -29,7 +30,7 @@ func foreignSub(number int, state string) github.Issue {
 }
 
 // runShip drives one ship run against the fakes and fails the test on error.
-func runShip(t *testing.T, gh *fakeGitHub, rec *recorder, opts Options) string {
+func runShip(t *testing.T, gh *githubtest.Fake, rec *recorder, opts Options) string {
 	t.Helper()
 	var out bytes.Buffer
 	if err := newRunner(gh, rec).Run(&out, opts); err != nil {
@@ -43,11 +44,11 @@ func runShip(t *testing.T, gh *fakeGitHub, rec *recorder, opts Options) string {
 // driven. Driving it would implement the Meta Issue's repo against a plan
 // written for a different codebase.
 func TestRun_ForeignSubIssueIsNotDriven(t *testing.T) {
-	gh := &fakeGitHub{
+	gh := (&repoModel{
 		meta:      github.Issue{Title: "Meta", State: "open"},
 		children:  []github.Issue{sub(101, "open"), foreignSub(102, "open")},
 		linkedPRs: map[int][]github.LinkedPR{101: openPR(201)},
-	}
+	}).fake()
 	rec := &recorder{}
 	out := runShip(t, gh, rec, baseOpts())
 
@@ -59,29 +60,29 @@ func TestRun_ForeignSubIssueIsNotDriven(t *testing.T) {
 			t.Errorf("implement was called for a foreign Sub Issue: %q", call)
 		}
 	}
-	if len(gh.merged) != 1 || gh.merged[0].number != 201 {
-		t.Errorf("merged = %v, want only PR 201", gh.merged)
+	if len(gh.Merged()) != 1 || gh.Merged()[0].Number != 201 {
+		t.Errorf("merged = %v, want only PR 201", gh.Merged())
 	}
 	// The foreign Sub Issue is undelivered work, so the Meta Issue stays open.
-	if len(gh.closed) != 0 {
-		t.Errorf("closed = %v, want the Meta Issue left open while a foreign Sub Issue is undelivered", gh.closed)
+	if len(gh.Closed()) != 0 {
+		t.Errorf("closed = %v, want the Meta Issue left open while a foreign Sub Issue is undelivered", gh.Closed())
 	}
 	if !bytes.Contains([]byte(out), []byte("acme/gadgets#102")) {
 		t.Errorf("run output does not name the undriven Sub Issue:\n%s", out)
 	}
-	if !contains(gh.comments, "acme/gadgets#102") {
-		t.Errorf("summary comment does not name the undriven Sub Issue: %v", gh.comments)
+	if !contains(gh.Comments(), "acme/gadgets#102") {
+		t.Errorf("summary comment does not name the undriven Sub Issue: %v", gh.Comments())
 	}
 }
 
 // Issue numbers are unique per repository, so a Meta Issue's local and foreign
 // Sub Issues can share one. The foreign one must still not be driven.
 func TestRun_ForeignSubIssueWithCollidingNumberIsNotDriven(t *testing.T) {
-	gh := &fakeGitHub{
+	gh := (&repoModel{
 		meta:      github.Issue{Title: "Meta", State: "open"},
 		children:  []github.Issue{sub(101, "open"), foreignSub(101, "open")},
 		linkedPRs: map[int][]github.LinkedPR{101: openPR(201)},
-	}
+	}).fake()
 	rec := &recorder{}
 	runShip(t, gh, rec, baseOpts())
 
@@ -96,20 +97,20 @@ func TestRun_ForeignSubIssueWithCollidingNumberIsNotDriven(t *testing.T) {
 // and merge in the Meta Issue's repository — an unrelated PR, merged. The
 // foreign child is listed first so it would win the loop without the repo check.
 func TestRun_ForeignChildWithCollidingNumberDoesNotSupplyThePR(t *testing.T) {
-	gh := &fakeGitHub{
+	gh := (&repoModel{
 		meta:             github.Issue{Title: "Meta", State: "open"},
 		children:         []github.Issue{foreignSub(101, "open"), sub(101, "open")},
 		linkedPRs:        map[int][]github.LinkedPR{101: openPR(201)},
 		foreignLinkedPRs: map[int][]github.LinkedPR{101: openPR(999)},
-	}
+	}).fake()
 	rec := &recorder{}
 	runShip(t, gh, rec, baseOpts())
 
-	if len(gh.readied) != 1 || gh.readied[0] != 201 {
-		t.Errorf("readied = %v, want only PR 201; PR 999 lives in another repository", gh.readied)
+	if len(gh.Readied()) != 1 || gh.Readied()[0] != 201 {
+		t.Errorf("readied = %v, want only PR 201; PR 999 lives in another repository", gh.Readied())
 	}
-	if len(gh.merged) != 1 || gh.merged[0].number != 201 {
-		t.Errorf("merged = %v, want only PR 201; merging 999 would merge an unrelated pull request", gh.merged)
+	if len(gh.Merged()) != 1 || gh.Merged()[0].Number != 201 {
+		t.Errorf("merged = %v, want only PR 201; merging 999 would merge an unrelated pull request", gh.Merged())
 	}
 }
 
@@ -119,12 +120,12 @@ func TestRun_ForeignChildWithCollidingNumberDoesNotSupplyThePR(t *testing.T) {
 // before the number ever reaches the edge map. Here #101 is "blocked by"
 // acme/gadgets#102; without the filter, local #102 would be ordered first.
 func TestRun_ForeignBlockerDoesNotInventAnOrderingEdge(t *testing.T) {
-	gh := &fakeGitHub{
+	gh := (&repoModel{
 		meta:      github.Issue{Title: "Meta", State: "open"},
 		children:  []github.Issue{sub(101, "open"), sub(102, "open")},
 		blockedBy: map[int][]github.Issue{101: {foreignSub(102, "closed")}},
 		linkedPRs: map[int][]github.LinkedPR{101: openPR(201), 102: openPR(202)},
-	}
+	}).fake()
 	rec := &recorder{}
 	runShip(t, gh, rec, baseOpts())
 
@@ -143,7 +144,7 @@ func TestRun_ForeignBlockerDoesNotInventAnOrderingEdge(t *testing.T) {
 // an open one is skipped rather than merged ahead of the work it depends on.
 // The skip cascades: #102 is blocked by #101, so it is skipped too.
 func TestRun_LocalSubBlockedByOpenForeignIssueIsSkipped(t *testing.T) {
-	gh := &fakeGitHub{
+	gh := (&repoModel{
 		meta:     github.Issue{Title: "Meta", State: "open"},
 		children: []github.Issue{sub(101, "open"), sub(102, "open")},
 		blockedBy: map[int][]github.Issue{
@@ -151,30 +152,30 @@ func TestRun_LocalSubBlockedByOpenForeignIssueIsSkipped(t *testing.T) {
 			102: {sub(101, "open")},
 		},
 		linkedPRs: map[int][]github.LinkedPR{101: openPR(201), 102: openPR(202)},
-	}
+	}).fake()
 	rec := &recorder{}
 	runShip(t, gh, rec, baseOpts())
 
 	if len(rec.implementCalls) != 0 {
 		t.Errorf("implementCalls = %v, want none: #101 waits on an open foreign blocker and #102 waits on #101", rec.implementCalls)
 	}
-	if !contains(gh.comments, "acme/gadgets#77") {
-		t.Errorf("no comment names the foreign blocker: %v", gh.comments)
+	if !contains(gh.Comments(), "acme/gadgets#77") {
+		t.Errorf("no comment names the foreign blocker: %v", gh.Comments())
 	}
-	if len(gh.closed) != 0 {
-		t.Errorf("closed = %v, want the Meta Issue left open", gh.closed)
+	if len(gh.Closed()) != 0 {
+		t.Errorf("closed = %v, want the Meta Issue left open", gh.Closed())
 	}
 }
 
 // A closed foreign blocker is satisfied work and must not hold its dependent
 // back, or a cross-repo counterpart that already landed would freeze the DAG.
 func TestRun_LocalSubBlockedByClosedForeignIssueStillShips(t *testing.T) {
-	gh := &fakeGitHub{
+	gh := (&repoModel{
 		meta:      github.Issue{Title: "Meta", State: "open"},
 		children:  []github.Issue{sub(101, "open")},
 		blockedBy: map[int][]github.Issue{101: {foreignSub(77, "closed")}},
 		linkedPRs: map[int][]github.LinkedPR{101: openPR(201)},
-	}
+	}).fake()
 	rec := &recorder{}
 	runShip(t, gh, rec, baseOpts())
 
@@ -186,16 +187,16 @@ func TestRun_LocalSubBlockedByClosedForeignIssueStillShips(t *testing.T) {
 // A foreign Sub Issue already closed in its own repository is delivered work, so
 // it does not keep the Meta Issue open once the local Sub Issues have landed.
 func TestRun_ClosedForeignSubIssueDoesNotHoldTheMetaOpen(t *testing.T) {
-	gh := &fakeGitHub{
+	gh := (&repoModel{
 		meta:      github.Issue{Title: "Meta", State: "open"},
 		children:  []github.Issue{sub(101, "open"), foreignSub(102, "closed")},
 		linkedPRs: map[int][]github.LinkedPR{101: openPR(201)},
-	}
+	}).fake()
 	rec := &recorder{}
 	runShip(t, gh, rec, baseOpts())
 
-	if len(gh.closed) != 1 || gh.closed[0] != 42 {
-		t.Errorf("closed = %v, want the Meta Issue #42 closed once every Sub Issue is delivered", gh.closed)
+	if len(gh.Closed()) != 1 || gh.Closed()[0] != 42 {
+		t.Errorf("closed = %v, want the Meta Issue #42 closed once every Sub Issue is delivered", gh.Closed())
 	}
 }
 
@@ -203,18 +204,18 @@ func TestRun_ClosedForeignSubIssueDoesNotHoldTheMetaOpen(t *testing.T) {
 // and must not be closed on the strength of work in a repository ship never
 // touched.
 func TestRun_AllSubIssuesForeign(t *testing.T) {
-	gh := &fakeGitHub{
+	gh := (&repoModel{
 		meta:     github.Issue{Title: "Meta", State: "open"},
 		children: []github.Issue{foreignSub(101, "open")},
-	}
+	}).fake()
 	rec := &recorder{}
 	out := runShip(t, gh, rec, baseOpts())
 
 	if len(rec.implementCalls) != 0 {
 		t.Errorf("implementCalls = %v, want none", rec.implementCalls)
 	}
-	if len(gh.closed) != 0 {
-		t.Errorf("closed = %v, want the Meta Issue left open", gh.closed)
+	if len(gh.Closed()) != 0 {
+		t.Errorf("closed = %v, want the Meta Issue left open", gh.Closed())
 	}
 	if !bytes.Contains([]byte(out), []byte("acme/gadgets#101")) {
 		t.Errorf("run output does not name the undriven Sub Issue:\n%s", out)
@@ -225,10 +226,10 @@ func TestRun_AllSubIssuesForeign(t *testing.T) {
 // generic "not a Sub Issue" message is true of the schedule but false of the
 // Meta Issue, and would send the author looking for a missing link.
 func TestRun_StartAtForeignSubIssueExplainsWhy(t *testing.T) {
-	gh := &fakeGitHub{
+	gh := (&repoModel{
 		meta:     github.Issue{Title: "Meta", State: "open"},
 		children: []github.Issue{sub(101, "open"), foreignSub(102, "open")},
-	}
+	}).fake()
 	opts := baseOpts()
 	opts.StartAt = 102
 	var out bytes.Buffer
@@ -246,11 +247,11 @@ func TestRun_StartAtForeignSubIssueExplainsWhy(t *testing.T) {
 // case-sensitive comparison would read every Sub Issue as foreign and silently
 // ship nothing.
 func TestRun_MetaRepoComparisonFoldsCase(t *testing.T) {
-	gh := &fakeGitHub{
+	gh := (&repoModel{
 		meta:      github.Issue{Title: "Meta", State: "open"},
 		children:  []github.Issue{sub(101, "open")},
 		linkedPRs: map[int][]github.LinkedPR{101: openPR(201)},
-	}
+	}).fake()
 	rec := &recorder{}
 	opts := baseOpts()
 	opts.IssueRef = "Acme/Widgets#42"
@@ -279,19 +280,19 @@ func TestSchedule_RejectsChildrenSpanningRepositories(t *testing.T) {
 func TestRun_ForeignLinkedPRDoesNotSupplyThePR(t *testing.T) {
 	foreign := github.LinkedPR{Owner: "acme", Name: foreignRepo, Number: 999, State: "open", IsDraft: true, Author: shipViewer}
 	local := github.LinkedPR{Owner: "acme", Name: "widgets", Number: 201, State: "open", IsDraft: true, Author: shipViewer}
-	gh := &fakeGitHub{
+	gh := (&repoModel{
 		meta:      github.Issue{Title: "Meta", State: "open"},
 		children:  []github.Issue{sub(101, "open")},
 		linkedPRs: map[int][]github.LinkedPR{101: {foreign, local}},
-	}
+	}).fake()
 	rec := &recorder{}
 	runShip(t, gh, rec, baseOpts())
 
-	if len(gh.readied) != 1 || gh.readied[0] != 201 {
-		t.Errorf("readied = %v, want only PR 201; PR 999 lives in another repository", gh.readied)
+	if len(gh.Readied()) != 1 || gh.Readied()[0] != 201 {
+		t.Errorf("readied = %v, want only PR 201; PR 999 lives in another repository", gh.Readied())
 	}
-	if len(gh.merged) != 1 || gh.merged[0].number != 201 {
-		t.Errorf("merged = %v, want only PR 201; merging 999 would merge an unrelated pull request", gh.merged)
+	if len(gh.Merged()) != 1 || gh.Merged()[0].Number != 201 {
+		t.Errorf("merged = %v, want only PR 201; merging 999 would merge an unrelated pull request", gh.Merged())
 	}
 }
 
@@ -300,16 +301,16 @@ func TestRun_ForeignLinkedPRDoesNotSupplyThePR(t *testing.T) {
 // unrelated local PR under this Sub Issue's name.
 func TestRun_OnlyForeignLinkedPRShipsNothing(t *testing.T) {
 	foreign := github.LinkedPR{Owner: "acme", Name: foreignRepo, Number: 999, State: "open", IsDraft: true, Author: shipViewer}
-	gh := &fakeGitHub{
+	gh := (&repoModel{
 		meta:      github.Issue{Title: "Meta", State: "open"},
 		children:  []github.Issue{sub(101, "open")},
 		linkedPRs: map[int][]github.LinkedPR{101: {foreign}},
-	}
+	}).fake()
 	rec := &recorder{}
 	runShip(t, gh, rec, baseOpts())
 
-	if len(gh.readied) != 0 || len(gh.merged) != 0 {
-		t.Errorf("readied = %v, merged = %v; want neither, the only linked PR is in another repository", gh.readied, gh.merged)
+	if len(gh.Readied()) != 0 || len(gh.Merged()) != 0 {
+		t.Errorf("readied = %v, merged = %v; want neither, the only linked PR is in another repository", gh.Readied(), gh.Merged())
 	}
 }
 

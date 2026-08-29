@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/planwerk/planwerk-agent/internal/github"
+	"github.com/planwerk/planwerk-agent/internal/github/githubtest"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
@@ -18,102 +19,6 @@ const (
 	threadID2 = "RT_2"
 	threadID3 = "RT_3"
 )
-
-// fakeGitHub is a scripted GitHubClient recording every outward-facing call so
-// tests can assert which threads were pushed, replied to, and resolved.
-type fakeGitHub struct {
-	threads    []github.ReviewThread
-	threadsErr error
-
-	fetchCalls        atomic.Int32
-	localCalls        atomic.Int32
-	fetchThreadsCalls atomic.Int32
-
-	pushCalls atomic.Int32
-	pushErr   error
-
-	replyErr       error
-	repliedThreads []string
-
-	resolveErr      error
-	resolvedThreads []string
-
-	commentErr    error
-	commentCalls  atomic.Int32
-	commentBodies []string
-
-	prTitle   string
-	prBranch  string
-	prBase    string
-	prHeadSHA string
-	cloneDir  string
-}
-
-func (f *fakeGitHub) FetchAndCheckout(ref string) (*github.PR, error) {
-	f.fetchCalls.Add(1)
-	return f.makePR(ref, false)
-}
-
-func (f *fakeGitHub) OpenLocalPR(ref string, _ github.LocalOptions) (*github.PR, error) {
-	f.localCalls.Add(1)
-	return f.makePR(ref, true)
-}
-
-func (f *fakeGitHub) makePR(ref string, local bool) (*github.PR, error) {
-	owner, repo, number, err := github.ParseRef(ref)
-	if err != nil {
-		return nil, err
-	}
-	return &github.PR{
-		Owner:      owner,
-		Repo:       repo,
-		Number:     number,
-		Title:      f.prTitle,
-		HeadBranch: f.prBranch,
-		BaseBranch: f.prBase,
-		HeadSHA:    f.prHeadSHA,
-		Dir:        f.cloneDir,
-		Local:      local,
-	}, nil
-}
-
-func (f *fakeGitHub) FetchReviewThreads(_, _ string, _ int) ([]github.ReviewThread, error) {
-	f.fetchThreadsCalls.Add(1)
-	if f.threadsErr != nil {
-		return nil, f.threadsErr
-	}
-	return f.threads, nil
-}
-
-func (f *fakeGitHub) PushHead(_, _ string) error {
-	f.pushCalls.Add(1)
-	return f.pushErr
-}
-
-func (f *fakeGitHub) AddReviewThreadReply(threadID, _ string) (string, error) {
-	if f.replyErr != nil {
-		return "", f.replyErr
-	}
-	f.repliedThreads = append(f.repliedThreads, threadID)
-	return "https://github.com/o/r/pull/1#discussion_r1", nil
-}
-
-func (f *fakeGitHub) ResolveReviewThread(threadID string) error {
-	if f.resolveErr != nil {
-		return f.resolveErr
-	}
-	f.resolvedThreads = append(f.resolvedThreads, threadID)
-	return nil
-}
-
-func (f *fakeGitHub) AddPRComment(owner, repo string, number int, body string) (string, error) {
-	f.commentCalls.Add(1)
-	if f.commentErr != nil {
-		return "", f.commentErr
-	}
-	f.commentBodies = append(f.commentBodies, body)
-	return "https://github.com/o/r/pull/1#issuecomment-1", nil
-}
 
 // fakeClaude returns scripted AddressResults in sequence (the last repeats when
 // exhausted) and records every Context it was handed.
@@ -156,7 +61,7 @@ func doneResult(threadID string) *report.AddressResult {
 
 // newRunner wires the fakes with a non-TTY default; tests that exercise the
 // interactive selector override In and IsTTY.
-func newRunner(gh *fakeGitHub, cl *fakeClaude) *Runner {
+func newRunner(gh *githubtest.Fake, cl *fakeClaude) *Runner {
 	return &Runner{
 		Claude: cl,
 		GitHub: gh,
@@ -172,7 +77,7 @@ func baseOpts(prRef string) Options {
 }
 
 func TestRun_NoThreads(t *testing.T) {
-	gh := &fakeGitHub{prBranch: "feat/x"}
+	gh := &githubtest.Fake{PR: github.PR{HeadBranch: "feat/x"}}
 	cl := &fakeClaude{}
 	r := newRunner(gh, cl)
 
@@ -189,7 +94,7 @@ func TestRun_NoThreads(t *testing.T) {
 }
 
 func TestRun_AllPerThread(t *testing.T) {
-	gh := &fakeGitHub{prBranch: "feat/x", threads: sampleThreads()}
+	gh := &githubtest.Fake{PR: github.PR{HeadBranch: "feat/x"}, Threads: sampleThreads()}
 	cl := &fakeClaude{results: []*report.AddressResult{doneResult(threadID1), doneResult(threadID2)}}
 	r := newRunner(gh, cl)
 
@@ -202,23 +107,23 @@ func TestRun_AllPerThread(t *testing.T) {
 	if cl.called.Load() != 2 {
 		t.Errorf("Claude.Address called %d times, want 2 (one per thread)", cl.called.Load())
 	}
-	if gh.pushCalls.Load() != 2 {
-		t.Errorf("PushHead called %d times, want 2", gh.pushCalls.Load())
+	if gh.Count("PushHead") != 2 {
+		t.Errorf("PushHead called %d times, want 2", gh.Count("PushHead"))
 	}
 	// --reply on by default, --resolve off by default.
-	if len(gh.repliedThreads) != 2 {
-		t.Errorf("replied to %v, want both threads", gh.repliedThreads)
+	if len(gh.Replies()) != 2 {
+		t.Errorf("replied to %v, want both threads", gh.Replies())
 	}
-	if len(gh.resolvedThreads) != 0 {
-		t.Errorf("resolved %v, want none without --resolve", gh.resolvedThreads)
+	if len(gh.Resolved()) != 0 {
+		t.Errorf("resolved %v, want none without --resolve", gh.Resolved())
 	}
-	if gh.commentCalls.Load() != 1 {
-		t.Errorf("AddPRComment called %d times, want 1 aggregate report", gh.commentCalls.Load())
+	if gh.Count("AddPRComment") != 1 {
+		t.Errorf("AddPRComment called %d times, want 1 aggregate report", gh.Count("AddPRComment"))
 	}
 }
 
 func TestRun_Aggregate(t *testing.T) {
-	gh := &fakeGitHub{prBranch: "feat/x", threads: sampleThreads()}
+	gh := &githubtest.Fake{PR: github.PR{HeadBranch: "feat/x"}, Threads: sampleThreads()}
 	cl := &fakeClaude{results: []*report.AddressResult{{
 		Threads: []report.AddressedThread{
 			{ThreadID: threadID1, Status: "DONE", Summary: "a"},
@@ -238,8 +143,8 @@ func TestRun_Aggregate(t *testing.T) {
 	if cl.called.Load() != 1 {
 		t.Errorf("Claude.Address called %d times, want 1 in aggregate mode", cl.called.Load())
 	}
-	if gh.pushCalls.Load() != 1 {
-		t.Errorf("PushHead called %d times, want 1 in aggregate mode", gh.pushCalls.Load())
+	if gh.Count("PushHead") != 1 {
+		t.Errorf("PushHead called %d times, want 1 in aggregate mode", gh.Count("PushHead"))
 	}
 	if cl.ctxs[0].OneCommitPerThread {
 		t.Error("aggregate session should get OneCommitPerThread=false")
@@ -250,7 +155,7 @@ func TestRun_Aggregate(t *testing.T) {
 }
 
 func TestRun_ThreadIDSelectsSubset(t *testing.T) {
-	gh := &fakeGitHub{prBranch: "feat/x", threads: sampleThreads()}
+	gh := &githubtest.Fake{PR: github.PR{HeadBranch: "feat/x"}, Threads: sampleThreads()}
 	cl := &fakeClaude{results: []*report.AddressResult{doneResult(threadID2)}}
 	r := newRunner(gh, cl)
 
@@ -268,7 +173,7 @@ func TestRun_ThreadIDSelectsSubset(t *testing.T) {
 }
 
 func TestRun_ThreadIDUnknownWarns(t *testing.T) {
-	gh := &fakeGitHub{prBranch: "feat/x", threads: sampleThreads()}
+	gh := &githubtest.Fake{PR: github.PR{HeadBranch: "feat/x"}, Threads: sampleThreads()}
 	cl := &fakeClaude{}
 	r := newRunner(gh, cl)
 
@@ -290,7 +195,7 @@ func TestRun_ThreadIDUnknownWarns(t *testing.T) {
 }
 
 func TestRun_Resolve(t *testing.T) {
-	gh := &fakeGitHub{prBranch: "feat/x", threads: sampleThreads()[:1]}
+	gh := &githubtest.Fake{PR: github.PR{HeadBranch: "feat/x"}, Threads: sampleThreads()[:1]}
 	cl := &fakeClaude{results: []*report.AddressResult{doneResult(threadID1)}}
 	r := newRunner(gh, cl)
 
@@ -300,18 +205,18 @@ func TestRun_Resolve(t *testing.T) {
 	if err := r.Run(io.Discard, opts); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
-	if len(gh.resolvedThreads) != 1 || gh.resolvedThreads[0] != threadID1 {
-		t.Errorf("resolved %v, want [RT_1] with --resolve", gh.resolvedThreads)
+	if len(gh.Resolved()) != 1 || gh.Resolved()[0] != threadID1 {
+		t.Errorf("resolved %v, want [RT_1] with --resolve", gh.Resolved())
 	}
 }
 
 func TestRun_ReplyResolveFailuresAreNonFatal(t *testing.T) {
-	gh := &fakeGitHub{
-		prBranch:   "feat/x",
-		threads:    sampleThreads()[:1],
-		replyErr:   errors.New("reply down"),
-		resolveErr: errors.New("resolve down"),
-		commentErr: errors.New("comment down"),
+	gh := &githubtest.Fake{
+		PR:         github.PR{HeadBranch: "feat/x"},
+		Threads:    sampleThreads()[:1],
+		ReplyErr:   errors.New("reply down"),
+		ResolveErr: errors.New("resolve down"),
+		CommentErr: errors.New("comment down"),
 	}
 	cl := &fakeClaude{results: []*report.AddressResult{doneResult(threadID1)}}
 	r := newRunner(gh, cl)
@@ -336,7 +241,7 @@ func TestRun_ReplyResolveFailuresAreNonFatal(t *testing.T) {
 }
 
 func TestRun_NoAddressCommentSkipsComment(t *testing.T) {
-	gh := &fakeGitHub{prBranch: "feat/x", threads: sampleThreads()[:1]}
+	gh := &githubtest.Fake{PR: github.PR{HeadBranch: "feat/x"}, Threads: sampleThreads()[:1]}
 	cl := &fakeClaude{results: []*report.AddressResult{doneResult(threadID1)}}
 	r := newRunner(gh, cl)
 
@@ -346,13 +251,13 @@ func TestRun_NoAddressCommentSkipsComment(t *testing.T) {
 	if err := r.Run(io.Discard, opts); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
-	if gh.commentCalls.Load() != 0 {
-		t.Errorf("AddPRComment called %d times, want 0 with --no-address-comment", gh.commentCalls.Load())
+	if gh.Count("AddPRComment") != 0 {
+		t.Errorf("AddPRComment called %d times, want 0 with --no-address-comment", gh.Count("AddPRComment"))
 	}
 }
 
 func TestRun_EscalationStopsAndStillPostsComment(t *testing.T) {
-	gh := &fakeGitHub{prBranch: "feat/x", threads: sampleThreads()}
+	gh := &githubtest.Fake{PR: github.PR{HeadBranch: "feat/x"}, Threads: sampleThreads()}
 	blocked := &report.AddressResult{
 		Threads: []report.AddressedThread{{ThreadID: threadID1, Status: "BLOCKED", Summary: "stale ref"}},
 		Summary: "blocked",
@@ -371,15 +276,15 @@ func TestRun_EscalationStopsAndStillPostsComment(t *testing.T) {
 		t.Errorf("Claude.Address called %d times, want 1 (stopped after escalation)", cl.called.Load())
 	}
 	// A BLOCKED thread was not committed: no push, no reply, no resolve.
-	if gh.pushCalls.Load() != 0 {
-		t.Errorf("PushHead called %d times, want 0 for a blocked thread", gh.pushCalls.Load())
+	if gh.Count("PushHead") != 0 {
+		t.Errorf("PushHead called %d times, want 0 for a blocked thread", gh.Count("PushHead"))
 	}
-	if len(gh.repliedThreads) != 0 {
-		t.Errorf("replied %v, want none for a blocked thread", gh.repliedThreads)
+	if len(gh.Replies()) != 0 {
+		t.Errorf("replied %v, want none for a blocked thread", gh.Replies())
 	}
 	// The escalated report must still reach the PR.
-	if gh.commentCalls.Load() != 1 {
-		t.Errorf("AddPRComment called %d times, want 1 — escalated report must still post", gh.commentCalls.Load())
+	if gh.Count("AddPRComment") != 1 {
+		t.Errorf("AddPRComment called %d times, want 1 — escalated report must still post", gh.Count("AddPRComment"))
 	}
 }
 
@@ -389,7 +294,7 @@ func TestRun_ExhaustsMaxIterations(t *testing.T) {
 		{ID: threadID2, Comments: []github.ReviewThreadComment{{Body: "b"}}},
 		{ID: threadID3, Comments: []github.ReviewThreadComment{{Body: "c"}}},
 	}
-	gh := &fakeGitHub{prBranch: "feat/x", threads: threads}
+	gh := &githubtest.Fake{PR: github.PR{HeadBranch: "feat/x"}, Threads: threads}
 	cl := &fakeClaude{results: []*report.AddressResult{doneResult(threadID1), doneResult(threadID2)}}
 	r := newRunner(gh, cl)
 
@@ -406,7 +311,7 @@ func TestRun_ExhaustsMaxIterations(t *testing.T) {
 }
 
 func TestRun_PropagatesClaudeError(t *testing.T) {
-	gh := &fakeGitHub{prBranch: "feat/x", threads: sampleThreads()[:1]}
+	gh := &githubtest.Fake{PR: github.PR{HeadBranch: "feat/x"}, Threads: sampleThreads()[:1]}
 	cl := &fakeClaude{err: errors.New("boom")}
 	r := newRunner(gh, cl)
 
@@ -419,7 +324,7 @@ func TestRun_PropagatesClaudeError(t *testing.T) {
 }
 
 func TestRun_PushFailureIsFatal(t *testing.T) {
-	gh := &fakeGitHub{prBranch: "feat/x", threads: sampleThreads()[:1], pushErr: errors.New("push rejected")}
+	gh := &githubtest.Fake{PR: github.PR{HeadBranch: "feat/x"}, Threads: sampleThreads()[:1], PushErr: errors.New("push rejected")}
 	cl := &fakeClaude{results: []*report.AddressResult{doneResult(threadID1)}}
 	r := newRunner(gh, cl)
 
@@ -432,7 +337,7 @@ func TestRun_PushFailureIsFatal(t *testing.T) {
 }
 
 func TestRun_NonTTYDefaultsToAll(t *testing.T) {
-	gh := &fakeGitHub{prBranch: "feat/x", threads: sampleThreads()}
+	gh := &githubtest.Fake{PR: github.PR{HeadBranch: "feat/x"}, Threads: sampleThreads()}
 	cl := &fakeClaude{results: []*report.AddressResult{doneResult(threadID1), doneResult(threadID2)}}
 	r := newRunner(gh, cl) // IsTTY returns false
 
@@ -446,7 +351,7 @@ func TestRun_NonTTYDefaultsToAll(t *testing.T) {
 }
 
 func TestRun_InteractiveSelectsSubset(t *testing.T) {
-	gh := &fakeGitHub{prBranch: "feat/x", threads: sampleThreads()}
+	gh := &githubtest.Fake{PR: github.PR{HeadBranch: "feat/x"}, Threads: sampleThreads()}
 	cl := &fakeClaude{results: []*report.AddressResult{doneResult(threadID2)}}
 	r := newRunner(gh, cl)
 	r.IsTTY = func() bool { return true }
@@ -465,7 +370,7 @@ func TestRun_InteractiveSelectsSubset(t *testing.T) {
 }
 
 func TestRun_DryRunSkipsClaude(t *testing.T) {
-	gh := &fakeGitHub{prBranch: "feat/x", threads: sampleThreads()}
+	gh := &githubtest.Fake{PR: github.PR{HeadBranch: "feat/x"}, Threads: sampleThreads()}
 	cl := &fakeClaude{}
 	r := newRunner(gh, cl)
 
@@ -478,8 +383,8 @@ func TestRun_DryRunSkipsClaude(t *testing.T) {
 	if cl.called.Load() != 0 {
 		t.Errorf("Claude.Address called %d times in dry-run, want 0", cl.called.Load())
 	}
-	if gh.pushCalls.Load() != 0 {
-		t.Errorf("PushHead called %d times in dry-run, want 0", gh.pushCalls.Load())
+	if gh.Count("PushHead") != 0 {
+		t.Errorf("PushHead called %d times in dry-run, want 0", gh.Count("PushHead"))
 	}
 	out := buf.String()
 	if !strings.Contains(out, "[dry-run]") || !strings.Contains(out, threadID1) {
@@ -488,7 +393,7 @@ func TestRun_DryRunSkipsClaude(t *testing.T) {
 }
 
 func TestRun_PrintPromptWritesPromptAndSkipsClaude(t *testing.T) {
-	gh := &fakeGitHub{prBranch: "feat/x", threads: sampleThreads()}
+	gh := &githubtest.Fake{PR: github.PR{HeadBranch: "feat/x"}, Threads: sampleThreads()}
 	cl := &fakeClaude{}
 	r := newRunner(gh, cl)
 	r.BuildPrompt = func(ctx Context) string {
@@ -504,8 +409,8 @@ func TestRun_PrintPromptWritesPromptAndSkipsClaude(t *testing.T) {
 	if cl.called.Load() != 0 {
 		t.Errorf("Claude.Address called %d times in print-prompt mode, want 0", cl.called.Load())
 	}
-	if gh.pushCalls.Load() != 0 {
-		t.Errorf("PushHead called %d times in print-prompt mode, want 0", gh.pushCalls.Load())
+	if gh.Count("PushHead") != 0 {
+		t.Errorf("PushHead called %d times in print-prompt mode, want 0", gh.Count("PushHead"))
 	}
 	out := buf.String()
 	// Per-thread mode renders the first thread's prompt.
@@ -518,7 +423,7 @@ func TestRun_PrintPromptWritesPromptAndSkipsClaude(t *testing.T) {
 }
 
 func TestRun_PrintPromptWithoutBuilderErrors(t *testing.T) {
-	gh := &fakeGitHub{prBranch: "feat/x", threads: sampleThreads()}
+	gh := &githubtest.Fake{PR: github.PR{HeadBranch: "feat/x"}, Threads: sampleThreads()}
 	r := newRunner(gh, &fakeClaude{})
 	// BuildPrompt left nil intentionally.
 	opts := baseOpts("o/r#1")
@@ -530,7 +435,7 @@ func TestRun_PrintPromptWithoutBuilderErrors(t *testing.T) {
 }
 
 func TestRun_RequiresRefWithoutLocal(t *testing.T) {
-	r := newRunner(&fakeGitHub{}, &fakeClaude{})
+	r := newRunner(&githubtest.Fake{}, &fakeClaude{})
 	err := r.Run(io.Discard, baseOpts(""))
 	if err == nil || !strings.Contains(err.Error(), "PR reference is required") {
 		t.Fatalf("expected a missing-ref error, got %v", err)
@@ -538,11 +443,10 @@ func TestRun_RequiresRefWithoutLocal(t *testing.T) {
 }
 
 func TestRun_LocalSkipsCloneAndSurvives(t *testing.T) {
-	gh := &fakeGitHub{
-		prBranch: "feat/x",
-		prBase:   "main",
-		cloneDir: t.TempDir(),
-		threads:  sampleThreads()[:1],
+	gh := &githubtest.Fake{
+		PR:      github.PR{HeadBranch: "feat/x", BaseBranch: "main"},
+		Dir:     t.TempDir(),
+		Threads: sampleThreads()[:1],
 	}
 	cl := &fakeClaude{results: []*report.AddressResult{doneResult(threadID1)}}
 	r := newRunner(gh, cl)
@@ -553,11 +457,11 @@ func TestRun_LocalSkipsCloneAndSurvives(t *testing.T) {
 	if err := r.Run(io.Discard, opts); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
-	if gh.localCalls.Load() != 1 {
-		t.Errorf("OpenLocalPR calls = %d, want 1", gh.localCalls.Load())
+	if gh.Count("OpenLocalPR") != 1 {
+		t.Errorf("OpenLocalPR calls = %d, want 1", gh.Count("OpenLocalPR"))
 	}
-	if gh.fetchCalls.Load() != 0 {
-		t.Errorf("FetchAndCheckout (clone) calls = %d, want 0 in local mode", gh.fetchCalls.Load())
+	if gh.Count("FetchAndCheckout") != 0 {
+		t.Errorf("FetchAndCheckout (clone) calls = %d, want 0 in local mode", gh.Count("FetchAndCheckout"))
 	}
 	if !cl.ctxs[0].Local {
 		t.Error("Claude context Local = false, want true in --local mode")
@@ -565,7 +469,7 @@ func TestRun_LocalSkipsCloneAndSurvives(t *testing.T) {
 }
 
 func TestRun_FetchThreadsErrorIsFatal(t *testing.T) {
-	gh := &fakeGitHub{prBranch: "feat/x", threadsErr: errors.New("graphql down")}
+	gh := &githubtest.Fake{PR: github.PR{HeadBranch: "feat/x"}, ThreadsErr: errors.New("graphql down")}
 	r := newRunner(gh, &fakeClaude{})
 	err := r.Run(io.Discard, baseOpts("o/r#1"))
 	if err == nil || !strings.Contains(err.Error(), "graphql down") {
