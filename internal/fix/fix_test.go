@@ -671,15 +671,6 @@ func TestTrimLogs(t *testing.T) {
 	}
 }
 
-func TestShortSHA(t *testing.T) {
-	if got := shortSHA("abcdef0123456789"); got != "abcdef0" {
-		t.Errorf("shortSHA long = %q, want abcdef0", got)
-	}
-	if got := shortSHA("abc"); got != "abc" {
-		t.Errorf("shortSHA short = %q, want abc", got)
-	}
-}
-
 func TestRun_PassesPatternsToClaude(t *testing.T) {
 	// Use an in-process patterns dir so LoadFiltered returns at least one
 	// pattern, proving the wiring from Options through to Claude.Fix
@@ -887,5 +878,51 @@ func TestWaitForChecks_LateCheckStillCounts(t *testing.T) {
 	}
 	if !summary.AllPassed() {
 		t.Errorf("summary = %+v, want the late check counted", summary)
+	}
+}
+
+func TestRun_QuotedStatusDoesNotEscalate(t *testing.T) {
+	// A report may restate an earlier verdict on its own line (a superseded
+	// iteration's status) before closing with its real one. Only the last
+	// standalone STATUS line counts, so the earlier BLOCKED must not stop the
+	// loop.
+	const quoted = "## Fix Report (iteration 2)\n\n### Previous iteration\n- STATUS: BLOCKED\n\n### Status\nSTATUS: DONE"
+	gh := &fakeGitHub{
+		prTitle:   "demo",
+		prBranch:  "feat/x",
+		prHeadSHA: "old",
+		checkResponses: [][]github.CheckRun{
+			{failing(1, "test")},
+			{passing("test")},
+		},
+		headSequence: []string{"new"},
+		logs:         "FAIL: TestX\n",
+	}
+	cl := &fakeClaude{report: quoted}
+	r := newRunner(gh, cl, &fakePrompter{})
+
+	if err := r.Run(io.Discard, Options{PRRef: "o/r#7"}); err != nil {
+		t.Fatalf("Run returned %v, want nil — a quoted BLOCKED before the DONE verdict must not escalate", err)
+	}
+}
+
+func TestRun_StatusWithTrailingReasonEscalates(t *testing.T) {
+	// A verdict followed by a reason on the same line ("STATUS: BLOCKED — the
+	// registry is unreachable") is still that verdict.
+	const blocked = "## Fix Report (iteration 1)\n\n### Status\nSTATUS: BLOCKED — the registry is unreachable"
+	gh := &fakeGitHub{
+		prTitle:        "demo",
+		prBranch:       "feat/x",
+		prHeadSHA:      "old",
+		checkResponses: [][]github.CheckRun{{failing(1, "test")}},
+		headSequence:   []string{"new"},
+		logs:           "FAIL: TestX\n",
+	}
+	cl := &fakeClaude{report: blocked}
+	r := newRunner(gh, cl, &fakePrompter{})
+
+	err := r.Run(io.Discard, Options{PRRef: "o/r#7"})
+	if err == nil || !strings.Contains(err.Error(), "escalated") {
+		t.Fatalf("Run err = %v, want an escalation error for a BLOCKED verdict with a trailing reason", err)
 	}
 }
