@@ -25,10 +25,17 @@ func TestResolveCaptureWiki(t *testing.T) {
 		}
 	})
 
-	t.Run("env beats config when no flag is set", func(t *testing.T) {
+	t.Run("config beats env when no flag is set", func(t *testing.T) {
 		t.Setenv(envCaptureWiki, "true")
-		if !resolveCaptureWiki(false, false, cli.CaptureFileConfig{Wiki: boolPtr(false)}) {
-			t.Error("PLANWERK_CAPTURE_WIKI=true must enable, beating config wiki:false")
+		if resolveCaptureWiki(false, false, cli.CaptureFileConfig{Wiki: boolPtr(false)}) {
+			t.Error("capture.wiki:false must win over PLANWERK_CAPTURE_WIKI=true — the committed file outranks the environment")
+		}
+	})
+
+	t.Run("env used when the config file says nothing", func(t *testing.T) {
+		t.Setenv(envCaptureWiki, "true")
+		if !resolveCaptureWiki(false, false, cli.CaptureFileConfig{}) {
+			t.Error("PLANWERK_CAPTURE_WIKI=true must enable when capture.wiki is absent")
 		}
 	})
 

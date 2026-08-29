@@ -24,7 +24,7 @@ full resolution order.
 | `PLANWERK_IMPLEMENT_WORKER_MODEL` | `--implement-worker-model` (`implement`, `ship`) | Model for the `implementer` subagents the implement session delegates its work packages to; setting it switches the session into orchestrator mode. Empty or unset keeps the single-session behavior. |
 | `PLANWERK_IMPLEMENT_WORKER_EFFORT` | `--implement-worker-effort` (`implement`, `ship`) | Reasoning effort for the `implementer` subagents in orchestrator mode: one of `low`, `medium`, `high`, `xhigh`, `max`. Ignored without a worker model. |
 | `PLANWERK_WIKI` | `--wiki` / `--no-wiki` | Truthy values (`1`, `true`, `yes`, `on`) enable the GitHub Wiki knowledge source; falsy values (`0`, `false`, `no`, `off`) disable it. Config-file `wiki.enabled` takes precedence over this variable; the flags take precedence over both. |
-| `PLANWERK_WIKI_REF` | `--wiki-ref` | Pins the wiki to a branch, tag, or commit. Empty uses the wiki's default branch. |
+| `PLANWERK_WIKI_REF` | `--wiki-ref` | Pins the wiki to a branch, tag, or commit. Empty uses the wiki's default branch. Config-file `wiki.ref` takes precedence over this variable; the flag takes precedence over both. |
 | `PLANWERK_CAPTURE_WIKI` | `--capture-wiki` (`implement`, `audit`) | Truthy values (`1`, `true`, `yes`, `on`) push the accepted capture pages to the wiki; falsy values (`0`, `false`, `no`, `off`) keep the run propose-only. `review` ignores this (and `--capture-wiki`): it analyzes an untrusted pull request, so its capture pass is always propose-only. Config-file `capture.wiki` takes precedence over this variable; the flag takes precedence over both. Off by default. |
 
 ### Credentials

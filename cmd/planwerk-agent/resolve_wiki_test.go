@@ -26,11 +26,19 @@ func TestResolveWikiOptions_EnabledPrecedence(t *testing.T) {
 		}
 	})
 
-	t.Run("env beats config when no flag is set", func(t *testing.T) {
+	t.Run("config beats env when no flag is set", func(t *testing.T) {
 		t.Setenv(envWiki, "false")
 		got := resolveWikiOptions(true, false, false, false, "", false, cli.WikiFileConfig{Enabled: boolPtr(true)})
-		if got.Enabled {
-			t.Error("PLANWERK_WIKI=false must disable the wiki, beating config enabled:true")
+		if !got.Enabled {
+			t.Error("wiki.enabled:true must win over PLANWERK_WIKI=false — the committed file outranks the environment")
+		}
+	})
+
+	t.Run("env used when the config file says nothing", func(t *testing.T) {
+		t.Setenv(envWiki, "true")
+		got := resolveWikiOptions(false, false, false, false, "", false, cli.WikiFileConfig{})
+		if !got.Enabled {
+			t.Error("PLANWERK_WIKI=true must enable the wiki when wiki.enabled is absent")
 		}
 	})
 
@@ -65,9 +73,17 @@ func TestResolveWikiOptions_RefPrecedence(t *testing.T) {
 		}
 	})
 
-	t.Run("env beats config", func(t *testing.T) {
+	t.Run("config beats env", func(t *testing.T) {
 		t.Setenv(envWikiRef, "env-ref")
 		got := resolveWikiOptions(true, false, false, false, "", false, cli.WikiFileConfig{Ref: strPtr("cfg-ref")})
+		if got.Ref != "cfg-ref" {
+			t.Errorf("Ref = %q, want cfg-ref — the committed file outranks the environment", got.Ref)
+		}
+	})
+
+	t.Run("env used when the config file says nothing", func(t *testing.T) {
+		t.Setenv(envWikiRef, "env-ref")
+		got := resolveWikiOptions(true, false, false, false, "", false, cli.WikiFileConfig{})
 		if got.Ref != "env-ref" {
 			t.Errorf("Ref = %q, want env-ref", got.Ref)
 		}
