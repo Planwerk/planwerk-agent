@@ -84,7 +84,7 @@ func TestLoad_Recursive(t *testing.T) {
 	writePattern(t, filepath.Join(dir, "technology", "go"), "go-errors.md", goPattern)
 	writePattern(t, filepath.Join(dir, "design"), "yagni.md", yagniPattern)
 
-	pats, err := Load(dir)
+	pats, err := loadAll(dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestLoad_ReviewCategory(t *testing.T) {
 	dir := t.TempDir()
 	writePattern(t, filepath.Join(dir, "review"), "review-depth.md", reviewPattern)
 
-	pats, err := Load(dir)
+	pats, err := loadAll(dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -150,7 +150,7 @@ func TestLoadFiltered_GoOnly(t *testing.T) {
 	writePattern(t, filepath.Join(dir, "technology", "python"), "python-types.md", pythonPattern)
 	writePattern(t, filepath.Join(dir, "design"), "yagni.md", yagniPattern)
 
-	pats, err := LoadFiltered([]string{"go"}, dir)
+	pats, err := loadTagged([]string{"go"}, dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -176,7 +176,7 @@ func TestLoadFiltered_NilTags(t *testing.T) {
 	writePattern(t, dir, "go-errors.md", goPattern)
 	writePattern(t, dir, "python-types.md", pythonPattern)
 
-	pats, err := LoadFiltered(nil, dir)
+	pats, err := loadTagged(nil, dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -190,7 +190,7 @@ func TestLoadFiltered_LegacyAlwaysApplies(t *testing.T) {
 	writePattern(t, dir, "legacy.md", legacyPattern)
 	writePattern(t, dir, "go-errors.md", goPattern)
 
-	pats, err := LoadFiltered([]string{"python"}, dir)
+	pats, err := loadTagged([]string{"python"}, dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -233,7 +233,7 @@ General version.
 Repo-specific version.
 `)
 
-	pats, err := Load(general, repo)
+	pats, err := loadAll(general, repo)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -250,7 +250,7 @@ func TestLoad_SkipsSourcesMD(t *testing.T) {
 	writePattern(t, dir, "SOURCES.md", "# Best Practice Sources\n\nNot a pattern.\n")
 	writePattern(t, dir, "go-errors.md", goPattern)
 
-	pats, err := Load(dir)
+	pats, err := loadAll(dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -260,7 +260,7 @@ func TestLoad_SkipsSourcesMD(t *testing.T) {
 }
 
 func TestLoad_NonexistentDir(t *testing.T) {
-	pats, err := Load("/nonexistent/path")
+	pats, err := loadAll("/nonexistent/path")
 	if err != nil {
 		t.Fatalf("nonexistent dir should not error: %v", err)
 	}
@@ -522,7 +522,7 @@ The loader must record FilePath.
 	if err := os.WriteFile(filepath.Join(bundled, "rule.md"), []byte(body), 0o644); err != nil {
 		t.Fatalf("seeding pattern: %v", err)
 	}
-	pats, err := LoadFiltered(nil, bundled)
+	pats, err := loadTagged(nil, bundled)
 	if err != nil {
 		t.Fatalf("LoadFiltered: %v", err)
 	}
@@ -852,4 +852,12 @@ func TestFingerprint_DistinguishesSourceSelections(t *testing.T) {
 			t.Fatalf("fingerprint is not stable: %s != %s", got, stable)
 		}
 	}
+}
+
+// loadAll and loadTagged read only the given on-disk sources, without the
+// embedded catalog, so the fixtures under test are the whole catalog.
+func loadAll(sources ...string) ([]Pattern, error) { return loadTagged(nil, sources...) }
+
+func loadTagged(tags []string, sources ...string) ([]Pattern, error) {
+	return LoadFilteredWithOptions(LoadOptions{NoEmbedded: true}, tags, sources...)
 }

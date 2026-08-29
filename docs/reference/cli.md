@@ -91,8 +91,6 @@ planwerk-agent owner/repo#123 > review.md
 | `--local` | Operate on the current working directory instead of cloning into a temp dir (see [Use local mode](/how-to/use-local-mode)). The PR reference may be omitted — it is inferred from the current branch. | `false` |
 | `--force` | With `--local`, skip the confirmation prompt when the working tree is dirty | `false` |
 | `--no-capture` | Skip the read-only capture pass that proposes new wiki review patterns from the review findings (only runs with `--wiki`; writes nothing) | `false` |
-| `--capture-wiki` | Ignored by review — a review analyzes an untrusted pull request, so its capture pass is always propose-only and never pushes to the wiki. Capture pattern pages from a trusted source instead (`implement` or `audit`; env: `PLANWERK_CAPTURE_WIKI`). | `false` |
-| `--yes` | Skip the `--capture-wiki` write confirmation prompt (for a non-interactive write); has no effect on review, which never writes | `false` |
 | `--version` | Show version information and exit | `false` |
 
 When the review uses `--wiki`, a read-only **capture pass** then proposes new
@@ -100,8 +98,8 @@ project knowledge for the wiki: generalizable review findings become candidate
 `review_patterns/` pages, deduplicated against the wiki's existing entries and
 the bundled pattern catalog. It is always **propose-only** — the suggestions
 surface on stdout, and (only with `--post-review`) as a PR comment; nothing is ever
-written to the wiki. Unlike `implement` and `audit`, review never pushes the
-accepted pages, even under `--capture-wiki`: it analyzes an untrusted pull request
+written to the wiki. Unlike `implement` and `audit`, review has no `--capture-wiki` flag and never
+pushes the accepted pages: it analyzes an untrusted pull request
 and the proposal pass reads attacker-controlled source, so auto-pushing its
 free-form pages would let an external contributor poison the shared knowledge base.
 A standalone review has no plan or implementation report, so it proposes patterns

@@ -61,13 +61,6 @@ type Options struct {
 	// nothing. On by default but only when a wiki is resolved (i.e. with --wiki);
 	// without one it is a no-op regardless of this flag.
 	NoCapture bool
-	// CaptureWiki gates the capture write-back: with it set, the capture pass
-	// pushes the accepted proposal pages to the wiki. Default off keeps a run
-	// propose-only.
-	CaptureWiki bool
-	// Yes skips the capture write-back's interactive confirmation, for a
-	// non-interactive (CI) --capture-wiki run.
-	Yes bool
 }
 
 // Runner executes the review pipeline using injected Claude and GitHub
@@ -465,16 +458,6 @@ func (r *Runner) runCapture(w io.Writer, pr *github.PR, opts Options, result *re
 		out = io.Discard
 	}
 
-	// review is propose-only: never push to the wiki even under --capture-wiki, as
-	// the proposal pages are influenced by the untrusted PR head. Surface the
-	// downgrade so an operator who asked for a push is not misled into thinking one
-	// happened (the slog.Warn keeps it visible under --format json, where out is
-	// discarded).
-	if opts.CaptureWiki {
-		slog.Warn("review ignores --capture-wiki: it analyzes an untrusted pull request, so its capture pass is propose-only and never pushes to the wiki")
-		_, _ = fmt.Fprintln(out, "\nNote: review ignores --capture-wiki — it analyzes an untrusted pull request, so its capture pass is propose-only and never pushes attacker-influenced pages to the wiki. Capture pattern pages from a trusted source instead (implement or audit).")
-	}
-
 	pass := capture.Pass{
 		Propose:     r.Capturer,
 		PostComment: poster,
@@ -491,7 +474,7 @@ func (r *Runner) runCapture(w io.Writer, pr *github.PR, opts Options, result *re
 		Patterns:    pats,
 		Wiki:        wiki,
 		WikiRef:     opts.Wiki.Ref,
-		CaptureWiki: false, // propose-only: see the doc comment above
+		CaptureWiki: false, // propose-only: the proposal pages derive from an untrusted PR head
 		Version:     opts.Version,
 	})
 }

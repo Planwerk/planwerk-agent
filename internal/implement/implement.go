@@ -1037,7 +1037,6 @@ func mostRecentSessionAccount(comments []github.IssueComment) string {
 // vocabulary exists once (report.TerminalStatus is the shared parser; see that
 // package for why internal/fix keeps its own).
 const (
-	statusDone             = report.StatusDone
 	statusDoneWithConcerns = report.StatusDoneWithConcerns
 	statusPartial          = report.StatusPartial
 	statusBlocked          = report.StatusBlocked

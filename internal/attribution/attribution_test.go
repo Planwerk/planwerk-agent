@@ -52,8 +52,8 @@ func TestTool_NamesRecordedVersion(t *testing.T) {
 	if got, want := Tool(), Link+" e1efd0d"; got != want {
 		t.Errorf("Tool() = %q, want %q", got, want)
 	}
-	if got := Version(); got != "e1efd0d" {
-		t.Errorf("Version() = %q, want %q", got, "e1efd0d")
+	if got := version(); got != "e1efd0d" {
+		t.Errorf("version() = %q, want %q", got, "e1efd0d")
 	}
 }
 
@@ -81,7 +81,7 @@ func TestSetVersion_TrimsWhitespaceAndClears(t *testing.T) {
 func TestAssistantMarker_IsPrefixOfNamedClause(t *testing.T) {
 	// The detection marker must be a prefix of the rendered clause, so a footer
 	// posted under one model is still matched after the default model changes.
-	if got := AssistantWith("claude-opus-5"); got[:len(AssistantMarker)] != AssistantMarker {
-		t.Errorf("AssistantWith() = %q does not start with AssistantMarker %q", got, AssistantMarker)
+	if got := AssistantWith("claude-opus-5"); got[:len(assistantMarker)] != assistantMarker {
+		t.Errorf("AssistantWith() = %q does not start with assistantMarker %q", got, assistantMarker)
 	}
 }

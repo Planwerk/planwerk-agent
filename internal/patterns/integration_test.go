@@ -23,7 +23,7 @@ func TestLoadShippedPatterns(t *testing.T) {
 	root := projectRoot()
 	patsDir := filepath.Join(root, "internal", "patterns", "patterns")
 
-	all, err := patterns.Load(patsDir)
+	all, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{NoEmbedded: true}, nil, patsDir)
 	if err != nil {
 		t.Fatalf("loading shipped patterns: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestLoadFilteredShippedPatterns_GoProject(t *testing.T) {
 	root := projectRoot()
 	patsDir := filepath.Join(root, "internal", "patterns", "patterns")
 
-	pats, err := patterns.LoadFiltered([]string{"go"}, patsDir)
+	pats, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{NoEmbedded: true}, []string{"go"}, patsDir)
 	if err != nil {
 		t.Fatalf("loading filtered patterns: %v", err)
 	}
@@ -92,7 +92,7 @@ func TestLoadShippedPatterns_DocumentationDiataxis(t *testing.T) {
 	root := projectRoot()
 	patsDir := filepath.Join(root, "internal", "patterns", "patterns")
 
-	all, err := patterns.Load(patsDir)
+	all, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{NoEmbedded: true}, nil, patsDir)
 	if err != nil {
 		t.Fatalf("loading shipped patterns: %v", err)
 	}
@@ -133,7 +133,7 @@ func TestLoadShippedPatterns_DeepModules(t *testing.T) {
 	root := projectRoot()
 	patsDir := filepath.Join(root, "internal", "patterns", "patterns")
 
-	all, err := patterns.Load(patsDir)
+	all, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{NoEmbedded: true}, nil, patsDir)
 	if err != nil {
 		t.Fatalf("loading shipped patterns: %v", err)
 	}
@@ -174,7 +174,7 @@ func TestLoadShippedPatterns_TestBehavior(t *testing.T) {
 	root := projectRoot()
 	patsDir := filepath.Join(root, "internal", "patterns", "patterns")
 
-	all, err := patterns.Load(patsDir)
+	all, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{NoEmbedded: true}, nil, patsDir)
 	if err != nil {
 		t.Fatalf("loading shipped patterns: %v", err)
 	}
@@ -206,7 +206,7 @@ func TestLoadShippedPatterns_PythonDocstrings(t *testing.T) {
 	root := projectRoot()
 	patsDir := filepath.Join(root, "internal", "patterns", "patterns")
 
-	pats, err := patterns.LoadFiltered([]string{"python"}, patsDir)
+	pats, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{NoEmbedded: true}, []string{"python"}, patsDir)
 	if err != nil {
 		t.Fatalf("loading python-filtered patterns: %v", err)
 	}

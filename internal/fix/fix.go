@@ -74,8 +74,6 @@ type Runner struct {
 	BuildPrompt PromptBuildFn
 	// Sleep is overridable so tests don't actually sleep between polls.
 	Sleep func(time.Duration)
-	// Now is overridable so iteration banners are deterministic in tests.
-	Now func() time.Time
 }
 
 // NewRunner builds a Runner with the production GitHub backend, the given
@@ -89,7 +87,6 @@ func NewRunner(fn FixFn, build PromptBuildFn) *Runner {
 		Prompter:    stdinPrompter{In: os.Stdin, Out: os.Stderr},
 		BuildPrompt: build,
 		Sleep:       time.Sleep,
-		Now:         time.Now,
 	}
 }
 
@@ -435,9 +432,6 @@ func (r *Runner) applyDefaults(opts *Options) {
 	}
 	if r.Sleep == nil {
 		r.Sleep = time.Sleep
-	}
-	if r.Now == nil {
-		r.Now = time.Now
 	}
 	if r.Prompter == nil {
 		r.Prompter = stdinPrompter{In: os.Stdin, Out: os.Stderr}
