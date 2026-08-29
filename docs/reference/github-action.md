@@ -11,8 +11,8 @@ and outputs; for a working workflow, see
 |-------|-------------|---------|
 | `pr-ref` | PR reference (URL, `owner/repo#number`, or bare PR number for the current repo) | the PR that triggered the workflow |
 | `patterns` | Comma-separated additional pattern directories | `""` |
-| `min-severity` | Minimum severity to report (`info`, `warning`, `critical`, `blocking`) | `info` |
-| `format` | Output format written to the action log (`markdown`, `json`); posting always uses markdown | `markdown` |
+| `min-severity` | Minimum severity to report (`info`, `warning`, `critical`, `blocking`). Empty falls through to `.planwerk/config.yaml` `review.min-severity`, then to the compiled-in `info` | *(empty)* |
+| `format` | Output format written to the action log (`markdown`, `json`); posting always uses markdown. Empty falls through to `.planwerk/config.yaml` `review.format`, then to the compiled-in `markdown` | *(empty)* |
 | `max-findings` | Cap on findings returned (`0` disables cap) | `0` |
 | `post-inline` | Post inline review comments and a summary via the GitHub Review API | `true` |
 | `thorough` | Run the additional adversarial review pass | `false` |
