@@ -20,7 +20,8 @@ import (
 // reports only; --prune/--apply deletes the flagged entries on the wiki and
 // pushes, in a separate write phase that asks for confirmation first.
 func newSyncCmd(deps *runtimeDeps) *cobra.Command {
-	var cfg cli.SyncConfig
+	var cfg sync.Options
+	var apply bool
 	var wikiRef string
 	var dryRun bool
 
@@ -44,10 +45,10 @@ or short form (owner/repo).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg.RepoRef = args[0]
 
-			prune := cfg.Prune || cfg.Apply
+			cfg.Prune = cfg.Prune || apply
 			// --dry-run defaults to true (it names the default behavior), so a
 			// conflict exists only when the user explicitly asks for both.
-			if prune && cmd.Flags().Changed("dry-run") && dryRun {
+			if cfg.Prune && cmd.Flags().Changed("dry-run") && dryRun {
 				return fmt.Errorf("--dry-run and --prune/--apply are mutually exclusive")
 			}
 
@@ -57,7 +58,8 @@ or short form (owner/repo).`,
 				return fmt.Errorf("unknown format %q, supported: markdown, json", cfg.Format)
 			}
 
-			opts := cfg.ToSyncOptions(deps.version)
+			opts := cfg
+			opts.Version = deps.version
 			opts.Remote = deps.remoteOpts
 			opts.Wiki = resolveSyncWiki(wikiRef, cmd.Flags().Changed("wiki-ref"), deps.fileCfg.Wiki)
 			return sync.Run(os.Stdout, opts, deps.claude.Sync)
@@ -67,7 +69,7 @@ or short form (owner/repo).`,
 	flags := syncCmd.Flags()
 	flags.BoolVar(&dryRun, "dry-run", true, "Report stale and redundant entries without changing the wiki (the default)")
 	flags.BoolVar(&cfg.Prune, "prune", false, "Delete the flagged entries on the wiki and push (the write phase)")
-	flags.BoolVar(&cfg.Apply, "apply", false, "Alias of --prune")
+	flags.BoolVar(&apply, "apply", false, "Alias of --prune")
 	flags.BoolVar(&cfg.Yes, "yes", false, "Skip the write-phase confirmation prompt (for a non-interactive prune)")
 	flags.StringVar(&cfg.Format, "format", "markdown", "Output format (markdown, json)")
 	flags.StringVar(&wikiRef, "wiki-ref", "", "Pin the wiki to a branch, tag, or commit (env: "+envWikiRef+"; empty uses the wiki's default branch)")

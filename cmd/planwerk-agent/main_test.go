@@ -15,15 +15,6 @@ import (
 // command-level tests in this package.
 const testRepoRef = "acme/widgets"
 
-// Repeated effort and model literals used across the resolve* tests,
-// extracted into constants so they live in one place (and to satisfy
-// goconst, which flags strings that recur three or more times).
-const (
-	effortHigh  = "high"
-	modelOpus   = "opus"
-	modelSonnet = "sonnet"
-)
-
 func TestResolveBuildInfoUsesLdflagsVersion(t *testing.T) {
 	bi := resolveBuildInfo("v1.2.3")
 	if bi.Version != "v1.2.3" {
@@ -149,64 +140,6 @@ func TestResolveMaxPatternsInvalidEnv(t *testing.T) {
 	}
 }
 
-func TestResolveShowClaudeOutputFlagWins(t *testing.T) {
-	t.Setenv(envShowClaudeOutput, "1")
-	if resolveShowClaudeOutput(false, true) != false {
-		t.Fatalf("explicit --show-claude-output=false must beat env var")
-	}
-	if resolveShowClaudeOutput(true, true) != true {
-		t.Fatalf("explicit --show-claude-output=true must take effect")
-	}
-}
-
-func TestResolveShowClaudeOutputEnvVariants(t *testing.T) {
-	for _, raw := range []string{"1", "true", "TRUE", "yes", "On", " 1 "} {
-		t.Run("enabled-"+raw, func(t *testing.T) {
-			t.Setenv(envShowClaudeOutput, raw)
-			if !resolveShowClaudeOutput(false, false) {
-				t.Errorf("env=%q should enable streaming", raw)
-			}
-		})
-	}
-	for _, raw := range []string{"0", "false", "no", "off", "", "garbage"} {
-		t.Run("disabled-"+raw, func(t *testing.T) {
-			t.Setenv(envShowClaudeOutput, raw)
-			if resolveShowClaudeOutput(false, false) {
-				t.Errorf("env=%q should leave streaming off", raw)
-			}
-		})
-	}
-}
-
-func TestResolveClaudeInheritUserConfigFlagWins(t *testing.T) {
-	t.Setenv(envClaudeInheritUserConfig, "1")
-	if resolveClaudeInheritUserConfig(false, true) != false {
-		t.Fatalf("explicit --claude-inherit-user-config=false must beat env var")
-	}
-	if resolveClaudeInheritUserConfig(true, true) != true {
-		t.Fatalf("explicit --claude-inherit-user-config=true must take effect")
-	}
-}
-
-func TestResolveClaudeInheritUserConfigEnvVariants(t *testing.T) {
-	for _, raw := range []string{"1", "true", "TRUE", "yes", "On", " 1 "} {
-		t.Run("enabled-"+raw, func(t *testing.T) {
-			t.Setenv(envClaudeInheritUserConfig, raw)
-			if !resolveClaudeInheritUserConfig(false, false) {
-				t.Errorf("env=%q should enable inheritance", raw)
-			}
-		})
-	}
-	for _, raw := range []string{"0", "false", "no", "off", "", "garbage"} {
-		t.Run("disabled-"+raw, func(t *testing.T) {
-			t.Setenv(envClaudeInheritUserConfig, raw)
-			if resolveClaudeInheritUserConfig(false, false) {
-				t.Errorf("env=%q should leave the session hermetic", raw)
-			}
-		})
-	}
-}
-
 func TestResolveClaudeTimeoutFlagWins(t *testing.T) {
 	t.Setenv(envClaudeTimeout, "30m")
 	got, err := resolveClaudeTimeout(20*time.Minute, true)
@@ -259,322 +192,6 @@ func TestResolveClaudeTimeoutRejectsNonPositive(t *testing.T) {
 	t.Setenv(envClaudeTimeout, "0s")
 	if _, err := resolveClaudeTimeout(0, false); err == nil {
 		t.Fatalf("expected error for PLANWERK_CLAUDE_TIMEOUT=0s, got nil")
-	}
-}
-
-func TestResolveClaudeModelFlagWins(t *testing.T) {
-	t.Setenv(envClaudeModel, "sonnet")
-	if got := resolveClaudeModel("fable", true); got != "fable" {
-		t.Fatalf("got %q, want flag value %q", got, "fable")
-	}
-}
-
-func TestResolveClaudeModelEnvBeatsDefault(t *testing.T) {
-	t.Setenv(envClaudeModel, "  fable  ")
-	if got := resolveClaudeModel("", false); got != "fable" {
-		t.Fatalf("got %q, want trimmed env value %q", got, "fable")
-	}
-}
-
-func TestResolveClaudeModelDefault(t *testing.T) {
-	t.Setenv(envClaudeModel, "")
-	if got := resolveClaudeModel("", false); got != claude.DefaultClaudeModel {
-		t.Fatalf("got %q, want default %q", got, claude.DefaultClaudeModel)
-	}
-	// An explicitly-set-but-empty flag falls through to the default too.
-	if got := resolveClaudeModel("", true); got != claude.DefaultClaudeModel {
-		t.Fatalf("got %q for empty flag, want default %q", got, claude.DefaultClaudeModel)
-	}
-}
-
-func TestResolveClaudeEffortFlagWins(t *testing.T) {
-	t.Setenv(envClaudeEffort, effortHigh)
-	if got := resolveClaudeEffort("xhigh", true); got != "xhigh" {
-		t.Fatalf("got %q, want flag value %q", got, "xhigh")
-	}
-}
-
-func TestResolveClaudeEffortEnvBeatsDefault(t *testing.T) {
-	t.Setenv(envClaudeEffort, "  high  ")
-	if got := resolveClaudeEffort("", false); got != effortHigh {
-		t.Fatalf("got %q, want trimmed env value %q", got, effortHigh)
-	}
-}
-
-func TestResolveClaudeEffortDefault(t *testing.T) {
-	t.Setenv(envClaudeEffort, "")
-	if got := resolveClaudeEffort("", false); got != claude.DefaultClaudeEffort {
-		t.Fatalf("got %q, want default %q", got, claude.DefaultClaudeEffort)
-	}
-}
-
-func TestResolvePlanModelFlagWins(t *testing.T) {
-	t.Setenv(envPlanModel, "sonnet")
-	if got := resolvePlanModel(modelOpus, true); got != modelOpus {
-		t.Fatalf("got %q, want flag value %q", got, modelOpus)
-	}
-}
-
-func TestResolvePlanModelEnvBeatsDefault(t *testing.T) {
-	t.Setenv(envPlanModel, "  opus  ")
-	if got := resolvePlanModel("", false); got != modelOpus {
-		t.Fatalf("got %q, want trimmed env value %q", got, modelOpus)
-	}
-}
-
-func TestResolvePlanModelDefault(t *testing.T) {
-	t.Setenv(envPlanModel, "")
-	if got := resolvePlanModel("", false); got != claude.DefaultPlanModel {
-		t.Fatalf("got %q, want default %q", got, claude.DefaultPlanModel)
-	}
-	// An explicitly-set-but-empty flag falls through to the default too.
-	if got := resolvePlanModel("", true); got != claude.DefaultPlanModel {
-		t.Fatalf("got %q for empty flag, want default %q", got, claude.DefaultPlanModel)
-	}
-}
-
-func TestResolveImplementModelFlagWins(t *testing.T) {
-	t.Setenv(envImplementModel, "sonnet")
-	if got := resolveImplementModel(modelOpus, true); got != modelOpus {
-		t.Fatalf("got %q, want flag value %q", got, modelOpus)
-	}
-}
-
-func TestResolveImplementModelEnvBeatsDefault(t *testing.T) {
-	t.Setenv(envImplementModel, "  opus  ")
-	if got := resolveImplementModel("", false); got != modelOpus {
-		t.Fatalf("got %q, want trimmed env value %q", got, modelOpus)
-	}
-}
-
-// TestResolveImplementModelDefaultEmpty pins that with neither flag nor env
-// set the resolver yields "" — the inherit---claude-model sentinel the Client
-// maps to its main model — rather than some compiled-in model of its own.
-func TestResolveImplementModelDefaultEmpty(t *testing.T) {
-	t.Setenv(envImplementModel, "")
-	if got := resolveImplementModel("", false); got != "" {
-		t.Fatalf("got %q, want empty (inherit --claude-model)", got)
-	}
-	// An explicitly-set-but-empty flag falls through to the empty default too.
-	if got := resolveImplementModel("", true); got != "" {
-		t.Fatalf("got %q for empty flag, want empty (inherit --claude-model)", got)
-	}
-}
-
-func TestResolveImplementWorkerModelFlagWins(t *testing.T) {
-	t.Setenv(envImplementWorkerModel, "sonnet")
-	if got := resolveImplementWorkerModel(modelOpus, true); got != modelOpus {
-		t.Fatalf("got %q, want flag value %q", got, modelOpus)
-	}
-}
-
-func TestResolveImplementWorkerModelEnvBeatsDefault(t *testing.T) {
-	t.Setenv(envImplementWorkerModel, "  opus  ")
-	if got := resolveImplementWorkerModel("", false); got != modelOpus {
-		t.Fatalf("got %q, want trimmed env value %q", got, modelOpus)
-	}
-}
-
-// TestResolveImplementWorkerModelDefaultEmpty pins that with neither flag nor
-// env set the resolver yields "" — the orchestrator-mode-off sentinel the
-// claude package maps to the historical single-session behavior — rather than
-// some compiled-in worker model of its own.
-func TestResolveImplementWorkerModelDefaultEmpty(t *testing.T) {
-	t.Setenv(envImplementWorkerModel, "")
-	if got := resolveImplementWorkerModel("", false); got != "" {
-		t.Fatalf("got %q, want empty (orchestrator mode off)", got)
-	}
-	// An explicitly-set-but-empty flag falls through to the empty default too.
-	if got := resolveImplementWorkerModel("", true); got != "" {
-		t.Fatalf("got %q for empty flag, want empty (orchestrator mode off)", got)
-	}
-}
-
-func TestResolveImplementWorkerEffortFlagWins(t *testing.T) {
-	t.Setenv(envImplementWorkerEffort, effortHigh)
-	if got := resolveImplementWorkerEffort("max", true); got != "max" {
-		t.Fatalf("got %q, want flag value %q", got, "max")
-	}
-}
-
-func TestResolveImplementWorkerEffortEnvBeatsDefault(t *testing.T) {
-	t.Setenv(envImplementWorkerEffort, "  high  ")
-	if got := resolveImplementWorkerEffort("", false); got != effortHigh {
-		t.Fatalf("got %q, want trimmed env value %q", got, effortHigh)
-	}
-}
-
-func TestResolveImplementWorkerEffortDefault(t *testing.T) {
-	t.Setenv(envImplementWorkerEffort, "")
-	if got := resolveImplementWorkerEffort("", false); got != claude.DefaultImplementWorkerEffort {
-		t.Fatalf("got %q, want default %q", got, claude.DefaultImplementWorkerEffort)
-	}
-}
-
-func TestResolvePlanEffortFlagWins(t *testing.T) {
-	t.Setenv(envPlanEffort, effortHigh)
-	if got := resolvePlanEffort("max", true); got != "max" {
-		t.Fatalf("got %q, want flag value %q", got, "max")
-	}
-}
-
-func TestResolvePlanEffortEnvBeatsDefault(t *testing.T) {
-	t.Setenv(envPlanEffort, "  high  ")
-	if got := resolvePlanEffort("", false); got != effortHigh {
-		t.Fatalf("got %q, want trimmed env value %q", got, effortHigh)
-	}
-}
-
-func TestResolvePlanEffortDefault(t *testing.T) {
-	t.Setenv(envPlanEffort, "")
-	if got := resolvePlanEffort("", false); got != claude.DefaultPlanEffort {
-		t.Fatalf("got %q, want default %q", got, claude.DefaultPlanEffort)
-	}
-	// An explicitly-set-but-empty flag falls through to the default too.
-	if got := resolvePlanEffort("", true); got != claude.DefaultPlanEffort {
-		t.Fatalf("got %q for empty flag, want default %q", got, claude.DefaultPlanEffort)
-	}
-}
-
-func TestResolveStructureModelFlagWins(t *testing.T) {
-	t.Setenv(envStructureModel, modelOpus)
-	if got := resolveStructureModel("sonnet", true); got != "sonnet" {
-		t.Fatalf("got %q, want flag value %q", got, "sonnet")
-	}
-}
-
-func TestResolveStructureModelEnvBeatsDefault(t *testing.T) {
-	t.Setenv(envStructureModel, "  opus  ")
-	if got := resolveStructureModel("", false); got != modelOpus {
-		t.Fatalf("got %q, want trimmed env value %q", got, modelOpus)
-	}
-}
-
-func TestResolveStructureModelDefault(t *testing.T) {
-	t.Setenv(envStructureModel, "")
-	if got := resolveStructureModel("", false); got != claude.DefaultStructureModel {
-		t.Fatalf("got %q, want default %q", got, claude.DefaultStructureModel)
-	}
-	// An explicitly-set-but-empty flag falls through to the default too.
-	if got := resolveStructureModel("", true); got != claude.DefaultStructureModel {
-		t.Fatalf("got %q for empty flag, want default %q", got, claude.DefaultStructureModel)
-	}
-}
-
-func TestResolveStructureEffortFlagWins(t *testing.T) {
-	t.Setenv(envStructureEffort, "medium")
-	got, err := resolveStructureEffort("xhigh", true)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got != "xhigh" {
-		t.Fatalf("got %q, want flag value %q", got, "xhigh")
-	}
-}
-
-func TestResolveStructureEffortEnvBeatsDefault(t *testing.T) {
-	t.Setenv(envStructureEffort, "  high  ")
-	got, err := resolveStructureEffort("", false)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got != effortHigh {
-		t.Fatalf("got %q, want trimmed env value %q", got, effortHigh)
-	}
-}
-
-func TestResolveStructureEffortDefault(t *testing.T) {
-	t.Setenv(envStructureEffort, "")
-	got, err := resolveStructureEffort("", false)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got != claude.DefaultStructureEffort {
-		t.Fatalf("got %q, want default %q", got, claude.DefaultStructureEffort)
-	}
-	// An explicitly-set-but-empty flag falls through to the default too.
-	got, err = resolveStructureEffort("", true)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got != claude.DefaultStructureEffort {
-		t.Fatalf("got %q for empty flag, want default %q", got, claude.DefaultStructureEffort)
-	}
-}
-
-// TestResolveStructureEffortRejectsInvalid pins the fail-fast guard: an
-// off-vocabulary effort from the flag or the env is rejected up front, before
-// any claude call, instead of passing through to fail only after the expensive
-// upstream reasoning pass.
-func TestResolveStructureEffortRejectsInvalid(t *testing.T) {
-	t.Setenv(envStructureEffort, "")
-	if _, err := resolveStructureEffort("maximum", true); err == nil {
-		t.Fatal("expected an error for an invalid --structure-effort flag value")
-	}
-
-	t.Setenv(envStructureEffort, "maximum")
-	if _, err := resolveStructureEffort("", false); err == nil {
-		t.Fatal("expected an error for an invalid PLANWERK_STRUCTURE_EFFORT value")
-	}
-}
-
-func TestResolveFinderModel(t *testing.T) {
-	t.Setenv(envFinderModel, modelSonnet)
-	if got := resolveFinderModel(modelOpus, true); got != modelOpus {
-		t.Fatalf("got %q, want the flag value %q", got, modelOpus)
-	}
-	if got := resolveFinderModel("", false); got != modelSonnet {
-		t.Fatalf("got %q, want the env value %q", got, modelSonnet)
-	}
-	t.Setenv(envFinderModel, "")
-	if got := resolveFinderModel("", false); got != claude.DefaultFinderModel {
-		t.Fatalf("got %q, want the default %q (inherit the main model)", got, claude.DefaultFinderModel)
-	}
-}
-
-func TestResolveFinderEffort(t *testing.T) {
-	t.Setenv(envFinderEffort, "medium")
-	got, err := resolveFinderEffort(effortHigh, true)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got != effortHigh {
-		t.Fatalf("got %q, want the flag value %q", got, effortHigh)
-	}
-
-	t.Setenv(envFinderEffort, "  high  ")
-	if got, err = resolveFinderEffort("", false); err != nil || got != effortHigh {
-		t.Fatalf("got %q (err %v), want the trimmed env value %q", got, err, effortHigh)
-	}
-}
-
-// TestResolveFinderEffortDefaultIsInherit locks the one way the finder tier
-// differs from the structuring tier: its empty default means "inherit
-// --claude-effort", so the empty value must pass validation rather than be
-// rejected as an off-vocabulary level.
-func TestResolveFinderEffortDefaultIsInherit(t *testing.T) {
-	t.Setenv(envFinderEffort, "")
-	got, err := resolveFinderEffort("", false)
-	if err != nil {
-		t.Fatalf("unexpected error for the inherit default: %v", err)
-	}
-	if got != "" {
-		t.Fatalf("got %q, want empty (inherit the main effort)", got)
-	}
-}
-
-// TestResolveFinderEffortRejectsInvalid pins the fail-fast guard: a typo is
-// caught before any claude call rather than after a six-specialist fan-out has
-// already spent its tokens.
-func TestResolveFinderEffortRejectsInvalid(t *testing.T) {
-	t.Setenv(envFinderEffort, "")
-	if _, err := resolveFinderEffort("maximum", true); err == nil {
-		t.Fatal("expected an error for an invalid --finder-effort flag value")
-	}
-
-	t.Setenv(envFinderEffort, "maximum")
-	if _, err := resolveFinderEffort("", false); err == nil {
-		t.Fatal("expected an error for an invalid PLANWERK_FINDER_EFFORT value")
 	}
 }
 
@@ -645,5 +262,87 @@ func TestResolveMaxPatternsFileZeroDisablesTruncation(t *testing.T) {
 	}
 	if got != 0 {
 		t.Fatalf("got %d, want 0 (file value disables truncation)", got)
+	}
+}
+
+func TestResolveString(t *testing.T) {
+	const env = "PLANWERK_TEST_RESOLVE_STRING"
+	cases := []struct {
+		name string
+		flag string
+		set  bool
+		env  string
+		want string
+	}{
+		{"flag wins over env", "fable", true, "sonnet", "fable"},
+		{"explicitly empty flag falls through to env", "", true, "sonnet", "sonnet"},
+		{"env is trimmed", "", false, "  fable  ", "fable"},
+		{"blank env falls through to the default", "", false, "   ", "default"},
+		{"nothing set yields the default", "", false, "", "default"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv(env, c.env)
+			if got := resolveString(c.flag, c.set, env, "default"); got != c.want {
+				t.Errorf("resolveString(%q, %v, env=%q) = %q, want %q", c.flag, c.set, c.env, got, c.want)
+			}
+		})
+	}
+}
+
+func TestResolveBool(t *testing.T) {
+	const env = "PLANWERK_TEST_RESOLVE_BOOL"
+	t.Setenv(env, "1")
+	if resolveBool(false, true, env) {
+		t.Error("an explicit false flag must beat the env var")
+	}
+	if !resolveBool(true, true, env) {
+		t.Error("an explicit true flag must take effect")
+	}
+	for _, raw := range []string{"1", "true", "TRUE", "yes", "On", " 1 "} {
+		t.Setenv(env, raw)
+		if !resolveBool(false, false, env) {
+			t.Errorf("env=%q should enable", raw)
+		}
+	}
+	for _, raw := range []string{"0", "false", "no", "off", "", "garbage"} {
+		t.Setenv(env, raw)
+		if resolveBool(false, false, env) {
+			t.Errorf("env=%q should leave it off", raw)
+		}
+	}
+}
+
+func TestResolveEffort(t *testing.T) {
+	const env = "PLANWERK_TEST_RESOLVE_EFFORT"
+	t.Setenv(env, "medium")
+	if got, err := resolveEffort("xhigh", true, env, "high", false, "--test-effort"); err != nil || got != "xhigh" {
+		t.Errorf("flag: got %q, %v; want xhigh", got, err)
+	}
+	t.Setenv(env, "  high  ")
+	if got, err := resolveEffort("", false, env, "low", false, "--test-effort"); err != nil || got != "high" {
+		t.Errorf("env: got %q, %v; want high", got, err)
+	}
+	t.Setenv(env, "")
+	if got, err := resolveEffort("", false, env, "low", false, "--test-effort"); err != nil || got != "low" {
+		t.Errorf("default: got %q, %v; want low", got, err)
+	}
+	if got, err := resolveEffort("", true, env, "low", false, "--test-effort"); err != nil || got != "low" {
+		t.Errorf("explicitly empty flag: got %q, %v; want the default low", got, err)
+	}
+	// The finder efforts admit an empty result, which means "inherit".
+	if got, err := resolveEffort("", false, env, "", true, "--finder-effort"); err != nil || got != "" {
+		t.Errorf("allowEmpty: got %q, %v; want empty", got, err)
+	}
+	if _, err := resolveEffort("", false, env, "", false, "--test-effort"); err == nil {
+		t.Error("an empty result must be rejected when empty is not allowed")
+	}
+	// A typo is rejected wherever it comes from, naming the flag and the env var.
+	if _, err := resolveEffort("maximum", true, env, "low", false, "--test-effort"); err == nil || !strings.Contains(err.Error(), "--test-effort") || !strings.Contains(err.Error(), env) {
+		t.Errorf("invalid flag value: got %v", err)
+	}
+	t.Setenv(env, "maximum")
+	if _, err := resolveEffort("", false, env, "low", true, "--finder-effort"); err == nil {
+		t.Error("invalid env value must be rejected even when empty is allowed")
 	}
 }

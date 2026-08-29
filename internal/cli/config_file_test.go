@@ -7,7 +7,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/planwerk/planwerk-agent/internal/audit"
+	"github.com/planwerk/planwerk-agent/internal/propose"
 	"github.com/planwerk/planwerk-agent/internal/report"
+	"github.com/planwerk/planwerk-agent/internal/review"
 )
 
 const (
@@ -215,7 +218,7 @@ func TestApplyReviewFillsUnsetFlags(t *testing.T) {
 		Format:      ptr("json"),
 		MaxFindings: ptrInt(42),
 	}}
-	cfg := Config{Format: "markdown"}
+	cfg := review.Options{Format: "markdown"}
 	var sev string
 	fc.ApplyReview(&cfg, &sev, neverChanged)
 
@@ -240,7 +243,7 @@ func TestApplyReviewKeepsFlagValues(t *testing.T) {
 		Format:      ptr("json"),
 		MaxFindings: ptrInt(42),
 	}}
-	cfg := Config{
+	cfg := review.Options{
 		PatternDirs: []string{"./from-flag"},
 		Format:      "markdown",
 		MaxFindings: 7,
@@ -268,7 +271,7 @@ func TestApplyAuditFillsSeverities(t *testing.T) {
 		MinSeverity:      ptr(sevWarning),
 		IssueMinSeverity: ptr("blocking"),
 	}}
-	cfg := AuditConfig{
+	cfg := audit.Options{
 		MinSeverity:      report.SeverityInfo,
 		IssueMinSeverity: report.SeverityWarning,
 	}
@@ -285,7 +288,7 @@ func TestApplyAuditFillsSeverities(t *testing.T) {
 
 func TestApplyProposeFormat(t *testing.T) {
 	fc := FileConfig{Propose: ProposeFileConfig{Format: ptr("issues")}}
-	cfg := ProposeConfig{Format: "markdown"}
+	cfg := propose.Options{Format: "markdown"}
 	fc.ApplyPropose(&cfg, neverChanged)
 	if cfg.Format != "issues" {
 		t.Fatalf("Format = %q, want issues", cfg.Format)

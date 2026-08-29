@@ -6,7 +6,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/planwerk/planwerk-agent/internal/claude"
-	"github.com/planwerk/planwerk-agent/internal/cli"
 	"github.com/planwerk/planwerk-agent/internal/fix"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 )
@@ -16,7 +15,8 @@ import (
 // waits for the new commit's checks to come back. The loop continues until
 // every check is green or --max-iterations is exhausted.
 func newFixCmd(deps *runtimeDeps) *cobra.Command {
-	var fixCfg cli.FixConfig
+	var fixCfg fix.Options
+	var printBarePrompt bool
 
 	fixCmd := &cobra.Command{
 		Use:   "fix <pr-ref>",
@@ -67,15 +67,16 @@ or short form (owner/repo#123).`,
 			if fixCfg.PrintPrompt {
 				modes++
 			}
-			if fixCfg.PrintBarePrompt {
+			if printBarePrompt {
 				modes++
 			}
 			if modes > 1 {
 				return fmt.Errorf("--dry-run, --print-prompt, and --print-bare-prompt are mutually exclusive")
 			}
-			opts := fixCfg.ToFixOptions(deps.version)
+			opts := fixCfg
+			opts.Version = deps.version
 			opts.Remote = deps.remoteOpts
-			if fixCfg.PrintBarePrompt {
+			if printBarePrompt {
 				return fix.PrintBarePrompt(cmd.OutOrStdout(), opts, claude.BuildBareFixPrompt)
 			}
 			return fix.Run(cmd.OutOrStdout(), opts, deps.claude.Fix, claude.BuildFixPrompt)
@@ -88,7 +89,7 @@ or short form (owner/repo#123).`,
 	fixFlags.BoolVar(&fixCfg.Interactive, "interactive", false, "Ask before starting each new fix iteration (after the first)")
 	fixFlags.BoolVar(&fixCfg.DryRun, "dry-run", false, "Report failing checks but do not invoke Claude or commit")
 	fixFlags.BoolVar(&fixCfg.PrintPrompt, "print-prompt", false, "Render the fix prompt for the current failing checks to stdout and exit; do not invoke Claude or commit")
-	fixFlags.BoolVar(&fixCfg.PrintBarePrompt, "print-bare-prompt", false, "Render a self-contained fix prompt (no check analysis) to stdout and exit; meant to be pasted into a manual Claude session already running inside a checkout of the PR")
+	fixFlags.BoolVar(&printBarePrompt, "print-bare-prompt", false, "Render a self-contained fix prompt (no check analysis) to stdout and exit; meant to be pasted into a manual Claude session already running inside a checkout of the PR")
 	fixFlags.BoolVar(&fixCfg.NoFixComment, "no-fix-comment", false, "Do not post each iteration's fix report as a comment on the pull request")
 	fixFlags.StringSliceVar(&fixCfg.PatternDirs, "patterns", nil, "Additional pattern sources: local dirs, github:owner/repo[/sub][@ref], or git+https://...[#ref[:sub]]")
 	fixFlags.BoolVar(&fixCfg.NoRepoPatterns, "no-repo-patterns", false, "Ignore repo-specific patterns under .planwerk/review_patterns/ in the target repo")

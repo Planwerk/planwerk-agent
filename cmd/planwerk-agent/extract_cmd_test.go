@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"strings"
 	"testing"
-
-	"github.com/planwerk/planwerk-agent/internal/cli"
 )
 
 // runExtractCmd executes the extract subcommand hermetically: it exercises only
@@ -47,16 +45,5 @@ func TestExtractCmd_ToCatalogRequiresExplicitRepoRef(t *testing.T) {
 	_, err := runExtractCmd(t, "--to-catalog")
 	if err == nil || !strings.Contains(err.Error(), "--to-catalog requires an explicit repository reference") {
 		t.Fatalf("expected a to-catalog repo-ref error, got %v", err)
-	}
-}
-
-func TestExtractConfig_ToExtractOptionsCarriesSelection(t *testing.T) {
-	opts := cli.ExtractConfig{
-		RepoRef:   testRepoRef,
-		Patterns:  []string{"alpha"},
-		ToCatalog: true,
-	}.ToExtractOptions("test")
-	if opts.RepoRef != testRepoRef || !opts.ToCatalog || len(opts.Patterns) != 1 {
-		t.Fatalf("ToExtractOptions dropped fields: %+v", opts)
 	}
 }

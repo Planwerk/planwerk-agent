@@ -9,6 +9,10 @@ import (
 	"os"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/planwerk/planwerk-agent/internal/audit"
+	"github.com/planwerk/planwerk-agent/internal/propose"
+	"github.com/planwerk/planwerk-agent/internal/review"
 )
 
 // DefaultConfigPath is the relative path where planwerk-agent looks for
@@ -99,7 +103,7 @@ func LoadFileConfig(path string) (FileConfig, bool, error) {
 // so the caller can parse it with the existing flow. max-patterns is left to
 // the caller's resolver because it also folds in the PLANWERK_MAX_PATTERNS
 // environment variable.
-func (f FileConfig) ApplyReview(cfg *Config, minSeverity *string, flagChanged func(string) bool) {
+func (f FileConfig) ApplyReview(cfg *review.Options, minSeverity *string, flagChanged func(string) bool) {
 	r := f.Review
 	if len(r.Patterns) > 0 && !flagChanged("patterns") {
 		cfg.PatternDirs = append([]string(nil), r.Patterns...)
@@ -117,7 +121,7 @@ func (f FileConfig) ApplyReview(cfg *Config, minSeverity *string, flagChanged fu
 
 // ApplyPropose writes file-config defaults into cfg for any flag that was not
 // changed on the command line. max-patterns is handled by the caller.
-func (f FileConfig) ApplyPropose(cfg *ProposeConfig, flagChanged func(string) bool) {
+func (f FileConfig) ApplyPropose(cfg *propose.Options, flagChanged func(string) bool) {
 	p := f.Propose
 	if len(p.Patterns) > 0 && !flagChanged("patterns") {
 		cfg.PatternDirs = append([]string(nil), p.Patterns...)
@@ -129,7 +133,7 @@ func (f FileConfig) ApplyPropose(cfg *ProposeConfig, flagChanged func(string) bo
 
 // ApplyAudit writes file-config defaults into cfg for any flag that was not
 // changed on the command line. max-patterns is handled by the caller.
-func (f FileConfig) ApplyAudit(cfg *AuditConfig, minSeverity, issueMinSeverity *string, flagChanged func(string) bool) {
+func (f FileConfig) ApplyAudit(cfg *audit.Options, minSeverity, issueMinSeverity *string, flagChanged func(string) bool) {
 	a := f.Audit
 	if len(a.Patterns) > 0 && !flagChanged("patterns") {
 		cfg.PatternDirs = append([]string(nil), a.Patterns...)

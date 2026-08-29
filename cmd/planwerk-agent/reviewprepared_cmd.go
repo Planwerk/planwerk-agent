@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/planwerk/planwerk-agent/internal/cache"
-	"github.com/planwerk/planwerk-agent/internal/cli"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
 	"github.com/planwerk/planwerk-agent/internal/reviewprepared"
@@ -18,7 +17,7 @@ import (
 // surface weaknesses in the spec itself and (with --create-pr) open a pull
 // request that rewrites the JSON to address every WARNING-or-higher finding.
 func newReviewPreparedCmd(deps *runtimeDeps) *cobra.Command {
-	var preparedCfg cli.ReviewPreparedConfig
+	var preparedCfg reviewprepared.Options
 	var preparedMinSeverity string
 
 	preparedCmd := &cobra.Command{
@@ -75,7 +74,8 @@ or short form (owner/repo).`,
 				return fmt.Errorf("--create-pr cannot be used with --format json")
 			}
 
-			opts := preparedCfg.ToReviewPreparedOptions(deps.version)
+			opts := preparedCfg
+			opts.Version = deps.version
 			opts.Remote = deps.remoteOpts
 			return reviewprepared.Run(os.Stdout, opts, deps.claude.ReviewPrepared)
 		},

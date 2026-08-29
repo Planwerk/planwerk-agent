@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/planwerk/planwerk-agent/internal/claude"
-	"github.com/planwerk/planwerk-agent/internal/cli"
 	"github.com/planwerk/planwerk-agent/internal/fix"
 	"github.com/planwerk/planwerk-agent/internal/implement"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
@@ -22,7 +21,11 @@ import (
 // method by default — fixing its own CI rather than handing failing checks back
 // to a human.
 func newShipCmd(deps *runtimeDeps) *cobra.Command {
-	var shipCfg cli.ShipConfig
+	var shipOpts ship.Options
+	// implOpts and fixOpts carry the per-Sub Issue implement and fix options; the
+	// pattern flags bind onto implOpts and are copied into fixOpts per run.
+	var implOpts implement.Options
+	var fixOpts fix.Options
 	var planModel string
 	var planEffort string
 	var implementModel string
@@ -66,26 +69,26 @@ Issue reference can be a URL (https://github.com/owner/repo/issues/123)
 or short form (owner/repo#123).`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			shipCfg.IssueRef = args[0]
-			switch shipCfg.MergeMethod {
+			shipOpts.IssueRef = args[0]
+			switch shipOpts.MergeMethod {
 			case ship.MergeRebase, ship.MergeSquash, ship.MergeMerge:
 			default:
-				return fmt.Errorf("unknown --merge-method %q, supported: rebase, squash, merge", shipCfg.MergeMethod)
+				return fmt.Errorf("unknown --merge-method %q, supported: rebase, squash, merge", shipOpts.MergeMethod)
 			}
-			if shipCfg.Interval <= 0 {
-				return fmt.Errorf("--interval must be > 0, got %s", shipCfg.Interval)
+			if fixOpts.PollInterval <= 0 {
+				return fmt.Errorf("--interval must be > 0, got %s", fixOpts.PollInterval)
 			}
-			if shipCfg.MaxFixIterations <= 0 {
-				return fmt.Errorf("--max-fix-iterations must be > 0, got %d", shipCfg.MaxFixIterations)
+			if fixOpts.MaxIterations <= 0 {
+				return fmt.Errorf("--max-fix-iterations must be > 0, got %d", fixOpts.MaxIterations)
 			}
-			if shipCfg.StartAt < 0 {
-				return fmt.Errorf("--start-at must be a positive Sub Issue number, got %d", shipCfg.StartAt)
+			if shipOpts.StartAt < 0 {
+				return fmt.Errorf("--start-at must be a positive Sub Issue number, got %d", shipOpts.StartAt)
 			}
-			maxPatterns, err := resolveMaxPatterns(shipCfg.MaxPatterns, cmd.Flags().Changed("max-patterns"), nil)
+			maxPatterns, err := resolveMaxPatterns(implOpts.MaxPatterns, cmd.Flags().Changed("max-patterns"), nil)
 			if err != nil {
 				return err
 			}
-			shipCfg.MaxPatterns = maxPatterns
+			implOpts.MaxPatterns = maxPatterns
 
 			// The per–Sub Issue implement run plans on the dedicated planning
 			// model/effort — and implements on its optional model override — so
@@ -95,25 +98,26 @@ or short form (owner/repo#123).`,
 			// same client.
 			planOpts := append([]claude.Option{}, deps.claudeOpts...)
 			planOpts = append(planOpts,
-				claude.WithPlanModel(resolvePlanModel(planModel, cmd.Flags().Changed("plan-model"))),
-				claude.WithPlanEffort(resolvePlanEffort(planEffort, cmd.Flags().Changed("plan-effort"))),
-				claude.WithImplementModel(resolveImplementModel(implementModel, cmd.Flags().Changed("implement-model"))),
+				claude.WithPlanModel(resolveString(planModel, cmd.Flags().Changed("plan-model"), envPlanModel, claude.DefaultPlanModel)),
+				claude.WithPlanEffort(resolveString(planEffort, cmd.Flags().Changed("plan-effort"), envPlanEffort, claude.DefaultPlanEffort)),
+				claude.WithImplementModel(resolveString(implementModel, cmd.Flags().Changed("implement-model"), envImplementModel, "")),
 			)
 			client := claude.NewClient(planOpts...)
 			defer client.LogUsageSummary(cmd.ErrOrStderr())
 
-			shipOpts := shipCfg.ToShipOptions()
-
 			implementFn := func(w io.Writer, issueRef string) error {
-				iopts := shipCfg.ToShipImplementOptions(deps.version)
+				iopts := implOpts
+				iopts.Version = deps.version
 				iopts.IssueRef = issueRef
 				iopts.Remote = deps.remoteOpts
-				iopts.WorkerModel = resolveImplementWorkerModel(implementWorkerModel, cmd.Flags().Changed("implement-worker-model"))
-				iopts.WorkerEffort = resolveImplementWorkerEffort(implementWorkerEffort, cmd.Flags().Changed("implement-worker-effort"))
+				iopts.WorkerModel = resolveString(implementWorkerModel, cmd.Flags().Changed("implement-worker-model"), envImplementWorkerModel, "")
+				iopts.WorkerEffort = resolveString(implementWorkerEffort, cmd.Flags().Changed("implement-worker-effort"), envImplementWorkerEffort, claude.DefaultImplementWorkerEffort)
 				return implement.Run(w, iopts, client.Plan, claude.BuildPlanPrompt, client.Implement, claude.BuildImplementPrompt, client.VerifyImplementation, client.AdversarialReview, client.SpecialistReviews, client.SimplifyFindings, client.ApplySimplifications, client.ApplyReview, client.DedupFindings, client.VerifyFindingClaims, client.Capture, client.FinalizePR)
 			}
 			fixFn := func(w io.Writer, prRef string) error {
-				fopts := shipCfg.ToShipFixOptions(deps.version)
+				fopts := fixOpts
+				fopts.Version = deps.version
+				fopts.PatternDirs, fopts.NoRepoPatterns, fopts.NoLocalPatterns, fopts.MaxPatterns = implOpts.PatternDirs, implOpts.NoRepoPatterns, implOpts.NoLocalPatterns, implOpts.MaxPatterns
 				fopts.PRRef = prRef
 				fopts.Remote = deps.remoteOpts
 				return fix.Run(w, fopts, client.Fix, claude.BuildFixPrompt)
@@ -123,28 +127,28 @@ or short form (owner/repo#123).`,
 	}
 
 	shipFlags := shipCmd.Flags()
-	shipFlags.BoolVar(&shipCfg.DryRun, "dry-run", false, "Report the planned order of Sub Issues without cloning, calling Claude, or merging")
-	shipFlags.BoolVar(&shipCfg.NoMerge, "no-merge", false, "Run the whole pipeline but stop at green CI, leaving the merges to a human")
-	shipFlags.StringVar(&shipCfg.MergeMethod, "merge-method", ship.MergeRebase, "Merge method for each PR (rebase, squash, merge)")
-	shipFlags.IntVar(&shipCfg.StartAt, "start-at", 0, "Begin from a specific Sub Issue number (0 = from the top of the dependency order)")
-	shipFlags.IntVar(&shipCfg.MaxFixIterations, "max-fix-iterations", fix.DefaultMaxIterations, "CI self-heal budget per PR before the Sub Issue is skipped")
-	shipFlags.DurationVar(&shipCfg.Interval, "interval", fix.DefaultPollInterval, "Polling interval between CI check-status queries")
-	shipFlags.BoolVar(&shipCfg.NoSimplify, "no-simplify", false, "Skip the automatic simplify pass in each per–Sub Issue implement run")
-	shipFlags.BoolVar(&shipCfg.NoReview, "no-review", false, "Skip the automatic review-and-fix pass in each per–Sub Issue implement run")
-	shipFlags.BoolVar(&shipCfg.Verify, "verify", false, "In each implement run, check the produced diff against the Sub Issue's Acceptance Criteria")
-	shipFlags.BoolVar(&shipCfg.VerifyAdversarial, "verify-adversarial", false, "In each implement run, red-team the produced diff for the bugs it introduces")
-	shipFlags.BoolVar(&shipCfg.NoPlan, "no-plan", false, "Skip the planning session in each per–Sub Issue implement run")
-	shipFlags.BoolVar(&shipCfg.NoPlanReuse, "no-plan-reuse", false, "Always run a fresh planning session; do not reuse a plan already posted on the Sub Issue")
-	shipFlags.BoolVar(&shipCfg.NoPlanComment, "no-plan-comment", false, "Do not post the generated implementation plan as a comment on each Sub Issue")
+	shipFlags.BoolVar(&shipOpts.DryRun, "dry-run", false, "Report the planned order of Sub Issues without cloning, calling Claude, or merging")
+	shipFlags.BoolVar(&shipOpts.NoMerge, "no-merge", false, "Run the whole pipeline but stop at green CI, leaving the merges to a human")
+	shipFlags.StringVar(&shipOpts.MergeMethod, "merge-method", ship.MergeRebase, "Merge method for each PR (rebase, squash, merge)")
+	shipFlags.IntVar(&shipOpts.StartAt, "start-at", 0, "Begin from a specific Sub Issue number (0 = from the top of the dependency order)")
+	shipFlags.IntVar(&fixOpts.MaxIterations, "max-fix-iterations", fix.DefaultMaxIterations, "CI self-heal budget per PR before the Sub Issue is skipped")
+	shipFlags.DurationVar(&fixOpts.PollInterval, "interval", fix.DefaultPollInterval, "Polling interval between CI check-status queries")
+	shipFlags.BoolVar(&implOpts.NoSimplify, "no-simplify", false, "Skip the automatic simplify pass in each per–Sub Issue implement run")
+	shipFlags.BoolVar(&implOpts.NoReview, "no-review", false, "Skip the automatic review-and-fix pass in each per–Sub Issue implement run")
+	shipFlags.BoolVar(&implOpts.Verify, "verify", false, "In each implement run, check the produced diff against the Sub Issue's Acceptance Criteria")
+	shipFlags.BoolVar(&implOpts.VerifyAdversarial, "verify-adversarial", false, "In each implement run, red-team the produced diff for the bugs it introduces")
+	shipFlags.BoolVar(&implOpts.NoPlan, "no-plan", false, "Skip the planning session in each per–Sub Issue implement run")
+	shipFlags.BoolVar(&implOpts.NoPlanReuse, "no-plan-reuse", false, "Always run a fresh planning session; do not reuse a plan already posted on the Sub Issue")
+	shipFlags.BoolVar(&implOpts.NoPlanComment, "no-plan-comment", false, "Do not post the generated implementation plan as a comment on each Sub Issue")
 	shipFlags.StringVar(&planModel, "plan-model", claude.DefaultPlanModel, "Model for the planning session passed to Claude Code via --model (env: "+envPlanModel+")")
 	shipFlags.StringVar(&planEffort, "plan-effort", claude.DefaultPlanEffort, "Reasoning effort for the planning session passed via --effort (low, medium, high, xhigh, max; env: "+envPlanEffort+")")
 	shipFlags.StringVar(&implementModel, "implement-model", "", "Model for the implement session in each per–Sub Issue run; the other sessions stay on --claude-model (empty inherits --claude-model; env: "+envImplementModel+")")
 	shipFlags.StringVar(&implementWorkerModel, "implement-worker-model", "", "Model for the implementer subagents in each per–Sub Issue implement run; setting it switches those runs into orchestrator mode (empty keeps the single-session behavior; env: "+envImplementWorkerModel+")")
 	shipFlags.StringVar(&implementWorkerEffort, "implement-worker-effort", claude.DefaultImplementWorkerEffort, "Reasoning effort for the implementer subagents in orchestrator mode (low, medium, high, xhigh, max; ignored without --implement-worker-model; env: "+envImplementWorkerEffort+")")
-	shipFlags.StringSliceVar(&shipCfg.PatternDirs, "patterns", nil, "Additional pattern sources: local dirs, github:owner/repo[/sub][@ref], or git+https://...[#ref[:sub]]")
-	shipFlags.BoolVar(&shipCfg.NoRepoPatterns, "no-repo-patterns", false, "Ignore repo-specific patterns under .planwerk/review_patterns/ in the target repo")
-	shipFlags.BoolVar(&shipCfg.NoLocalPatterns, "no-local-patterns", false, "Ignore local patterns from the tool")
-	shipFlags.IntVar(&shipCfg.MaxPatterns, "max-patterns", patterns.DefaultMaxPatternsInPrompt, "Max review patterns injected into the prompt (<=0 disables truncation, env: "+envMaxPatterns+")")
+	shipFlags.StringSliceVar(&implOpts.PatternDirs, "patterns", nil, "Additional pattern sources: local dirs, github:owner/repo[/sub][@ref], or git+https://...[#ref[:sub]]")
+	shipFlags.BoolVar(&implOpts.NoRepoPatterns, "no-repo-patterns", false, "Ignore repo-specific patterns under .planwerk/review_patterns/ in the target repo")
+	shipFlags.BoolVar(&implOpts.NoLocalPatterns, "no-local-patterns", false, "Ignore local patterns from the tool")
+	shipFlags.IntVar(&implOpts.MaxPatterns, "max-patterns", patterns.DefaultMaxPatternsInPrompt, "Max review patterns injected into the prompt (<=0 disables truncation, env: "+envMaxPatterns+")")
 
 	return shipCmd
 }

@@ -137,30 +137,6 @@ const (
 	formatIssues   = "issues"
 )
 
-// resolveShowClaudeOutput returns the effective streaming toggle.
-// Precedence: explicit CLI flag, then PLANWERK_SHOW_CLAUDE_OUTPUT, then
-// off by default.
-func resolveShowClaudeOutput(flagValue, flagSet bool) bool {
-	if flagSet {
-		return flagValue
-	}
-	v, _ := lookupBoolEnv(envShowClaudeOutput)
-	return v
-}
-
-// resolveClaudeInheritUserConfig returns whether orchestrated Claude sessions
-// should inherit the invoking user's global ~/.claude settings and MCP servers.
-// Precedence: explicit CLI flag, then PLANWERK_CLAUDE_INHERIT_USER_CONFIG, then
-// off by default (hermetic, for reproducible output). It mirrors the truthy
-// parsing of resolveShowClaudeOutput.
-func resolveClaudeInheritUserConfig(flagValue, flagSet bool) bool {
-	if flagSet {
-		return flagValue
-	}
-	v, _ := lookupBoolEnv(envClaudeInheritUserConfig)
-	return v
-}
-
 // resolveClaudeTimeout returns the effective per-invocation Claude Code
 // timeout. Precedence: explicit CLI flag, then PLANWERK_CLAUDE_TIMEOUT,
 // then the compiled-in default. A non-positive value is rejected because
@@ -187,215 +163,49 @@ func resolveClaudeTimeout(flagValue time.Duration, flagSet bool) (time.Duration,
 	return claude.DefaultClaudeTimeout, nil
 }
 
-// resolveClaudeModel returns the effective model passed to Claude Code via
-// --model. Precedence: explicit CLI flag, then PLANWERK_CLAUDE_MODEL, then the
-// compiled-in default. The value is passed through verbatim — model names are
-// validated by Claude Code itself, so an unknown name surfaces as a claude
-// error rather than being rejected here.
-func resolveClaudeModel(flagValue string, flagSet bool) string {
-	if flagSet && flagValue != "" {
-		return flagValue
-	}
-	if raw, ok := os.LookupEnv(envClaudeModel); ok {
-		if v := strings.TrimSpace(raw); v != "" {
-			return v
-		}
-	}
-	return claude.DefaultClaudeModel
-}
-
-// resolveClaudeEffort returns the effective reasoning effort passed to Claude
-// Code via --effort. Precedence: explicit CLI flag, then PLANWERK_CLAUDE_EFFORT,
-// then the compiled-in default. The value is passed through verbatim — the
-// accepted effort levels are validated by Claude Code itself, so an unknown
-// level surfaces as a claude error rather than being rejected here.
-func resolveClaudeEffort(flagValue string, flagSet bool) string {
-	if flagSet && flagValue != "" {
-		return flagValue
-	}
-	if raw, ok := os.LookupEnv(envClaudeEffort); ok {
-		if v := strings.TrimSpace(raw); v != "" {
-			return v
-		}
-	}
-	return claude.DefaultClaudeEffort
-}
-
-// resolvePlanModel returns the effective model for the implement command's
-// planning session. Precedence: explicit CLI flag, then PLANWERK_PLAN_MODEL,
-// then the compiled-in default. The value is passed through verbatim — model
-// names are validated by Claude Code itself, so an unknown name surfaces as
-// a claude error rather than being rejected here.
-func resolvePlanModel(flagValue string, flagSet bool) string {
-	if flagSet && flagValue != "" {
-		return flagValue
-	}
-	if raw, ok := os.LookupEnv(envPlanModel); ok {
-		if v := strings.TrimSpace(raw); v != "" {
-			return v
-		}
-	}
-	return claude.DefaultPlanModel
-}
-
-// resolveImplementModel returns the effective model override for the implement
-// session. Precedence: explicit CLI flag, then PLANWERK_IMPLEMENT_MODEL, then
-// empty — unlike the plan/structure tiers there is no compiled-in default,
-// because empty means "inherit --claude-model" (the Client falls back to its
-// main model when the override is unset). The value is passed through verbatim —
-// model names are validated by Claude Code itself, so an unknown name surfaces
-// as a claude error rather than being rejected here.
-func resolveImplementModel(flagValue string, flagSet bool) string {
-	if flagSet && flagValue != "" {
-		return flagValue
-	}
-	if raw, ok := os.LookupEnv(envImplementModel); ok {
-		if v := strings.TrimSpace(raw); v != "" {
-			return v
-		}
-	}
-	return ""
-}
-
-// resolveImplementWorkerModel returns the effective model for the implementer
-// subagents of the implement/ship commands' orchestrated mode. Precedence:
-// explicit CLI flag, then PLANWERK_IMPLEMENT_WORKER_MODEL, then empty — like
-// --implement-model there is no compiled-in default, because empty means
-// "orchestrator mode off": the implement session writes the code itself. The
-// value is passed through verbatim — model names are validated by Claude Code
-// itself, so an unknown name surfaces as a claude error rather than being
-// rejected here. Passing an exact model id (e.g. "claude-opus-5") instead of
-// an alias makes the report footer's attribution name that exact id.
-func resolveImplementWorkerModel(flagValue string, flagSet bool) string {
-	if flagSet && flagValue != "" {
-		return flagValue
-	}
-	if raw, ok := os.LookupEnv(envImplementWorkerModel); ok {
-		if v := strings.TrimSpace(raw); v != "" {
-			return v
-		}
-	}
-	return ""
-}
-
-// resolveImplementWorkerEffort returns the effective reasoning effort for the
-// implementer subagents in orchestrated mode. Precedence: explicit CLI flag,
-// then PLANWERK_IMPLEMENT_WORKER_EFFORT, then the compiled-in default. The
-// value is passed through verbatim — the accepted effort levels are validated
-// by Claude Code itself, so an unknown level surfaces as a claude error rather
-// than being rejected here. It resolves independently of the worker model: the
-// claude package ignores it while orchestrator mode is off.
-func resolveImplementWorkerEffort(flagValue string, flagSet bool) string {
-	if flagSet && flagValue != "" {
-		return flagValue
-	}
-	if raw, ok := os.LookupEnv(envImplementWorkerEffort); ok {
-		if v := strings.TrimSpace(raw); v != "" {
-			return v
-		}
-	}
-	return claude.DefaultImplementWorkerEffort
-}
-
-// resolvePlanEffort returns the effective reasoning effort for the implement
-// command's planning session. Precedence: explicit CLI flag, then
-// PLANWERK_PLAN_EFFORT, then the compiled-in default. The value is passed
-// through verbatim — the accepted effort levels are validated by Claude Code
-// itself, so an unknown level surfaces as a claude error rather than being
-// rejected here.
-func resolvePlanEffort(flagValue string, flagSet bool) string {
-	if flagSet && flagValue != "" {
-		return flagValue
-	}
-	if raw, ok := os.LookupEnv(envPlanEffort); ok {
-		if v := strings.TrimSpace(raw); v != "" {
-			return v
-		}
-	}
-	return claude.DefaultPlanEffort
-}
-
-// resolveStructureModel returns the effective model for the JSON-structuring
-// passes. Precedence: explicit CLI flag, then PLANWERK_STRUCTURE_MODEL, then
-// the compiled-in default. The value is passed through verbatim — model names
-// are validated by Claude Code itself, so an unknown name surfaces as a claude
-// error rather than being rejected here.
-func resolveStructureModel(flagValue string, flagSet bool) string {
-	if flagSet && flagValue != "" {
-		return flagValue
-	}
-	if raw, ok := os.LookupEnv(envStructureModel); ok {
-		if v := strings.TrimSpace(raw); v != "" {
-			return v
-		}
-	}
-	return claude.DefaultStructureModel
-}
-
-// resolveFinderModel returns the effective model for the read-only finder
-// passes. Precedence: explicit CLI flag, then PLANWERK_FINDER_MODEL, then the
-// compiled-in default — which is empty, meaning the finders inherit
-// --claude-model. The value is passed through verbatim, like the other model
-// resolvers: Claude Code validates model names itself.
-func resolveFinderModel(flagValue string, flagSet bool) string {
-	if flagSet && flagValue != "" {
-		return flagValue
-	}
-	if raw, ok := os.LookupEnv(envFinderModel); ok {
-		if v := strings.TrimSpace(raw); v != "" {
-			return v
-		}
-	}
-	return claude.DefaultFinderModel
-}
-
-// resolveFinderEffort returns the effective reasoning effort for the finder
-// passes. Precedence: explicit CLI flag, then PLANWERK_FINDER_EFFORT, then the
-// compiled-in default (empty: inherit --claude-effort). A set-but-invalid value
-// is rejected here, in PersistentPreRunE before any claude call, for the same
-// reason the structuring effort is: the finders run before the passes that act
-// on their findings, and discovering a typo after an expensive fan-out has
-// already burned its tokens is the outcome the up-front check exists to avoid.
-// The empty default is not validated — it means "inherit", not "a level".
-func resolveFinderEffort(flagValue string, flagSet bool) (string, error) {
-	effort := claude.DefaultFinderEffort
-	if flagSet && flagValue != "" {
-		effort = flagValue
-	} else if raw, ok := os.LookupEnv(envFinderEffort); ok {
-		if v := strings.TrimSpace(raw); v != "" {
-			effort = v
-		}
-	}
-	if effort != "" && !validEfforts[effort] {
-		return "", fmt.Errorf("invalid --finder-effort %q: must be one of low, medium, high, xhigh, max (env: %s)", effort, envFinderEffort)
-	}
-	return effort, nil
-}
-
 // validEfforts is the closed set of reasoning-effort levels Claude Code accepts.
 var validEfforts = map[string]bool{"low": true, "medium": true, "high": true, "xhigh": true, "max": true}
 
-// resolveStructureEffort returns the effective reasoning effort for the
-// JSON-structuring passes. Precedence: explicit CLI flag, then
-// PLANWERK_STRUCTURE_EFFORT, then the compiled-in default. Unlike
-// --claude-effort — which governs the first, cheap call so a typo surfaces on
-// the very first invocation — the structuring effort governs only the late
-// structuring call that runs AFTER the expensive upstream reasoning pass. A
-// typo there ("maximum") would let the opus review reason and burn its full
-// token cost before claude rejects the bad effort, discarding the result. So
-// the resolved value is validated against the closed effort set here, in
-// PersistentPreRunE before any claude call, and a bad value is rejected fast.
-func resolveStructureEffort(flagValue string, flagSet bool) (string, error) {
-	effort := claude.DefaultStructureEffort
-	if flagSet && flagValue != "" {
-		effort = flagValue
-	} else if raw, ok := os.LookupEnv(envStructureEffort); ok {
+// resolveString returns the flag value when the flag was set to a non-empty
+// value, else the trimmed value of the environment variable env when that is
+// non-empty, else def. The model and effort resolvers all follow it; the value
+// is passed through verbatim, because Claude Code validates model names and
+// effort levels itself and an unknown one surfaces as a claude error.
+func resolveString(flag string, set bool, env, def string) string {
+	if set && flag != "" {
+		return flag
+	}
+	if raw, ok := os.LookupEnv(env); ok {
 		if v := strings.TrimSpace(raw); v != "" {
-			effort = v
+			return v
 		}
 	}
+	return def
+}
+
+// resolveBool returns the flag value when the flag was set, else the truthy
+// parse of the environment variable env, else false.
+func resolveBool(flag, set bool, env string) bool {
+	if set {
+		return flag
+	}
+	v, _ := lookupBoolEnv(env)
+	return v
+}
+
+// resolveEffort resolves an effort level like resolveString and validates the
+// result against the closed set Claude Code accepts, in PersistentPreRunE
+// before any claude call: the structuring and finder efforts govern passes
+// that run after an expensive upstream pass, so a typo must fail before that
+// pass burns its tokens. allowEmpty admits "" (the finder default), which
+// means "inherit" rather than a level. flagName names the flag in the error.
+func resolveEffort(flag string, set bool, env, def string, allowEmpty bool, flagName string) (string, error) {
+	effort := resolveString(flag, set, env, def)
+	if effort == "" && allowEmpty {
+		return "", nil
+	}
 	if !validEfforts[effort] {
-		return "", fmt.Errorf("invalid --structure-effort %q: must be one of low, medium, high, xhigh, max (env: %s)", effort, envStructureEffort)
+		return "", fmt.Errorf("invalid %s %q: must be one of low, medium, high, xhigh, max (env: %s)", flagName, effort, env)
 	}
 	return effort, nil
 }

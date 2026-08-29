@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"strings"
 	"testing"
-
-	"github.com/planwerk/planwerk-agent/internal/cli"
 )
 
 // runSyncCmd executes the sync subcommand hermetically: it exercises only the
@@ -47,31 +45,5 @@ func TestSyncCmd_RejectsUnknownFormat(t *testing.T) {
 	_, err := runSyncCmd(t, "--format", "yaml", testRepoRef)
 	if err == nil || !strings.Contains(err.Error(), "unknown format") {
 		t.Fatalf("expected an unknown-format error, got %v", err)
-	}
-}
-
-func TestSyncConfig_ToSyncOptionsFoldsApplyIntoPrune(t *testing.T) {
-	opts := cli.SyncConfig{
-		RepoRef: testRepoRef,
-		Apply:   true,
-		Yes:     true,
-		Format:  "json",
-	}.ToSyncOptions("test")
-
-	if !opts.Prune {
-		t.Error("--apply should fold into Prune")
-	}
-	if !opts.Yes || opts.Format != "json" || opts.RepoRef != testRepoRef {
-		t.Errorf("ToSyncOptions dropped fields: %+v", opts)
-	}
-	if opts.Version != "test" {
-		t.Errorf("Version = %q, want test", opts.Version)
-	}
-}
-
-func TestSyncConfig_PruneAloneEnablesWritePhase(t *testing.T) {
-	opts := cli.SyncConfig{RepoRef: testRepoRef, Prune: true}.ToSyncOptions("v1")
-	if !opts.Prune {
-		t.Error("--prune should enable the write phase")
 	}
 }

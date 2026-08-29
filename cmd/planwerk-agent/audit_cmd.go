@@ -8,7 +8,6 @@ import (
 
 	"github.com/planwerk/planwerk-agent/internal/audit"
 	"github.com/planwerk/planwerk-agent/internal/cache"
-	"github.com/planwerk/planwerk-agent/internal/cli"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
@@ -17,7 +16,7 @@ import (
 // apply every loaded review pattern to the entire current state of the
 // codebase, producing prioritized improvement findings.
 func newAuditCmd(deps *runtimeDeps) *cobra.Command {
-	var auditCfg cli.AuditConfig
+	var auditCfg audit.Options
 	var auditMinSeverity string
 	var auditMinConfidence string
 	var auditIssueMinSeverity string
@@ -100,7 +99,8 @@ or short form (owner/repo).`,
 				return fmt.Errorf("--capture-wiki cannot be used with --format json without --yes: the wiki write confirmation cannot be shown alongside JSON output")
 			}
 
-			opts := auditCfg.ToAuditOptions(deps.version)
+			opts := auditCfg
+			opts.Version = deps.version
 			opts.Remote = deps.remoteOpts
 			opts.Wiki = resolveWikiOptions(wikiEnable, wikiDisable, cmd.Flags().Changed("wiki"), cmd.Flags().Changed("no-wiki"), wikiRef, cmd.Flags().Changed("wiki-ref"), deps.fileCfg.Wiki)
 			return audit.Run(os.Stdout, opts, deps.claude.Audit, deps.claude)

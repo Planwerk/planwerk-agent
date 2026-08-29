@@ -19,7 +19,7 @@ import (
 // --to-catalog anchors the selected patterns into this checkout's bundled review
 // catalog, normalizing their frontmatter to the review category.
 func newExtractCmd(deps *runtimeDeps) *cobra.Command {
-	var cfg cli.ExtractConfig
+	var cfg extract.Options
 	var wikiRef string
 
 	extractCmd := &cobra.Command{
@@ -63,7 +63,8 @@ or short form (owner/repo).`,
 				}
 			}
 
-			opts := cfg.ToExtractOptions(deps.version)
+			opts := cfg
+			opts.Version = deps.version
 			opts.Remote = deps.remoteOpts
 			opts.Wiki = resolveExtractWiki(wikiRef, cmd.Flags().Changed("wiki-ref"), deps.fileCfg.Wiki)
 			return extract.Run(cmd.OutOrStdout(), opts)

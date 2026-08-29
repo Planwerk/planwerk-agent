@@ -6,7 +6,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/planwerk/planwerk-agent/internal/claude"
-	"github.com/planwerk/planwerk-agent/internal/cli"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/rebase"
 )
@@ -16,7 +15,8 @@ import (
 // then analyze the rebased commits against the upstream range that entered the
 // base since the PR forked. History is force-pushed only when --push is given.
 func newRebaseCmd(deps *runtimeDeps) *cobra.Command {
-	var rebaseCfg cli.RebaseConfig
+	var rebaseCfg rebase.Options
+	var printBarePrompt bool
 
 	rebaseCmd := &cobra.Command{
 		Use:   "rebase <pr-ref>",
@@ -59,15 +59,16 @@ or short form (owner/repo#123).`,
 			if rebaseCfg.PrintPrompt {
 				modes++
 			}
-			if rebaseCfg.PrintBarePrompt {
+			if printBarePrompt {
 				modes++
 			}
 			if modes > 1 {
 				return fmt.Errorf("--dry-run, --print-prompt, and --print-bare-prompt are mutually exclusive")
 			}
-			opts := rebaseCfg.ToRebaseOptions(deps.version)
+			opts := rebaseCfg
+			opts.Version = deps.version
 			opts.Remote = deps.remoteOpts
-			if rebaseCfg.PrintBarePrompt {
+			if printBarePrompt {
 				return rebase.PrintBarePrompt(cmd.OutOrStdout(), opts, claude.BuildBareRebasePrompt)
 			}
 			return rebase.Run(cmd.OutOrStdout(), opts,
@@ -87,7 +88,7 @@ or short form (owner/repo#123).`,
 	rebaseFlags.BoolVar(&rebaseCfg.NoAnalysisComment, "no-analysis-comment", false, "Do not post the post-rebase analysis as a comment on the pull request")
 	rebaseFlags.BoolVar(&rebaseCfg.DryRun, "dry-run", false, "Show the rebase plan and conflicting commit without resolving, committing, or pushing")
 	rebaseFlags.BoolVar(&rebaseCfg.PrintPrompt, "print-prompt", false, "Render the post-rebase analysis prompt to stdout and exit; do not rebase or invoke Claude")
-	rebaseFlags.BoolVar(&rebaseCfg.PrintBarePrompt, "print-bare-prompt", false, "Render a self-contained rebase prompt (rebase + conflict resolution + analysis) to stdout and exit; meant to be pasted into a manual Claude session already running inside a checkout of the PR")
+	rebaseFlags.BoolVar(&printBarePrompt, "print-bare-prompt", false, "Render a self-contained rebase prompt (rebase + conflict resolution + analysis) to stdout and exit; meant to be pasted into a manual Claude session already running inside a checkout of the PR")
 	rebaseFlags.StringSliceVar(&rebaseCfg.PatternDirs, "patterns", nil, "Additional pattern sources: local dirs, github:owner/repo[/sub][@ref], or git+https://...[#ref[:sub]]")
 	rebaseFlags.BoolVar(&rebaseCfg.NoRepoPatterns, "no-repo-patterns", false, "Ignore repo-specific patterns under .planwerk/review_patterns/ in the target repo")
 	rebaseFlags.BoolVar(&rebaseCfg.NoLocalPatterns, "no-local-patterns", false, "Ignore local patterns from the tool")
