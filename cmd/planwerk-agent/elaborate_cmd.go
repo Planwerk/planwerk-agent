@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/planwerk/planwerk-agent/internal/cache"
-	"github.com/planwerk/planwerk-agent/internal/cli"
 	"github.com/planwerk/planwerk-agent/internal/elaborate"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 )
@@ -16,7 +15,8 @@ import (
 // (typically the output of propose or audit) into a deeply detailed
 // engineering plan grounded in the actual repository state.
 func newElaborateCmd(deps *runtimeDeps) *cobra.Command {
-	var elaborateCfg cli.ElaborateConfig
+	var elaborateCfg elaborate.Options
+	var updateIssue, postComment bool
 
 	elaborateCmd := &cobra.Command{
 		Use:   "elaborate <issue-ref>",
@@ -44,11 +44,13 @@ or short form (owner/repo#123).`,
 				return fmt.Errorf("unknown format %q, supported: markdown, json", elaborateCfg.Format)
 			}
 
-			if elaborateCfg.UpdateIssue && elaborateCfg.PostComment {
+			if updateIssue && postComment {
 				return fmt.Errorf("--update-issue and --post-comment are mutually exclusive")
 			}
 
-			opts := elaborateCfg.ToElaborateOptions(deps.version)
+			elaborateCfg.UpdateMode = elaborateUpdateMode(updateIssue, postComment)
+			opts := elaborateCfg
+			opts.Version = deps.version
 			opts.Remote = deps.remoteOpts
 			return elaborate.Run(os.Stdout, opts, deps.claude.Elaborate, deps.claude.ReviewElaboration)
 		},
@@ -62,12 +64,25 @@ or short form (owner/repo#123).`,
 	elaborateFlags.DurationVar(&elaborateCfg.CacheMaxAge, "cache-max-age", cache.DefaultMaxAge, "Reject cached entries older than this duration (0 disables the TTL)")
 	elaborateFlags.StringVar(&elaborateCfg.Format, "format", "markdown", "Output format (markdown, json)")
 	elaborateFlags.IntVar(&elaborateCfg.MaxPatterns, "max-patterns", patterns.DefaultMaxPatternsInPrompt, "Max review patterns injected into the prompt (<=0 disables truncation, env: "+envMaxPatterns+")")
-	elaborateFlags.BoolVar(&elaborateCfg.UpdateIssue, "update-issue", false, "Replace the issue body with the elaborated body via gh issue edit")
-	elaborateFlags.BoolVar(&elaborateCfg.PostComment, "post-comment", false, "Post the elaborated body as a new issue comment via gh issue comment")
+	elaborateFlags.BoolVar(&updateIssue, "update-issue", false, "Replace the issue body with the elaborated body via gh issue edit")
+	elaborateFlags.BoolVar(&postComment, "post-comment", false, "Post the elaborated body as a new issue comment via gh issue comment")
 	elaborateFlags.BoolVar(&elaborateCfg.Review, "review", false, "Run a reviewer pass that checks the draft for executability and refines it to close gaps before output")
 	elaborateFlags.IntVar(&elaborateCfg.MaxReviewIterations, "max-review-iterations", 0, "Cap on reviewer refine iterations when --review is set (<=0 uses the default of 3)")
 	elaborateFlags.BoolVar(&elaborateCfg.Local, "local", false, "Operate on the current working directory instead of cloning into a temp dir")
 	elaborateFlags.BoolVar(&elaborateCfg.Force, "force", false, "With --local, skip the confirmation prompt when the working tree is dirty")
 
 	return elaborateCmd
+}
+
+// elaborateUpdateMode maps the two write-back flags onto the one mode the
+// command runs in: --update-issue replaces the body, --post-comment posts it as
+// a comment, neither leaves the issue untouched. RunE rejects both together.
+func elaborateUpdateMode(updateIssue, postComment bool) elaborate.UpdateMode {
+	switch {
+	case updateIssue:
+		return elaborate.UpdateReplace
+	case postComment:
+		return elaborate.UpdateComment
+	}
+	return elaborate.UpdateNone
 }

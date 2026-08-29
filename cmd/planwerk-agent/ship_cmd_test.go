@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"strings"
 	"testing"
-
-	"github.com/planwerk/planwerk-agent/internal/cli"
 )
 
 // runShipCmd executes the ship subcommand hermetically: it exercises only the
@@ -56,34 +54,5 @@ func TestShipCmd_RejectsNegativeStartAt(t *testing.T) {
 	_, err := runShipCmd(t, "--start-at", "-3", "acme/widgets#42")
 	if err == nil || !strings.Contains(err.Error(), "--start-at") {
 		t.Fatalf("expected a start-at error, got %v", err)
-	}
-}
-
-// The three valid merge methods clear flag validation (they fail later, at the
-// GitHub fetch, which a hermetic test does not reach — so we only assert the
-// validation does not reject them).
-func TestShipConfig_ToShipOptions(t *testing.T) {
-	opts := cli.ShipConfig{
-		IssueRef:    "acme/widgets#42",
-		MergeMethod: "squash",
-		NoMerge:     true,
-		StartAt:     7,
-	}.ToShipOptions()
-	if opts.MergeMethod != "squash" || !opts.NoMerge || opts.StartAt != 7 {
-		t.Fatalf("ToShipOptions mapped wrong: %+v", opts)
-	}
-}
-
-func TestShipConfig_ToShipImplementOptions(t *testing.T) {
-	opts := cli.ShipConfig{
-		NoSimplify:  true,
-		NoReview:    true,
-		MaxPatterns: 12,
-	}.ToShipImplementOptions("test")
-	if !opts.NoSimplify || !opts.NoReview || opts.MaxPatterns != 12 {
-		t.Fatalf("ToShipImplementOptions mapped wrong: %+v", opts)
-	}
-	if opts.DryRun {
-		t.Fatalf("ship's implement options must not set DryRun")
 	}
 }

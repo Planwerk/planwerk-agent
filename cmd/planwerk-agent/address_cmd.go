@@ -7,7 +7,6 @@ import (
 
 	"github.com/planwerk/planwerk-agent/internal/address"
 	"github.com/planwerk/planwerk-agent/internal/claude"
-	"github.com/planwerk/planwerk-agent/internal/cli"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 )
 
@@ -16,7 +15,8 @@ import (
 // Claude to incorporate each as a follow-up commit, push the commits, and
 // (gated) reply to and resolve each addressed thread. Mirrors fix_cmd.go.
 func newAddressCmd(deps *runtimeDeps) *cobra.Command {
-	var addressCfg cli.AddressConfig
+	var addressCfg address.Options
+	var noReply, printBarePrompt bool
 
 	addressCmd := &cobra.Command{
 		Use:   "address <pr-ref>",
@@ -60,15 +60,17 @@ or short form (owner/repo#123).`,
 			if addressCfg.PrintPrompt {
 				modes++
 			}
-			if addressCfg.PrintBarePrompt {
+			if printBarePrompt {
 				modes++
 			}
 			if modes > 1 {
 				return fmt.Errorf("--dry-run, --print-prompt, and --print-bare-prompt are mutually exclusive")
 			}
-			opts := addressCfg.ToAddressOptions(deps.version)
+			addressCfg.Reply = addressCfg.Reply && !noReply
+			opts := addressCfg
+			opts.Version = deps.version
 			opts.Remote = deps.remoteOpts
-			if addressCfg.PrintBarePrompt {
+			if printBarePrompt {
 				return address.PrintBarePrompt(cmd.OutOrStdout(), opts, claude.BuildBareAddressPrompt)
 			}
 			return address.Run(cmd.OutOrStdout(), opts, deps.claude.Address, claude.BuildAddressPrompt)
@@ -80,14 +82,14 @@ or short form (owner/repo#123).`,
 	addressFlags.StringSliceVar(&addressCfg.ThreadIDs, "thread", nil, "Address only the named review thread(s) (repeatable)")
 	addressFlags.BoolVar(&addressCfg.IncludeResolved, "include-resolved", false, "Also offer threads GitHub already marks resolved")
 	addressFlags.BoolVar(&addressCfg.Reply, "reply", true, "Post a per-thread reply summarizing the change")
-	addressFlags.BoolVar(&addressCfg.NoReply, "no-reply", false, "Do not post per-thread replies (overrides --reply)")
+	addressFlags.BoolVar(&noReply, "no-reply", false, "Do not post per-thread replies (overrides --reply)")
 	addressFlags.BoolVar(&addressCfg.Resolve, "resolve", false, "Mark addressed threads as resolved (outward-facing; off by default)")
 	addressFlags.BoolVar(&addressCfg.OneCommitPerThread, "one-commit-per-thread", true, "Commit each thread separately (default) instead of one aggregate commit")
 	addressFlags.BoolVar(&addressCfg.NoAddressComment, "no-address-comment", false, "Do not post the aggregate address report as a comment on the pull request")
 	addressFlags.IntVar(&addressCfg.MaxIterations, "max-iterations", address.DefaultMaxIterations, "Maximum number of per-thread address iterations")
 	addressFlags.BoolVar(&addressCfg.DryRun, "dry-run", false, "List the selected threads and the planned changes without invoking Claude or committing")
 	addressFlags.BoolVar(&addressCfg.PrintPrompt, "print-prompt", false, "Render the address prompt for the selected threads to stdout and exit; do not invoke Claude or commit")
-	addressFlags.BoolVar(&addressCfg.PrintBarePrompt, "print-bare-prompt", false, "Render a self-contained address prompt (no thread fetch) to stdout and exit; meant to be pasted into a manual Claude session already running inside a checkout of the PR")
+	addressFlags.BoolVar(&printBarePrompt, "print-bare-prompt", false, "Render a self-contained address prompt (no thread fetch) to stdout and exit; meant to be pasted into a manual Claude session already running inside a checkout of the PR")
 	addressFlags.StringSliceVar(&addressCfg.PatternDirs, "patterns", nil, "Additional pattern sources: local dirs, github:owner/repo[/sub][@ref], or git+https://...[#ref[:sub]]")
 	addressFlags.BoolVar(&addressCfg.NoRepoPatterns, "no-repo-patterns", false, "Ignore repo-specific patterns under .planwerk/review_patterns/ in the target repo")
 	addressFlags.BoolVar(&addressCfg.NoLocalPatterns, "no-local-patterns", false, "Ignore local patterns from the tool")

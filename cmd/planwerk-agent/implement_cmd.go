@@ -6,7 +6,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/planwerk/planwerk-agent/internal/claude"
-	"github.com/planwerk/planwerk-agent/internal/cli"
 	"github.com/planwerk/planwerk-agent/internal/implement"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 )
@@ -20,7 +19,7 @@ import (
 // --print-prompt / --print-plan-prompt / --print-bare-prompt mirror the fix
 // subcommand for users who want to drive the sessions manually.
 func newImplementCmd(deps *runtimeDeps) *cobra.Command {
-	var implementCfg cli.ImplementConfig
+	var implementCfg implement.Options
 	var planModel string
 	var planEffort string
 	var implementModel string
@@ -186,9 +185,9 @@ or short form (owner/repo#123).`,
 			// options on top of the shared --claude-* options.
 			planOpts := append([]claude.Option{}, deps.claudeOpts...)
 			planOpts = append(planOpts,
-				claude.WithPlanModel(resolvePlanModel(planModel, cmd.Flags().Changed("plan-model"))),
-				claude.WithPlanEffort(resolvePlanEffort(planEffort, cmd.Flags().Changed("plan-effort"))),
-				claude.WithImplementModel(resolveImplementModel(implementModel, cmd.Flags().Changed("implement-model"))),
+				claude.WithPlanModel(resolveString(planModel, cmd.Flags().Changed("plan-model"), envPlanModel, claude.DefaultPlanModel)),
+				claude.WithPlanEffort(resolveString(planEffort, cmd.Flags().Changed("plan-effort"), envPlanEffort, claude.DefaultPlanEffort)),
+				claude.WithImplementModel(resolveString(implementModel, cmd.Flags().Changed("implement-model"), envImplementModel, "")),
 			)
 			client := claude.NewClient(planOpts...)
 			// The implement command runs its sessions on this client, not
@@ -197,10 +196,11 @@ or short form (owner/repo#123).`,
 			// silent automatically.
 			defer client.LogUsageSummary(cmd.ErrOrStderr())
 			implementCfg.CaptureWiki = resolveCaptureWiki(implementCfg.CaptureWiki, cmd.Flags().Changed("capture-wiki"), deps.fileCfg.Capture)
-			opts := implementCfg.ToImplementOptions(deps.version)
+			opts := implementCfg
+			opts.Version = deps.version
 			opts.Remote = deps.remoteOpts
-			opts.WorkerModel = resolveImplementWorkerModel(implementWorkerModel, cmd.Flags().Changed("implement-worker-model"))
-			opts.WorkerEffort = resolveImplementWorkerEffort(implementWorkerEffort, cmd.Flags().Changed("implement-worker-effort"))
+			opts.WorkerModel = resolveString(implementWorkerModel, cmd.Flags().Changed("implement-worker-model"), envImplementWorkerModel, "")
+			opts.WorkerEffort = resolveString(implementWorkerEffort, cmd.Flags().Changed("implement-worker-effort"), envImplementWorkerEffort, claude.DefaultImplementWorkerEffort)
 			opts.Wiki = resolveWikiOptions(wikiEnable, wikiDisable, cmd.Flags().Changed("wiki"), cmd.Flags().Changed("no-wiki"), wikiRef, cmd.Flags().Changed("wiki-ref"), deps.fileCfg.Wiki)
 			if implementCfg.PrintBarePrompt {
 				return implement.PrintBarePrompt(cmd.OutOrStdout(), opts, claude.BuildBareImplementPrompt)

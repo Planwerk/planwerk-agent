@@ -6,7 +6,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/planwerk/planwerk-agent/internal/cli"
 	"github.com/planwerk/planwerk-agent/internal/prompt"
 )
 
@@ -15,7 +14,8 @@ import (
 // an audit finding or an elaborated proposal). No Claude call — pure prompt
 // assembly.
 func newPromptCmd(deps *runtimeDeps) *cobra.Command {
-	var promptCfg cli.PromptConfig
+	var promptCfg prompt.Options
+	var mode string
 
 	promptCmd := &cobra.Command{
 		Use:   "prompt <issue-ref>",
@@ -32,16 +32,30 @@ or short form (owner/repo#123).`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			promptCfg.IssueRef = args[0]
-			switch promptCfg.Mode {
+			switch mode {
 			case "auto", "fix", "implement":
 			default:
-				return fmt.Errorf("unknown mode %q, supported: auto, fix, implement", promptCfg.Mode)
+				return fmt.Errorf("unknown mode %q, supported: auto, fix, implement", mode)
 			}
-			opts := promptCfg.ToPromptOptions(deps.version)
+			promptCfg.Mode = promptMode(mode)
+			opts := promptCfg
+			opts.Version = deps.version
 			return prompt.Run(os.Stdout, opts)
 		},
 	}
-	promptCmd.Flags().StringVar(&promptCfg.Mode, "mode", "auto", "Prompt variant (auto, fix, implement)")
+	promptCmd.Flags().StringVar(&mode, "mode", "auto", "Prompt variant (auto, fix, implement)")
 
 	return promptCmd
+}
+
+// promptMode maps the --mode flag value onto the prompt variant; RunE has
+// already rejected anything but auto, fix and implement.
+func promptMode(mode string) prompt.Mode {
+	switch mode {
+	case "fix":
+		return prompt.ModeFix
+	case "implement":
+		return prompt.ModeImplement
+	}
+	return prompt.ModeAuto
 }

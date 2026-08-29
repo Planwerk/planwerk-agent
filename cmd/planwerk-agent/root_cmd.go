@@ -23,7 +23,9 @@ import (
 // PersistentPreRunE, and the top-level cache-maintenance flags shared by every
 // subcommand.
 func newRootCmd(deps *runtimeDeps) *cobra.Command {
-	var cfg cli.Config
+	var cfg review.Options
+	var clearCache, cacheStats bool
+	var clearCacheScope, cacheInspect string
 	var minSeverity string
 	var minConfidence string
 	var showVersion, verbose bool
@@ -86,7 +88,7 @@ or short form (owner/repo#123).`,
 			// Validate the structuring effort up front: it gates only the late
 			// structuring call, so a typo must be rejected here (before any
 			// claude call) rather than after the expensive reasoning pass.
-			structEffort, err := resolveStructureEffort(structureEffort, cmd.Flags().Changed("structure-effort"))
+			structEffort, err := resolveEffort(structureEffort, cmd.Flags().Changed("structure-effort"), envStructureEffort, claude.DefaultStructureEffort, false, "--structure-effort")
 			if err != nil {
 				return err
 			}
@@ -94,7 +96,7 @@ or short form (owner/repo#123).`,
 			// Same reason as the structuring effort: the finder passes run before
 			// the passes that act on their findings, so a typo must be caught here
 			// rather than after a six-specialist fan-out has spent its tokens.
-			findEffort, err := resolveFinderEffort(finderEffort, cmd.Flags().Changed("finder-effort"))
+			findEffort, err := resolveEffort(finderEffort, cmd.Flags().Changed("finder-effort"), envFinderEffort, claude.DefaultFinderEffort, true, "--finder-effort")
 			if err != nil {
 				return err
 			}
@@ -102,20 +104,20 @@ or short form (owner/repo#123).`,
 			// Build the Claude Code client once from the resolved --claude-*
 			// flags and share it with every subcommand via deps. The implement
 			// command appends its --plan-* options to deps.claudeOpts.
-			mainModel := resolveClaudeModel(claudeModel, cmd.Flags().Changed("claude-model"))
-			mainEffort := resolveClaudeEffort(claudeEffort, cmd.Flags().Changed("claude-effort"))
-			structModel := resolveStructureModel(structureModel, cmd.Flags().Changed("structure-model"))
-			findModel := resolveFinderModel(finderModel, cmd.Flags().Changed("finder-model"))
+			mainModel := resolveString(claudeModel, cmd.Flags().Changed("claude-model"), envClaudeModel, claude.DefaultClaudeModel)
+			mainEffort := resolveString(claudeEffort, cmd.Flags().Changed("claude-effort"), envClaudeEffort, claude.DefaultClaudeEffort)
+			structModel := resolveString(structureModel, cmd.Flags().Changed("structure-model"), envStructureModel, claude.DefaultStructureModel)
+			findModel := resolveString(finderModel, cmd.Flags().Changed("finder-model"), envFinderModel, claude.DefaultFinderModel)
 			deps.claudeOpts = []claude.Option{
 				claude.WithTimeout(timeout),
-				claude.WithShowOutput(resolveShowClaudeOutput(showClaudeOutput, cmd.Flags().Changed("show-claude-output"))),
+				claude.WithShowOutput(resolveBool(showClaudeOutput, cmd.Flags().Changed("show-claude-output"), envShowClaudeOutput)),
 				claude.WithModel(mainModel),
 				claude.WithEffort(mainEffort),
 				claude.WithStructureModel(structModel),
 				claude.WithStructureEffort(structEffort),
 				claude.WithFinderModel(findModel),
 				claude.WithFinderEffort(findEffort),
-				claude.WithInheritUserConfig(resolveClaudeInheritUserConfig(claudeInheritUserConfig, cmd.Flags().Changed("claude-inherit-user-config"))),
+				claude.WithInheritUserConfig(resolveBool(claudeInheritUserConfig, cmd.Flags().Changed("claude-inherit-user-config"), envClaudeInheritUserConfig)),
 			}
 			deps.claude = claude.NewClient(deps.claudeOpts...)
 
@@ -140,14 +142,14 @@ or short form (owner/repo#123).`,
 				writeVersion(cmd.OutOrStdout(), resolveBuildInfo(deps.version), verbose)
 				return nil
 			}
-			if cfg.CacheStats {
+			if cacheStats {
 				return runCacheStats(cmd.OutOrStdout())
 			}
-			if cfg.CacheInspect != "" {
-				return runCacheInspect(cmd.OutOrStdout(), cfg.CacheInspect)
+			if cacheInspect != "" {
+				return runCacheInspect(cmd.OutOrStdout(), cacheInspect)
 			}
-			if cfg.ClearCache || cfg.ClearCacheScope != "" {
-				scope := cfg.ClearCacheScope
+			if clearCache || clearCacheScope != "" {
+				scope := clearCacheScope
 				if err := validateCacheScope(scope); err != nil {
 					return err
 				}
@@ -204,7 +206,8 @@ or short form (owner/repo#123).`,
 				return fmt.Errorf("--inline cannot be used with --format json")
 			}
 
-			opts := cfg.ToReviewOptions(deps.version)
+			opts := cfg
+			opts.Version = deps.version
 			opts.Remote = deps.remoteOpts
 			opts.Wiki = resolveWikiOptions(wikiEnable, wikiDisable, cmd.Flags().Changed("wiki"), cmd.Flags().Changed("no-wiki"), wikiRef, cmd.Flags().Changed("wiki-ref"), deps.fileCfg.Wiki)
 			return review.Run(os.Stdout, opts, deps.claude)
@@ -232,10 +235,10 @@ or short form (owner/repo#123).`,
 	flags.BoolVar(&cfg.NoRepoPatterns, "no-repo-patterns", false, "Ignore repo-specific patterns")
 	flags.BoolVar(&cfg.NoLocalPatterns, "no-local-patterns", false, "Ignore local patterns from the tool")
 	flags.BoolVar(&cfg.NoCache, "no-cache", false, "Ignore cache, force a fresh review")
-	flags.BoolVar(&cfg.ClearCache, "clear-cache", false, "Clear cached reviews and exit (honors --clear-cache-scope)")
-	flags.StringVar(&cfg.ClearCacheScope, "clear-cache-scope", "", "Restrict --clear-cache to a single command (review, propose, audit, glossary, elaborate, gap-analysis, review-prepared)")
-	flags.BoolVar(&cfg.CacheStats, "cache-stats", false, "Show cache size, age distribution, and per-command breakdown, then exit")
-	flags.StringVar(&cfg.CacheInspect, "cache-inspect", "", "Print the metadata and payload for the given cache key, then exit")
+	flags.BoolVar(&clearCache, "clear-cache", false, "Clear cached reviews and exit (honors --clear-cache-scope)")
+	flags.StringVar(&clearCacheScope, "clear-cache-scope", "", "Restrict --clear-cache to a single command (review, propose, audit, glossary, elaborate, gap-analysis, review-prepared)")
+	flags.BoolVar(&cacheStats, "cache-stats", false, "Show cache size, age distribution, and per-command breakdown, then exit")
+	flags.StringVar(&cacheInspect, "cache-inspect", "", "Print the metadata and payload for the given cache key, then exit")
 	flags.DurationVar(&cfg.CacheMaxAge, "cache-max-age", cache.DefaultMaxAge, "Reject cached entries older than this duration (0 disables the TTL)")
 	flags.StringVar(&cfg.Format, "format", "markdown", "Output format (markdown, json)")
 	flags.BoolVar(&cfg.PostReview, "post-review", false, "Post the review as a comment on the PR")

@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/planwerk/planwerk-agent/internal/cache"
-	"github.com/planwerk/planwerk-agent/internal/cli"
 	"github.com/planwerk/planwerk-agent/internal/gapanalysis"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 )
@@ -17,7 +16,7 @@ import (
 // report incomplete implementations as structured gaps. Reuses the audit
 // cache, dedupe, and interactive issue-creation infrastructure.
 func newGapAnalysisCmd(deps *runtimeDeps) *cobra.Command {
-	var gapCfg cli.GapAnalysisConfig
+	var gapCfg gapanalysis.Options
 
 	gapCmd := &cobra.Command{
 		Use:   "gap-analysis <repo-ref>",
@@ -57,7 +56,8 @@ or short form (owner/repo).`,
 				return fmt.Errorf("--create-issues cannot be used with --format json")
 			}
 
-			opts := gapCfg.ToGapAnalysisOptions(deps.version)
+			opts := gapCfg
+			opts.Version = deps.version
 			opts.Remote = deps.remoteOpts
 			return gapanalysis.Run(os.Stdout, opts, deps.claude.GapAnalysis)
 		},

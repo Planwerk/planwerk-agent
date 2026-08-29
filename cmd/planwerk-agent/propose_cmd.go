@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/planwerk/planwerk-agent/internal/cache"
-	"github.com/planwerk/planwerk-agent/internal/cli"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/propose"
 )
@@ -16,7 +15,7 @@ import (
 // depth and generate concrete, actionable feature proposals as structured
 // Markdown suitable for GitHub issues.
 func newProposeCmd(deps *runtimeDeps) *cobra.Command {
-	var proposeCfg cli.ProposeConfig
+	var proposeCfg propose.Options
 	var wikiEnable, wikiDisable bool
 	var wikiRef string
 
@@ -50,7 +49,8 @@ or short form (owner/repo).`,
 				return fmt.Errorf("unknown format %q, supported: markdown, json, issues", proposeCfg.Format)
 			}
 
-			opts := proposeCfg.ToProposeOptions(deps.version)
+			opts := proposeCfg
+			opts.Version = deps.version
 			opts.Remote = deps.remoteOpts
 			opts.Wiki = resolveWikiOptions(wikiEnable, wikiDisable, cmd.Flags().Changed("wiki"), cmd.Flags().Changed("no-wiki"), wikiRef, cmd.Flags().Changed("wiki-ref"), deps.fileCfg.Wiki)
 			return propose.Run(os.Stdout, opts, deps.claude.Propose)
