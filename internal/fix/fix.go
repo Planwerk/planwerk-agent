@@ -280,6 +280,15 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 			iteration, opts.MaxIterations, fullName, number, shortSHA(currentSHA))
 
 		summary, err := r.waitForChecks(statusW, owner, repo, currentSHA, opts.PollInterval)
+		if errors.Is(err, errNoChecks) {
+			// Nothing ever ran against this commit, so there is nothing to
+			// repair. Say so and finish cleanly rather than fail: a repository
+			// without CI is not a broken pull request, and whether such a PR may
+			// merge is branch protection's call, not this loop's.
+			_, _ = fmt.Fprintf(w, "%v; nothing to fix (the repository may have no CI, or a fork PR's workflows may await approval).\n", err)
+			slog.Info("fix loop complete: no checks reported", "head", currentSHA)
+			return nil
+		}
 		if err != nil {
 			return err
 		}
@@ -435,11 +444,27 @@ func (r *Runner) applyDefaults(opts *Options) {
 	}
 }
 
+// errNoChecks reports that the commit never got a check run at all. It is a
+// distinct outcome rather than a failure: the repository may have no CI, or a
+// fork pull request's workflows may be waiting for a maintainer's approval —
+// in neither case is there anything for the fix loop to repair.
+var errNoChecks = errors.New("no checks reported")
+
+// maxNoCheckPolls bounds how long waitForChecks waits for the FIRST check to
+// appear. Without it the Total == 0 branch looped forever, and since AllPassed
+// deliberately requires a non-empty set it could never converge: a PR on a repo
+// without CI parked the fix loop — and, through ship, the whole fleet run — on
+// a sleep that nothing would ever end. It matches waitForNewHead's budget.
+const maxNoCheckPolls = 12
+
 // waitForChecks polls the Checks API every interval until no checks are
 // pending. Returns the final summary so the caller can branch on
-// pass/fail. Logs only when state changes to keep CI logs readable.
+// pass/fail, or errNoChecks when the commit still has no check run after
+// maxNoCheckPolls attempts. Logs only when state changes to keep CI logs
+// readable.
 func (r *Runner) waitForChecks(w io.Writer, owner, repo, sha string, interval time.Duration) (github.CheckRunSummary, error) {
 	var lastPending = -1
+	noChecks := 0
 	for {
 		runs, err := r.GitHub.ListChecks(owner, repo, sha)
 		if err != nil {
@@ -447,10 +472,16 @@ func (r *Runner) waitForChecks(w io.Writer, owner, repo, sha string, interval ti
 		}
 		summary := github.SummarizeChecks(runs)
 		if summary.Total == 0 {
+			noChecks++
+			if noChecks > maxNoCheckPolls {
+				return summary, fmt.Errorf("%w for %s after %d attempts over %s",
+					errNoChecks, shortSHA(sha), maxNoCheckPolls, time.Duration(maxNoCheckPolls)*interval)
+			}
 			_, _ = fmt.Fprintf(w, "No checks reported yet for %s; waiting %s...\n", shortSHA(sha), interval)
 			r.Sleep(interval)
 			continue
 		}
+		noChecks = 0
 		if !summary.AnyPending() {
 			_, _ = fmt.Fprintf(w, "Checks complete for %s: %d passed, %d failed\n",
 				shortSHA(sha), len(summary.Passed), len(summary.Failed))

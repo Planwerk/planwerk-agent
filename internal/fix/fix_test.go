@@ -833,3 +833,60 @@ func TestRunLocalAllChecksPassingNoPull(t *testing.T) {
 		t.Errorf("PullOnBranch calls = %d, want 0 when checks already pass", gh.pullCalls.Load())
 	}
 }
+
+// TestRun_NoChecksEverReportedStopsCleanly is the regression test for the hang:
+// the Total == 0 branch looped forever, and because AllPassed deliberately
+// requires a non-empty set it could never converge. A pull request on a repo
+// without CI — or a fork PR whose workflows await approval — parked the fix
+// loop on a sleep nothing would end, and through ship the whole fleet run with
+// it.
+func TestRun_NoChecksEverReportedStopsCleanly(t *testing.T) {
+	gh := &fakeGitHub{
+		prTitle:        "demo",
+		prBranch:       "feat/x",
+		prHeadSHA:      "abc1234",
+		checkResponses: [][]github.CheckRun{{}}, // every poll: no checks at all
+		headSequence:   []string{"abc1234"},
+	}
+	cl := &fakeClaude{}
+	r := newRunner(gh, cl, &fakePrompter{})
+	var sleeps atomic.Int32
+	r.Sleep = func(time.Duration) { sleeps.Add(1) }
+
+	done := make(chan error, 1)
+	go func() { var buf bytes.Buffer; done <- r.Run(&buf, Options{PRRef: "owner/repo#1"}) }()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Run = %v, want nil: a repo without CI is not a broken pull request", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Run never returned: waitForChecks is still polling for a check that will never appear")
+	}
+
+	if got := int(sleeps.Load()); got != maxNoCheckPolls {
+		t.Errorf("slept %d times, want %d — the wait must be bounded", got, maxNoCheckPolls)
+	}
+	if cl.called.Load() != 0 {
+		t.Errorf("claude was invoked %d times although there was nothing to fix", cl.called.Load())
+	}
+}
+
+// TestWaitForChecks_LateCheckStillCounts guards the other direction: a check
+// that shows up after a few empty polls resets the budget and is waited on.
+func TestWaitForChecks_LateCheckStillCounts(t *testing.T) {
+	gh := &fakeGitHub{
+		checkResponses: [][]github.CheckRun{{}, {}, {passing("lint")}},
+	}
+	r := newRunner(gh, &fakeClaude{}, &fakePrompter{})
+
+	var buf bytes.Buffer
+	summary, err := r.waitForChecks(&buf, "owner", "repo", "abc1234", time.Millisecond)
+	if err != nil {
+		t.Fatalf("waitForChecks = %v, want the late check", err)
+	}
+	if !summary.AllPassed() {
+		t.Errorf("summary = %+v, want the late check counted", summary)
+	}
+}
