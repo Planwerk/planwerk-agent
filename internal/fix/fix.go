@@ -89,22 +89,6 @@ func Run(w io.Writer, opts Options, fn FixFn, build PromptBuildFn) error {
 	return NewRunner(fn, build).Run(w, opts)
 }
 
-// localOptions builds the github.LocalOptions for a --local run from the fix
-// Options, wiring the stdin prompter that backs the dirty-tree confirmation.
-func localOptions(opts Options) github.LocalOptions {
-	return github.LocalOptions{Force: opts.Force, Prompter: workspace.NewStdinPrompter()}
-}
-
-// fetchPR resolves the PR for opts: a no-clone local checkout when opts.Local
-// is set, otherwise the temp-dir clone+checkout. Used for the initial metadata
-// fetch and the bare-prompt build.
-func (r *Runner) fetchPR(opts Options) (*github.PR, error) {
-	if opts.Local {
-		return r.GitHub.OpenLocalPR(opts.PRRef, localOptions(opts))
-	}
-	return r.GitHub.FetchAndCheckout(opts.PRRef)
-}
-
 // PrintBarePrompt is a package-level convenience that delegates to
 // NewRunner(nil, nil).PrintBarePrompt. The prompt itself is built without
 // invoking Claude, so the FixFn / PromptBuildFn passed to NewRunner are
@@ -139,7 +123,7 @@ func (r *Runner) PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuil
 	// Clone the PR head so we can run tech detection and pick the right
 	// pattern subset. In --local mode this is the user's working tree; the
 	// prompt is the only artifact that escapes this call.
-	pr, err := r.fetchPR(opts)
+	pr, err := github.OpenPR(r.GitHub, opts.PRRef, opts.Local, opts.Force)
 	if err != nil {
 		return fmt.Errorf("fetching PR for bare prompt build: %w", err)
 	}
@@ -216,7 +200,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// initial head SHA to query checks against, plus the repo identity. In
 	// --local mode this also performs gh pr checkout + base fetch on the user's
 	// working tree; in temp-dir mode the checkout is throw-away metadata.
-	pr, err := r.fetchPR(opts)
+	pr, err := github.OpenPR(r.GitHub, opts.PRRef, opts.Local, opts.Force)
 	if err != nil {
 		return fmt.Errorf("fetching PR: %w", err)
 	}

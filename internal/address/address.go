@@ -125,7 +125,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		statusW = io.Discard
 	}
 
-	pr, err := r.fetchPR(opts)
+	pr, err := github.OpenPR(r.GitHub, opts.PRRef, opts.Local, opts.Force)
 	if err != nil {
 		return fmt.Errorf("fetching PR: %w", err)
 	}
@@ -373,15 +373,6 @@ func (r *Runner) contextFor(opts Options, pr *github.PR, threads []github.Review
 		StyleGuidePath:     styleguide.Find(pr.Dir),
 		Local:              opts.Local,
 	}
-}
-
-// fetchPR resolves the PR for opts: a no-clone local checkout when opts.Local is
-// set, otherwise a temp-dir clone+checkout.
-func (r *Runner) fetchPR(opts Options) (*github.PR, error) {
-	if opts.Local {
-		return r.GitHub.OpenLocalPR(opts.PRRef, github.LocalOptions{Force: opts.Force, Prompter: workspace.NewStdinPrompter()})
-	}
-	return r.GitHub.FetchAndCheckout(opts.PRRef)
 }
 
 // applyDefaults fills in zero-valued options and Runner seams with their

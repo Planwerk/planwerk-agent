@@ -17,7 +17,6 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
-	"github.com/planwerk/planwerk-agent/internal/workspace"
 )
 
 // Default loop parameters and the default base branch. Each can be overridden
@@ -116,7 +115,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		return errors.New("a PR reference is required (or use --local)")
 	}
 
-	pr, err := r.fetchPR(opts)
+	pr, err := github.OpenPR(r.GitHub, opts.PRRef, opts.Local, opts.Force)
 	if err != nil {
 		return fmt.Errorf("fetching PR: %w", err)
 	}
@@ -362,21 +361,6 @@ func (r *Runner) applyDefaults(opts *Options) {
 	if r.GitHub == nil {
 		r.GitHub = github.Client{}
 	}
-}
-
-// fetchPR resolves the PR for opts: a no-clone local checkout when opts.Local
-// is set, otherwise a temp-dir clone+checkout.
-func (r *Runner) fetchPR(opts Options) (*github.PR, error) {
-	if opts.Local {
-		return r.GitHub.OpenLocalPR(opts.PRRef, localOptions(opts))
-	}
-	return r.GitHub.FetchAndCheckout(opts.PRRef)
-}
-
-// localOptions builds the github.LocalOptions for a --local run, wiring the
-// stdin prompter that backs the dirty-tree confirmation.
-func localOptions(opts Options) github.LocalOptions {
-	return github.LocalOptions{Force: opts.Force, Prompter: workspace.NewStdinPrompter()}
 }
 
 // analysisCommentFooter attributes the posted analysis to planwerk-agent,
