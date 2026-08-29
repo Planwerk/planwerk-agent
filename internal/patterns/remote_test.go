@@ -499,3 +499,151 @@ func TestGitCheckout_RefIsNotParsedAsOption(t *testing.T) {
 		t.Fatalf("legitimate ref checkout failed under the guard: %v", err)
 	}
 }
+
+// TestResolveRemote_FailedRefreshKeepsCachedCheckout covers the failure that
+// took every subcommand down with it: once the TTL expired, a refresh that
+// could not reach the remote — offline, expired token — had already wiped the
+// cached clone, so pattern loading failed and with it the whole run. The
+// patterns from the last successful fetch are still perfectly good.
+func TestResolveRemote_FailedRefreshKeepsCachedCheckout(t *testing.T) {
+	root := t.TempDir()
+	const uri = "github:owner/repo"
+	p, err := parseRemoteURI(uri)
+	if err != nil {
+		t.Fatalf("parseRemoteURI: %v", err)
+	}
+	entryDir := filepath.Join(root, p.fingerprint())
+	repoDir := filepath.Join(entryDir, "repo")
+	if err := os.MkdirAll(repoDir, 0o700); err != nil {
+		t.Fatalf("seeding cached clone: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, "keep.md"), []byte("cached"), 0o600); err != nil {
+		t.Fatalf("seeding cached pattern: %v", err)
+	}
+	if err := writeRemoteMeta(filepath.Join(entryDir, "meta.json"),
+		remoteMeta{URI: uri, FetchedAt: time.Now().Add(-48 * time.Hour)}); err != nil {
+		t.Fatalf("seeding meta: %v", err)
+	}
+
+	restore := stubFetch(func(parsedURI, string) error { return errors.New("network unreachable") })
+	defer restore()
+
+	dir, err := ResolveRemote(uri, RemoteOptions{CacheDir: root, TTL: time.Hour})
+	if err != nil {
+		t.Fatalf("ResolveRemote after a failed refresh = %v, want the cached checkout", err)
+	}
+	if dir != repoDir {
+		t.Errorf("dir = %q, want %q", dir, repoDir)
+	}
+	if _, err := os.Stat(filepath.Join(repoDir, "keep.md")); err != nil {
+		t.Errorf("cached pattern did not survive the failed refresh: %v", err)
+	}
+}
+
+// TestResolveRemote_FirstFetchFailureIsFatal is the counterpart: with nothing
+// cached there is nothing to fall back to, so the error must surface.
+func TestResolveRemote_FirstFetchFailureIsFatal(t *testing.T) {
+	root := t.TempDir()
+	restore := stubFetch(func(parsedURI, string) error { return errors.New("network unreachable") })
+	defer restore()
+
+	if _, err := ResolveRemote("github:owner/repo", RemoteOptions{CacheDir: root}); err == nil {
+		t.Fatal("expected an error when a source has never been fetched")
+	}
+}
+
+// TestFetchRemote_FailedCloneLeavesExistingCheckout exercises the real
+// fetchRemote against a clone that cannot succeed (a nonexistent local repo,
+// so no network is involved): the staging directory absorbs the failure and
+// dest is untouched.
+func TestFetchRemote_FailedCloneLeavesExistingCheckout(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	base := t.TempDir()
+	dest := filepath.Join(base, "repo")
+	if err := os.MkdirAll(dest, 0o700); err != nil {
+		t.Fatalf("seeding checkout: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dest, "keep.md"), []byte("cached"), 0o600); err != nil {
+		t.Fatalf("seeding pattern: %v", err)
+	}
+
+	err := fetchRemote(parsedURI{scheme: "git", cloneURL: filepath.Join(base, "definitely-not-a-repo")}, dest)
+	if err == nil {
+		t.Fatal("expected the clone to fail")
+	}
+	if _, statErr := os.Stat(filepath.Join(dest, "keep.md")); statErr != nil {
+		t.Errorf("failed clone destroyed the existing checkout: %v", statErr)
+	}
+	if _, statErr := os.Stat(dest + ".staging"); statErr == nil {
+		t.Error("staging directory left behind")
+	}
+}
+
+// TestAcquireLock_BreaksStaleSentinel covers the abandoned lock: the holder
+// removes the sentinel in a deferred call, which a Ctrl-C never runs, and every
+// later run on that URI then spun for the full lock timeout before failing.
+func TestAcquireLock_BreaksStaleSentinel(t *testing.T) {
+	entryDir := t.TempDir()
+	lockPath := filepath.Join(entryDir, ".lock")
+	if err := os.WriteFile(lockPath, nil, 0o600); err != nil {
+		t.Fatalf("seeding lock: %v", err)
+	}
+	stale := time.Now().Add(-(staleLockAge + time.Minute))
+	if err := os.Chtimes(lockPath, stale, stale); err != nil {
+		t.Fatalf("ageing lock: %v", err)
+	}
+
+	done := make(chan struct{})
+	var release func()
+	go func() {
+		defer close(done)
+		var err error
+		release, err = acquireLock(entryDir)
+		if err != nil {
+			t.Errorf("acquireLock over a stale sentinel: %v", err)
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("acquireLock is still waiting on an abandoned sentinel")
+	}
+	if release == nil {
+		t.Fatal("no release function returned")
+	}
+	if _, err := os.Stat(lockPath); err != nil {
+		t.Errorf("lock not re-created after breaking the stale one: %v", err)
+	}
+	release()
+	if _, err := os.Stat(lockPath); !os.IsNotExist(err) {
+		t.Errorf("release did not remove the lock: %v", err)
+	}
+}
+
+// TestAcquireLock_RespectsAFreshSentinel guards the other direction: a lock a
+// live holder just took must not be broken.
+func TestAcquireLock_RespectsAFreshSentinel(t *testing.T) {
+	entryDir := t.TempDir()
+	lockPath := filepath.Join(entryDir, ".lock")
+	if err := os.WriteFile(lockPath, nil, 0o600); err != nil {
+		t.Fatalf("seeding lock: %v", err)
+	}
+
+	acquired := make(chan struct{})
+	go func() {
+		if release, err := acquireLock(entryDir); err == nil {
+			release()
+		}
+		close(acquired)
+	}()
+	select {
+	case <-acquired:
+		t.Fatal("acquireLock broke a fresh sentinel")
+	case <-time.After(500 * time.Millisecond):
+		// Still waiting, as it should be.
+	}
+	_ = os.Remove(lockPath)
+	<-acquired
+}
