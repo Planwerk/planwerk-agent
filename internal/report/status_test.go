@@ -38,3 +38,25 @@ func TestTerminalStatus(t *testing.T) {
 		})
 	}
 }
+
+// TestTerminalStatus_ExtraVocabulary covers the widening the plan path needs:
+// PLAN_READY is not a report verdict, so it must not satisfy the implement
+// report guard, but a plan that closes with it must not read as whatever it
+// mentioned earlier either.
+func TestTerminalStatus_ExtraVocabulary(t *testing.T) {
+	// An earlier standalone verdict followed by the plan's own closing line.
+	plan := "STATUS: BLOCKED\n\nOn reflection the blocker cleared.\n\n**STATUS: PLAN_READY**"
+
+	if got := TerminalStatus(plan); got != StatusBlocked {
+		t.Errorf("TerminalStatus(plan) = %q, want %q — PLAN_READY is not a report verdict", got, StatusBlocked)
+	}
+	if got := TerminalStatus(plan, StatusPlanReady); got != StatusPlanReady {
+		t.Errorf("TerminalStatus(plan, StatusPlanReady) = %q, want %q", got, StatusPlanReady)
+	}
+	if got := TerminalStatus("STATUS: DONE", StatusPlanReady); got != StatusDone {
+		t.Errorf("extra vocabulary must not displace the report verdicts, got %q", got)
+	}
+	if got := TerminalStatus("STATUS: SOMETHING_ELSE", StatusPlanReady); got != "" {
+		t.Errorf("unknown verdict = %q, want \"\"", got)
+	}
+}

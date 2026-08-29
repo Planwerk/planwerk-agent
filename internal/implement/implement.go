@@ -1044,40 +1044,32 @@ const (
 	statusNeedsContext     = report.StatusNeedsContext
 )
 
-// planEscalation extracts the plan's terminal STATUS verdict and returns it
-// when the plan is non-executable (BLOCKED or NEEDS_CONTEXT), or "" when the
-// plan is executable (PLAN_READY, or a free-form plan with no STATUS line).
+// planEscalation extracts a plan's or an apply report's terminal STATUS verdict
+// and returns it when the work is non-executable (BLOCKED or NEEDS_CONTEXT), or
+// "" when it is executable (PLAN_READY, DONE, or a free-form text with no
+// STATUS line).
 //
-// Only the plan's authoritative verdict counts — the last line whose trimmed
-// content begins with "STATUS: " followed by a known marker. A plan may
-// legitimately *mention* "STATUS: BLOCKED" mid-sentence or inside backticks
-// when the work it describes is about those very status values (the plan for
-// issue #89, which hardens the implement session's BLOCKED/DONE_WITH_CONCERNS
-// stop conditions, is exactly this case). Such mentions are documentation, not
-// the verdict, and must not abort the run. Scanning line-anchored for the last
-// standalone STATUS line — rather than a substring anywhere in the body —
-// keeps those mentions, and the prompt's "STATUS: <PLAN_READY | BLOCKED |
-// NEEDS_CONTEXT>" format spec, from tripping a false escalation.
+// Only the authoritative verdict counts — the last standalone STATUS line. A
+// plan may legitimately *mention* "STATUS: BLOCKED" mid-sentence or inside
+// backticks when the work it describes is about those very status values (the
+// plan for issue #89, which hardens the implement session's
+// BLOCKED/DONE_WITH_CONCERNS stop conditions, is exactly this case). Such
+// mentions are documentation, not the verdict, and must not abort the run.
+//
+// It reads through report.TerminalStatus — the shared parser — rather than a
+// second, stricter one of its own. The private copy this replaced required the
+// literal prefix "STATUS: " at the start of the line, so the markdown a model
+// routinely adds ("**STATUS: BLOCKED**", "- STATUS: BLOCKED") slipped past it
+// and an unattended implement session ran on a plan that had declared itself
+// blocked. The same text in an implementation report was caught, because that
+// path already used the shared parser.
 func planEscalation(plan string) string {
-	verdict := ""
-	for _, line := range strings.Split(plan, "\n") {
-		rest, ok := strings.CutPrefix(strings.TrimSpace(line), "STATUS: ")
-		if !ok {
-			continue
-		}
-		fields := strings.Fields(rest)
-		if len(fields) == 0 {
-			continue
-		}
-		switch fields[0] {
-		case "PLAN_READY", statusBlocked, statusNeedsContext:
-			verdict = fields[0]
-		}
+	switch status := report.TerminalStatus(plan, report.StatusPlanReady); status {
+	case statusBlocked, statusNeedsContext:
+		return status
+	default:
+		return ""
 	}
-	if verdict == statusBlocked || verdict == statusNeedsContext {
-		return verdict
-	}
-	return ""
 }
 
 // implementReportStatus returns the implement report's terminal STATUS verdict

@@ -3438,3 +3438,32 @@ func TestRun_ReviewLoopFallsBackToBranchScopeWhenHeadUnknown(t *testing.T) {
 		t.Errorf("round 2 scoped to %q, want the branch-wide fallback (empty sinceRef)", av.sinceRefs[1])
 	}
 }
+
+// TestPlanEscalation_ToleratesMarkdownDecoration is the regression test for the
+// escalation that never fired: the private parser this replaced required the
+// literal prefix "STATUS: " at the start of the line, so the markdown a model
+// routinely adds slipped past it and the run proceeded to an unattended
+// implement session on a plan that had declared itself blocked.
+func TestPlanEscalation_ToleratesMarkdownDecoration(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		plan string
+		want string
+	}{
+		{"bold", "## Plan\n\n**STATUS: BLOCKED**", statusBlocked},
+		{"list marker", "## Plan\n\n- STATUS: BLOCKED", statusBlocked},
+		{"heading", "## Plan\n\n### STATUS: NEEDS_CONTEXT", statusNeedsContext},
+		{"blockquote", "## Plan\n\n> STATUS: BLOCKED", statusBlocked},
+		{"trailing reason", "STATUS: BLOCKED — the issue names no acceptance criteria", statusBlocked},
+		{"bold plan_ready", "## Plan\n\n**STATUS: PLAN_READY**", ""},
+		{"plan_ready after a mention", "The session emits STATUS: BLOCKED when stuck.\n\nSTATUS: PLAN_READY", ""},
+		{"format spec is not a verdict", "Close with STATUS: <PLAN_READY | BLOCKED | NEEDS_CONTEXT>", ""},
+		{"no status line", "## Plan\n\nJust do the work.", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := planEscalation(tc.plan); got != tc.want {
+				t.Errorf("planEscalation(%q) = %q, want %q", tc.plan, got, tc.want)
+			}
+		})
+	}
+}
