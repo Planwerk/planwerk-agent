@@ -3,6 +3,7 @@ package reviewprepared
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"sync/atomic"
@@ -236,5 +237,38 @@ func TestRun_LocalWithCreatePR(t *testing.T) {
 	// The local working tree must survive: every Cleanup is a no-op when Local.
 	if _, err := os.Stat(dir); err != nil {
 		t.Fatalf("local checkout must survive --local --create-pr: %v", err)
+	}
+}
+
+// TestRun_CreatePRCleansUpTheCloneOnFailure is the regression test for the
+// leaked temp clone: cleanup used to be deferred only when --create-pr was
+// OFF, so on the --create-pr path nothing was registered and any failure
+// between the clone and openPR left the working tree behind. defer runs at
+// function exit, which is after openPR has committed and pushed, so one
+// unconditional defer covers both paths.
+func TestRun_CreatePRCleansUpTheCloneOnFailure(t *testing.T) {
+	clone := t.TempDir()
+	writeFeature(t, clone, "PX-0001-prepared.json", planwerk.Feature{FeatureID: "PX-0001", Status: "prepared", Title: "Foo"})
+
+	gh := &fakeGitHub{repoDir: clone} // CloneRepo returns a non-Local repo
+	cl := &fakeClaude{fn: func(string, AnalysisContext) (*Result, error) {
+		return nil, errors.New("claude unavailable")
+	}}
+	r := &Runner{Claude: cl, GitHub: gh}
+
+	var out bytes.Buffer
+	err := r.Run(&out, Options{
+		RepoRef:         "o/n",
+		NoLocalPatterns: true,
+		NoRepoPatterns:  true,
+		Format:          "markdown",
+		NoCache:         true,
+		CreatePR:        true,
+	})
+	if err == nil {
+		t.Fatal("expected the run to fail")
+	}
+	if _, statErr := os.Stat(clone); !os.IsNotExist(statErr) {
+		t.Errorf("temp clone %s survived a failed --create-pr run: %v", clone, statErr)
 	}
 }
