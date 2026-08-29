@@ -37,7 +37,7 @@ func (r *Runner) PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuil
 		}
 	}
 
-	pr, err := r.fetchPR(opts)
+	pr, err := github.OpenPR(r.GitHub, opts.PRRef, opts.Local, opts.Force)
 	if err != nil {
 		return fmt.Errorf("fetching PR for bare prompt build: %w", err)
 	}

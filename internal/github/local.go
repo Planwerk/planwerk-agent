@@ -219,3 +219,45 @@ func (Client) PullFFOnly(dir, branch string) error {
 	}
 	return nil
 }
+
+// RepoOpener is the slice of Client a command needs to open a repository
+// checkout: a fresh temp-dir clone, or the working directory under --local.
+type RepoOpener interface {
+	CloneRepo(ref string) (*Repo, error)
+	UseLocalRepo(ref string, opts LocalOptions) (*Repo, error)
+}
+
+// OpenRepo returns the working tree for ref: the caller's working directory
+// when local is set (no clone; Repo.Cleanup is a no-op), otherwise a fresh
+// temp-dir clone. force skips the dirty-tree confirmation a local run asks on
+// stdin.
+func OpenRepo(gh RepoOpener, ref string, local, force bool) (*Repo, error) {
+	if local {
+		repo, err := gh.UseLocalRepo(ref, LocalOptions{Force: force, Prompter: workspace.NewStdinPrompter()})
+		if err != nil {
+			return nil, err
+		}
+		slog.Info("operating on local checkout", "dir", repo.Dir)
+		return repo, nil
+	}
+	slog.Info("cloning repository", "repo", ref)
+	return gh.CloneRepo(ref)
+}
+
+// PROpener is the slice of Client a command needs to open a pull request's
+// head: a temp-dir clone plus checkout, or the working directory under
+// --local.
+type PROpener interface {
+	FetchAndCheckout(ref string) (*PR, error)
+	OpenLocalPR(ref string, opts LocalOptions) (*PR, error)
+}
+
+// OpenPR resolves the pull request for ref the way OpenRepo resolves a
+// repository: the working directory when local is set, a clone and checkout
+// otherwise.
+func OpenPR(gh PROpener, ref string, local, force bool) (*PR, error) {
+	if local {
+		return gh.OpenLocalPR(ref, LocalOptions{Force: force, Prompter: workspace.NewStdinPrompter()})
+	}
+	return gh.FetchAndCheckout(ref)
+}

@@ -14,7 +14,6 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/glossary"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
-	"github.com/planwerk/planwerk-agent/internal/workspace"
 )
 
 // CommandElaborate is the cache scope identifier for elaboration entries.
@@ -147,7 +146,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		}
 	}
 
-	repo, err := r.openRepo(opts, fmt.Sprintf("%s/%s", owner, name))
+	repo, err := github.OpenRepo(r.GitHub, fmt.Sprintf("%s/%s", owner, name), opts.Local, opts.Force)
 	if err != nil {
 		return fmt.Errorf("cloning repo: %w", err)
 	}
@@ -216,22 +215,6 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 
 	slog.Info("elaboration complete")
 	return r.finish(w, result, owner, name, number, opts)
-}
-
-// openRepo returns the working tree to ground the elaboration in: the user's
-// cwd when --local is set (no clone, Cleanup is a no-op), otherwise a fresh
-// temp-dir clone of fullName.
-func (r *Runner) openRepo(opts Options, fullName string) (*github.Repo, error) {
-	if opts.Local {
-		repo, err := r.GitHub.UseLocalRepo(fullName, github.LocalOptions{Force: opts.Force, Prompter: workspace.NewStdinPrompter()})
-		if err != nil {
-			return nil, err
-		}
-		slog.Info("operating on local checkout", "dir", repo.Dir)
-		return repo, nil
-	}
-	slog.Info("cloning repository for elaboration", "repo", fullName)
-	return r.GitHub.CloneRepo(fullName)
 }
 
 // finish renders the elaborated result and applies the configured update

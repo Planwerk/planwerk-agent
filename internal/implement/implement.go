@@ -28,7 +28,6 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/report"
 	"github.com/planwerk/planwerk-agent/internal/skills"
 	"github.com/planwerk/planwerk-agent/internal/styleguide"
-	"github.com/planwerk/planwerk-agent/internal/workspace"
 )
 
 // Options configures the implement subcommand. Mirrors the Options style
@@ -299,7 +298,7 @@ func (r *Runner) PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuil
 	}
 	fullName := fmt.Sprintf("%s/%s", owner, name)
 
-	repo, err := r.openRepo(opts, fullName)
+	repo, err := github.OpenRepo(r.GitHub, fullName, opts.Local, opts.Force)
 	if err != nil {
 		return fmt.Errorf("cloning repo for bare prompt build: %w", err)
 	}
@@ -455,7 +454,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		return nil
 	}
 
-	repo, err := r.openRepo(opts, fullName)
+	repo, err := github.OpenRepo(r.GitHub, fullName, opts.Local, opts.Force)
 	if err != nil {
 		return fmt.Errorf("cloning repo: %w", err)
 	}
@@ -611,22 +610,6 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		slog.Info("operating on local checkout", "dir", repo.Dir)
 	}
 	return nil
-}
-
-// openRepo returns the working tree for the implementation: the user's cwd
-// when --local is set (no clone, Cleanup is a no-op), otherwise a fresh
-// temp-dir clone of fullName.
-func (r *Runner) openRepo(opts Options, fullName string) (*github.Repo, error) {
-	if opts.Local {
-		repo, err := r.GitHub.UseLocalRepo(fullName, github.LocalOptions{Force: opts.Force, Prompter: workspace.NewStdinPrompter()})
-		if err != nil {
-			return nil, err
-		}
-		slog.Info("operating on local checkout", "dir", repo.Dir)
-		return repo, nil
-	}
-	slog.Info("cloning repository for implementation", "repo", fullName)
-	return r.GitHub.CloneRepo(fullName)
 }
 
 // prepareResume detects a feature branch an earlier aborted run for this issue
