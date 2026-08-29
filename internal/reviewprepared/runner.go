@@ -85,15 +85,15 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		if err != nil {
 			return fmt.Errorf("cloning repo: %w", err)
 		}
-		// Defer cleanup only when we are NOT opening a PR — the PR helper
-		// needs the working tree to commit + push.
-		if !opts.CreatePR {
-			defer repo.Cleanup()
-		}
+		// One deferred cleanup covers every exit, --create-pr included: defer
+		// runs at function exit, which is after openPR has committed and
+		// pushed. Making the defer conditional on !CreatePR — as this did —
+		// registered no cleanup at all on the --create-pr path, so any failure
+		// between here and openPR leaked the clone.
+		defer repo.Cleanup()
 
 		features, err := LoadPreparedFeatures(repo.Dir, opts.FeatureID, opts.FilePath)
 		if err != nil {
-			repo.Cleanup()
 			return fmt.Errorf("loading prepared features: %w", err)
 		}
 		slog.Info("loaded prepared features", "count", len(features))
@@ -110,12 +110,10 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 			Extra:   opts.PatternDirs,
 		})
 		if err != nil {
-			repo.Cleanup()
 			return fmt.Errorf("resolving pattern sources: %w", err)
 		}
 		pats, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{Remote: opts.Remote, NoEmbedded: opts.NoLocalPatterns}, techTags, patternDirs...)
 		if err != nil {
-			repo.Cleanup()
 			return fmt.Errorf("loading patterns: %w", err)
 		}
 		if len(pats) > 0 {
@@ -131,7 +129,6 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 			IncludeImproved: opts.CreatePR,
 		})
 		if err != nil {
-			repo.Cleanup()
 			return fmt.Errorf("claude review-prepared: %w", err)
 		}
 		if result.RepoFullName == "" {
@@ -158,7 +155,6 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		if repo == nil {
 			return fmt.Errorf("--create-pr requires a fresh clone but none is available; rerun with --no-cache")
 		}
-		defer repo.Cleanup()
 		url, err := r.openPR(repo, result, opts)
 		if err != nil {
 			return err
