@@ -2,15 +2,21 @@ package patterns
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 )
 
-// ResolveOptions configures Resolve. The flags mirror the --no-local-patterns
-// and --no-repo-patterns toggles the eight pattern-loading subcommands expose.
+// BundledURLBase is the public raw-markdown URL prefix under which the
+// embedded catalog's pattern files can be read without planwerk-agent. It is
+// pinned to "main" so a manual session pasting a bare prompt always picks up
+// the latest patterns, without the binary's version baked into URLs that then
+// drift on dev builds.
+const BundledURLBase = "https://raw.githubusercontent.com/planwerk/planwerk-agent/main/internal/patterns/patterns"
+
+// ResolveOptions configures Resolve. NoRepo mirrors the --no-repo-patterns
+// toggle the pattern-loading subcommands expose.
 type ResolveOptions struct {
-	// NoLocal suppresses the planwerk-agent-bundled on-disk catalog.
-	NoLocal bool
 	// NoRepo suppresses the target repo's .planwerk/review_patterns directory.
 	NoRepo bool
 	// RepoDir is the target repository checkout root. It is only consulted
@@ -29,15 +35,14 @@ type ResolveOptions struct {
 }
 
 // Resolve assembles the ordered list of on-disk pattern directories to load,
-// applying the precedence the eight subcommands share: the planwerk-agent
-// bundled local catalog (lowest priority), then the target repo's GitHub Wiki
-// review patterns, then the target repo's .planwerk/review_patterns directory,
-// then any explicit --patterns directories (highest priority). The wiki sits
-// below the committed repo patterns on purpose: the wiki is world-editable and
-// unreviewed, so a repo's committed (and branch-protected) patterns must win
-// over it on a name collision. The NoLocal and NoRepo toggles drop the bundled
-// local and repo groups respectively; the wiki slot is dropped by passing an
-// empty Wiki.
+// applying the precedence the subcommands share: the target repo's GitHub
+// Wiki review patterns (lowest priority), then the target repo's
+// .planwerk/review_patterns directory, then any explicit --patterns
+// directories (highest priority). The wiki sits below the committed repo
+// patterns on purpose: the wiki is world-editable and unreviewed, so a repo's
+// committed (and branch-protected) patterns must win over it on a name
+// collision. NoRepo drops the repo group; the wiki slot is dropped by passing
+// an empty Wiki.
 //
 // Resolve is the single source of truth for this precedence order; callers
 // must not re-derive it. The binary's embedded catalog is layered in
@@ -46,9 +51,6 @@ type ResolveOptions struct {
 // XDG_DATA_DIRS); today Resolve never returns a non-nil error.
 func Resolve(opts ResolveOptions) ([]string, error) {
 	var dirs []string
-	if dir := LocalPatternDir(opts.NoLocal); dir != "" {
-		dirs = append(dirs, dir)
-	}
 	if opts.Wiki != "" {
 		dirs = append(dirs, opts.Wiki)
 	}
@@ -59,26 +61,82 @@ func Resolve(opts ResolveOptions) ([]string, error) {
 	return dirs, nil
 }
 
-// LocalPatternDir returns the planwerk-agent-bundled on-disk pattern
-// directory, or "" when noLocal is set or no candidate exists. It prefers the
-// directory next to the executable (../patterns, the layout shipped before the
-// catalog was embedded) and falls back to ./patterns relative to the working
-// directory for development checkouts. The bare-prompt catalog builder uses
-// this same root to map a pattern's FilePath back to its canonical URL.
-func LocalPatternDir(noLocal bool) string {
-	if noLocal {
-		return ""
+// RepoLoadOptions configures LoadForRepo: which catalogs to read for one
+// target checkout and how to filter them. The fields mirror the
+// --patterns, --no-local-patterns and --no-repo-patterns flags plus the
+// detected technology tags.
+type RepoLoadOptions struct {
+	// RepoDir is the target repository checkout root, consulted for its
+	// .planwerk/review_patterns directory unless NoRepo is set.
+	RepoDir string
+	// Wiki is the resolved local directory of the repo's GitHub Wiki review
+	// patterns (see ResolveWiki); empty means none.
+	Wiki string
+	// Extra are the explicit --patterns sources: local directories or remote
+	// URIs accepted by IsRemote.
+	Extra []string
+	// Tags are the detected technology tags the catalog is filtered by; nil
+	// keeps every pattern.
+	Tags []string
+	// NoEmbedded suppresses the binary's embedded catalog (--no-local-patterns).
+	NoEmbedded bool
+	// NoRepo suppresses the repo's .planwerk/review_patterns (--no-repo-patterns).
+	NoRepo bool
+	// Remote controls how remote sources are resolved into local directories.
+	Remote RemoteOptions
+}
+
+// LoadForRepo resolves the pattern sources for one checkout in precedence
+// order (see Resolve) and loads the tag-filtered catalog on top of the
+// embedded one. It is the one loader every subcommand goes through; the
+// error names the step that failed.
+func LoadForRepo(opts RepoLoadOptions) ([]Pattern, error) {
+	dirs, err := Resolve(ResolveOptions{
+		NoRepo:  opts.NoRepo,
+		RepoDir: opts.RepoDir,
+		Wiki:    opts.Wiki,
+		Extra:   opts.Extra,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("resolving pattern sources: %w", err)
 	}
-	if exe, err := os.Executable(); err == nil {
-		candidate := filepath.Join(filepath.Dir(exe), "..", "patterns")
-		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
-			return candidate
+	pats, err := LoadFilteredWithOptions(LoadOptions{Remote: opts.Remote, NoEmbedded: opts.NoEmbedded}, opts.Tags, dirs...)
+	if err != nil {
+		return nil, fmt.Errorf("loading patterns: %w", err)
+	}
+	return pats, nil
+}
+
+// LoadForRepoOrWarn is LoadForRepo for the commands that run without a
+// catalog rather than fail on a corrupt pattern source (the fix, rebase,
+// address and implement loops, and every bare-prompt build): a load error is
+// logged and yields nil.
+func LoadForRepoOrWarn(opts RepoLoadOptions) []Pattern {
+	pats, err := LoadForRepo(opts)
+	if err != nil {
+		slog.Warn("loading review patterns failed; continuing without them", "err", err)
+		return nil
+	}
+	return pats
+}
+
+// BareCatalog builds the catalog a bare prompt embeds from a loaded pattern
+// set: each entry carries either the public URL of an embedded pattern or the
+// in-checkout path of a repo-specific one under .planwerk/review_patterns.
+// hasRepoLocal reports whether any entry is the latter, so the prompt can tell
+// the pasted-into session to read those from its own checkout.
+func BareCatalog(pats []Pattern, repoDir string, noRepo bool) (refs []CatalogReference, hasRepoLocal bool) {
+	refs = BuildCatalogReferences(pats, CatalogRefOptions{
+		BundledURLBase: BundledURLBase,
+		RepoRoot:       RepoPatternDir(noRepo, repoDir),
+		RepoRelBase:    ".planwerk/review_patterns",
+	})
+	for _, c := range refs {
+		if c.LocalPath != "" {
+			return refs, true
 		}
 	}
-	if info, err := os.Stat("patterns"); err == nil && info.IsDir() {
-		return "patterns"
-	}
-	return ""
+	return refs, false
 }
 
 // RepoPatternDir returns the target repo's .planwerk/review_patterns

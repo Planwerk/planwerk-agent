@@ -176,20 +176,17 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	}
 
 	// 4. Load patterns (filtered by detected technologies)
-	patternDirs, err := patterns.Resolve(patterns.ResolveOptions{
-		NoLocal: opts.NoLocalPatterns,
-		NoRepo:  opts.NoRepoPatterns,
-		RepoDir: pr.Dir,
-		Wiki:    wiki.PatternsDir,
-		Extra:   opts.PatternDirs,
+	pats, err := patterns.LoadForRepo(patterns.RepoLoadOptions{
+		RepoDir:    pr.Dir,
+		Wiki:       wiki.PatternsDir,
+		Extra:      opts.PatternDirs,
+		Tags:       techTags,
+		NoEmbedded: opts.NoLocalPatterns,
+		NoRepo:     opts.NoRepoPatterns,
+		Remote:     opts.Remote,
 	})
 	if err != nil {
-		return fmt.Errorf("resolving pattern sources: %w", err)
-	}
-
-	pats, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{Remote: opts.Remote, NoEmbedded: opts.NoLocalPatterns}, techTags, patternDirs...)
-	if err != nil {
-		return fmt.Errorf("loading patterns: %w", err)
+		return err
 	}
 
 	if len(pats) > 0 {

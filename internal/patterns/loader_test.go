@@ -443,12 +443,11 @@ func TestLoadFiltered_MixesLocalAndRemote(t *testing.T) {
 }
 
 func TestBuildCatalogReferences_ClassifiesByFilePath(t *testing.T) {
-	bundled := t.TempDir()
 	repo := t.TempDir()
 
 	pats := []Pattern{
 		{Name: "Bundled rule", Severity: "WARNING", Category: "design-principle",
-			FilePath: filepath.Join(bundled, "design", "rule.md")},
+			FilePath: "embedded:patterns/design/rule.md"},
 		{Name: "Repo override", Severity: "CRITICAL", Category: "technology",
 			AppliesWhen: []string{"go"},
 			FilePath:    filepath.Join(repo, "go", "extra.md")},
@@ -457,7 +456,6 @@ func TestBuildCatalogReferences_ClassifiesByFilePath(t *testing.T) {
 	}
 
 	refs := BuildCatalogReferences(pats, CatalogRefOptions{
-		BundledRoot:    bundled,
 		BundledURLBase: "https://raw.example/patterns",
 		RepoRoot:       repo,
 		RepoRelBase:    ".planwerk/review_patterns",
@@ -508,9 +506,9 @@ func TestFormatCatalogReferences_RendersBullets(t *testing.T) {
 }
 
 func TestBuildCatalogReferences_LoaderSetsFilePath(t *testing.T) {
-	// End-to-end check: LoadFiltered must populate Pattern.FilePath so
+	// End-to-end check: the loader must populate Pattern.FilePath so
 	// BuildCatalogReferences can route entries to the right bucket.
-	bundled := t.TempDir()
+	repo := t.TempDir()
 	const body = `# Review Pattern: FilePath wiring
 **Review-Area**: meta
 **Detection-Hint**: any
@@ -519,10 +517,10 @@ func TestBuildCatalogReferences_LoaderSetsFilePath(t *testing.T) {
 ## Rule
 The loader must record FilePath.
 `
-	if err := os.WriteFile(filepath.Join(bundled, "rule.md"), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(repo, "rule.md"), []byte(body), 0o644); err != nil {
 		t.Fatalf("seeding pattern: %v", err)
 	}
-	pats, err := loadTagged(nil, bundled)
+	pats, err := loadTagged(nil, repo)
 	if err != nil {
 		t.Fatalf("LoadFiltered: %v", err)
 	}
@@ -534,11 +532,11 @@ The loader must record FilePath.
 	}
 
 	refs := BuildCatalogReferences(pats, CatalogRefOptions{
-		BundledRoot:    bundled,
-		BundledURLBase: "https://example.test/x",
+		RepoRoot:    repo,
+		RepoRelBase: ".planwerk/review_patterns",
 	})
-	if got := refs[0].URL; !strings.Contains(got, "/rule.md") {
-		t.Errorf("URL = %q, want it to end with /rule.md", got)
+	if got := refs[0].LocalPath; !strings.HasSuffix(got, "/rule.md") {
+		t.Errorf("LocalPath = %q, want it to end with /rule.md", got)
 	}
 }
 

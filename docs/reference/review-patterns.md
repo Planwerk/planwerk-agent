@@ -7,7 +7,7 @@ of authoring one, see [Write your own review patterns](/how-to/write-review-patt
 
 ## Pattern Sources
 
-Patterns are resolved from up to six tiers, listed here from lowest to highest
+Patterns are resolved from up to four tiers, listed here from lowest to highest
 priority. Later tiers override earlier ones by pattern name, so the more
 specific source wins on a name collision:
 
@@ -15,39 +15,30 @@ specific source wins on a name collision:
    baked into the binary with `//go:embed`. It is always present, so every
    install method (`go install`, raw `go build`, release archives, OS packages)
    produces a self-contained binary that loads the full catalog with no external
-   files. This is the lowest-priority source; any on-disk source below overrides
-   an embedded pattern of the same name.
+   files. This is the lowest-priority source; any source below overrides an
+   embedded pattern of the same name. `--no-local-patterns` suppresses it.
 
-2. **Bundled on-disk catalog** (`<binDir>/../patterns`) — an optional copy next
-   to the installed binary. Lets a distribution ship the catalog as a separately
-   updatable data file (so pattern fixes can land without rebuilding the binary);
-   when present it overrides the embedded copy.
-
-3. **Working-directory catalog** (`./patterns`) — picked up when running from a
-   planwerk-agent checkout during development of the tool itself.
-
-4. **GitHub Wiki patterns** (`review_patterns/*.md` in the target repo's wiki)
+2. **GitHub Wiki patterns** (`review_patterns/*.md` in the target repo's wiki)
    - The repo's GitHub Wiki, human-editable through the web UI and git-versioned independently of the code, so review knowledge accumulates without polluting code diffs
-   - Ranks below the committed in-repo patterns of tier 5: the wiki is world-editable and unreviewed, so a repo's committed (branch-protected) patterns override it on a name collision. An explicit `--patterns` (tier 6) overrides both
+   - Ranks below the committed in-repo patterns of tier 3: the wiki is world-editable and unreviewed, so a repo's committed (branch-protected) patterns override it on a name collision. An explicit `--patterns` (tier 4) overrides both
    - Off by default — enable it per repo with `--wiki` (enabling trusts the wiki's unreviewed editors); `--no-wiki` keeps it off
    - See [GitHub Wiki](#github-wiki) below for the page convention, caching, and authentication
 
-5. **Repo-specific patterns** (`.planwerk/review_patterns/*.md` in the target repo)
+3. **Repo-specific patterns** (`.planwerk/review_patterns/*.md` in the target repo)
    - Created and maintained by the development team (Planwerk) themselves
    - Contain repo-specific knowledge (e.g., "In this repo, all DB queries must go through the QueryBuilder")
-   - Versioned with the repository; committed (reviewed) patterns override the world-editable wiki of tier 4
+   - Versioned with the repository; committed (reviewed) patterns override the world-editable wiki of tier 2
    - Suppressed independently by `--no-repo-patterns`
 
-6. **Explicit / remote patterns** (passed via `--patterns <URI>` or the config file)
+4. **Explicit / remote patterns** (passed via `--patterns <URI>` or the config file)
    - Local directories or remote URIs — lets a team maintain a single, shared pattern catalog in a separate repository instead of vendoring it into every consuming repo
    - Remote sources are cloned into a per-user cache on first use and refreshed by TTL
    - Highest priority: override every tier above on a name collision
    - See [Remote Pattern Sources](#remote-pattern-sources) below for URI forms, caching, and authentication
 
-`--no-local-patterns` suppresses the first three tiers — the embedded catalog
-and both on-disk tool copies (`<binDir>/../patterns` and `./patterns`) — leaving
-only the wiki, repo-specific, and `--patterns` sources. `--no-repo-patterns`
-independently drops tier 5, and `--no-wiki` drops tier 4 (which is already off
+`--no-local-patterns` drops tier 1, the embedded catalog, leaving only the
+wiki, repo-specific, and `--patterns` sources. `--no-repo-patterns`
+independently drops tier 3, and `--no-wiki` drops tier 2 (which is already off
 unless `--wiki` opted in).
 
 ## Remote Pattern Sources

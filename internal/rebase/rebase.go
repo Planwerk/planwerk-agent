@@ -30,12 +30,6 @@ const (
 	// DefaultMaxIterations caps how many conflicting commits the loop will
 	// resolve before aborting.
 	DefaultMaxIterations = 10
-
-	// BundledPatternsURLBase is the public raw-markdown URL prefix the
-	// bare-prompt catalog uses to point Claude at planwerk-agent's bundled
-	// pattern files. Pinned to "main" so manual sessions always pick up the
-	// latest patterns, mirroring the fix package.
-	BundledPatternsURLBase = "https://raw.githubusercontent.com/planwerk/planwerk-agent/main/internal/patterns/patterns"
 )
 
 // Options configures the rebase subcommand. Mirrors the Options style used by
@@ -425,20 +419,14 @@ func loadPatterns(opts Options, repoDir string) []patterns.Pattern {
 	if len(tags) > 0 {
 		slog.Info("detected technologies", "technologies", strings.Join(tags, ", "))
 	}
-	dirs, err := patterns.Resolve(patterns.ResolveOptions{
-		NoLocal: opts.NoLocalPatterns,
-		NoRepo:  opts.NoRepoPatterns,
-		RepoDir: repoDir,
-		Extra:   opts.PatternDirs,
+	pats := patterns.LoadForRepoOrWarn(patterns.RepoLoadOptions{
+		RepoDir:    repoDir,
+		Extra:      opts.PatternDirs,
+		Tags:       tags,
+		NoEmbedded: opts.NoLocalPatterns,
+		NoRepo:     opts.NoRepoPatterns,
+		Remote:     opts.Remote,
 	})
-	if err != nil {
-		slog.Warn("resolving pattern sources failed; continuing without them", "err", err)
-	}
-	pats, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{Remote: opts.Remote, NoEmbedded: opts.NoLocalPatterns}, tags, dirs...)
-	if err != nil {
-		slog.Warn("loading review patterns failed; continuing without them", "err", err)
-		return nil
-	}
 	if len(pats) > 0 {
 		slog.Info("loaded review patterns", "count", len(pats))
 	}

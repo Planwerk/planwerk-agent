@@ -31,13 +31,6 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/workspace"
 )
 
-// BundledPatternsURLBase is the public raw-markdown URL prefix the bare
-// prompt's pattern catalog uses to point Claude at planwerk-agent's
-// bundled pattern files. We pin to "main" so manual sessions always pick
-// up the latest patterns without us baking the binary's version into URLs
-// that then drift on dev builds.
-const BundledPatternsURLBase = "https://raw.githubusercontent.com/planwerk/planwerk-agent/main/internal/patterns/patterns"
-
 // Options configures the implement subcommand. Mirrors the Options style
 // used by the review/audit/elaborate/fix packages.
 type Options struct {
@@ -316,46 +309,27 @@ func (r *Runner) PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuil
 	if len(tags) > 0 {
 		slog.Info("detected technologies for bare prompt", "technologies", strings.Join(tags, ", "))
 	}
-	dirs, err := patterns.Resolve(patterns.ResolveOptions{
-		NoLocal: opts.NoLocalPatterns,
-		NoRepo:  opts.NoRepoPatterns,
-		RepoDir: repo.Dir,
-		Extra:   opts.PatternDirs,
+	pats := patterns.LoadForRepoOrWarn(patterns.RepoLoadOptions{
+		RepoDir:    repo.Dir,
+		Extra:      opts.PatternDirs,
+		Tags:       tags,
+		NoEmbedded: opts.NoLocalPatterns,
+		NoRepo:     opts.NoRepoPatterns,
+		Remote:     opts.Remote,
 	})
-	if err != nil {
-		slog.Warn("resolving pattern sources failed; bare prompt will omit them", "err", err)
-	}
-	pats, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{Remote: opts.Remote, NoEmbedded: opts.NoLocalPatterns}, tags, dirs...)
-	if err != nil {
-		slog.Warn("loading review patterns failed; bare prompt will omit them", "err", err)
-		pats = nil
-	}
 	if len(pats) > 0 {
 		design, technology, review, general := patterns.CountByCategory(pats)
 		slog.Info("loaded patterns for bare prompt", "count", len(pats), "design", design, "technology", technology, "review", review, "general", general)
 	}
 
-	catalog := patterns.BuildCatalogReferences(pats, patterns.CatalogRefOptions{
-		BundledRoot:    patterns.LocalPatternDir(opts.NoLocalPatterns),
-		BundledURLBase: BundledPatternsURLBase,
-		RepoRoot:       patterns.RepoPatternDir(opts.NoRepoPatterns, repo.Dir),
-		RepoRelBase:    ".planwerk/review_patterns",
-	})
-
-	hasRepoLocal := false
-	for _, c := range catalog {
-		if c.LocalPath != "" {
-			hasRepoLocal = true
-			break
-		}
-	}
+	catalog, hasRepoLocal := patterns.BareCatalog(pats, repo.Dir, opts.NoRepoPatterns)
 
 	prompt := build(BareContext{
 		RepoFullName:     fullName,
 		IssueNumber:      number,
 		TechTags:         tags,
 		PatternCatalog:   catalog,
-		BundledURLBase:   BundledPatternsURLBase,
+		BundledURLBase:   patterns.BundledURLBase,
 		HasRepoLocalRefs: hasRepoLocal,
 		Skills:           skills.Load(repo.Dir),
 		StyleGuidePath:   styleguide.Find(repo.Dir),
@@ -1771,21 +1745,15 @@ func loadPatterns(opts Options, repoDir, wikiPatternsDir string) []patterns.Patt
 	if len(tags) > 0 {
 		slog.Info("detected technologies", "technologies", strings.Join(tags, ", "))
 	}
-	dirs, err := patterns.Resolve(patterns.ResolveOptions{
-		NoLocal: opts.NoLocalPatterns,
-		NoRepo:  opts.NoRepoPatterns,
-		RepoDir: repoDir,
-		Wiki:    wikiPatternsDir,
-		Extra:   opts.PatternDirs,
+	pats := patterns.LoadForRepoOrWarn(patterns.RepoLoadOptions{
+		RepoDir:    repoDir,
+		Wiki:       wikiPatternsDir,
+		Extra:      opts.PatternDirs,
+		Tags:       tags,
+		NoEmbedded: opts.NoLocalPatterns,
+		NoRepo:     opts.NoRepoPatterns,
+		Remote:     opts.Remote,
 	})
-	if err != nil {
-		slog.Warn("resolving pattern sources failed; continuing without them", "err", err)
-	}
-	pats, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{Remote: opts.Remote, NoEmbedded: opts.NoLocalPatterns}, tags, dirs...)
-	if err != nil {
-		slog.Warn("loading review patterns failed; continuing without them", "err", err)
-		return nil
-	}
 	if len(pats) > 0 {
 		design, technology, review, general := patterns.CountByCategory(pats)
 		slog.Info("loaded patterns", "count", len(pats), "design", design, "technology", technology, "review", review, "general", general)
