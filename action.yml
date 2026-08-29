@@ -15,13 +15,13 @@ inputs:
     required: false
     default: ''
   min-severity:
-    description: 'Minimum severity to report (info, warning, critical, blocking).'
+    description: 'Minimum severity to report (info, warning, critical, blocking). Empty keeps the repository''s .planwerk/config.yaml review.min-severity, or the compiled-in default (info).'
     required: false
-    default: 'info'
+    default: ''
   format:
-    description: 'Output format written to the action log (markdown, json). Posting to the PR always uses markdown.'
+    description: 'Output format written to the action log (markdown, json). Posting to the PR always uses markdown. Empty keeps the repository''s .planwerk/config.yaml review.format, or the compiled-in default (markdown).'
     required: false
-    default: 'markdown'
+    default: ''
   max-findings:
     description: 'Cap on findings returned. 0 disables the cap.'
     required: false
@@ -161,7 +161,19 @@ runs:
           exit 1
         fi
 
-        args=(--format "$FORMAT" --min-severity "$MIN_SEVERITY")
+        # Pass each flag only when the caller set it. planwerk-agent resolves
+        # an unset flag from .planwerk/config.yaml, and it decides "unset" by
+        # asking cobra whether the flag CHANGED — so passing the action's own
+        # default was indistinguishable from the caller typing it, and the
+        # repository's review.format / review.min-severity could never win.
+        # max-findings and patterns were already conditional for this reason.
+        args=()
+        if [ -n "$FORMAT" ]; then
+          args+=(--format "$FORMAT")
+        fi
+        if [ -n "$MIN_SEVERITY" ]; then
+          args+=(--min-severity "$MIN_SEVERITY")
+        fi
 
         # With local=true, operate on the repo actions/checkout already placed
         # in the runner workspace instead of cloning it a second time. The PR
