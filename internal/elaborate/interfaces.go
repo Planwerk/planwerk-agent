@@ -102,38 +102,11 @@ type GitHubClient interface {
 	GetIssue(owner, name string, number int) (*github.Issue, error)
 	GetIssueRelations(owner, name string, number int) (*github.IssueRelations, error)
 	CloneRepo(ref string) (*github.Repo, error)
-	CloneRepoLocal(ref string, opts github.LocalOptions) (*github.Repo, error)
+	UseLocalRepo(ref string, opts github.LocalOptions) (*github.Repo, error)
 	EditIssueBody(owner, name string, number int, body string) error
 	AddIssueComment(owner, name string, number int, body string) (string, error)
 }
 
-// defaultGitHubClient is the production GitHubClient backed by the github package.
-type defaultGitHubClient struct{}
-
-func (defaultGitHubClient) DefaultBranchHEAD(owner, name string) (string, error) {
-	return github.DefaultBranchHEAD(owner, name)
-}
-
-func (defaultGitHubClient) GetIssue(owner, name string, number int) (*github.Issue, error) {
-	return github.GetIssue(owner, name, number)
-}
-
-func (defaultGitHubClient) GetIssueRelations(owner, name string, number int) (*github.IssueRelations, error) {
-	return github.GetIssueRelations(owner, name, number)
-}
-
-func (defaultGitHubClient) CloneRepo(ref string) (*github.Repo, error) {
-	return github.CloneRepo(ref)
-}
-
-func (defaultGitHubClient) CloneRepoLocal(ref string, opts github.LocalOptions) (*github.Repo, error) {
-	return github.UseLocalRepo(ref, opts)
-}
-
-func (defaultGitHubClient) EditIssueBody(owner, name string, number int, body string) error {
-	return github.EditIssueBody(owner, name, number, body)
-}
-
-func (defaultGitHubClient) AddIssueComment(owner, name string, number int, body string) (string, error) {
-	return github.AddIssueComment(owner, name, number, body)
-}
+// The production client satisfies the interface structurally; a drift in
+// either fails the build here rather than at the call site.
+var _ GitHubClient = github.Client{}

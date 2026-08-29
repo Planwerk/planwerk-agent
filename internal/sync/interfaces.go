@@ -32,13 +32,6 @@ type GitHubClient interface {
 	CloneRepo(ref string) (*github.Repo, error)
 }
 
-// defaultGitHubClient is the production GitHubClient backed by the github package.
-type defaultGitHubClient struct{}
-
-func (defaultGitHubClient) CloneRepo(ref string) (*github.Repo, error) {
-	return github.CloneRepo(ref)
-}
-
 // resolveWikiFn resolves the target repo's wiki to its clone root, review-patterns
 // directory, memory, and commit. It matches patterns.ResolveWiki and is a Runner
 // seam so tests can stand in a temp directory without cloning a real wiki.
@@ -67,3 +60,7 @@ func (defaultWikiWriter) Clone(repo, ref string) (string, string, func(), error)
 func (defaultWikiWriter) ApplyDeletions(dir string, relPaths []string, msg string) error {
 	return patterns.PushWikiDeletions(dir, relPaths, msg)
 }
+
+// The production client satisfies the interface structurally; a drift in
+// either fails the build here rather than at the call site.
+var _ GitHubClient = github.Client{}

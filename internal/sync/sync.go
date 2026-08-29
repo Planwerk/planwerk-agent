@@ -143,7 +143,7 @@ func renderResult(w io.Writer, result *SyncResult, repoFullName string, opts Opt
 // applyDefaults fills in the Runner seams with their production defaults.
 func (r *Runner) applyDefaults() {
 	if r.GitHub == nil {
-		r.GitHub = defaultGitHubClient{}
+		r.GitHub = github.Client{}
 	}
 	if r.ResolveWiki == nil {
 		r.ResolveWiki = patterns.ResolveWiki

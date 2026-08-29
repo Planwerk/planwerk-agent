@@ -18,7 +18,7 @@ import (
 // See https://docs.github.com/en/rest/issues/dependencies —
 // POST /repos/{owner}/{repo}/issues/{issue_number}/dependencies/blocked_by with
 // an issue_id body field carrying the blocker's database id.
-func AddIssueDependency(owner, name string, blockedNumber, blockerNumber int) error {
+func (Client) AddIssueDependency(owner, name string, blockedNumber, blockerNumber int) error {
 	blockerID, err := issueDatabaseID(owner, name, blockerNumber)
 	if err != nil {
 		return err
@@ -55,7 +55,7 @@ func addIssueDependencyArgs(owner, name string, blockedNumber, blockerID int) []
 //
 // See https://docs.github.com/en/rest/issues/dependencies —
 // GET /repos/{owner}/{repo}/issues/{issue_number}/dependencies/blocked_by.
-func BlockedByIssues(owner, name string, number int) ([]Issue, error) {
+func (Client) BlockedByIssues(owner, name string, number int) ([]Issue, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "gh", blockedByIssuesArgs(owner, name, number)...)

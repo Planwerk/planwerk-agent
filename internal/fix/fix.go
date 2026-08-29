@@ -77,7 +77,7 @@ type Runner struct {
 func NewRunner(fn FixFn, build PromptBuildFn) *Runner {
 	return &Runner{
 		Claude:      fixFnAdapter{fn: fn},
-		GitHub:      defaultGitHubClient{},
+		GitHub:      github.Client{},
 		Prompter:    stdinPrompter{In: os.Stdin, Out: os.Stderr},
 		BuildPrompt: build,
 		Sleep:       time.Sleep,
@@ -100,7 +100,7 @@ func localOptions(opts Options) github.LocalOptions {
 // fetch and the bare-prompt build.
 func (r *Runner) fetchPR(opts Options) (*github.PR, error) {
 	if opts.Local {
-		return r.GitHub.FetchAndCheckoutLocal(opts.PRRef, localOptions(opts))
+		return r.GitHub.OpenLocalPR(opts.PRRef, localOptions(opts))
 	}
 	return r.GitHub.FetchAndCheckout(opts.PRRef)
 }
@@ -326,7 +326,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		var fresh *github.PR
 		if opts.Local {
 			if iteration > 1 {
-				if err := r.GitHub.PullOnBranch(pr.Dir, pr.HeadBranch); err != nil {
+				if err := r.GitHub.PullFFOnly(pr.Dir, pr.HeadBranch); err != nil {
 					return fmt.Errorf("refreshing local checkout for iteration %d: %w", iteration, err)
 				}
 			}
@@ -472,7 +472,7 @@ func (r *Runner) waitForChecks(w io.Writer, owner, repo, sha string, interval ti
 func (r *Runner) waitForNewHead(owner, repo, branch, oldSHA string, interval time.Duration) (string, error) {
 	const maxAttempts = 12 // ~12 * interval before we give up
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		sha, err := r.GitHub.HeadSHA(owner, repo, branch)
+		sha, err := r.GitHub.BranchHeadSHA(owner, repo, branch)
 		if err != nil {
 			return "", fmt.Errorf("polling branch head %s: %w", branch, err)
 		}

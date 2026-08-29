@@ -99,7 +99,7 @@ var relationsQuery = fmt.Sprintf(`query($owner: String!, $name: String!, $number
 // without sub-issue relationships, a token lacking the scope, or an older GHES
 // that does not expose the fields all surface here and should degrade to "no
 // relations" rather than abort the elaborate/plan run.
-func GetIssueRelations(owner, name string, number int) (*IssueRelations, error) {
+func (Client) GetIssueRelations(owner, name string, number int) (*IssueRelations, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
 	defer cancel()
 	// owner/name go through -f (verbatim string), not -F: -F type-coerces its

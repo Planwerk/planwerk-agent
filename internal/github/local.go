@@ -37,7 +37,7 @@ type LocalOptions struct {
 //  5. `git fetch origin <base>` so origin/<base> exists for the diff query.
 //
 // The returned PR has Local: true, so PR.Cleanup never deletes the cwd.
-func OpenLocalPR(ref string, opts LocalOptions) (*PR, error) {
+func (c Client) OpenLocalPR(ref string, opts LocalOptions) (*PR, error) {
 	dir, err := os.Getwd()
 	if err != nil {
 		return nil, fmt.Errorf("resolving working directory: %w", err)
@@ -98,7 +98,7 @@ func OpenLocalPR(ref string, opts LocalOptions) (*PR, error) {
 		return nil, err
 	}
 
-	changed, err := DiffNames(dir, pr.BaseBranch)
+	changed, err := c.DiffNames(dir, pr.BaseBranch)
 	if err != nil {
 		slog.Warn("listing changed files failed; feature detection and specialist gating may be degraded", "err", err, "dir", dir, "base", pr.BaseBranch)
 	}
@@ -111,7 +111,7 @@ func OpenLocalPR(ref string, opts LocalOptions) (*PR, error) {
 // PR checkout: it only gates on the dirty tree, resolves origin, and (when an
 // explicit ref is given) rejects an origin mismatch. The returned Repo has
 // Local: true so Repo.Cleanup never deletes the cwd.
-func UseLocalRepo(ref string, opts LocalOptions) (*Repo, error) {
+func (Client) UseLocalRepo(ref string, opts LocalOptions) (*Repo, error) {
 	dir, err := os.Getwd()
 	if err != nil {
 		return nil, fmt.Errorf("resolving working directory: %w", err)
@@ -207,7 +207,7 @@ func localFetchBase(dir, baseBranch string) error {
 // PullFFOnly fast-forwards the checkout in dir to the latest commits on branch.
 // The fix loop uses it in --local mode to pick up the previous iteration's
 // follow-up commit without a re-clone.
-func PullFFOnly(dir, branch string) error {
+func (Client) PullFFOnly(dir, branch string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), gitRemoteTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", "pull", "--ff-only", "origin", branch)

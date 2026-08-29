@@ -46,7 +46,7 @@ func RunInteractiveIssueCreation(
 
 	return github.RunInteractiveIssueCreation(
 		w, in, candidates, owner, name, "finding",
-		github.CreateIssue, github.SearchIssues,
+		github.Client{}.CreateIssue, github.Client{}.SearchIssues,
 	)
 }
 

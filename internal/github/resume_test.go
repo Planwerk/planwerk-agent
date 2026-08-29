@@ -41,7 +41,7 @@ func TestPrepareResumeCurrentBranch(t *testing.T) {
 	dir, _ := initResumeRepo(t)
 	commitFeature(t, dir, testFeatureBranch, 2)
 
-	state, err := PrepareResume(dir, 42)
+	state, err := client.PrepareResume(dir, 42)
 	if err != nil {
 		t.Fatalf("PrepareResume: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestPrepareResumeLocalBranchWhenOnBase(t *testing.T) {
 	commitFeature(t, dir, testFeatureBranch, 1)
 	git(t, dir, "checkout", "-q", "main")
 
-	state, err := PrepareResume(dir, 42)
+	state, err := client.PrepareResume(dir, 42)
 	if err != nil {
 		t.Fatalf("PrepareResume: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestPrepareResumeRemoteOnlyBranch(t *testing.T) {
 	git(t, dir, "checkout", "-q", "main")
 	git(t, dir, "branch", "-q", "-D", testFeatureBranch)
 
-	state, err := PrepareResume(dir, 42)
+	state, err := client.PrepareResume(dir, 42)
 	if err != nil {
 		t.Fatalf("PrepareResume: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestPrepareResumeNothingToResume(t *testing.T) {
 	commitFeature(t, dir, "implement/issue-99-bar", 1) // different issue
 	git(t, dir, "checkout", "-q", "main")
 
-	state, err := PrepareResume(dir, 42)
+	state, err := client.PrepareResume(dir, 42)
 	if err != nil {
 		t.Fatalf("PrepareResume: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestPrepareResumeNothingToResume(t *testing.T) {
 func TestCurrentFeatureProgressOnBase(t *testing.T) {
 	dir, _ := initResumeRepo(t)
 
-	state, err := CurrentFeatureProgress(dir)
+	state, err := client.CurrentFeatureProgress(dir)
 	if err != nil {
 		t.Fatalf("CurrentFeatureProgress: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestCurrentFeatureProgressAhead(t *testing.T) {
 	dir, _ := initResumeRepo(t)
 	commitFeature(t, dir, testFeatureBranch, 2)
 
-	state, err := CurrentFeatureProgress(dir)
+	state, err := client.CurrentFeatureProgress(dir)
 	if err != nil {
 		t.Fatalf("CurrentFeatureProgress: %v", err)
 	}

@@ -35,7 +35,7 @@ type Runner struct {
 func NewRunner(fn AnalyzeFn) *Runner {
 	return &Runner{
 		Claude: analyzeFnAdapter{fn: fn},
-		GitHub: defaultGitHubClient{},
+		GitHub: github.Client{},
 	}
 }
 
@@ -172,7 +172,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 // the openPR helper can commit and push from.
 func (r *Runner) openRepo(opts Options) (*github.Repo, error) {
 	if opts.Local {
-		repo, err := r.GitHub.CloneRepoLocal(opts.RepoRef, github.LocalOptions{Force: opts.Force, Prompter: workspace.NewStdinPrompter()})
+		repo, err := r.GitHub.UseLocalRepo(opts.RepoRef, github.LocalOptions{Force: opts.Force, Prompter: workspace.NewStdinPrompter()})
 		if err != nil {
 			return nil, err
 		}
@@ -263,7 +263,7 @@ func filterBySeverity(result *Result, minSeverity report.Severity) {
 // and asks the GitHub client to commit + push + open a PR. Returns the PR
 // URL (or empty + nil if there were no changes to push).
 func (r *Runner) openPR(repo *github.Repo, result *Result, opts Options) (string, error) {
-	files := make([]ImprovedFile, 0, len(result.Features))
+	files := make([]github.ImprovementFile, 0, len(result.Features))
 	improved := make([]string, 0, len(result.Features))
 	for _, fr := range result.Features {
 		if len(fr.ImprovedJSON) == 0 {
@@ -274,7 +274,7 @@ func (r *Runner) openPR(repo *github.Repo, result *Result, opts Options) (string
 		if err != nil {
 			return "", fmt.Errorf("formatting improved JSON for %s: %w", fr.FeatureID, err)
 		}
-		files = append(files, ImprovedFile{
+		files = append(files, github.ImprovementFile{
 			RelativePath: rel,
 			Content:      ensureTrailingNewline(formatted),
 		})
@@ -298,7 +298,7 @@ func (r *Runner) openPR(repo *github.Repo, result *Result, opts Options) (string
 
 	body := buildPRBody(result)
 
-	url, err := r.GitHub.OpenImprovementPR(repo, PROptions{
+	url, err := r.GitHub.OpenImprovementPR(repo, github.ImprovementPROptions{
 		Branch: branch,
 		Base:   opts.PRBase,
 		Title:  title,

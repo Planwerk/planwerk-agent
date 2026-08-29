@@ -188,7 +188,7 @@ func initGitRepoForDiff(t *testing.T) string {
 func TestDiffNames(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		dir := initGitRepoForDiff(t)
-		files, err := DiffNames(dir, "main")
+		files, err := client.DiffNames(dir, "main")
 		if err != nil {
 			t.Fatalf("DiffNames returned error: %v", err)
 		}
@@ -217,7 +217,7 @@ func TestDiffNames(t *testing.T) {
 		run("add", "-A")
 		run("commit", "-q", "-m", "only")
 
-		files, err := DiffNames(dir, "main")
+		files, err := client.DiffNames(dir, "main")
 		if err == nil {
 			t.Fatal("expected an error when origin/main is missing, got nil")
 		}
@@ -230,7 +230,7 @@ func TestDiffNames(t *testing.T) {
 	})
 
 	t.Run("empty inputs", func(t *testing.T) {
-		files, err := DiffNames("", "")
+		files, err := client.DiffNames("", "")
 		if err != nil {
 			t.Errorf("DiffNames(\"\", \"\") error = %v, want nil", err)
 		}
@@ -278,7 +278,7 @@ func TestCurrentBranchRef(t *testing.T) {
 	run("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
 	run("checkout", "-q", "-b", testFeatureBranch)
 
-	ref, err := CurrentBranchRef(dir)
+	ref, err := client.CurrentBranchRef(dir)
 	if err != nil {
 		t.Fatalf("CurrentBranchRef returned error: %v", err)
 	}
@@ -295,7 +295,7 @@ func TestCurrentBranchRef(t *testing.T) {
 // the implement passes can skip cleanly instead of folding against the wrong base.
 func TestCurrentBranchRefMissingOriginHEAD(t *testing.T) {
 	dir := initGitRepoForDiff(t) // sets origin/main but not origin/HEAD
-	if _, err := CurrentBranchRef(dir); err == nil {
+	if _, err := client.CurrentBranchRef(dir); err == nil {
 		t.Fatal("expected an error when origin/HEAD is unset, got nil")
 	}
 }

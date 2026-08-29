@@ -91,7 +91,7 @@ func (a addressFnAdapter) Address(dir string, ctx Context) (*report.AddressResul
 // method maps to a single git or gh invocation. Tests substitute a fake.
 type GitHubClient interface {
 	FetchAndCheckout(ref string) (*github.PR, error)
-	FetchAndCheckoutLocal(ref string, opts github.LocalOptions) (*github.PR, error)
+	OpenLocalPR(ref string, opts github.LocalOptions) (*github.PR, error)
 	FetchReviewThreads(owner, repo string, number int) ([]github.ReviewThread, error)
 	// PushHead publishes the follow-up commits to the PR head branch. The
 	// orchestrator owns the push so the Claude session only commits.
@@ -104,34 +104,6 @@ type GitHubClient interface {
 	AddPRComment(owner, repo string, number int, body string) (string, error)
 }
 
-// defaultGitHubClient is the production GitHubClient backed by the github
-// package. Mirrors the fix/rebase adapter shape.
-type defaultGitHubClient struct{}
-
-func (defaultGitHubClient) FetchAndCheckout(ref string) (*github.PR, error) {
-	return github.FetchAndCheckout(ref)
-}
-
-func (defaultGitHubClient) FetchAndCheckoutLocal(ref string, opts github.LocalOptions) (*github.PR, error) {
-	return github.OpenLocalPR(ref, opts)
-}
-
-func (defaultGitHubClient) FetchReviewThreads(owner, repo string, number int) ([]github.ReviewThread, error) {
-	return github.FetchReviewThreads(owner, repo, number)
-}
-
-func (defaultGitHubClient) PushHead(dir, branch string) error {
-	return github.PushHead(dir, branch)
-}
-
-func (defaultGitHubClient) AddReviewThreadReply(threadID, body string) (string, error) {
-	return github.AddReviewThreadReply(threadID, body)
-}
-
-func (defaultGitHubClient) ResolveReviewThread(threadID string) error {
-	return github.ResolveReviewThread(threadID)
-}
-
-func (defaultGitHubClient) AddPRComment(owner, repo string, number int, body string) (string, error) {
-	return github.AddPRComment(owner, repo, number, body)
-}
+// The production client satisfies the interface structurally; a drift in
+// either fails the build here rather than at the call site.
+var _ GitHubClient = github.Client{}

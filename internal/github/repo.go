@@ -20,7 +20,7 @@ type Repo struct {
 }
 
 // CloneRepo clones the given repository into a temp directory and returns a Repo.
-func CloneRepo(ref string) (*Repo, error) {
+func (Client) CloneRepo(ref string) (*Repo, error) {
 	owner, name, err := ParseRepoRef(ref)
 	if err != nil {
 		return nil, err
@@ -57,7 +57,7 @@ func (r *Repo) FullName() string {
 // BranchHeadSHA returns the HEAD commit SHA of the named branch on the
 // remote repository via the gh API. Used by the fix loop to detect when CI
 // has run against a new commit (i.e. our follow-up push has landed).
-func BranchHeadSHA(owner, repo, branch string) (string, error) {
+func (Client) BranchHeadSHA(owner, repo, branch string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), gitRemoteTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "gh", "api",
@@ -77,7 +77,7 @@ func BranchHeadSHA(owner, repo, branch string) (string, error) {
 // DefaultBranchHEAD returns the HEAD SHA of the default branch via the gh API.
 // Used via gh so authentication works for private repos. This is used for
 // cache invalidation so proposals are refreshed when the repo changes.
-func DefaultBranchHEAD(owner, repo string) (string, error) {
+func (Client) DefaultBranchHEAD(owner, repo string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), gitRemoteTimeout)
 	defer cancel()
 	// owner/name go through -f (verbatim string), not -F: -F type-coerces its

@@ -26,7 +26,7 @@ func (f *fakeGitHub) CloneRepo(string) (*github.Repo, error) {
 	return &github.Repo{Owner: "acme", Name: "widgets", Dir: f.cloneDir}, nil
 }
 
-func (f *fakeGitHub) CloneRepoLocal(string, github.LocalOptions) (*github.Repo, error) {
+func (f *fakeGitHub) UseLocalRepo(string, github.LocalOptions) (*github.Repo, error) {
 	return &github.Repo{Owner: "acme", Name: "widgets", Dir: f.localDir, Local: true}, nil
 }
 

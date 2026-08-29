@@ -45,8 +45,8 @@ func resumeBranchPrefix(issueNumber int) string {
 // materialized as a local tracking branch. Base resolution or a checkout failure
 // is returned as an error; the caller treats resume as best-effort and proceeds
 // without it.
-func PrepareResume(dir string, issueNumber int) (*ResumeState, error) {
-	ref, err := CurrentBranchRef(dir)
+func (c Client) PrepareResume(dir string, issueNumber int) (*ResumeState, error) {
+	ref, err := c.CurrentBranchRef(dir)
 	if err != nil {
 		return nil, fmt.Errorf("resolving branch ref for resume: %w", err)
 	}
@@ -63,7 +63,7 @@ func PrepareResume(dir string, issueNumber int) (*ResumeState, error) {
 	// It must carry the issue's prefix so an unrelated branch the operator happens
 	// to be sitting on is never mistaken for this issue's partial progress.
 	if strings.HasPrefix(ref.HeadBranch, prefix) && ref.HeadBranch != ref.BaseBranch {
-		if commits, _ := CommitsInRange(dir, base+"..HEAD"); len(commits) > 0 {
+		if commits, _ := c.CommitsInRange(dir, base+"..HEAD"); len(commits) > 0 {
 			return &ResumeState{Branch: ref.HeadBranch, Commits: commits}, nil
 		}
 	}
@@ -77,7 +77,7 @@ func PrepareResume(dir string, issueNumber int) (*ResumeState, error) {
 		if b == ref.HeadBranch {
 			continue // already tried as the current branch above
 		}
-		commits, err := CommitsInRange(dir, base+".."+b)
+		commits, err := c.CommitsInRange(dir, base+".."+b)
 		if err != nil || len(commits) == 0 {
 			continue
 		}
@@ -93,7 +93,7 @@ func PrepareResume(dir string, issueNumber int) (*ResumeState, error) {
 		return nil, err
 	}
 	for _, r := range remotes {
-		commits, err := CommitsInRange(dir, base+".."+r)
+		commits, err := c.CommitsInRange(dir, base+".."+r)
 		if err != nil || len(commits) == 0 {
 			continue
 		}
@@ -112,8 +112,8 @@ func PrepareResume(dir string, issueNumber int) (*ResumeState, error) {
 // or carries no commits ahead of it. The implement orchestrator calls it after an
 // aborted session to decide whether there is partial progress worth pushing for a
 // later resume.
-func CurrentFeatureProgress(dir string) (*ResumeState, error) {
-	ref, err := CurrentBranchRef(dir)
+func (c Client) CurrentFeatureProgress(dir string) (*ResumeState, error) {
+	ref, err := c.CurrentBranchRef(dir)
 	if err != nil {
 		return nil, fmt.Errorf("resolving branch ref for partial progress: %w", err)
 	}
@@ -124,7 +124,7 @@ func CurrentFeatureProgress(dir string) (*ResumeState, error) {
 	if base == "" {
 		return nil, nil
 	}
-	commits, err := CommitsInRange(dir, base+"..HEAD")
+	commits, err := c.CommitsInRange(dir, base+"..HEAD")
 	if err != nil || len(commits) == 0 {
 		return nil, err
 	}

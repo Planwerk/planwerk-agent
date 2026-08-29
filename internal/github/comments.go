@@ -53,7 +53,7 @@ var truncationNotice = fmt.Sprintf(
 // PostPRComment posts a comment on a GitHub pull request via the gh CLI.
 // It detects and replaces any previous planwerk-agent comment on the same PR.
 // Bodies exceeding maxCommentLen are truncated.
-func PostPRComment(owner, repo string, number int, body string) (string, error) {
+func (Client) PostPRComment(owner, repo string, number int, body string) (string, error) {
 	fullName := fmt.Sprintf("%s/%s", owner, repo)
 	body = truncateComment(body + "\n" + commentSignature)
 
@@ -90,7 +90,7 @@ func PostPRComment(owner, repo string, number int, body string) (string, error) 
 // loop uses it to record one comment per pushed fix iteration, so the history
 // of what each follow-up commit changed survives on the PR. (`gh issue
 // comment` rejects PR numbers, so the fix path cannot reuse AddIssueComment.)
-func AddPRComment(owner, repo string, number int, body string) (string, error) {
+func (Client) AddPRComment(owner, repo string, number int, body string) (string, error) {
 	fullName := fmt.Sprintf("%s/%s", owner, repo)
 	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
 	defer cancel()
@@ -109,7 +109,7 @@ func AddPRComment(owner, repo string, number int, body string) (string, error) {
 // GraphQL addPullRequestReviewThreadReply mutation and returns the new comment's
 // URL. The address command uses it to record, per thread, what the follow-up
 // commit changed. Uses GraphQL variables so the thread ID and body cannot inject.
-func AddReviewThreadReply(threadID, body string) (string, error) {
+func (Client) AddReviewThreadReply(threadID, body string) (string, error) {
 	query := `mutation($threadId: ID!, $body: String!) { addPullRequestReviewThreadReply(input: {pullRequestReviewThreadId: $threadId, body: $body}) { comment { url } } }`
 
 	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
@@ -143,7 +143,7 @@ func AddReviewThreadReply(threadID, body string) (string, error) {
 // resolveReviewThread mutation. The address command calls it only under
 // --resolve, since resolving is outward-facing. Uses a GraphQL variable for the
 // thread ID so it cannot inject.
-func ResolveReviewThread(threadID string) error {
+func (Client) ResolveReviewThread(threadID string) error {
 	query := `mutation($threadId: ID!) { resolveReviewThread(input: {threadId: $threadId}) { thread { isResolved } } }`
 
 	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
@@ -193,7 +193,7 @@ func findExistingComment(repo string, number int) (string, error) {
 // FetchReviewComment returns the body of the most recent planwerk-agent
 // comment on the PR. found is false when no such comment exists. It lets the
 // review pipeline read the data block from the previous review.
-func FetchReviewComment(owner, repo string, number int) (body string, found bool, err error) {
+func (Client) FetchReviewComment(owner, repo string, number int) (body string, found bool, err error) {
 	c, err := fetchExistingComment(fmt.Sprintf("%s/%s", owner, repo), number)
 	if err != nil {
 		return "", false, err

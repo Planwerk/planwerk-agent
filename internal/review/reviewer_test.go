@@ -42,9 +42,9 @@ func (m *mockGitHub) FetchAndCheckout(ref string) (*github.PR, error) {
 	return m.fetchAndCheckout(ref)
 }
 
-func (m *mockGitHub) FetchAndCheckoutLocal(ref string, opts github.LocalOptions) (*github.PR, error) {
+func (m *mockGitHub) OpenLocalPR(ref string, opts github.LocalOptions) (*github.PR, error) {
 	if m.fetchAndCheckoutLocal == nil {
-		panic("mockGitHub.FetchAndCheckoutLocal called unexpectedly")
+		panic("mockGitHub.OpenLocalPR called unexpectedly")
 	}
 	return m.fetchAndCheckoutLocal(ref, opts)
 }

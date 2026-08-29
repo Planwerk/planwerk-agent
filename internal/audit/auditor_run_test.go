@@ -19,7 +19,7 @@ import (
 const testDefaultBranchSHA = "sha"
 
 // fakeGitHub is a test GitHubClient whose CloneRepo / DefaultBranchHEAD /
-// ListExistingIssues behavior is configured per-test via closures. A nil
+// ListAllIssues behavior is configured per-test via closures. A nil
 // listExistingIssues returns no existing issues so dedupe is a no-op.
 type fakeGitHub struct {
 	cloneRepo          func(ref string) (*github.Repo, error)
@@ -35,9 +35,9 @@ func (f *fakeGitHub) CloneRepo(ref string) (*github.Repo, error) {
 	return f.cloneRepo(ref)
 }
 
-// CloneRepoLocal mirrors github.UseLocalRepo: it returns a Local repo so
+// UseLocalRepo mirrors github.UseLocalRepo: it returns a Local repo so
 // Cleanup is a no-op.
-func (f *fakeGitHub) CloneRepoLocal(ref string, _ github.LocalOptions) (*github.Repo, error) {
+func (f *fakeGitHub) UseLocalRepo(ref string, _ github.LocalOptions) (*github.Repo, error) {
 	f.cloneLocalCalls.Add(1)
 	repo, err := f.cloneRepo(ref)
 	if err != nil {
@@ -51,7 +51,7 @@ func (f *fakeGitHub) DefaultBranchHEAD(owner, name string) (string, error) {
 	return f.defaultBranchHEAD(owner, name)
 }
 
-func (f *fakeGitHub) ListExistingIssues(owner, name string) ([]github.ExistingIssue, error) {
+func (f *fakeGitHub) ListAllIssues(owner, name string) ([]github.ExistingIssue, error) {
 	if f.listExistingIssues == nil {
 		return nil, nil
 	}
@@ -432,7 +432,7 @@ func TestAuditRun_DedupeDisabledByFlag(t *testing.T) {
 		t.Fatalf("Run returned error: %v", err)
 	}
 	if listerCalled {
-		t.Error("ListExistingIssues must not be called when NoIssueDedupe=true")
+		t.Error("ListAllIssues must not be called when NoIssueDedupe=true")
 	}
 }
 
@@ -793,7 +793,7 @@ func TestAuditRun_LocalUsesCwd(t *testing.T) {
 		t.Fatalf("Run returned error: %v", err)
 	}
 	if gh.cloneLocalCalls.Load() != 1 {
-		t.Errorf("CloneRepoLocal calls = %d, want 1", gh.cloneLocalCalls.Load())
+		t.Errorf("UseLocalRepo calls = %d, want 1", gh.cloneLocalCalls.Load())
 	}
 	if gh.cloneCalls.Load() != 0 {
 		t.Errorf("CloneRepo calls = %d, want 0 in local mode", gh.cloneCalls.Load())

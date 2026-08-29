@@ -57,7 +57,7 @@ type Runner struct {
 // import direction claude → implement/fix → ship.
 func NewRunner(implementFn ImplementFn, fixFn FixFn) *Runner {
 	return &Runner{
-		GitHub:    defaultGitHubClient{},
+		GitHub:    github.Client{},
 		Implement: implementFn,
 		Fix:       fixFn,
 	}

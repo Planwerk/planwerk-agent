@@ -697,7 +697,7 @@ func TestRun_NoResumeSkipsDetectionAndPush(t *testing.T) {
 		t.Errorf("ctx.Resume = %+v, want nil under --no-resume", cl.ctx.Resume)
 	}
 	if gh.pushBranchCalls.Load() != 0 {
-		t.Errorf("PushBranch called %d times, want 0 under --no-resume", gh.pushBranchCalls.Load())
+		t.Errorf("PushHead called %d times, want 0 under --no-resume", gh.pushBranchCalls.Load())
 	}
 }
 
@@ -720,7 +720,7 @@ func TestRun_PersistsPartialProgressOnAbortInCloneMode(t *testing.T) {
 		t.Fatalf("Run returned %v, want an incomplete-report error", err)
 	}
 	if gh.pushBranchCalls.Load() != 1 {
-		t.Fatalf("PushBranch called %d times, want 1", gh.pushBranchCalls.Load())
+		t.Fatalf("PushHead called %d times, want 1", gh.pushBranchCalls.Load())
 	}
 	if gh.pushBranchArg != testResumeBranch {
 		t.Errorf("pushed branch %q, want implement/issue-42-foo", gh.pushBranchArg)
@@ -747,7 +747,7 @@ func TestRun_LocalAbortDoesNotPushPartialProgress(t *testing.T) {
 		t.Fatalf("Run returned %v, want an incomplete-report error", err)
 	}
 	if gh.pushBranchCalls.Load() != 0 {
-		t.Errorf("PushBranch called %d times, want 0 in --local mode", gh.pushBranchCalls.Load())
+		t.Errorf("PushHead called %d times, want 0 in --local mode", gh.pushBranchCalls.Load())
 	}
 	if !strings.Contains(buf.String(), "local branch implement/issue-42-foo") {
 		t.Errorf("missing local-branch resume hint in output:\n%s", buf.String())
@@ -2490,7 +2490,7 @@ func TestRun_FinalizeByStatus(t *testing.T) {
 				t.Errorf("finalizer called %d times, want 0 — no pull request is opened for partial work", ff.called.Load())
 			}
 			if gh.pushBranchCalls.Load() != 1 || gh.pushBranchArg != testResumeBranch {
-				t.Errorf("PushBranch called %d times with %q, want exactly 1 push of the partial branch for a later resume", gh.pushBranchCalls.Load(), gh.pushBranchArg)
+				t.Errorf("PushHead called %d times with %q, want exactly 1 push of the partial branch for a later resume", gh.pushBranchCalls.Load(), gh.pushBranchArg)
 			}
 		})
 	}
@@ -2557,7 +2557,7 @@ type fakeGitHub struct {
 
 	// resumeState/resumeErr drive PrepareResume (pre-implement resume detection);
 	// progressState/progressErr drive CurrentFeatureProgress (post-abort partial
-	// progress); pushBranch* record PushBranch (the clone-mode partial push).
+	// progress); pushBranch* record PushHead (the clone-mode partial push).
 	resumeState *github.ResumeState
 	resumeErr   error
 	resumeCalls atomic.Int32
@@ -2646,9 +2646,9 @@ func (f *fakeGitHub) CurrentBranchRef(_ string) (*github.BranchRef, error) {
 	return f.branchRef, nil
 }
 
-// CloneRepoLocal mirrors github.UseLocalRepo: it returns a Local repo so
+// UseLocalRepo mirrors github.UseLocalRepo: it returns a Local repo so
 // Cleanup is a no-op.
-func (f *fakeGitHub) CloneRepoLocal(ref string, _ github.LocalOptions) (*github.Repo, error) {
+func (f *fakeGitHub) UseLocalRepo(ref string, _ github.LocalOptions) (*github.Repo, error) {
 	f.cloneLocalCalls.Add(1)
 	if f.cloneErr != nil {
 		return nil, f.cloneErr
@@ -2674,9 +2674,9 @@ func (f *fakeGitHub) CurrentFeatureProgress(_ string) (*github.ResumeState, erro
 	return f.progressState, f.progressErr
 }
 
-// PushBranch records the branch a clone-mode abort pushed to preserve partial
+// PushHead records the branch a clone-mode abort pushed to preserve partial
 // progress, returning pushBranchErr to exercise the best-effort failure path.
-func (f *fakeGitHub) PushBranch(_, branch string) error {
+func (f *fakeGitHub) PushHead(_, branch string) error {
 	f.pushBranchCalls.Add(1)
 	f.pushBranchArg = branch
 	return f.pushBranchErr
@@ -2684,7 +2684,7 @@ func (f *fakeGitHub) PushBranch(_, branch string) error {
 
 // ChangedFiles returns the canned changed-file list the review pass gates on
 // (nil by default), unless changedFilesErr is set to exercise the fail-open path.
-func (f *fakeGitHub) ChangedFiles(_, baseBranch string) ([]string, error) {
+func (f *fakeGitHub) DiffNames(_, baseBranch string) ([]string, error) {
 	f.changedFilesCalls.Add(1)
 	if f.changedFilesErr != nil {
 		return nil, f.changedFilesErr
@@ -3044,7 +3044,7 @@ func TestRun_LocalNoClone(t *testing.T) {
 		t.Errorf("CloneRepo (temp-dir clone) calls = %d, want 0 in local mode", gh.cloneCalls.Load())
 	}
 	if gh.cloneLocalCalls.Load() != 1 {
-		t.Errorf("CloneRepoLocal calls = %d, want 1", gh.cloneLocalCalls.Load())
+		t.Errorf("UseLocalRepo calls = %d, want 1", gh.cloneLocalCalls.Load())
 	}
 	if cl.called.Load() != 1 {
 		t.Errorf("Claude.Implement called %d times, want 1", cl.called.Load())
@@ -3074,7 +3074,7 @@ func TestPrintBarePrompt_LocalNoClone(t *testing.T) {
 		t.Errorf("CloneRepo calls = %d, want 0 in local mode", gh.cloneCalls.Load())
 	}
 	if gh.cloneLocalCalls.Load() != 1 {
-		t.Errorf("CloneRepoLocal calls = %d, want 1", gh.cloneLocalCalls.Load())
+		t.Errorf("UseLocalRepo calls = %d, want 1", gh.cloneLocalCalls.Load())
 	}
 	if !strings.HasPrefix(buf.String(), "BARE repo=owner/repo issue=7") {
 		t.Errorf("unexpected bare prompt output: %q", buf.String())

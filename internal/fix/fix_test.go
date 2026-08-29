@@ -47,15 +47,15 @@ func (f *fakeGitHub) FetchAndCheckout(ref string) (*github.PR, error) {
 	return f.makePR(ref, false)
 }
 
-// FetchAndCheckoutLocal mirrors github.OpenLocalPR: it returns a Local PR so
+// OpenLocalPR mirrors github.OpenLocalPR: it returns a Local PR so
 // Cleanup is a no-op and the working tree survives across iterations.
-func (f *fakeGitHub) FetchAndCheckoutLocal(ref string, _ github.LocalOptions) (*github.PR, error) {
+func (f *fakeGitHub) OpenLocalPR(ref string, _ github.LocalOptions) (*github.PR, error) {
 	f.localCalls.Add(1)
 	return f.makePR(ref, true)
 }
 
-// PullOnBranch records a fast-forward refresh of the local checkout.
-func (f *fakeGitHub) PullOnBranch(_, _ string) error {
+// PullFFOnly records a fast-forward refresh of the local checkout.
+func (f *fakeGitHub) PullFFOnly(_, _ string) error {
 	f.pullCalls.Add(1)
 	return nil
 }
@@ -93,7 +93,7 @@ func (f *fakeGitHub) FailedRunLogs(_, _ string, _ int64) (string, error) {
 	return f.logs, f.logsErr
 }
 
-func (f *fakeGitHub) HeadSHA(_, _, _ string) (string, error) {
+func (f *fakeGitHub) BranchHeadSHA(_, _, _ string) (string, error) {
 	i := int(f.headIdx.Add(1)) - 1
 	if i >= len(f.headSequence) {
 		i = len(f.headSequence) - 1
@@ -784,13 +784,13 @@ func TestRunLocalSkipsReclone(t *testing.T) {
 		t.Errorf("Claude context BaseBranch = %q, want \"main\"", cl.ctx.BaseBranch)
 	}
 	if gh.localCalls.Load() != 1 {
-		t.Errorf("FetchAndCheckoutLocal calls = %d, want 1 (initial metadata fetch)", gh.localCalls.Load())
+		t.Errorf("OpenLocalPR calls = %d, want 1 (initial metadata fetch)", gh.localCalls.Load())
 	}
 	if gh.cloneCalls.Load() != 0 {
 		t.Errorf("FetchAndCheckout (temp-dir re-clone) calls = %d, want 0 in local mode", gh.cloneCalls.Load())
 	}
 	if gh.pullCalls.Load() != 2 {
-		t.Errorf("PullOnBranch calls = %d, want 2 (one per iteration after the first)", gh.pullCalls.Load())
+		t.Errorf("PullFFOnly calls = %d, want 2 (one per iteration after the first)", gh.pullCalls.Load())
 	}
 	// The local working tree must survive: Cleanup is a no-op when Local.
 	if _, err := os.Stat(gh.cloneDir); err != nil {
@@ -814,13 +814,13 @@ func TestRunLocalAllChecksPassingNoPull(t *testing.T) {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
 	if gh.localCalls.Load() != 1 {
-		t.Errorf("FetchAndCheckoutLocal calls = %d, want 1", gh.localCalls.Load())
+		t.Errorf("OpenLocalPR calls = %d, want 1", gh.localCalls.Load())
 	}
 	if gh.cloneCalls.Load() != 0 {
 		t.Errorf("FetchAndCheckout calls = %d, want 0", gh.cloneCalls.Load())
 	}
 	if gh.pullCalls.Load() != 0 {
-		t.Errorf("PullOnBranch calls = %d, want 0 when checks already pass", gh.pullCalls.Load())
+		t.Errorf("PullFFOnly calls = %d, want 0 when checks already pass", gh.pullCalls.Load())
 	}
 }
 

@@ -116,14 +116,14 @@ func TestIndentJSON_PrettyPrintsCompactInput(t *testing.T) {
 	}
 }
 
-// fakeGitHub captures the PROptions passed to OpenImprovementPR so we can
+// fakeGitHub captures the github.ImprovementPROptions passed to OpenImprovementPR so we can
 // verify the runner only requests a PR when at least one feature carries an
 // ImprovedJSON payload.
 type fakeGitHub struct {
-	prOpts *PROptions
+	prOpts *github.ImprovementPROptions
 
 	// repoDir, when set, is returned as the working tree from CloneRepo /
-	// CloneRepoLocal so a full Run test can load prepared features from it.
+	// UseLocalRepo so a full Run test can load prepared features from it.
 	repoDir         string
 	cloneCalls      atomic.Int32
 	cloneLocalCalls atomic.Int32
@@ -134,14 +134,14 @@ func (f *fakeGitHub) CloneRepo(string) (*github.Repo, error) {
 	return &github.Repo{Owner: "o", Name: "n", Dir: f.repoDir}, nil
 }
 
-// CloneRepoLocal mirrors github.UseLocalRepo: it returns a Local repo so
+// UseLocalRepo mirrors github.UseLocalRepo: it returns a Local repo so
 // Cleanup is a no-op.
-func (f *fakeGitHub) CloneRepoLocal(string, github.LocalOptions) (*github.Repo, error) {
+func (f *fakeGitHub) UseLocalRepo(string, github.LocalOptions) (*github.Repo, error) {
 	f.cloneLocalCalls.Add(1)
 	return &github.Repo{Owner: "o", Name: "n", Dir: f.repoDir, Local: true}, nil
 }
 func (f *fakeGitHub) DefaultBranchHEAD(string, string) (string, error) { return "", nil }
-func (f *fakeGitHub) OpenImprovementPR(_ *github.Repo, opts PROptions) (string, error) {
+func (f *fakeGitHub) OpenImprovementPR(_ *github.Repo, opts github.ImprovementPROptions) (string, error) {
 	f.prOpts = &opts
 	return "https://example.test/pr/1", nil
 }
@@ -226,7 +226,7 @@ func TestRun_LocalWithCreatePR(t *testing.T) {
 		t.Fatalf("Run returned error: %v", err)
 	}
 	if gh.cloneLocalCalls.Load() != 1 {
-		t.Errorf("CloneRepoLocal calls = %d, want 1", gh.cloneLocalCalls.Load())
+		t.Errorf("UseLocalRepo calls = %d, want 1", gh.cloneLocalCalls.Load())
 	}
 	if gh.cloneCalls.Load() != 0 {
 		t.Errorf("CloneRepo calls = %d, want 0 in local mode", gh.cloneCalls.Load())

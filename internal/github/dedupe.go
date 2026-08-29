@@ -28,12 +28,12 @@ type IssueLister func(owner, name string) ([]ExistingIssue, error)
 // ListAllIssues returns every issue (open and closed) in the repo up to
 // DefaultIssueListLimit. The propose and audit pipelines call this once per
 // run to build a duplicate-detection index.
-func ListAllIssues(owner, name string) ([]ExistingIssue, error) {
-	return ListAllIssuesWithLimit(owner, name, DefaultIssueListLimit)
+func (c Client) ListAllIssues(owner, name string) ([]ExistingIssue, error) {
+	return c.ListAllIssuesWithLimit(owner, name, DefaultIssueListLimit)
 }
 
 // ListAllIssuesWithLimit is ListAllIssues with an explicit fetch cap.
-func ListAllIssuesWithLimit(owner, name string, limit int) ([]ExistingIssue, error) {
+func (Client) ListAllIssuesWithLimit(owner, name string, limit int) ([]ExistingIssue, error) {
 	if limit <= 0 {
 		limit = DefaultIssueListLimit
 	}

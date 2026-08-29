@@ -29,7 +29,7 @@ func (f *fakeGitHub) CloneRepo(ref string) (*github.Repo, error) {
 	return f.cloneRepo(ref)
 }
 
-func (f *fakeGitHub) CloneRepoLocal(ref string, _ github.LocalOptions) (*github.Repo, error) {
+func (f *fakeGitHub) UseLocalRepo(ref string, _ github.LocalOptions) (*github.Repo, error) {
 	f.cloneLocalCalls.Add(1)
 	repo, err := f.cloneRepo(ref)
 	if err != nil {
@@ -187,7 +187,7 @@ func TestGlossaryRun_LocalUsesCwdAndKeepsTree(t *testing.T) {
 		t.Fatalf("Run returned error: %v", err)
 	}
 	if gh.cloneLocalCalls.Load() != 1 {
-		t.Errorf("CloneRepoLocal calls = %d, want 1", gh.cloneLocalCalls.Load())
+		t.Errorf("UseLocalRepo calls = %d, want 1", gh.cloneLocalCalls.Load())
 	}
 	if gh.cloneCalls.Load() != 0 {
 		t.Errorf("CloneRepo (temp-dir clone) calls = %d, want 0 in local mode", gh.cloneCalls.Load())

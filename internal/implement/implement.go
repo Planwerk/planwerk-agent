@@ -230,7 +230,7 @@ type Runner struct {
 func NewRunner(planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn, adversarialFn AdversarialFn, specialistsFn SpecialistReviewsFn, simplifyFindFn SimplifyFindFn, simplifyApplyFn SimplifyApplyFn, reviewApplyFn ReviewApplyFn, dedupFn hygiene.DedupFn, verifyClaimsFn hygiene.VerifyClaimsFn, captureFn CaptureFn, finalizeFn FinalizeFn) *Runner {
 	r := &Runner{
 		Claude:          implementFnAdapter{fn: fn},
-		GitHub:          defaultGitHubClient{},
+		GitHub:          github.Client{},
 		BuildPrompt:     build,
 		BuildPlanPrompt: buildPlan,
 		DedupFindings:   dedupFn,
@@ -618,7 +618,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 // temp-dir clone of fullName.
 func (r *Runner) openRepo(opts Options, fullName string) (*github.Repo, error) {
 	if opts.Local {
-		repo, err := r.GitHub.CloneRepoLocal(fullName, github.LocalOptions{Force: opts.Force, Prompter: workspace.NewStdinPrompter()})
+		repo, err := r.GitHub.UseLocalRepo(fullName, github.LocalOptions{Force: opts.Force, Prompter: workspace.NewStdinPrompter()})
 		if err != nil {
 			return nil, err
 		}
@@ -696,7 +696,7 @@ func (r *Runner) persistPartialProgress(w io.Writer, opts Options, dir string) {
 		_, _ = fmt.Fprintf(w, "\nPartial progress (%d commit(s)) is on local branch %s; rerun implement --local to resume it.\n", len(state.Commits), state.Branch)
 		return
 	}
-	if err := r.GitHub.PushBranch(dir, state.Branch); err != nil {
+	if err := r.GitHub.PushHead(dir, state.Branch); err != nil {
 		slog.Warn("could not push partial progress; it will be lost with the clone", "branch", state.Branch, "err", err)
 		_, _ = fmt.Fprintf(w, "\nCould not push partial progress on branch %s (it will be lost with the temporary clone): %v\n", state.Branch, err)
 		return
@@ -1334,7 +1334,7 @@ func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx
 		// failure fails open (nil): the specialist gate runs every specialist and
 		// the snippet gate skips on an empty haystack, so a missing signal never
 		// buries a finding.
-		changedFiles, err := r.GitHub.ChangedFiles(dir, branch.BaseBranch)
+		changedFiles, err := r.GitHub.DiffNames(dir, branch.BaseBranch)
 		if err != nil {
 			slog.Warn("could not resolve changed files for the review pass; gates fail open", "iteration", i, "err", err)
 			changedFiles = nil

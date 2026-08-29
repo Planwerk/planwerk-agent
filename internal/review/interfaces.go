@@ -46,7 +46,7 @@ type ClaudeRunner interface {
 // to avoid touching the real GitHub API or gh CLI.
 type GitHubClient interface {
 	FetchAndCheckout(ref string) (*github.PR, error)
-	FetchAndCheckoutLocal(ref string, opts github.LocalOptions) (*github.PR, error)
+	OpenLocalPR(ref string, opts github.LocalOptions) (*github.PR, error)
 	PostPRComment(owner, repo string, number int, body string) (string, error)
 	SubmitPRReview(owner, repo string, number int, commitSHA, body string, comments []github.ReviewComment) (string, error)
 	FetchDiff(owner, repo string, number int) (string, error)
@@ -92,29 +92,6 @@ func (r defaultClaudeRunner) UsageTotals() report.Usage {
 	return r.client.UsageTotals()
 }
 
-// defaultGitHubClient is the production GitHubClient backed by the github package.
-type defaultGitHubClient struct{}
-
-func (defaultGitHubClient) FetchAndCheckout(ref string) (*github.PR, error) {
-	return github.FetchAndCheckout(ref)
-}
-
-func (defaultGitHubClient) FetchAndCheckoutLocal(ref string, opts github.LocalOptions) (*github.PR, error) {
-	return github.OpenLocalPR(ref, opts)
-}
-
-func (defaultGitHubClient) PostPRComment(owner, repo string, number int, body string) (string, error) {
-	return github.PostPRComment(owner, repo, number, body)
-}
-
-func (defaultGitHubClient) SubmitPRReview(owner, repo string, number int, commitSHA, body string, comments []github.ReviewComment) (string, error) {
-	return github.SubmitPRReview(owner, repo, number, commitSHA, body, comments)
-}
-
-func (defaultGitHubClient) FetchDiff(owner, repo string, number int) (string, error) {
-	return github.FetchDiff(owner, repo, number)
-}
-
-func (defaultGitHubClient) FetchReviewComment(owner, repo string, number int) (string, bool, error) {
-	return github.FetchReviewComment(owner, repo, number)
-}
+// The production client satisfies the interface structurally; a drift in
+// either fails the build here rather than at the call site.
+var _ GitHubClient = github.Client{}

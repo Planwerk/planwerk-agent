@@ -91,7 +91,7 @@ type resolveWikiFn func(owner, name string, wopts patterns.WikiOptions, ropts pa
 func NewRunner(client *claude.Client) *Runner {
 	return &Runner{
 		Claude:   defaultClaudeRunner{client: client},
-		GitHub:   defaultGitHubClient{},
+		GitHub:   github.Client{},
 		Capturer: client,
 	}
 }
@@ -113,7 +113,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		err error
 	)
 	if opts.Local {
-		pr, err = r.GitHub.FetchAndCheckoutLocal(opts.PRRef, github.LocalOptions{Force: opts.Force, Prompter: workspace.NewStdinPrompter()})
+		pr, err = r.GitHub.OpenLocalPR(opts.PRRef, github.LocalOptions{Force: opts.Force, Prompter: workspace.NewStdinPrompter()})
 	} else {
 		pr, err = r.GitHub.FetchAndCheckout(opts.PRRef)
 	}

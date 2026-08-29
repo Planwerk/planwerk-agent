@@ -54,7 +54,7 @@ func (f *fakeGitHub) FetchAndCheckout(ref string) (*github.PR, error) {
 	return f.makePR(ref, false)
 }
 
-func (f *fakeGitHub) FetchAndCheckoutLocal(ref string, _ github.LocalOptions) (*github.PR, error) {
+func (f *fakeGitHub) OpenLocalPR(ref string, _ github.LocalOptions) (*github.PR, error) {
 	f.localCalls.Add(1)
 	return f.makePR(ref, true)
 }
@@ -554,7 +554,7 @@ func TestRun_LocalSkipsCloneAndSurvives(t *testing.T) {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
 	if gh.localCalls.Load() != 1 {
-		t.Errorf("FetchAndCheckoutLocal calls = %d, want 1", gh.localCalls.Load())
+		t.Errorf("OpenLocalPR calls = %d, want 1", gh.localCalls.Load())
 	}
 	if gh.fetchCalls.Load() != 0 {
 		t.Errorf("FetchAndCheckout (clone) calls = %d, want 0 in local mode", gh.fetchCalls.Load())

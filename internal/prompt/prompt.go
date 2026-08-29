@@ -42,7 +42,7 @@ type Runner struct {
 
 // NewRunner returns a Runner wired with the production GitHub backend.
 func NewRunner() *Runner {
-	return &Runner{GitHub: defaultGitHubClient{}}
+	return &Runner{GitHub: github.Client{}}
 }
 
 // Run is a package-level convenience that delegates to NewRunner().Run.

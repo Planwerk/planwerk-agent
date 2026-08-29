@@ -462,7 +462,7 @@ type GitHubClient interface {
 	GetIssueRelations(owner, name string, number int) (*github.IssueRelations, error)
 	ListIssueComments(owner, name string, number int) ([]github.IssueComment, error)
 	CloneRepo(ref string) (*github.Repo, error)
-	CloneRepoLocal(ref string, opts github.LocalOptions) (*github.Repo, error)
+	UseLocalRepo(ref string, opts github.LocalOptions) (*github.Repo, error)
 	AddIssueComment(owner, name string, number int, body string) (string, error)
 	CurrentBranchRef(dir string) (*github.BranchRef, error)
 	// PrepareResume finds and checks out a feature branch an earlier aborted run
@@ -470,18 +470,18 @@ type GitHubClient interface {
 	// there is nothing to resume). CurrentFeatureProgress reports the commits the
 	// current checkout has committed over the base branch (nil when still on the
 	// base or nothing is ahead), so the orchestrator can push partial progress
-	// after an abort. PushBranch publishes the branch to origin (no PR) so a later
+	// after an abort. PushHead publishes the branch to origin (no PR) so a later
 	// clone-mode run can fetch and resume it. Together they implement resuming an
 	// aborted implement run.
 	PrepareResume(dir string, number int) (*github.ResumeState, error)
 	CurrentFeatureProgress(dir string) (*github.ResumeState, error)
-	PushBranch(dir, branch string) error
+	PushHead(dir, branch string) error
 	// ChangedFiles lists the repo-relative paths the feature branch changed over
 	// the base branch, so the review pass can adaptively gate its specialist
 	// fan-out and scope the snippet gate to the changed files. It maps to the same
 	// git diff FetchAndCheckout runs; an empty base yields nil (both gates fail
 	// open on a missing signal).
-	ChangedFiles(dir, baseBranch string) ([]string, error)
+	DiffNames(dir, baseBranch string) ([]string, error)
 	// HeadSHA resolves the checkout's current commit. The review loop records it
 	// before each editing pass so the next round can scope its re-review to what
 	// that pass changed; the editing passes rewrite the branch, so only a commit
@@ -489,54 +489,6 @@ type GitHubClient interface {
 	HeadSHA(dir string) (string, error)
 }
 
-// defaultGitHubClient is the production GitHubClient backed by the github
-// package. Mirrors the elaborate package's adapter shape.
-type defaultGitHubClient struct{}
-
-func (defaultGitHubClient) GetIssue(owner, name string, number int) (*github.Issue, error) {
-	return github.GetIssue(owner, name, number)
-}
-
-func (defaultGitHubClient) GetIssueRelations(owner, name string, number int) (*github.IssueRelations, error) {
-	return github.GetIssueRelations(owner, name, number)
-}
-
-func (defaultGitHubClient) ListIssueComments(owner, name string, number int) ([]github.IssueComment, error) {
-	return github.ListIssueComments(owner, name, number)
-}
-
-func (defaultGitHubClient) CloneRepo(ref string) (*github.Repo, error) {
-	return github.CloneRepo(ref)
-}
-
-func (defaultGitHubClient) CloneRepoLocal(ref string, opts github.LocalOptions) (*github.Repo, error) {
-	return github.UseLocalRepo(ref, opts)
-}
-
-func (defaultGitHubClient) AddIssueComment(owner, name string, number int, body string) (string, error) {
-	return github.AddIssueComment(owner, name, number, body)
-}
-
-func (defaultGitHubClient) CurrentBranchRef(dir string) (*github.BranchRef, error) {
-	return github.CurrentBranchRef(dir)
-}
-
-func (defaultGitHubClient) PrepareResume(dir string, number int) (*github.ResumeState, error) {
-	return github.PrepareResume(dir, number)
-}
-
-func (defaultGitHubClient) CurrentFeatureProgress(dir string) (*github.ResumeState, error) {
-	return github.CurrentFeatureProgress(dir)
-}
-
-func (defaultGitHubClient) PushBranch(dir, branch string) error {
-	return github.PushHead(dir, branch)
-}
-
-func (defaultGitHubClient) HeadSHA(dir string) (string, error) {
-	return github.HeadSHA(dir)
-}
-
-func (defaultGitHubClient) ChangedFiles(dir, baseBranch string) ([]string, error) {
-	return github.DiffNames(dir, baseBranch)
-}
+// The production client satisfies the interface structurally; a drift in
+// either fails the build here rather than at the call site.
+var _ GitHubClient = github.Client{}

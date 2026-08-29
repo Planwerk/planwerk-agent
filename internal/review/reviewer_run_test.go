@@ -1226,7 +1226,7 @@ func TestRun_LocalUsesCwdAndKeepsTree(t *testing.T) {
 		t.Fatalf("Run returned error: %v", err)
 	}
 	if localCalls != 1 {
-		t.Errorf("FetchAndCheckoutLocal calls = %d, want 1", localCalls)
+		t.Errorf("OpenLocalPR calls = %d, want 1", localCalls)
 	}
 	if !strings.Contains(out.String(), "Local review summary") {
 		t.Errorf("output missing summary, got:\n%s", out.String())
