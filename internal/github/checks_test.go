@@ -1,6 +1,9 @@
 package github
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 func TestParseActionsRunID(t *testing.T) {
 	cases := []struct {
@@ -95,5 +98,57 @@ func TestCheckRunStateHelpers(t *testing.T) {
 		if got := tc.c.IsPassed(); got != tc.passed {
 			t.Errorf("IsPassed(%+v) = %v, want %v", tc.c, got, tc.passed)
 		}
+	}
+}
+
+// TestSummarizeChecksKeepsSameNameInDifferentSuites covers the case that made
+// name-only de-duplication unsafe: two workflows each define a job called
+// "build". Collapsing them onto one key hid the failing one behind the
+// higher-ID passing one, and the fix loop declared CI green.
+func TestSummarizeChecksKeepsSameNameInDifferentSuites(t *testing.T) {
+	ci := CheckRun{ID: 10, Name: "build", Status: "completed", Conclusion: "failure"}
+	ci.CheckSuite.ID = 1
+	release := CheckRun{ID: 20, Name: "build", Status: "completed", Conclusion: "success"}
+	release.CheckSuite.ID = 2
+
+	s := SummarizeChecks([]CheckRun{ci, release})
+	if s.Total != 2 {
+		t.Fatalf("Total = %d, want 2 (same name, different suites are different checks)", s.Total)
+	}
+	if len(s.Failed) != 1 || s.Failed[0].ID != 10 {
+		t.Errorf("Failed = %+v, want the failing ci.yml run (ID=10)", s.Failed)
+	}
+	if s.AllPassed() {
+		t.Error("AllPassed() = true although one check failed")
+	}
+}
+
+// TestSummarizeChecksDeduplicatesRerunsWithinSuite is the counterpart: a re-run
+// inside one suite still collapses onto the most recent attempt.
+func TestSummarizeChecksDeduplicatesRerunsWithinSuite(t *testing.T) {
+	first := CheckRun{ID: 10, Name: "test", Status: "completed", Conclusion: "failure"}
+	first.CheckSuite.ID = 7
+	rerun := CheckRun{ID: 20, Name: "test", Status: "completed", Conclusion: "success"}
+	rerun.CheckSuite.ID = 7
+
+	s := SummarizeChecks([]CheckRun{first, rerun})
+	if s.Total != 1 {
+		t.Fatalf("Total = %d, want 1 (a re-run within one suite dedupes)", s.Total)
+	}
+	if len(s.Passed) != 1 || s.Passed[0].ID != 20 {
+		t.Errorf("Passed = %+v, want only the most recent attempt (ID=20)", s.Passed)
+	}
+}
+
+// TestCheckRunDecodesCheckSuiteID pins the wire field the de-duplication key
+// reads, so a renamed JSON tag fails here rather than silently reverting to
+// name-only collapsing.
+func TestCheckRunDecodesCheckSuiteID(t *testing.T) {
+	var r CheckRun
+	if err := json.Unmarshal([]byte(`{"id":1,"name":"build","check_suite":{"id":4242}}`), &r); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if r.CheckSuite.ID != 4242 {
+		t.Errorf("CheckSuite.ID = %d, want 4242", r.CheckSuite.ID)
 	}
 }

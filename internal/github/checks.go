@@ -40,6 +40,13 @@ type CheckRun struct {
 		Title   string `json:"title"`
 		Summary string `json:"summary"`
 	} `json:"output"`
+	// CheckSuite identifies the suite the run belongs to — one suite per
+	// workflow run. It is what makes a check run's *name* unique: two
+	// workflows may both define a job called "build", and only the suite
+	// tells them apart.
+	CheckSuite struct {
+		ID int64 `json:"id"`
+	} `json:"check_suite"`
 	// WorkflowRunID is the GitHub Actions workflow run id parsed from
 	// DetailsURL when the check is backed by Actions; 0 otherwise.
 	WorkflowRunID int64 `json:"-"`
@@ -151,14 +158,25 @@ func (s CheckRunSummary) AnyFailed() bool { return len(s.Failed) > 0 }
 // AnyPending reports whether at least one check is queued or in progress.
 func (s CheckRunSummary) AnyPending() bool { return len(s.Pending) > 0 }
 
-// SummarizeChecks buckets check runs into passed / failed / pending. When
-// the same check name has multiple entries (re-runs), only the most recent
-// (highest ID) is kept.
+// checkKey identifies a check run for de-duplication: its name within its
+// check suite. Name alone is not enough — two workflows may each define a job
+// called "build", and collapsing them onto one key would hide whichever lost
+// the highest-ID contest, including a failing one.
+type checkKey struct {
+	suite int64
+	name  string
+}
+
+// SummarizeChecks buckets check runs into passed / failed / pending. When the
+// same check name has multiple entries within one check suite (re-runs), only
+// the most recent (highest ID) is kept; the same name in a different suite is
+// a different check and is kept alongside it.
 func SummarizeChecks(runs []CheckRun) CheckRunSummary {
-	latest := make(map[string]CheckRun, len(runs))
+	latest := make(map[checkKey]CheckRun, len(runs))
 	for _, r := range runs {
-		if existing, ok := latest[r.Name]; !ok || r.ID > existing.ID {
-			latest[r.Name] = r
+		k := checkKey{suite: r.CheckSuite.ID, name: r.Name}
+		if existing, ok := latest[k]; !ok || r.ID > existing.ID {
+			latest[k] = r
 		}
 	}
 	var s CheckRunSummary
