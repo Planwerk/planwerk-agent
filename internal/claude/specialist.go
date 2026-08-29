@@ -132,17 +132,25 @@ var Specialists = []Specialist{
 // failures are non-fatal — but exists so the seam can surface a fatal error in
 // future without a signature change.
 func (c *Client) SpecialistReviews(dir, baseBranch string, changedFiles []string, pats []patterns.Pattern, maxPatterns int) ([]implement.SpecialistResult, error) {
-	return runSpecialistFanOut(changedFiles, func(sp Specialist) (*report.ReviewResult, error) {
+	results := RunSpecialistFanOut(changedFiles, func(sp Specialist) (*report.ReviewResult, error) {
 		return c.SpecialistReview(dir, baseBranch, sp, pats, maxPatterns)
-	}), nil
+	})
+	var out []implement.SpecialistResult
+	for i, sp := range Specialists {
+		if results[i] != nil {
+			out = append(out, implement.SpecialistResult{Key: sp.Key, Result: results[i]})
+		}
+	}
+	return out, nil
 }
 
-// runSpecialistFanOut is the gate/dispatch/collect core of SpecialistReviews,
-// factored out from the Claude call so it is unit-testable without the binary.
-// It runs call(sp) concurrently for every specialist whose ShouldRun(changedFiles)
-// is true, skips the rest (adaptive gating), drops a specialist whose call
-// errors (logged, non-fatal), and returns the survivors in registry order.
-func runSpecialistFanOut(changedFiles []string, call func(Specialist) (*report.ReviewResult, error)) []implement.SpecialistResult {
+// RunSpecialistFanOut is the gate/dispatch/collect core the review and
+// implement commands share. It runs call(sp) concurrently for every specialist
+// whose ShouldRun(changedFiles) is true, skips the rest (adaptive gating), and
+// drops a specialist whose call errors (logged, non-fatal). The result is
+// indexed like Specialists: a nil entry is a specialist that was gated out or
+// failed, which the callers skip at merge.
+func RunSpecialistFanOut(changedFiles []string, call func(Specialist) (*report.ReviewResult, error)) []*report.ReviewResult {
 	results := make([]*report.ReviewResult, len(Specialists))
 	var g errgroup.Group
 	running := 0
@@ -169,14 +177,7 @@ func runSpecialistFanOut(changedFiles []string, call func(Specialist) (*report.R
 	// The callbacks never return an error, so Wait cannot fail; the error return
 	// is discarded deliberately.
 	_ = g.Wait()
-
-	var out []implement.SpecialistResult
-	for i, sp := range Specialists {
-		if results[i] != nil {
-			out = append(out, implement.SpecialistResult{Key: sp.Key, Result: results[i]})
-		}
-	}
-	return out
+	return results
 }
 
 // SpecialistReview runs a single domain-focused review pass over the diff and
@@ -191,18 +192,7 @@ func (c *Client) SpecialistReview(dir, baseBranch string, sp Specialist, pats []
 	if err != nil {
 		return nil, fmt.Errorf("running %s specialist review: %w", sp.Key, err)
 	}
-	result, err := c.structureReview(raw)
-	if err != nil {
-		return nil, fmt.Errorf("structuring %s specialist review: %w", sp.Key, err)
-	}
-	for i := range result.Findings {
-		if result.Findings[i].Pattern == "" {
-			result.Findings[i].Pattern = "specialist:" + sp.Key
-		}
-	}
-	assignIDs(result)
-	result.Model = model
-	return result, nil
+	return c.finishReview(raw, model, sp.Key+" specialist review", "specialist:"+sp.Key)
 }
 
 func buildSpecialistPrompt(baseBranch string, sp Specialist, pats []patterns.Pattern, maxPatterns int) string {

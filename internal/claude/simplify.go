@@ -23,21 +23,7 @@ func (c *Client) SimplifyFindings(dir, baseBranch string) (*report.ReviewResult,
 		return nil, fmt.Errorf("running simplify pass: %w", err)
 	}
 
-	result, err := c.structureReview(raw)
-	if err != nil {
-		return nil, fmt.Errorf("structuring simplify pass: %w", err)
-	}
-
-	// Tag all findings as from the simplify pass.
-	for i := range result.Findings {
-		if result.Findings[i].Pattern == "" {
-			result.Findings[i].Pattern = "simplify"
-		}
-	}
-
-	assignIDs(result)
-	result.Model = model
-	return result, nil
+	return c.finishReview(raw, model, "simplify pass", "simplify")
 }
 
 func buildSimplifyFindPrompt(baseBranch string) string {

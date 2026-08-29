@@ -97,18 +97,11 @@ For feature proposals, prefer a vertical slice: one that cuts end-to-end through
 }
 
 func (c *Client) structureProposals(rawAnalysis string) (*propose.ProposalResult, error) {
-	// The structuring pass runs on the dedicated structure tier
-	// (structureModel/structureEffort), independent of the upstream analysis
-	// model, so the discarded model return is not the attribution model.
-	text, _, err := c.runClaudeStructure(buildProposalStructurePrompt(rawAnalysis), "proposals")
+	result, err := structure[propose.ProposalResult](c, buildProposalStructurePrompt(rawAnalysis), "proposals", "structured proposals")
 	if err != nil {
 		return nil, err
 	}
-	var result propose.ProposalResult
-	if err := c.decodeJSONWithRepair(text, "structured proposals", &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	return result, nil
 }
 
 func buildProposalStructurePrompt(rawAnalysis string) string {

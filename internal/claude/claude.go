@@ -41,15 +41,7 @@ func (c *Client) Review(dir string, ctx ReviewContext) (*report.ReviewResult, er
 		return nil, fmt.Errorf("running /review: %w", err)
 	}
 
-	// Step 2: Structure the output into JSON
-	result, err := c.structureReview(rawReview)
-	if err != nil {
-		return nil, fmt.Errorf("structuring review output: %w", err)
-	}
-
-	assignIDs(result)
-	result.Model = model
-	return result, nil
+	return c.finishReview(rawReview, model, "review output", "")
 }
 
 // runReview invokes `claude -p` with a prompt that includes patterns and the

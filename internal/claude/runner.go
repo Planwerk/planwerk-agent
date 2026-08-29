@@ -676,6 +676,46 @@ func (c *Client) implementSessionModel() string {
 // runClaudeStream, which uses --output-format stream-json --verbose and
 // surfaces output incrementally; the periodic heartbeat is skipped in that
 // mode because the stream itself is the heartbeat.
+// claudeArgs assembles the claude CLI argv for spec. outputFormat selects the
+// envelope ("json" for the buffered runner, "stream-json" for the streaming
+// one) and extra follows it (the streaming runner adds --verbose). Everything
+// after that is emitted here and only here, so the two runners cannot drift on
+// which flags an isolation-, tool-, agent- or session-level decision produces.
+func (c *Client) claudeArgs(spec runSpec, outputFormat string, extra ...string) []string {
+	args := []string{
+		"-p",
+		"--model", spec.model,
+		"--effort", spec.effort,
+		"--output-format", outputFormat,
+	}
+	args = append(args, extra...)
+	if spec.permissionMode != "" {
+		args = append(args, "--permission-mode", spec.permissionMode)
+	}
+	if spec.jsonSchema != "" {
+		args = append(args, "--json-schema", spec.jsonSchema)
+	}
+	args = withSession(args, spec)
+	args = withAgents(args, spec.agentsJSON)
+	args = c.hermeticArgs(args)
+	args = withReadOnlyDenied(args, spec.readOnly)
+	args = withAllowedTools(args)
+	return args
+}
+
+// claudeCommand builds the claude subprocess for spec: claudeArgs for the
+// argv, the wait delay, the working directory when spec names one, and the
+// prompt on stdin.
+func (c *Client) claudeCommand(ctx context.Context, spec runSpec, prompt, outputFormat string, extra ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, "claude", c.claudeArgs(spec, outputFormat, extra...)...)
+	cmd.WaitDelay = claudeWaitDelay
+	if spec.dir != "" {
+		cmd.Dir = spec.dir
+	}
+	cmd.Stdin = strings.NewReader(prompt)
+	return cmd
+}
+
 func (c *Client) runClaudeWithPermission(spec runSpec, prompt string) (string, string, error) {
 	// Normalize once, above the fork, so neither runner path can pass the CLI a
 	// dialect declaration it cannot resolve.
@@ -690,29 +730,7 @@ func (c *Client) runClaudeWithPermission(spec runSpec, prompt string) (string, s
 	stopProgress := startProgress(spec.label)
 	defer stopProgress()
 
-	args := []string{
-		"-p",
-		"--model", spec.model,
-		"--effort", spec.effort,
-		"--output-format", "json",
-	}
-	if spec.permissionMode != "" {
-		args = append(args, "--permission-mode", spec.permissionMode)
-	}
-	if spec.jsonSchema != "" {
-		args = append(args, "--json-schema", spec.jsonSchema)
-	}
-	args = withSession(args, spec)
-	args = withAgents(args, spec.agentsJSON)
-	args = c.hermeticArgs(args)
-	args = withReadOnlyDenied(args, spec.readOnly)
-	args = withAllowedTools(args)
-	cmd := exec.CommandContext(ctx, "claude", args...)
-	cmd.WaitDelay = claudeWaitDelay
-	if spec.dir != "" {
-		cmd.Dir = spec.dir
-	}
-	cmd.Stdin = strings.NewReader(prompt)
+	cmd := c.claudeCommand(ctx, spec, prompt, "json")
 	out, err := cmd.Output()
 	if err != nil {
 		// A failed turn still spent its tokens: Claude Code writes the same

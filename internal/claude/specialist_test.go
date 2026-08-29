@@ -11,15 +11,16 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
-// recordingFanOut runs runSpecialistFanOut with a call func that records which
+// recordingFanOut runs RunSpecialistFanOut with a call func that records which
 // specialists were invoked (concurrency-safe) and returns a per-key result or
 // error. failKeys errors those specialists; every other invoked specialist
-// returns a distinct non-nil result.
+// returns a distinct non-nil result. The registry-indexed result is folded to
+// its non-nil entries, as SpecialistReviews and the review command do.
 func recordingFanOut(t *testing.T, changedFiles []string, failKeys map[string]bool) (called map[string]bool, results []specResultKV) {
 	t.Helper()
 	var mu sync.Mutex
 	called = map[string]bool{}
-	out := runSpecialistFanOut(changedFiles, func(sp Specialist) (*report.ReviewResult, error) {
+	out := RunSpecialistFanOut(changedFiles, func(sp Specialist) (*report.ReviewResult, error) {
 		mu.Lock()
 		called[sp.Key] = true
 		mu.Unlock()
@@ -28,8 +29,10 @@ func recordingFanOut(t *testing.T, changedFiles []string, failKeys map[string]bo
 		}
 		return &report.ReviewResult{Summary: sp.Key}, nil
 	})
-	for _, r := range out {
-		results = append(results, specResultKV{key: r.Key, summary: r.Result.Summary})
+	for i, r := range out {
+		if r != nil {
+			results = append(results, specResultKV{key: Specialists[i].Key, summary: r.Summary})
+		}
 	}
 	return called, results
 }

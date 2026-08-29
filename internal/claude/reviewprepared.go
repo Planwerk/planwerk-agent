@@ -153,19 +153,12 @@ When you are done, emit a review grouped by feature_id. For every feature provid
 // structureReviewPreparedResult turns the free-form review into the strict
 // JSON shape that reviewprepared.Result expects.
 func (c *Client) structureReviewPreparedResult(rawAnalysis string, ctx reviewprepared.AnalysisContext) (*reviewprepared.Result, error) {
-	// The structuring pass runs on the dedicated structure tier
-	// (structureModel/structureEffort), independent of the upstream analysis
-	// model, so the discarded model return is not the attribution model.
-	text, _, err := c.runClaudeStructure(buildReviewPreparedStructurePrompt(rawAnalysis, ctx.IncludeImproved), "review-prepared-structure")
+	result, err := structure[reviewprepared.Result](c, buildReviewPreparedStructurePrompt(rawAnalysis, ctx.IncludeImproved), "review-prepared-structure", "structured review-prepared")
 	if err != nil {
 		return nil, err
 	}
-	var result reviewprepared.Result
-	if err := c.decodeJSONWithRepair(text, "structured review-prepared", &result); err != nil {
-		return nil, err
-	}
-	reconcileReviewFeatures(&result, ctx.Features)
-	return &result, nil
+	reconcileReviewFeatures(result, ctx.Features)
+	return result, nil
 }
 
 // reconcileReviewFeatures fills in feature_file/title on every finding and

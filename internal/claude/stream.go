@@ -9,7 +9,6 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"os/exec"
 	"strings"
 )
 
@@ -146,38 +145,15 @@ func (slogStreamSink) toolResult(label string) {
 // the caller selected; spec.readOnly denies the write tools on the analysis
 // passes; spec.agentsJSON, when non-empty, carries the inline subagent
 // definitions passed via --agents; spec.sessionID/spec.resume pin or resume
-// the CLI session for the completion nudge. It routes through the same
-// hermeticArgs, withReadOnlyDenied, withAllowedTools, withAgents, and
-// withSession helpers as the buffered path so the two runners cannot drift on
-// which flags an isolation-, tool-, or session-level decision emits.
+// the CLI session for the completion nudge. It builds its subprocess through
+// the same claudeCommand as the buffered path, so the two runners cannot
+// drift on which flags an isolation-, tool-, or session-level decision emits;
+// only the output format differs.
 func (c *Client) runClaudeStream(spec runSpec, prompt string) (string, string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
-	args := []string{
-		"-p",
-		"--model", spec.model,
-		"--effort", spec.effort,
-		"--output-format", "stream-json",
-		"--verbose",
-	}
-	if spec.permissionMode != "" {
-		args = append(args, "--permission-mode", spec.permissionMode)
-	}
-	if spec.jsonSchema != "" {
-		args = append(args, "--json-schema", spec.jsonSchema)
-	}
-	args = withSession(args, spec)
-	args = withAgents(args, spec.agentsJSON)
-	args = c.hermeticArgs(args)
-	args = withReadOnlyDenied(args, spec.readOnly)
-	args = withAllowedTools(args)
-	cmd := exec.CommandContext(ctx, "claude", args...)
-	cmd.WaitDelay = claudeWaitDelay
-	if spec.dir != "" {
-		cmd.Dir = spec.dir
-	}
-	cmd.Stdin = strings.NewReader(prompt)
+	cmd := c.claudeCommand(ctx, spec, prompt, "stream-json", "--verbose")
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {

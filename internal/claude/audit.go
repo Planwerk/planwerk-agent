@@ -19,14 +19,7 @@ func (c *Client) Audit(dir string, ctx audit.AuditContext) (*report.ReviewResult
 		return nil, fmt.Errorf("running audit: %w", err)
 	}
 
-	result, err := c.structureReview(rawAudit)
-	if err != nil {
-		return nil, fmt.Errorf("structuring audit output: %w", err)
-	}
-
-	assignIDs(result)
-	result.Model = model
-	return result, nil
+	return c.finishReview(rawAudit, model, "audit output", "")
 }
 
 // buildAuditPrompt constructs a prompt that applies all loaded review patterns

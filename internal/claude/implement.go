@@ -20,18 +20,7 @@ func (c *Client) VerifyImplementation(dir, issueTitle, issueBody string) (*repor
 	if err != nil {
 		return nil, fmt.Errorf("running implementation verification: %w", err)
 	}
-	result, err := c.structureReview(raw)
-	if err != nil {
-		return nil, fmt.Errorf("structuring implementation verification: %w", err)
-	}
-	for i := range result.Findings {
-		if result.Findings[i].Pattern == "" {
-			result.Findings[i].Pattern = "implementation-verification"
-		}
-	}
-	assignIDs(result)
-	result.Model = model
-	return result, nil
+	return c.finishReview(raw, model, "implementation verification", "implementation-verification")
 }
 
 func buildVerifyImplementationPrompt(issueTitle, issueBody string) string {

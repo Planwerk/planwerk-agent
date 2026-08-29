@@ -171,15 +171,11 @@ func formatCaptureFinding(f report.Finding) string {
 }
 
 func (c *Client) structureCapture(rawAnalysis string) (*capture.CaptureResult, error) {
-	text, _, err := c.runClaudeStructure(buildCaptureStructurePrompt(rawAnalysis), "capture-structure")
+	result, err := structure[capture.CaptureResult](c, buildCaptureStructurePrompt(rawAnalysis), "capture-structure", "structured capture proposals")
 	if err != nil {
 		return nil, err
 	}
-	var result capture.CaptureResult
-	if err := c.decodeJSONWithRepair(text, "structured capture proposals", &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	return result, nil
 }
 
 func buildCaptureStructurePrompt(rawAnalysis string) string {

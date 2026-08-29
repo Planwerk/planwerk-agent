@@ -587,3 +587,28 @@ func TestClaudeRunError_NoOutputAtAll(t *testing.T) {
 		t.Errorf("error %q lost the underlying error", err)
 	}
 }
+
+// TestClaudeArgs_RunnersDifferOnlyInOutputFormat locks the buffered and
+// streaming runners to one argv: strip the output-format tail each asks for
+// and the rest must be identical.
+func TestClaudeArgs_RunnersDifferOnlyInOutputFormat(t *testing.T) {
+	c := NewClient()
+	spec := runSpec{model: "opus", effort: "high", permissionMode: "plan", jsonSchema: `{"type":"object"}`, readOnly: true, agentsJSON: "{}", sessionID: "0b6f4a8e-6a4c-4c1e-9a55-3f0d2c1b7e21"}
+	buffered := c.claudeArgs(spec, "json")
+	streaming := c.claudeArgs(spec, "stream-json", "--verbose")
+
+	strip := func(args []string, tail ...string) []string {
+		i := slices.Index(args, "--output-format")
+		if i == -1 || !slices.Equal(args[i+1:i+1+len(tail)], tail) {
+			t.Fatalf("argv %v lacks the output-format tail %v", args, tail)
+		}
+		return slices.Concat(args[:i], args[i+1+len(tail):])
+	}
+	got, want := strip(streaming, "stream-json", "--verbose"), strip(buffered, "json")
+	if !slices.Equal(got, want) {
+		t.Errorf("runners diverge beyond the output format:\nstreaming %v\nbuffered  %v", got, want)
+	}
+	if !slices.Contains(want, "--session-id") || !slices.Contains(want, "--json-schema") || !slices.Contains(want, "--permission-mode") {
+		t.Errorf("argv lost a spec-driven flag: %v", want)
+	}
+}
