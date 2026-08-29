@@ -102,9 +102,12 @@ var relationsQuery = fmt.Sprintf(`query($owner: String!, $name: String!, $number
 func GetIssueRelations(owner, name string, number int) (*IssueRelations, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
 	defer cancel()
+	// owner/name go through -f (verbatim string), not -F: -F type-coerces its
+	// value, so a repository literally named "2048", "404" or "null" would reach
+	// GraphQL as a number or null and be rejected against String!.
 	cmd := exec.CommandContext(ctx, "gh", "api", "graphql",
-		"-F", "owner="+owner,
-		"-F", "name="+name,
+		"-f", "owner="+owner,
+		"-f", "name="+name,
 		"-F", "number="+strconv.Itoa(number),
 		"-f", "query="+relationsQuery)
 	out, err := cmd.CombinedOutput()

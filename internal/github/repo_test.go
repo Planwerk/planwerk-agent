@@ -2,6 +2,9 @@ package github
 
 import (
 	"os"
+	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 )
 
@@ -82,6 +85,44 @@ func TestParseRepoRef_Invalid(t *testing.T) {
 		_, _, err := ParseRepoRef(input)
 		if err == nil {
 			t.Errorf("ParseRepoRef(%q) expected error, got nil", input)
+		}
+	}
+}
+
+// TestDefaultBranchHEAD_PassesOwnerAndNameAsStrings pins the gh flag form for
+// the GraphQL string variables. `-F` type-coerces its value, so a repository
+// literally named "2048", "404" or "null" would reach GraphQL as a number or
+// null and be rejected against String!; `-f` passes it verbatim. The fake gh
+// records its argv so the assertion needs no network.
+func TestDefaultBranchHEAD_PassesOwnerAndNameAsStrings(t *testing.T) {
+	dir := t.TempDir()
+	argvFile := filepath.Join(dir, "argv")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > " + argvFile + "\necho deadbeef\n"
+	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755); err != nil {
+		t.Fatalf("writing fake gh: %v", err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	sha, err := DefaultBranchHEAD("2048", "404")
+	if err != nil {
+		t.Fatalf("DefaultBranchHEAD: %v", err)
+	}
+	if sha != "deadbeef" {
+		t.Errorf("sha = %q, want deadbeef", sha)
+	}
+
+	raw, err := os.ReadFile(argvFile)
+	if err != nil {
+		t.Fatalf("reading recorded argv: %v", err)
+	}
+	argv := strings.Split(strings.TrimRight(string(raw), "\n"), "\n")
+	for _, want := range []string{"owner=2048", "name=404"} {
+		i := slices.Index(argv, want)
+		if i <= 0 {
+			t.Fatalf("argv %q carries no %q", argv, want)
+		}
+		if argv[i-1] != "-f" {
+			t.Errorf("%q passed with %q, want -f (a string variable must not be type-coerced)", want, argv[i-1])
 		}
 	}
 }

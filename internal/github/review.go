@@ -138,9 +138,12 @@ func FetchReviewThreads(owner, repo string, number int) ([]ReviewThread, error) 
 // empty for the first page (the nullable $cursor variable defaults to null, so
 // GraphQL returns the first page).
 func fetchReviewThreadsPage(owner, repo string, number int, cursor string) ([]byte, error) {
+	// owner/name go through -f (verbatim string): -F type-coerces its value, so
+	// a repository literally named "2048", "404" or "null" would reach GraphQL
+	// as a number or null and be rejected against String!.
 	args := []string{"api", "graphql",
-		"-F", "owner=" + owner,
-		"-F", "name=" + repo,
+		"-f", "owner=" + owner,
+		"-f", "name=" + repo,
 		"-F", fmt.Sprintf("number=%d", number),
 		"-f", "query=" + reviewThreadsQuery,
 	}
