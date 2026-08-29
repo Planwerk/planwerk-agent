@@ -147,7 +147,7 @@ included) under the pinned `planwerk-agent` identity, and pushes. When the wiki
 has never been initialized, the first page creates its initial commit.
 
 The write-back is available only from a **trusted source** — `implement` (your own
-branch) and `audit` (your own repo). **`review` ignores `--capture-wiki` and is
+branch) and `audit` (your own repo). **`review` has no `--capture-wiki` flag and is
 always propose-only**: a review analyzes an untrusted pull request and the proposal
 pass reads attacker-controlled source, so auto-pushing its free-form pages would let
 an external contributor poison the shared knowledge base via indirect prompt

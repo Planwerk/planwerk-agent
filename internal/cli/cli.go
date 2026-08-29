@@ -45,8 +45,6 @@ type Config struct {
 	Local           bool
 	Force           bool
 	NoCapture       bool
-	CaptureWiki     bool
-	Yes             bool
 }
 
 func (c Config) ToReviewOptions(version string) review.Options {
@@ -71,8 +69,6 @@ func (c Config) ToReviewOptions(version string) review.Options {
 		Local:           c.Local,
 		Force:           c.Force,
 		NoCapture:       c.NoCapture,
-		CaptureWiki:     c.CaptureWiki,
-		Yes:             c.Yes,
 	}
 }
 

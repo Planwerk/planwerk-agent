@@ -53,8 +53,8 @@ report, so it proposes **patterns only**, never `memory/` pages.
 
 The pass is always **propose-only**: the suggestions go to `stdout`, and — only
 with `--post-review` — as a PR comment; **nothing is ever written to the wiki**.
-Unlike `implement` and `audit`, review never pushes the accepted pages, even under
-`--capture-wiki`: it analyzes an untrusted pull request and the proposal pass reads
+Unlike `implement` and `audit`, review has no `--capture-wiki` flag and never pushes
+the accepted pages: it analyzes an untrusted pull request and the proposal pass reads
 attacker-controlled source, so auto-pushing its free-form pages would let an
 external contributor poison the shared knowledge base. To grow the wiki from
 captured patterns, run the write-back from a trusted source — `implement` on your

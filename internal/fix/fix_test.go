@@ -156,7 +156,6 @@ func newRunner(gh *fakeGitHub, cl *fakeClaude, pr *fakePrompter) *Runner {
 		GitHub:   gh,
 		Prompter: pr,
 		Sleep:    func(time.Duration) {}, // tests must not sleep
-		Now:      time.Now,
 	}
 }
 

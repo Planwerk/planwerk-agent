@@ -67,7 +67,7 @@ is config-only.
 The separate `capture:` section gates the *write*: `capture.wiki` controls
 whether the capture pass pushes the accepted pages to the wiki (the
 `--capture-wiki` opt-in) instead of only proposing them. The write-back runs only
-from a trusted source — `implement` and `audit`; `review` ignores it and is always
+from a trusted source — `implement` and `audit`; `review` has no such flag and is always
 propose-only, because it analyzes an untrusted pull request. It is kept apart from
 the read-only `wiki:` knobs so read and write config stay distinct, and is
 overridden by the `--capture-wiki` flag and `PLANWERK_CAPTURE_WIKI`

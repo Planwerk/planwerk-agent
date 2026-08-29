@@ -43,31 +43,6 @@ var severityOrder = map[string]int{
 	"INFO":     3,
 }
 
-// Load reads all .md files recursively from the given sources and parses them
-// as patterns. Sources are processed in order; later sources have higher
-// priority (repo-specific patterns override general patterns with the same
-// name). All patterns are returned regardless of technology tags. Each source
-// may be a local directory path or a remote URI accepted by IsRemote.
-func Load(sources ...string) ([]Pattern, error) {
-	return LoadFiltered(nil, sources...)
-}
-
-// LoadFiltered reads patterns from the given sources recursively and
-// returns only those that apply to the detected technology tags.
-// If tags is nil or empty, all patterns are returned (backward compatible).
-// Remote sources are resolved with default RemoteOptions; callers that need
-// explicit remote options (e.g. a configured TTL) use
-// LoadFilteredWithOptions.
-//
-// LoadFiltered loads ONLY the given sources — it does not include the
-// binary's embedded catalog, preserving its historical "load what I gave you"
-// semantics so existing callers and tests keep their exact behavior. Callers
-// that want the embedded fallback (the production subcommands) call
-// LoadFilteredWithOptions with NoEmbedded set from --no-local-patterns.
-func LoadFiltered(tags []string, sources ...string) ([]Pattern, error) {
-	return LoadFilteredWithOptions(LoadOptions{NoEmbedded: true}, tags, sources...)
-}
-
 // LoadOptions bundles tunables that influence pattern loading.
 type LoadOptions struct {
 	// Remote controls how remote pattern URIs (see IsRemote) are resolved

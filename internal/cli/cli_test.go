@@ -97,18 +97,18 @@ func TestToShipImplementOptions_NoSpecialistsAbsent(t *testing.T) {
 	}
 }
 
-// TestToReviewOptions_CaptureFlags guards that the capture flags thread through
+// TestToReviewOptions_CaptureFlags guards that the capture flag threads through
 // to review.Options — a missing copy would silently disable capture on review
 // with no compile error.
 func TestToReviewOptions_CaptureFlags(t *testing.T) {
-	opts := Config{NoCapture: true, CaptureWiki: true, Yes: true}.ToReviewOptions("v1")
-	if !opts.NoCapture || !opts.CaptureWiki || !opts.Yes {
-		t.Errorf("NoCapture=%v CaptureWiki=%v Yes=%v, want true/true/true", opts.NoCapture, opts.CaptureWiki, opts.Yes)
+	opts := Config{NoCapture: true}.ToReviewOptions("v1")
+	if !opts.NoCapture {
+		t.Errorf("NoCapture=%v, want true", opts.NoCapture)
 	}
-	// Capture is on by default (gated on a resolved wiki) and the write-back is
-	// off, so the zero config leaves all three flags off.
-	if d := (Config{}).ToReviewOptions("v1"); d.NoCapture || d.CaptureWiki || d.Yes {
-		t.Errorf("defaults NoCapture=%v CaptureWiki=%v Yes=%v, want false/false/false", d.NoCapture, d.CaptureWiki, d.Yes)
+	// Capture is on by default (gated on a resolved wiki), so the zero config
+	// leaves the flag off.
+	if d := (Config{}).ToReviewOptions("v1"); d.NoCapture {
+		t.Errorf("defaults NoCapture=%v, want false", d.NoCapture)
 	}
 }
 

@@ -1161,12 +1161,12 @@ func TestRun_CaptureSkippedByNoCapture(t *testing.T) {
 	}
 }
 
-func TestRun_CaptureWikiNeverPushesForReview(t *testing.T) {
+func TestRun_CaptureNeverPushesForReview(t *testing.T) {
 	// review analyzes an untrusted PR head and its proposal pass reads
-	// attacker-controlled source, so its capture pass is propose-only: even under
-	// --capture-wiki --yes it must never push the (free-form, injectable) proposal
-	// pages to the wiki. The supported way to grow the wiki is to capture from a
-	// trusted source (implement or audit).
+	// attacker-controlled source, so its capture pass is propose-only: it must
+	// never push the (free-form, injectable) proposal pages to the wiki. The
+	// supported way to grow the wiki is to capture from a trusted source
+	// (implement or audit).
 	restore := cache.SetDir(t.TempDir())
 	t.Cleanup(restore)
 
@@ -1176,12 +1176,8 @@ func TestRun_CaptureWikiNeverPushesForReview(t *testing.T) {
 	cp := &fakeCapturer{result: onePatternProposal()}
 	runner := captureRunner(t, gh, cl, cp)
 
-	opts := baseOpts()
-	opts.CaptureWiki = true
-	opts.Yes = true
-
 	var out bytes.Buffer
-	if err := runner.Run(&out, opts); err != nil {
+	if err := runner.Run(&out, baseOpts()); err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
 	// The propose-only pass still runs and surfaces its proposals...
@@ -1189,13 +1185,10 @@ func TestRun_CaptureWikiNeverPushesForReview(t *testing.T) {
 		t.Fatalf("capturer called %d times, want 1 — review still proposes", cp.calls.Load())
 	}
 	body := out.String()
-	if !strings.Contains(body, "review ignores --capture-wiki") {
-		t.Errorf("review must surface the propose-only downgrade note, got:\n%s", body)
-	}
 	// ...but it never writes to or pushes the wiki. A push attempt would clone via
 	// the default writer and surface "Wrote ..." / "Capture write-back ..." on out.
 	if strings.Contains(body, "Wrote ") || strings.Contains(body, "Capture write-back") {
-		t.Errorf("review must never push to the wiki under --capture-wiki, got:\n%s", body)
+		t.Errorf("review must never push to the wiki, got:\n%s", body)
 	}
 }
 

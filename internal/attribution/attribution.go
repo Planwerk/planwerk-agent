@@ -31,19 +31,17 @@ import (
 )
 
 const (
-	// RepoURL is planwerk-agent's repository, linked from every footer so the
+	// repoURL is planwerk-agent's repository, linked from every footer so the
 	// artifact points back at the tool that produced it.
-	RepoURL = "https://github.com/planwerk/planwerk-agent"
+	repoURL = "https://github.com/planwerk/planwerk-agent"
 
 	// Link is the Markdown link to the repository embedded in the footers.
-	Link = "[planwerk-agent](" + RepoURL + ")"
+	Link = "[planwerk-agent](" + repoURL + ")"
 
-	// AssistantMarker is the stable, model-independent prefix of the assistant
+	// assistantMarker is the stable, model-independent prefix of the assistant
 	// attribution clause. AssistantWith appends ":<model id>" to it when a model
-	// is known. It is exported so callers that match a rendered footer as a
-	// detection marker (implement keys its posted-plan lookup on it) can do so
-	// on a prefix that survives a model change.
-	AssistantMarker = "with Claude"
+	// is known.
+	assistantMarker = "with Claude"
 )
 
 var (
@@ -63,9 +61,9 @@ func SetVersion(v string) {
 	mu.Unlock()
 }
 
-// Version reports the build version recorded by the last SetVersion call, or ""
+// version reports the build version recorded by the last SetVersion call, or ""
 // when none has been recorded.
-func Version() string {
+func version() string {
 	mu.RLock()
 	defer mu.RUnlock()
 	return toolVersion
@@ -77,7 +75,7 @@ func Version() string {
 // so the version is threaded from a single process-wide source, the same way the
 // resolved model is.
 func Tool() string {
-	return ToolWithVersion(Version())
+	return ToolWithVersion(version())
 }
 
 // ToolWithVersion renders the tool clause for an explicit version: the
@@ -100,7 +98,7 @@ func ToolWithVersion(version string) string {
 // each other's model into a rendered footer.
 func AssistantWith(model string) string {
 	if m := strings.TrimSpace(model); m != "" {
-		return AssistantMarker + ":" + m
+		return assistantMarker + ":" + m
 	}
-	return AssistantMarker
+	return assistantMarker
 }
