@@ -11,44 +11,10 @@ permissions:
   attestations: write
 
 jobs:
-  build-darwin:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - name: Get version
-        id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-      - name: Build
-        run: |
-          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build \
-            -ldflags "-s -w -X main.version=${{ steps.version.outputs.version }}" \
-            -o planwerk-agent \
-            ./cmd/planwerk-agent
-      - name: Create archive
-        run: tar czf planwerk-agent_${{ steps.version.outputs.version }}_darwin_arm64.tar.gz planwerk-agent
-      - uses: anchore/sbom-action/download-syft@v0
-      - name: Generate SBOM
-        run: >
-          syft
-          planwerk-agent_${{ steps.version.outputs.version }}_darwin_arm64.tar.gz
-          --output spdx-json=planwerk-agent_${{ steps.version.outputs.version }}_darwin_arm64.tar.gz.sbom.spdx.json
-      - name: Generate checksum
-        run: shasum -a 256 planwerk-agent_${{ steps.version.outputs.version }}_darwin_arm64.tar.gz >> planwerk-agent_${{ steps.version.outputs.version }}_checksums.txt
-      - uses: actions/upload-artifact@v4
-        with:
-          name: darwin-artifacts
-          path: |
-            planwerk-agent_${{ steps.version.outputs.version }}_darwin_arm64.tar.gz
-            planwerk-agent_${{ steps.version.outputs.version }}_darwin_arm64.tar.gz.sbom.spdx.json
-            planwerk-agent_${{ steps.version.outputs.version }}_checksums.txt
-
   release:
     runs-on: ubuntu-latest
+    outputs:
+      hashes: ${{ steps.hashes.outputs.hashes }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,26 +30,28 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  attach-darwin:
-    needs: [build-darwin, release]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: darwin-artifacts
-      - name: Upload Darwin artifacts to release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload ${{ github.ref_name }} planwerk-agent_*_darwin_arm64.* planwerk-agent_*_checksums.txt --repo ${{ github.repository }}
+      # The SLSA generator signs a base64-encoded sha256sum-style list. It is
+      # exactly what goreleaser already wrote (and cosign already signed), so
+      # the provenance covers every published artifact rather than a second,
+      # separately built subset.
+      - name: Export the release checksums as SLSA subjects
+        id: hashes
+        run: |
+          set -euo pipefail
+          checksums=$(find dist -maxdepth 1 -name '*checksums.txt' -print -quit)
+          if [ -z "$checksums" ]; then
+            echo "no checksum file in dist/; goreleaser did not produce one" >&2
+            exit 1
+          fi
+          echo "hashes=$(base64 -w0 < "$checksums")" >> "$GITHUB_OUTPUT"
 
   provenance:
-    needs: [release, attach-darwin]
+    needs: [release]
     permissions:
       actions: read
       id-token: write
       contents: write
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
     with:
-      base-inputs-digest: sha256
+      base64-subjects: ${{ needs.release.outputs.hashes }}
       upload-assets: true
