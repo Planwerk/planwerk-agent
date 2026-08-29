@@ -173,6 +173,7 @@ func (c *Client) runClaudeStream(spec runSpec, prompt string) (string, string, e
 	args = withReadOnlyDenied(args, spec.readOnly)
 	args = withAllowedTools(args)
 	cmd := exec.CommandContext(ctx, "claude", args...)
+	cmd.WaitDelay = claudeWaitDelay
 	if spec.dir != "" {
 		cmd.Dir = spec.dir
 	}
@@ -207,10 +208,20 @@ func (c *Client) runClaudeStream(spec runSpec, prompt string) (string, string, e
 
 	waitErr := cmd.Wait()
 
+	// The deadline is checked before the read error: when it fires, WaitDelay
+	// closes the pipes underneath the scanner, so scanErr would otherwise
+	// report "file already closed" and bury the real reason.
+	if timeout := c.timeoutError(ctx, spec.model, stderrBuf.Bytes()); timeout != nil {
+		c.addFailureUsage(spec.label, failLine)
+		return "", "", timeout
+	}
 	if scanErr != nil {
 		return "", "", fmt.Errorf("claude stream read: %w\nstderr: %s", scanErr, stderrBuf.String())
 	}
 	if waitErr != nil {
+		// A failed turn still spent its tokens; the `result` event repeats the
+		// buffered path's usage block, so count it before reporting.
+		c.addFailureUsage(spec.label, failLine)
 		return "", "", claudeRunError(waitErr, spec.model, failLine, stderrBuf.Bytes())
 	}
 

@@ -127,6 +127,15 @@ const (
 	// to runClaude. Requires Claude Code v2.1.83+; see
 	// https://code.claude.com/docs/en/auto-mode-config.
 	claudeAutoPermissionMode = "auto"
+	// claudeWaitDelay bounds how long a timed-out invocation may still block
+	// after its deadline. exec.CommandContext kills only the `claude` process
+	// itself; a test run, build, or subagent it started inherits the stdout
+	// pipe and keeps it open, and Output/Wait block until that grandchild ends
+	// — so a 60-minute deadline could be followed by an unbounded wait on a
+	// process nobody is reading any more. WaitDelay closes the pipes this long
+	// after the deadline instead. Two seconds leaves a killed session room to
+	// flush a final envelope without making the failure path drag.
+	claudeWaitDelay = 2 * time.Second
 )
 
 // claudeAllowedTools are pre-approved on every orchestrated `claude -p` session
@@ -699,15 +708,25 @@ func (c *Client) runClaudeWithPermission(spec runSpec, prompt string) (string, s
 	args = withReadOnlyDenied(args, spec.readOnly)
 	args = withAllowedTools(args)
 	cmd := exec.CommandContext(ctx, "claude", args...)
+	cmd.WaitDelay = claudeWaitDelay
 	if spec.dir != "" {
 		cmd.Dir = spec.dir
 	}
 	cmd.Stdin = strings.NewReader(prompt)
 	out, err := cmd.Output()
 	if err != nil {
+		// A failed turn still spent its tokens: Claude Code writes the same
+		// usage block on the failure envelope, so count it before reporting.
+		c.addFailureUsage(spec.label, out)
 		var exitErr *exec.ExitError
 		if !errors.As(err, &exitErr) {
+			if timeout := c.timeoutError(ctx, spec.model, nil); timeout != nil {
+				return "", "", timeout
+			}
 			return "", "", fmt.Errorf("claude (model %s): %w", spec.model, err)
+		}
+		if timeout := c.timeoutError(ctx, spec.model, exitErr.Stderr); timeout != nil {
+			return "", "", timeout
 		}
 		return "", "", claudeRunError(err, spec.model, out, exitErr.Stderr)
 	}
@@ -758,6 +777,51 @@ type claudeResponse struct {
 	// status the CLI one day emits as a string cannot make the whole envelope
 	// unparseable — the same wire-drift tolerance Usage and TotalCostUSD get.
 	APIErrorStatus json.RawMessage `json:"api_error_status,omitempty"`
+}
+
+// timeoutError reports the deadline this Client imposed, or nil when ctx was
+// not the reason the invocation ended. exec.CommandContext kills the child on
+// deadline, and the kill surfaces as an *exec.ExitError ("signal: killed") that
+// wraps nothing about the context — errors.Is(err, context.DeadlineExceeded) is
+// false — so a 60-minute cutoff read exactly like a crashed binary. Only ctx
+// itself still knows. Any stderr the child produced before the kill is kept:
+// it is the last thing the session said.
+func (c *Client) timeoutError(ctx context.Context, model string, stderr []byte) error {
+	if !errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return nil
+	}
+	if msg := bytes.TrimSpace(stderr); len(msg) > 0 {
+		return fmt.Errorf("claude (model %s): timed out after %s (--claude-timeout)\nstderr: %s", model, c.timeout, head(msg, 500))
+	}
+	return fmt.Errorf("claude (model %s): timed out after %s (--claude-timeout)", model, c.timeout)
+}
+
+// addFailureUsage counts the tokens a FAILED invocation spent. Claude Code
+// reports an exhausted turn budget or an upstream API error by writing its
+// result envelope — usage block included — to stdout and exiting non-zero, and
+// the streaming path repeats those fields on the raw `result` event. Both
+// runners returned before addUsage, so a session that burned 45 minutes and
+// hit error_max_turns was reported as $0 across 0 calls. A payload that is not
+// an envelope, or one that carries no usage at all, records nothing rather than
+// an empty call.
+func (c *Client) addFailureUsage(label string, raw []byte) {
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return
+	}
+	var resp claudeResponse
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return
+	}
+	var (
+		usage tokenUsage
+		cost  float64
+	)
+	_ = json.Unmarshal(resp.Usage, &usage)
+	_ = json.Unmarshal(resp.TotalCostUSD, &cost)
+	if usage == (tokenUsage{}) && cost == 0 {
+		return
+	}
+	c.addUsage(label, usage, cost)
 }
 
 // claudeRunError renders a failed `claude -p` invocation into an error that
