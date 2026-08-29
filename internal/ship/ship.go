@@ -586,10 +586,9 @@ func (r *Runner) postSummary(w io.Writer, owner, name string, number int, opts O
 // never aborts the run — the work is already done and the next step can proceed.
 func (r *Runner) postComment(w io.Writer, owner, name string, number int, body string) {
 	full := strings.TrimSpace(body) + "\n\n---\n\n_Ship progress reported by " + attribution.Tool() + "_\n"
-	if _, err := r.GitHub.AddIssueComment(owner, name, number, full); err != nil {
-		slog.Warn("posting ship comment failed", "issue", number, "err", err)
-		_, _ = fmt.Fprintf(w, "\nCould not post ship comment on #%d: %v\n", number, err)
-	}
+	github.PostBestEffort(w, "ship progress", fmt.Sprintf("issue #%d", number), func() (string, error) {
+		return r.GitHub.AddIssueComment(owner, name, number, full)
+	})
 }
 
 // joinNumbers renders a list of issue numbers as "#a, #b" for the dry-run plan.

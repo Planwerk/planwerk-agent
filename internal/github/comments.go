@@ -4,11 +4,37 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log/slog"
 	"os/exec"
 	"strconv"
 	"strings"
 	"unicode/utf8"
 )
+
+// PostBestEffort posts a comment through post and reports the outcome on w
+// without failing the caller: the artifact it carries is already on stdout or
+// pushed, so a GitHub error is logged and shown, never returned. what names
+// the artifact ("fix report"); target names where it lands ("PR #7",
+// "issue #42"), or is empty when the caller has no number to show.
+func PostBestEffort(w io.Writer, what, target string, post func() (string, error)) {
+	on := ""
+	if target != "" {
+		on = " on " + target
+	}
+	url, err := post()
+	if err != nil {
+		slog.Warn("posting comment failed", "what", what, "target", target, "err", err)
+		_, _ = fmt.Fprintf(w, "\nCould not post the %s as a comment%s: %v\n", what, on, err)
+		return
+	}
+	slog.Info("posted comment", "what", what, "target", target, "url", url)
+	_, _ = fmt.Fprintf(w, "\nPosted the %s as a comment%s", what, on)
+	if url != "" {
+		_, _ = fmt.Fprintf(w, " (%s)", url)
+	}
+	_, _ = fmt.Fprintln(w)
+}
 
 const (
 	// maxCommentLen is the GitHub API limit for issue/PR comment bodies.

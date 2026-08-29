@@ -536,7 +536,7 @@ func TestRun_AnalysisCommentFailureIsNonFatal(t *testing.T) {
 	if err := newRunner(gh, cl).Run(&buf, hermeticOpts("o/r#7")); err != nil {
 		t.Fatalf("Run returned %v, want nil despite the comment failure", err)
 	}
-	if !strings.Contains(buf.String(), "Could not post the analysis") {
+	if !strings.Contains(buf.String(), "Could not post the rebase analysis") {
 		t.Errorf("expected a non-fatal warning about the failed comment post, got:\n%s", buf.String())
 	}
 }
