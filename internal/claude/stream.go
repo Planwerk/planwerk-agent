@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"sync"
 )
 
 // streamMaxLineBytes caps a single NDJSON line from claude. The final
@@ -183,10 +182,14 @@ func (c *Client) runClaudeStream(spec runSpec, prompt string) (string, string, e
 	if err != nil {
 		return "", "", fmt.Errorf("claude stdout pipe: %w", err)
 	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return "", "", fmt.Errorf("claude stderr pipe: %w", err)
-	}
+	// stderr is buffered by exec itself rather than through StderrPipe: the
+	// pipe's contract forbids calling Wait before every read from it has
+	// completed, and Wait closes the read end as soon as the child exits, so a
+	// copier still draining could lose the tail — precisely on the error path
+	// where stderr is the whole diagnosis. Handing exec a writer makes Wait
+	// wait for the copy instead.
+	var stderrBuf bytes.Buffer
+	cmd.Stderr = &stderrBuf
 
 	sink := streamSinkFn()
 	sink.starting(spec.label)
@@ -194,16 +197,6 @@ func (c *Client) runClaudeStream(spec runSpec, prompt string) (string, string, e
 	if err := cmd.Start(); err != nil {
 		return "", "", fmt.Errorf("claude start: %w", err)
 	}
-
-	var (
-		stderrBuf bytes.Buffer
-		wg        sync.WaitGroup
-	)
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		_, _ = io.Copy(&stderrBuf, stderr)
-	}()
 
 	// resolvedModel is the exact id the session reported on its init event;
 	// it is returned so the caller threads it per-run into the artifact footers
@@ -213,7 +206,6 @@ func (c *Client) runClaudeStream(spec runSpec, prompt string) (string, string, e
 	finalResult, accText, resolvedModel, usage, cost, failLine, scanErr := readStream(stdout, spec.label, sink)
 
 	waitErr := cmd.Wait()
-	wg.Wait()
 
 	if scanErr != nil {
 		return "", "", fmt.Errorf("claude stream read: %w\nstderr: %s", scanErr, stderrBuf.String())
