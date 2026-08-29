@@ -150,7 +150,7 @@ func TestResolveWiki_RepoPatternsOverrideWiki(t *testing.T) {
 		t.Fatal("expected the wiki to expose a review_patterns dir")
 	}
 
-	dirs, err := Resolve(ResolveOptions{NoLocal: true, RepoDir: repoDir, Wiki: rw.PatternsDir})
+	dirs, err := Resolve(ResolveOptions{RepoDir: repoDir, Wiki: rw.PatternsDir})
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}

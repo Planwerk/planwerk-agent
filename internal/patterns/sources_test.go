@@ -7,23 +7,6 @@ import (
 	"testing"
 )
 
-// chdirWithLocalCatalog switches the working directory to a fresh temp dir and,
-// when withLocal is true, creates a ./patterns subdir there so LocalPatternDir's
-// cwd fallback has something to find. It returns the temp dir. The exe-relative
-// candidate is assumed absent in the test environment, matching the runner-level
-// tests' assumptions.
-func chdirWithLocalCatalog(t *testing.T, withLocal bool) string {
-	t.Helper()
-	dir := t.TempDir()
-	if withLocal {
-		if err := os.MkdirAll(filepath.Join(dir, "patterns"), 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	t.Chdir(dir)
-	return dir
-}
-
 // makeRepoPatterns creates a repo checkout with a .planwerk/review_patterns
 // directory and returns both the repo root and the expected pattern dir.
 func makeRepoPatterns(t *testing.T) (repoDir, patternDir string) {
@@ -37,8 +20,7 @@ func makeRepoPatterns(t *testing.T) (repoDir, patternDir string) {
 }
 
 func TestResolve(t *testing.T) {
-	t.Run("orders local, repo, then explicit dirs", func(t *testing.T) {
-		chdirWithLocalCatalog(t, true)
+	t.Run("orders repo, then explicit dirs", func(t *testing.T) {
 		repoDir, repoPatterns := makeRepoPatterns(t)
 
 		dirs, err := Resolve(ResolveOptions{
@@ -48,14 +30,13 @@ func TestResolve(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Resolve returned error: %v", err)
 		}
-		want := []string{"patterns", repoPatterns, "/explicit/a", "/explicit/b"}
+		want := []string{repoPatterns, "/explicit/a", "/explicit/b"}
 		if !slices.Equal(dirs, want) {
 			t.Errorf("dirs = %v, want %v", dirs, want)
 		}
 	})
 
-	t.Run("wiki slot sits between local and repo dirs", func(t *testing.T) {
-		chdirWithLocalCatalog(t, true)
+	t.Run("wiki slot sits below the repo dir", func(t *testing.T) {
 		repoDir, repoPatterns := makeRepoPatterns(t)
 
 		dirs, err := Resolve(ResolveOptions{
@@ -69,35 +50,16 @@ func TestResolve(t *testing.T) {
 		// The wiki ranks below the committed repo patterns: the loader lets later
 		// dirs win, so the repo's reviewed patterns override the world-editable
 		// wiki on a name collision.
-		want := []string{"patterns", "/wiki/patterns", repoPatterns, "/explicit/a"}
+		want := []string{"/wiki/patterns", repoPatterns, "/explicit/a"}
 		if !slices.Equal(dirs, want) {
 			t.Errorf("dirs = %v, want %v", dirs, want)
 		}
 	})
 
 	t.Run("empty wiki adds no slot", func(t *testing.T) {
-		chdirWithLocalCatalog(t, true)
 		repoDir, repoPatterns := makeRepoPatterns(t)
 
 		dirs, err := Resolve(ResolveOptions{
-			RepoDir: repoDir,
-			Extra:   []string{"/explicit"},
-		})
-		if err != nil {
-			t.Fatalf("Resolve returned error: %v", err)
-		}
-		want := []string{"patterns", repoPatterns, "/explicit"}
-		if !slices.Equal(dirs, want) {
-			t.Errorf("dirs = %v, want %v", dirs, want)
-		}
-	})
-
-	t.Run("NoLocal drops the bundled local catalog", func(t *testing.T) {
-		chdirWithLocalCatalog(t, true)
-		repoDir, repoPatterns := makeRepoPatterns(t)
-
-		dirs, err := Resolve(ResolveOptions{
-			NoLocal: true,
 			RepoDir: repoDir,
 			Extra:   []string{"/explicit"},
 		})
@@ -111,29 +73,9 @@ func TestResolve(t *testing.T) {
 	})
 
 	t.Run("NoRepo drops the repo catalog", func(t *testing.T) {
-		chdirWithLocalCatalog(t, true)
 		repoDir, _ := makeRepoPatterns(t)
 
 		dirs, err := Resolve(ResolveOptions{
-			NoRepo:  true,
-			RepoDir: repoDir,
-			Extra:   []string{"/explicit"},
-		})
-		if err != nil {
-			t.Fatalf("Resolve returned error: %v", err)
-		}
-		want := []string{"patterns", "/explicit"}
-		if !slices.Equal(dirs, want) {
-			t.Errorf("dirs = %v, want %v", dirs, want)
-		}
-	})
-
-	t.Run("both flags set returns only explicit dirs", func(t *testing.T) {
-		chdirWithLocalCatalog(t, true)
-		repoDir, _ := makeRepoPatterns(t)
-
-		dirs, err := Resolve(ResolveOptions{
-			NoLocal: true,
 			NoRepo:  true,
 			RepoDir: repoDir,
 			Extra:   []string{"/explicit"},
@@ -147,12 +89,10 @@ func TestResolve(t *testing.T) {
 		}
 	})
 
-	t.Run("both flags set and no explicit dirs returns empty", func(t *testing.T) {
-		chdirWithLocalCatalog(t, true)
+	t.Run("NoRepo set and no explicit dirs returns empty", func(t *testing.T) {
 		repoDir, _ := makeRepoPatterns(t)
 
 		dirs, err := Resolve(ResolveOptions{
-			NoLocal: true,
 			NoRepo:  true,
 			RepoDir: repoDir,
 		})
@@ -165,56 +105,14 @@ func TestResolve(t *testing.T) {
 	})
 
 	t.Run("skips a repo dir that does not exist", func(t *testing.T) {
-		chdirWithLocalCatalog(t, true)
-
 		dirs, err := Resolve(ResolveOptions{
 			RepoDir: filepath.Join(t.TempDir(), "no-such-repo"),
 		})
 		if err != nil {
 			t.Fatalf("Resolve returned error: %v", err)
 		}
-		want := []string{"patterns"}
-		if !slices.Equal(dirs, want) {
-			t.Errorf("dirs = %v, want %v", dirs, want)
-		}
-	})
-
-	t.Run("skips a missing local catalog", func(t *testing.T) {
-		chdirWithLocalCatalog(t, false)
-		repoDir, repoPatterns := makeRepoPatterns(t)
-
-		dirs, err := Resolve(ResolveOptions{
-			RepoDir: repoDir,
-		})
-		if err != nil {
-			t.Fatalf("Resolve returned error: %v", err)
-		}
-		want := []string{repoPatterns}
-		if !slices.Equal(dirs, want) {
-			t.Errorf("dirs = %v, want %v", dirs, want)
-		}
-	})
-}
-
-func TestLocalPatternDir(t *testing.T) {
-	t.Run("returns cwd patterns dir when present", func(t *testing.T) {
-		chdirWithLocalCatalog(t, true)
-		if got := LocalPatternDir(false); got != "patterns" {
-			t.Errorf("LocalPatternDir(false) = %q, want %q", got, "patterns")
-		}
-	})
-
-	t.Run("returns empty when no candidate exists", func(t *testing.T) {
-		chdirWithLocalCatalog(t, false)
-		if got := LocalPatternDir(false); got != "" {
-			t.Errorf("LocalPatternDir(false) = %q, want empty", got)
-		}
-	})
-
-	t.Run("returns empty when noLocal is set", func(t *testing.T) {
-		chdirWithLocalCatalog(t, true)
-		if got := LocalPatternDir(true); got != "" {
-			t.Errorf("LocalPatternDir(true) = %q, want empty", got)
+		if len(dirs) != 0 {
+			t.Errorf("dirs = %v, want empty", dirs)
 		}
 	})
 }

@@ -408,19 +408,15 @@ type CatalogReference struct {
 }
 
 // CatalogRefOptions configures BuildCatalogReferences. The orchestrator
-// passes in the directory roots it knows about (bundled local catalog,
-// target-repo overrides) so the helper can map each pattern's FilePath
-// back to either a remote URL or an in-checkout path. Both root paths
-// should be absolute (BuildCatalogReferences will Abs them defensively).
+// passes in the target-repo override root it knows about so the helper can
+// map each pattern's FilePath back to either a remote URL or an in-checkout
+// path. The root path should be absolute (BuildCatalogReferences will Abs it
+// defensively).
 type CatalogRefOptions struct {
-	// BundledRoot is the on-disk directory the planwerk-agent-shipped
-	// pattern catalog was loaded from. Patterns whose FilePath sits under
-	// this directory are emitted as URLs against BundledURLBase.
-	BundledRoot string
-	// BundledURLBase is the URL prefix patterns under BundledRoot map to.
-	// E.g. https://raw.githubusercontent.com/planwerk/planwerk-agent/main/internal/patterns/patterns
-	// (no trailing slash). Required iff BundledRoot is non-empty. Embedded
-	// patterns (FilePath prefixed "embedded:patterns/") also map to this base.
+	// BundledURLBase is the URL prefix embedded patterns (FilePath prefixed
+	// "embedded:patterns/") map to, e.g.
+	// https://raw.githubusercontent.com/planwerk/planwerk-agent/main/internal/patterns/patterns
+	// (no trailing slash). Empty marks them as bundled in the binary instead.
 	BundledURLBase string
 	// RepoRoot is the target repository's .planwerk/review_patterns/
 	// directory. Patterns under this dir are emitted as relative paths the
@@ -440,7 +436,6 @@ type CatalogRefOptions struct {
 // either skip them or list them by name as a "you'll have to load this
 // yourself" footnote.
 func BuildCatalogReferences(pats []Pattern, opts CatalogRefOptions) []CatalogReference {
-	bundled := absOrEmpty(opts.BundledRoot)
 	repo := absOrEmpty(opts.RepoRoot)
 
 	refs := make([]CatalogReference, 0, len(pats))
@@ -474,11 +469,6 @@ func BuildCatalogReferences(pats []Pattern, opts CatalogRefOptions) []CatalogRef
 		}
 
 		switch {
-		case bundled != "" && opts.BundledURLBase != "" && hasDirPrefix(path, bundled):
-			rel, err := filepath.Rel(bundled, path)
-			if err == nil {
-				ref.URL = strings.TrimRight(opts.BundledURLBase, "/") + "/" + filepath.ToSlash(rel)
-			}
 		case repo != "" && opts.RepoRelBase != "" && hasDirPrefix(path, repo):
 			rel, err := filepath.Rel(repo, path)
 			if err == nil {

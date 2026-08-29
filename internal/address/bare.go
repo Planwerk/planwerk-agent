@@ -48,45 +48,26 @@ func (r *Runner) PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuil
 	if len(tags) > 0 {
 		slog.Info("detected technologies for bare prompt", "technologies", strings.Join(tags, ", "))
 	}
-	dirs, err := patterns.Resolve(patterns.ResolveOptions{
-		NoLocal: opts.NoLocalPatterns,
-		NoRepo:  opts.NoRepoPatterns,
-		RepoDir: pr.Dir,
-		Extra:   opts.PatternDirs,
+	pats := patterns.LoadForRepoOrWarn(patterns.RepoLoadOptions{
+		RepoDir:    pr.Dir,
+		Extra:      opts.PatternDirs,
+		Tags:       tags,
+		NoEmbedded: opts.NoLocalPatterns,
+		NoRepo:     opts.NoRepoPatterns,
+		Remote:     opts.Remote,
 	})
-	if err != nil {
-		slog.Warn("resolving pattern sources failed; bare prompt will omit them", "err", err)
-	}
-	pats, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{Remote: opts.Remote, NoEmbedded: opts.NoLocalPatterns}, tags, dirs...)
-	if err != nil {
-		slog.Warn("loading review patterns failed; bare prompt will omit them", "err", err)
-		pats = nil
-	}
 	if len(pats) > 0 {
 		slog.Info("loaded review patterns for bare prompt", "count", len(pats))
 	}
 
-	catalog := patterns.BuildCatalogReferences(pats, patterns.CatalogRefOptions{
-		BundledRoot:    patterns.LocalPatternDir(opts.NoLocalPatterns),
-		BundledURLBase: BundledPatternsURLBase,
-		RepoRoot:       patterns.RepoPatternDir(opts.NoRepoPatterns, pr.Dir),
-		RepoRelBase:    ".planwerk/review_patterns",
-	})
-
-	hasRepoLocal := false
-	for _, c := range catalog {
-		if c.LocalPath != "" {
-			hasRepoLocal = true
-			break
-		}
-	}
+	catalog, hasRepoLocal := patterns.BareCatalog(pats, pr.Dir, opts.NoRepoPatterns)
 
 	prompt := build(BareContext{
 		RepoFullName:     fmt.Sprintf("%s/%s", owner, repo),
 		PRNumber:         number,
 		TechTags:         tags,
 		PatternCatalog:   catalog,
-		BundledURLBase:   BundledPatternsURLBase,
+		BundledURLBase:   patterns.BundledURLBase,
 		HasRepoLocalRefs: hasRepoLocal,
 	})
 	if _, err := io.WriteString(w, prompt); err != nil {

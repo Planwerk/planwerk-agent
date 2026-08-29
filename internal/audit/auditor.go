@@ -203,19 +203,17 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		slog.Info("detected technologies", "technologies", strings.Join(techTags, ", "))
 	}
 
-	patternDirs, err := patterns.Resolve(patterns.ResolveOptions{
-		NoLocal: opts.NoLocalPatterns,
-		NoRepo:  opts.NoRepoPatterns,
-		RepoDir: repo.Dir,
-		Wiki:    wiki.PatternsDir,
-		Extra:   opts.PatternDirs,
+	pats, err := patterns.LoadForRepo(patterns.RepoLoadOptions{
+		RepoDir:    repo.Dir,
+		Wiki:       wiki.PatternsDir,
+		Extra:      opts.PatternDirs,
+		Tags:       techTags,
+		NoEmbedded: opts.NoLocalPatterns,
+		NoRepo:     opts.NoRepoPatterns,
+		Remote:     opts.Remote,
 	})
 	if err != nil {
-		return fmt.Errorf("resolving pattern sources: %w", err)
-	}
-	pats, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{Remote: opts.Remote, NoEmbedded: opts.NoLocalPatterns}, techTags, patternDirs...)
-	if err != nil {
-		return fmt.Errorf("loading patterns: %w", err)
+		return err
 	}
 	if len(pats) == 0 {
 		return fmt.Errorf("no review patterns loaded — nothing to audit against")

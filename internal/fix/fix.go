@@ -28,13 +28,6 @@ const (
 	// per-iteration prompt, before tail-trimming to the last lines. The
 	// claude package then keeps only the last 200 lines of what we pass.
 	MaxLogChars = 64 * 1024
-
-	// BundledPatternsURLBase is the public raw-markdown URL prefix the
-	// bare-prompt catalog uses to point Claude at planwerk-agent's bundled
-	// pattern files. We pin to "main" so manual sessions always pick up the
-	// latest patterns without us baking the binary's version into URLs that
-	// then drift on dev builds.
-	BundledPatternsURLBase = "https://raw.githubusercontent.com/planwerk/planwerk-agent/main/internal/patterns/patterns"
 )
 
 // Options configures the fix subcommand. Mirrors the Options style used by
@@ -159,45 +152,26 @@ func (r *Runner) PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuil
 	if len(tags) > 0 {
 		slog.Info("detected technologies for bare prompt", "technologies", strings.Join(tags, ", "))
 	}
-	dirs, err := patterns.Resolve(patterns.ResolveOptions{
-		NoLocal: opts.NoLocalPatterns,
-		NoRepo:  opts.NoRepoPatterns,
-		RepoDir: pr.Dir,
-		Extra:   opts.PatternDirs,
+	pats := patterns.LoadForRepoOrWarn(patterns.RepoLoadOptions{
+		RepoDir:    pr.Dir,
+		Extra:      opts.PatternDirs,
+		Tags:       tags,
+		NoEmbedded: opts.NoLocalPatterns,
+		NoRepo:     opts.NoRepoPatterns,
+		Remote:     opts.Remote,
 	})
-	if err != nil {
-		slog.Warn("resolving pattern sources failed; bare prompt will omit them", "err", err)
-	}
-	pats, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{Remote: opts.Remote, NoEmbedded: opts.NoLocalPatterns}, tags, dirs...)
-	if err != nil {
-		slog.Warn("loading review patterns failed; bare prompt will omit them", "err", err)
-		pats = nil
-	}
 	if len(pats) > 0 {
 		slog.Info("loaded review patterns for bare prompt", "count", len(pats))
 	}
 
-	catalog := patterns.BuildCatalogReferences(pats, patterns.CatalogRefOptions{
-		BundledRoot:    patterns.LocalPatternDir(opts.NoLocalPatterns),
-		BundledURLBase: BundledPatternsURLBase,
-		RepoRoot:       patterns.RepoPatternDir(opts.NoRepoPatterns, pr.Dir),
-		RepoRelBase:    ".planwerk/review_patterns",
-	})
-
-	hasRepoLocal := false
-	for _, c := range catalog {
-		if c.LocalPath != "" {
-			hasRepoLocal = true
-			break
-		}
-	}
+	catalog, hasRepoLocal := patterns.BareCatalog(pats, pr.Dir, opts.NoRepoPatterns)
 
 	prompt := build(BareContext{
 		RepoFullName:     fmt.Sprintf("%s/%s", owner, repo),
 		PRNumber:         number,
 		TechTags:         tags,
 		PatternCatalog:   catalog,
-		BundledURLBase:   BundledPatternsURLBase,
+		BundledURLBase:   patterns.BundledURLBase,
 		HasRepoLocalRefs: hasRepoLocal,
 		Fixup:            !opts.NoFixup,
 	})
@@ -624,20 +598,14 @@ func loadPatterns(opts Options, repoDir string) []patterns.Pattern {
 	if len(tags) > 0 {
 		slog.Info("detected technologies", "technologies", strings.Join(tags, ", "))
 	}
-	dirs, err := patterns.Resolve(patterns.ResolveOptions{
-		NoLocal: opts.NoLocalPatterns,
-		NoRepo:  opts.NoRepoPatterns,
-		RepoDir: repoDir,
-		Extra:   opts.PatternDirs,
+	pats := patterns.LoadForRepoOrWarn(patterns.RepoLoadOptions{
+		RepoDir:    repoDir,
+		Extra:      opts.PatternDirs,
+		Tags:       tags,
+		NoEmbedded: opts.NoLocalPatterns,
+		NoRepo:     opts.NoRepoPatterns,
+		Remote:     opts.Remote,
 	})
-	if err != nil {
-		slog.Warn("resolving pattern sources failed; continuing without them", "err", err)
-	}
-	pats, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{Remote: opts.Remote, NoEmbedded: opts.NoLocalPatterns}, tags, dirs...)
-	if err != nil {
-		slog.Warn("loading review patterns failed; continuing without them", "err", err)
-		return nil
-	}
 	if len(pats) > 0 {
 		slog.Info("loaded review patterns", "count", len(pats))
 	}
