@@ -27,7 +27,7 @@ planwerk-agent/
 │   │   ├── checklist.md        # Default review checklist (embedded)
 │   │   └── checklist_test.go
 │   ├── cli/
-│   │   └── cli.go              # Flag parsing, configuration
+│   │   └── config_file.go      # .planwerk/config.yaml loading, applied onto each command's Options
 │   ├── domains/
 │   │   ├── domains.go          # Load planning domain sweep (embedded default + override)
 │   │   ├── domains.md          # Default domain list (embedded)
@@ -60,6 +60,7 @@ planwerk-agent/
 │   │   ├── doccheck.go         # Detect stale documentation files
 │   │   └── doccheck_test.go
 │   ├── github/
+│   │   ├── client.go           # Client: the one value every command's GitHub interface is satisfied by
 │   │   ├── comments.go         # Post/update PR comments (gh CLI)
 │   │   ├── comments_test.go
 │   │   ├── diff.go             # Fetch and parse PR diffs (DiffMap)
@@ -70,7 +71,8 @@ planwerk-agent/
 │   │   ├── repo.go             # Clone repo (gh CLI), fetch default-branch HEAD SHA (gh API)
 │   │   ├── repo_test.go
 │   │   ├── review.go           # Submit PR reviews via GitHub Review API
-│   │   └── review_test.go
+│   │   ├── review_test.go
+│   │   └── githubtest/         # The shared test fake for Client (imported by tests only)
 │   ├── hygiene/                # Shared finding hygiene (review + implement self-review)
 │   │   ├── merge.go            # Multi-pass merge, confidence boost, ConfirmedBy provenance
 │   │   ├── dedup.go            # File-less duplicate fold (DedupFileless)
@@ -81,7 +83,7 @@ planwerk-agent/
 │   │   ├── loader.go           # Load patterns from directories
 │   │   ├── pattern.go          # Pattern data structure + parsing
 │   │   ├── pattern_test.go
-│   │   ├── sources.go          # Source dispatch (embedded + on-disk + remote)
+│   │   ├── sources.go          # LoadForRepo: the one catalog loader (embedded + wiki + repo + remote)
 │   │   └── patterns/           # Embedded review-pattern catalog (16 design + 67 technology + review + SOURCES.md)
 │   ├── propose/
 │   │   ├── interactive.go      # Interactive GitHub issue creation flow
