@@ -12,48 +12,9 @@ import (
 
 	"github.com/planwerk/planwerk-agent/internal/cache"
 	"github.com/planwerk/planwerk-agent/internal/github"
+	"github.com/planwerk/planwerk-agent/internal/github/githubtest"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 )
-
-// fakeGitHub is a test GitHubClient whose CloneRepo / DefaultBranchHEAD /
-// ListAllIssues behavior is configured per-test via closures. A nil
-// listExistingIssues returns no existing issues so dedupe is a no-op.
-type fakeGitHub struct {
-	cloneRepo          func(ref string) (*github.Repo, error)
-	defaultBranchHEAD  func(owner, name string) (string, error)
-	listExistingIssues func(owner, name string) ([]github.ExistingIssue, error)
-
-	cloneCalls      atomic.Int32
-	cloneLocalCalls atomic.Int32
-}
-
-func (f *fakeGitHub) CloneRepo(ref string) (*github.Repo, error) {
-	f.cloneCalls.Add(1)
-	return f.cloneRepo(ref)
-}
-
-// UseLocalRepo mirrors github.UseLocalRepo: it returns a Local repo rooted
-// at the same dir the temp-clone factory would, so Cleanup is a no-op.
-func (f *fakeGitHub) UseLocalRepo(ref string, _ github.LocalOptions) (*github.Repo, error) {
-	f.cloneLocalCalls.Add(1)
-	repo, err := f.cloneRepo(ref)
-	if err != nil {
-		return nil, err
-	}
-	repo.Local = true
-	return repo, nil
-}
-
-func (f *fakeGitHub) DefaultBranchHEAD(owner, name string) (string, error) {
-	return f.defaultBranchHEAD(owner, name)
-}
-
-func (f *fakeGitHub) ListAllIssues(owner, name string) ([]github.ExistingIssue, error) {
-	if f.listExistingIssues == nil {
-		return nil, nil
-	}
-	return f.listExistingIssues(owner, name)
-}
 
 // fakeClaude is a test ClaudeAnalyzer tracking call count so cache-hit tests
 // can assert Claude was skipped.
@@ -101,9 +62,9 @@ func TestProposeRun_CacheMissThenHit(t *testing.T) {
 	t.Cleanup(restore)
 
 	repo := fakeRepo(t, "acme", "widgets")
-	gh := &fakeGitHub{
-		cloneRepo:         func(ref string) (*github.Repo, error) { return repo, nil },
-		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-propose-1", nil },
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return repo, nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return "sha-propose-1", nil },
 	}
 	claudeMock := &fakeClaude{
 		fn: func(dir string, _ AnalysisContext) (*ProposalResult, error) {
@@ -149,9 +110,9 @@ func TestProposeRun_NoCacheBypassesCachedEntry(t *testing.T) {
 	restore := cache.SetDir(t.TempDir())
 	t.Cleanup(restore)
 
-	gh := &fakeGitHub{
-		cloneRepo:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
-		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-propose-nocache", nil },
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return "sha-propose-nocache", nil },
 	}
 
 	// Seed the cache with a sentinel that NoCache must ignore. Cache key owner/name
@@ -189,9 +150,9 @@ func TestProposeRun_HEADFailureDisablesCaching(t *testing.T) {
 	restore := cache.SetDir(t.TempDir())
 	t.Cleanup(restore)
 
-	gh := &fakeGitHub{
-		cloneRepo: func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
-		defaultBranchHEAD: func(owner, name string) (string, error) {
+	gh := &githubtest.Fake{
+		CloneRepoFn: func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) {
 			return "", errors.New("network unreachable")
 		},
 	}
@@ -222,9 +183,9 @@ func TestProposeRun_CloneErrorFailsFast(t *testing.T) {
 	restore := cache.SetDir(t.TempDir())
 	t.Cleanup(restore)
 
-	gh := &fakeGitHub{
-		cloneRepo:         func(ref string) (*github.Repo, error) { return nil, errors.New("clone failed") },
-		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha", nil },
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return nil, errors.New("clone failed") },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return "sha", nil },
 	}
 	runner := &Runner{Claude: &fakeClaude{}, GitHub: gh}
 
@@ -251,12 +212,12 @@ func TestProposeRun_CacheHitSkipsClone(t *testing.T) {
 		t.Fatalf("seeding cache: %v", err)
 	}
 
-	gh := &fakeGitHub{
-		cloneRepo: func(ref string) (*github.Repo, error) {
+	gh := &githubtest.Fake{
+		CloneRepoFn: func(ref string) (*github.Repo, error) {
 			t.Fatal("CloneRepo must not be called on cache hit")
 			return nil, nil
 		},
-		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-skip-clone", nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return "sha-skip-clone", nil },
 	}
 	claudeMock := &fakeClaude{
 		fn: func(dir string, _ AnalysisContext) (*ProposalResult, error) {
@@ -276,12 +237,12 @@ func TestProposeRun_CacheHitSkipsClone(t *testing.T) {
 }
 
 func TestProposeRun_InvalidRepoRefFailsBeforeHEAD(t *testing.T) {
-	gh := &fakeGitHub{
-		cloneRepo: func(ref string) (*github.Repo, error) {
+	gh := &githubtest.Fake{
+		CloneRepoFn: func(ref string) (*github.Repo, error) {
 			t.Fatal("CloneRepo must not be called for invalid repo ref")
 			return nil, nil
 		},
-		defaultBranchHEAD: func(owner, name string) (string, error) {
+		DefaultBranchHEADFn: func(owner, name string) (string, error) {
 			t.Fatal("DefaultBranchHEAD must not be called for invalid repo ref")
 			return "", nil
 		},
@@ -304,9 +265,9 @@ func TestProposeRun_AnalyzeErrorPropagates(t *testing.T) {
 	restore := cache.SetDir(t.TempDir())
 	t.Cleanup(restore)
 
-	gh := &fakeGitHub{
-		cloneRepo:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
-		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha", nil },
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return "sha", nil },
 	}
 	claudeMock := &fakeClaude{
 		fn: func(dir string, _ AnalysisContext) (*ProposalResult, error) {
@@ -330,10 +291,10 @@ func TestProposeRun_FiltersProposalsMatchingExistingIssues(t *testing.T) {
 	t.Cleanup(restore)
 
 	repo := fakeRepo(t, "acme", "widgets")
-	gh := &fakeGitHub{
-		cloneRepo:         func(ref string) (*github.Repo, error) { return repo, nil },
-		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-dedupe", nil },
-		listExistingIssues: func(owner, name string) ([]github.ExistingIssue, error) {
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return repo, nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return "sha-dedupe", nil },
+		ListAllIssuesFn: func(owner, name string) ([]github.ExistingIssue, error) {
 			return []github.ExistingIssue{
 				{Title: "Add LOGGING.", URL: "https://example/1"},
 			}, nil
@@ -371,10 +332,10 @@ func TestProposeRun_DedupeDisabledByFlag(t *testing.T) {
 
 	repo := fakeRepo(t, "acme", "widgets")
 	listerCalled := false
-	gh := &fakeGitHub{
-		cloneRepo:         func(ref string) (*github.Repo, error) { return repo, nil },
-		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-nodedupe", nil },
-		listExistingIssues: func(owner, name string) ([]github.ExistingIssue, error) {
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return repo, nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return "sha-nodedupe", nil },
+		ListAllIssuesFn: func(owner, name string) ([]github.ExistingIssue, error) {
 			listerCalled = true
 			return []github.ExistingIssue{{Title: "Add logging", URL: "u"}}, nil
 		},
@@ -407,10 +368,10 @@ func TestProposeRun_DedupeListerErrorIsNonFatal(t *testing.T) {
 	t.Cleanup(restore)
 
 	repo := fakeRepo(t, "acme", "widgets")
-	gh := &fakeGitHub{
-		cloneRepo:         func(ref string) (*github.Repo, error) { return repo, nil },
-		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-listerr", nil },
-		listExistingIssues: func(owner, name string) ([]github.ExistingIssue, error) {
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return repo, nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return "sha-listerr", nil },
+		ListAllIssuesFn: func(owner, name string) ([]github.ExistingIssue, error) {
 			return nil, errors.New("gh boom")
 		},
 	}
@@ -453,9 +414,9 @@ func TestProposeRun_LoadsPatternsIntoAnalysisContext(t *testing.T) {
 		t.Fatalf("writing pattern file: %v", err)
 	}
 
-	gh := &fakeGitHub{
-		cloneRepo:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
-		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-patterns", nil },
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return "sha-patterns", nil },
 	}
 	claudeMock := &fakeClaude{}
 	runner := &Runner{Claude: claudeMock, GitHub: gh}
@@ -496,9 +457,9 @@ func TestProposeRun_LoadsOutOfScopeIntoAnalysisContext(t *testing.T) {
 		t.Fatalf("writing out-of-scope entry: %v", err)
 	}
 
-	gh := &fakeGitHub{
-		cloneRepo:         func(ref string) (*github.Repo, error) { return repo, nil },
-		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-oos", nil },
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return repo, nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return "sha-oos", nil },
 	}
 	claudeMock := &fakeClaude{}
 	runner := &Runner{Claude: claudeMock, GitHub: gh}
@@ -525,9 +486,9 @@ func TestProposeRun_NoOutOfScopeLeavesContextEmpty(t *testing.T) {
 	restore := cache.SetDir(t.TempDir())
 	t.Cleanup(restore)
 
-	gh := &fakeGitHub{
-		cloneRepo:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
-		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-no-oos", nil },
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return "sha-no-oos", nil },
 	}
 	claudeMock := &fakeClaude{}
 	runner := &Runner{Claude: claudeMock, GitHub: gh}
@@ -551,9 +512,9 @@ func TestProposeRun_NoPatternsIsNonFatal(t *testing.T) {
 	restore := cache.SetDir(t.TempDir())
 	t.Cleanup(restore)
 
-	gh := &fakeGitHub{
-		cloneRepo:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
-		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-nopat", nil },
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return "sha-nopat", nil },
 	}
 	claudeMock := &fakeClaude{}
 	runner := &Runner{Claude: claudeMock, GitHub: gh}
@@ -581,9 +542,9 @@ func TestProposeRun_CorruptedCacheFallsBackToFreshAnalysis(t *testing.T) {
 	restore := cache.SetDir(cacheDir)
 	t.Cleanup(restore)
 
-	gh := &fakeGitHub{
-		cloneRepo:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
-		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-corrupt", nil },
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return "sha-corrupt", nil },
 	}
 	// Write a corrupt file directly, bypassing the envelope-writing API so the
 	// stored bytes cannot be unmarshalled. Cache key owner/name follow
@@ -618,11 +579,11 @@ func TestProposeRun_LocalUsesCwdAndKeepsTree(t *testing.T) {
 	t.Cleanup(restore)
 
 	dir := t.TempDir()
-	gh := &fakeGitHub{
-		cloneRepo: func(ref string) (*github.Repo, error) {
+	gh := &githubtest.Fake{
+		CloneRepoFn: func(ref string) (*github.Repo, error) {
 			return &github.Repo{Owner: "acme", Name: "widgets", Dir: dir}, nil
 		},
-		defaultBranchHEAD: func(owner, name string) (string, error) { return "sha-local", nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return "sha-local", nil },
 	}
 	runner := &Runner{Claude: &fakeClaude{}, GitHub: gh}
 
@@ -633,11 +594,11 @@ func TestProposeRun_LocalUsesCwdAndKeepsTree(t *testing.T) {
 	if err := runner.Run(io.Discard, opts); err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
-	if gh.cloneLocalCalls.Load() != 1 {
-		t.Errorf("UseLocalRepo calls = %d, want 1", gh.cloneLocalCalls.Load())
+	if gh.Count("UseLocalRepo") != 1 {
+		t.Errorf("UseLocalRepo calls = %d, want 1", gh.Count("UseLocalRepo"))
 	}
-	if gh.cloneCalls.Load() != 0 {
-		t.Errorf("CloneRepo (temp-dir clone) calls = %d, want 0 in local mode", gh.cloneCalls.Load())
+	if gh.Count("CloneRepo") != 0 {
+		t.Errorf("CloneRepo (temp-dir clone) calls = %d, want 0 in local mode", gh.Count("CloneRepo"))
 	}
 	if _, err := os.Stat(dir); err != nil {
 		t.Fatalf("local checkout must survive the run (Cleanup is a no-op): %v", err)

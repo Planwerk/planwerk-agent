@@ -12,75 +12,8 @@ import (
 
 	"github.com/planwerk/planwerk-agent/internal/cache"
 	"github.com/planwerk/planwerk-agent/internal/github"
+	"github.com/planwerk/planwerk-agent/internal/github/githubtest"
 )
-
-type fakeGitHub struct {
-	getIssue          func(owner, name string, number int) (*github.Issue, error)
-	getIssueRelations func(owner, name string, number int) (*github.IssueRelations, error)
-	defaultBranchHEAD func(owner, name string) (string, error)
-	cloneRepo         func(ref string) (*github.Repo, error)
-	editIssueBody     func(owner, name string, number int, body string) error
-	addIssueComment   func(owner, name string, number int, body string) (string, error)
-
-	editCalls    int32
-	commentCalls int32
-
-	cloneCalls      atomic.Int32
-	cloneLocalCalls atomic.Int32
-}
-
-func (f *fakeGitHub) GetIssue(owner, name string, number int) (*github.Issue, error) {
-	return f.getIssue(owner, name, number)
-}
-
-// GetIssueRelations defaults to "no relations" (the issue stands alone) so
-// tests that do not exercise the Meta/sibling path need not set it.
-func (f *fakeGitHub) GetIssueRelations(owner, name string, number int) (*github.IssueRelations, error) {
-	if f.getIssueRelations == nil {
-		return &github.IssueRelations{}, nil
-	}
-	return f.getIssueRelations(owner, name, number)
-}
-
-func (f *fakeGitHub) DefaultBranchHEAD(owner, name string) (string, error) {
-	if f.defaultBranchHEAD == nil {
-		return "head-sha", nil
-	}
-	return f.defaultBranchHEAD(owner, name)
-}
-
-func (f *fakeGitHub) CloneRepo(ref string) (*github.Repo, error) {
-	f.cloneCalls.Add(1)
-	return f.cloneRepo(ref)
-}
-
-// UseLocalRepo mirrors github.UseLocalRepo: it returns a Local repo so
-// Cleanup is a no-op.
-func (f *fakeGitHub) UseLocalRepo(ref string, _ github.LocalOptions) (*github.Repo, error) {
-	f.cloneLocalCalls.Add(1)
-	repo, err := f.cloneRepo(ref)
-	if err != nil {
-		return nil, err
-	}
-	repo.Local = true
-	return repo, nil
-}
-
-func (f *fakeGitHub) EditIssueBody(owner, name string, number int, body string) error {
-	atomic.AddInt32(&f.editCalls, 1)
-	if f.editIssueBody == nil {
-		return nil
-	}
-	return f.editIssueBody(owner, name, number, body)
-}
-
-func (f *fakeGitHub) AddIssueComment(owner, name string, number int, body string) (string, error) {
-	atomic.AddInt32(&f.commentCalls, 1)
-	if f.addIssueComment == nil {
-		return "https://example/comment", nil
-	}
-	return f.addIssueComment(owner, name, number, body)
-}
 
 type fakeClaude struct {
 	calls int32
@@ -105,13 +38,13 @@ func (f *fakeReviewer) ReviewElaboration(dir string, ctx Context, draft string) 
 	return f.fn(dir, ctx, draft)
 }
 
-func reviewLoopGitHub(t *testing.T, repo *github.Repo) *fakeGitHub {
+func reviewLoopGitHub(t *testing.T, repo *github.Repo) *githubtest.Fake {
 	t.Helper()
-	return &fakeGitHub{
-		getIssue: func(owner, name string, number int) (*github.Issue, error) {
+	return &githubtest.Fake{
+		GetIssueFn: func(owner, name string, number int) (*github.Issue, error) {
 			return &github.Issue{Owner: owner, Name: name, Number: number, Title: "Title", Body: "Body"}, nil
 		},
-		cloneRepo: func(ref string) (*github.Repo, error) { return repo, nil },
+		CloneRepoFn: func(ref string) (*github.Repo, error) { return repo, nil },
 	}
 }
 
@@ -258,11 +191,11 @@ func TestRun_RendersMarkdownAndCachesResult(t *testing.T) {
 
 	patternDir := seedPatternDir(t)
 	repo := fakeRepo(t, "acme", "widgets")
-	gh := &fakeGitHub{
-		getIssue: func(owner, name string, number int) (*github.Issue, error) {
+	gh := &githubtest.Fake{
+		GetIssueFn: func(owner, name string, number int) (*github.Issue, error) {
 			return &github.Issue{Owner: owner, Name: name, Number: number, Title: "Title", Body: "Body", URL: "u"}, nil
 		},
-		cloneRepo: func(ref string) (*github.Repo, error) { return repo, nil },
+		CloneRepoFn: func(ref string) (*github.Repo, error) { return repo, nil },
 	}
 	cl := &fakeClaude{
 		fn: func(dir string, ctx Context) (*Result, error) {
@@ -319,17 +252,17 @@ func TestRun_ThreadsMetaAndSiblingContext(t *testing.T) {
 
 	patternDir := seedPatternDir(t)
 	repo := fakeRepo(t, "acme", "widgets")
-	gh := &fakeGitHub{
-		getIssue: func(owner, name string, number int) (*github.Issue, error) {
+	gh := &githubtest.Fake{
+		GetIssueFn: func(owner, name string, number int) (*github.Issue, error) {
 			return &github.Issue{Owner: owner, Name: name, Number: number, Title: "Sub", Body: "Body"}, nil
 		},
-		getIssueRelations: func(owner, name string, number int) (*github.IssueRelations, error) {
+		GetIssueRelationsFn: func(owner, name string, number int) (*github.IssueRelations, error) {
 			return &github.IssueRelations{
 				Parent:   &github.Issue{Owner: owner, Name: name, Number: 1, Title: "Meta", Body: "Meta body"},
 				Siblings: []github.Issue{{Owner: owner, Name: name, Number: 2, Title: "Sibling", Body: "Sibling body", State: "open"}},
 			}, nil
 		},
-		cloneRepo: func(ref string) (*github.Repo, error) { return repo, nil },
+		CloneRepoFn: func(ref string) (*github.Repo, error) { return repo, nil },
 	}
 	cl := &fakeClaude{fn: func(dir string, ctx Context) (*Result, error) {
 		if ctx.MetaIssue == nil || ctx.MetaIssue.Number != 1 {
@@ -362,17 +295,17 @@ func TestRun_SiblingChangeBustsCache(t *testing.T) {
 	patternDir := seedPatternDir(t)
 	repo := fakeRepo(t, "acme", "widgets")
 	siblingBody := "Sibling body v1"
-	gh := &fakeGitHub{
-		getIssue: func(owner, name string, number int) (*github.Issue, error) {
+	gh := &githubtest.Fake{
+		GetIssueFn: func(owner, name string, number int) (*github.Issue, error) {
 			return &github.Issue{Owner: owner, Name: name, Number: number, Title: "Sub", Body: "Body"}, nil
 		},
-		getIssueRelations: func(owner, name string, number int) (*github.IssueRelations, error) {
+		GetIssueRelationsFn: func(owner, name string, number int) (*github.IssueRelations, error) {
 			return &github.IssueRelations{
 				Parent:   &github.Issue{Owner: owner, Name: name, Number: 1, Title: "Meta", Body: "Meta body"},
 				Siblings: []github.Issue{{Owner: owner, Name: name, Number: 2, Title: "Sibling", Body: siblingBody, State: "open"}},
 			}, nil
 		},
-		cloneRepo: func(ref string) (*github.Repo, error) { return repo, nil },
+		CloneRepoFn: func(ref string) (*github.Repo, error) { return repo, nil },
 	}
 	cl := &fakeClaude{fn: func(dir string, ctx Context) (*Result, error) {
 		return &Result{Title: "Sub", Description: "d", Motivation: "m"}, nil
@@ -412,17 +345,17 @@ func TestRun_SiblingPRChangeBustsCache(t *testing.T) {
 	patternDir := seedPatternDir(t)
 	repo := fakeRepo(t, "acme", "widgets")
 	var siblingPRs []github.LinkedPR
-	gh := &fakeGitHub{
-		getIssue: func(owner, name string, number int) (*github.Issue, error) {
+	gh := &githubtest.Fake{
+		GetIssueFn: func(owner, name string, number int) (*github.Issue, error) {
 			return &github.Issue{Owner: owner, Name: name, Number: number, Title: "Sub", Body: "Body"}, nil
 		},
-		getIssueRelations: func(owner, name string, number int) (*github.IssueRelations, error) {
+		GetIssueRelationsFn: func(owner, name string, number int) (*github.IssueRelations, error) {
 			return &github.IssueRelations{
 				Parent:   &github.Issue{Owner: owner, Name: name, Number: 1, Title: "Meta", Body: "Meta body"},
 				Siblings: []github.Issue{{Owner: owner, Name: name, Number: 2, Title: "Sibling", Body: "Sibling body", State: "open", LinkedPRs: siblingPRs}},
 			}, nil
 		},
-		cloneRepo: func(ref string) (*github.Repo, error) { return repo, nil },
+		CloneRepoFn: func(ref string) (*github.Repo, error) { return repo, nil },
 	}
 	cl := &fakeClaude{fn: func(dir string, ctx Context) (*Result, error) {
 		return &Result{Title: "Sub", Description: "d", Motivation: "m"}, nil
@@ -455,11 +388,11 @@ func TestRun_NoCacheBypassesCache(t *testing.T) {
 
 	patternDir := seedPatternDir(t)
 	repo := fakeRepo(t, "acme", "widgets")
-	gh := &fakeGitHub{
-		getIssue: func(owner, name string, number int) (*github.Issue, error) {
+	gh := &githubtest.Fake{
+		GetIssueFn: func(owner, name string, number int) (*github.Issue, error) {
 			return &github.Issue{Owner: owner, Name: name, Number: number, Title: "T", Body: "B"}, nil
 		},
-		cloneRepo: func(ref string) (*github.Repo, error) { return repo, nil },
+		CloneRepoFn: func(ref string) (*github.Repo, error) { return repo, nil },
 	}
 	cl := &fakeClaude{
 		fn: func(dir string, ctx Context) (*Result, error) {
@@ -487,11 +420,11 @@ func TestRun_UpdateModes(t *testing.T) {
 
 	patternDir := seedPatternDir(t)
 	repo := fakeRepo(t, "acme", "widgets")
-	gh := &fakeGitHub{
-		getIssue: func(owner, name string, number int) (*github.Issue, error) {
+	gh := &githubtest.Fake{
+		GetIssueFn: func(owner, name string, number int) (*github.Issue, error) {
 			return &github.Issue{Owner: owner, Name: name, Number: number, Title: "T", Body: "B"}, nil
 		},
-		cloneRepo: func(ref string) (*github.Repo, error) { return repo, nil },
+		CloneRepoFn: func(ref string) (*github.Repo, error) { return repo, nil },
 	}
 	cl := &fakeClaude{}
 	r := &Runner{Claude: cl, GitHub: gh}
@@ -502,8 +435,8 @@ func TestRun_UpdateModes(t *testing.T) {
 		if err := r.Run(&bytes.Buffer{}, opts); err != nil {
 			t.Fatalf("Run: %v", err)
 		}
-		if gh.editCalls != 0 || gh.commentCalls != 0 {
-			t.Errorf("UpdateNone should not call edit/comment, got edit=%d comment=%d", gh.editCalls, gh.commentCalls)
+		if gh.Count("EditIssueBody") != 0 || gh.Count("AddIssueComment") != 0 {
+			t.Errorf("UpdateNone should not call edit/comment, got edit=%d comment=%d", gh.Count("EditIssueBody"), gh.Count("AddIssueComment"))
 		}
 	})
 
@@ -514,8 +447,8 @@ func TestRun_UpdateModes(t *testing.T) {
 		if err := r.Run(&bytes.Buffer{}, opts); err != nil {
 			t.Fatalf("Run: %v", err)
 		}
-		if gh.editCalls != 1 {
-			t.Errorf("UpdateReplace should call EditIssueBody once, got %d", gh.editCalls)
+		if gh.Count("EditIssueBody") != 1 {
+			t.Errorf("UpdateReplace should call EditIssueBody once, got %d", gh.Count("EditIssueBody"))
 		}
 	})
 
@@ -526,15 +459,15 @@ func TestRun_UpdateModes(t *testing.T) {
 		if err := r.Run(&bytes.Buffer{}, opts); err != nil {
 			t.Fatalf("Run: %v", err)
 		}
-		if gh.commentCalls != 1 {
-			t.Errorf("UpdateComment should call AddIssueComment once, got %d", gh.commentCalls)
+		if gh.Count("AddIssueComment") != 1 {
+			t.Errorf("UpdateComment should call AddIssueComment once, got %d", gh.Count("AddIssueComment"))
 		}
 	})
 }
 
 func TestRun_GetIssueErrorPropagates(t *testing.T) {
-	gh := &fakeGitHub{
-		getIssue: func(owner, name string, number int) (*github.Issue, error) {
+	gh := &githubtest.Fake{
+		GetIssueFn: func(owner, name string, number int) (*github.Issue, error) {
 			return nil, errors.New("gh boom")
 		},
 	}
@@ -546,8 +479,8 @@ func TestRun_GetIssueErrorPropagates(t *testing.T) {
 }
 
 func TestRun_InvalidIssueRefFailsBeforeFetch(t *testing.T) {
-	gh := &fakeGitHub{
-		getIssue: func(owner, name string, number int) (*github.Issue, error) {
+	gh := &githubtest.Fake{
+		GetIssueFn: func(owner, name string, number int) (*github.Issue, error) {
 			t.Fatal("GetIssue must not be called for invalid ref")
 			return nil, nil
 		},
@@ -691,11 +624,11 @@ func TestRun_FillsTitleFromIssueWhenClaudeOmitsIt(t *testing.T) {
 
 	patternDir := seedPatternDir(t)
 	repo := fakeRepo(t, "acme", "widgets")
-	gh := &fakeGitHub{
-		getIssue: func(owner, name string, number int) (*github.Issue, error) {
+	gh := &githubtest.Fake{
+		GetIssueFn: func(owner, name string, number int) (*github.Issue, error) {
 			return &github.Issue{Owner: owner, Name: name, Number: number, Title: "Original Title", Body: "B"}, nil
 		},
-		cloneRepo: func(ref string) (*github.Repo, error) { return repo, nil },
+		CloneRepoFn: func(ref string) (*github.Repo, error) { return repo, nil },
 	}
 	cl := &fakeClaude{
 		fn: func(dir string, ctx Context) (*Result, error) {
@@ -719,11 +652,11 @@ func TestRun_LocalUsesCwd(t *testing.T) {
 
 	patternDir := seedPatternDir(t)
 	repo := fakeRepo(t, "acme", "widgets")
-	gh := &fakeGitHub{
-		getIssue: func(owner, name string, number int) (*github.Issue, error) {
+	gh := &githubtest.Fake{
+		GetIssueFn: func(owner, name string, number int) (*github.Issue, error) {
 			return &github.Issue{Owner: owner, Name: name, Number: number, Title: "Title", Body: "Body", URL: "u"}, nil
 		},
-		cloneRepo: func(ref string) (*github.Repo, error) { return repo, nil },
+		CloneRepoFn: func(ref string) (*github.Repo, error) { return repo, nil },
 	}
 	r := &Runner{Claude: &fakeClaude{}, GitHub: gh}
 
@@ -734,11 +667,11 @@ func TestRun_LocalUsesCwd(t *testing.T) {
 	if err := r.Run(&bytes.Buffer{}, opts); err != nil {
 		t.Fatalf("Run error: %v", err)
 	}
-	if gh.cloneLocalCalls.Load() != 1 {
-		t.Errorf("UseLocalRepo calls = %d, want 1", gh.cloneLocalCalls.Load())
+	if gh.Count("UseLocalRepo") != 1 {
+		t.Errorf("UseLocalRepo calls = %d, want 1", gh.Count("UseLocalRepo"))
 	}
-	if gh.cloneCalls.Load() != 0 {
-		t.Errorf("CloneRepo calls = %d, want 0 in local mode", gh.cloneCalls.Load())
+	if gh.Count("CloneRepo") != 0 {
+		t.Errorf("CloneRepo calls = %d, want 0 in local mode", gh.Count("CloneRepo"))
 	}
 	if _, err := os.Stat(repo.Dir); err != nil {
 		t.Fatalf("local checkout must survive the run: %v", err)

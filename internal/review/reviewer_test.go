@@ -7,54 +7,12 @@ import (
 
 	"github.com/planwerk/planwerk-agent/internal/claude"
 	"github.com/planwerk/planwerk-agent/internal/github"
+	"github.com/planwerk/planwerk-agent/internal/github/githubtest"
 	"github.com/planwerk/planwerk-agent/internal/hygiene"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/planwerk"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
-
-// mockGitHub is a configurable in-memory GitHubClient used by renderResult tests.
-// Each function is a closure the test can set. Nil closures panic on call so a
-// test that uses an unexpected code path fails loudly rather than hitting the
-// real gh CLI.
-type mockGitHub struct {
-	postPRComment         func(owner, repo string, number int, body string) (string, error)
-	submitPRReview        func(owner, repo string, number int, commitSHA, body string, comments []github.ReviewComment) (string, error)
-	fetchDiff             func(owner, repo string, number int) (string, error)
-	fetchAndCheckout      func(ref string) (*github.PR, error)
-	fetchAndCheckoutLocal func(ref string, opts github.LocalOptions) (*github.PR, error)
-	fetchReviewComment    func(owner, repo string, number int) (string, bool, error)
-}
-
-func (m *mockGitHub) PostPRComment(owner, repo string, number int, body string) (string, error) {
-	return m.postPRComment(owner, repo, number, body)
-}
-
-func (m *mockGitHub) SubmitPRReview(owner, repo string, number int, commitSHA, body string, comments []github.ReviewComment) (string, error) {
-	return m.submitPRReview(owner, repo, number, commitSHA, body, comments)
-}
-
-func (m *mockGitHub) FetchDiff(owner, repo string, number int) (string, error) {
-	return m.fetchDiff(owner, repo, number)
-}
-
-func (m *mockGitHub) FetchAndCheckout(ref string) (*github.PR, error) {
-	return m.fetchAndCheckout(ref)
-}
-
-func (m *mockGitHub) OpenLocalPR(ref string, opts github.LocalOptions) (*github.PR, error) {
-	if m.fetchAndCheckoutLocal == nil {
-		panic("mockGitHub.OpenLocalPR called unexpectedly")
-	}
-	return m.fetchAndCheckoutLocal(ref, opts)
-}
-
-func (m *mockGitHub) FetchReviewComment(owner, repo string, number int) (string, bool, error) {
-	if m.fetchReviewComment == nil {
-		return "", false, nil
-	}
-	return m.fetchReviewComment(owner, repo, number)
-}
 
 // mockClaude is a placeholder ClaudeRunner for tests that only exercise
 // renderResult paths (which do not touch Claude). All methods panic if
@@ -93,7 +51,7 @@ func (mockClaude) UsageTotals() report.Usage {
 	return report.Usage{}
 }
 
-func newTestRunner(gh *mockGitHub) *Runner {
+func newTestRunner(gh *githubtest.Fake) *Runner {
 	return &Runner{
 		Claude: mockClaude{},
 		GitHub: gh,
@@ -104,8 +62,8 @@ func TestRenderResult_PostReview(t *testing.T) {
 	t.Parallel()
 
 	var postedBody string
-	gh := &mockGitHub{
-		postPRComment: func(owner, repo string, number int, body string) (string, error) {
+	gh := &githubtest.Fake{
+		PostPRCommentFn: func(owner, repo string, number int, body string) (string, error) {
 			postedBody = body
 			return "https://github.com/test/repo/pull/1#issuecomment-123", nil
 		},
@@ -162,8 +120,8 @@ func TestRenderResult_PostReview(t *testing.T) {
 func TestRenderResult_NoPost(t *testing.T) {
 	t.Parallel()
 
-	gh := &mockGitHub{
-		postPRComment: func(owner, repo string, number int, body string) (string, error) {
+	gh := &githubtest.Fake{
+		PostPRCommentFn: func(owner, repo string, number int, body string) (string, error) {
 			t.Fatal("PostPRComment should not be called when PostReview is false")
 			return "", nil
 		},
@@ -193,8 +151,8 @@ func TestRenderResult_NoPost(t *testing.T) {
 func TestRenderResult_PostReviewError(t *testing.T) {
 	t.Parallel()
 
-	gh := &mockGitHub{
-		postPRComment: func(owner, repo string, number int, body string) (string, error) {
+	gh := &githubtest.Fake{
+		PostPRCommentFn: func(owner, repo string, number int, body string) (string, error) {
 			return "", &mockError{"post failed"}
 		},
 	}
@@ -223,13 +181,13 @@ func TestRenderResult_InlineReview(t *testing.T) {
 
 	var submittedBody string
 	var submittedComments []github.ReviewComment
-	gh := &mockGitHub{
-		submitPRReview: func(owner, repo string, number int, commitSHA, body string, comments []github.ReviewComment) (string, error) {
+	gh := &githubtest.Fake{
+		SubmitPRReviewFn: func(owner, repo string, number int, commitSHA, body string, comments []github.ReviewComment) (string, error) {
 			submittedBody = body
 			submittedComments = comments
 			return "https://github.com/test/repo/pull/1#discussion_r123", nil
 		},
-		fetchDiff: func(owner, repo string, number int) (string, error) {
+		FetchDiffFn: func(owner, repo string, number int) (string, error) {
 			return `diff --git a/main.go b/main.go
 index abc..def 100644
 --- a/main.go
@@ -305,15 +263,15 @@ func TestRenderResult_InlineReviewFallback(t *testing.T) {
 	t.Parallel()
 
 	var postedBody string
-	gh := &mockGitHub{
-		postPRComment: func(owner, repo string, number int, body string) (string, error) {
+	gh := &githubtest.Fake{
+		PostPRCommentFn: func(owner, repo string, number int, body string) (string, error) {
 			postedBody = body
 			return "https://github.com/test/repo/pull/1#issuecomment-456", nil
 		},
-		submitPRReview: func(owner, repo string, number int, commitSHA, body string, comments []github.ReviewComment) (string, error) {
+		SubmitPRReviewFn: func(owner, repo string, number int, commitSHA, body string, comments []github.ReviewComment) (string, error) {
 			return "", &mockError{"API error"}
 		},
-		fetchDiff: func(owner, repo string, number int) (string, error) {
+		FetchDiffFn: func(owner, repo string, number int) (string, error) {
 			return "", nil
 		},
 	}

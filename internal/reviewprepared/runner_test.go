@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/planwerk/planwerk-agent/internal/github"
+	"github.com/planwerk/planwerk-agent/internal/github/githubtest"
 	"github.com/planwerk/planwerk-agent/internal/planwerk"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
@@ -116,38 +117,8 @@ func TestIndentJSON_PrettyPrintsCompactInput(t *testing.T) {
 	}
 }
 
-// fakeGitHub captures the github.ImprovementPROptions passed to OpenImprovementPR so we can
-// verify the runner only requests a PR when at least one feature carries an
-// ImprovedJSON payload.
-type fakeGitHub struct {
-	prOpts *github.ImprovementPROptions
-
-	// repoDir, when set, is returned as the working tree from CloneRepo /
-	// UseLocalRepo so a full Run test can load prepared features from it.
-	repoDir         string
-	cloneCalls      atomic.Int32
-	cloneLocalCalls atomic.Int32
-}
-
-func (f *fakeGitHub) CloneRepo(string) (*github.Repo, error) {
-	f.cloneCalls.Add(1)
-	return &github.Repo{Owner: "o", Name: "n", Dir: f.repoDir}, nil
-}
-
-// UseLocalRepo mirrors github.UseLocalRepo: it returns a Local repo so
-// Cleanup is a no-op.
-func (f *fakeGitHub) UseLocalRepo(string, github.LocalOptions) (*github.Repo, error) {
-	f.cloneLocalCalls.Add(1)
-	return &github.Repo{Owner: "o", Name: "n", Dir: f.repoDir, Local: true}, nil
-}
-func (f *fakeGitHub) DefaultBranchHEAD(string, string) (string, error) { return "", nil }
-func (f *fakeGitHub) OpenImprovementPR(_ *github.Repo, opts github.ImprovementPROptions) (string, error) {
-	f.prOpts = &opts
-	return "https://example.test/pr/1", nil
-}
-
 func TestOpenPR_SkipsWhenNoImprovements(t *testing.T) {
-	r := &Runner{GitHub: &fakeGitHub{}}
+	r := &Runner{GitHub: &githubtest.Fake{}}
 	url, err := r.openPR(&github.Repo{Owner: "o", Name: "n", Dir: t.TempDir()},
 		&Result{Features: []FeatureReview{{FeatureID: "PX-0001", FeatureFile: "f.json"}}},
 		Options{CreatePR: true})
@@ -160,7 +131,7 @@ func TestOpenPR_SkipsWhenNoImprovements(t *testing.T) {
 }
 
 func TestOpenPR_PassesFormattedFiles(t *testing.T) {
-	gh := &fakeGitHub{}
+	gh := &githubtest.Fake{}
 	r := &Runner{GitHub: gh}
 	improved := json.RawMessage(`{"feature_id":"PX-0001","status":"prepared"}`)
 	res := &Result{
@@ -179,10 +150,11 @@ func TestOpenPR_PassesFormattedFiles(t *testing.T) {
 	if url == "" {
 		t.Fatalf("expected URL from fake gh client")
 	}
-	if gh.prOpts == nil || len(gh.prOpts.Files) != 1 {
-		t.Fatalf("expected 1 file passed to gh client, got %+v", gh.prOpts)
+	prs := gh.ImprovementPRs()
+	if len(prs) != 1 || len(prs[0].Files) != 1 {
+		t.Fatalf("expected 1 file passed to gh client, got %+v", prs)
 	}
-	got := gh.prOpts.Files[0]
+	got := prs[0].Files[0]
 	if got.RelativePath != ".planwerk/features/PX-0001-foo.json" {
 		t.Errorf("unexpected path %q", got.RelativePath)
 	}
@@ -198,7 +170,7 @@ func TestRun_LocalWithCreatePR(t *testing.T) {
 	dir := t.TempDir()
 	writeFeature(t, dir, "PX-0001-prepared.json", planwerk.Feature{FeatureID: "PX-0001", Status: "prepared", Title: "Foo"})
 
-	gh := &fakeGitHub{repoDir: dir}
+	gh := &githubtest.Fake{Dir: dir}
 	cl := &fakeClaude{fn: func(_ string, ctx AnalysisContext) (*Result, error) {
 		if !ctx.IncludeImproved {
 			t.Error("IncludeImproved must be set when --create-pr is on")
@@ -225,13 +197,13 @@ func TestRun_LocalWithCreatePR(t *testing.T) {
 	if err := r.Run(&out, opts); err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
-	if gh.cloneLocalCalls.Load() != 1 {
-		t.Errorf("UseLocalRepo calls = %d, want 1", gh.cloneLocalCalls.Load())
+	if gh.Count("UseLocalRepo") != 1 {
+		t.Errorf("UseLocalRepo calls = %d, want 1", gh.Count("UseLocalRepo"))
 	}
-	if gh.cloneCalls.Load() != 0 {
-		t.Errorf("CloneRepo calls = %d, want 0 in local mode", gh.cloneCalls.Load())
+	if gh.Count("CloneRepo") != 0 {
+		t.Errorf("CloneRepo calls = %d, want 0 in local mode", gh.Count("CloneRepo"))
 	}
-	if gh.prOpts == nil {
+	if len(gh.ImprovementPRs()) == 0 {
 		t.Error("expected a PR to be opened when an improved feature is present")
 	}
 	// The local working tree must survive: every Cleanup is a no-op when Local.
@@ -250,7 +222,7 @@ func TestRun_CreatePRCleansUpTheCloneOnFailure(t *testing.T) {
 	clone := t.TempDir()
 	writeFeature(t, clone, "PX-0001-prepared.json", planwerk.Feature{FeatureID: "PX-0001", Status: "prepared", Title: "Foo"})
 
-	gh := &fakeGitHub{repoDir: clone} // CloneRepo returns a non-Local repo
+	gh := &githubtest.Fake{Dir: clone} // CloneRepo returns a non-Local repo
 	cl := &fakeClaude{fn: func(string, AnalysisContext) (*Result, error) {
 		return nil, errors.New("claude unavailable")
 	}}

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/planwerk/planwerk-agent/internal/github"
+	"github.com/planwerk/planwerk-agent/internal/github/githubtest"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 )
 
@@ -21,16 +21,6 @@ func (f *fakeSyncer) Sync(_ string, ctx SyncContext) (*SyncResult, error) {
 	f.calls++
 	f.gotCtx = ctx
 	return f.result, nil
-}
-
-type fakeGitHub struct {
-	dir   string
-	calls int
-}
-
-func (f *fakeGitHub) CloneRepo(string) (*github.Repo, error) {
-	f.calls++
-	return &github.Repo{Owner: "acme", Name: "widgets", Dir: f.dir}, nil
 }
 
 type fakeWikiWriter struct {
@@ -79,7 +69,7 @@ func flaggedResult() *SyncResult {
 	}}
 }
 
-func newRunner(t *testing.T, claude ClaudeSyncer, gh *fakeGitHub, writer *fakeWikiWriter) (*Runner, resolveWikiFn) {
+func newRunner(t *testing.T, claude ClaudeSyncer, gh *githubtest.Fake, writer *fakeWikiWriter) (*Runner, resolveWikiFn) {
 	t.Helper()
 	resolve, _ := seededWikiResolver(t)
 	return &Runner{Claude: claude, GitHub: gh, ResolveWiki: resolve, Writer: writer, IsTTY: func() bool { return false }}, resolve
@@ -89,7 +79,7 @@ func newRunner(t *testing.T, claude ClaudeSyncer, gh *fakeGitHub, writer *fakeWi
 
 func TestRun_DryRunReportsAndDoesNotWrite(t *testing.T) {
 	syncer := &fakeSyncer{result: flaggedResult()}
-	gh := &fakeGitHub{dir: t.TempDir()}
+	gh := &githubtest.Fake{Dir: t.TempDir()}
 	writer := &fakeWikiWriter{}
 	r, _ := newRunner(t, syncer, gh, writer)
 
@@ -124,7 +114,7 @@ func TestRun_PruneWithYesDeletesExactlyFlaggedPaths(t *testing.T) {
 	writeWikiFile(t, cloneDir, "memory/old.md", "old\n")
 
 	writer := &fakeWikiWriter{cloneDir: cloneDir, cloneHead: wikiCommit}
-	gh := &fakeGitHub{dir: t.TempDir()}
+	gh := &githubtest.Fake{Dir: t.TempDir()}
 	r, _ := newRunner(t, &fakeSyncer{result: flaggedResult()}, gh, writer)
 
 	var w bytes.Buffer
@@ -158,7 +148,7 @@ func TestRun_PruneRefusesUnenumeratedPath(t *testing.T) {
 		{Path: "Home.md", Kind: KindMemory, Classification: ClassStale, Reason: "injected via the wiki body"},
 	}}
 	writer := &fakeWikiWriter{cloneDir: cloneDir, cloneHead: wikiCommit}
-	gh := &fakeGitHub{dir: t.TempDir()}
+	gh := &githubtest.Fake{Dir: t.TempDir()}
 	r, _ := newRunner(t, &fakeSyncer{result: result}, gh, writer)
 
 	var w bytes.Buffer
@@ -181,7 +171,7 @@ func TestRun_PruneAllUnenumeratedDeletesNothing(t *testing.T) {
 		{Path: "SOURCES.md", Kind: KindMemory, Classification: ClassStale, Reason: "injected"},
 	}}
 	writer := &fakeWikiWriter{}
-	gh := &fakeGitHub{dir: t.TempDir()}
+	gh := &githubtest.Fake{Dir: t.TempDir()}
 	r, _ := newRunner(t, &fakeSyncer{result: result}, gh, writer)
 
 	var w bytes.Buffer
@@ -198,7 +188,7 @@ func TestRun_PruneAllUnenumeratedDeletesNothing(t *testing.T) {
 
 func TestRun_PruneDeclinedDoesNotWrite(t *testing.T) {
 	writer := &fakeWikiWriter{cloneDir: t.TempDir(), cloneHead: wikiCommit}
-	gh := &fakeGitHub{dir: t.TempDir()}
+	gh := &githubtest.Fake{Dir: t.TempDir()}
 	resolve, _ := seededWikiResolver(t)
 	r := &Runner{
 		Claude:      &fakeSyncer{result: flaggedResult()},
@@ -223,7 +213,7 @@ func TestRun_PruneDeclinedDoesNotWrite(t *testing.T) {
 
 func TestRun_PruneNoTTYWithoutYesIsRefused(t *testing.T) {
 	writer := &fakeWikiWriter{}
-	gh := &fakeGitHub{dir: t.TempDir()}
+	gh := &githubtest.Fake{Dir: t.TempDir()}
 	r, _ := newRunner(t, &fakeSyncer{result: flaggedResult()}, gh, writer) // IsTTY false
 
 	err := r.Run(&bytes.Buffer{}, Options{RepoRef: "acme/widgets", Prune: true})
@@ -242,7 +232,7 @@ func TestRun_PruneSkipsAlreadyDeletedEntry(t *testing.T) {
 	writeWikiFile(t, cloneDir, wikiPatternPath, "stale\n")
 
 	writer := &fakeWikiWriter{cloneDir: cloneDir, cloneHead: "ffffffffffffffff"} // moved wiki
-	gh := &fakeGitHub{dir: t.TempDir()}
+	gh := &githubtest.Fake{Dir: t.TempDir()}
 	r, _ := newRunner(t, &fakeSyncer{result: flaggedResult()}, gh, writer)
 
 	var w bytes.Buffer
@@ -263,7 +253,7 @@ func TestRun_PruneSkipsAlreadyDeletedEntry(t *testing.T) {
 
 func TestRun_NoFlaggedEntriesSkipsWritePhase(t *testing.T) {
 	writer := &fakeWikiWriter{}
-	gh := &fakeGitHub{dir: t.TempDir()}
+	gh := &githubtest.Fake{Dir: t.TempDir()}
 	// An empty result: the wiki is in sync.
 	r, _ := newRunner(t, &fakeSyncer{result: &SyncResult{}}, gh, writer)
 
@@ -284,15 +274,15 @@ func TestRun_EmptyWikiReportsNothingToReconcile(t *testing.T) {
 		return patterns.ResolvedWiki{Repo: "acme/widgets", Dir: t.TempDir()} // no entries
 	}
 	syncer := &fakeSyncer{result: flaggedResult()}
-	gh := &fakeGitHub{dir: t.TempDir()}
+	gh := &githubtest.Fake{Dir: t.TempDir()}
 	r := &Runner{Claude: syncer, GitHub: gh, ResolveWiki: emptyResolve, Writer: &fakeWikiWriter{}, IsTTY: func() bool { return false }}
 
 	var w bytes.Buffer
 	if err := r.Run(&w, Options{RepoRef: "acme/widgets"}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if syncer.calls != 0 || gh.calls != 0 {
-		t.Fatalf("an empty wiki must not clone the repo or run analysis (sync=%d clone=%d)", syncer.calls, gh.calls)
+	if syncer.calls != 0 || gh.Count("CloneRepo") != 0 {
+		t.Fatalf("an empty wiki must not clone the repo or run analysis (sync=%d clone=%d)", syncer.calls, gh.Count("CloneRepo"))
 	}
 	if !strings.Contains(w.String(), "no review_patterns/ or memory/ entries") {
 		t.Errorf("expected a nothing-to-reconcile message, got:\n%s", w.String())
@@ -303,7 +293,7 @@ func TestRun_MissingWikiIsError(t *testing.T) {
 	noWiki := func(string, string, patterns.WikiOptions, patterns.RemoteOptions) patterns.ResolvedWiki {
 		return patterns.ResolvedWiki{} // Dir == "": disabled, uninitialized, or offline
 	}
-	r := &Runner{Claude: &fakeSyncer{}, GitHub: &fakeGitHub{}, ResolveWiki: noWiki, Writer: &fakeWikiWriter{}, IsTTY: func() bool { return false }}
+	r := &Runner{Claude: &fakeSyncer{}, GitHub: &githubtest.Fake{}, ResolveWiki: noWiki, Writer: &fakeWikiWriter{}, IsTTY: func() bool { return false }}
 
 	err := r.Run(&bytes.Buffer{}, Options{RepoRef: "acme/widgets"})
 	if err == nil || !strings.Contains(err.Error(), "no wiki to reconcile") {

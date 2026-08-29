@@ -15,6 +15,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/attribution"
 	"github.com/planwerk/planwerk-agent/internal/capture"
 	"github.com/planwerk/planwerk-agent/internal/github"
+	"github.com/planwerk/planwerk-agent/internal/github/githubtest"
 	"github.com/planwerk/planwerk-agent/internal/hygiene"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
@@ -203,7 +204,7 @@ func (f *fakePlanner) Plan(dir string, ctx Context) (string, string, error) {
 }
 
 func TestRun_PlanFeedsImplement(t *testing.T) {
-	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
 	cl := &fakeClaude{report: validImplReport}
 	fp := &fakePlanner{plan: "## Implementation Plan (issue #42)\n\nSTATUS: PLAN_READY"}
 	r := newRunner(gh, cl)
@@ -216,8 +217,8 @@ func TestRun_PlanFeedsImplement(t *testing.T) {
 	if fp.called.Load() != 1 {
 		t.Errorf("planner called %d times, want 1", fp.called.Load())
 	}
-	if fp.dir != gh.cloneDir {
-		t.Errorf("planner ran in %q, want clone dir %q", fp.dir, gh.cloneDir)
+	if fp.dir != gh.Dir {
+		t.Errorf("planner ran in %q, want clone dir %q", fp.dir, gh.Dir)
 	}
 	if cl.ctx.Plan != fp.plan {
 		t.Errorf("implement received Plan %q, want the planner's plan %q", cl.ctx.Plan, fp.plan)
@@ -225,20 +226,20 @@ func TestRun_PlanFeedsImplement(t *testing.T) {
 	if !strings.Contains(buf.String(), "Implementation plan:") || !strings.Contains(buf.String(), "PLAN_READY") {
 		t.Errorf("plan not printed to output:\n%s", buf.String())
 	}
-	if gh.commentCalls.Load() != 2 {
-		t.Fatalf("AddIssueComment called %d times, want 2 (plan then report)", gh.commentCalls.Load())
+	if gh.Count("AddIssueComment") != 2 {
+		t.Fatalf("AddIssueComment called %d times, want 2 (plan then report)", gh.Count("AddIssueComment"))
 	}
-	if !strings.Contains(gh.commentBodies[0], fp.plan) {
-		t.Errorf("first posted comment %q does not contain the plan %q", gh.commentBodies[0], fp.plan)
+	if !strings.Contains(gh.Comments()[0], fp.plan) {
+		t.Errorf("first posted comment %q does not contain the plan %q", gh.Comments()[0], fp.plan)
 	}
-	if !strings.Contains(gh.commentBodies[0], planCommentFooter("")) {
-		t.Errorf("first posted comment is missing the plan attribution footer:\n%s", gh.commentBodies[0])
+	if !strings.Contains(gh.Comments()[0], planCommentFooter("")) {
+		t.Errorf("first posted comment is missing the plan attribution footer:\n%s", gh.Comments()[0])
 	}
-	if !strings.Contains(gh.commentBodies[1], cl.report) {
-		t.Errorf("second posted comment %q does not contain the report %q", gh.commentBodies[1], cl.report)
+	if !strings.Contains(gh.Comments()[1], cl.report) {
+		t.Errorf("second posted comment %q does not contain the report %q", gh.Comments()[1], cl.report)
 	}
-	if !strings.Contains(gh.commentBodies[1], reportCommentFooter("")) {
-		t.Errorf("second posted comment is missing the report attribution footer:\n%s", gh.commentBodies[1])
+	if !strings.Contains(gh.Comments()[1], reportCommentFooter("")) {
+		t.Errorf("second posted comment is missing the report attribution footer:\n%s", gh.Comments()[1])
 	}
 	if !strings.Contains(buf.String(), "Posted the implementation plan as a comment on issue #42") {
 		t.Errorf("missing plan-comment confirmation in output:\n%s", buf.String())
@@ -250,7 +251,7 @@ func TestRun_PlanFeedsImplement(t *testing.T) {
 // the Claude implementer, where BuildImplementPrompt keys the orchestration
 // section and claude.Implement builds the --agents definition from them.
 func TestRun_WorkerModelReachesImplementContext(t *testing.T) {
-	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
 	cl := &fakeClaude{report: validImplReport}
 	r := newRunner(gh, cl)
 
@@ -270,10 +271,10 @@ func TestRun_WorkerModelReachesImplementContext(t *testing.T) {
 // fetched in Run reaches the planning session's context, so BuildPlanPrompt can
 // render the Meta Issue and sibling Sub Issues.
 func TestRun_RelationsFeedPlanner(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:    sampleIssue(),
-		cloneDir: t.TempDir(),
-		relations: &github.IssueRelations{
+	gh := &githubtest.Fake{
+		Issue: sampleIssue(),
+		Dir:   t.TempDir(),
+		Relations: &github.IssueRelations{
 			Parent:   &github.Issue{Number: 1, Title: "Meta", Body: "Meta body"},
 			Siblings: []github.Issue{{Number: 7, Title: "Sibling", Body: "Sibling body", State: "open"}},
 		},
@@ -296,7 +297,7 @@ func TestRun_RelationsFeedPlanner(t *testing.T) {
 }
 
 func TestRun_NoPlanCommentSkipsComment(t *testing.T) {
-	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
 	cl := &fakeClaude{report: validImplReport}
 	fp := &fakePlanner{plan: "## Implementation Plan (issue #42)\n\nSTATUS: PLAN_READY"}
 	r := newRunner(gh, cl)
@@ -305,14 +306,14 @@ func TestRun_NoPlanCommentSkipsComment(t *testing.T) {
 	if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42", NoPlanComment: true}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
-	if gh.commentCalls.Load() != 1 {
-		t.Fatalf("AddIssueComment called %d times, want 1 — --no-plan-comment skips only the plan, the report still posts", gh.commentCalls.Load())
+	if gh.Count("AddIssueComment") != 1 {
+		t.Fatalf("AddIssueComment called %d times, want 1 — --no-plan-comment skips only the plan, the report still posts", gh.Count("AddIssueComment"))
 	}
-	if !strings.Contains(gh.commentBodies[0], reportCommentFooter("")) {
-		t.Errorf("the posted comment should be the report, got:\n%s", gh.commentBodies[0])
+	if !strings.Contains(gh.Comments()[0], reportCommentFooter("")) {
+		t.Errorf("the posted comment should be the report, got:\n%s", gh.Comments()[0])
 	}
-	if strings.Contains(gh.commentBodies[0], planCommentFooter("")) {
-		t.Errorf("--no-plan-comment must suppress the plan comment, but it was posted:\n%s", gh.commentBodies[0])
+	if strings.Contains(gh.Comments()[0], planCommentFooter("")) {
+		t.Errorf("--no-plan-comment must suppress the plan comment, but it was posted:\n%s", gh.Comments()[0])
 	}
 	if cl.ctx.Plan != fp.plan {
 		t.Errorf("implement received Plan %q, want the planner's plan even when the comment is skipped", cl.ctx.Plan)
@@ -320,7 +321,7 @@ func TestRun_NoPlanCommentSkipsComment(t *testing.T) {
 }
 
 func TestRun_PlanCommentFailureIsNonFatal(t *testing.T) {
-	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir(), commentErr: errors.New("github down")}
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir(), CommentErr: errors.New("github down")}
 	cl := &fakeClaude{report: validImplReport}
 	fp := &fakePlanner{plan: "## Implementation Plan (issue #42)\n\nSTATUS: PLAN_READY"}
 	r := newRunner(gh, cl)
@@ -339,7 +340,7 @@ func TestRun_PlanCommentFailureIsNonFatal(t *testing.T) {
 }
 
 func TestRun_PostsReportComment(t *testing.T) {
-	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
 	cl := &fakeClaude{report: validImplReport}
 	r := newRunner(gh, cl)
 
@@ -347,14 +348,14 @@ func TestRun_PostsReportComment(t *testing.T) {
 	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
-	if gh.commentCalls.Load() != 1 {
-		t.Fatalf("AddIssueComment called %d times, want 1", gh.commentCalls.Load())
+	if gh.Count("AddIssueComment") != 1 {
+		t.Fatalf("AddIssueComment called %d times, want 1", gh.Count("AddIssueComment"))
 	}
-	if !strings.Contains(gh.commentBodies[0], cl.report) {
-		t.Errorf("posted comment %q does not contain the report %q", gh.commentBodies[0], cl.report)
+	if !strings.Contains(gh.Comments()[0], cl.report) {
+		t.Errorf("posted comment %q does not contain the report %q", gh.Comments()[0], cl.report)
 	}
-	if !strings.Contains(gh.commentBodies[0], reportCommentFooter("")) {
-		t.Errorf("posted comment is missing the attribution footer:\n%s", gh.commentBodies[0])
+	if !strings.Contains(gh.Comments()[0], reportCommentFooter("")) {
+		t.Errorf("posted comment is missing the attribution footer:\n%s", gh.Comments()[0])
 	}
 	if !strings.Contains(buf.String(), "Posted the implementation report as a comment on issue #42") {
 		t.Errorf("missing report-comment confirmation in output:\n%s", buf.String())
@@ -362,7 +363,7 @@ func TestRun_PostsReportComment(t *testing.T) {
 }
 
 func TestRun_ReportCommentFailureIsNonFatal(t *testing.T) {
-	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir(), commentErr: errors.New("github down")}
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir(), CommentErr: errors.New("github down")}
 	cl := &fakeClaude{report: validImplReport}
 	r := newRunner(gh, cl)
 
@@ -399,7 +400,7 @@ func TestRun_AbortsOnInvalidImplementReport(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+			gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
 			cl := &fakeClaude{report: tc.report}
 			ff := &fakeFinalizer{report: defaultFinalizeReport}
 			r := newRunner(gh, cl)
@@ -416,18 +417,18 @@ func TestRun_AbortsOnInvalidImplementReport(t *testing.T) {
 				t.Errorf("finalizer called %d times, want 0 — no PR on an unfinished implementation", ff.called.Load())
 			}
 			if !tc.wantNote {
-				if gh.commentCalls.Load() != 0 {
-					t.Errorf("AddIssueComment called %d times, want 0 for an empty output", gh.commentCalls.Load())
+				if gh.Count("AddIssueComment") != 0 {
+					t.Errorf("AddIssueComment called %d times, want 0 for an empty output", gh.Count("AddIssueComment"))
 				}
 				return
 			}
 			// The output IS preserved — but as a progress note, never as a report:
 			// exactly one comment, carrying the progress-note heading and marker
 			// and NOT the report attribution footer.
-			if gh.commentCalls.Load() != 1 {
-				t.Fatalf("AddIssueComment called %d times, want 1 (the progress note)", gh.commentCalls.Load())
+			if gh.Count("AddIssueComment") != 1 {
+				t.Fatalf("AddIssueComment called %d times, want 1 (the progress note)", gh.Count("AddIssueComment"))
 			}
-			note := gh.commentBodies[0]
+			note := gh.Comments()[0]
 			for _, want := range []string{progressNoteHeading + " (issue #42)", progressNoteMarker, tc.report} {
 				if !strings.Contains(note, want) {
 					t.Errorf("progress note missing %q:\n%s", want, note)
@@ -453,7 +454,7 @@ func TestRun_ProgressNoteGates(t *testing.T) {
 		{"no-report-comment", Options{IssueRef: "owner/repo#42", NoReportComment: true}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+			gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
 			cl := &fakeClaude{report: "prose without a report heading or status"}
 			r := newRunner(gh, cl)
 
@@ -461,8 +462,8 @@ func TestRun_ProgressNoteGates(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), "complete implementation report") {
 				t.Fatalf("Run returned %v, want an incomplete-report error", err)
 			}
-			if gh.commentCalls.Load() != 0 {
-				t.Errorf("AddIssueComment called %d times, want 0 under %s", gh.commentCalls.Load(), tc.name)
+			if gh.Count("AddIssueComment") != 0 {
+				t.Errorf("AddIssueComment called %d times, want 0 under %s", gh.Count("AddIssueComment"), tc.name)
 			}
 		})
 	}
@@ -471,7 +472,7 @@ func TestRun_ProgressNoteGates(t *testing.T) {
 // TestRun_ProgressNoteFailureKeepsAbortError locks that a failed note post
 // never masks the abort: the incomplete-report error survives unchanged.
 func TestRun_ProgressNoteFailureKeepsAbortError(t *testing.T) {
-	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir(), commentErr: errors.New("github down")}
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir(), CommentErr: errors.New("github down")}
 	cl := &fakeClaude{report: "prose without a report heading or status"}
 	r := newRunner(gh, cl)
 
@@ -492,7 +493,7 @@ func TestRun_ProgressNoteFailureKeepsAbortError(t *testing.T) {
 func TestRun_AbortsOnImplementEscalation(t *testing.T) {
 	for _, status := range []string{"BLOCKED", "NEEDS_CONTEXT"} {
 		t.Run(status, func(t *testing.T) {
-			gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+			gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
 			cl := &fakeClaude{report: "## Implementation Report (issue #42)\n\nSTATUS: " + status}
 			ff := &fakeFinalizer{report: defaultFinalizeReport}
 			r := newRunner(gh, cl)
@@ -506,8 +507,8 @@ func TestRun_AbortsOnImplementEscalation(t *testing.T) {
 			if ff.called.Load() != 0 {
 				t.Errorf("finalizer called %d times, want 0 after a %s report", ff.called.Load(), status)
 			}
-			if gh.commentCalls.Load() != 1 {
-				t.Errorf("AddIssueComment called %d times, want 1 — an escalated report must still post", gh.commentCalls.Load())
+			if gh.Count("AddIssueComment") != 1 {
+				t.Errorf("AddIssueComment called %d times, want 1 — an escalated report must still post", gh.Count("AddIssueComment"))
 			}
 			if !strings.Contains(buf.String(), "STATUS: "+status) {
 				t.Errorf("escalating report not printed for review:\n%s", buf.String())
@@ -524,10 +525,10 @@ func TestRun_ResumeDetectedFeedsImplement(t *testing.T) {
 		{SHA: "abc1234def", Subject: "Add foo scaffolding"},
 		{SHA: "0011223344", Subject: "Wire foo into the CLI"},
 	}
-	gh := &fakeGitHub{
-		issue:       sampleIssue(),
-		cloneDir:    t.TempDir(),
-		resumeState: &github.ResumeState{Branch: testResumeBranch, Commits: commits},
+	gh := &githubtest.Fake{
+		Issue:       sampleIssue(),
+		Dir:         t.TempDir(),
+		ResumeState: &github.ResumeState{Branch: testResumeBranch, Commits: commits},
 	}
 	cl := &fakeClaude{report: validImplReport}
 	r := newRunner(gh, cl)
@@ -536,8 +537,8 @@ func TestRun_ResumeDetectedFeedsImplement(t *testing.T) {
 	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
-	if gh.resumeCalls.Load() != 1 {
-		t.Errorf("PrepareResume called %d times, want 1", gh.resumeCalls.Load())
+	if gh.Count("PrepareResume") != 1 {
+		t.Errorf("PrepareResume called %d times, want 1", gh.Count("PrepareResume"))
 	}
 	if cl.ctx.Resume == nil {
 		t.Fatal("implement ctx.Resume is nil, want the resumed branch/commits")
@@ -559,11 +560,11 @@ func TestRun_ResumeDetectedFeedsImplement(t *testing.T) {
 // session via ctx.Resume.PriorReport, so it knows what was already verified.
 func TestRun_ResumeFeedsPriorSessionAccount(t *testing.T) {
 	const account = "Verified so far: unit tests green, lint green. Outstanding: the envtest integration run."
-	gh := &fakeGitHub{
-		issue:       sampleIssue(),
-		cloneDir:    t.TempDir(),
-		resumeState: &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "abc1234", Subject: "wip"}}},
-		comments: []github.IssueComment{
+	gh := &githubtest.Fake{
+		Issue:       sampleIssue(),
+		Dir:         t.TempDir(),
+		ResumeState: &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "abc1234", Subject: "wip"}}},
+		IssueComments: []github.IssueComment{
 			{Body: formatPlanComment("## Implementation Plan (issue #42)\n\nSTATUS: PLAN_READY", "")},
 			{Body: formatProgressNoteComment(account, 42, "claude-opus-5")},
 		},
@@ -588,11 +589,11 @@ func TestRun_ResumeFeedsPriorSessionAccount(t *testing.T) {
 // TestRun_ResumeAccountFetchFailureIsNonFatal locks that a failed comment
 // lookup degrades to resuming on the commits alone rather than aborting.
 func TestRun_ResumeAccountFetchFailureIsNonFatal(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:       sampleIssue(),
-		cloneDir:    t.TempDir(),
-		resumeState: &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "abc1234", Subject: "wip"}}},
-		commentsErr: errors.New("github down"),
+	gh := &githubtest.Fake{
+		Issue:            sampleIssue(),
+		Dir:              t.TempDir(),
+		ResumeState:      &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "abc1234", Subject: "wip"}}},
+		IssueCommentsErr: errors.New("github down"),
 	}
 	cl := &fakeClaude{report: validImplReport}
 	r := newRunner(gh, cl)
@@ -658,10 +659,10 @@ func TestMostRecentSessionAccount(t *testing.T) {
 // resumable branch never aborts the run: it degrades to a normal fresh
 // implementation with ctx.Resume left nil.
 func TestRun_ResumeDetectionErrorIsNonFatal(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:     sampleIssue(),
-		cloneDir:  t.TempDir(),
-		resumeErr: errors.New("git down"),
+	gh := &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       t.TempDir(),
+		ResumeErr: errors.New("git down"),
 	}
 	cl := &fakeClaude{report: validImplReport}
 	r := newRunner(gh, cl)
@@ -677,11 +678,11 @@ func TestRun_ResumeDetectionErrorIsNonFatal(t *testing.T) {
 // TestRun_NoResumeSkipsDetectionAndPush locks that --no-resume disables both the
 // pre-implement resume detection and the post-abort partial-progress push.
 func TestRun_NoResumeSkipsDetectionAndPush(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:         sampleIssue(),
-		cloneDir:      t.TempDir(),
-		resumeState:   &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "abc1234", Subject: "wip"}}},
-		progressState: &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "abc1234", Subject: "wip"}}},
+	gh := &githubtest.Fake{
+		Issue:         sampleIssue(),
+		Dir:           t.TempDir(),
+		ResumeState:   &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "abc1234", Subject: "wip"}}},
+		ProgressState: &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "abc1234", Subject: "wip"}}},
 	}
 	cl := &fakeClaude{report: "prose without a report heading or status"}
 	r := newRunner(gh, cl)
@@ -690,14 +691,14 @@ func TestRun_NoResumeSkipsDetectionAndPush(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "complete implementation report") {
 		t.Fatalf("Run returned %v, want an incomplete-report error", err)
 	}
-	if gh.resumeCalls.Load() != 0 {
-		t.Errorf("PrepareResume called %d times, want 0 under --no-resume", gh.resumeCalls.Load())
+	if gh.Count("PrepareResume") != 0 {
+		t.Errorf("PrepareResume called %d times, want 0 under --no-resume", gh.Count("PrepareResume"))
 	}
 	if cl.ctx.Resume != nil {
 		t.Errorf("ctx.Resume = %+v, want nil under --no-resume", cl.ctx.Resume)
 	}
-	if gh.pushBranchCalls.Load() != 0 {
-		t.Errorf("PushHead called %d times, want 0 under --no-resume", gh.pushBranchCalls.Load())
+	if gh.Count("PushHead") != 0 {
+		t.Errorf("PushHead called %d times, want 0 under --no-resume", gh.Count("PushHead"))
 	}
 }
 
@@ -706,10 +707,10 @@ func TestRun_NoResumeSkipsDetectionAndPush(t *testing.T) {
 // pushed to origin so a later run can resume — and the abort error is still
 // returned.
 func TestRun_PersistsPartialProgressOnAbortInCloneMode(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:         sampleIssue(),
-		cloneDir:      t.TempDir(),
-		progressState: &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "abc1234", Subject: "wip"}}},
+	gh := &githubtest.Fake{
+		Issue:         sampleIssue(),
+		Dir:           t.TempDir(),
+		ProgressState: &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "abc1234", Subject: "wip"}}},
 	}
 	cl := &fakeClaude{report: "prose without a report heading or status"}
 	r := newRunner(gh, cl)
@@ -719,11 +720,11 @@ func TestRun_PersistsPartialProgressOnAbortInCloneMode(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "complete implementation report") {
 		t.Fatalf("Run returned %v, want an incomplete-report error", err)
 	}
-	if gh.pushBranchCalls.Load() != 1 {
-		t.Fatalf("PushHead called %d times, want 1", gh.pushBranchCalls.Load())
+	if gh.Count("PushHead") != 1 {
+		t.Fatalf("PushHead called %d times, want 1", gh.Count("PushHead"))
 	}
-	if gh.pushBranchArg != testResumeBranch {
-		t.Errorf("pushed branch %q, want implement/issue-42-foo", gh.pushBranchArg)
+	if lastPushed(gh) != testResumeBranch {
+		t.Errorf("pushed branch %q, want implement/issue-42-foo", lastPushed(gh))
 	}
 	if !strings.Contains(buf.String(), "Pushed partial progress to origin/implement/issue-42-foo") {
 		t.Errorf("missing partial-progress notice in output:\n%s", buf.String())
@@ -733,10 +734,10 @@ func TestRun_PersistsPartialProgressOnAbortInCloneMode(t *testing.T) {
 // TestRun_LocalAbortDoesNotPushPartialProgress locks that in --local mode the
 // partial branch is left in the user's checkout rather than pushed to origin.
 func TestRun_LocalAbortDoesNotPushPartialProgress(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:         sampleIssue(),
-		cloneDir:      t.TempDir(),
-		progressState: &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "abc1234", Subject: "wip"}}},
+	gh := &githubtest.Fake{
+		Issue:         sampleIssue(),
+		Dir:           t.TempDir(),
+		ProgressState: &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "abc1234", Subject: "wip"}}},
 	}
 	cl := &fakeClaude{report: "prose without a report heading or status"}
 	r := newRunner(gh, cl)
@@ -746,8 +747,8 @@ func TestRun_LocalAbortDoesNotPushPartialProgress(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "complete implementation report") {
 		t.Fatalf("Run returned %v, want an incomplete-report error", err)
 	}
-	if gh.pushBranchCalls.Load() != 0 {
-		t.Errorf("PushHead called %d times, want 0 in --local mode", gh.pushBranchCalls.Load())
+	if gh.Count("PushHead") != 0 {
+		t.Errorf("PushHead called %d times, want 0 in --local mode", gh.Count("PushHead"))
 	}
 	if !strings.Contains(buf.String(), "local branch implement/issue-42-foo") {
 		t.Errorf("missing local-branch resume hint in output:\n%s", buf.String())
@@ -755,15 +756,15 @@ func TestRun_LocalAbortDoesNotPushPartialProgress(t *testing.T) {
 }
 
 func TestRun_NoReportCommentSkipsReportComment(t *testing.T) {
-	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
 	cl := &fakeClaude{report: validImplReport}
 	r := newRunner(gh, cl)
 
 	if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
-	if gh.commentCalls.Load() != 0 {
-		t.Errorf("AddIssueComment called %d times, want 0 with --no-report-comment", gh.commentCalls.Load())
+	if gh.Count("AddIssueComment") != 0 {
+		t.Errorf("AddIssueComment called %d times, want 0 with --no-report-comment", gh.Count("AddIssueComment"))
 	}
 	if cl.called.Load() != 1 {
 		t.Errorf("implement called %d times, want 1 — the report is still produced, just not posted", cl.called.Load())
@@ -771,7 +772,7 @@ func TestRun_NoReportCommentSkipsReportComment(t *testing.T) {
 }
 
 func TestRun_NoPlanSkipsPlanner(t *testing.T) {
-	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
 	cl := &fakeClaude{report: validImplReport}
 	fp := &fakePlanner{plan: "unused"}
 	r := newRunner(gh, cl)
@@ -789,7 +790,7 @@ func TestRun_NoPlanSkipsPlanner(t *testing.T) {
 }
 
 func TestRun_NilPlannerImplementsDirectly(t *testing.T) {
-	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
 	cl := &fakeClaude{report: validImplReport}
 	r := newRunner(gh, cl)
 
@@ -805,7 +806,7 @@ func TestRun_NilPlannerImplementsDirectly(t *testing.T) {
 }
 
 func TestRun_PlanErrorAbortsBeforeImplement(t *testing.T) {
-	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
 	cl := &fakeClaude{report: "unused"}
 	fp := &fakePlanner{err: errors.New("claude exploded")}
 	r := newRunner(gh, cl)
@@ -823,7 +824,7 @@ func TestRun_PlanErrorAbortsBeforeImplement(t *testing.T) {
 func TestRun_PlanEscalationAbortsBeforeImplement(t *testing.T) {
 	for _, status := range []string{"BLOCKED", "NEEDS_CONTEXT"} {
 		t.Run(status, func(t *testing.T) {
-			gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+			gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
 			cl := &fakeClaude{report: "unused"}
 			fp := &fakePlanner{plan: "## Implementation Plan (issue #42)\n\nSTATUS: " + status}
 			r := newRunner(gh, cl)
@@ -840,8 +841,8 @@ func TestRun_PlanEscalationAbortsBeforeImplement(t *testing.T) {
 			if !strings.Contains(buf.String(), "STATUS: "+status) {
 				t.Errorf("escalating plan not printed for review:\n%s", buf.String())
 			}
-			if gh.commentCalls.Load() != 1 {
-				t.Errorf("AddIssueComment called %d times, want 1 — an escalated plan must still land on the issue", gh.commentCalls.Load())
+			if gh.Count("AddIssueComment") != 1 {
+				t.Errorf("AddIssueComment called %d times, want 1 — an escalated plan must still land on the issue", gh.Count("AddIssueComment"))
 			}
 		})
 	}
@@ -985,10 +986,10 @@ func TestMostRecentPlanComment_SurvivesModelChange(t *testing.T) {
 
 func TestRun_ReusesExistingPlan(t *testing.T) {
 	const plan = "## Implementation Plan (issue #42)\n\nreuse me\n\nSTATUS: PLAN_READY"
-	gh := &fakeGitHub{
-		issue:    sampleIssue(),
-		cloneDir: t.TempDir(),
-		comments: []github.IssueComment{{Body: formatPlanComment(plan, "")}},
+	gh := &githubtest.Fake{
+		Issue:         sampleIssue(),
+		Dir:           t.TempDir(),
+		IssueComments: []github.IssueComment{{Body: formatPlanComment(plan, "")}},
 	}
 	cl := &fakeClaude{report: validImplReport}
 	fp := &fakePlanner{plan: "FRESH PLAN should not be used"}
@@ -1002,8 +1003,8 @@ func TestRun_ReusesExistingPlan(t *testing.T) {
 	if fp.called.Load() != 0 {
 		t.Errorf("planner called %d times, want 0 — a posted plan should be reused", fp.called.Load())
 	}
-	if gh.listCalls.Load() != 1 {
-		t.Errorf("ListIssueComments called %d times, want 1", gh.listCalls.Load())
+	if gh.Count("ListIssueComments") != 1 {
+		t.Errorf("ListIssueComments called %d times, want 1", gh.Count("ListIssueComments"))
 	}
 	if cl.ctx.Plan != plan {
 		t.Errorf("implement received Plan %q, want the reused plan %q", cl.ctx.Plan, plan)
@@ -1011,23 +1012,23 @@ func TestRun_ReusesExistingPlan(t *testing.T) {
 	if !strings.Contains(buf.String(), "Reusing the implementation plan already posted on issue #42") {
 		t.Errorf("missing plan-reuse notice in output:\n%s", buf.String())
 	}
-	if gh.commentCalls.Load() != 1 {
-		t.Fatalf("AddIssueComment called %d times, want 1 — only the report, no duplicate plan", gh.commentCalls.Load())
+	if gh.Count("AddIssueComment") != 1 {
+		t.Fatalf("AddIssueComment called %d times, want 1 — only the report, no duplicate plan", gh.Count("AddIssueComment"))
 	}
-	if strings.Contains(gh.commentBodies[0], planCommentFooter("")) {
-		t.Errorf("reuse must not re-post the plan, but a plan comment was posted:\n%s", gh.commentBodies[0])
+	if strings.Contains(gh.Comments()[0], planCommentFooter("")) {
+		t.Errorf("reuse must not re-post the plan, but a plan comment was posted:\n%s", gh.Comments()[0])
 	}
-	if !strings.Contains(gh.commentBodies[0], reportCommentFooter("")) {
-		t.Errorf("the single posted comment should be the report, got:\n%s", gh.commentBodies[0])
+	if !strings.Contains(gh.Comments()[0], reportCommentFooter("")) {
+		t.Errorf("the single posted comment should be the report, got:\n%s", gh.Comments()[0])
 	}
 }
 
 func TestRun_NoPlanReuseForcesFreshPlan(t *testing.T) {
 	const posted = "## Implementation Plan (issue #42)\n\nstale\n\nSTATUS: PLAN_READY"
-	gh := &fakeGitHub{
-		issue:    sampleIssue(),
-		cloneDir: t.TempDir(),
-		comments: []github.IssueComment{{Body: formatPlanComment(posted, "")}},
+	gh := &githubtest.Fake{
+		Issue:         sampleIssue(),
+		Dir:           t.TempDir(),
+		IssueComments: []github.IssueComment{{Body: formatPlanComment(posted, "")}},
 	}
 	cl := &fakeClaude{report: validImplReport}
 	fp := &fakePlanner{plan: "## Implementation Plan (issue #42)\n\nfresh\n\nSTATUS: PLAN_READY"}
@@ -1040,14 +1041,14 @@ func TestRun_NoPlanReuseForcesFreshPlan(t *testing.T) {
 	if fp.called.Load() != 1 {
 		t.Errorf("planner called %d times, want 1 — --no-plan-reuse forces a fresh session", fp.called.Load())
 	}
-	if gh.listCalls.Load() != 0 {
-		t.Errorf("ListIssueComments called %d times, want 0 — --no-plan-reuse skips the lookup", gh.listCalls.Load())
+	if gh.Count("ListIssueComments") != 0 {
+		t.Errorf("ListIssueComments called %d times, want 0 — --no-plan-reuse skips the lookup", gh.Count("ListIssueComments"))
 	}
 	if cl.ctx.Plan != fp.plan {
 		t.Errorf("implement received Plan %q, want the fresh plan %q", cl.ctx.Plan, fp.plan)
 	}
-	if gh.commentCalls.Load() != 2 {
-		t.Errorf("AddIssueComment called %d times, want 2 (fresh plan then report)", gh.commentCalls.Load())
+	if gh.Count("AddIssueComment") != 2 {
+		t.Errorf("AddIssueComment called %d times, want 2 (fresh plan then report)", gh.Count("AddIssueComment"))
 	}
 }
 
@@ -1055,10 +1056,10 @@ func TestRun_ReusedPlanEscalationAborts(t *testing.T) {
 	for _, status := range []string{"BLOCKED", "NEEDS_CONTEXT"} {
 		t.Run(status, func(t *testing.T) {
 			plan := "## Implementation Plan (issue #42)\n\nnope\n\nSTATUS: " + status
-			gh := &fakeGitHub{
-				issue:    sampleIssue(),
-				cloneDir: t.TempDir(),
-				comments: []github.IssueComment{{Body: formatPlanComment(plan, "")}},
+			gh := &githubtest.Fake{
+				Issue:         sampleIssue(),
+				Dir:           t.TempDir(),
+				IssueComments: []github.IssueComment{{Body: formatPlanComment(plan, "")}},
 			}
 			cl := &fakeClaude{report: "unused"}
 			fp := &fakePlanner{plan: "unused"}
@@ -1079,8 +1080,8 @@ func TestRun_ReusedPlanEscalationAborts(t *testing.T) {
 			if !strings.Contains(buf.String(), "STATUS: "+status) {
 				t.Errorf("reused escalating plan not printed for review:\n%s", buf.String())
 			}
-			if gh.commentCalls.Load() != 0 {
-				t.Errorf("AddIssueComment called %d times, want 0 — the plan is already on the issue", gh.commentCalls.Load())
+			if gh.Count("AddIssueComment") != 0 {
+				t.Errorf("AddIssueComment called %d times, want 0 — the plan is already on the issue", gh.Count("AddIssueComment"))
 			}
 		})
 	}
@@ -1088,10 +1089,10 @@ func TestRun_ReusedPlanEscalationAborts(t *testing.T) {
 
 func TestRun_NoPlanBeatsReuse(t *testing.T) {
 	const posted = "## Implementation Plan (issue #42)\n\nreusable\n\nSTATUS: PLAN_READY"
-	gh := &fakeGitHub{
-		issue:    sampleIssue(),
-		cloneDir: t.TempDir(),
-		comments: []github.IssueComment{{Body: formatPlanComment(posted, "")}},
+	gh := &githubtest.Fake{
+		Issue:         sampleIssue(),
+		Dir:           t.TempDir(),
+		IssueComments: []github.IssueComment{{Body: formatPlanComment(posted, "")}},
 	}
 	cl := &fakeClaude{report: validImplReport}
 	fp := &fakePlanner{plan: "unused"}
@@ -1104,8 +1105,8 @@ func TestRun_NoPlanBeatsReuse(t *testing.T) {
 	if fp.called.Load() != 0 {
 		t.Errorf("planner called %d times, want 0 with --no-plan", fp.called.Load())
 	}
-	if gh.listCalls.Load() != 0 {
-		t.Errorf("ListIssueComments called %d times, want 0 — --no-plan short-circuits reuse", gh.listCalls.Load())
+	if gh.Count("ListIssueComments") != 0 {
+		t.Errorf("ListIssueComments called %d times, want 0 — --no-plan short-circuits reuse", gh.Count("ListIssueComments"))
 	}
 	if cl.ctx.Plan != "" {
 		t.Errorf("implement received Plan %q, want empty — --no-plan implements without a plan", cl.ctx.Plan)
@@ -1116,10 +1117,10 @@ func TestRun_NoPlanBeatsReuse(t *testing.T) {
 }
 
 func TestRun_ReuseCommentFetchFailureAborts(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:       sampleIssue(),
-		cloneDir:    t.TempDir(),
-		commentsErr: errors.New("github down"),
+	gh := &githubtest.Fake{
+		Issue:            sampleIssue(),
+		Dir:              t.TempDir(),
+		IssueCommentsErr: errors.New("github down"),
 	}
 	cl := &fakeClaude{report: "unused"}
 	fp := &fakePlanner{plan: "unused"}
@@ -1139,7 +1140,7 @@ func TestRun_ReuseCommentFetchFailureAborts(t *testing.T) {
 }
 
 func TestRun_PrintPlanPrompt(t *testing.T) {
-	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
 	cl := &fakeClaude{report: "unused"}
 	fp := &fakePlanner{plan: "unused"}
 	r := newRunner(gh, cl)
@@ -1155,8 +1156,8 @@ func TestRun_PrintPlanPrompt(t *testing.T) {
 	if !strings.Contains(buf.String(), "PLAN PROMPT for #42") {
 		t.Errorf("plan prompt not rendered:\n%s", buf.String())
 	}
-	if gh.cloneCalls.Load() != 0 {
-		t.Errorf("clone called %d times, want 0 in --print-plan-prompt mode", gh.cloneCalls.Load())
+	if gh.Count("CloneRepo") != 0 {
+		t.Errorf("clone called %d times, want 0 in --print-plan-prompt mode", gh.Count("CloneRepo"))
 	}
 	if fp.called.Load() != 0 || cl.called.Load() != 0 {
 		t.Errorf("planner/implement called (%d/%d), want 0/0 in --print-plan-prompt mode",
@@ -1165,7 +1166,7 @@ func TestRun_PrintPlanPrompt(t *testing.T) {
 }
 
 func TestRun_PrintPlanPromptRequiresBuilder(t *testing.T) {
-	r := newRunner(&fakeGitHub{issue: sampleIssue()}, &fakeClaude{})
+	r := newRunner(&githubtest.Fake{Issue: sampleIssue()}, &fakeClaude{})
 
 	err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42", PrintPlanPrompt: true})
 	if err == nil || !strings.Contains(err.Error(), "--print-plan-prompt requires a plan prompt builder") {
@@ -1174,7 +1175,7 @@ func TestRun_PrintPlanPromptRequiresBuilder(t *testing.T) {
 }
 
 func TestRun_VerifyReportsUnmetCriteria(t *testing.T) {
-	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
 	cl := &fakeClaude{report: validImplReport}
 	fv := &fakeVerifier{result: &report.ReviewResult{
 		Findings: []report.Finding{
@@ -1198,7 +1199,7 @@ func TestRun_VerifyReportsUnmetCriteria(t *testing.T) {
 }
 
 func TestRun_VerifyCleanPass(t *testing.T) {
-	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
 	cl := &fakeClaude{report: validImplReport}
 	fv := &fakeVerifier{result: &report.ReviewResult{}}
 	r := newRunner(gh, cl)
@@ -1214,7 +1215,7 @@ func TestRun_VerifyCleanPass(t *testing.T) {
 }
 
 func TestRun_VerifyDisabledByDefault(t *testing.T) {
-	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
 	cl := &fakeClaude{report: validImplReport}
 	fv := &fakeVerifier{}
 	r := newRunner(gh, cl)
@@ -1229,7 +1230,7 @@ func TestRun_VerifyDisabledByDefault(t *testing.T) {
 }
 
 func TestRun_VerifyAdversarialReportsFindings(t *testing.T) {
-	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
 	cl := &fakeClaude{report: validImplReport}
 	av := &fakeAdversarialVerifier{result: &report.ReviewResult{
 		Findings: []report.Finding{
@@ -1256,7 +1257,7 @@ func TestRun_VerifyAdversarialReportsFindings(t *testing.T) {
 }
 
 func TestRun_VerifyAdversarialCleanPass(t *testing.T) {
-	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
 	cl := &fakeClaude{report: validImplReport}
 	av := &fakeAdversarialVerifier{result: &report.ReviewResult{}}
 	r := newRunner(gh, cl)
@@ -1272,7 +1273,7 @@ func TestRun_VerifyAdversarialCleanPass(t *testing.T) {
 }
 
 func TestRun_VerifyAdversarialDisabledByDefault(t *testing.T) {
-	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
 	cl := &fakeClaude{report: validImplReport}
 	av := &fakeAdversarialVerifier{}
 	r := newRunner(gh, cl)
@@ -1299,7 +1300,7 @@ func oneCriterionFinding() *report.ReviewResult {
 // onto a fresh Runner. The adversarial finder is left nil, so the default-on
 // review-and-fix pass stays disabled and only the --verify feedback path touches
 // the applier — isolating Part A of the loop-closing work.
-func verifyApplyRunner(gh *fakeGitHub, cl *fakeClaude, fv *fakeVerifier, ra *fakeReviewApplier) *Runner {
+func verifyApplyRunner(gh *githubtest.Fake, cl *fakeClaude, fv *fakeVerifier, ra *fakeReviewApplier) *Runner {
 	ensureValidReport(cl)
 	r := newRunner(gh, cl)
 	r.Verifier = fv
@@ -1312,10 +1313,10 @@ func verifyApplyRunner(gh *fakeGitHub, cl *fakeClaude, fv *fakeVerifier, ra *fak
 // those findings are fed into the same ReviewApplier the review pass uses, and
 // the apply report is printed — while the render output still appears.
 func TestRun_VerifyFeedsUnmetCriteriaToApplier(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:     sampleIssue(),
-		cloneDir:  t.TempDir(),
-		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	gh := &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       t.TempDir(),
+		BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
 	cl := &fakeClaude{report: validImplReport}
 	fv := &fakeVerifier{result: oneCriterionFinding()}
@@ -1351,10 +1352,10 @@ func TestRun_VerifyFeedsUnmetCriteriaToApplier(t *testing.T) {
 // criteria) never touches the applier even when one is wired — the render-only
 // no-op path.
 func TestRun_VerifyCleanPassSkipsApplier(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:     sampleIssue(),
-		cloneDir:  t.TempDir(),
-		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	gh := &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       t.TempDir(),
+		BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
 	cl := &fakeClaude{report: validImplReport}
 	fv := &fakeVerifier{result: &report.ReviewResult{}}
@@ -1376,10 +1377,10 @@ func TestRun_VerifyCleanPassSkipsApplier(t *testing.T) {
 // TestRun_VerifyApplyErrorIsNonFatal proves a failure applying the verification
 // findings is surfaced but never aborts the run — the PR still opens.
 func TestRun_VerifyApplyErrorIsNonFatal(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:     sampleIssue(),
-		cloneDir:  t.TempDir(),
-		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	gh := &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       t.TempDir(),
+		BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
 	cl := &fakeClaude{report: validImplReport}
 	fv := &fakeVerifier{result: oneCriterionFinding()}
@@ -1407,7 +1408,7 @@ func TestRun_VerifyApplyErrorIsNonFatal(t *testing.T) {
 // cleanly when the base branch cannot be resolved: it renders, notes the skip,
 // and never calls the applier.
 func TestRun_VerifyApplyBranchRefErrorSkips(t *testing.T) {
-	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir(), branchRefErr: errors.New("no origin/HEAD")}
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir(), BranchRefErr: errors.New("no origin/HEAD")}
 	cl := &fakeClaude{report: validImplReport}
 	fv := &fakeVerifier{result: oneCriterionFinding()}
 	ra := &fakeReviewApplier{report: "unused"}
@@ -1428,10 +1429,10 @@ func TestRun_VerifyApplyBranchRefErrorSkips(t *testing.T) {
 // TestRun_VerifyRenderOnlyWithoutApplier proves the pre-loop behavior is intact:
 // with no applier wired, --verify renders its findings and never attempts a fix.
 func TestRun_VerifyRenderOnlyWithoutApplier(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:     sampleIssue(),
-		cloneDir:  t.TempDir(),
-		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	gh := &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       t.TempDir(),
+		BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
 	cl := &fakeClaude{report: validImplReport}
 	fv := &fakeVerifier{result: oneCriterionFinding()}
@@ -1465,7 +1466,7 @@ func ensureValidReport(cl *fakeClaude) {
 // simplifyRunner wires the simplify deps onto a fresh Runner alongside the
 // shared GitHub/Claude fakes, so each simplify test reads as just its
 // finder/applier setup.
-func simplifyRunner(gh *fakeGitHub, cl *fakeClaude, sf *fakeSimplifyFinder, sa *fakeSimplifyApplier) *Runner {
+func simplifyRunner(gh *githubtest.Fake, cl *fakeClaude, sf *fakeSimplifyFinder, sa *fakeSimplifyApplier) *Runner {
 	ensureValidReport(cl)
 	r := newRunner(gh, cl)
 	r.Simplifier = sf
@@ -1480,10 +1481,10 @@ func oneSimplifyFinding(file string) *report.ReviewResult {
 }
 
 func TestRun_SimplifyDefaultOnAppliesFindings(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:     sampleIssue(),
-		cloneDir:  t.TempDir(),
-		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	gh := &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       t.TempDir(),
+		BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
 	cl := &fakeClaude{} // helper fills a valid report; --no-report-comment keeps the only comment the simplify report
 	sf := &fakeSimplifyFinder{result: oneSimplifyFinding("internal/foo/foo.go")}
@@ -1509,14 +1510,14 @@ func TestRun_SimplifyDefaultOnAppliesFindings(t *testing.T) {
 	if len(sa.ctx.Findings) != 1 || sa.ctx.Findings[0].File != "internal/foo/foo.go" {
 		t.Errorf("applier got findings %+v, want the single kept finding", sa.ctx.Findings)
 	}
-	if gh.commentCalls.Load() != 1 {
-		t.Fatalf("AddIssueComment called %d times, want 1 (the simplify report)", gh.commentCalls.Load())
+	if gh.Count("AddIssueComment") != 1 {
+		t.Fatalf("AddIssueComment called %d times, want 1 (the simplify report)", gh.Count("AddIssueComment"))
 	}
-	if !strings.Contains(gh.commentBodies[0], "## Simplification Report") {
-		t.Errorf("issue comment does not carry the report:\n%s", gh.commentBodies[0])
+	if !strings.Contains(gh.Comments()[0], "## Simplification Report") {
+		t.Errorf("issue comment does not carry the report:\n%s", gh.Comments()[0])
 	}
-	if !strings.Contains(gh.commentBodies[0], simplifyCommentFooter("")) {
-		t.Errorf("issue comment is missing the attribution footer:\n%s", gh.commentBodies[0])
+	if !strings.Contains(gh.Comments()[0], simplifyCommentFooter("")) {
+		t.Errorf("issue comment is missing the attribution footer:\n%s", gh.Comments()[0])
 	}
 	if !strings.Contains(buf.String(), "Posted the simplification report as a comment on issue #42") {
 		t.Errorf("missing simplify-comment confirmation in output:\n%s", buf.String())
@@ -1524,10 +1525,10 @@ func TestRun_SimplifyDefaultOnAppliesFindings(t *testing.T) {
 }
 
 func TestRun_NoSimplifySkipsPass(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:     sampleIssue(),
-		cloneDir:  t.TempDir(),
-		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	gh := &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       t.TempDir(),
+		BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
 	cl := &fakeClaude{}
 	sf := &fakeSimplifyFinder{result: oneSimplifyFinding("internal/foo/foo.go")}
@@ -1540,16 +1541,16 @@ func TestRun_NoSimplifySkipsPass(t *testing.T) {
 	if sf.called.Load() != 0 || sa.called.Load() != 0 {
 		t.Errorf("finder/applier called (%d/%d), want 0/0 with --no-simplify", sf.called.Load(), sa.called.Load())
 	}
-	if gh.commentCalls.Load() != 0 {
-		t.Errorf("AddIssueComment called %d times, want 0 with --no-simplify (--no-report-comment suppresses the implement report)", gh.commentCalls.Load())
+	if gh.Count("AddIssueComment") != 0 {
+		t.Errorf("AddIssueComment called %d times, want 0 with --no-simplify (--no-report-comment suppresses the implement report)", gh.Count("AddIssueComment"))
 	}
 }
 
 func TestRun_SimplifyNoFindingsNoOp(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:     sampleIssue(),
-		cloneDir:  t.TempDir(),
-		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	gh := &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       t.TempDir(),
+		BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
 	cl := &fakeClaude{}
 	sf := &fakeSimplifyFinder{result: &report.ReviewResult{}}
@@ -1566,8 +1567,8 @@ func TestRun_SimplifyNoFindingsNoOp(t *testing.T) {
 	if sa.called.Load() != 0 {
 		t.Errorf("applier called %d times, want 0 — no findings is a clean no-op", sa.called.Load())
 	}
-	if gh.commentCalls.Load() != 0 {
-		t.Errorf("AddIssueComment called %d times, want 0 — no findings posts no issue comment", gh.commentCalls.Load())
+	if gh.Count("AddIssueComment") != 0 {
+		t.Errorf("AddIssueComment called %d times, want 0 — no findings posts no issue comment", gh.Count("AddIssueComment"))
 	}
 	if !strings.Contains(buf.String(), "Nothing to simplify.") {
 		t.Errorf("missing the no-op note in output:\n%s", buf.String())
@@ -1575,10 +1576,10 @@ func TestRun_SimplifyNoFindingsNoOp(t *testing.T) {
 }
 
 func TestRun_SimplifyGuardrailRejectsTestFinding(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:     sampleIssue(),
-		cloneDir:  t.TempDir(),
-		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	gh := &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       t.TempDir(),
+		BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
 	cl := &fakeClaude{}
 	sf := &fakeSimplifyFinder{result: &report.ReviewResult{Findings: []report.Finding{
@@ -1606,10 +1607,10 @@ func TestRun_SimplifyGuardrailRejectsTestFinding(t *testing.T) {
 func TestRun_SimplifyEscalationStops(t *testing.T) {
 	for _, status := range []string{"BLOCKED", "NEEDS_CONTEXT"} {
 		t.Run(status, func(t *testing.T) {
-			gh := &fakeGitHub{
-				issue:     sampleIssue(),
-				cloneDir:  t.TempDir(),
-				branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+			gh := &githubtest.Fake{
+				Issue:     sampleIssue(),
+				Dir:       t.TempDir(),
+				BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 			}
 			cl := &fakeClaude{}
 			sf := &fakeSimplifyFinder{result: oneSimplifyFinding("internal/foo/foo.go")}
@@ -1620,8 +1621,8 @@ func TestRun_SimplifyEscalationStops(t *testing.T) {
 			if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
 				t.Fatalf("Run returned %v, want nil — the simplify pass is non-fatal", err)
 			}
-			if gh.commentCalls.Load() != 1 {
-				t.Errorf("AddIssueComment called %d times, want 1 — an escalated report must still post", gh.commentCalls.Load())
+			if gh.Count("AddIssueComment") != 1 {
+				t.Errorf("AddIssueComment called %d times, want 1 — an escalated report must still post", gh.Count("AddIssueComment"))
 			}
 			if !strings.Contains(buf.String(), "Claude reported "+status+" — stopping the simplify pass") {
 				t.Errorf("missing the escalation/stop note in output:\n%s", buf.String())
@@ -1631,11 +1632,11 @@ func TestRun_SimplifyEscalationStops(t *testing.T) {
 }
 
 func TestRun_SimplifyCommentFailureIsNonFatal(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:      sampleIssue(),
-		cloneDir:   t.TempDir(),
-		branchRef:  &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
-		commentErr: errors.New("github down"),
+	gh := &githubtest.Fake{
+		Issue:      sampleIssue(),
+		Dir:        t.TempDir(),
+		BranchRef:  &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+		CommentErr: errors.New("github down"),
 	}
 	cl := &fakeClaude{}
 	sf := &fakeSimplifyFinder{result: oneSimplifyFinding("internal/foo/foo.go")}
@@ -1657,7 +1658,7 @@ func TestRun_SimplifyCommentFailureIsNonFatal(t *testing.T) {
 func TestRun_SimplifyBranchRefErrorSkips(t *testing.T) {
 	// branchRefErr is set, so CurrentBranchRef errors: the base branch cannot be
 	// resolved and the pass skips cleanly without running the finder/applier.
-	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir(), branchRefErr: errors.New("no origin/HEAD")}
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir(), BranchRefErr: errors.New("no origin/HEAD")}
 	cl := &fakeClaude{}
 	sf := &fakeSimplifyFinder{result: oneSimplifyFinding("internal/foo/foo.go")}
 	sa := &fakeSimplifyApplier{report: "unused"}
@@ -1667,8 +1668,8 @@ func TestRun_SimplifyBranchRefErrorSkips(t *testing.T) {
 	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
-	if gh.branchRefCalls.Load() == 0 {
-		t.Errorf("CurrentBranchRef called %d times, want at least 1", gh.branchRefCalls.Load())
+	if gh.Count("CurrentBranchRef") == 0 {
+		t.Errorf("CurrentBranchRef called %d times, want at least 1", gh.Count("CurrentBranchRef"))
 	}
 	if sf.called.Load() != 0 || sa.called.Load() != 0 {
 		t.Errorf("finder/applier called (%d/%d), want 0/0 when the base branch cannot be resolved", sf.called.Load(), sa.called.Load())
@@ -1679,10 +1680,10 @@ func TestRun_SimplifyBranchRefErrorSkips(t *testing.T) {
 }
 
 func TestRun_SimplifyFinderErrorIsNonFatal(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:     sampleIssue(),
-		cloneDir:  t.TempDir(),
-		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	gh := &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       t.TempDir(),
+		BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
 	cl := &fakeClaude{}
 	sf := &fakeSimplifyFinder{err: errors.New("finder exploded")}
@@ -1738,7 +1739,7 @@ func TestKeepSimplifyFindings(t *testing.T) {
 // shared GitHub/Claude fakes: the adversarial verifier doubles as the finder and
 // the review applier folds the fixes. It deliberately leaves the simplify deps
 // unset, so each review test reads as just its finder/applier setup.
-func reviewRunner(gh *fakeGitHub, cl *fakeClaude, av *fakeAdversarialVerifier, ra *fakeReviewApplier) *Runner {
+func reviewRunner(gh *githubtest.Fake, cl *fakeClaude, av *fakeAdversarialVerifier, ra *fakeReviewApplier) *Runner {
 	ensureValidReport(cl)
 	r := newRunner(gh, cl)
 	r.AdversarialVerifier = av
@@ -1777,10 +1778,10 @@ const (
 )
 
 func TestRun_ReviewDefaultOnAppliesFindings(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:     sampleIssue(),
-		cloneDir:  t.TempDir(),
-		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	gh := &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       t.TempDir(),
+		BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
 	cl := &fakeClaude{} // helper fills a valid report; --no-report-comment keeps the only comment the review report
 	av := &fakeAdversarialVerifier{results: oneThenCleanReview(reviewTestProdFile)}
@@ -1806,14 +1807,14 @@ func TestRun_ReviewDefaultOnAppliesFindings(t *testing.T) {
 	if len(ra.ctx.Findings) != 1 || ra.ctx.Findings[0].File != reviewTestProdFile {
 		t.Errorf("applier got findings %+v, want the single finding from the finder", ra.ctx.Findings)
 	}
-	if gh.commentCalls.Load() != 1 {
-		t.Fatalf("AddIssueComment called %d times, want 1 (the review report)", gh.commentCalls.Load())
+	if gh.Count("AddIssueComment") != 1 {
+		t.Fatalf("AddIssueComment called %d times, want 1 (the review report)", gh.Count("AddIssueComment"))
 	}
-	if !strings.Contains(gh.commentBodies[0], "## Review Report") {
-		t.Errorf("issue comment does not carry the report:\n%s", gh.commentBodies[0])
+	if !strings.Contains(gh.Comments()[0], "## Review Report") {
+		t.Errorf("issue comment does not carry the report:\n%s", gh.Comments()[0])
 	}
-	if !strings.Contains(gh.commentBodies[0], reviewCommentFooter("")) {
-		t.Errorf("issue comment is missing the attribution footer:\n%s", gh.commentBodies[0])
+	if !strings.Contains(gh.Comments()[0], reviewCommentFooter("")) {
+		t.Errorf("issue comment is missing the attribution footer:\n%s", gh.Comments()[0])
 	}
 	if !strings.Contains(buf.String(), "Posted the review report as a comment on issue #42") {
 		t.Errorf("missing review-comment confirmation in output:\n%s", buf.String())
@@ -1821,10 +1822,10 @@ func TestRun_ReviewDefaultOnAppliesFindings(t *testing.T) {
 }
 
 func TestRun_NoReviewSkipsPass(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:     sampleIssue(),
-		cloneDir:  t.TempDir(),
-		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	gh := &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       t.TempDir(),
+		BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
 	cl := &fakeClaude{}
 	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
@@ -1837,16 +1838,16 @@ func TestRun_NoReviewSkipsPass(t *testing.T) {
 	if av.called.Load() != 0 || ra.called.Load() != 0 {
 		t.Errorf("finder/applier called (%d/%d), want 0/0 with --no-review", av.called.Load(), ra.called.Load())
 	}
-	if gh.commentCalls.Load() != 0 {
-		t.Errorf("AddIssueComment called %d times, want 0 with --no-review (--no-report-comment suppresses the implement report)", gh.commentCalls.Load())
+	if gh.Count("AddIssueComment") != 0 {
+		t.Errorf("AddIssueComment called %d times, want 0 with --no-review (--no-report-comment suppresses the implement report)", gh.Count("AddIssueComment"))
 	}
 }
 
 func TestRun_ReviewNoFindingsNoOp(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:     sampleIssue(),
-		cloneDir:  t.TempDir(),
-		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	gh := &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       t.TempDir(),
+		BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
 	cl := &fakeClaude{}
 	av := &fakeAdversarialVerifier{result: &report.ReviewResult{}}
@@ -1863,8 +1864,8 @@ func TestRun_ReviewNoFindingsNoOp(t *testing.T) {
 	if ra.called.Load() != 0 {
 		t.Errorf("applier called %d times, want 0 — no findings is a clean no-op", ra.called.Load())
 	}
-	if gh.commentCalls.Load() != 0 {
-		t.Errorf("AddIssueComment called %d times, want 0 — no findings posts no issue comment", gh.commentCalls.Load())
+	if gh.Count("AddIssueComment") != 0 {
+		t.Errorf("AddIssueComment called %d times, want 0 — no findings posts no issue comment", gh.Count("AddIssueComment"))
 	}
 	if !strings.Contains(buf.String(), "Review found nothing to fix.") {
 		t.Errorf("missing the no-op note in output:\n%s", buf.String())
@@ -1874,10 +1875,10 @@ func TestRun_ReviewNoFindingsNoOp(t *testing.T) {
 func TestRun_ReviewEscalationStops(t *testing.T) {
 	for _, status := range []string{"BLOCKED", "NEEDS_CONTEXT"} {
 		t.Run(status, func(t *testing.T) {
-			gh := &fakeGitHub{
-				issue:     sampleIssue(),
-				cloneDir:  t.TempDir(),
-				branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+			gh := &githubtest.Fake{
+				Issue:     sampleIssue(),
+				Dir:       t.TempDir(),
+				BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 			}
 			cl := &fakeClaude{}
 			av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
@@ -1895,8 +1896,8 @@ func TestRun_ReviewEscalationStops(t *testing.T) {
 			if av.called.Load() != 1 || ra.called.Load() != 1 {
 				t.Errorf("finder/applier called (%d/%d), want 1/1 — an escalation stops the loop after the first apply", av.called.Load(), ra.called.Load())
 			}
-			if gh.commentCalls.Load() != 1 {
-				t.Errorf("AddIssueComment called %d times, want 1 — an escalated report must still post", gh.commentCalls.Load())
+			if gh.Count("AddIssueComment") != 1 {
+				t.Errorf("AddIssueComment called %d times, want 1 — an escalated report must still post", gh.Count("AddIssueComment"))
 			}
 			if !strings.Contains(buf.String(), "Claude reported "+status+" — stopping the review pass") {
 				t.Errorf("missing the escalation/stop note in output:\n%s", buf.String())
@@ -1906,11 +1907,11 @@ func TestRun_ReviewEscalationStops(t *testing.T) {
 }
 
 func TestRun_ReviewCommentFailureIsNonFatal(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:      sampleIssue(),
-		cloneDir:   t.TempDir(),
-		branchRef:  &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
-		commentErr: errors.New("github down"),
+	gh := &githubtest.Fake{
+		Issue:      sampleIssue(),
+		Dir:        t.TempDir(),
+		BranchRef:  &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+		CommentErr: errors.New("github down"),
 	}
 	cl := &fakeClaude{}
 	av := &fakeAdversarialVerifier{results: oneThenCleanReview(reviewTestProdFile)}
@@ -1932,7 +1933,7 @@ func TestRun_ReviewCommentFailureIsNonFatal(t *testing.T) {
 func TestRun_ReviewBranchRefErrorSkips(t *testing.T) {
 	// branchRefErr is set, so CurrentBranchRef errors: the base branch cannot be
 	// resolved and the pass skips cleanly without running the finder/applier.
-	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir(), branchRefErr: errors.New("no origin/HEAD")}
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir(), BranchRefErr: errors.New("no origin/HEAD")}
 	cl := &fakeClaude{}
 	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
 	ra := &fakeReviewApplier{report: "unused"}
@@ -1942,8 +1943,8 @@ func TestRun_ReviewBranchRefErrorSkips(t *testing.T) {
 	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
-	if gh.branchRefCalls.Load() == 0 {
-		t.Errorf("CurrentBranchRef called %d times, want at least 1", gh.branchRefCalls.Load())
+	if gh.Count("CurrentBranchRef") == 0 {
+		t.Errorf("CurrentBranchRef called %d times, want at least 1", gh.Count("CurrentBranchRef"))
 	}
 	if av.called.Load() != 0 || ra.called.Load() != 0 {
 		t.Errorf("finder/applier called (%d/%d), want 0/0 when the base branch cannot be resolved", av.called.Load(), ra.called.Load())
@@ -1954,10 +1955,10 @@ func TestRun_ReviewBranchRefErrorSkips(t *testing.T) {
 }
 
 func TestRun_ReviewFinderErrorIsNonFatal(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:     sampleIssue(),
-		cloneDir:  t.TempDir(),
-		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	gh := &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       t.TempDir(),
+		BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
 	cl := &fakeClaude{}
 	av := &fakeAdversarialVerifier{err: errors.New("finder exploded")}
@@ -1981,10 +1982,10 @@ func TestRun_ReviewFinderErrorIsNonFatal(t *testing.T) {
 // clean, so the loop stops after one apply and two finder calls — folding both
 // findings of the round into the single apply.
 func TestRun_ReviewLoopConvergesAfterApply(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:     sampleIssue(),
-		cloneDir:  t.TempDir(),
-		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	gh := &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       t.TempDir(),
+		BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
 	cl := &fakeClaude{}
 	av := &fakeAdversarialVerifier{results: []*report.ReviewResult{twoReviewFindings(), {}}}
@@ -2013,10 +2014,10 @@ func TestRun_ReviewLoopConvergesAfterApply(t *testing.T) {
 // that keeps reporting findings is applied exactly defaultMaxReviewIterations
 // times, then the loop stops and surfaces the unresolved findings.
 func TestRun_ReviewLoopExhaustsBudget(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:     sampleIssue(),
-		cloneDir:  t.TempDir(),
-		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	gh := &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       t.TempDir(),
+		BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
 	cl := &fakeClaude{}
 	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)} // never converges
@@ -2039,10 +2040,10 @@ func TestRun_ReviewLoopExhaustsBudget(t *testing.T) {
 // a cap of 1 applies exactly once and then stops with the unresolved note, even
 // though the finder still reports findings.
 func TestRun_ReviewLoopMaxIterationsOne(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:     sampleIssue(),
-		cloneDir:  t.TempDir(),
-		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	gh := &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       t.TempDir(),
+		BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
 	cl := &fakeClaude{}
 	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)} // never converges
@@ -2065,10 +2066,10 @@ func TestRun_ReviewLoopMaxIterationsOne(t *testing.T) {
 // loop round reach the capture pass: two rounds of findings (2 then 1) followed
 // by a clean pass hand capture all three findings, not just the last round's.
 func TestRun_ReviewLoopAccumulatesFindingsForCapture(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:     sampleIssue(),
-		cloneDir:  t.TempDir(),
-		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	gh := &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       t.TempDir(),
+		BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
 	cl := &fakeClaude{}
 	av := &fakeAdversarialVerifier{results: []*report.ReviewResult{twoReviewFindings(), oneReviewFinding(reviewTestProdFile), {}}}
@@ -2096,7 +2097,7 @@ func TestRun_ReviewLoopAccumulatesFindingsForCapture(t *testing.T) {
 // gate's wiki.Dir != "" check passes without cloning a real wiki). The review
 // deps are wired so the pass produces findings that flow into capture; tests
 // that exercise the memory-only path leave NoReview set.
-func captureRunner(t *testing.T, gh *fakeGitHub, cl *fakeClaude, av *fakeAdversarialVerifier, ra *fakeReviewApplier, cp *fakeCapturer) *Runner {
+func captureRunner(t *testing.T, gh *githubtest.Fake, cl *fakeClaude, av *fakeAdversarialVerifier, ra *fakeReviewApplier, cp *fakeCapturer) *Runner {
 	t.Helper()
 	ensureValidReport(cl)
 	r := newRunner(gh, cl)
@@ -2125,10 +2126,10 @@ func onePatternProposal() *capture.CaptureResult {
 }
 
 func TestRun_CaptureProposesAndPostsComment(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:     sampleIssue(),
-		cloneDir:  t.TempDir(),
-		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	gh := &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       t.TempDir(),
+		BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
 	cl := &fakeClaude{}
 	av := &fakeAdversarialVerifier{results: oneThenCleanReview(reviewTestProdFile)}
@@ -2157,15 +2158,15 @@ func TestRun_CaptureProposesAndPostsComment(t *testing.T) {
 	if cp.ctx.ImplementReport == "" {
 		t.Errorf("capturer got an empty implementation report, want the implement session's report")
 	}
-	if gh.commentCalls.Load() != 2 {
-		t.Fatalf("AddIssueComment called %d times, want 2 (review then capture)", gh.commentCalls.Load())
+	if gh.Count("AddIssueComment") != 2 {
+		t.Fatalf("AddIssueComment called %d times, want 2 (review then capture)", gh.Count("AddIssueComment"))
 	}
 	captureFooter := "_Capture proposals generated by " + attribution.Tool() + " implement " + attribution.AssistantWith("") + "_"
-	if !strings.Contains(gh.commentBodies[1], captureFooter) {
-		t.Errorf("the capture comment is missing its attribution footer:\n%s", gh.commentBodies[1])
+	if !strings.Contains(gh.Comments()[1], captureFooter) {
+		t.Errorf("the capture comment is missing its attribution footer:\n%s", gh.Comments()[1])
 	}
-	if !strings.Contains(gh.commentBodies[1], "review_patterns/escape-untrusted-fences.md") {
-		t.Errorf("the capture comment does not carry the proposal:\n%s", gh.commentBodies[1])
+	if !strings.Contains(gh.Comments()[1], "review_patterns/escape-untrusted-fences.md") {
+		t.Errorf("the capture comment does not carry the proposal:\n%s", gh.Comments()[1])
 	}
 	if !strings.Contains(buf.String(), "Captured knowledge proposals:") {
 		t.Errorf("missing the capture proposals on stdout:\n%s", buf.String())
@@ -2173,10 +2174,10 @@ func TestRun_CaptureProposesAndPostsComment(t *testing.T) {
 }
 
 func TestRun_CaptureErrorIsNonFatal(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:     sampleIssue(),
-		cloneDir:  t.TempDir(),
-		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	gh := &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       t.TempDir(),
+		BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
 	cl := &fakeClaude{}
 	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
@@ -2205,10 +2206,10 @@ func TestRun_CaptureErrorIsNonFatal(t *testing.T) {
 // — which the ClaudeCapturer contract permits — is skipped gracefully instead of
 // panicking on a nil dereference after the implementation and PR work are done.
 func TestRun_CaptureNilResultIsNonFatal(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:     sampleIssue(),
-		cloneDir:  t.TempDir(),
-		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	gh := &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       t.TempDir(),
+		BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
 	cl := &fakeClaude{}
 	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
@@ -2234,10 +2235,10 @@ func TestRun_CaptureNilResultIsNonFatal(t *testing.T) {
 }
 
 func TestRun_CaptureSkippedWithoutWiki(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:     sampleIssue(),
-		cloneDir:  t.TempDir(),
-		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	gh := &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       t.TempDir(),
+		BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
 	cl := &fakeClaude{}
 	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
@@ -2258,10 +2259,10 @@ func TestRun_CaptureSkippedWithoutWiki(t *testing.T) {
 }
 
 func TestRun_CaptureSkippedByNoCapture(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:     sampleIssue(),
-		cloneDir:  t.TempDir(),
-		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	gh := &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       t.TempDir(),
+		BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
 	cl := &fakeClaude{}
 	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
@@ -2281,10 +2282,10 @@ func TestRun_CaptureSkippedByNoCapture(t *testing.T) {
 // --no-review left no findings: it proposes memory pages from the plan and report
 // alone, receiving an empty candidate list.
 func TestRun_CaptureRunsMemoryOnlyWithoutReview(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:     sampleIssue(),
-		cloneDir:  t.TempDir(),
-		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	gh := &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       t.TempDir(),
+		BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
 	cl := &fakeClaude{}
 	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
@@ -2309,8 +2310,8 @@ func TestRun_CaptureRunsMemoryOnlyWithoutReview(t *testing.T) {
 	if len(cp.ctx.Findings) != 0 {
 		t.Errorf("capturer got findings %+v, want none when review was skipped", cp.ctx.Findings)
 	}
-	if gh.commentCalls.Load() != 1 {
-		t.Errorf("AddIssueComment called %d times, want 1 (the capture comment only)", gh.commentCalls.Load())
+	if gh.Count("AddIssueComment") != 1 {
+		t.Errorf("AddIssueComment called %d times, want 1 (the capture comment only)", gh.Count("AddIssueComment"))
 	}
 }
 
@@ -2319,10 +2320,10 @@ func TestRun_CaptureRunsMemoryOnlyWithoutReview(t *testing.T) {
 // renders each page with its provenance marker and hands it to the writer, after
 // the proposal comment is posted and before finalize opens the PR.
 func TestRun_CaptureWritePushesAcceptedPages(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:     sampleIssue(),
-		cloneDir:  t.TempDir(),
-		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	gh := &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       t.TempDir(),
+		BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
 	cl := &fakeClaude{}
 	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
@@ -2360,10 +2361,10 @@ func TestRun_CaptureWritePushesAcceptedPages(t *testing.T) {
 // (no --capture-wiki) stays propose-only — the proposals are posted but the
 // writer is never touched.
 func TestRun_CaptureDefaultWritesNothing(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:     sampleIssue(),
-		cloneDir:  t.TempDir(),
-		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	gh := &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       t.TempDir(),
+		BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
 	cl := &fakeClaude{}
 	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
@@ -2389,10 +2390,10 @@ func TestRun_CaptureDefaultWritesNothing(t *testing.T) {
 // write, surfaces the refusal, and lets the run finish (the PR still opens) —
 // unlike sync, where pruning is the deliverable and the refusal is fatal.
 func TestRun_CaptureWriteRefusesNonTTYWithoutYes(t *testing.T) {
-	gh := &fakeGitHub{
-		issue:     sampleIssue(),
-		cloneDir:  t.TempDir(),
-		branchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	gh := &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       t.TempDir(),
+		BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
 	cl := &fakeClaude{}
 	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
@@ -2422,7 +2423,7 @@ func TestRun_CaptureWriteRefusesNonTTYWithoutYes(t *testing.T) {
 }
 
 func TestRun_FinalizeOpensPR(t *testing.T) {
-	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
 	cl := &fakeClaude{report: validImplReport}
 	ff := &fakeFinalizer{report: "## Pull Request\n\n- URL: https://github.com/owner/repo/pull/9\n\nSTATUS: DONE"}
 	r := newRunner(gh, cl)
@@ -2435,8 +2436,8 @@ func TestRun_FinalizeOpensPR(t *testing.T) {
 	if ff.called.Load() != 1 {
 		t.Fatalf("finalizer called %d times, want 1 — the PR is opened last", ff.called.Load())
 	}
-	if ff.dir != gh.cloneDir {
-		t.Errorf("finalizer ran in %q, want clone dir %q", ff.dir, gh.cloneDir)
+	if ff.dir != gh.Dir {
+		t.Errorf("finalizer ran in %q, want clone dir %q", ff.dir, gh.Dir)
 	}
 	if ff.ctx.RepoFullName != testRepoFullName || ff.ctx.IssueNumber != 42 || ff.ctx.IssueTitle != "Add foo widget" {
 		t.Errorf("finalizer got ctx %+v, want repo owner/repo issue #42 titled \"Add foo widget\"", ff.ctx)
@@ -2463,10 +2464,10 @@ func TestRun_FinalizeByStatus(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.status, func(t *testing.T) {
-			gh := &fakeGitHub{
-				issue:         sampleIssue(),
-				cloneDir:      t.TempDir(),
-				progressState: &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "abc1234", Subject: "wip"}}},
+			gh := &githubtest.Fake{
+				Issue:         sampleIssue(),
+				Dir:           t.TempDir(),
+				ProgressState: &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "abc1234", Subject: "wip"}}},
 			}
 			cl := &fakeClaude{report: "## Implementation Report (issue #42)\n\nSTATUS: " + tc.status}
 			ff := &fakeFinalizer{report: defaultFinalizeReport}
@@ -2489,15 +2490,15 @@ func TestRun_FinalizeByStatus(t *testing.T) {
 			if ff.called.Load() != 0 {
 				t.Errorf("finalizer called %d times, want 0 — no pull request is opened for partial work", ff.called.Load())
 			}
-			if gh.pushBranchCalls.Load() != 1 || gh.pushBranchArg != testResumeBranch {
-				t.Errorf("PushHead called %d times with %q, want exactly 1 push of the partial branch for a later resume", gh.pushBranchCalls.Load(), gh.pushBranchArg)
+			if gh.Count("PushHead") != 1 || lastPushed(gh) != testResumeBranch {
+				t.Errorf("PushHead called %d times with %q, want exactly 1 push of the partial branch for a later resume", gh.Count("PushHead"), lastPushed(gh))
 			}
 		})
 	}
 }
 
 func TestRun_FinalizeErrorIsFatal(t *testing.T) {
-	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
 	cl := &fakeClaude{report: validImplReport}
 	ff := &fakeFinalizer{err: errors.New("gh pr create failed")}
 	r := newRunner(gh, cl)
@@ -2514,193 +2515,6 @@ func TestRun_FinalizeErrorIsFatal(t *testing.T) {
 	if !strings.Contains(buf.String(), "opening the pull request failed") {
 		t.Errorf("missing the finalize-failure note in output:\n%s", buf.String())
 	}
-}
-
-// fakeGitHub is a scripted GitHubClient. The test sets the canned issue and
-// optional clone error; both calls record their invocation count so each
-// test can assert exactly which steps the runner reached.
-type fakeGitHub struct {
-	issue    *github.Issue
-	issueErr error
-
-	relations    *github.IssueRelations
-	relationsErr error
-
-	comments    []github.IssueComment
-	commentsErr error
-	listCalls   atomic.Int32
-
-	cloneDir        string
-	cloneErr        error
-	getCalls        atomic.Int32
-	cloneCalls      atomic.Int32
-	cloneLocalCalls atomic.Int32
-
-	commentErr    error
-	commentCalls  atomic.Int32
-	commentBodies []string
-
-	branchRef      *github.BranchRef
-	branchRefErr   error
-	branchRefCalls atomic.Int32
-
-	// headSHACalls/headSHAErr drive HeadSHA, which the review loop records before
-	// each editing pass to scope the next round's re-review.
-	headSHACalls atomic.Int32
-	headSHAErr   error
-	// changedFiles/changedFilesErr drive ChangedFiles (the review pass's specialist
-	// gate + snippet-gate scope). Default nil/nil means "no changed files", so the
-	// snippet gate skips on an empty haystack and the specialist gate fails open.
-	changedFiles      []string
-	changedFilesErr   error
-	changedFilesCalls atomic.Int32
-
-	// resumeState/resumeErr drive PrepareResume (pre-implement resume detection);
-	// progressState/progressErr drive CurrentFeatureProgress (post-abort partial
-	// progress); pushBranch* record PushHead (the clone-mode partial push).
-	resumeState *github.ResumeState
-	resumeErr   error
-	resumeCalls atomic.Int32
-
-	progressState *github.ResumeState
-	progressErr   error
-	progressCalls atomic.Int32
-
-	pushBranchArg   string
-	pushBranchErr   error
-	pushBranchCalls atomic.Int32
-}
-
-func (f *fakeGitHub) GetIssue(owner, name string, number int) (*github.Issue, error) {
-	f.getCalls.Add(1)
-	if f.issueErr != nil {
-		return nil, f.issueErr
-	}
-	iss := *f.issue
-	iss.Owner = owner
-	iss.Name = name
-	iss.Number = number
-	return &iss, nil
-}
-
-// GetIssueRelations returns the canned Meta/Sub-Issue neighborhood, defaulting
-// to "no relations" (the issue stands alone) so tests that do not exercise the
-// Meta/sibling path need not set it.
-func (f *fakeGitHub) GetIssueRelations(_, _ string, _ int) (*github.IssueRelations, error) {
-	if f.relationsErr != nil {
-		return nil, f.relationsErr
-	}
-	if f.relations == nil {
-		return &github.IssueRelations{}, nil
-	}
-	return f.relations, nil
-}
-
-// ListIssueComments returns the canned comments (oldest-first, as gh does),
-// unless commentsErr is set to simulate a GitHub failure. The default zero
-// value (nil comments, nil error) means "no comments", so plan-reuse finds
-// nothing and the existing planning tests fall through to a fresh session.
-func (f *fakeGitHub) ListIssueComments(_, _ string, _ int) ([]github.IssueComment, error) {
-	f.listCalls.Add(1)
-	if f.commentsErr != nil {
-		return nil, f.commentsErr
-	}
-	return f.comments, nil
-}
-
-func (f *fakeGitHub) CloneRepo(ref string) (*github.Repo, error) {
-	f.cloneCalls.Add(1)
-	if f.cloneErr != nil {
-		return nil, f.cloneErr
-	}
-	owner, name, err := github.ParseRepoRef(ref)
-	if err != nil {
-		return nil, err
-	}
-	return &github.Repo{Owner: owner, Name: name, Dir: f.cloneDir}, nil
-}
-
-// AddIssueComment records each posted comment body in order (plan then report)
-// and returns a canned URL, unless commentErr is set to simulate a GitHub
-// failure. Calls are sequential within a run, so a plain append is safe.
-func (f *fakeGitHub) AddIssueComment(owner, name string, number int, body string) (string, error) {
-	f.commentCalls.Add(1)
-	if f.commentErr != nil {
-		return "", f.commentErr
-	}
-	f.commentBodies = append(f.commentBodies, body)
-	return fmt.Sprintf("https://github.com/%s/%s/issues/%d#issuecomment-1", owner, name, number), nil
-}
-
-// CurrentBranchRef returns the canned branch ref for the simplify and review
-// passes (so they can scope their diff against the base branch), unless
-// branchRefErr is set to simulate a git failure, in which case the passes skip
-// cleanly. Production CurrentBranchRef never returns (nil, nil); tests that drive
-// a pass to completion set branchRef, and tests that exercise the skip path set
-// branchRefErr.
-func (f *fakeGitHub) CurrentBranchRef(_ string) (*github.BranchRef, error) {
-	f.branchRefCalls.Add(1)
-	if f.branchRefErr != nil {
-		return nil, f.branchRefErr
-	}
-	return f.branchRef, nil
-}
-
-// UseLocalRepo mirrors github.UseLocalRepo: it returns a Local repo so
-// Cleanup is a no-op.
-func (f *fakeGitHub) UseLocalRepo(ref string, _ github.LocalOptions) (*github.Repo, error) {
-	f.cloneLocalCalls.Add(1)
-	if f.cloneErr != nil {
-		return nil, f.cloneErr
-	}
-	owner, name, err := github.ParseRepoRef(ref)
-	if err != nil {
-		return nil, err
-	}
-	return &github.Repo{Owner: owner, Name: name, Dir: f.cloneDir, Local: true}, nil
-}
-
-// PrepareResume returns the canned resumable branch (nil by default, so a run
-// implements fresh) and records the call so tests can assert detection ran.
-func (f *fakeGitHub) PrepareResume(_ string, _ int) (*github.ResumeState, error) {
-	f.resumeCalls.Add(1)
-	return f.resumeState, f.resumeErr
-}
-
-// CurrentFeatureProgress returns the canned partial-progress state (nil by
-// default, so persistPartialProgress finds nothing to push).
-func (f *fakeGitHub) CurrentFeatureProgress(_ string) (*github.ResumeState, error) {
-	f.progressCalls.Add(1)
-	return f.progressState, f.progressErr
-}
-
-// PushHead records the branch a clone-mode abort pushed to preserve partial
-// progress, returning pushBranchErr to exercise the best-effort failure path.
-func (f *fakeGitHub) PushHead(_, branch string) error {
-	f.pushBranchCalls.Add(1)
-	f.pushBranchArg = branch
-	return f.pushBranchErr
-}
-
-// ChangedFiles returns the canned changed-file list the review pass gates on
-// (nil by default), unless changedFilesErr is set to exercise the fail-open path.
-func (f *fakeGitHub) DiffNames(_, baseBranch string) ([]string, error) {
-	f.changedFilesCalls.Add(1)
-	if f.changedFilesErr != nil {
-		return nil, f.changedFilesErr
-	}
-	return f.changedFiles, nil
-}
-
-// HeadSHA returns a canned commit id per call so a review-loop test can assert
-// which commit the next round scoped its re-review to. headSHAErr exercises the
-// fail-open path, where the loop falls back to the branch-wide scope.
-func (f *fakeGitHub) HeadSHA(string) (string, error) {
-	n := f.headSHACalls.Add(1)
-	if f.headSHAErr != nil {
-		return "", f.headSHAErr
-	}
-	return fmt.Sprintf("sha%d", n), nil
 }
 
 type fakeClaude struct {
@@ -2750,12 +2564,12 @@ const validImplReport = "## Implementation Report (issue #42)\n\nSTATUS: DONE"
 // newRunner wires a default no-op finalizer so the full Run path — which now ends
 // by opening the PR — completes in tests that do not exercise finalize directly.
 // Finalize-specific tests replace r.Finalizer with their own fake.
-func newRunner(gh *fakeGitHub, cl *fakeClaude) *Runner {
+func newRunner(gh *githubtest.Fake, cl *fakeClaude) *Runner {
 	return &Runner{Claude: cl, GitHub: gh, Finalizer: &fakeFinalizer{report: defaultFinalizeReport}}
 }
 
 func TestRun_HappyPath(t *testing.T) {
-	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: "/tmp/clone"}
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: "/tmp/clone"}
 	cl := &fakeClaude{report: validImplReport}
 	r := newRunner(gh, cl)
 
@@ -2784,7 +2598,7 @@ func TestRun_HappyPath(t *testing.T) {
 }
 
 func TestRun_DryRunSkipsCloneAndClaude(t *testing.T) {
-	gh := &fakeGitHub{issue: sampleIssue()}
+	gh := &githubtest.Fake{Issue: sampleIssue()}
 	cl := &fakeClaude{}
 	r := newRunner(gh, cl)
 
@@ -2792,8 +2606,8 @@ func TestRun_DryRunSkipsCloneAndClaude(t *testing.T) {
 	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", DryRun: true}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
-	if gh.cloneCalls.Load() != 0 {
-		t.Errorf("CloneRepo called %d times in dry-run, want 0", gh.cloneCalls.Load())
+	if gh.Count("CloneRepo") != 0 {
+		t.Errorf("CloneRepo called %d times in dry-run, want 0", gh.Count("CloneRepo"))
 	}
 	if cl.called.Load() != 0 {
 		t.Errorf("Claude.Implement called %d times in dry-run, want 0", cl.called.Load())
@@ -2804,7 +2618,7 @@ func TestRun_DryRunSkipsCloneAndClaude(t *testing.T) {
 }
 
 func TestRun_PrintPromptWritesPromptAndSkipsClone(t *testing.T) {
-	gh := &fakeGitHub{issue: sampleIssue()}
+	gh := &githubtest.Fake{Issue: sampleIssue()}
 	cl := &fakeClaude{}
 	r := newRunner(gh, cl)
 	r.BuildPrompt = func(ctx Context) string {
@@ -2816,8 +2630,8 @@ func TestRun_PrintPromptWritesPromptAndSkipsClone(t *testing.T) {
 	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", PrintPrompt: true}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
-	if gh.cloneCalls.Load() != 0 {
-		t.Errorf("CloneRepo called %d times in print-prompt mode, want 0", gh.cloneCalls.Load())
+	if gh.Count("CloneRepo") != 0 {
+		t.Errorf("CloneRepo called %d times in print-prompt mode, want 0", gh.Count("CloneRepo"))
 	}
 	if cl.called.Load() != 0 {
 		t.Errorf("Claude.Implement called %d times in print-prompt mode, want 0", cl.called.Load())
@@ -2832,7 +2646,7 @@ func TestRun_PrintPromptWritesPromptAndSkipsClone(t *testing.T) {
 }
 
 func TestRun_PrintPromptWithoutBuilderErrors(t *testing.T) {
-	gh := &fakeGitHub{issue: sampleIssue()}
+	gh := &githubtest.Fake{Issue: sampleIssue()}
 	cl := &fakeClaude{}
 	r := newRunner(gh, cl) // BuildPrompt nil
 
@@ -2843,7 +2657,7 @@ func TestRun_PrintPromptWithoutBuilderErrors(t *testing.T) {
 }
 
 func TestRun_RejectsBadIssueRef(t *testing.T) {
-	r := newRunner(&fakeGitHub{}, &fakeClaude{})
+	r := newRunner(&githubtest.Fake{}, &fakeClaude{})
 	err := r.Run(io.Discard, Options{IssueRef: "not-a-ref"})
 	if err == nil || !strings.Contains(err.Error(), "parsing issue ref") {
 		t.Fatalf("expected parsing error, got %v", err)
@@ -2851,7 +2665,7 @@ func TestRun_RejectsBadIssueRef(t *testing.T) {
 }
 
 func TestRun_PropagatesIssueFetchError(t *testing.T) {
-	gh := &fakeGitHub{issueErr: errors.New("boom")}
+	gh := &githubtest.Fake{IssueErr: errors.New("boom")}
 	r := newRunner(gh, &fakeClaude{})
 
 	err := r.Run(io.Discard, Options{IssueRef: "owner/repo#1"})
@@ -2861,7 +2675,7 @@ func TestRun_PropagatesIssueFetchError(t *testing.T) {
 }
 
 func TestRun_PropagatesCloneError(t *testing.T) {
-	gh := &fakeGitHub{issue: sampleIssue(), cloneErr: errors.New("clone failed")}
+	gh := &githubtest.Fake{Issue: sampleIssue(), CloneErr: errors.New("clone failed")}
 	cl := &fakeClaude{}
 	r := newRunner(gh, cl)
 
@@ -2875,7 +2689,7 @@ func TestRun_PropagatesCloneError(t *testing.T) {
 }
 
 func TestRun_PropagatesClaudeError(t *testing.T) {
-	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: "/tmp/x"}
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: "/tmp/x"}
 	cl := &fakeClaude{err: errors.New("kaboom")}
 	r := newRunner(gh, cl)
 
@@ -2883,17 +2697,17 @@ func TestRun_PropagatesClaudeError(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "kaboom") {
 		t.Fatalf("expected wrapped 'kaboom' error, got %v", err)
 	}
-	if gh.commentCalls.Load() != 0 {
-		t.Errorf("AddIssueComment called %d times, want 0 — a hard Implement error yields no report to post", gh.commentCalls.Load())
+	if gh.Count("AddIssueComment") != 0 {
+		t.Errorf("AddIssueComment called %d times, want 0 — a hard Implement error yields no report to post", gh.Count("AddIssueComment"))
 	}
 }
 
 // barePromptRunner returns an implement.Runner whose GitHub fake clones
 // into a throwaway dir so PrintBarePrompt can run detect.Technologies +
 // patterns.LoadFiltered without hitting the network.
-func barePromptRunner(t *testing.T) (*Runner, *fakeGitHub) {
+func barePromptRunner(t *testing.T) (*Runner, *githubtest.Fake) {
 	t.Helper()
-	gh := &fakeGitHub{cloneDir: t.TempDir()}
+	gh := &githubtest.Fake{Dir: t.TempDir()}
 	r := newRunner(gh, &fakeClaude{})
 	return r, gh
 }
@@ -3009,7 +2823,7 @@ Wired patterns must reach the implement Context.
 		t.Fatalf("seeding pattern file: %v", err)
 	}
 
-	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: t.TempDir()}
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
 	cl := &fakeClaude{report: validImplReport}
 	r := newRunner(gh, cl)
 
@@ -3032,7 +2846,7 @@ Wired patterns must reach the implement Context.
 
 func TestRun_LocalNoClone(t *testing.T) {
 	dir := t.TempDir()
-	gh := &fakeGitHub{issue: sampleIssue(), cloneDir: dir}
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: dir}
 	cl := &fakeClaude{report: validImplReport}
 	r := newRunner(gh, cl)
 
@@ -3040,11 +2854,11 @@ func TestRun_LocalNoClone(t *testing.T) {
 	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", Local: true}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
-	if gh.cloneCalls.Load() != 0 {
-		t.Errorf("CloneRepo (temp-dir clone) calls = %d, want 0 in local mode", gh.cloneCalls.Load())
+	if gh.Count("CloneRepo") != 0 {
+		t.Errorf("CloneRepo (temp-dir clone) calls = %d, want 0 in local mode", gh.Count("CloneRepo"))
 	}
-	if gh.cloneLocalCalls.Load() != 1 {
-		t.Errorf("UseLocalRepo calls = %d, want 1", gh.cloneLocalCalls.Load())
+	if gh.Count("UseLocalRepo") != 1 {
+		t.Errorf("UseLocalRepo calls = %d, want 1", gh.Count("UseLocalRepo"))
 	}
 	if cl.called.Load() != 1 {
 		t.Errorf("Claude.Implement called %d times, want 1", cl.called.Load())
@@ -3061,7 +2875,7 @@ func TestRun_LocalNoClone(t *testing.T) {
 }
 
 func TestPrintBarePrompt_LocalNoClone(t *testing.T) {
-	gh := &fakeGitHub{cloneDir: t.TempDir()}
+	gh := &githubtest.Fake{Dir: t.TempDir()}
 	r := newRunner(gh, &fakeClaude{})
 	build := func(ctx BareContext) string {
 		return fmt.Sprintf("BARE repo=%s issue=%d", ctx.RepoFullName, ctx.IssueNumber)
@@ -3070,11 +2884,11 @@ func TestPrintBarePrompt_LocalNoClone(t *testing.T) {
 	if err := r.PrintBarePrompt(&buf, Options{IssueRef: "owner/repo#7", Local: true}, build); err != nil {
 		t.Fatalf("PrintBarePrompt returned %v, want nil", err)
 	}
-	if gh.cloneCalls.Load() != 0 {
-		t.Errorf("CloneRepo calls = %d, want 0 in local mode", gh.cloneCalls.Load())
+	if gh.Count("CloneRepo") != 0 {
+		t.Errorf("CloneRepo calls = %d, want 0 in local mode", gh.Count("CloneRepo"))
 	}
-	if gh.cloneLocalCalls.Load() != 1 {
-		t.Errorf("UseLocalRepo calls = %d, want 1", gh.cloneLocalCalls.Load())
+	if gh.Count("UseLocalRepo") != 1 {
+		t.Errorf("UseLocalRepo calls = %d, want 1", gh.Count("UseLocalRepo"))
 	}
 	if !strings.HasPrefix(buf.String(), "BARE repo=owner/repo issue=7") {
 		t.Errorf("unexpected bare prompt output: %q", buf.String())
@@ -3083,12 +2897,12 @@ func TestPrintBarePrompt_LocalNoClone(t *testing.T) {
 
 // reviewGH returns a fakeGitHub wired for a review-pass test: a sample issue, a
 // temp clone dir, and a main/feat branch ref so CurrentBranchRef resolves.
-func reviewGH(t *testing.T) *fakeGitHub {
+func reviewGH(t *testing.T) *githubtest.Fake {
 	t.Helper()
-	return &fakeGitHub{
-		issue:     sampleIssue(),
-		cloneDir:  t.TempDir(),
-		branchRef: &github.BranchRef{BaseBranch: reviewTestBase, HeadBranch: "feat/x"},
+	return &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       t.TempDir(),
+		BranchRef: &github.BranchRef{BaseBranch: reviewTestBase, HeadBranch: "feat/x"},
 	}
 }
 
@@ -3104,7 +2918,7 @@ func criticalFinding(title, file string) report.Finding {
 // both into a single apply, and does NOT fan out again on the re-review round.
 func TestRun_ReviewFirstRoundRunsSpecialistFanOut(t *testing.T) {
 	gh := reviewGH(t)
-	gh.changedFiles = []string{reviewTestProdFile}
+	gh.ChangedFiles = []string{reviewTestProdFile}
 	cl := &fakeClaude{}
 	av := &fakeAdversarialVerifier{results: oneThenCleanReview(reviewTestProdFile)}
 	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
@@ -3228,11 +3042,11 @@ func TestRun_ReviewGateWithholdsUnverifiedFindings(t *testing.T) {
 	if !strings.Contains(buf.String(), "Unverified findings") || !strings.Contains(buf.String(), "phantom auth bypass") {
 		t.Errorf("stdout missing the withheld finding:\n%s", buf.String())
 	}
-	if gh.commentCalls.Load() != 1 {
-		t.Fatalf("AddIssueComment ran %d times, want 1", gh.commentCalls.Load())
+	if gh.Count("AddIssueComment") != 1 {
+		t.Fatalf("AddIssueComment ran %d times, want 1", gh.Count("AddIssueComment"))
 	}
-	if !strings.Contains(gh.commentBodies[0], "phantom auth bypass") || !strings.Contains(gh.commentBodies[0], "refuted: bar.go already guards this path") {
-		t.Errorf("posted comment missing the withheld finding and its refutation:\n%s", gh.commentBodies[0])
+	if !strings.Contains(gh.Comments()[0], "phantom auth bypass") || !strings.Contains(gh.Comments()[0], "refuted: bar.go already guards this path") {
+		t.Errorf("posted comment missing the withheld finding and its refutation:\n%s", gh.Comments()[0])
 	}
 }
 
@@ -3261,11 +3075,11 @@ func TestRun_ReviewAllFindingsUnverifiedSkipsApply(t *testing.T) {
 	if ra.called.Load() != 0 {
 		t.Errorf("applier ran %d times, want 0 — nothing survived hygiene", ra.called.Load())
 	}
-	if gh.commentCalls.Load() != 1 {
-		t.Fatalf("AddIssueComment ran %d times, want 1 (the withheld report)", gh.commentCalls.Load())
+	if gh.Count("AddIssueComment") != 1 {
+		t.Fatalf("AddIssueComment ran %d times, want 1 (the withheld report)", gh.Count("AddIssueComment"))
 	}
-	if !strings.Contains(gh.commentBodies[0], "Every self-review finding was withheld") {
-		t.Errorf("posted comment missing the withheld-only note:\n%s", gh.commentBodies[0])
+	if !strings.Contains(gh.Comments()[0], "Every self-review finding was withheld") {
+		t.Errorf("posted comment missing the withheld-only note:\n%s", gh.Comments()[0])
 	}
 }
 
@@ -3274,8 +3088,8 @@ func TestRun_ReviewAllFindingsUnverifiedSkipsApply(t *testing.T) {
 // from the rest of the checkout (the whole-checkout fallback finds it nowhere).
 func TestRun_ReviewSnippetGateDemotesUnquotedFinding(t *testing.T) {
 	gh := reviewGH(t)
-	gh.changedFiles = []string{"foo.go"}
-	if err := os.WriteFile(filepath.Join(gh.cloneDir, "foo.go"), []byte("func Foo() { realCall() }\n"), 0o600); err != nil {
+	gh.ChangedFiles = []string{"foo.go"}
+	if err := os.WriteFile(filepath.Join(gh.Dir, "foo.go"), []byte("func Foo() { realCall() }\n"), 0o600); err != nil {
 		t.Fatalf("write changed file: %v", err)
 	}
 	cl := &fakeClaude{}
@@ -3303,7 +3117,7 @@ func TestRun_ReviewSnippetGateDemotesUnquotedFinding(t *testing.T) {
 // bury findings: the gates fail open and the finding is still applied.
 func TestRun_ReviewChangedFilesErrorFailsOpen(t *testing.T) {
 	gh := reviewGH(t)
-	gh.changedFilesErr = errors.New("git diff exploded")
+	gh.ChangedFilesErr = errors.New("git diff exploded")
 	cl := &fakeClaude{}
 	av := &fakeAdversarialVerifier{results: []*report.ReviewResult{
 		{Findings: []report.Finding{criticalFinding("real bug", reviewTestProdFile)}},
@@ -3315,7 +3129,7 @@ func TestRun_ReviewChangedFilesErrorFailsOpen(t *testing.T) {
 	if err := r.Run(io.Discard, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
-	if gh.changedFilesCalls.Load() == 0 {
+	if gh.Count("DiffNames") == 0 {
 		t.Error("ChangedFiles was never called")
 	}
 	if ra.called.Load() != 1 || len(ra.ctx.Findings) != 1 {
@@ -3369,7 +3183,7 @@ func TestRunReview_GroundsFindersInPatterns(t *testing.T) {
 	r := &Runner{GitHub: gh, AdversarialVerifier: av, ReviewApplier: ra, SpecialistReviewer: spec}
 	ctx := Context{RepoFullName: testRepoFullName, IssueNumber: 42, Patterns: pats, MaxPatterns: 7}
 
-	r.runReview(io.Discard, gh.cloneDir, "owner", "repo", 42, ctx, Options{NoReportComment: true})
+	r.runReview(io.Discard, gh.Dir, "owner", "repo", 42, ctx, Options{NoReportComment: true})
 
 	if len(av.pats) != 1 || av.pats[0].Name != "Go Error Wrapping" {
 		t.Errorf("adversarial finder got pats %+v, want the loaded catalog", av.pats)
@@ -3416,7 +3230,7 @@ func TestRun_ReviewLoopRereviewsOnlyTheFixes(t *testing.T) {
 // branch — the round costs what it always did rather than reviewing nothing.
 func TestRun_ReviewLoopFallsBackToBranchScopeWhenHeadUnknown(t *testing.T) {
 	gh := reviewGH(t)
-	gh.headSHAErr = errors.New("rev-parse exploded")
+	gh.HeadSHAErr = errors.New("rev-parse exploded")
 	cl := &fakeClaude{}
 	av := &fakeAdversarialVerifier{results: []*report.ReviewResult{
 		{Findings: []report.Finding{criticalFinding("real bug", reviewTestProdFile)}},
@@ -3466,4 +3280,14 @@ func TestPlanEscalation_ToleratesMarkdownDecoration(t *testing.T) {
 			}
 		})
 	}
+}
+
+// lastPushed returns the branch the most recent successful PushHead pushed,
+// or "" when nothing was pushed.
+func lastPushed(gh *githubtest.Fake) string {
+	pushed := gh.Pushed()
+	if len(pushed) == 0 {
+		return ""
+	}
+	return pushed[len(pushed)-1]
 }

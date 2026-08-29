@@ -16,6 +16,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/capture"
 	"github.com/planwerk/planwerk-agent/internal/claude"
 	"github.com/planwerk/planwerk-agent/internal/github"
+	"github.com/planwerk/planwerk-agent/internal/github/githubtest"
 	"github.com/planwerk/planwerk-agent/internal/hygiene"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/planwerk"
@@ -108,7 +109,7 @@ func TestRun_CommitLogFailureLogsWarning(t *testing.T) {
 
 	pr := fakePR(t, "acme", "widgets", 99, "sha-nolog")
 	claudeMock := &configurableClaude{}
-	gh := &mockGitHub{fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil }}
+	gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
 	runner := &Runner{Claude: claudeMock, GitHub: gh}
 
 	var out bytes.Buffer
@@ -144,7 +145,7 @@ func TestRun_VerifyClaimsDemotesRefuted(t *testing.T) {
 			}, nil
 		},
 	}
-	gh := &mockGitHub{fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil }}
+	gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
 	runner := &Runner{Claude: claudeMock, GitHub: gh}
 
 	var out bytes.Buffer
@@ -210,7 +211,7 @@ func TestRun_VerifyClaims_ErrorIsNonFatal(t *testing.T) {
 			return nil, errors.New("verifier down")
 		},
 	}
-	gh := &mockGitHub{fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil }}
+	gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
 	runner := &Runner{Claude: claudeMock, GitHub: gh}
 
 	var out bytes.Buffer
@@ -247,7 +248,7 @@ func TestRun_VerifyClaims_SkippedWithoutHighSeverity(t *testing.T) {
 			}}, nil
 		},
 	}
-	gh := &mockGitHub{fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil }}
+	gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
 	runner := &Runner{Claude: claudeMock, GitHub: gh}
 
 	var out bytes.Buffer
@@ -284,7 +285,7 @@ func TestRun_DedupFilelessFindings(t *testing.T) {
 			return [][]int{{0, 1}}, nil
 		},
 	}
-	gh := &mockGitHub{fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil }}
+	gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
 	runner := &Runner{Claude: claudeMock, GitHub: gh}
 
 	opts := baseOpts()
@@ -324,7 +325,7 @@ func TestRun_DedupFileless_SkippedWithoutSecondaryPass(t *testing.T) {
 			}, nil
 		},
 	}
-	gh := &mockGitHub{fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil }}
+	gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
 	runner := &Runner{Claude: claudeMock, GitHub: gh}
 
 	var out bytes.Buffer
@@ -356,7 +357,7 @@ func TestRun_DedupFileless_ErrorIsNonFatal(t *testing.T) {
 			return nil, errors.New("structure tier down")
 		},
 	}
-	gh := &mockGitHub{fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil }}
+	gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
 	runner := &Runner{Claude: claudeMock, GitHub: gh}
 
 	opts := baseOpts()
@@ -511,8 +512,8 @@ func TestRun_CacheMiss_CallsClaudeAndCaches(t *testing.T) {
 			}, nil
 		},
 	}
-	gh := &mockGitHub{
-		fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil },
+	gh := &githubtest.Fake{
+		FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil },
 	}
 	runner := &Runner{Claude: claudeMock, GitHub: gh}
 
@@ -538,8 +539,8 @@ func TestRun_CacheMiss_CallsClaudeAndCaches(t *testing.T) {
 			return nil, nil
 		},
 	}
-	gh2 := &mockGitHub{
-		fetchAndCheckout: func(ref string) (*github.PR, error) {
+	gh2 := &githubtest.Fake{
+		FetchAndCheckoutFn: func(ref string) (*github.PR, error) {
 			return fakePR(t, "acme", "widgets", 42, "sha-miss-1"), nil
 		},
 	}
@@ -573,8 +574,8 @@ func TestRun_NoCache_SkipsCachedResult(t *testing.T) {
 			return freshResult, nil
 		},
 	}
-	gh := &mockGitHub{
-		fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil },
+	gh := &githubtest.Fake{
+		FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil },
 	}
 	runner := &Runner{Claude: claudeMock, GitHub: gh}
 
@@ -624,7 +625,7 @@ func TestRun_ThoroughMergesAdversarialFindings(t *testing.T) {
 			}, nil
 		},
 	}
-	gh := &mockGitHub{fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil }}
+	gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
 	runner := &Runner{Claude: claudeMock, GitHub: gh}
 
 	opts := baseOpts()
@@ -672,7 +673,7 @@ func TestRun_SpecialistsFanOutAndMerge(t *testing.T) {
 			return &report.ReviewResult{}, nil
 		},
 	}
-	gh := &mockGitHub{fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil }}
+	gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
 	runner := &Runner{Claude: claudeMock, GitHub: gh}
 
 	opts := baseOpts()
@@ -703,7 +704,7 @@ func TestRun_SpecialistsDisabledByDefault(t *testing.T) {
 
 	pr := fakePR(t, "acme", "widgets", 32, "sha-nospec")
 	claudeMock := &configurableClaude{}
-	gh := &mockGitHub{fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil }}
+	gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
 	runner := &Runner{Claude: claudeMock, GitHub: gh}
 
 	if err := runner.Run(&bytes.Buffer{}, baseOpts()); err != nil {
@@ -736,7 +737,7 @@ func TestRun_SpecialistsAdaptiveGating(t *testing.T) {
 			return &report.ReviewResult{}, nil
 		},
 	}
-	gh := &mockGitHub{fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil }}
+	gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
 	runner := &Runner{Claude: claudeMock, GitHub: gh}
 
 	opts := baseOpts()
@@ -782,10 +783,10 @@ func TestRun_SkipSuppressionDropsUnchangedRepeats(t *testing.T) {
 			}}, nil
 		}}
 	var postedBody string
-	gh := &mockGitHub{
-		fetchAndCheckout:   func(ref string) (*github.PR, error) { return pr, nil },
-		fetchReviewComment: func(owner, repo string, number int) (string, bool, error) { return priorComment, true, nil },
-		postPRComment: func(owner, repo string, number int, body string) (string, error) {
+	gh := &githubtest.Fake{
+		FetchAndCheckoutFn:   func(ref string) (*github.PR, error) { return pr, nil },
+		FetchReviewCommentFn: func(owner, repo string, number int) (string, bool, error) { return priorComment, true, nil },
+		PostPRCommentFn: func(owner, repo string, number int, body string) (string, error) {
 			postedBody = body
 			return "url", nil
 		},
@@ -843,7 +844,7 @@ func TestRun_WikiDisabledLeavesRunUnchanged(t *testing.T) {
 			return &report.ReviewResult{Summary: "ok"}, nil
 		},
 	}
-	gh := &mockGitHub{fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil }}
+	gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
 	runner := &Runner{Claude: claudeMock, GitHub: gh}
 
 	var out bytes.Buffer
@@ -876,7 +877,7 @@ func TestRun_AdversarialErrorDoesNotFailRun(t *testing.T) {
 			return nil, errors.New("adversarial crashed")
 		},
 	}
-	gh := &mockGitHub{fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil }}
+	gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
 	runner := &Runner{Claude: claudeMock, GitHub: gh}
 
 	opts := baseOpts()
@@ -905,7 +906,7 @@ func TestRun_PrimaryReviewErrorPropagates(t *testing.T) {
 			return nil, errors.New("claude exploded")
 		},
 	}
-	gh := &mockGitHub{fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil }}
+	gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
 	runner := &Runner{Claude: claudeMock, GitHub: gh}
 
 	var out bytes.Buffer
@@ -921,8 +922,8 @@ func TestRun_PrimaryReviewErrorPropagates(t *testing.T) {
 func TestRun_FetchAndCheckoutErrorFailsFast(t *testing.T) {
 	// This test does not touch the cache, but other Run tests mutate the
 	// package-level cacheDir so we keep all Run tests serial to avoid races.
-	gh := &mockGitHub{
-		fetchAndCheckout: func(ref string) (*github.PR, error) { return nil, errors.New("gh not logged in") },
+	gh := &githubtest.Fake{
+		FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return nil, errors.New("gh not logged in") },
 	}
 	runner := &Runner{Claude: &configurableClaude{}, GitHub: gh}
 
@@ -958,7 +959,7 @@ func TestRun_CoverageMapRunsConcurrentlyAndRenders(t *testing.T) {
 			}, nil
 		},
 	}
-	gh := &mockGitHub{fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil }}
+	gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
 	runner := &Runner{Claude: claudeMock, GitHub: gh}
 
 	opts := baseOpts()
@@ -995,7 +996,7 @@ func (f *fakeCapturer) Capture(dir string, ctx capture.CaptureContext) (*capture
 // captureRunner wires a Runner with the capturer and a ResolveWiki seam that
 // resolves to a temp wiki dir (so the gate's wiki.Dir != "" check passes without
 // cloning a real wiki).
-func captureRunner(t *testing.T, gh *mockGitHub, cl *configurableClaude, cp *fakeCapturer) *Runner {
+func captureRunner(t *testing.T, gh *githubtest.Fake, cl *configurableClaude, cp *fakeCapturer) *Runner {
 	t.Helper()
 	r := &Runner{Claude: cl, GitHub: gh, Capturer: cp}
 	wikiDir := t.TempDir()
@@ -1032,7 +1033,7 @@ func TestRun_CaptureProposesOnReview(t *testing.T) {
 	t.Cleanup(restore)
 
 	pr := fakePR(t, "acme", "widgets", 51, "sha-capture")
-	gh := &mockGitHub{fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil }}
+	gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
 	cl := reviewFindingClaude()
 	cp := &fakeCapturer{result: onePatternProposal()}
 	runner := captureRunner(t, gh, cl, cp)
@@ -1064,7 +1065,7 @@ func TestRun_CaptureNoCommentWithoutPostReview(t *testing.T) {
 	pr := fakePR(t, "acme", "widgets", 52, "sha-nocomment")
 	// postPRComment is left nil: a plain `review --wiki` must not post a PR
 	// comment, so calling it would nil-panic and fail the test loudly.
-	gh := &mockGitHub{fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil }}
+	gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
 	cl := reviewFindingClaude()
 	cp := &fakeCapturer{result: onePatternProposal()}
 	runner := captureRunner(t, gh, cl, cp)
@@ -1084,9 +1085,9 @@ func TestRun_CapturePostsCommentWithPostReview(t *testing.T) {
 
 	pr := fakePR(t, "acme", "widgets", 53, "sha-comment")
 	var bodies []string
-	gh := &mockGitHub{
-		fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil },
-		postPRComment: func(owner, repo string, number int, body string) (string, error) {
+	gh := &githubtest.Fake{
+		FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil },
+		PostPRCommentFn: func(owner, repo string, number int, body string) (string, error) {
 			bodies = append(bodies, body)
 			return "url", nil
 		},
@@ -1123,7 +1124,7 @@ func TestRun_CaptureSkippedWithoutWiki(t *testing.T) {
 	t.Cleanup(restore)
 
 	pr := fakePR(t, "acme", "widgets", 54, "sha-nowiki")
-	gh := &mockGitHub{fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil }}
+	gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
 	cl := reviewFindingClaude()
 	cp := &fakeCapturer{result: onePatternProposal()}
 	runner := captureRunner(t, gh, cl, cp)
@@ -1145,7 +1146,7 @@ func TestRun_CaptureSkippedByNoCapture(t *testing.T) {
 	t.Cleanup(restore)
 
 	pr := fakePR(t, "acme", "widgets", 55, "sha-nocap")
-	gh := &mockGitHub{fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil }}
+	gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
 	cl := reviewFindingClaude()
 	cp := &fakeCapturer{result: onePatternProposal()}
 	runner := captureRunner(t, gh, cl, cp)
@@ -1171,7 +1172,7 @@ func TestRun_CaptureNeverPushesForReview(t *testing.T) {
 	t.Cleanup(restore)
 
 	pr := fakePR(t, "acme", "widgets", 56, "sha-write")
-	gh := &mockGitHub{fetchAndCheckout: func(ref string) (*github.PR, error) { return pr, nil }}
+	gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
 	cl := reviewFindingClaude()
 	cp := &fakeCapturer{result: onePatternProposal()}
 	runner := captureRunner(t, gh, cl, cp)
@@ -1208,8 +1209,8 @@ func TestRun_LocalUsesCwdAndKeepsTree(t *testing.T) {
 			return &report.ReviewResult{Summary: "Local review summary"}, nil
 		},
 	}
-	gh := &mockGitHub{
-		fetchAndCheckoutLocal: func(ref string, _ github.LocalOptions) (*github.PR, error) {
+	gh := &githubtest.Fake{
+		OpenLocalPRFn: func(ref string, _ github.LocalOptions) (*github.PR, error) {
 			atomic.AddInt32(&localCalls, 1)
 			return pr, nil
 		},
