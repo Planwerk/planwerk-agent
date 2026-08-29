@@ -145,9 +145,16 @@ func ResolveRemote(src string, opts RemoteOptions) (string, error) {
 
 	if needFetch {
 		if err := fetchRemote(p, repoDir); err != nil {
-			return "", fmt.Errorf("fetching remote pattern source %q: %w", src, err)
-		}
-		if err := writeRemoteMeta(metaPath, remoteMeta{URI: src, FetchedAt: now().UTC()}); err != nil {
+			// A refresh that fails must not take the cached checkout with it:
+			// being offline or holding an expired token is the ordinary reason,
+			// and the patterns from the last successful fetch are still good.
+			// Only a source that has never been fetched is fatal.
+			if _, statErr := os.Stat(repoDir); statErr != nil {
+				return "", fmt.Errorf("fetching remote pattern source %q: %w", src, err)
+			}
+			slog.Warn("could not refresh remote pattern source; using the cached checkout",
+				"source", src, "err", err)
+		} else if err := writeRemoteMeta(metaPath, remoteMeta{URI: src, FetchedAt: now().UTC()}); err != nil {
 			slog.Warn("could not write remote pattern cache metadata", "err", err)
 		}
 	}
@@ -305,16 +312,22 @@ func writeRemoteMeta(path string, m remoteMeta) error {
 }
 
 // fetchRemote (re-)materializes the URI into dest. Implemented as a package
-// variable so tests can substitute an offline fake. Production behavior
-// removes any existing checkout and clones fresh — pattern repos are small
-// and refresh is rare, so a clean slate is simpler than reconciling state.
+// variable so tests can substitute an offline fake. Production behavior clones
+// fresh — pattern repos are small and refresh is rare, so a clean slate is
+// simpler than reconciling state — but it clones into a staging directory and
+// swaps it into place only once the clone (and any checkout) succeeded. Wiping
+// dest first, as this used to, meant a TTL refresh that failed for the ordinary
+// reasons — offline, an expired gh token — had already destroyed the perfectly
+// good cached checkout, and every subcommand died with it.
 var fetchRemote = func(p parsedURI, dest string) error {
 	if err := os.MkdirAll(filepath.Dir(dest), 0o700); err != nil {
 		return fmt.Errorf("preparing clone parent dir: %w", err)
 	}
-	if err := os.RemoveAll(dest); err != nil {
-		return fmt.Errorf("clearing existing clone: %w", err)
+	staging := dest + ".staging"
+	if err := os.RemoveAll(staging); err != nil {
+		return fmt.Errorf("clearing stale staging clone: %w", err)
 	}
+	defer func() { _ = os.RemoveAll(staging) }()
 
 	ctx, cancel := context.WithTimeout(context.Background(), remoteCloneTimeout)
 	defer cancel()
@@ -322,7 +335,7 @@ var fetchRemote = func(p parsedURI, dest string) error {
 	var cmd *exec.Cmd
 	switch p.scheme {
 	case "github":
-		args := []string{"repo", "clone", p.cloneURL, dest, "--", "--filter=blob:none"}
+		args := []string{"repo", "clone", p.cloneURL, staging, "--", "--filter=blob:none"}
 		cmd = exec.CommandContext(ctx, "gh", args...)
 	case schemeWiki:
 		// A repo's wiki is a standalone .wiki.git clone that `gh repo clone`
@@ -335,9 +348,9 @@ var fetchRemote = func(p parsedURI, dest string) error {
 		// local so a later `git checkout <wiki-ref>` needs no second authenticated
 		// fetch. When no token is available the clone proceeds anonymously, which
 		// still works for a public wiki.
-		cmd = wikiCloneCmd(ctx, p.cloneURL, dest, ghAuthToken(ctx))
+		cmd = wikiCloneCmd(ctx, p.cloneURL, staging, ghAuthToken(ctx))
 	default:
-		args := []string{"clone", "--filter=blob:none", p.cloneURL, dest}
+		args := []string{"clone", "--filter=blob:none", p.cloneURL, staging}
 		cmd = exec.CommandContext(ctx, "git", args...)
 	}
 	cmd.Stderr = os.Stderr
@@ -348,9 +361,18 @@ var fetchRemote = func(p parsedURI, dest string) error {
 	if p.ref != "" {
 		coCtx, coCancel := context.WithTimeout(context.Background(), remoteCheckoutTimeout)
 		defer coCancel()
-		if err := gitCheckout(coCtx, dest, p.ref); err != nil {
+		if err := gitCheckout(coCtx, staging, p.ref); err != nil {
 			return fmt.Errorf("checkout %s: %w", p.ref, err)
 		}
+	}
+
+	// Swap the finished clone into place. Everything above this line leaves an
+	// existing checkout untouched, so a failure keeps the cache usable.
+	if err := os.RemoveAll(dest); err != nil {
+		return fmt.Errorf("clearing existing clone: %w", err)
+	}
+	if err := os.Rename(staging, dest); err != nil {
+		return fmt.Errorf("installing clone: %w", err)
 	}
 	return nil
 }
@@ -395,7 +417,11 @@ const (
 	remoteCheckoutTimeout = 30 * time.Second
 	remoteLockTimeout     = 5 * time.Minute
 	remoteLockPoll        = 100 * time.Millisecond
-	ghAuthTokenTimeout    = 10 * time.Second
+	// staleLockAge is when a lock sentinel stops being evidence of a live
+	// holder. It is remoteCloneTimeout plus a margin: no legitimate holder can
+	// outlive the clone timeout that bounds its work.
+	staleLockAge       = remoteCloneTimeout + time.Minute
+	ghAuthTokenTimeout = 10 * time.Second
 )
 
 // ghAuthToken returns a GitHub token for authenticating a private wiki clone, or
@@ -439,6 +465,18 @@ func acquireLock(entryDir string) (release func(), err error) {
 		}
 		if !errors.Is(err, os.ErrExist) {
 			return nil, fmt.Errorf("acquiring remote pattern lock: %w", err)
+		}
+		// Break a sentinel no live process can still own. The holder removes it
+		// through a deferred call, which a Ctrl-C or a crash never runs — and an
+		// abandoned .lock used to make every later run on that URI spin for the
+		// full lock timeout and then fail. No holder can legitimately have held
+		// it for longer than a clone may take, so past that age it is debris.
+		// Removing it races only with another waiter doing the same, and O_EXCL
+		// still lets exactly one of them win the create.
+		if info, statErr := os.Stat(lockPath); statErr == nil && time.Since(info.ModTime()) > staleLockAge {
+			slog.Warn("removing stale remote pattern lock", "path", lockPath, "age", time.Since(info.ModTime()))
+			_ = os.Remove(lockPath)
+			continue
 		}
 		if time.Now().After(deadline) {
 			return nil, fmt.Errorf("timed out waiting for remote pattern lock at %s", lockPath)
