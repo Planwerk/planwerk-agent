@@ -438,11 +438,17 @@ func lookupBoolEnv(name string) (value, ok bool) {
 
 // resolveWikiOptions assembles the effective WikiOptions for the target repo's
 // GitHub Wiki knowledge source. Enabled precedence (highest first): --no-wiki
-// (overrides --wiki), an explicit --wiki, PLANWERK_WIKI, the config file, then
+// (overrides --wiki), an explicit --wiki, the config file, PLANWERK_WIKI, then
 // the default-off behavior. The wiki is off by default and must be opted into
 // per repo, because it is a separate, often world-editable permission surface.
-// Ref precedence: --wiki-ref, PLANWERK_WIKI_REF, then the config file. The repo
+// Ref precedence: --wiki-ref, the config file, then PLANWERK_WIKI_REF. The repo
 // override comes from the config file only — the issue defines no flag for it.
+//
+// The config file outranks the environment, which is the order the
+// configuration reference documents and resolveMaxPatterns implements. These
+// two resolvers had it the other way around, so a repository that pinned
+// wiki.enabled in .planwerk/config.yaml lost to whatever PLANWERK_WIKI a CI
+// image happened to export for another job.
 func resolveWikiOptions(enable, disable, enableChanged, disableChanged bool, refFlag string, refChanged bool, fc cli.WikiFileConfig) patterns.WikiOptions {
 	enabled := false
 	switch {
@@ -451,10 +457,10 @@ func resolveWikiOptions(enable, disable, enableChanged, disableChanged bool, ref
 	case enableChanged:
 		enabled = enable
 	default:
-		if v, ok := lookupBoolEnv(envWiki); ok {
-			enabled = v
-		} else if fc.Enabled != nil {
+		if fc.Enabled != nil {
 			enabled = *fc.Enabled
+		} else if v, ok := lookupBoolEnv(envWiki); ok {
+			enabled = v
 		}
 	}
 
@@ -463,10 +469,10 @@ func resolveWikiOptions(enable, disable, enableChanged, disableChanged bool, ref
 	case refChanged:
 		ref = refFlag
 	default:
-		if v := strings.TrimSpace(os.Getenv(envWikiRef)); v != "" {
-			ref = v
-		} else if fc.Ref != nil {
+		if fc.Ref != nil {
 			ref = *fc.Ref
+		} else if v := strings.TrimSpace(os.Getenv(envWikiRef)); v != "" {
+			ref = v
 		}
 	}
 
@@ -479,20 +485,20 @@ func resolveWikiOptions(enable, disable, enableChanged, disableChanged bool, ref
 
 // resolveCaptureWiki returns whether a command's capture pass should push the
 // accepted proposal pages to the wiki. Shared by implement, review, and audit.
-// Precedence (highest first): an explicit --capture-wiki flag,
-// PLANWERK_CAPTURE_WIKI, the config file's capture.wiki, then the default-off
-// behavior. Default off keeps a run propose-only: the
+// Precedence (highest first): an explicit --capture-wiki flag, the config
+// file's capture.wiki, PLANWERK_CAPTURE_WIKI, then the default-off behavior —
+// the order the configuration reference documents. Default off keeps a run propose-only: the
 // write-back is an additive, outward-facing surface that must be opted into,
 // mirroring the Enabled branch of resolveWikiOptions.
 func resolveCaptureWiki(flagValue, flagChanged bool, fc cli.CaptureFileConfig) bool {
 	if flagChanged {
 		return flagValue
 	}
-	if v, ok := lookupBoolEnv(envCaptureWiki); ok {
-		return v
-	}
 	if fc.Wiki != nil {
 		return *fc.Wiki
+	}
+	if v, ok := lookupBoolEnv(envCaptureWiki); ok {
+		return v
 	}
 	return false
 }
