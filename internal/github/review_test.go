@@ -2,6 +2,7 @@ package github
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -260,5 +261,51 @@ func TestReviewRequest_JSON(t *testing.T) {
 	}
 	if decoded.Comments[0].Path != "a.go" {
 		t.Errorf("Comment.Path = %q, want %q", decoded.Comments[0].Path, "a.go")
+	}
+}
+
+// TestSignReviewComments_RoundTripsThroughFilter is the regression test for the
+// gap that made `address` offer planwerk-agent's own findings back as human
+// review threads: the signature used to go on the review body only, while
+// FilterReviewThreads reads a thread's FIRST COMMENT. GitHub never hands the
+// review body along with an inline comment, so the filter could never fire.
+func TestSignReviewComments_RoundTripsThroughFilter(t *testing.T) {
+	signed := signReviewComments([]ReviewComment{
+		{Path: "main.go", Line: 42, Side: "RIGHT", Body: "**C-1: SQL injection** | CRITICAL"},
+	})
+	if len(signed) != 1 {
+		t.Fatalf("signReviewComments returned %d comments, want 1", len(signed))
+	}
+	if !strings.Contains(signed[0].Body, reviewSignature) {
+		t.Fatalf("signed body %q carries no inline signature", signed[0].Body)
+	}
+	if !strings.Contains(signed[0].Body, "SQL injection") {
+		t.Errorf("signed body %q dropped the original text", signed[0].Body)
+	}
+	if signed[0].Path != "main.go" || signed[0].Line != 42 {
+		t.Errorf("signing changed the anchor: %+v", signed[0])
+	}
+
+	// The thread GitHub builds from that comment must be filtered out again.
+	threads := []ReviewThread{
+		{ID: "human", Comments: []ReviewThreadComment{{Body: "please rename"}}},
+		{ID: "tool", Comments: []ReviewThreadComment{{Body: signed[0].Body}}},
+	}
+	got := FilterReviewThreads(threads, false)
+	if len(got) != 1 || got[0].ID != "human" {
+		t.Errorf("filter = %+v, want only the human thread", got)
+	}
+}
+
+// TestSignReviewComments_DoesNotMutateInput guards the copy semantics: the
+// caller's slice must be usable unchanged after signing.
+func TestSignReviewComments_DoesNotMutateInput(t *testing.T) {
+	in := []ReviewComment{{Body: "original"}}
+	_ = signReviewComments(in)
+	if in[0].Body != "original" {
+		t.Errorf("input body mutated to %q", in[0].Body)
+	}
+	if got := signReviewComments(nil); got != nil {
+		t.Errorf("signReviewComments(nil) = %+v, want nil", got)
 	}
 }

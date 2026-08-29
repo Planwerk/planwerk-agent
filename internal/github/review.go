@@ -201,8 +201,10 @@ func parseReviewThreads(raw []byte) (threads []ReviewThread, hasNextPage bool, e
 // FilterReviewThreads drops the threads the address command should not offer:
 // resolved threads (unless includeResolved) and any thread whose first comment
 // carries planwerk-agent's inline signature, so address never tries to address
-// the tool's own findings. Threads with no comments are dropped as well — there
-// is nothing to address. The input order is preserved.
+// the tool's own findings. SubmitPRReview stamps that signature on every inline
+// comment it posts, which is what makes this filter fire. Threads with no
+// comments are dropped as well — there is nothing to address. The input order
+// is preserved.
 func FilterReviewThreads(threads []ReviewThread, includeResolved bool) []ReviewThread {
 	var out []ReviewThread
 	for _, t := range threads {
@@ -220,8 +222,32 @@ func FilterReviewThreads(threads []ReviewThread, includeResolved bool) []ReviewT
 	return out
 }
 
+// signReviewComments returns a copy of comments with planwerk-agent's inline
+// signature appended to every body, leaving the input untouched. Splitting it
+// out of SubmitPRReview keeps the marker that FilterReviewThreads depends on
+// verifiable without a network call.
+func signReviewComments(comments []ReviewComment) []ReviewComment {
+	if len(comments) == 0 {
+		return comments
+	}
+	signed := make([]ReviewComment, len(comments))
+	for i, c := range comments {
+		c.Body = truncateComment(c.Body + "\n" + reviewSignature)
+		signed[i] = c
+	}
+	return signed
+}
+
 // SubmitPRReview creates a Pull Request Review with inline comments
 // using the GitHub REST API via gh.
+//
+// The signature goes on the review body AND on every inline comment. Only the
+// latter is load-bearing: GitHub exposes an inline comment as a review thread
+// but never hands the review body along with it, so FilterReviewThreads — which
+// reads a thread's first comment — can recognize the tool's own findings only
+// if the marker travels with the comment. Without it, `address` offers every
+// finding this review just posted back as if a human had written it. The marker
+// is an HTML comment, so it stays invisible in the GitHub UI.
 func SubmitPRReview(owner, repo string, number int, commitSHA string, body string, comments []ReviewComment) (string, error) {
 	fullBody := body + "\n" + reviewSignature
 
@@ -229,7 +255,7 @@ func SubmitPRReview(owner, repo string, number int, commitSHA string, body strin
 		Body:     truncateComment(fullBody),
 		Event:    "COMMENT",
 		CommitID: commitSHA,
-		Comments: comments,
+		Comments: signReviewComments(comments),
 	}
 
 	payload, err := json.Marshal(req)
