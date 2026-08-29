@@ -17,21 +17,7 @@ func (c *Client) FeatureCompliance(dir, baseBranch string, feature *planwerk.Fea
 		return nil, fmt.Errorf("running feature compliance check: %w", err)
 	}
 
-	result, err := c.structureReview(rawReview)
-	if err != nil {
-		return nil, fmt.Errorf("structuring compliance check: %w", err)
-	}
-
-	// Tag all findings as from compliance check
-	for i := range result.Findings {
-		if result.Findings[i].Pattern == "" {
-			result.Findings[i].Pattern = "feature-compliance"
-		}
-	}
-
-	assignIDs(result)
-	result.Model = model
-	return result, nil
+	return c.finishReview(rawReview, model, "compliance check", "feature-compliance")
 }
 
 func buildCompliancePrompt(baseBranch string, feature *planwerk.Feature) string {

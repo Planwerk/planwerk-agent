@@ -279,3 +279,42 @@ func assignIDs(result *report.ReviewResult) {
 		}
 	}
 }
+
+// structure runs the structuring pass for a free-form analysis and decodes its
+// JSON into a T. The pass runs on the dedicated structure tier
+// (structureModel/structureEffort), independent of the upstream analysis
+// model, so the model it reports is discarded rather than threaded into the
+// artifact's attribution. runLabel names the pass in logs and usage;
+// decodeLabel names the decoded artifact in a repair error.
+func structure[T any](c *Client, prompt, runLabel, decodeLabel string) (*T, error) {
+	text, _, err := c.runClaudeStructure(prompt, runLabel)
+	if err != nil {
+		return nil, err
+	}
+	var result T
+	if err := c.decodeJSONWithRepair(text, decodeLabel, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// finishReview turns a finder pass's raw transcript into its findings: the
+// structuring pass, the pass's pattern tag on every finding that carries none
+// (skipped when tag is empty), stable IDs, and the model that produced the
+// pass. pass names the pass in the structuring error.
+func (c *Client) finishReview(raw, model, pass, tag string) (*report.ReviewResult, error) {
+	result, err := c.structureReview(raw)
+	if err != nil {
+		return nil, fmt.Errorf("structuring %s: %w", pass, err)
+	}
+	if tag != "" {
+		for i := range result.Findings {
+			if result.Findings[i].Pattern == "" {
+				result.Findings[i].Pattern = tag
+			}
+		}
+	}
+	assignIDs(result)
+	result.Model = model
+	return result, nil
+}

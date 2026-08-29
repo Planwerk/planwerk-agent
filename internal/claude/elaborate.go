@@ -158,18 +158,11 @@ Before you output the elaborated issue, review your own draft and fix what you f
 }
 
 func (c *Client) structureElaboration(rawElaboration string, ctx elaborate.Context) (*elaborate.Result, error) {
-	// The structuring pass runs on the dedicated structure tier
-	// (structureModel/structureEffort), independent of the upstream elaboration
-	// model, so the discarded model return is not the attribution model.
-	text, _, err := c.runClaudeStructure(buildElaborateStructurePrompt(rawElaboration, ctx), "elaborate-structure")
+	result, err := structure[elaborate.Result](c, buildElaborateStructurePrompt(rawElaboration, ctx), "elaborate-structure", "structured elaboration")
 	if err != nil {
 		return nil, err
 	}
-	var result elaborate.Result
-	if err := c.decodeJSONWithRepair(text, "structured elaboration", &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	return result, nil
 }
 
 func buildElaborateStructurePrompt(rawElaboration string, ctx elaborate.Context) string {

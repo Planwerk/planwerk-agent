@@ -24,21 +24,7 @@ func (c *Client) AdversarialReview(dir, baseBranch, sinceRef string, pats []patt
 		return nil, fmt.Errorf("running adversarial review: %w", err)
 	}
 
-	result, err := c.structureReview(rawReview)
-	if err != nil {
-		return nil, fmt.Errorf("structuring adversarial review: %w", err)
-	}
-
-	// Tag all findings as from adversarial review
-	for i := range result.Findings {
-		if result.Findings[i].Pattern == "" {
-			result.Findings[i].Pattern = "adversarial-review"
-		}
-	}
-
-	assignIDs(result)
-	result.Model = model
-	return result, nil
+	return c.finishReview(rawReview, model, "adversarial review", "adversarial-review")
 }
 
 func (c *Client) runAdversarialReview(dir, baseBranch, sinceRef string, pats []patterns.Pattern, maxPatterns int) (text, model string, err error) {

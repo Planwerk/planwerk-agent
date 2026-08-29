@@ -276,24 +276,8 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	)
 	// specialistResults[i] holds the findings from claude.Specialists[i]; a nil
 	// entry means that specialist was gated out or failed (both non-fatal) and
-	// is skipped at merge. runSpecialist[i] records the adaptive-gating decision
-	// so it is evaluated once and reused by the dispatch loop below.
-	var (
-		specialistResults []*report.ReviewResult
-		runSpecialist     []bool
-	)
-	if opts.Specialists {
-		specialistResults = make([]*report.ReviewResult, len(claude.Specialists))
-		runSpecialist = make([]bool, len(claude.Specialists))
-		running := 0
-		for i, sp := range claude.Specialists {
-			runSpecialist[i] = sp.ShouldRun(pr.ChangedFiles)
-			if runSpecialist[i] {
-				running++
-			}
-		}
-		slog.Info("running specialist review fan-out", "running", running, "registered", len(claude.Specialists))
-	}
+	// is skipped at merge.
+	var specialistResults []*report.ReviewResult
 
 	var g errgroup.Group
 	g.Go(func() error {
@@ -323,24 +307,12 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		})
 	}
 	if opts.Specialists {
-		for i, sp := range claude.Specialists {
-			if !runSpecialist[i] {
-				// Adaptive gating: the diff does not touch this specialist's
-				// relevant paths, so running it would only add cost.
-				slog.Info("skipping specialist; diff does not touch its relevant paths", "specialist", sp.Key)
-				continue
-			}
-			g.Go(func() error {
-				res, err := r.Claude.SpecialistReview(pr.Dir, pr.BaseBranch, sp, pats, opts.MaxPatterns)
-				if err != nil {
-					// A failed specialist must not sink the whole review.
-					slog.Warn("specialist review failed", "specialist", sp.Key, "err", err)
-					return nil
-				}
-				specialistResults[i] = res
-				return nil
+		g.Go(func() error {
+			specialistResults = claude.RunSpecialistFanOut(pr.ChangedFiles, func(sp claude.Specialist) (*report.ReviewResult, error) {
+				return r.Claude.SpecialistReview(pr.Dir, pr.BaseBranch, sp, pats, opts.MaxPatterns)
 			})
-		}
+			return nil
+		})
 	}
 	if err := g.Wait(); err != nil {
 		return err

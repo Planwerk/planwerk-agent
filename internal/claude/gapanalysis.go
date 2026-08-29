@@ -127,19 +127,12 @@ Now perform the gap analysis.
 // reconciled against the input feature list so the result has one entry per
 // audited feature even if the model dropped a fully-implemented feature.
 func (c *Client) structureGapResult(rawAnalysis string, ctx gapanalysis.AnalysisContext) (*gapanalysis.Result, error) {
-	// The structuring pass runs on the dedicated structure tier
-	// (structureModel/structureEffort), independent of the upstream analysis
-	// model, so the discarded model return is not the attribution model.
-	text, _, err := c.runClaudeStructure(buildGapStructurePrompt(rawAnalysis), "gap-structure")
+	result, err := structure[gapanalysis.Result](c, buildGapStructurePrompt(rawAnalysis), "gap-structure", "structured gap-analysis")
 	if err != nil {
 		return nil, err
 	}
-	var result gapanalysis.Result
-	if err := c.decodeJSONWithRepair(text, "structured gap-analysis", &result); err != nil {
-		return nil, err
-	}
-	reconcileFeatures(&result, ctx.Features)
-	return &result, nil
+	reconcileFeatures(result, ctx.Features)
+	return result, nil
 }
 
 // reconcileFeatures fills in the file basename and feature title on every

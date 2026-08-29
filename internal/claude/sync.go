@@ -86,15 +86,11 @@ Each <wiki-entry> below is one wiki page. Its path and kind are in the tag attri
 }
 
 func (c *Client) structureSync(rawAnalysis string) (*sync.SyncResult, error) {
-	text, _, err := c.runClaudeStructure(buildSyncStructurePrompt(rawAnalysis), "sync-entries")
+	result, err := structure[sync.SyncResult](c, buildSyncStructurePrompt(rawAnalysis), "sync-entries", "structured sync entries")
 	if err != nil {
 		return nil, err
 	}
-	var result sync.SyncResult
-	if err := c.decodeJSONWithRepair(text, "structured sync entries", &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	return result, nil
 }
 
 func buildSyncStructurePrompt(rawAnalysis string) string {
