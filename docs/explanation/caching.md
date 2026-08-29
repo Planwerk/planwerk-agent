@@ -29,6 +29,26 @@ Entries are written under the user cache directory. Both `propose` and `audit`
 fetch the default-branch HEAD SHA via `git ls-remote` before cloning, so a hit
 avoids the clone.
 
+## What every key is scoped to
+
+On top of the per-command state above, every key carries the configuration that
+shapes the analysis itself:
+
+- **The Claude tiers** — the resolved `--claude-model`, `--claude-effort`,
+  `--structure-model`, `--structure-effort`, `--finder-model` and
+  `--finder-effort`. A review by Sonnet and a review by Fable are different
+  analyses of the same diff, so they are different entries. Re-running with a
+  stronger model gives you that model's findings, not a hit on the weaker run.
+- **The pattern sources** — the `--patterns` sources in order, whether
+  `--no-repo-patterns` / `--no-local-patterns` suppressed a catalog, and
+  `--max-patterns`. The loaded catalog decides what the analysis looks for, so
+  adding a rule directory invalidates the entry rather than serving a result
+  from a run that never saw those rules.
+
+The tool version is deliberately *not* part of the key: a new release would
+otherwise discard every entry, and `--no-cache` is the switch for re-running
+against changed prompts.
+
 ## Controlling the cache
 
 - `--no-cache` forces a fresh run, ignoring any cached entry.

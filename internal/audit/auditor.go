@@ -164,6 +164,8 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	if wiki.CommitSHA != "" {
 		cacheFlags = append(cacheFlags, "wiki="+wiki.CommitSHA)
 	}
+	cacheFlags = append(cacheFlags, "patterns="+patterns.Fingerprint(
+		opts.PatternDirs, opts.NoRepoPatterns, opts.NoLocalPatterns, opts.MaxPatterns))
 	cacheKey := cache.AuditKey(owner, name, headSHA, cacheFlags...)
 
 	// A --capture-wiki run must reach the write-back, but capture runs only on a

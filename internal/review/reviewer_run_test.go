@@ -158,7 +158,7 @@ func TestRun_VerifyClaimsDemotesRefuted(t *testing.T) {
 		t.Fatalf("expected only BLOCKING+CRITICAL sent, got %d: %+v", len(sentToVerify), sentToVerify)
 	}
 
-	cached, ok := cache.Get(cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA), 0)
+	cached, ok := cache.Get(cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA, baseOptsPatternFlag()), 0)
 	if !ok {
 		t.Fatal("expected a cached result carrying the demotion")
 	}
@@ -217,7 +217,7 @@ func TestRun_VerifyClaims_ErrorIsNonFatal(t *testing.T) {
 	if err := runner.Run(&out, baseOpts()); err != nil {
 		t.Fatalf("verifier error must not fail the review: %v", err)
 	}
-	cached, ok := cache.Get(cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA), 0)
+	cached, ok := cache.Get(cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA, baseOptsPatternFlag()), 0)
 	if !ok || len(cached.Findings) != 1 || cached.Findings[0].Confidence != report.ConfidenceVerified {
 		t.Fatalf("finding must survive a failed verification unchanged, got ok=%v %+v", ok, cached.Findings)
 	}
@@ -297,7 +297,7 @@ func TestRun_DedupFilelessFindings(t *testing.T) {
 		t.Errorf("DedupFindings calls = %d, want 1", claudeMock.dedupCalls)
 	}
 
-	cached, ok := cache.Get(cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA, "thorough"), 0)
+	cached, ok := cache.Get(cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA, "thorough", baseOptsPatternFlag()), 0)
 	if !ok {
 		t.Fatal("expected a cached result")
 	}
@@ -365,7 +365,7 @@ func TestRun_DedupFileless_ErrorIsNonFatal(t *testing.T) {
 	if err := runner.Run(&out, opts); err != nil {
 		t.Fatalf("dedup error must not fail the review: %v", err)
 	}
-	cached, ok := cache.Get(cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA, "thorough"), 0)
+	cached, ok := cache.Get(cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA, "thorough", baseOptsPatternFlag()), 0)
 	if !ok || len(cached.Findings) != 2 {
 		t.Fatalf("both findings must survive a failed dedup, got ok=%v findings=%d", ok, len(cached.Findings))
 	}
@@ -475,6 +475,14 @@ func fakePR(t *testing.T, owner, repo string, number int, headSHA string) *githu
 
 // baseOpts returns review Options wired to skip any on-disk pattern lookup so
 // tests do not accidentally pick up the repo's own patterns/ directory.
+// baseOptsPatternFlag mirrors the pattern-source component Run folds into the
+// cache key for baseOpts(), so a test that seeds or reads the cache by hand
+// keys the same entry the runner does.
+func baseOptsPatternFlag() string {
+	o := baseOpts()
+	return "patterns=" + patterns.Fingerprint(o.PatternDirs, o.NoRepoPatterns, o.NoLocalPatterns, o.MaxPatterns)
+}
+
 func baseOpts() Options {
 	return Options{
 		PRRef:           "owner/repo#1",
@@ -555,7 +563,7 @@ func TestRun_NoCache_SkipsCachedResult(t *testing.T) {
 	// Seed the cache with a sentinel result.
 	pr := fakePR(t, "acme", "widgets", 7, "sha-nocache")
 	cachedResult := &report.ReviewResult{Summary: "CACHED SUMMARY SHOULD BE IGNORED"}
-	if err := cache.Put(cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA), cache.CommandReview, cachedResult); err != nil {
+	if err := cache.Put(cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA, baseOptsPatternFlag()), cache.CommandReview, cachedResult); err != nil {
 		t.Fatalf("seeding cache: %v", err)
 	}
 

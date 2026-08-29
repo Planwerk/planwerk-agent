@@ -102,18 +102,31 @@ or short form (owner/repo#123).`,
 			// Build the Claude Code client once from the resolved --claude-*
 			// flags and share it with every subcommand via deps. The implement
 			// command appends its --plan-* options to deps.claudeOpts.
+			mainModel := resolveClaudeModel(claudeModel, cmd.Flags().Changed("claude-model"))
+			mainEffort := resolveClaudeEffort(claudeEffort, cmd.Flags().Changed("claude-effort"))
+			structModel := resolveStructureModel(structureModel, cmd.Flags().Changed("structure-model"))
+			findModel := resolveFinderModel(finderModel, cmd.Flags().Changed("finder-model"))
 			deps.claudeOpts = []claude.Option{
 				claude.WithTimeout(timeout),
 				claude.WithShowOutput(resolveShowClaudeOutput(showClaudeOutput, cmd.Flags().Changed("show-claude-output"))),
-				claude.WithModel(resolveClaudeModel(claudeModel, cmd.Flags().Changed("claude-model"))),
-				claude.WithEffort(resolveClaudeEffort(claudeEffort, cmd.Flags().Changed("claude-effort"))),
-				claude.WithStructureModel(resolveStructureModel(structureModel, cmd.Flags().Changed("structure-model"))),
+				claude.WithModel(mainModel),
+				claude.WithEffort(mainEffort),
+				claude.WithStructureModel(structModel),
 				claude.WithStructureEffort(structEffort),
-				claude.WithFinderModel(resolveFinderModel(finderModel, cmd.Flags().Changed("finder-model"))),
+				claude.WithFinderModel(findModel),
 				claude.WithFinderEffort(findEffort),
 				claude.WithInheritUserConfig(resolveClaudeInheritUserConfig(claudeInheritUserConfig, cmd.Flags().Changed("claude-inherit-user-config"))),
 			}
 			deps.claude = claude.NewClient(deps.claudeOpts...)
+
+			// Scope every cache key to the tiers that produced the entry. The
+			// key answered "same repo, same commit, same command flags?" and
+			// served a hit, although a review by sonnet and one by fable are
+			// different analyses of the same diff — so re-running with a
+			// stronger model returned the weaker one's findings for the whole
+			// TTL. The per-command pattern sources are folded in by each
+			// command, next to its own flags.
+			cache.SetRunFingerprint(mainModel, mainEffort, structModel, structEffort, findModel, findEffort)
 
 			// Record the build version so every attribution footer names the
 			// exact planwerk-agent build, matching the report headers and the

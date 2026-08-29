@@ -97,6 +97,12 @@ func fakeRepo(t *testing.T, owner, name string) *github.Repo {
 	}
 }
 
+// auditPatternFlag mirrors the pattern-source component Run folds into the
+// cache key, so a test that seeds the cache by hand keys the same entry.
+func auditPatternFlag(o Options) string {
+	return "patterns=" + patterns.Fingerprint(o.PatternDirs, o.NoRepoPatterns, o.NoLocalPatterns, o.MaxPatterns)
+}
+
 func baseAuditOpts(patternDir string) Options {
 	return Options{
 		RepoRef:         "owner/repo",
@@ -265,8 +271,10 @@ func TestAuditRun_CacheHitSkipsClone(t *testing.T) {
 	t.Cleanup(restore)
 
 	// baseAuditOpts uses RepoRef "owner/repo", so the cache key owner/name
-	// must match ParseRepoRef("owner/repo") = ("owner", "repo").
-	cacheKey := cache.AuditKey("owner", "repo", "sha-skip-clone", "min="+string(report.SeverityInfo))
+	// must match ParseRepoRef("owner/repo") = ("owner", "repo"). The pattern
+	// sources are part of the key, so seed with the very options Run gets.
+	opts := baseAuditOpts(t.TempDir())
+	cacheKey := cache.AuditKey("owner", "repo", "sha-skip-clone", "min="+string(report.SeverityInfo), auditPatternFlag(opts))
 	if err := cache.PutRaw(cacheKey, cache.CommandAudit, []byte(`{"summary":"Cached audit"}`)); err != nil {
 		t.Fatalf("seeding cache: %v", err)
 	}
@@ -288,7 +296,6 @@ func TestAuditRun_CacheHitSkipsClone(t *testing.T) {
 
 	// Pattern dir is empty — would normally error out, but we should never
 	// reach the pattern-loading step on a cache hit.
-	opts := baseAuditOpts(t.TempDir())
 	var out bytes.Buffer
 	if err := runner.Run(&out, opts); err != nil {
 		t.Fatalf("Run returned error: %v", err)

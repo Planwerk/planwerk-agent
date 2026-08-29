@@ -158,6 +158,11 @@ func buildCacheKey(owner, name, headSHA string, opts Options) string {
 	if opts.FilePath != "" {
 		input += "+file=" + filepath.Base(opts.FilePath)
 	}
+	// The Claude tiers and the loaded catalog shape the result as much as the
+	// filters above do, so they are part of the key.
+	input += cache.RunFingerprint()
+	input += "+patterns=" + patterns.Fingerprint(
+		opts.PatternDirs, opts.NoRepoPatterns, opts.NoLocalPatterns, opts.MaxPatterns)
 	h := sha256.Sum256([]byte(input))
 	return fmt.Sprintf("%x", h[:16])
 }

@@ -12,6 +12,7 @@ import (
 
 	"github.com/planwerk/planwerk-agent/internal/cache"
 	"github.com/planwerk/planwerk-agent/internal/github"
+	"github.com/planwerk/planwerk-agent/internal/patterns"
 )
 
 // fakeGitHub is a test GitHubClient whose CloneRepo / DefaultBranchHEAD /
@@ -78,6 +79,12 @@ func fakeRepo(t *testing.T, owner, name string) *github.Repo {
 		Name:  name,
 		Dir:   t.TempDir(),
 	}
+}
+
+// proposePatternFlag mirrors the pattern-source component Run folds into the
+// cache key, so a test that seeds the cache by hand keys the same entry.
+func proposePatternFlag(o Options) string {
+	return "patterns=" + patterns.Fingerprint(o.PatternDirs, o.NoRepoPatterns, o.NoLocalPatterns, o.MaxPatterns)
 }
 
 func baseProposeOpts() Options {
@@ -239,7 +246,7 @@ func TestProposeRun_CacheHitSkipsClone(t *testing.T) {
 
 	// baseProposeOpts uses RepoRef "owner/repo", so the cache key owner/name
 	// must match ParseRepoRef("owner/repo") = ("owner", "repo").
-	cacheKey := cache.RepoKey("owner", "repo", "sha-skip-clone")
+	cacheKey := cache.RepoKey("owner", "repo", "sha-skip-clone", proposePatternFlag(baseProposeOpts()))
 	if err := cache.PutRaw(cacheKey, cache.CommandPropose, []byte(`{"repository_overview":"Cached overview"}`)); err != nil {
 		t.Fatalf("seeding cache: %v", err)
 	}
