@@ -153,7 +153,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	origin := "origin/" + onto
 	origMergeBase, err := r.GitHub.MergeBase(pr.Dir, pr.HeadSHA, origin)
 	if err != nil {
-		return fmt.Errorf("computing merge-base of %s and %s: %w", shortSHA(pr.HeadSHA), origin, err)
+		return fmt.Errorf("computing merge-base of %s and %s: %w", report.ShortSHA(pr.HeadSHA), origin, err)
 	}
 	replay, err := r.GitHub.CommitsInRange(pr.Dir, origin+"..HEAD")
 	if err != nil {
@@ -216,11 +216,11 @@ func (r *Runner) runRebaseLoop(w io.Writer, opts Options, pr *github.PR, onto, f
 		if iterations > opts.MaxIterations {
 			_ = r.GitHub.RebaseAbort(pr.Dir)
 			return fmt.Errorf("%w: stopped on %s %q after %d iterations on %s#%d",
-				ErrMaxIterations, shortSHA(state.StoppedSHA), state.StoppedSubject, opts.MaxIterations, fullName, number)
+				ErrMaxIterations, report.ShortSHA(state.StoppedSHA), state.StoppedSubject, opts.MaxIterations, fullName, number)
 		}
 
 		_, _ = fmt.Fprintf(w, "Resolving conflict on %s %q (%d file(s))...\n",
-			shortSHA(state.StoppedSHA), state.StoppedSubject, len(state.ConflictedFiles))
+			report.ShortSHA(state.StoppedSHA), state.StoppedSubject, len(state.ConflictedFiles))
 
 		if _, err := r.Claude.ResolveConflict(pr.Dir, ConflictContext{
 			RepoFullName:    fullName,
@@ -233,13 +233,13 @@ func (r *Runner) runRebaseLoop(w io.Writer, opts Options, pr *github.PR, onto, f
 			MaxPatterns:     opts.MaxPatterns,
 		}); err != nil {
 			_ = r.GitHub.RebaseAbort(pr.Dir)
-			return fmt.Errorf("resolving conflict on %s: %w", shortSHA(state.StoppedSHA), err)
+			return fmt.Errorf("resolving conflict on %s: %w", report.ShortSHA(state.StoppedSHA), err)
 		}
 
 		state, err = r.GitHub.RebaseContinue(pr.Dir)
 		if err != nil {
 			_ = r.GitHub.RebaseAbort(pr.Dir)
-			return fmt.Errorf("continuing rebase after %s: %w", shortSHA(state.StoppedSHA), err)
+			return fmt.Errorf("continuing rebase after %s: %w", report.ShortSHA(state.StoppedSHA), err)
 		}
 	}
 
@@ -304,7 +304,7 @@ func (r *Runner) analyzeAndReport(w io.Writer, opts Options, pr *github.PR, onto
 func (r *Runner) dryRun(w io.Writer, pr *github.PR, onto, origin, origMergeBase string, replay []github.Commit) error {
 	_, _ = fmt.Fprintf(w, "Rebase plan: replay %d commit(s) from %s onto %s\n", len(replay), pr.HeadBranch, origin)
 	for _, c := range replay {
-		_, _ = fmt.Fprintf(w, "  - %s %s\n", shortSHA(c.SHA), c.Subject)
+		_, _ = fmt.Fprintf(w, "  - %s %s\n", report.ShortSHA(c.SHA), c.Subject)
 	}
 	if upstream, err := r.GitHub.CommitsInRange(pr.Dir, origMergeBase+".."+origin); err == nil {
 		_, _ = fmt.Fprintf(w, "Upstream range: %d commit(s) entered %s since the PR forked.\n", len(upstream), origin)
@@ -316,7 +316,7 @@ func (r *Runner) dryRun(w io.Writer, pr *github.PR, onto, origin, origMergeBase 
 	}
 	if state.Conflicted {
 		_, _ = fmt.Fprintf(w, "[dry-run] First conflicting commit: %s %q (files: %s)\n",
-			shortSHA(state.StoppedSHA), state.StoppedSubject, strings.Join(state.ConflictedFiles, ", "))
+			report.ShortSHA(state.StoppedSHA), state.StoppedSubject, strings.Join(state.ConflictedFiles, ", "))
 	} else {
 		_, _ = fmt.Fprintln(w, "[dry-run] No conflicts detected — the rebase would apply cleanly.")
 	}
@@ -413,14 +413,6 @@ func (r *Runner) postAnalysisComment(w io.Writer, opts Options, owner, repo stri
 		_, _ = fmt.Fprintf(w, " (%s)", url)
 	}
 	_, _ = fmt.Fprintln(w)
-}
-
-// shortSHA abbreviates a commit SHA for display.
-func shortSHA(sha string) string {
-	if len(sha) <= 7 {
-		return sha
-	}
-	return sha[:7]
 }
 
 // loadPatterns runs technology detection on the checkout and loads the

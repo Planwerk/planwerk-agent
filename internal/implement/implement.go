@@ -1034,8 +1034,7 @@ func mostRecentSessionAccount(comments []github.IssueComment) string {
 
 // Terminal STATUS markers a plan or implementation report can carry, aliased
 // from internal/report — the leaf package this one already imports — so the
-// vocabulary exists once (report.TerminalStatus is the shared parser; see that
-// package for why internal/fix keeps its own).
+// vocabulary exists once (report.TerminalStatus is the shared parser).
 const (
 	statusDoneWithConcerns = report.StatusDoneWithConcerns
 	statusPartial          = report.StatusPartial

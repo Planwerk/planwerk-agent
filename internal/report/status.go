@@ -10,9 +10,7 @@ import (
 // closes its report with a "STATUS: <verdict>" line; the orchestrators key
 // their control flow on it. The constants live here — in the leaf package both
 // internal/claude and internal/implement already import — so the parser and
-// its vocabulary exist exactly once instead of being duplicated per package
-// (internal/fix keeps its own escalation-oriented parser, whose first-match
-// semantics and Status type serve the fix loop specifically).
+// its vocabulary exist exactly once instead of being duplicated per package.
 const (
 	StatusDone             = "DONE"
 	StatusDoneWithConcerns = "DONE_WITH_CONCERNS"

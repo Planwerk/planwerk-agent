@@ -14,6 +14,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/detect"
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
+	"github.com/planwerk/planwerk-agent/internal/report"
 	"github.com/planwerk/planwerk-agent/internal/skills"
 	"github.com/planwerk/planwerk-agent/internal/styleguide"
 	"github.com/planwerk/planwerk-agent/internal/workspace"
@@ -274,7 +275,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 
 	for iteration := 1; iteration <= opts.MaxIterations; iteration++ {
 		_, _ = fmt.Fprintf(statusW, "\n=== Iteration %d/%d for %s#%d (head %s) ===\n",
-			iteration, opts.MaxIterations, fullName, number, shortSHA(currentSHA))
+			iteration, opts.MaxIterations, fullName, number, report.ShortSHA(currentSHA))
 
 		summary, err := r.waitForChecks(statusW, owner, repo, currentSHA, opts.PollInterval)
 		if errors.Is(err, errNoChecks) {
@@ -291,7 +292,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		}
 
 		if summary.AllPassed() {
-			_, _ = fmt.Fprintf(w, "All %d checks passed on %s. Done.\n", summary.Total, shortSHA(currentSHA))
+			_, _ = fmt.Fprintf(w, "All %d checks passed on %s. Done.\n", summary.Total, report.ShortSHA(currentSHA))
 			slog.Info("fix loop complete", "head", currentSHA, "passed", len(summary.Passed))
 			return nil
 		}
@@ -366,7 +367,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 
 		pats := loadPatterns(opts, fresh.Dir)
 
-		report, model, fixErr := r.Claude.Fix(fresh.Dir, Context{
+		fixReport, model, fixErr := r.Claude.Fix(fresh.Dir, Context{
 			RepoFullName:   fullName,
 			PRNumber:       number,
 			PRTitle:        pr.Title,
@@ -387,23 +388,23 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		if fixErr != nil {
 			return fmt.Errorf("claude fix iteration %d: %w", iteration, fixErr)
 		}
-		if report != "" {
-			_, _ = fmt.Fprintf(w, "\nClaude fix report:\n%s\n", report)
+		if fixReport != "" {
+			_, _ = fmt.Fprintf(w, "\nClaude fix report:\n%s\n", fixReport)
 			// Record what this iteration changed on the PR itself — posted
 			// before the escalation check below, so an escalated report still
 			// lands where the human who must intervene will see it.
-			r.postFixComment(w, opts, owner, repo, number, report, model)
+			r.postFixComment(w, opts, owner, repo, number, fixReport, model)
 		}
 
 		// React to the session's terminal status: an escalation means stop and
 		// hand off rather than burn another iteration on a fix that signaled it
 		// cannot proceed.
-		switch status := parseStatus(report); {
-		case status.ShouldEscalate():
+		switch status := report.TerminalStatus(fixReport); status {
+		case report.StatusBlocked, report.StatusNeedsContext:
 			_, _ = fmt.Fprintf(w, "\nClaude reported %s — stopping the fix loop and escalating instead of retrying.\n", status)
 			return fmt.Errorf("fix escalated with status %s on iteration %d", status, iteration)
-		case status == StatusDoneWithConcerns:
-			slog.Warn("fix iteration reported DONE_WITH_CONCERNS", "iteration", iteration)
+		case report.StatusDoneWithConcerns, report.StatusPartial:
+			slog.Warn("fix iteration reported an incomplete verdict", "status", status, "iteration", iteration)
 		}
 
 		// After the push, give the remote a moment, then re-resolve the head
@@ -462,28 +463,28 @@ func (r *Runner) waitForChecks(w io.Writer, owner, repo, sha string, interval ti
 	for {
 		runs, err := r.GitHub.ListChecks(owner, repo, sha)
 		if err != nil {
-			return github.CheckRunSummary{}, fmt.Errorf("listing checks for %s: %w", shortSHA(sha), err)
+			return github.CheckRunSummary{}, fmt.Errorf("listing checks for %s: %w", report.ShortSHA(sha), err)
 		}
 		summary := github.SummarizeChecks(runs)
 		if summary.Total == 0 {
 			noChecks++
 			if noChecks > maxNoCheckPolls {
 				return summary, fmt.Errorf("%w for %s after %d attempts over %s",
-					errNoChecks, shortSHA(sha), maxNoCheckPolls, time.Duration(maxNoCheckPolls)*interval)
+					errNoChecks, report.ShortSHA(sha), maxNoCheckPolls, time.Duration(maxNoCheckPolls)*interval)
 			}
-			_, _ = fmt.Fprintf(w, "No checks reported yet for %s; waiting %s...\n", shortSHA(sha), interval)
+			_, _ = fmt.Fprintf(w, "No checks reported yet for %s; waiting %s...\n", report.ShortSHA(sha), interval)
 			r.Sleep(interval)
 			continue
 		}
 		noChecks = 0
 		if !summary.AnyPending() {
 			_, _ = fmt.Fprintf(w, "Checks complete for %s: %d passed, %d failed\n",
-				shortSHA(sha), len(summary.Passed), len(summary.Failed))
+				report.ShortSHA(sha), len(summary.Passed), len(summary.Failed))
 			return summary, nil
 		}
 		if len(summary.Pending) != lastPending {
 			_, _ = fmt.Fprintf(w, "Waiting on %d/%d pending check(s) for %s...\n",
-				len(summary.Pending), summary.Total, shortSHA(sha))
+				len(summary.Pending), summary.Total, report.ShortSHA(sha))
 			lastPending = len(summary.Pending)
 		}
 		r.Sleep(interval)
@@ -560,13 +561,6 @@ func printFailureBanner(w io.Writer, summary github.CheckRunSummary) {
 	}
 }
 
-func shortSHA(sha string) string {
-	if len(sha) <= 7 {
-		return sha
-	}
-	return sha[:7]
-}
-
 // fixCommentFooter attributes the posted fix report to planwerk-agent, naming
 // the model that produced it and matching the footer the
 // implement/propose/elaborate/audit subcommands append to the artifacts they
@@ -583,11 +577,11 @@ func fixCommentFooter(model string) string {
 // Posting is best-effort: a failure to reach GitHub is logged and surfaced to
 // the operator but never aborts the loop — the fix is already pushed, and the
 // next poll cycle can still proceed.
-func (r *Runner) postFixComment(w io.Writer, opts Options, owner, repo string, number int, report, model string) {
+func (r *Runner) postFixComment(w io.Writer, opts Options, owner, repo string, number int, fixReport, model string) {
 	if opts.NoFixComment {
 		return
 	}
-	url, err := r.GitHub.AddPRComment(owner, repo, number, formatFixComment(report, model))
+	url, err := r.GitHub.AddPRComment(owner, repo, number, formatFixComment(fixReport, model))
 	if err != nil {
 		slog.Warn("posting fix comment failed", "pr", number, "err", err)
 		_, _ = fmt.Fprintf(w, "\nCould not post the fix report as a PR comment: %v\n", err)
@@ -606,8 +600,8 @@ func (r *Runner) postFixComment(w io.Writer, opts Options, owner, repo string, n
 // heading) followed by the attribution footer — mirroring how the implement
 // command records its plan, which keeps its "## Implementation Plan" heading as
 // the comment's title.
-func formatFixComment(report, model string) string {
-	return strings.TrimSpace(report) + "\n\n---\n\n" + fixCommentFooter(model) + "\n"
+func formatFixComment(fixReport, model string) string {
+	return strings.TrimSpace(fixReport) + "\n\n---\n\n" + fixCommentFooter(model) + "\n"
 }
 
 // stdinPrompter is the production Prompter: reads a single y/n line from
