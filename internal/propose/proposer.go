@@ -92,6 +92,10 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	if wiki.CommitSHA != "" {
 		repoKeyFlags = append(repoKeyFlags, "wiki="+wiki.CommitSHA)
 	}
+	// The loaded catalog decides what the analysis looks for, so it belongs in
+	// the key alongside the wiki commit.
+	repoKeyFlags = append(repoKeyFlags, "patterns="+patterns.Fingerprint(
+		opts.PatternDirs, opts.NoRepoPatterns, opts.NoLocalPatterns, opts.MaxPatterns))
 	cacheKey := cache.RepoKey(owner, name, headSHA, repoKeyFlags...)
 	if !opts.NoCache && headSHA != "" {
 		if data, ok := cache.GetRaw(cacheKey, opts.CacheMaxAge); ok {

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/planwerk/planwerk-agent/internal/report"
@@ -48,6 +49,33 @@ func SetDir(dir string) (restore func()) {
 	cacheDir = dir
 	return func() { cacheDir = old }
 }
+
+// runFingerprint is folded into every cache key. It carries the run-shaping
+// configuration that is not part of any command's own key but decides what the
+// analysis says: the Claude model and effort tiers. Empty by default, so a
+// library caller or a test keys exactly as before; the CLI sets it once from
+// the resolved --claude-* flags.
+var runFingerprint string
+
+// SetRunFingerprint records the configuration every cache key must be scoped
+// to and returns a function that restores the previous value.
+//
+// Without it the key answered "same repo, same commit, same command flags?"
+// and served a hit — although `--claude-model sonnet` and `--claude-model
+// fable` produce different reviews of the same diff. Re-running with a
+// stronger model returned the weaker model's cached findings for the whole TTL,
+// with a "using cached review result" line as the only clue.
+func SetRunFingerprint(parts ...string) (restore func()) {
+	old := runFingerprint
+	runFingerprint = strings.Join(parts, "|")
+	return func() { runFingerprint = old }
+}
+
+// RunFingerprint returns the configuration SetRunFingerprint recorded. Key,
+// RepoKey, AuditKey and GlossaryKey fold it in themselves; this is for the
+// commands that hash a key of their own shape (gap-analysis, review-prepared)
+// and must scope it the same way.
+func RunFingerprint() string { return runFingerprint }
 
 // SetNow overrides the cache time source and returns a function that restores
 // the previous value. Intended for tests.
@@ -108,6 +136,7 @@ var ErrNotFound = errors.New("cache entry not found")
 // Key generates a cache key from the PR head SHA and review flags.
 func Key(owner, repo string, number int, headSHA string, flags ...string) string {
 	input := fmt.Sprintf("%s/%s#%d@%s", owner, repo, number, headSHA)
+	input += runFingerprint
 	for _, f := range flags {
 		input += "+" + f
 	}
@@ -121,6 +150,7 @@ func Key(owner, repo string, number int, headSHA string, flags ...string) string
 // so a moving wiki busts the cache rather than serving a stale proposal.
 func RepoKey(owner, repo, headSHA string, flags ...string) string {
 	input := fmt.Sprintf("propose:%s/%s@%s", owner, repo, headSHA)
+	input += runFingerprint
 	for _, f := range flags {
 		input += "+" + f
 	}
@@ -133,7 +163,7 @@ func RepoKey(owner, repo, headSHA string, flags ...string) string {
 // changes. The "glossary:" prefix keeps it disjoint from RepoKey's "propose:"
 // space so a propose and a glossary run on the same repo+SHA never collide.
 func GlossaryKey(owner, repo, headSHA string) string {
-	h := sha256.Sum256([]byte(fmt.Sprintf("glossary:%s/%s@%s", owner, repo, headSHA)))
+	h := sha256.Sum256([]byte(fmt.Sprintf("glossary:%s/%s@%s", owner, repo, headSHA) + runFingerprint))
 	return fmt.Sprintf("%x", h[:16])
 }
 
@@ -142,6 +172,7 @@ func GlossaryKey(owner, repo, headSHA string) string {
 // repo changes, plus any flags that alter the audit output.
 func AuditKey(owner, repo, headSHA string, flags ...string) string {
 	input := fmt.Sprintf("audit:%s/%s@%s", owner, repo, headSHA)
+	input += runFingerprint
 	for _, f := range flags {
 		input += "+" + f
 	}

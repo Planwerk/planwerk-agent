@@ -823,3 +823,33 @@ func TestLoadDir_UnreadableFileDoesNotAbortTheWalk(t *testing.T) {
 		t.Errorf("loadDir = %+v, want the readable pattern", pats)
 	}
 }
+
+// TestFingerprint_DistinguishesSourceSelections pins what the cache key must
+// notice: adding a source, suppressing a catalog, or changing the truncation
+// cap is a different analysis, not a cache hit.
+func TestFingerprint_DistinguishesSourceSelections(t *testing.T) {
+	base := Fingerprint(nil, false, false, 0)
+	cases := map[string]string{
+		"extra source":     Fingerprint([]string{"./rules"}, false, false, 0),
+		"no repo patterns": Fingerprint(nil, true, false, 0),
+		"no local":         Fingerprint(nil, false, true, 0),
+		"truncated":        Fingerprint(nil, false, false, 20),
+		"source order":     Fingerprint([]string{"./b", "./a"}, false, false, 0),
+	}
+	seen := map[string]string{base: "base"}
+	for name, fp := range cases {
+		if prev, dup := seen[fp]; dup {
+			t.Errorf("%s and %s share a fingerprint (%s)", name, prev, fp)
+		}
+		seen[fp] = name
+	}
+	if Fingerprint([]string{"./a", "./b"}, false, false, 0) == Fingerprint([]string{"./b", "./a"}, false, false, 0) {
+		t.Error("source order must be significant — later sources override earlier ones by name")
+	}
+	stable := Fingerprint([]string{"./a"}, true, false, 5)
+	for i := 0; i < 3; i++ {
+		if got := Fingerprint([]string{"./a"}, true, false, 5); got != stable {
+			t.Fatalf("fingerprint is not stable: %s != %s", got, stable)
+		}
+	}
+}

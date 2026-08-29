@@ -161,6 +161,11 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	if wiki.CommitSHA != "" {
 		cacheFlags = append(cacheFlags, "wiki="+wiki.CommitSHA)
 	}
+	// The loaded catalog decides what the review looks for, so it belongs in
+	// the key: --patterns ./new-rules must not be served a result from a run
+	// that never saw those rules.
+	cacheFlags = append(cacheFlags, "patterns="+patterns.Fingerprint(
+		opts.PatternDirs, opts.NoRepoPatterns, opts.NoLocalPatterns, opts.MaxPatterns))
 	cacheKey := cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA, cacheFlags...)
 	if !opts.NoCache {
 		if result, ok := cache.Get(cacheKey, opts.CacheMaxAge); ok {

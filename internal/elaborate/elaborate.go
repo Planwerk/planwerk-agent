@@ -133,7 +133,8 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		headSHA = ""
 	}
 
-	cacheKey := elaborateCacheKey(owner, name, number, issue, relations, headSHA, opts.Review)
+	cacheKey := elaborateCacheKey(owner, name, number, issue, relations, headSHA, opts.Review,
+		patterns.Fingerprint(opts.PatternDirs, opts.NoRepoPatterns, opts.NoLocalPatterns, opts.MaxPatterns))
 
 	if !opts.NoCache && headSHA != "" {
 		if data, ok := cache.GetRaw(cacheKey, opts.CacheMaxAge); ok {
@@ -272,7 +273,7 @@ func (r *Runner) finish(w io.Writer, result *Result, owner, name string, number 
 // issues is folded in too, so editing the Meta Issue or a sibling re-elaborates.
 // The relations flag is appended only when relations exist, so a plain issue's
 // key stays stable.
-func elaborateCacheKey(owner, name string, number int, issue *github.Issue, relations *github.IssueRelations, headSHA string, review bool) string {
+func elaborateCacheKey(owner, name string, number int, issue *github.Issue, relations *github.IssueRelations, headSHA string, review bool, patternsFingerprint string) string {
 	flags := []string{
 		fmt.Sprintf("issue=%d", number),
 		"body=" + issueFingerprint(issue),
@@ -283,6 +284,7 @@ func elaborateCacheKey(owner, name string, number int, issue *github.Issue, rela
 	if review {
 		flags = append(flags, "review")
 	}
+	flags = append(flags, "patterns="+patternsFingerprint)
 	return cache.AuditKey(owner, name, "elaborate@"+headSHA, flags...)
 }
 

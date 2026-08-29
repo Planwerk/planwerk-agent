@@ -1,6 +1,7 @@
 package patterns
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -606,4 +607,20 @@ func readPatternFile(path string) (string, error) {
 		return "", errPatternTooLarge
 	}
 	return string(data), nil
+}
+
+// Fingerprint returns a stable short digest of a run's pattern-source
+// selection: the extra sources, whether the bundled and repo-local catalogs are
+// suppressed, and the truncation cap. It exists for cache keys — the loaded
+// catalog decides what an analysis looks for, so `--patterns ./new-rules` must
+// not serve the result of a run that never saw those rules. Order is
+// significant and preserved: later sources override earlier ones by name.
+func Fingerprint(dirs []string, noRepo, noLocal bool, maxPatterns int) string {
+	h := sha256.New()
+	for _, d := range dirs {
+		_, _ = io.WriteString(h, d)
+		_, _ = h.Write([]byte{0})
+	}
+	_, _ = fmt.Fprintf(h, "|repo=%t|local=%t|max=%d", !noRepo, !noLocal, maxPatterns)
+	return fmt.Sprintf("%x", h.Sum(nil)[:8])
 }

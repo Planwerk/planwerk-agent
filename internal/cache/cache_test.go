@@ -259,3 +259,47 @@ func TestInspect(t *testing.T) {
 		t.Error("Inspect(missing) should return an error")
 	}
 }
+
+// TestKeys_ScopeToTheRunFingerprint is the regression test for the stale hits:
+// the key answered "same repo, same commit, same command flags?" and served an
+// entry produced by a different model tier, so re-running with a stronger model
+// returned the weaker one's findings for the whole TTL.
+func TestKeys_ScopeToTheRunFingerprint(t *testing.T) {
+	restore := SetRunFingerprint("sonnet", "medium")
+	sonnetReview := Key("o", "r", 1, "sha")
+	sonnetPropose := RepoKey("o", "r", "sha")
+	sonnetAudit := AuditKey("o", "r", "sha")
+	sonnetGlossary := GlossaryKey("o", "r", "sha")
+	restore()
+
+	restore = SetRunFingerprint("fable", "xhigh")
+	defer restore()
+
+	for _, tc := range []struct{ name, before, after string }{
+		{"review", sonnetReview, Key("o", "r", 1, "sha")},
+		{"propose", sonnetPropose, RepoKey("o", "r", "sha")},
+		{"audit", sonnetAudit, AuditKey("o", "r", "sha")},
+		{"glossary", sonnetGlossary, GlossaryKey("o", "r", "sha")},
+	} {
+		if tc.before == tc.after {
+			t.Errorf("%s key is identical across model tiers (%s)", tc.name, tc.after)
+		}
+	}
+	if got := RunFingerprint(); got != "fable|xhigh" {
+		t.Errorf("RunFingerprint() = %q, want the recorded tiers", got)
+	}
+}
+
+// TestSetRunFingerprint_RestoresPrevious keeps the seam usable from tests the
+// way SetDir and SetNow are.
+func TestSetRunFingerprint_RestoresPrevious(t *testing.T) {
+	before := Key("o", "r", 1, "sha")
+	restore := SetRunFingerprint("opus", "xhigh")
+	if Key("o", "r", 1, "sha") == before {
+		t.Error("fingerprint had no effect on the key")
+	}
+	restore()
+	if got := Key("o", "r", 1, "sha"); got != before {
+		t.Errorf("key after restore = %s, want %s", got, before)
+	}
+}
