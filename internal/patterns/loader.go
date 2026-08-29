@@ -1,7 +1,9 @@
 package patterns
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -15,6 +17,17 @@ import (
 // --max-patterns flag or PLANWERK_MAX_PATTERNS environment variable.
 // A value <= 0 disables truncation.
 const DefaultMaxPatternsInPrompt = 0
+
+// maxPatternBytes caps a single pattern file. Patterns run a few kilobytes; the
+// cap exists because a pattern directory is not always trusted input — the wiki
+// carries a review_patterns/ tree and the wiki is world-editable — so a runaway
+// page must be skipped rather than read whole into a prompt. It mirrors
+// maxMemoryBytes, which guards the wiki's memory pages for the same reason.
+const maxPatternBytes = 256 * 1024
+
+// errPatternTooLarge marks a file past maxPatternBytes so the walk skips the
+// whole file instead of parsing a truncated one.
+var errPatternTooLarge = errors.New("pattern file exceeds size cap")
 
 // reviewCategory is the Category value for patterns about the review process
 // itself. They group under a dedicated <review-patterns> prompt block and are
@@ -129,6 +142,22 @@ func loadDir(dir string) ([]Pattern, error) {
 		if d.IsDir() {
 			return nil
 		}
+		// Skip symlinks. The guard is load-bearing: a pattern directory is not
+		// always trusted input — the wiki ships a review_patterns/ tree and a
+		// wiki is world-editable, and a reviewed repo's .planwerk/review_patterns
+		// travels with the pull request — so a *.md symlink pointing at
+		// ~/.aws/credentials or /dev/zero would otherwise be followed by the read
+		// below and its target concatenated into the prompt. fs.DirEntry reports
+		// the entry's own type without following it, so the link is rejected here
+		// before anything opens its target. LoadMemory guards the wiki's memory
+		// pages the same way.
+		if d.Type()&fs.ModeSymlink != 0 {
+			slog.Warn("skipping symlinked pattern file", "path", path)
+			return nil
+		}
+		if !d.Type().IsRegular() {
+			return nil
+		}
 		if !strings.HasSuffix(d.Name(), ".md") {
 			return nil
 		}
@@ -137,12 +166,19 @@ func loadDir(dir string) ([]Pattern, error) {
 			return nil
 		}
 
-		content, err := os.ReadFile(path)
+		content, err := readPatternFile(path)
 		if err != nil {
-			return fmt.Errorf("reading pattern %s: %w", path, err)
+			if errors.Is(err, errPatternTooLarge) {
+				slog.Warn("pattern file exceeds size cap; skipping", "path", path, "cap", maxPatternBytes)
+				return nil
+			}
+			// One unreadable file must not cost the whole catalog: a permission
+			// error on a single page leaves every other pattern loadable.
+			slog.Warn("skipping unreadable pattern file", "path", path, "err", err)
+			return nil
 		}
 
-		p, err := Parse(string(content))
+		p, err := Parse(content)
 		if err != nil {
 			// Skip files that don't parse as patterns (e.g. README.md)
 			return nil
@@ -548,4 +584,26 @@ func hasDirPrefix(path, dir string) bool {
 	}
 	dir = strings.TrimRight(dir, string(filepath.Separator))
 	return path == dir || strings.HasPrefix(path, dir+string(filepath.Separator))
+}
+
+// readPatternFile reads one pattern through a bounded read: it pulls at most
+// maxPatternBytes+1 bytes via an io.LimitReader, so a runaway file never
+// allocates more than the cap before it is rejected. os.ReadFile would allocate
+// the whole file before any size check could run — and on a FIFO or /dev/zero
+// it would never return at all. Returns errPatternTooLarge past the cap so the
+// caller skips the file rather than parsing a truncated one.
+func readPatternFile(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = f.Close() }()
+	data, err := io.ReadAll(io.LimitReader(f, maxPatternBytes+1))
+	if err != nil {
+		return "", err
+	}
+	if len(data) > maxPatternBytes {
+		return "", errPatternTooLarge
+	}
+	return string(data), nil
 }

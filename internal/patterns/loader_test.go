@@ -745,3 +745,81 @@ func names(pats []Pattern) []string {
 	}
 	return out
 }
+
+// TestLoadDir_SkipsSymlinkedPatterns is the security regression test: a pattern
+// directory is not always trusted input (the wiki's review_patterns/ tree is
+// world-editable, and a reviewed repo's .planwerk/review_patterns travels with
+// the pull request), so a *.md symlink must never be followed into whatever it
+// points at.
+func TestLoadDir_SkipsSymlinkedPatterns(t *testing.T) {
+	secretDir := t.TempDir()
+	secret := filepath.Join(secretDir, "credentials")
+	if err := os.WriteFile(secret, []byte("# Review Pattern: Leak\n\n## Summary\n\naws_secret_access_key = hunter2\n"), 0o600); err != nil {
+		t.Fatalf("writing secret: %v", err)
+	}
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "real.md"), []byte("# Review Pattern: Real\n\n## Summary\n\nA genuine pattern.\n"), 0o644); err != nil {
+		t.Fatalf("writing pattern: %v", err)
+	}
+	if err := os.Symlink(secret, filepath.Join(dir, "leak.md")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	pats, err := loadDir(dir)
+	if err != nil {
+		t.Fatalf("loadDir: %v", err)
+	}
+	for _, p := range pats {
+		if strings.Contains(p.Body, "hunter2") || strings.Contains(p.Name, "Leak") {
+			t.Fatalf("loadDir followed a symlink out of the pattern directory: %+v", p)
+		}
+	}
+	if len(pats) != 1 || pats[0].Name != "Real" {
+		t.Errorf("loadDir = %d patterns %+v, want only the regular file", len(pats), pats)
+	}
+}
+
+// TestLoadDir_SkipsOversizedPattern covers the size cap: a runaway page is
+// skipped whole rather than read into a prompt or parsed truncated.
+func TestLoadDir_SkipsOversizedPattern(t *testing.T) {
+	dir := t.TempDir()
+	big := "# Review Pattern: Huge\n\n## Summary\n\n" + strings.Repeat("x", maxPatternBytes)
+	if err := os.WriteFile(filepath.Join(dir, "huge.md"), []byte(big), 0o644); err != nil {
+		t.Fatalf("writing oversized pattern: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "small.md"), []byte("# Review Pattern: Small\n\n## Summary\n\nFine.\n"), 0o644); err != nil {
+		t.Fatalf("writing pattern: %v", err)
+	}
+
+	pats, err := loadDir(dir)
+	if err != nil {
+		t.Fatalf("loadDir: %v", err)
+	}
+	if len(pats) != 1 || pats[0].Name != "Small" {
+		t.Errorf("loadDir = %+v, want only the pattern below the cap", pats)
+	}
+}
+
+// TestLoadDir_UnreadableFileDoesNotAbortTheWalk pins that one bad page costs
+// only itself: the catalog used to fail wholesale on a single EACCES.
+func TestLoadDir_UnreadableFileDoesNotAbortTheWalk(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root: mode bits do not deny the read")
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a-unreadable.md"), []byte("# Review Pattern: Nope\n\n## Summary\n\nx\n"), 0o000); err != nil {
+		t.Fatalf("writing unreadable pattern: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "b-fine.md"), []byte("# Review Pattern: Fine\n\n## Summary\n\nx\n"), 0o644); err != nil {
+		t.Fatalf("writing pattern: %v", err)
+	}
+
+	pats, err := loadDir(dir)
+	if err != nil {
+		t.Fatalf("loadDir returned an error for one unreadable file: %v", err)
+	}
+	if len(pats) != 1 || pats[0].Name != "Fine" {
+		t.Errorf("loadDir = %+v, want the readable pattern", pats)
+	}
+}
