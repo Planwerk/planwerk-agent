@@ -11,8 +11,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-
-	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
 // Command names used to scope cache operations and identify envelope origin.
@@ -178,29 +176,6 @@ func AuditKey(owner, repo, headSHA string, flags ...string) string {
 	}
 	h := sha256.Sum256([]byte(input))
 	return fmt.Sprintf("%x", h[:16])
-}
-
-// Get retrieves a cached review result if it exists and is within maxAge.
-// A maxAge of 0 disables the age check.
-func Get(key string, maxAge time.Duration) (*report.ReviewResult, bool) {
-	payload, ok := readPayload(key, maxAge)
-	if !ok {
-		return nil, false
-	}
-	var result report.ReviewResult
-	if err := json.Unmarshal(payload, &result); err != nil {
-		return nil, false
-	}
-	return &result, true
-}
-
-// Put stores a review result in the cache under the given command scope.
-func Put(key, command string, result *report.ReviewResult) error {
-	data, err := json.Marshal(result)
-	if err != nil {
-		return err
-	}
-	return writeEnvelope(key, command, data)
 }
 
 // GetRaw retrieves the raw cached payload if it exists and is within maxAge.

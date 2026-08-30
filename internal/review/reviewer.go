@@ -3,6 +3,7 @@ package review
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -161,11 +162,11 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		opts.PatternDirs, opts.NoRepoPatterns, opts.NoLocalPatterns, opts.MaxPatterns))
 	cacheKey := cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA, cacheFlags...)
 	if !opts.NoCache {
-		if result, ok := cache.Get(cacheKey, opts.CacheMaxAge); ok {
+		if entry, ok := readCachedReview(cacheKey, opts.CacheMaxAge); ok {
 			slog.Info("using cached review result")
-			result.WikiRepo = wiki.Repo
-			result.WikiCommit = wiki.CommitSHA
-			return r.renderResult(w, result, pr, opts, nil)
+			entry.Result.WikiRepo = wiki.Repo
+			entry.Result.WikiCommit = wiki.CommitSHA
+			return r.renderResult(w, entry.Result, pr, opts, entry.Coverage)
 		}
 	}
 
@@ -368,9 +369,10 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// records now carry is worth watching.
 	hygiene.VerifyClaims(result, pr.Dir, r.Claude.VerifyFindingClaims)
 
-	// 12. Cache result
+	// 12. Cache the result together with the coverage map, so a later hit
+	// renders the report this run rendered rather than a subset of it.
 	if !opts.NoCache {
-		if err := cache.Put(cacheKey, cache.CommandReview, result); err != nil {
+		if err := writeCachedReview(cacheKey, result, coverageResult); err != nil {
 			slog.Warn("could not cache result", "err", err)
 		}
 	}
@@ -389,6 +391,52 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// returned above before the catalog was loaded), and only when a wiki resolved.
 	r.runCapture(w, pr, opts, result, pats, wiki)
 	return nil
+}
+
+// cachedReview is what a review run stores: the findings, and the coverage map
+// that was rendered beside them when the run was asked for one.
+//
+// The map is kept here rather than on report.ReviewResult because it is not part
+// of the review — nothing merges, filters, suppresses or posts it with the
+// findings — but it is part of the report. --coverage-map is part of the cache
+// key, so the entry a coverage run writes is only ever served to another
+// coverage run, and it has to be able to reproduce what that run would print.
+type cachedReview struct {
+	Result   *report.ReviewResult   `json:"result"`
+	Coverage *report.CoverageResult `json:"coverage,omitempty"`
+}
+
+// writeCachedReview stores a run's result and coverage map under key. A nil
+// coverage map — the flag was off, or the pass failed — is omitted, so a hit
+// renders no coverage section either.
+func writeCachedReview(key string, result *report.ReviewResult, coverage *report.CoverageResult) error {
+	data, err := json.Marshal(cachedReview{Result: result, Coverage: coverage})
+	if err != nil {
+		return err
+	}
+	return cache.PutRaw(key, cache.CommandReview, data)
+}
+
+// readCachedReview loads a stored review, reporting a miss for anything it
+// cannot use. An entry written before the coverage map was stored alongside the
+// result is a bare ReviewResult: it decodes without error, because none of its
+// keys match this envelope, and leaves Result nil. Treating that as a miss
+// re-runs the review instead of rendering an empty report from it.
+func readCachedReview(key string, maxAge time.Duration) (cachedReview, bool) {
+	data, ok := cache.GetRaw(key, maxAge)
+	if !ok {
+		return cachedReview{}, false
+	}
+	var entry cachedReview
+	if err := json.Unmarshal(data, &entry); err != nil {
+		slog.Warn("cached review is unreadable; running a fresh review", "err", err)
+		return cachedReview{}, false
+	}
+	if entry.Result == nil {
+		slog.Info("cached review predates the stored coverage map; running a fresh review")
+		return cachedReview{}, false
+	}
+	return entry, true
 }
 
 // runCapture runs the read-only capture pass after the review renders: it mines
