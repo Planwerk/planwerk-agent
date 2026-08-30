@@ -1045,10 +1045,11 @@ func TestBuildRepairPrompt_Schema_Golden(t *testing.T) {
 
 // TestBuildValidationRepairPrompt_Golden locks the schema-repair prompt: the
 // validation error is fed back and the finding-schema rules are restated so the
-// model fixes the offending finding without inventing or dropping findings.
+// model fixes the one finding it is handed without touching the fields the
+// error does not name.
 func TestBuildValidationRepairPrompt_Golden(t *testing.T) {
-	validationErr := errors.New(`finding 0: "title" must be a non-empty string`)
-	invalid := `{"findings":[{"title":"","severity":"WARNING","confidence":"likely"}]}`
+	validationErr := errors.New("title is empty")
+	invalid := `{"title":"","severity":"WARNING","confidence":"likely"}`
 	assertGoldenPrompt(t, "validation_repair", buildValidationRepairPrompt(invalid, validationErr))
 }
 

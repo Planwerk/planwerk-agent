@@ -1,8 +1,11 @@
 package claude
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -14,9 +17,14 @@ type sample struct {
 	B string `json:"b"`
 }
 
-// emptyTitleFindingJSON is a schema-invalid review (empty title) reused across
+// emptyTitleFindingJSON is a schema-invalid finding (empty title) reused across
 // the repair tests; a shared const keeps goconst from flagging the repetition.
-const emptyTitleFindingJSON = `{"findings":[{"title":"","severity":"WARNING","confidence":"likely"}]}`
+// It is one finding object rather than a whole review because repairFinding
+// sends and expects a single finding.
+const emptyTitleFindingJSON = `{"title":"","severity":"WARNING","confidence":"likely"}`
+
+// repairedFindingJSON is the same finding with the violation fixed.
+const repairedFindingJSON = `{"title":"Fixed","severity":"WARNING","confidence":"likely"}`
 
 func TestDecodeJSONWithRepair_ValidNoRepair(t *testing.T) {
 	// The common case: valid JSON decodes without ever invoking the repair path.
@@ -220,7 +228,7 @@ func TestRepairInvalidReview_SucceedsWithinRounds(t *testing.T) {
 		if calls == 1 {
 			return emptyTitleFindingJSON, nil // still bad
 		}
-		return `{"findings":[{"title":"Fixed","severity":"WARNING","confidence":"likely"}]}`, nil
+		return repairedFindingJSON, nil
 	}
 	t.Cleanup(func() { repairInvalidJSON = restore })
 
@@ -319,7 +327,7 @@ func TestWarnOnDroppedFindings(t *testing.T) {
 // to report.ValidationRules: every rule string must appear verbatim in the
 // prompt, so the two cannot drift.
 func TestValidationRepairPromptUsesValidationRules(t *testing.T) {
-	prompt := buildValidationRepairPrompt(`{"findings":[]}`, errors.New("finding 0: title is empty"))
+	prompt := buildValidationRepairPrompt(emptyTitleFindingJSON, errors.New("title is empty"))
 	for _, rule := range report.ValidationRules() {
 		if !strings.Contains(prompt, rule) {
 			t.Errorf("validation-repair prompt should contain the rule %q verbatim", rule)
@@ -386,7 +394,7 @@ func TestRepairInvalidReview_RepairsInvalid(t *testing.T) {
 		if validationErr == nil {
 			t.Error("repair should receive the validation error")
 		}
-		return `{"findings":[{"severity":"WARNING","title":"Repaired title","confidence":"verified","problem":"p","action":"a"}],"summary":"s","recommendation":"r"}`, nil
+		return `{"severity":"WARNING","title":"Repaired title","confidence":"verified","problem":"p","action":"a"}`, nil
 	}
 	t.Cleanup(func() { repairInvalidJSON = restore })
 
@@ -397,7 +405,7 @@ func TestRepairInvalidReview_RepairsInvalid(t *testing.T) {
 		t.Fatalf("expected repair to succeed, got: %v", err)
 	}
 	if len(result.Findings) != 1 || result.Findings[0].Title != "Repaired title" {
-		t.Errorf("result was not replaced by the repaired review: %+v", result.Findings)
+		t.Errorf("finding was not replaced by the repaired one: %+v", result.Findings)
 	}
 }
 
@@ -405,16 +413,16 @@ func TestRepairInvalidReview_StillInvalid(t *testing.T) {
 	// One bounded round: a repair that returns still-invalid data fails loudly.
 	restore := repairInvalidJSON
 	repairInvalidJSON = func(*Client, string, error, string) (string, error) {
-		return `{"findings":[{"severity":"WARNING","title":"","confidence":"verified","problem":"p","action":"a"}]}`, nil
+		return `{"severity":"WARNING","title":"","confidence":"verified","problem":"p","action":"a"}`, nil
 	}
 	t.Cleanup(func() { repairInvalidJSON = restore })
 
 	bad := validFinding()
-	bad.Severity = "FATAL"
+	bad.Title = ""
 	result := &report.ReviewResult{Findings: []report.Finding{bad}}
 	err := (&Client{}).repairInvalidReview(result)
 	if err == nil {
-		t.Fatal("expected an error when the repaired review is still invalid")
+		t.Fatal("expected an error when the repaired finding is still invalid")
 	}
 	if !strings.Contains(err.Error(), "still invalid") {
 		t.Errorf("error should describe the bounded-repair failure, got: %v", err)
@@ -429,13 +437,119 @@ func TestRepairInvalidReview_RepairCallFails(t *testing.T) {
 	t.Cleanup(func() { repairInvalidJSON = restore })
 
 	bad := validFinding()
-	bad.Confidence = "sure"
+	bad.Title = ""
 	result := &report.ReviewResult{Findings: []report.Finding{bad}}
 	err := (&Client{}).repairInvalidReview(result)
 	if err == nil {
 		t.Fatal("expected an error when the repair call fails")
 	}
+	if !strings.Contains(err.Error(), "finding 0") {
+		t.Errorf("error should name which finding failed, got: %v", err)
+	}
 	if !strings.Contains(err.Error(), "claude unavailable") {
 		t.Errorf("error should wrap the repair-call failure, got: %v", err)
 	}
+}
+
+// TestRepairInvalidReview_RepairsOnlyTheOffendingFinding is the point of the
+// per-finding repair: a review whose twentieth finding has an empty title used
+// to re-send all twenty, up to three times. Only the offender is sent now, and
+// the findings around it come back untouched.
+func TestRepairInvalidReview_RepairsOnlyTheOffendingFinding(t *testing.T) {
+	var sent []string
+	restore := repairInvalidJSON
+	repairInvalidJSON = func(_ *Client, invalid string, _ error, _ string) (string, error) {
+		sent = append(sent, invalid)
+		return `{"title":"Repaired","severity":"CRITICAL","confidence":"likely","problem":"boom"}`, nil
+	}
+	t.Cleanup(func() { repairInvalidJSON = restore })
+
+	first := validFinding()
+	first.Title = "first stays"
+	offender := validFinding()
+	offender.Title = ""
+	offender.Problem = "boom"
+	last := validFinding()
+	last.Title = "last stays"
+	result := &report.ReviewResult{Findings: []report.Finding{first, offender, last}}
+
+	if err := (&Client{}).repairInvalidReview(result); err != nil {
+		t.Fatalf("repairInvalidReview: %v", err)
+	}
+
+	if len(sent) != 1 {
+		t.Fatalf("repair called %d times, want 1 — only the offending finding needs one", len(sent))
+	}
+	// The payload is one finding object, not the review that contained it.
+	if strings.Contains(sent[0], `"findings"`) {
+		t.Errorf("payload carries the whole review rather than one finding: %s", sent[0])
+	}
+	var payload report.Finding
+	if err := json.Unmarshal([]byte(sent[0]), &payload); err != nil {
+		t.Fatalf("payload does not decode as a single finding: %v (%s)", err, sent[0])
+	}
+	if payload.Problem != "boom" {
+		t.Errorf("payload = %+v, want the offending finding", payload)
+	}
+
+	if result.Findings[1].Title != "Repaired" {
+		t.Errorf("offender was not replaced: %+v", result.Findings[1])
+	}
+	if !reflect.DeepEqual(result.Findings[0], first) || !reflect.DeepEqual(result.Findings[2], last) {
+		t.Errorf("findings around the offender changed:\n%+v\n%+v", result.Findings[0], result.Findings[2])
+	}
+}
+
+// TestNormalizeTranscribedLabels_SettlesOffEnumLabels covers the labels a source
+// review can state in words the enum does not have. Settling them here is what
+// leaves the empty title as the only violation a model is ever asked about.
+func TestNormalizeTranscribedLabels_SettlesOffEnumLabels(t *testing.T) {
+	var attrs [][]any
+	restore := slogWarnFn
+	slogWarnFn = func(_ string, a ...any) { attrs = append(attrs, a) }
+	t.Cleanup(func() { slogWarnFn = restore })
+
+	result := &report.ReviewResult{Findings: []report.Finding{
+		{Title: "off-enum", Severity: "HIGH", Confidence: "certain"},
+		// Case is not a violation: ParseSeverity and ParseConfidence fold it.
+		{Title: "lower case", Severity: "warning", Confidence: "VERIFIED"},
+	}}
+	normalizeTranscribedLabels(result)
+
+	if result.Findings[0].Severity != report.SeverityInfo {
+		t.Errorf("severity = %q, want INFO for a label the enum does not have", result.Findings[0].Severity)
+	}
+	if result.Findings[0].Confidence != report.ConfidenceUncertain {
+		t.Errorf("confidence = %q, want uncertain", result.Findings[0].Confidence)
+	}
+	if result.Findings[1].Severity != report.SeverityWarning || result.Findings[1].Confidence != report.ConfidenceVerified {
+		t.Errorf("a differently-cased label is not a violation, got %q/%q",
+			result.Findings[1].Severity, result.Findings[1].Confidence)
+	}
+	if len(attrs) != 2 {
+		t.Fatalf("logged %d warnings, want 2 — one per rejected label on the first finding", len(attrs))
+	}
+	// Each warning must name the finding and the label that was rejected, or the
+	// operator cannot tell which finding lost its classification.
+	for _, a := range attrs {
+		joined := fmt.Sprint(a...)
+		if !strings.Contains(joined, "off-enum") {
+			t.Errorf("warning %v does not name the finding's title", a)
+		}
+	}
+	if !strings.Contains(fmt.Sprint(attrs[0]...), "HIGH") || !strings.Contains(fmt.Sprint(attrs[1]...), "certain") {
+		t.Errorf("warnings do not name the rejected labels: %v", attrs)
+	}
+}
+
+// TestNormalizeTranscribedLabels_EmptyAndNilFindings covers the two shapes that
+// carry nothing to normalize: a review with no findings at all, and a nil slice.
+func TestNormalizeTranscribedLabels_EmptyAndNilFindings(t *testing.T) {
+	restore := slogWarnFn
+	slogWarnFn = func(string, ...any) { t.Error("nothing to normalize must log nothing") }
+	t.Cleanup(func() { slogWarnFn = restore })
+
+	normalizeTranscribedLabels(&report.ReviewResult{})
+	normalizeTranscribedLabels(&report.ReviewResult{Findings: nil})
+	normalizeTranscribedLabels(&report.ReviewResult{Findings: []report.Finding{}})
 }

@@ -28,7 +28,8 @@ var repairJSON = func(c *Client, malformed string, parseErr error, label, schema
 
 // repairInvalidJSON asks Claude to fix JSON that parsed cleanly but failed
 // schema validation, feeding the validation error back so the model can correct
-// the offending fields. It is a package variable so tests can substitute a
+// the offending fields. Its payload is one finding, not a whole review: see
+// repairFinding. It is a package variable so tests can substitute a
 // deterministic repair without invoking the claude CLI. The call runs on the
 // *Client's structure tier (structureModel/structureEffort) via
 // runClaudeStructure, matching the structuring pass it backstops.
@@ -162,28 +163,33 @@ Fix the JSON so it is valid. Output ONLY the corrected JSON, nothing else.` + sc
 </malformed-json>`
 }
 
-// buildValidationRepairPrompt asks Claude to fix JSON that is well-formed but
-// violates the finding schema, using the validation error to pinpoint the fix.
-// The rule bullets are derived from report.ValidationRules so they cannot drift
-// from what report.Validate actually enforces.
-func buildValidationRepairPrompt(invalidJSON string, validationErr error) string {
+// buildValidationRepairPrompt asks Claude to fix one finding that is well-formed
+// JSON but violates the finding schema, using the validation error to pinpoint
+// the fix. The rule bullets are derived from report.ValidationRules so they
+// cannot drift from what report.Validate actually enforces.
+//
+// The payload is a single finding object rather than the whole review: the
+// caller repairs offenders one at a time, so there are no other findings to
+// invent or drop, and the instruction is instead to leave every field the error
+// does not name alone.
+func buildValidationRepairPrompt(invalidFinding string, validationErr error) string {
 	var rules strings.Builder
 	for _, r := range report.ValidationRules() {
 		rules.WriteString("- ")
 		rules.WriteString(r)
 		rules.WriteString("\n")
 	}
-	return `The following JSON is valid JSON but violates the finding schema. The validator reported this error:
+	return `The following finding is valid JSON but violates the finding schema. The validator reported this error:
 
 ` + validationErr.Error() + `
 
-Fix the offending finding so every finding satisfies these rules:
+Fix this finding so it satisfies these rules:
 ` + rules.String() + `
-Do not invent new findings or drop existing ones. Output ONLY the corrected JSON, nothing else.
+Do not change any field the error does not name. Output ONLY the corrected finding object, nothing else.
 
-<invalid-json>
-` + invalidJSON + `
-</invalid-json>`
+<invalid-finding>
+` + invalidFinding + `
+</invalid-finding>`
 }
 
 // stripMarkdownFences removes ```json ... ``` wrapping that LLMs frequently add.
