@@ -79,21 +79,32 @@ func wrapWithPersistedAnalysis(raw string, cause error) error {
 	return fmt.Errorf("%w\nthe raw analysis was saved to %s — re-run structuring only against it to retry without repeating the analysis", cause, path)
 }
 
-// normalizeTranscribedLabels fills the two labels the transcribe-only structure
-// tier may leave empty when the source review stated none: an empty Severity
-// becomes INFO and an empty Confidence becomes uncertain, each logged with the
-// finding's title. Defaulting conservatively in Go — rather than by a model
-// repair round — lands an unlabeled finding in the Unverified section instead of
-// being silently dropped by Categorize, which skips unknown-severity findings.
+// normalizeTranscribedLabels settles the two labels the transcribe-only
+// structure tier can leave unusable: one the source review never stated, which
+// arrives empty, and one it stated in words the enum does not have. Both become
+// INFO and uncertain here, logged with the finding's title and the label that
+// was rejected.
+//
+// Deciding them in Go rather than by a model repair round matters twice over. An
+// unlabeled finding would otherwise be dropped silently by Categorize, which
+// skips unknown severities; and these are the two of the three schema rules a
+// parser can settle alone, which leaves the empty title as the only violation
+// that still needs a model to look at it.
 func normalizeTranscribedLabels(result *report.ReviewResult) {
 	for i := range result.Findings {
 		f := &result.Findings[i]
-		if strings.TrimSpace(string(f.Severity)) == "" {
-			slogWarnFn("structuring left a finding without a severity label; defaulting to INFO", "title", f.Title)
+		if sev, err := report.ParseSeverity(string(f.Severity)); err == nil {
+			f.Severity = sev
+		} else {
+			slogWarnFn("structuring left a finding without a usable severity label; defaulting to INFO",
+				"title", f.Title, "severity", f.Severity)
 			f.Severity = report.SeverityInfo
 		}
-		if strings.TrimSpace(string(f.Confidence)) == "" {
-			slogWarnFn("structuring left a finding without a confidence label; defaulting to uncertain", "title", f.Title)
+		if conf, err := report.ParseConfidence(string(f.Confidence)); err == nil {
+			f.Confidence = conf
+		} else {
+			slogWarnFn("structuring left a finding without a usable confidence label; defaulting to uncertain",
+				"title", f.Title, "confidence", f.Confidence)
 			f.Confidence = report.ConfidenceUncertain
 		}
 	}
@@ -120,43 +131,59 @@ func warnOnDroppedFindings(sourceCount, emitted int) {
 	}
 }
 
-// repairInvalidReview validates result against the finding schema. When a
-// finding has an empty title, an off-enum severity, or an off-enum confidence,
-// it asks Claude to repair the offending fields instead of letting assignIDs
-// normalize the bad data into placeholder defaults. The repair is bounded to
-// maxRepairRounds: each round feeds the latest validation (or parse) error back,
-// so two independent violations that a single round cannot both fix still
-// resolve. If every round fails it returns a descriptive error wrapping the last
-// validation failure.
+// repairInvalidReview validates every finding against the finding schema and
+// asks Claude to repair the ones that fail, rather than letting assignIDs
+// normalize bad data into placeholder defaults. After
+// normalizeTranscribedLabels only an empty title can still fail, and a title is
+// a property of one finding, so each offender is repaired on its own: a review
+// of twenty findings with one bad title sends that finding, not the other
+// nineteen along with it. A review whose findings all validate makes no call.
 func (c *Client) repairInvalidReview(result *report.ReviewResult) error {
-	verr := result.Validate()
-	if verr == nil {
-		return nil
+	for i := range result.Findings {
+		verr := result.Findings[i].Validate()
+		if verr == nil {
+			continue
+		}
+		fixed, err := c.repairFinding(i, result.Findings[i], verr)
+		if err != nil {
+			return err
+		}
+		result.Findings[i] = fixed
 	}
-	current, err := json.Marshal(result)
+	return nil
+}
+
+// repairFinding asks Claude to repair one schema-invalid finding, bounded to
+// maxRepairRounds. Each round feeds back the latest failure — a parse error when
+// the answer is not JSON at all, the validation error when it parses but still
+// violates the schema — so a repair that misses once can still land. i and the
+// finding's title identify it in every error, since the caller repairs findings
+// by index and a bare "still invalid" would not say which one. On failure the
+// original finding is returned unchanged alongside the error.
+func (c *Client) repairFinding(i int, f report.Finding, verr error) (report.Finding, error) {
+	current, err := json.Marshal(f)
 	if err != nil {
-		return fmt.Errorf("marshaling structured review for schema repair: %w", err)
+		return f, fmt.Errorf("marshaling finding %d (%q) for schema repair: %w", i, f.Title, err)
 	}
 	payload := string(current)
 	for round := 0; round < maxRepairRounds; round++ {
-		repaired, err := repairInvalidJSON(c, payload, verr, "structured review")
+		repaired, err := repairInvalidJSON(c, payload, verr, "structured review finding")
 		if err != nil {
-			return fmt.Errorf("repairing schema-invalid structured review: %w (validation error: %w)", err, verr)
+			return f, fmt.Errorf("repairing schema-invalid finding %d (%q): %w (validation error: %w)", i, f.Title, err, verr)
 		}
 		repaired = stripMarkdownFences(repaired)
-		var fixed report.ReviewResult
-		if perr := json.Unmarshal([]byte(repaired), &fixed); perr != nil {
+		var fixed report.Finding
+		if perr := unmarshalJSON(repaired, &fixed); perr != nil {
 			// The repaired output does not even parse; feed that back next round.
 			payload, verr = repaired, fmt.Errorf("output is not valid JSON: %w", perr)
 			continue
 		}
 		if verr = fixed.Validate(); verr == nil {
-			*result = fixed
-			return nil
+			return fixed, nil
 		}
 		payload = repaired
 	}
-	return fmt.Errorf("structured review still invalid after %d schema-repair rounds: %w", maxRepairRounds, verr)
+	return f, fmt.Errorf("finding %d (%q) still invalid after %d schema-repair rounds: %w", i, f.Title, maxRepairRounds, verr)
 }
 
 func buildStructurePrompt(rawReview string) string {

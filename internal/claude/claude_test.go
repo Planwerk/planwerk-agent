@@ -732,19 +732,24 @@ func TestBuildRepairPrompt_SchemaSection(t *testing.T) {
 	}
 }
 
-func TestBuildValidationRepairPrompt_ContainsErrorAndJSON(t *testing.T) {
-	invalid := `{"findings":[{"severity":"WARNING","title":"","confidence":"verified"}]}`
-	err := fmt.Errorf("finding 0 (%q): title is empty", "")
+func TestBuildValidationRepairPrompt_ContainsErrorAndFinding(t *testing.T) {
+	invalid := `{"severity":"WARNING","title":"","confidence":"verified"}`
+	err := fmt.Errorf("title is empty")
 	prompt := buildValidationRepairPrompt(invalid, err)
 
 	if !strings.Contains(prompt, "title is empty") {
 		t.Error("validation repair prompt should include the validation error")
 	}
 	if !strings.Contains(prompt, invalid) {
-		t.Error("validation repair prompt should include the invalid JSON")
+		t.Error("validation repair prompt should include the invalid finding")
 	}
-	if !strings.Contains(prompt, "Output ONLY the corrected JSON") {
-		t.Error("validation repair prompt should ask for corrected JSON only")
+	if !strings.Contains(prompt, "Output ONLY the corrected finding object") {
+		t.Error("validation repair prompt should ask for the corrected finding only")
+	}
+	// The payload is one finding, so the whole-review framing must be gone: it
+	// would tell the model to preserve a findings array it was never handed.
+	if strings.Contains(prompt, "<invalid-json>") || strings.Contains(prompt, "invent new findings") {
+		t.Errorf("prompt still frames the payload as a whole review:\n%s", prompt)
 	}
 }
 
