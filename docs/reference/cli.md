@@ -510,8 +510,6 @@ planwerk-agent implement owner/repo#123
 planwerk-agent implement --no-plan owner/repo#123
 planwerk-agent implement --no-plan-reuse owner/repo#123
 planwerk-agent implement --verify owner/repo#123
-planwerk-agent implement --verify-adversarial owner/repo#123
-planwerk-agent implement --verify --verify-adversarial owner/repo#123
 planwerk-agent implement --no-simplify owner/repo#123
 planwerk-agent implement --no-review owner/repo#123
 planwerk-agent implement --wiki owner/repo#123
@@ -536,7 +534,6 @@ planwerk-agent implement --wiki --capture-wiki --yes owner/repo#123
 | `--implement-worker-model` | Model for the `implementer` subagents the implement session delegates its work packages to. Setting it switches the session into **orchestrator mode**: the session (on `--implement-model`, e.g. `fable`) keeps the whole issue in view, delegates each work package to a subagent on this model, and verifies every delivered package against the actual diff before moving on. The subagent is defined inline via Claude Code's `--agents` flag, so the checkout stays untouched; the report's attribution names this model, and the workers' commit trailers carry their exact model id. Pass an exact model id (e.g. `claude-opus-5`) for exact footer attribution. Empty keeps the single-session behavior (env: `PLANWERK_IMPLEMENT_WORKER_MODEL`) | - (orchestrator mode off) |
 | `--implement-worker-effort` | Reasoning effort for the `implementer` subagents in orchestrator mode (`low`, `medium`, `high`, `xhigh`, `max`); ignored without `--implement-worker-model` (env: `PLANWERK_IMPLEMENT_WORKER_EFFORT`) | `xhigh` |
 | `--verify` | After implementing, run an independent pass that checks the actual diff against the issue's Acceptance Criteria without trusting the implementer's report; any unmet criteria are then fed into the review applier and fixed on the branch before the PR opens | `false` |
-| `--verify-adversarial` | After implementing, red-team the produced diff for the bugs it introduces using the adversarial-review pass (independent of `--verify`) | `false` |
 | `--no-simplify` | Skip the automatic simplify pass that folds over-engineering removals into the branch before the review phase | `false` |
 | `--no-review` | Skip the automatic review-and-fix pass that folds review findings into the branch after the simplify pass | `false` |
 | `--no-specialists` | Skip the domain-specialist fan-out on the review pass's first round; the adversarial finder still runs | `false` |
@@ -578,12 +575,9 @@ partial progress to `origin` (no PR) so the next clone can fetch and resume it.
 Pass `--no-resume` to start a fresh branch and disable pushing partial
 progress and the progress note.
 
-`--verify` and `--verify-adversarial` are independent verification passes that
-both run over the actual committed diff, not the implementer's self-report:
-`--verify` checks acceptance-criteria coverage, while `--verify-adversarial`
-reuses the same adversarial-review machinery as `review --thorough` to hunt for
-the bugs the change introduces (injection, race conditions, failure modes).
-Enable either, both, or neither. Both are non-fatal — a finding is reported, it
+`--verify` is a verification pass that runs over the actual committed diff, not
+the implementer's self-report, and checks it for acceptance-criteria coverage.
+It is non-fatal — a finding is reported, it
 does not fail the run. When `--verify` finds unmet criteria, those findings are
 also fed into the same review applier the review-and-fix pass uses, so the gaps
 are fixed on the local branch before the finalize step opens the PR (this apply
@@ -644,7 +638,7 @@ whole branch was already reviewed and the open question is whether those fixes
 hold. If the pre-fix commit cannot be recorded the round falls back to the
 branch-wide scope. The pass is
 non-fatal — a failed or escalated review never changes the run's exit code. The
-read-only `--verify` / `--verify-adversarial` flags remain available for a
+read-only `--verify` flag remains available for a
 report-only run. Disable the whole pass with `--no-review`, or just the
 first-round specialist fan-out with `--no-specialists`.
 
@@ -726,7 +720,6 @@ planwerk-agent ship --start-at 456 owner/repo#123
 | `--no-simplify` | Skip the automatic simplify pass in each per–Sub Issue implement run | `false` |
 | `--no-review` | Skip the automatic review-and-fix pass in each per–Sub Issue implement run | `false` |
 | `--verify` | In each implement run, check the produced diff against the Sub Issue's Acceptance Criteria | `false` |
-| `--verify-adversarial` | In each implement run, red-team the produced diff for the bugs it introduces | `false` |
 | `--no-plan` | Skip the planning session in each per–Sub Issue implement run | `false` |
 | `--no-plan-reuse` | Always run a fresh planning session; do not reuse a plan already posted on the Sub Issue | `false` |
 | `--no-plan-comment` | Do not post the generated implementation plan as a comment on each Sub Issue | `false` |

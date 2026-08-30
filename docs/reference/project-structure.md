@@ -39,7 +39,7 @@ planwerk-agent/
 │   │   ├── repair.go           # JSON decode with one-shot Claude repair
 │   │   ├── structure.go        # Review output → structured findings + IDs
 │   │   ├── claude_test.go
-│   │   ├── adversarial.go      # Adversarial review pass (review --thorough, implement --verify-adversarial)
+│   │   ├── adversarial.go      # Adversarial review pass (review --thorough, implement's review loop)
 │   │   ├── audit.go            # Full-codebase audit against review patterns
 │   │   ├── audit_test.go
 │   │   ├── coverage.go         # Test coverage map generation (--coverage-map)

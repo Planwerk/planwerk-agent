@@ -226,10 +226,9 @@ func (a verifyFnAdapter) VerifyImplementation(dir, issueTitle, issueBody string)
 // rendered), so a pass inspecting a fresh diff applies the same patterns a later
 // review of that diff would; an empty catalog leaves the prompt unchanged.
 //
-// It serves two passes. As the report-only --verify-adversarial pass it is
-// wired only when that flag is set. As the finder for the default-on
-// review-and-fix pass (paired with ReviewApplier) it is always wired, so the
-// review pass runs unless --no-review disables it.
+// It is the finder for the default-on review-and-fix pass, paired with
+// ReviewApplier, and is always wired, so that pass runs unless --no-review
+// disables it.
 type AdversarialVerifier interface {
 	// AdversarialReview red-teams the produced diff. sinceRef, when set, narrows
 	// it to what changed since that commit — the review loop's later rounds re-run
