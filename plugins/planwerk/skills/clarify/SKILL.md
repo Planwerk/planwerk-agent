@@ -22,9 +22,11 @@ Arguments: $ARGUMENTS
 Read these before you start, in full:
 
 - `${CLAUDE_SKILL_DIR}/../../shared/interaction.md` — how to ask, and when to stop
-- `${CLAUDE_SKILL_DIR}/../../shared/issue-format.md` — the two depths, and the rules each must satisfy
+- `${CLAUDE_SKILL_DIR}/../../shared/issue-format.md` — the draft depth, and the rules it must satisfy
+- `${CLAUDE_SKILL_DIR}/../../shared/issue-format-plan.md` — the elaborated format and the rules a plan must satisfy
 - `${CLAUDE_SKILL_DIR}/../../shared/house-style.md` — prose, citations, anti-hallucination
-- `${CLAUDE_SKILL_DIR}/../../shared/github.md` — the `gh` commands and the neighborhood query
+- `${CLAUDE_SKILL_DIR}/../../shared/github.md` — the `gh` commands
+- `${CLAUDE_SKILL_DIR}/../../shared/github-relations.md` — the neighborhood query
 
 You must be inside a checkout of the issue's repository. If the working tree
 belongs to a different repo, say so and stop. Then bring the default branch up to
@@ -127,7 +129,7 @@ Then work three sources, in order:
 
 1. **The repository at HEAD.** Open the files. Most questions about how a thing
    works are answered by the thing.
-2. **The Meta Issue.** Run the neighborhood query from `github.md`. A shared
+2. **The Meta Issue.** Run the neighborhood query from `github-relations.md`. A shared
    decision the Meta Issue already made is not the author's to make a second
    time. Honor it, and cite where it was made — `owner/repo#N` when the Meta
    Issue lives in another repository, which the query reports per issue.
@@ -239,12 +241,12 @@ draft.
   size of the work. It often does. That is what made it a decision.
 - **When the body carries an `Executability score:` line, re-score or delete it.**
   A score is a claim about text you just changed; re-score against the rubric in
-  `issue-format.md` or drop the line. Delete the `Reviewer Notes (unresolved)`
+  `issue-format-plan.md` or drop the line. Delete the `Reviewer Notes (unresolved)`
   entries your answers closed, and keep the rest.
 - **Replace the footer verb with `Clarified by`**, naming your model id.
 
 The corrected body must still satisfy every rule of its depth in
-`issue-format.md`. At draft depth: no source file, no symbol, no acceptance
+`issue-format.md` and `issue-format-plan.md`. At draft depth: no source file, no symbol, no acceptance
 criteria, no implementation steps. At elaborated depth: the sections in order,
 every criterion an observable `- [ ]` check, every data-flow criterion spelling
 out its empty, nil, and upstream-error paths. An answer folded into a malformed

@@ -158,3 +158,36 @@ func TestMarketplaceManifest(t *testing.T) {
 		}
 	}
 }
+
+// TestSharedDocsAreReferenced fails when a document under shared/ is loaded by
+// no skill. The shared set is split so each skill reads only the part it uses,
+// and the failure mode of a split is a file nobody loads: its rules stay current
+// in review while no session ever sees them. TestPluginSkillsParse checks the
+// other direction — that every reference resolves to a file.
+func TestSharedDocsAreReferenced(t *testing.T) {
+	docs, err := filepath.Glob(filepath.Join(pluginRoot, "shared", "*.md"))
+	if err != nil {
+		t.Fatalf("globbing the shared documents: %v", err)
+	}
+	if len(docs) == 0 {
+		t.Fatal("no shared documents found; the skills share their doctrine through them")
+	}
+
+	loaded := map[string]bool{}
+	for _, name := range wantSkills {
+		path := filepath.Join(pluginRoot, "skills", name, "SKILL.md")
+		body, err := os.ReadFile(filepath.Clean(path))
+		if err != nil {
+			t.Fatalf("reading skill %q: %v", name, err)
+		}
+		for _, m := range skillDirRef.FindAllStringSubmatch(string(body), -1) {
+			loaded[filepath.Base(m[1])] = true
+		}
+	}
+
+	for _, doc := range docs {
+		if base := filepath.Base(doc); !loaded[base] {
+			t.Errorf("shared/%s is loaded by no skill: either a skill should read it, or it should not exist", base)
+		}
+	}
+}

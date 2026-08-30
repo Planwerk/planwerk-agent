@@ -22,9 +22,11 @@ Arguments: $ARGUMENTS
 Read these before you start, in full:
 
 - `${CLAUDE_SKILL_DIR}/../../shared/interaction.md` — how to ask, and when to stop
-- `${CLAUDE_SKILL_DIR}/../../shared/issue-format.md` — the two depths, and the rules each must satisfy
+- `${CLAUDE_SKILL_DIR}/../../shared/issue-format.md` — the draft depth, and the rules it must satisfy
+- `${CLAUDE_SKILL_DIR}/../../shared/issue-format-plan.md` — the elaborated format and the rules a plan must satisfy
 - `${CLAUDE_SKILL_DIR}/../../shared/house-style.md` — prose, citations, anti-hallucination
-- `${CLAUDE_SKILL_DIR}/../../shared/github.md` — the `gh` commands and the neighborhood query
+- `${CLAUDE_SKILL_DIR}/../../shared/github.md` — the `gh` commands
+- `${CLAUDE_SKILL_DIR}/../../shared/github-relations.md` — the neighborhood query
 
 You must be inside a checkout of the issue's repository. If the working tree
 belongs to a different repo, say so and stop. Then bring the default branch up to
@@ -73,7 +75,7 @@ each open Sub Issue individually.
 
 ## Phase 2 — Read the neighborhood, and what it actually shipped
 
-Run the neighborhood query from `github.md`. A `null` parent means this is a
+Run the neighborhood query from `github-relations.md`. A `null` parent means this is a
 standalone issue: skip to Phase 3.
 
 For a Sub Issue, build the picture before you judge it. Per sibling, establish
@@ -182,7 +184,7 @@ Otherwise, edit the body under these rules:
 - **Correct the `Scope`** in the header line when what is left changed size.
 - **An executability score is a claim about text you just changed.** When the
   body carries the `Executability score:` annotation, re-score the corrected body
-  against the rubric in `issue-format.md` and update the line, or delete it.
+  against the rubric in `issue-format-plan.md` and update the line, or delete it.
   Leaving a score that describes deleted text is worse than carrying no score. Do
   the same for the `Reviewer Notes (unresolved)` block: drop the gaps the code
   has since closed, keep the rest.
@@ -190,7 +192,7 @@ Otherwise, edit the body under these rules:
   footer names the skill that last wrote the body.
 
 The corrected body must still satisfy every rule of its own depth in
-`issue-format.md` — a draft that names no source file, or a plan whose data-flow
+`issue-format.md` and `issue-format-plan.md` — a draft that names no source file, or a plan whose data-flow
 criteria still spell out their empty, nil, and upstream-error paths. A correction
 that leaves the body malformed is not a correction.
 

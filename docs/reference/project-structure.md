@@ -126,10 +126,18 @@ planwerk-agent/
 │       ├── .claude-plugin/
 │       │   └── plugin.json
 │       ├── shared/             # One source for the format, style, doctrine, gh calls
-│       │   ├── issue-format.md
+│       │   ├── issue-format.md        # Draft depth, titles, the footer
+│       │   ├── issue-format-plan.md   # Depth 2 and the rules a plan satisfies
+│       │   ├── issue-format-survey.md # The survey Meta Issue cleanup files
 │       │   ├── house-style.md
+│       │   ├── humanizer.md
 │       │   ├── interaction.md
-│       │   └── github.md
+│       │   ├── cross-repo.md
+│       │   ├── commits.md             # Trailers and cross-repo references
+│       │   ├── commits-fold.md        # The fold, the push, the SHA repair
+│       │   ├── github.md              # The gh commands every skill needs
+│       │   ├── github-relations.md    # Neighborhood query, sub-issue wiring
+│       │   └── github-checks.md       # A pull request and its checks
 │       └── skills/
 │           ├── draft/SKILL.md
 │           ├── elaborate/SKILL.md

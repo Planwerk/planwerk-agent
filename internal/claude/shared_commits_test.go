@@ -1,8 +1,6 @@
 package claude
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -18,12 +16,19 @@ import (
 // duplication bounded mechanically rather than by discipline.
 const sharedCommitsDoc = "../../plugins/planwerk/shared/commits.md"
 
+// sharedCommitsFoldDoc carries the half of that doctrine the repairing skills
+// read: folding a change into the commit that caused it, publishing the fold,
+// and repairing the SHA references it stranded. It is a separate document
+// because only `fix` needs it, but it is the same doctrine, so it is pinned the
+// same way.
+const sharedCommitsFoldDoc = "../../plugins/planwerk/shared/commits-fold.md"
+
 // TestSharedCommitsDocMatchesTrailerBlock fails when the shared commit doctrine
 // and commitTrailerBlock() stop agreeing on the trailer convention. Each marker
 // is a distinct rule, so a failure names the rule that went missing rather than
 // reporting that two blobs differ.
 func TestSharedCommitsDocMatchesTrailerBlock(t *testing.T) {
-	doc := readSharedCommitsDoc(t)
+	doc := readSharedDoc(t, sharedCommitsDoc)
 	block := commitTrailerBlock()
 
 	for _, tc := range []struct {
@@ -51,7 +56,7 @@ func TestSharedCommitsDocMatchesTrailerBlock(t *testing.T) {
 // caused it and published. The bare prompt is the one a human pastes into a
 // manual session, which is the closest thing the Go side has to the skill.
 func TestSharedCommitsDocMatchesFoldDiscipline(t *testing.T) {
-	doc := readSharedCommitsDoc(t)
+	doc := readSharedDoc(t, sharedCommitsFoldDoc)
 	prompt := BuildBareFixPrompt(fix.BareContext{RepoFullName: "o/r", PRNumber: 1, Fixup: true})
 
 	for _, tc := range []struct {
@@ -68,7 +73,7 @@ func TestSharedCommitsDocMatchesFoldDiscipline(t *testing.T) {
 		{"a surviving SHA is told from a replaced one by reachability", "git merge-base --is-ancestor"},
 	} {
 		if !strings.Contains(prose(doc), prose(tc.marker)) {
-			t.Errorf("%s: %s does not mention %q", tc.rule, sharedCommitsDoc, tc.marker)
+			t.Errorf("%s: %s does not mention %q", tc.rule, sharedCommitsFoldDoc, tc.marker)
 		}
 		if !strings.Contains(prose(prompt), prose(tc.marker)) {
 			t.Errorf("%s: BuildBareFixPrompt does not mention %q", tc.rule, tc.marker)
@@ -82,13 +87,4 @@ func TestSharedCommitsDocMatchesFoldDiscipline(t *testing.T) {
 // same incantation either way.
 func prose(s string) string {
 	return strings.ToLower(strings.ReplaceAll(s, "`", ""))
-}
-
-func readSharedCommitsDoc(t *testing.T) string {
-	t.Helper()
-	raw, err := os.ReadFile(filepath.Clean(sharedCommitsDoc))
-	if err != nil {
-		t.Fatalf("reading %s: %v", sharedCommitsDoc, err)
-	}
-	return string(raw)
 }

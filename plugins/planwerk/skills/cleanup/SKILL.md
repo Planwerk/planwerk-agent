@@ -26,7 +26,8 @@ whole repository is in scope.
 Read these before you start, in full:
 
 - `${CLAUDE_SKILL_DIR}/../../shared/interaction.md` — how to ask, and when to stop
-- `${CLAUDE_SKILL_DIR}/../../shared/issue-format.md` — the survey Meta Issue and its footer
+- `${CLAUDE_SKILL_DIR}/../../shared/issue-format.md` — the draft depth and the footer
+- `${CLAUDE_SKILL_DIR}/../../shared/issue-format-survey.md` — the survey Meta Issue and the phases `meta` splits
 - `${CLAUDE_SKILL_DIR}/../../shared/house-style.md` — prose, citations, anti-hallucination
 - `${CLAUDE_SKILL_DIR}/../../shared/github.md` — the `gh` commands
 
@@ -201,7 +202,7 @@ Fix what fails and re-run. Only a plan that passes all seven reaches Phase 6.
 ## Phase 6 — Write the Meta Issue
 
 Emit the body in English, in the survey Meta Issue format from
-`issue-format.md`: the `**Category**` / `**Scope**` header line, a
+`issue-format-survey.md`: the `**Category**` / `**Scope**` header line, a
 `## Description` naming what was surveyed, the surveyed commit, the tools and
 searches used, and the totals; a `## Motivation` stating what this specific
 dead and duplicated code costs — quantified, not adjectives; a

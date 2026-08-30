@@ -24,9 +24,9 @@ Read these before you start, in full:
 
 - `${CLAUDE_SKILL_DIR}/../../shared/interaction.md` — how to ask, and when to stop
 - `${CLAUDE_SKILL_DIR}/../../shared/commits.md` — trailers, and the shape of a commit
-- `${CLAUDE_SKILL_DIR}/../../shared/github.md` — the `gh` commands and the neighborhood query
+- `${CLAUDE_SKILL_DIR}/../../shared/github.md` — the `gh` commands
+- `${CLAUDE_SKILL_DIR}/../../shared/github-relations.md` — the neighborhood query
 - `${CLAUDE_SKILL_DIR}/../../shared/house-style.md` — prose, citations, anti-hallucination
-- `${CLAUDE_SKILL_DIR}/../../shared/issue-format.md` — the two depths, and what each gives you to work from
 
 `planwerk-agent implement <issue-ref>` is the same delivery unattended: a
 hermetic clone, a dedicated planning session, and simplify, review, and
@@ -78,8 +78,7 @@ Stop, and let the author decide, when any of these holds:
 - The default branch is behind `origin`. Offer to fast-forward it; a plan built
   on a stale base is a plan for code that no longer exists.
 
-Then read what the issue gives you, against the two depths in
-`issue-format.md`:
+Then read what the issue gives you. It arrives at one of two depths:
 
 - **Elaborated** — Affected Areas, Acceptance Criteria, Non-Goals. This is the
   input the skill expects; the criteria are the definition of done.
@@ -89,7 +88,7 @@ Then read what the issue gives you, against the two depths in
   small and the description pins the behavior), or stop for
   `/planwerk:elaborate` first. Never silently treat a draft as elaborated.
 
-When the issue is a Sub Issue, run the neighborhood query in `github.md`. The
+When the issue is a Sub Issue, run the neighborhood query in `github-relations.md`. The
 plan covers only this issue's slice of the Meta Issue's effort; a shared task
 another sibling owns is deferred to that sibling by an explicit cross-reference,
 not absorbed.

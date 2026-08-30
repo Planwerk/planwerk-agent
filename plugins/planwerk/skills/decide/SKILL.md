@@ -24,9 +24,11 @@ Arguments: $ARGUMENTS
 Read these before you start, in full:
 
 - `${CLAUDE_SKILL_DIR}/../../shared/interaction.md` — how to ask, and when to stop
-- `${CLAUDE_SKILL_DIR}/../../shared/issue-format.md` — the two depths, and the rules each must satisfy
+- `${CLAUDE_SKILL_DIR}/../../shared/issue-format.md` — the draft depth, and the rules it must satisfy
+- `${CLAUDE_SKILL_DIR}/../../shared/issue-format-plan.md` — the elaborated format and the rules a plan must satisfy
 - `${CLAUDE_SKILL_DIR}/../../shared/house-style.md` — prose, citations, anti-hallucination
-- `${CLAUDE_SKILL_DIR}/../../shared/github.md` — the `gh` commands and the neighborhood query
+- `${CLAUDE_SKILL_DIR}/../../shared/github.md` — the `gh` commands
+- `${CLAUDE_SKILL_DIR}/../../shared/github-relations.md` — the neighborhood query
 
 You must be inside a checkout of the Meta Issue's repository. Verifying a
 decision means opening the files it turns on, and a verification run from the
@@ -67,7 +69,7 @@ the author decide before you read a single file.
 ## Phase 1 — Find the decisions, and the issues that hold them
 
 `$ARGUMENTS` names either the Meta Issue itself or the Sub Issue `meta` filed to
-verify its decisions. Run the neighborhood query in `github.md` to tell which:
+verify its decisions. Run the neighborhood query in `github-relations.md` to tell which:
 
 - **A Sub Issue** (`parent` is non-null) — the parent is the Meta Issue. Read
   both bodies. The Sub Issue usually restates, in its own words, which items it
