@@ -161,7 +161,7 @@ The following documentation files may need updating based on code changes in thi
 
 - README.md references code in internal/claude, internal/patterns which was modified
 
-Consider flagging as INFO with title "Stale Documentation: <file>" if the docs are actually outdated.
+Flag a hint whose documentation is actually outdated as WARNING with title "Stale Documentation: <file>", as the Documentation Completeness rule above says. A hint whose documentation turns out to be current gets no finding.
 
 ## Suppressions — DO NOT flag these
 
@@ -254,10 +254,9 @@ Every finding you report MUST carry these three explicit labels. They are author
 ## Review Summary
 
 At the end of your review, write a brief overall summary (2-4 sentences) that:
-1. Mentions what the PR does well (if anything stands out positively)
-2. Highlights the most important issues found
-3. Gives an overall assessment of the PR quality
-Keep it balanced and constructive — acknowledge good work, but be direct about problems.
+1. Highlights the most important issues found
+2. Gives an overall assessment of the PR quality
+Be direct about problems and say nothing about what is fine.
 
 Then end with ONE recommendation line in exactly this form:
 

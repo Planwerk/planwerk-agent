@@ -217,7 +217,7 @@ func foldSteps(baseBranch string, foldStep int) string {
       git log --oneline --reverse origin/%[2]s..HEAD
 
    b. For each distinct change, find the commit that introduced the code you
-      are simplifying — use `+"`git blame <file>`, `git log -p -- <file>`, or `git log -S<symbol>`"+`.
+      are changing — use `+"`git blame <file>`, `git log -p -- <file>`, or `git log -S<symbol>`"+`.
    c. Stage ONLY that change and record it as a fixup of its target commit:
 
       git add -- <files for this change>
