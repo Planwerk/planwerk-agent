@@ -27,8 +27,10 @@ func RenderMarkdown(w io.Writer, repoFullName string, issueNumber int, version s
 // The section names, their order, and their `## ` heading level are a contract
 // shared with the `elaborate` skill, which renders the same body from a
 // conversation instead of a Claude call. Both are specified by
-// plugins/planwerk/shared/issue-format.md, and TestBuildIssueBody_MatchesSharedFormat
-// fails when the two drift apart. The two trailing blocks (executability score,
+// plugins/planwerk/shared/issue-format-plan.md — the elaborated half of the
+// house format, which the skill loads only when it writes a plan — with the
+// footer in its issue-format.md companion, and
+// TestBuildIssueBody_MatchesSharedFormat fails when the two drift apart. The two trailing blocks (executability score,
 // reviewer notes) stay bold lines rather than headings because they annotate the
 // plan rather than belonging to the issue.
 //
