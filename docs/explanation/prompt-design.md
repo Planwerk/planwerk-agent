@@ -107,13 +107,16 @@ would otherwise have to be kept in sync by hand.
 
 The skills obey the same rule on their own surface: the house issue format, the
 prose rules, the interaction doctrine, and the `gh` invocations are written once
-under `plugins/planwerk/shared/` and read by every `SKILL.md`, rather than
-restated per skill.
+under `plugins/planwerk/shared/` and read from there, rather than restated per
+skill. Those documents are split along the seams their readers have, so a skill
+loads the parts it uses and not the rest: the Meta / Sub-Issue neighborhood, a
+pull request's checks, the elaborated issue format, the survey Meta Issue, and
+the fold discipline are each their own file, read by the skills that need them.
 
 One instruction genuinely lives in two places. `elaborate` exists as both a
 command and a skill, so the issue format is expressed once as Go
 (`elaborate.BuildIssueBody`) and once as prose
-(`plugins/planwerk/shared/issue-format.md`). Discipline alone would not keep
+(`plugins/planwerk/shared/issue-format-plan.md`). Discipline alone would not keep
 those aligned, so `TestBuildIssueBody_MatchesSharedFormat` asserts it: the
 sections, their order, the `- [ ]` checkbox form, and the footer must agree, or
 the build fails. Where duplication is unavoidable, make the drift mechanically
