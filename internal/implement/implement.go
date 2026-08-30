@@ -1357,6 +1357,18 @@ func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx
 			_, _ = fmt.Fprintf(w, "\nClaude reported %s — stopping the review pass.\n", status)
 			return allFindings
 		}
+		// An apply that resolved nothing leaves the branch as the finder just
+		// saw it, so the next round re-reviews identical code and re-reports the
+		// same findings — the applier having judged every one of them a false
+		// positive or no longer present. Spending the rest of the budget on that
+		// cannot converge; the findings it declined are already in allFindings
+		// and in the report posted above.
+		if resolved, reported := resolvedCount(reviewReport); reported && resolved == 0 {
+			slog.Info("review apply resolved nothing; stopping the review pass",
+				"issue", number, "iteration", i, "handed", len(actionable))
+			_, _ = fmt.Fprintf(w, "\nReview pass stopped: the apply session resolved none of the %d finding(s) it was handed; re-reviewing an unchanged branch cannot converge.\n", len(actionable))
+			return allFindings
+		}
 		sinceRef = preFix
 		slog.Info("review iteration applied; re-reviewing the fixes", "issue", number, "iteration", i, "since", preFix)
 	}
@@ -1365,6 +1377,89 @@ func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx
 	slog.Warn("review pass hit the iteration budget with findings still remaining", "issue", number, "iterations", maxIter)
 	_, _ = fmt.Fprintf(w, "\nReview pass stopped after %d iteration(s) with findings still unresolved.\n", maxIter)
 	return allFindings
+}
+
+// resolvedCount reports how many findings the review-apply session said it
+// resolved, and whether its report carried a Resolved section at all. The
+// section is mandated by the apply prompt, which also requires it to be empty
+// when nothing was fixed, so "present and empty" is the session stating that it
+// changed nothing. found is false for a report that carries no such section: the
+// caller must then leave the loop's behavior alone rather than read an absent
+// section as an empty one.
+func resolvedCount(reviewReport string) (n int, found bool) {
+	inSection := false
+	for _, line := range strings.Split(reviewReport, "\n") {
+		if title, ok := reportSectionHeading(line); ok {
+			inSection = title == "resolved"
+			found = found || inSection
+			continue
+		}
+		if inSection && resolvedItem(line) {
+			n++
+		}
+	}
+	return n, found
+}
+
+// reportSectionHeading returns the lower-cased title of a report section heading
+// and whether line is one. Two shapes count: the mandated markdown heading
+// ("### Resolved") and a bolded label on its own line ("**Resolved:**"), which
+// models emit about as readily. The word limit keeps a bolded phrase inside a
+// sentence from ending a section early.
+func reportSectionHeading(line string) (string, bool) {
+	t := strings.TrimSpace(line)
+	switch {
+	case strings.HasPrefix(t, "#"):
+		t = strings.TrimLeft(t, "#")
+	case len(t) > 4 && strings.HasPrefix(t, "**") && strings.HasSuffix(t, "**"):
+		t = strings.Trim(t, "*")
+	default:
+		return "", false
+	}
+	t = strings.TrimSpace(t)
+	t = strings.TrimSpace(strings.TrimSuffix(t, ":"))
+	if t == "" || len(strings.Fields(t)) > 4 {
+		return "", false
+	}
+	return strings.ToLower(t), true
+}
+
+// resolvedItem reports whether a line inside the Resolved section names a
+// finding that was fixed. Bullet and numbered items both count; the words a
+// model writes in place of an empty list do not, since they say the same thing
+// as no items at all.
+func resolvedItem(line string) bool {
+	t := strings.TrimSpace(line)
+	rest, ok := listItem(t)
+	if !ok {
+		return false
+	}
+	rest = strings.TrimSpace(rest)
+	rest = strings.TrimSpace(strings.TrimSuffix(rest, "."))
+	switch strings.ToLower(rest) {
+	case "", "none", "(none)", "n/a", "nothing":
+		return false
+	}
+	return true
+}
+
+// listItem strips a "- ", "* " or "1. " marker and reports whether the line
+// carried one.
+func listItem(t string) (string, bool) {
+	if rest, ok := strings.CutPrefix(t, "- "); ok {
+		return rest, true
+	}
+	if rest, ok := strings.CutPrefix(t, "* "); ok {
+		return rest, true
+	}
+	digits := 0
+	for digits < len(t) && t[digits] >= '0' && t[digits] <= '9' {
+		digits++
+	}
+	if digits == 0 {
+		return "", false
+	}
+	return strings.CutPrefix(t[digits:], ". ")
 }
 
 // gatherReviewFindings runs the finders for one review round and puts their

@@ -3233,3 +3233,97 @@ func lastPushed(gh *githubtest.Fake) string {
 	}
 	return pushed[len(pushed)-1]
 }
+
+// TestResolvedCount covers the report shapes the loop's stop condition reads.
+// The distinction that matters is an absent Resolved section (leave the loop
+// alone) against a present but empty one (the applier fixed nothing).
+func TestResolvedCount(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name      string
+		report    string
+		wantN     int
+		wantFound bool
+	}{
+		{"an empty report", "", 0, false},
+		{"no Resolved section at all", "## Review Report\n\n### Skipped\n- x — false positive\n", 0, false},
+		{"a present but empty section", "### Resolved\n\n### Skipped\n- x — false positive\n", 0, true},
+		{"the words a model writes for none", "### Resolved\n- None.\n### Skipped\n", 0, true},
+		{"a bolded label with two items", "**Resolved:**\n- a — fixed (folded into abc1234 subject)\n- b — fixed\n### Skipped\n", 2, true},
+		{"numbered items up to the next heading", "### Resolved\n1. a\n2. b\n3. c\n## Diff summary\n- Files: x\n", 3, true},
+		{"items after the section are not counted", "### Resolved\n- a — fixed\n### Skipped\n- b\n- c\n", 1, true},
+		{"prose mentioning the word is not a heading", "The **Resolved** list below is long\n- a\n", 0, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			n, found := resolvedCount(tc.report)
+			if n != tc.wantN || found != tc.wantFound {
+				t.Errorf("resolvedCount() = (%d, %v), want (%d, %v)", n, found, tc.wantN, tc.wantFound)
+			}
+		})
+	}
+}
+
+// TestRun_ReviewLoopStopsWhenNothingResolved drives the case the budget used to
+// be spent on: the applier judges every finding a false positive, so the branch
+// is unchanged and the next round would re-review identical code and re-report
+// the same findings. One round is enough to learn that.
+func TestRun_ReviewLoopStopsWhenNothingResolved(t *testing.T) {
+	gh := &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       t.TempDir(),
+		BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	}
+	cl := &fakeClaude{}
+	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)} // would never converge
+	ra := &fakeReviewApplier{report: "## Review Report\n\n### Resolved\n\n### Skipped\n- SQL injection in new query — false positive\n\n### Status\nSTATUS: DONE"}
+	r := reviewRunner(gh, cl, av, ra)
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil — the review pass is non-fatal", err)
+	}
+	if av.called.Load() != 1 || ra.called.Load() != 1 {
+		t.Errorf("finder/applier called (%d/%d), want 1/1 — an apply that fixed nothing ends the loop",
+			av.called.Load(), ra.called.Load())
+	}
+	if !strings.Contains(buf.String(), "resolved none of the 1 finding(s) it was handed") {
+		t.Errorf("missing the nothing-resolved note in output:\n%s", buf.String())
+	}
+	// The findings the applier declined are still reported, so nothing is lost
+	// by stopping: they reached stdout and the capture pass.
+	if !strings.Contains(buf.String(), "SQL injection in new query") {
+		t.Errorf("the declined finding was dropped from the report:\n%s", buf.String())
+	}
+}
+
+// TestRun_ReviewLoopResolvedSectionConverges is the other half: an apply that
+// did resolve something changed the branch, so the loop re-reviews as before and
+// converges on the clean round.
+func TestRun_ReviewLoopResolvedSectionConverges(t *testing.T) {
+	gh := &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       t.TempDir(),
+		BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	}
+	cl := &fakeClaude{}
+	av := &fakeAdversarialVerifier{results: oneThenCleanReview(reviewTestProdFile)}
+	ra := &fakeReviewApplier{report: "## Review Report\n\n### Resolved\n- SQL injection in new query — parameterized the query (folded into abc1234 add query)\n\n### Skipped\n\n### Status\nSTATUS: DONE"}
+	r := reviewRunner(gh, cl, av, ra)
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if av.called.Load() != 2 || ra.called.Load() != 1 {
+		t.Errorf("finder/applier called (%d/%d), want 2/1 — a real fix earns the confirming re-review",
+			av.called.Load(), ra.called.Load())
+	}
+	if !strings.Contains(buf.String(), "Review pass converged: no further findings.") {
+		t.Errorf("missing the converged note in output:\n%s", buf.String())
+	}
+	if strings.Contains(buf.String(), "resolved none of the") {
+		t.Errorf("an apply that resolved a finding must not trip the nothing-resolved exit:\n%s", buf.String())
+	}
+}

@@ -537,7 +537,7 @@ planwerk-agent implement --wiki --capture-wiki --yes owner/repo#123
 | `--no-simplify` | Skip the automatic simplify pass that folds over-engineering removals into the branch before the review phase | `false` |
 | `--no-review` | Skip the automatic review-and-fix pass that folds review findings into the branch after the simplify pass | `false` |
 | `--no-specialists` | Skip the domain-specialist fan-out on the review pass's first round; the adversarial finder still runs | `false` |
-| `--max-review-iterations` | Cap on the review-and-fix loop: each round re-reviews the branch and re-fixes until the finder comes back clean or this bound is hit (`<=0` uses the default of 3) | `0` |
+| `--max-review-iterations` | Cap on the review-and-fix loop: each round re-reviews the branch and re-fixes until the finder comes back clean, an apply resolves nothing, or this bound is hit (`<=0` uses the default of 3) | `0` |
 | `--no-capture` | Skip the read-only capture pass that proposes new wiki review patterns and memory pages (only runs with `--wiki`; writes nothing) | `false` |
 | `--capture-wiki` | Push the accepted capture pages to the wiki instead of only proposing them (off by default — a normal run is propose-only; confirms first, refuses a non-TTY run without `--yes`; env: `PLANWERK_CAPTURE_WIKI`, config: `capture.wiki`) | `false` |
 | `--yes` | Skip the `--capture-wiki` write confirmation prompt (for a non-interactive write) | `false` |
@@ -624,7 +624,9 @@ not requested in the editing session's prompt.
 It runs as a **bounded loop**: after each apply it re-reviews and, while the
 finder still reports actionable findings, fixes them again — stopping when the
 finder comes back clean, when a round yields no findings that
-survive hygiene, when an apply escalates (`STATUS: BLOCKED` / `NEEDS_CONTEXT`), or
+survive hygiene, when an apply escalates (`STATUS: BLOCKED` / `NEEDS_CONTEXT`),
+when an apply resolved none of the findings it was handed — the branch is then
+unchanged, so re-reviewing it can only re-report them — or
 after `--max-review-iterations` rounds (default 3), noting any findings still
 unresolved when the budget runs out. Each round's report is posted as a comment
 on the source issue (best-effort). Nothing to fix on the first round is a clean
