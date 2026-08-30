@@ -553,3 +553,41 @@ func TestNormalizeTranscribedLabels_EmptyAndNilFindings(t *testing.T) {
 	normalizeTranscribedLabels(&report.ReviewResult{Findings: nil})
 	normalizeTranscribedLabels(&report.ReviewResult{Findings: []report.Finding{}})
 }
+
+// TestRepairInvalidReview_RetriesAnUnparseableRepair covers the other way a
+// round can fail: the repair answer is not JSON at all. The parse error is fed
+// back and the next round still lands, so one malformed answer does not spend
+// the whole budget.
+func TestRepairInvalidReview_RetriesAnUnparseableRepair(t *testing.T) {
+	calls := 0
+	var fedBack []string
+	restore := repairInvalidJSON
+	repairInvalidJSON = func(_ *Client, _ string, verr error, _ string) (string, error) {
+		calls++
+		fedBack = append(fedBack, verr.Error())
+		if calls == 1 {
+			return "sorry, I could not do that", nil
+		}
+		return repairedFindingJSON, nil
+	}
+	t.Cleanup(func() { repairInvalidJSON = restore })
+
+	result := &report.ReviewResult{Findings: []report.Finding{{Title: "", Severity: report.SeverityWarning, Confidence: report.ConfidenceLikely}}}
+	if err := (&Client{}).repairInvalidReview(result); err != nil {
+		t.Fatalf("expected the second round to succeed, got %v", err)
+	}
+	if calls != 2 {
+		t.Errorf("expected 2 rounds, got %d", calls)
+	}
+	if result.Findings[0].Title != "Fixed" {
+		t.Errorf("finding was not replaced by the repaired one: %+v", result.Findings[0])
+	}
+	// Round one is told the schema violation; round two is told why its own
+	// answer could not be read, which is the only way it can correct it.
+	if len(fedBack) != 2 || !strings.Contains(fedBack[0], "title is empty") {
+		t.Fatalf("first round was not given the validation error: %v", fedBack)
+	}
+	if !strings.Contains(fedBack[1], "not valid JSON") {
+		t.Errorf("second round was not given the parse failure, got %q", fedBack[1])
+	}
+}
