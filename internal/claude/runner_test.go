@@ -3,6 +3,8 @@ package claude
 import (
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -592,23 +594,123 @@ func TestClaudeRunError_NoOutputAtAll(t *testing.T) {
 // streaming runners to one argv: strip the output-format tail each asks for
 // and the rest must be identical.
 func TestClaudeArgs_RunnersDifferOnlyInOutputFormat(t *testing.T) {
-	c := NewClient()
-	spec := runSpec{model: "opus", effort: "high", permissionMode: "plan", jsonSchema: `{"type":"object"}`, readOnly: true, agentsJSON: "{}", sessionID: "0b6f4a8e-6a4c-4c1e-9a55-3f0d2c1b7e21"}
-	buffered := c.claudeArgs(spec, "json")
-	streaming := c.claudeArgs(spec, "stream-json", "--verbose")
+	full := runSpec{model: "opus", effort: "high", permissionMode: "plan", jsonSchema: `{"type":"object"}`, readOnly: true, agentsJSON: "{}", sessionID: "0b6f4a8e-6a4c-4c1e-9a55-3f0d2c1b7e21"}
+	structuring := runSpec{model: "sonnet", effort: "medium", readOnly: true, noTools: true, jsonSchema: `{"type":"object"}`}
 
-	strip := func(args []string, tail ...string) []string {
-		i := slices.Index(args, "--output-format")
-		if i == -1 || !slices.Equal(args[i+1:i+1+len(tail)], tail) {
-			t.Fatalf("argv %v lacks the output-format tail %v", args, tail)
-		}
-		return slices.Concat(args[:i], args[i+1+len(tail):])
+	for _, tc := range []struct {
+		name string
+		spec runSpec
+	}{
+		{"a full session", full},
+		// The structuring tier takes the same fork, so its trailing --tools ""
+		// must not reach one runner and miss the other.
+		{"a structuring session", structuring},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := NewClient()
+			buffered := c.claudeArgs(tc.spec, "json")
+			streaming := c.claudeArgs(tc.spec, "stream-json", "--verbose")
+
+			strip := func(args []string, tail ...string) []string {
+				i := slices.Index(args, "--output-format")
+				if i == -1 || !slices.Equal(args[i+1:i+1+len(tail)], tail) {
+					t.Fatalf("argv %v lacks the output-format tail %v", args, tail)
+				}
+				return slices.Concat(args[:i], args[i+1+len(tail):])
+			}
+			got, want := strip(streaming, "stream-json", "--verbose"), strip(buffered, "json")
+			if !slices.Equal(got, want) {
+				t.Errorf("runners diverge beyond the output format:\nstreaming %v\nbuffered  %v", got, want)
+			}
+			if !slices.Contains(want, "--json-schema") {
+				t.Errorf("argv lost a spec-driven flag: %v", want)
+			}
+		})
 	}
-	got, want := strip(streaming, "stream-json", "--verbose"), strip(buffered, "json")
-	if !slices.Equal(got, want) {
-		t.Errorf("runners diverge beyond the output format:\nstreaming %v\nbuffered  %v", got, want)
+
+	c := NewClient()
+	if args := c.claudeArgs(full, "json"); !slices.Contains(args, "--session-id") || !slices.Contains(args, "--permission-mode") {
+		t.Errorf("argv lost a spec-driven flag: %v", args)
 	}
-	if !slices.Contains(want, "--session-id") || !slices.Contains(want, "--json-schema") || !slices.Contains(want, "--permission-mode") {
-		t.Errorf("argv lost a spec-driven flag: %v", want)
+}
+
+// TestClaudeArgs_NoToolsReplacesTheToolFlags pins the structuring tier's
+// isolation at the argv level: --tools with an empty value removes the whole
+// built-in toolset, and it stands in place of the deny/allow pair rather than
+// beside it. It must stay the trailing flag, since --tools is variadic and any
+// value after it would be read as a tool name.
+func TestClaudeArgs_NoToolsReplacesTheToolFlags(t *testing.T) {
+	t.Parallel()
+
+	args := NewClient().claudeArgs(runSpec{model: "sonnet", effort: "medium", readOnly: true, noTools: true}, "json")
+
+	idx := slices.Index(args, "--tools")
+	if idx == -1 {
+		t.Fatalf("claudeArgs did not emit --tools for a no-tools spec; got %v", args)
+	}
+	if idx != len(args)-2 || args[idx+1] != "" {
+		t.Errorf("--tools must be the trailing flag with one empty value; got %v", args)
+	}
+	if slices.Contains(args, "--disallowed-tools") || slices.Contains(args, "--allowed-tools") {
+		t.Errorf("a no-tools session must emit neither tool list; got %v", args)
+	}
+	// The isolation the other flags provide is unaffected.
+	if !slices.Contains(args, "--setting-sources") || !slices.Contains(args, "--strict-mcp-config") {
+		t.Errorf("a no-tools session lost its hermetic flags; got %v", args)
+	}
+}
+
+// TestClaudeArgs_ToolFlagsSurviveWithoutNoTools guards the other direction: every
+// session that is not a structuring pass keeps the deny/allow pair exactly as
+// before, and never carries --tools.
+func TestClaudeArgs_ToolFlagsSurviveWithoutNoTools(t *testing.T) {
+	t.Parallel()
+
+	args := NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", readOnly: true}, "json")
+
+	denyIdx := slices.Index(args, "--disallowed-tools")
+	allowIdx := slices.Index(args, "--allowed-tools")
+	if denyIdx == -1 || allowIdx == -1 || denyIdx > allowIdx {
+		t.Fatalf("read-only session lost the deny-then-allow tool flags; got %v", args)
+	}
+	if slices.Contains(args, "--tools") {
+		t.Errorf("--tools must be reserved for the structuring tier; got %v", args)
+	}
+	if !slices.Equal(args[denyIdx+1:allowIdx], claudeReadOnlyDeniedTools) {
+		t.Errorf("denied tools = %v, want %v", args[denyIdx+1:allowIdx], claudeReadOnlyDeniedTools)
+	}
+}
+
+// TestStructureWorkDir_IsAnEmptyDirectoryOfOurOwn covers what the structuring
+// sessions are given instead of the operator's working directory: a directory
+// this tool owns, under the same cache root the result cache uses, that exists
+// and holds nothing for a session to read.
+func TestStructureWorkDir_IsAnEmptyDirectoryOfOurOwn(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)                                   // darwin: $HOME/Library/Caches
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, "cache")) // linux
+
+	dir, err := structureWorkDir()
+	if err != nil {
+		t.Fatalf("structureWorkDir: %v", err)
+	}
+	if !strings.HasSuffix(filepath.ToSlash(dir), "planwerk-agent/structure-workdir") {
+		t.Errorf("dir = %q, want it under the tool's own cache directory", dir)
+	}
+	if !strings.HasPrefix(dir, home) {
+		t.Errorf("dir = %q, want it under the redirected cache root %q", dir, home)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("the working directory was not created: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("working directory holds %d entries, want none for a transcription pass", len(entries))
+	}
+	// Resolving it twice is the same directory, so a run leaves one session
+	// transcript behind rather than one per structuring call.
+	again, err := structureWorkDir()
+	if err != nil || again != dir {
+		t.Errorf("second call returned (%q, %v), want the same directory", again, err)
 	}
 }
