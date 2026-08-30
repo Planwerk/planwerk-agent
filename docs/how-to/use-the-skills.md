@@ -265,7 +265,9 @@ There are exactly these two depths. `elaborate` promotes a draft to a plan;
 `revisit` and `clarify` work on an issue at the depth it already has and leave it
 there.
 
-The specification lives in `plugins/planwerk/shared/issue-format.md`. A Go test
+The specification lives in `plugins/planwerk/shared/issue-format.md`, with the
+elaborated depth in `issue-format-plan.md` and the survey Meta Issue in
+`issue-format-survey.md`, so a skill loads only the depth it writes. A Go test
 (`TestBuildIssueBody_MatchesSharedFormat`) fails when the `elaborate` command's
 renderer and that document disagree, so the two `elaborate` paths cannot drift.
 

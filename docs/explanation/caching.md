@@ -45,6 +45,14 @@ shapes the analysis itself:
   adding a rule directory invalidates the entry rather than serving a result
   from a run that never saw those rules.
 
+What only shapes the *rendering* is deliberately absent. `--min-severity` and
+`--min-confidence` filter a stored payload on the way out, so asking the same
+commit for a stricter view reuses the analysis instead of repeating it. The
+flags that change what is analyzed — `--thorough`, `--specialists`,
+`--coverage-map` — do belong in the key, and a review entry stores the coverage
+map beside its findings so a `--coverage-map` run that hits the cache still
+renders the section it asked for.
+
 The tool version is deliberately *not* part of the key: a new release would
 otherwise discard every entry, and `--no-cache` is the switch for re-running
 against changed prompts.
