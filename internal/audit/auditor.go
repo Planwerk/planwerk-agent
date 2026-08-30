@@ -155,11 +155,12 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	}
 	wiki := resolveWiki(owner, name, opts.Wiki, opts.Remote)
 
-	// Build cache key (includes min-severity so filtered caches don't leak).
+	// Build the cache key from the state that decides what the audit says. The
+	// severity and confidence thresholds are deliberately not part of it: the
+	// payload stored below is the unfiltered result and renderAudit applies the
+	// thresholds to it, so asking the same commit for a stricter view reuses the
+	// analysis instead of paying for it again.
 	var cacheFlags []string
-	if opts.MinSeverity != "" {
-		cacheFlags = append(cacheFlags, "min="+string(opts.MinSeverity))
-	}
 	if wiki.CommitSHA != "" {
 		cacheFlags = append(cacheFlags, "wiki="+wiki.CommitSHA)
 	}
