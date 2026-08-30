@@ -138,7 +138,7 @@ func TestAuditRun_NoCacheRefreshesResult(t *testing.T) {
 
 	// Seed cache with sentinel to confirm NoCache bypasses it. Cache key owner/name
 	// follow ParseRepoRef(opts.RepoRef) = ("owner", "repo").
-	cacheKey := cache.AuditKey("owner", "repo", "sha-audit-nocache", "min="+string(report.SeverityInfo))
+	cacheKey := cache.AuditKey("owner", "repo", "sha-audit-nocache")
 	if err := cache.PutRaw(cacheKey, cache.CommandAudit, []byte(`{"summary":"CACHED SENTINEL"}`)); err != nil {
 		t.Fatalf("seeding cache: %v", err)
 	}
@@ -235,7 +235,7 @@ func TestAuditRun_CacheHitSkipsClone(t *testing.T) {
 	// must match ParseRepoRef("owner/repo") = ("owner", "repo"). The pattern
 	// sources are part of the key, so seed with the very options Run gets.
 	opts := baseAuditOpts(t.TempDir())
-	cacheKey := cache.AuditKey("owner", "repo", "sha-skip-clone", "min="+string(report.SeverityInfo), auditPatternFlag(opts))
+	cacheKey := cache.AuditKey("owner", "repo", "sha-skip-clone", auditPatternFlag(opts))
 	if err := cache.PutRaw(cacheKey, cache.CommandAudit, []byte(`{"summary":"Cached audit"}`)); err != nil {
 		t.Fatalf("seeding cache: %v", err)
 	}
@@ -761,5 +761,58 @@ func TestAuditRun_LocalUsesCwd(t *testing.T) {
 	}
 	if _, err := os.Stat(dir); err != nil {
 		t.Fatalf("local checkout must survive the run: %v", err)
+	}
+}
+
+// TestAuditRun_MinSeverityDoesNotRekey pins that the severity threshold is a
+// render-time filter, not part of what was analyzed. The cached payload is the
+// unfiltered result and renderAudit applies the threshold to it, so asking the
+// same commit for a stricter view must reuse that payload instead of paying for
+// a second audit of the same code.
+func TestAuditRun_MinSeverityDoesNotRekey(t *testing.T) {
+	// Not t.Parallel(): cache.SetDir mutates a package-level variable.
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	patternDir := seedPatternDir(t)
+	repo := fakeRepo(t, "acme", "widgets")
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return repo, nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return "sha-threshold", nil },
+	}
+	claudeMock := &fakeClaude{
+		fn: func(dir string, ctx AuditContext) (*report.ReviewResult, error) {
+			return &report.ReviewResult{Summary: "Audit summary", Findings: []report.Finding{
+				{ID: "W-001", Severity: report.SeverityWarning, Confidence: report.ConfidenceVerified, Title: "kept above the threshold", File: "w.go", Line: 1, Problem: "p", Action: "a"},
+				{ID: "I-001", Severity: report.SeverityInfo, Confidence: report.ConfidenceVerified, Title: "filtered by the threshold", File: "i.go", Line: 2, Problem: "p", Action: "a"},
+			}}, nil
+		},
+	}
+
+	opts := baseAuditOpts(patternDir)
+	opts.MinSeverity = report.SeverityInfo
+	var first bytes.Buffer
+	if err := (&Runner{Claude: claudeMock, GitHub: gh}).Run(&first, opts); err != nil {
+		t.Fatalf("first Run returned error: %v", err)
+	}
+	if !strings.Contains(first.String(), "filtered by the threshold") {
+		t.Errorf("the INFO finding should render at --min-severity info, got:\n%s", first.String())
+	}
+
+	// Same repo, same commit, stricter threshold: the analysis is identical, so
+	// only the rendering may differ.
+	opts.MinSeverity = report.SeverityWarning
+	var second bytes.Buffer
+	if err := (&Runner{Claude: claudeMock, GitHub: gh}).Run(&second, opts); err != nil {
+		t.Fatalf("second Run returned error: %v", err)
+	}
+	if claudeMock.calls != 1 {
+		t.Errorf("Audit calls = %d, want 1 — a changed threshold must not re-run the audit", claudeMock.calls)
+	}
+	if !strings.Contains(second.String(), "kept above the threshold") {
+		t.Errorf("the WARNING finding should survive --min-severity warning, got:\n%s", second.String())
+	}
+	if strings.Contains(second.String(), "filtered by the threshold") {
+		t.Errorf("the INFO finding should be filtered at --min-severity warning, got:\n%s", second.String())
 	}
 }
