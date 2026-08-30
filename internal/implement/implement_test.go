@@ -1229,64 +1229,6 @@ func TestRun_VerifyDisabledByDefault(t *testing.T) {
 	}
 }
 
-func TestRun_VerifyAdversarialReportsFindings(t *testing.T) {
-	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
-	cl := &fakeClaude{report: validImplReport}
-	av := &fakeAdversarialVerifier{result: &report.ReviewResult{
-		Findings: []report.Finding{
-			{Severity: report.SeverityCritical, Title: "SQL injection in new query", File: "db.go", Problem: "unescaped user input"},
-		},
-	}}
-	r := newRunner(gh, cl)
-	r.AdversarialVerifier = av
-
-	var buf bytes.Buffer
-	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", VerifyAdversarial: true}); err != nil {
-		t.Fatalf("Run returned %v, want nil", err)
-	}
-	if av.called.Load() != 1 {
-		t.Errorf("adversarial verifier called %d times, want 1", av.called.Load())
-	}
-	if av.base != "" {
-		t.Errorf("adversarial verifier got base %q, want empty so it falls back to the default branch", av.base)
-	}
-	out := buf.String()
-	if !strings.Contains(out, "red-teaming the produced diff") || !strings.Contains(out, "SQL injection in new query") {
-		t.Errorf("missing adversarial findings in output:\n%s", out)
-	}
-}
-
-func TestRun_VerifyAdversarialCleanPass(t *testing.T) {
-	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
-	cl := &fakeClaude{report: validImplReport}
-	av := &fakeAdversarialVerifier{result: &report.ReviewResult{}}
-	r := newRunner(gh, cl)
-	r.AdversarialVerifier = av
-
-	var buf bytes.Buffer
-	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", VerifyAdversarial: true}); err != nil {
-		t.Fatalf("Run returned %v, want nil", err)
-	}
-	if !strings.Contains(buf.String(), "no introduced bugs found") {
-		t.Errorf("expected adversarial clean-pass message, got:\n%s", buf.String())
-	}
-}
-
-func TestRun_VerifyAdversarialDisabledByDefault(t *testing.T) {
-	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
-	cl := &fakeClaude{report: validImplReport}
-	av := &fakeAdversarialVerifier{}
-	r := newRunner(gh, cl)
-	r.AdversarialVerifier = av
-
-	if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42"}); err != nil {
-		t.Fatalf("Run returned %v, want nil", err)
-	}
-	if av.called.Load() != 0 {
-		t.Errorf("adversarial verifier called %d times, want 0 when --verify-adversarial is off", av.called.Load())
-	}
-}
-
 // oneCriterionFinding is the acceptance-criteria gap the --verify pass surfaces:
 // a criterion the diff does not satisfy. The review-feedback tests thread it
 // through to the applier.

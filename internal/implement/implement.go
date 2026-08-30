@@ -43,10 +43,6 @@ type Options struct {
 	NoPlanComment   bool // do not post the finished plan as a comment on the source issue
 	NoReportComment bool // do not post the implementation report as a comment on the source issue
 	Verify          bool // after implementing, run an independent verification pass against the diff
-	// VerifyAdversarial red-teams the produced diff for the bugs it
-	// introduces, reusing the adversarial-review machinery. Independent of
-	// Verify: either, both, or neither may be set.
-	VerifyAdversarial bool
 	// NoSimplify disables the automatic simplify pass that, after the implement
 	// session commits, folds removals of over-engineering into the branch's
 	// commits on the local feature branch (no push). The pass is on by default.
@@ -149,8 +145,8 @@ type Runner struct {
 	// Verifier runs the optional independent verification pass. When nil (or
 	// opts.Verify is false) the pass is skipped.
 	Verifier ImplementationVerifier
-	// AdversarialVerifier red-teams the produced diff for introduced bugs.
-	// When nil (or opts.VerifyAdversarial is false) the pass is skipped.
+	// AdversarialVerifier is the review-and-fix pass's finder. When nil (or
+	// opts.NoReview is set) the pass is skipped.
 	AdversarialVerifier AdversarialVerifier
 	// Simplifier runs the read-only ponytail-style simplify pass over the
 	// produced diff. Both it and SimplifyApplier must be non-nil (and
@@ -582,13 +578,11 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		r.runCapture(w, repo.Dir, owner, name, number, ctx, opts, implReport, reviewFindings, wiki)
 	}
 
-	// Optional read-only verification passes assess the final, simplified and
-	// self-reviewed diff before the PR is opened. Both are non-fatal.
+	// The optional read-only verification pass assesses the final, simplified
+	// and self-reviewed diff against the issue's Acceptance Criteria before the
+	// PR is opened. It is non-fatal.
 	if opts.Verify && r.Verifier != nil {
 		r.runVerification(w, repo.Dir, ctx)
-	}
-	if opts.VerifyAdversarial && r.AdversarialVerifier != nil {
-		r.runAdversarialVerification(w, repo.Dir, ctx)
 	}
 
 	// Finalize: open the draft pull request last, so it lands already simplified
@@ -1071,44 +1065,6 @@ func renderVerification(w io.Writer, result *report.ReviewResult) {
 		return
 	}
 	_, _ = fmt.Fprintf(w, "\nIndependent verification: %d unmet criterion finding(s) — the implementer's report was not trusted.\n\n", len(result.Findings))
-	for _, f := range result.Findings {
-		_, _ = fmt.Fprintf(w, "- [%s] %s", f.Severity, f.Title)
-		if f.File != "" {
-			_, _ = fmt.Fprintf(w, " (%s)", f.File)
-		}
-		_, _ = fmt.Fprintln(w)
-		if f.Problem != "" {
-			_, _ = fmt.Fprintf(w, "  %s\n", f.Problem)
-		}
-	}
-}
-
-// runAdversarialVerification red-teams the change set the implement session
-// produced for the bugs it introduces, reusing the adversarial-review
-// machinery, and prints its verdict. Like the acceptance-criteria pass it is
-// non-fatal — the implementation already happened, and a red-team failure must
-// not mask it. The base branch is left empty so AdversarialReview falls back to
-// the repository's default branch. It grounds the finder in the same pattern
-// catalog the review-and-fix pass uses (ctx.Patterns/MaxPatterns).
-func (r *Runner) runAdversarialVerification(w io.Writer, dir string, ctx Context) {
-	slog.Info("running adversarial verification over the produced diff")
-	result, err := r.AdversarialVerifier.AdversarialReview(dir, "", "", ctx.Patterns, ctx.MaxPatterns)
-	if err != nil {
-		slog.Warn("adversarial verification failed", "err", err)
-		_, _ = fmt.Fprintf(w, "\nAdversarial verification could not run: %v\n", err)
-		return
-	}
-	renderAdversarialVerification(w, result)
-}
-
-// renderAdversarialVerification prints the red-team verdict: a clean pass when
-// no introduced bug was found, otherwise one block per finding.
-func renderAdversarialVerification(w io.Writer, result *report.ReviewResult) {
-	if result == nil || len(result.Findings) == 0 {
-		_, _ = fmt.Fprint(w, "\nAdversarial verification: no introduced bugs found in the produced diff.\n")
-		return
-	}
-	_, _ = fmt.Fprintf(w, "\nAdversarial verification: %d finding(s) red-teaming the produced diff.\n\n", len(result.Findings))
 	for _, f := range result.Findings {
 		_, _ = fmt.Fprintf(w, "- [%s] %s", f.Severity, f.Title)
 		if f.File != "" {

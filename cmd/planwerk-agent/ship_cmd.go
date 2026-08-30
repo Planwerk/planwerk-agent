@@ -136,7 +136,6 @@ or short form (owner/repo#123).`,
 	shipFlags.BoolVar(&implOpts.NoSimplify, "no-simplify", false, "Skip the automatic simplify pass in each per–Sub Issue implement run")
 	shipFlags.BoolVar(&implOpts.NoReview, "no-review", false, "Skip the automatic review-and-fix pass in each per–Sub Issue implement run")
 	shipFlags.BoolVar(&implOpts.Verify, "verify", false, "In each implement run, check the produced diff against the Sub Issue's Acceptance Criteria")
-	shipFlags.BoolVar(&implOpts.VerifyAdversarial, "verify-adversarial", false, "In each implement run, red-team the produced diff for the bugs it introduces")
 	shipFlags.BoolVar(&implOpts.NoPlan, "no-plan", false, "Skip the planning session in each per–Sub Issue implement run")
 	shipFlags.BoolVar(&implOpts.NoPlanReuse, "no-plan-reuse", false, "Always run a fresh planning session; do not reuse a plan already posted on the Sub Issue")
 	shipFlags.BoolVar(&implOpts.NoPlanComment, "no-plan-comment", false, "Do not post the generated implementation plan as a comment on each Sub Issue")

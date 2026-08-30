@@ -116,8 +116,8 @@ the source issue, a STATUS: BLOCKED / NEEDS_CONTEXT report stops the pass withou
 retrying, and nothing to fix is a clean no-op. The pass is non-fatal — a failed
 or escalated review never changes the run's exit code. Disable the whole pass
 with --no-review, or just the first-round specialist fan-out with
---no-specialists. (The read-only --verify / --verify-adversarial flags remain
-available for a report-only run.)
+--no-specialists. (The read-only --verify flag remains available for a
+report-only run.)
 
 When the run uses --wiki, a read-only capture pass then proposes new project
 knowledge for the wiki: generalizable review findings become candidate review
@@ -224,7 +224,6 @@ or short form (owner/repo#123).`,
 	implementFlags.StringVar(&implementWorkerModel, "implement-worker-model", "", "Model for the implementer subagents the implement session delegates its work packages to; setting it switches the session into orchestrator mode (empty keeps the single-session behavior; pass an exact model id for exact attribution; env: "+envImplementWorkerModel+")")
 	implementFlags.StringVar(&implementWorkerEffort, "implement-worker-effort", claude.DefaultImplementWorkerEffort, "Reasoning effort for the implementer subagents in orchestrator mode (low, medium, high, xhigh, max; ignored without --implement-worker-model; env: "+envImplementWorkerEffort+")")
 	implementFlags.BoolVar(&implementCfg.Verify, "verify", false, "After implementing, run an independent pass that checks the actual diff against the issue's Acceptance Criteria without trusting the implementer's report; any unmet criteria are fed into the review applier to be fixed on the branch")
-	implementFlags.BoolVar(&implementCfg.VerifyAdversarial, "verify-adversarial", false, "After implementing, red-team the produced diff for the bugs it introduces using the adversarial-review pass (independent of --verify)")
 	implementFlags.BoolVar(&implementCfg.NoSimplify, "no-simplify", false, "Skip the automatic simplify pass that folds over-engineering removals into the branch before the review phase")
 	implementFlags.BoolVar(&implementCfg.NoReview, "no-review", false, "Skip the automatic review-and-fix pass that folds review findings into the branch after the simplify pass")
 	implementFlags.BoolVar(&implementCfg.NoSpecialists, "no-specialists", false, "Skip the domain-specialist fan-out on the review pass's first round; the adversarial finder still runs")
