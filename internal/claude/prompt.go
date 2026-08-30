@@ -185,7 +185,7 @@ When the diff introduces ANY new dependency, you MUST verify its freshness and m
 		for _, doc := range ctx.StaleDocs {
 			fmt.Fprintf(&sb, "- %s references code in %s which was modified\n", doc.DocFile, strings.Join(doc.RelatedDirs, ", "))
 		}
-		sb.WriteString("\nConsider flagging as INFO with title \"Stale Documentation: <file>\" if the docs are actually outdated.\n\n")
+		sb.WriteString("\nFlag a hint whose documentation is actually outdated as WARNING with title \"Stale Documentation: <file>\", as the Documentation Completeness rule above says. A hint whose documentation turns out to be current gets no finding.\n\n")
 	}
 
 	// False-positive suppressions (shared with audit/compliance via suppressionsBlock)
@@ -236,10 +236,9 @@ For EVERY finding you report, you MUST include:
 	sb.WriteString(`## Review Summary
 
 At the end of your review, write a brief overall summary (2-4 sentences) that:
-1. Mentions what the PR does well (if anything stands out positively)
-2. Highlights the most important issues found
-3. Gives an overall assessment of the PR quality
-Keep it balanced and constructive — acknowledge good work, but be direct about problems.
+1. Highlights the most important issues found
+2. Gives an overall assessment of the PR quality
+Be direct about problems and say nothing about what is fine.
 
 Then end with ONE recommendation line in exactly this form:
 

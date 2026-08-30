@@ -156,8 +156,14 @@ func TestBuildReviewPrompt_ContainsSummaryInstructions(t *testing.T) {
 	if !strings.Contains(prompt, "Review Summary") {
 		t.Error("prompt should contain Review Summary section")
 	}
-	if !strings.Contains(prompt, "does well") {
-		t.Error("prompt should instruct to mention what PR does well")
+	// The summary used to ask for what the PR does well, while the shared
+	// communication block in the same prompt said "If something is fine, do not
+	// mention it at all". The prompt states one rule now, not both halves.
+	if !strings.Contains(prompt, "Be direct about problems and say nothing about what is fine.") {
+		t.Error("prompt should tell the summary to stay on the problems it found")
+	}
+	if strings.Contains(prompt, "does well") || strings.Contains(prompt, "acknowledge good work") {
+		t.Error("prompt still asks the summary for praise its communication block forbids")
 	}
 }
 
