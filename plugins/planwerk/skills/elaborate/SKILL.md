@@ -21,9 +21,11 @@ Arguments: $ARGUMENTS
 Read these before you start, in full:
 
 - `${CLAUDE_SKILL_DIR}/../../shared/interaction.md` — how to ask, and when to stop
-- `${CLAUDE_SKILL_DIR}/../../shared/issue-format.md` — the elaborated format and the edge-case rules
+- `${CLAUDE_SKILL_DIR}/../../shared/issue-format.md` — the header line, the title, and the footer
+- `${CLAUDE_SKILL_DIR}/../../shared/issue-format-plan.md` — the elaborated format and the edge-case rules
 - `${CLAUDE_SKILL_DIR}/../../shared/house-style.md` — prose, citations, anti-hallucination
 - `${CLAUDE_SKILL_DIR}/../../shared/github.md` — the `gh` commands
+- `${CLAUDE_SKILL_DIR}/../../shared/github-relations.md` — the neighborhood query
 - `${CLAUDE_SKILL_DIR}/../../shared/cross-repo.md` — when the plan implies work in another repository
 
 You must be inside a checkout of the issue's repository. If the working tree
@@ -32,7 +34,7 @@ belongs to a different repo, say so and stop.
 ## Phase 1 — Read the issue and its neighborhood
 
 Fetch the issue body. Then check whether it sits inside a Meta Issue, with the
-neighborhood query in `github.md` — REST's `sub_issues` endpoint lists an issue's
+neighborhood query in `github-relations.md` — REST's `sub_issues` endpoint lists an issue's
 children, so it can never tell you it has a parent.
 
 When the issue **is** a Sub Issue, read the Meta Issue and
@@ -112,7 +114,7 @@ about work in *this* repository.
 
 Every data-flow acceptance criterion spells out its empty, nil, and
 upstream-error paths as separate criteria, each naming the concrete error. The
-edge-case and plan-quality rules in `issue-format.md` are the bar; read them
+edge-case and plan-quality rules in `issue-format-plan.md` are the bar; read them
 again before you write the criteria, not after.
 
 ## Phase 5 — Score it, then close the gaps

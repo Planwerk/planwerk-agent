@@ -21,8 +21,10 @@ pull request for the branch you have checked out is the target.
 Read these before you start, in full:
 
 - `${CLAUDE_SKILL_DIR}/../../shared/interaction.md` — how to ask, and when to stop
-- `${CLAUDE_SKILL_DIR}/../../shared/commits.md` — trailers, the fold, and the push
-- `${CLAUDE_SKILL_DIR}/../../shared/github.md` — the `gh` commands for a PR and its checks
+- `${CLAUDE_SKILL_DIR}/../../shared/commits.md` — the trailers every commit ends with
+- `${CLAUDE_SKILL_DIR}/../../shared/commits-fold.md` — the fold, the push, and the SHA references it strands
+- `${CLAUDE_SKILL_DIR}/../../shared/github.md` — the `gh` commands
+- `${CLAUDE_SKILL_DIR}/../../shared/github-checks.md` — a pull request, its checks, and the logs behind a failed one
 - `${CLAUDE_SKILL_DIR}/../../shared/house-style.md` — prose, citations, anti-hallucination
 
 `planwerk-agent fix <pr-ref>` is the same work unattended, in a loop, in a
@@ -172,13 +174,13 @@ where it lands. Recommend the first:
   reviewer's comment.
 - **Leave it in the working tree.** Nothing is committed and nothing is pushed.
 
-Then follow `commits.md` exactly: the fold is bounded by the merge-base, the
+Then follow `commits-fold.md` exactly: the fold is bounded by the merge-base, the
 push is `--force-with-lease` to the PR's own head branch, and every commit
 carries `Assisted-by` above `Signed-off-by`.
 
 A fold rewrites the branch's own SHAs, so a SHA the PR body cites for one of
 those commits now points at nothing. Repair those references after the push, as
-`commits.md` describes: the reachability test tells a surviving SHA from a
+`commits-fold.md` describes: the reachability test tells a surviving SHA from a
 replaced one, the subject maps a replaced one to its successor, and nothing else
 in the body changes. The other two landings rewrite no SHA and need none of it.
 

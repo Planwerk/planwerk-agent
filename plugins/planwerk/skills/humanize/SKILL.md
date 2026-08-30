@@ -18,7 +18,6 @@ Arguments: $ARGUMENTS
 Read these before you start, in full:
 
 - `${CLAUDE_SKILL_DIR}/../../shared/humanizer.md` — the full pattern catalog and the rewrite loop
-- `${CLAUDE_SKILL_DIR}/../../shared/house-style.md` — prose rules the rewrite must also satisfy
 - `${CLAUDE_SKILL_DIR}/../../shared/interaction.md` — how to ask, and when to stop
 
 **Hard gate: do not rewrite anything before Phase 3.** Scope and the style-guide
@@ -67,8 +66,8 @@ For each file, run the rewrite loop from `humanizer.md`:
 4. Write the final text back to the file in place.
 
 Keep the document's own language: a German README is rewritten in German, never
-translated. (The English pin in `house-style.md` governs artifacts this plugin
-authors, not documents it edits.) Match the document's register; a formal
+translated. (The English pin the other skills follow governs the artifacts this
+plugin authors, not the documents it edits.) Match the document's register; a formal
 reference page stays formal after the rewrite.
 
 Respect the catalog's "What not to flag" section: look for clusters of tells,
@@ -77,7 +76,8 @@ flattens a human's voice is a defect, not a success.
 
 ## Phase 4 — Report
 
-Report in the shape `house-style.md` prescribes (first line, last line):
+Report so that its first and last lines stand on their own, since a reader
+catching up reads those and skims the rest:
 
 - Open with the outcome: how many files changed, and the one dominant pattern
   class you removed.

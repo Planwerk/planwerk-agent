@@ -18,8 +18,10 @@ Read these before you start, in full:
 
 - `${CLAUDE_SKILL_DIR}/../../shared/interaction.md` — how to ask, and when to stop
 - `${CLAUDE_SKILL_DIR}/../../shared/issue-format.md` — the draft format and its hard non-goals
+- `${CLAUDE_SKILL_DIR}/../../shared/issue-format-survey.md` — the survey Meta Issue and the phases `meta` splits
 - `${CLAUDE_SKILL_DIR}/../../shared/house-style.md` — prose rules and the language pin
-- `${CLAUDE_SKILL_DIR}/../../shared/github.md` — sub-issue and blocked-by wiring
+- `${CLAUDE_SKILL_DIR}/../../shared/github.md` — the `gh` commands
+- `${CLAUDE_SKILL_DIR}/../../shared/github-relations.md` — sub-issue and blocked-by wiring
 - `${CLAUDE_SKILL_DIR}/../../shared/cross-repo.md` — when a package belongs in another repository
 
 **Make the breakdown yourself.** Do not ask the author what to split or how.
@@ -147,7 +149,7 @@ In the order you declared them:
    dependency — this needs the full key-to-number mapping, so it cannot happen
    before every issue is created.
 
-`${CLAUDE_SKILL_DIR}/../../shared/github.md` carries the exact `gh api` calls and
+`${CLAUDE_SKILL_DIR}/../../shared/github-relations.md` carries the exact `gh api` calls and
 the database-id resolution both endpoints need.
 
 **A failed link is not a failed run.** The Sub Issue already exists, so record

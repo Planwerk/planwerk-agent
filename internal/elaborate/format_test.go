@@ -15,6 +15,13 @@ import (
 // the issue.
 const sharedFormatPath = "../../plugins/planwerk/shared/issue-format.md"
 
+// sharedPlanFormatPath carries the elaborated half of that specification: the
+// depth-2 sections, their order, and the checkbox form the criteria take. The
+// skill loads it only when it writes a plan, so the two halves are separate
+// documents; BuildIssueBody renders that half, so this is the one its output is
+// checked against.
+const sharedPlanFormatPath = "../../plugins/planwerk/shared/issue-format-plan.md"
+
 // elaboratedDepthHeading opens the half of the shared spec that describes the
 // elaborated body. The draft-depth half above it also shows `## Description` and
 // `## Motivation` in its example, so the ordering assertions must be scoped
@@ -64,7 +71,12 @@ func TestBuildIssueBody_MatchesSharedFormat(t *testing.T) {
 		t.Fatalf("reading the shared issue-format spec: %v", err)
 	}
 	specText := string(spec)
-	elaboratedSpec := specSectionFrom(t, specText, elaboratedDepthHeading)
+	planSpec, err := os.ReadFile(filepath.Clean(sharedPlanFormatPath))
+	if err != nil {
+		t.Fatalf("reading the shared elaborated-format spec: %v", err)
+	}
+	planSpecText := string(planSpec)
+	elaboratedSpec := specSectionFrom(t, planSpecText, elaboratedDepthHeading)
 
 	body := BuildIssueBody(fullResult())
 
@@ -86,8 +98,8 @@ func TestBuildIssueBody_MatchesSharedFormat(t *testing.T) {
 		if !strings.Contains(body, "- [ ] Run go test") {
 			t.Error("acceptance criteria must render as `- [ ]` checkboxes")
 		}
-		if !strings.Contains(specText, "- [ ]") {
-			t.Error("the shared spec must document the `- [ ]` checkbox form")
+		if !strings.Contains(planSpecText, "- [ ]") {
+			t.Error("the shared elaborated-format spec must document the `- [ ]` checkbox form")
 		}
 	})
 

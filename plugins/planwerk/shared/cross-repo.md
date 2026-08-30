@@ -92,7 +92,7 @@ just to add a link GitHub is already drawing.
 ## Wiring the two together
 
 Both relationships are GitHub-native, and both work across repositories. See
-`github.md` for the exact calls and the database-id resolution they need.
+`github-relations.md` for the exact calls and the database-id resolution they need.
 
 - The counterpart is **blocked by** the originating issue. That direction is the
   claim being made: the counterpart cannot be finished until the work it depends
