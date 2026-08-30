@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -199,6 +201,18 @@ func withReadOnlyDenied(args []string, readOnly bool) []string {
 	return append(args, claudeReadOnlyDeniedTools...)
 }
 
+// withNoTools appends --tools followed by a single empty value, which is how
+// Claude Code is told to load none of its built-in tools. It replaces
+// withReadOnlyDenied and withAllowedTools rather than joining them: denying the
+// write tools and pre-approving the web tools both describe a session that still
+// has a toolset, and a transcription pass has no use for one. Like
+// --allowed-tools it is variadic, so it is appended last, where no following
+// token can be mistaken for one of its values; the prompt arrives on stdin, so
+// there is no positional for it to swallow.
+func withNoTools(args []string) []string {
+	return append(args, "--tools", "")
+}
+
 // runSpec bundles the per-invocation knobs behind one `claude -p` session so
 // the buffered and streaming runners share one shape instead of ten parallel
 // parameters. The runClaude* wrappers construct it; runClaudeWithPermission
@@ -209,9 +223,15 @@ type runSpec struct {
 	permissionMode string // --permission-mode when non-empty
 	model          string
 	effort         string
-	readOnly       bool   // deny the write tools (withReadOnlyDenied)
-	jsonSchema     string // --json-schema when non-empty
-	agentsJSON     string // --agents when non-empty
+	readOnly       bool // deny the write tools (withReadOnlyDenied)
+	// noTools removes every built-in tool from the session (withNoTools). It is
+	// stronger than readOnly, which only denies the three write tools, and
+	// supersedes it: a spec that sets noTools emits neither --disallowed-tools
+	// nor --allowed-tools. Only the structuring tier sets it — those passes
+	// transcribe prose the prompt already carries and read nothing.
+	noTools    bool
+	jsonSchema string // --json-schema when non-empty
+	agentsJSON string // --agents when non-empty
 	// sessionID, when non-empty, pins the CLI session's id via --session-id so
 	// a later invocation can resume the very same session with its full
 	// context. resume flips the invocation from starting a fresh session to
@@ -586,13 +606,43 @@ func (c *Client) runClaudePlan(dir, prompt, label string) (text, model string, e
 // runClaudeStructure is runClaude on the dedicated structuring tier
 // (structureModel/structureEffort, defaults "sonnet"/"medium"). The JSON
 // structuring passes use it: a structuring call only reads upstream prose and
-// transcribes it into the report schema (it passes dir="" — no checkout — and
-// keeps the read-only permission mode), so it runs on the cheap mechanical tier
+// transcribes it into the report schema, so it runs on the cheap mechanical tier
 // rather than the heavy reasoning model the upstream call used. The
 // decodeJSONWithRepair backstop guards malformed output.
 func (c *Client) runClaudeStructure(prompt, label string) (text, model string, err error) {
 	return c.runClaudeStructureWithSchema(prompt, label, "")
 }
+
+// structureWorkDir returns the directory the structuring sessions run in: one
+// stable, empty directory this tool owns.
+//
+// A transcription pass needs no checkout, but a `claude -p` session inherits
+// whatever its working directory supplies — the project settings hermeticArgs
+// keeps and the memory it cannot drop. These calls previously passed no
+// directory at all, so they ran wherever the operator launched the tool and
+// loaded that repository's configuration into a pass that only reformats prose.
+// An empty directory makes what they load the same on every machine.
+//
+// It is one fixed directory rather than a fresh temporary one per call because
+// Claude Code keys its session transcripts on the working directory: a new
+// directory per call would leave one project entry behind per structuring
+// session. The location mirrors the result cache (cache.defaultCacheDir),
+// including its fallback for an OS that reports no user cache directory.
+func structureWorkDir() (string, error) {
+	dir := filepath.Join(os.TempDir(), "planwerk-agent-structure-workdir")
+	if base, err := os.UserCacheDir(); err == nil {
+		dir = filepath.Join(base, "planwerk-agent", "structure-workdir")
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", fmt.Errorf("creating the structuring working directory %s: %w", dir, err)
+	}
+	return dir, nil
+}
+
+// structureWorkDirFn is the working-directory seam the structuring tier resolves
+// through, so a test can point the sessions at a temporary directory without an
+// environment variable. It mirrors slogWarnFn in structure.go.
+var structureWorkDirFn = structureWorkDir
 
 // runClaudeStructureWithSchema is runClaudeStructure that additionally passes a
 // JSON Schema to the CLI via --json-schema, constraining the structured output
@@ -601,8 +651,19 @@ func (c *Client) runClaudeStructure(prompt, label string) (text, model string, e
 // runClaudeStructure, since the CLI's schema enforcement is a hard constraint we
 // only want where a stable wire contract exists. decodeJSONWithRepair still
 // backstops the decode either way.
+//
+// Every structuring call in the package reaches the CLI through here, so this is
+// the one place the tier's isolation is set: the session runs in the empty
+// structureWorkDir and with noTools, which together make its cost the prompt
+// plus the transcription and nothing else. A working directory that cannot be
+// created fails the call before a process starts, rather than silently falling
+// back to the operator's own directory.
 func (c *Client) runClaudeStructureWithSchema(prompt, label, jsonSchema string) (text, model string, err error) {
-	return c.runClaudeWithPermission(runSpec{label: label, model: c.structureModel, effort: c.structureEffort, readOnly: true, jsonSchema: jsonSchema}, prompt)
+	dir, err := structureWorkDirFn()
+	if err != nil {
+		return "", "", err
+	}
+	return c.runClaudeWithPermission(runSpec{dir: dir, label: label, model: c.structureModel, effort: c.structureEffort, readOnly: true, noTools: true, jsonSchema: jsonSchema}, prompt)
 }
 
 // runClaudeAuto is runClaude with claudeAutoPermissionMode, letting the
@@ -698,6 +759,9 @@ func (c *Client) claudeArgs(spec runSpec, outputFormat string, extra ...string) 
 	args = withSession(args, spec)
 	args = withAgents(args, spec.agentsJSON)
 	args = c.hermeticArgs(args)
+	if spec.noTools {
+		return withNoTools(args)
+	}
 	args = withReadOnlyDenied(args, spec.readOnly)
 	args = withAllowedTools(args)
 	return args
