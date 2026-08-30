@@ -1,13 +1,10 @@
 package cache
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
-
-	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
 func TestKey(t *testing.T) {
@@ -76,23 +73,6 @@ func TestAuditKey_DistinctFromRepoKey(t *testing.T) {
 	}
 }
 
-func TestPutGet_RoundTrip(t *testing.T) {
-	dir := t.TempDir()
-	t.Cleanup(SetDir(dir))
-
-	result := &report.ReviewResult{Summary: "hello"}
-	if err := Put("k1", CommandReview, result); err != nil {
-		t.Fatalf("Put: %v", err)
-	}
-	got, ok := Get("k1", 0)
-	if !ok {
-		t.Fatal("expected cache hit")
-	}
-	if got.Summary != "hello" {
-		t.Errorf("Summary = %q, want %q", got.Summary, "hello")
-	}
-}
-
 func TestGet_RejectsEntriesBeyondMaxAge(t *testing.T) {
 	dir := t.TempDir()
 	t.Cleanup(SetDir(dir))
@@ -100,19 +80,19 @@ func TestGet_RejectsEntriesBeyondMaxAge(t *testing.T) {
 	// Write entry with a frozen writtenAt 10 days in the past.
 	past := time.Now().Add(-10 * 24 * time.Hour)
 	t.Cleanup(SetNow(func() time.Time { return past }))
-	if err := Put("k1", CommandReview, &report.ReviewResult{Summary: "old"}); err != nil {
-		t.Fatalf("Put: %v", err)
+	if err := PutRaw("k1", CommandReview, []byte(`{"summary":"old"}`)); err != nil {
+		t.Fatalf("PutRaw: %v", err)
 	}
 
 	// Restore real clock; 7-day TTL should reject, 30-day TTL should accept.
 	now = time.Now
-	if _, ok := Get("k1", 7*24*time.Hour); ok {
+	if _, ok := GetRaw("k1", 7*24*time.Hour); ok {
 		t.Error("entry older than max-age should miss")
 	}
-	if _, ok := Get("k1", 30*24*time.Hour); !ok {
+	if _, ok := GetRaw("k1", 30*24*time.Hour); !ok {
 		t.Error("entry within max-age should hit")
 	}
-	if _, ok := Get("k1", 0); !ok {
+	if _, ok := GetRaw("k1", 0); !ok {
 		t.Error("zero max-age should disable TTL")
 	}
 }
@@ -121,12 +101,11 @@ func TestGet_LegacyEntryWithoutEnvelopeTreatedAsMiss(t *testing.T) {
 	dir := t.TempDir()
 	t.Cleanup(SetDir(dir))
 
-	// Write a pre-envelope file: just the ReviewResult JSON.
-	legacy, _ := json.Marshal(&report.ReviewResult{Summary: "legacy"})
-	if err := os.WriteFile(filepath.Join(dir, "legacy.json"), legacy, 0o600); err != nil {
+	// Write a pre-envelope file: a bare payload with no envelope around it.
+	if err := os.WriteFile(filepath.Join(dir, "legacy.json"), []byte(`{"summary":"legacy"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := Get("legacy", 0); ok {
+	if _, ok := GetRaw("legacy", 0); ok {
 		t.Error("legacy entry without envelope must be treated as a cache miss")
 	}
 }

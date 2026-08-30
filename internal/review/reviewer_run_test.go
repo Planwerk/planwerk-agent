@@ -159,7 +159,7 @@ func TestRun_VerifyClaimsDemotesRefuted(t *testing.T) {
 		t.Fatalf("expected only BLOCKING+CRITICAL sent, got %d: %+v", len(sentToVerify), sentToVerify)
 	}
 
-	cached, ok := cache.Get(cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA, baseOptsPatternFlag()), 0)
+	cached, ok := readCachedResult(t, cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA, baseOptsPatternFlag()))
 	if !ok {
 		t.Fatal("expected a cached result carrying the demotion")
 	}
@@ -218,7 +218,7 @@ func TestRun_VerifyClaims_ErrorIsNonFatal(t *testing.T) {
 	if err := runner.Run(&out, baseOpts()); err != nil {
 		t.Fatalf("verifier error must not fail the review: %v", err)
 	}
-	cached, ok := cache.Get(cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA, baseOptsPatternFlag()), 0)
+	cached, ok := readCachedResult(t, cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA, baseOptsPatternFlag()))
 	if !ok || len(cached.Findings) != 1 || cached.Findings[0].Confidence != report.ConfidenceVerified {
 		t.Fatalf("finding must survive a failed verification unchanged, got ok=%v %+v", ok, cached.Findings)
 	}
@@ -298,7 +298,7 @@ func TestRun_DedupFilelessFindings(t *testing.T) {
 		t.Errorf("DedupFindings calls = %d, want 1", claudeMock.dedupCalls)
 	}
 
-	cached, ok := cache.Get(cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA, "thorough", baseOptsPatternFlag()), 0)
+	cached, ok := readCachedResult(t, cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA, "thorough", baseOptsPatternFlag()))
 	if !ok {
 		t.Fatal("expected a cached result")
 	}
@@ -366,10 +366,18 @@ func TestRun_DedupFileless_ErrorIsNonFatal(t *testing.T) {
 	if err := runner.Run(&out, opts); err != nil {
 		t.Fatalf("dedup error must not fail the review: %v", err)
 	}
-	cached, ok := cache.Get(cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA, "thorough", baseOptsPatternFlag()), 0)
+	cached, ok := readCachedResult(t, cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA, "thorough", baseOptsPatternFlag()))
 	if !ok || len(cached.Findings) != 2 {
 		t.Fatalf("both findings must survive a failed dedup, got ok=%v findings=%d", ok, len(cached.Findings))
 	}
+}
+
+// readCachedResult returns the review a run stored under key, so an assertion
+// about what was cached does not have to unwrap the envelope itself.
+func readCachedResult(t *testing.T, key string) (*report.ReviewResult, bool) {
+	t.Helper()
+	entry, ok := readCachedReview(key, 0)
+	return entry.Result, ok
 }
 
 // configurableClaude is a ClaudeRunner whose behavior is set per-test via
@@ -564,7 +572,7 @@ func TestRun_NoCache_SkipsCachedResult(t *testing.T) {
 	// Seed the cache with a sentinel result.
 	pr := fakePR(t, "acme", "widgets", 7, "sha-nocache")
 	cachedResult := &report.ReviewResult{Summary: "CACHED SUMMARY SHOULD BE IGNORED"}
-	if err := cache.Put(cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA, baseOptsPatternFlag()), cache.CommandReview, cachedResult); err != nil {
+	if err := writeCachedReview(cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA, baseOptsPatternFlag()), cachedResult, nil); err != nil {
 		t.Fatalf("seeding cache: %v", err)
 	}
 
@@ -1235,5 +1243,153 @@ func TestRun_LocalUsesCwdAndKeepsTree(t *testing.T) {
 	// Cleanup is a no-op for a Local PR — the working tree must survive.
 	if _, err := os.Stat(dir); err != nil {
 		t.Fatalf("local checkout must survive the run: %v", err)
+	}
+}
+
+// TestRun_CoverageMapRenderedOnCacheHit pins the coverage map to the entry that
+// was asked for it. --coverage-map is part of the cache key, so a re-run with
+// the flag hits the entry the flagged run wrote — but the map itself was never
+// stored, so the section silently vanished on every run after the first.
+func TestRun_CoverageMapRenderedOnCacheHit(t *testing.T) {
+	// Not t.Parallel(): cache.SetDir mutates a package-level variable.
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	coverage := func(dir, baseBranch string) (*report.CoverageResult, error) {
+		return &report.CoverageResult{Entries: []report.CoverageEntry{
+			{File: "main.go", Function: "Run", Rating: "★★★"},
+		}}, nil
+	}
+	claudeMock := &configurableClaude{
+		review: func(dir string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
+			return &report.ReviewResult{Summary: "Primary"}, nil
+		},
+		coverage: coverage,
+	}
+	gh := &githubtest.Fake{
+		FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return fakePR(t, "acme", "widgets", 14, "sha-coverage-hit"), nil },
+	}
+	opts := baseOpts()
+	opts.CoverageMap = true
+
+	var first bytes.Buffer
+	if err := (&Runner{Claude: claudeMock, GitHub: gh}).Run(&first, opts); err != nil {
+		t.Fatalf("first Run returned error: %v", err)
+	}
+	if !strings.Contains(first.String(), "## Test Coverage Map") || !strings.Contains(first.String(), "main.go") {
+		t.Fatalf("first run did not render the coverage map:\n%s", first.String())
+	}
+
+	second := &configurableClaude{
+		review: func(dir string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
+			t.Error("Review must not be called on a cache hit")
+			return nil, nil
+		},
+		coverage: func(dir, baseBranch string) (*report.CoverageResult, error) {
+			t.Error("CoverageMap must not be called on a cache hit")
+			return nil, nil
+		},
+	}
+	var out bytes.Buffer
+	if err := (&Runner{Claude: second, GitHub: gh}).Run(&out, opts); err != nil {
+		t.Fatalf("second Run returned error: %v", err)
+	}
+	if !strings.Contains(out.String(), "## Test Coverage Map") || !strings.Contains(out.String(), "main.go") {
+		t.Errorf("the cached run dropped the coverage map it was asked for:\n%s", out.String())
+	}
+}
+
+// TestRun_CachedReviewRejectsUnusablePayloads covers the two entries a hit must
+// refuse: one written before the coverage map was stored beside the result,
+// which decodes cleanly into an envelope with no result in it, and one that does
+// not decode at all. Both must re-run the review rather than render nothing, and
+// the entry they leave behind must be readable by the next run.
+func TestRun_CachedReviewRejectsUnusablePayloads(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		payload []byte
+	}{
+		{"an entry predating the stored coverage map", []byte(`{"findings":[],"summary":"STALE SHAPE","recommendation":"r"}`)},
+
+		// PutRaw stores the payload as a JSON value, so a malformed one cannot be
+		// written; what can still arrive is a well-formed value of the wrong
+		// shape, from a corrupted file or a future payload format.
+		{"an entry of the wrong shape", []byte(`[1,2,3]`)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Not t.Parallel(): cache.SetDir mutates a package-level variable.
+			restore := cache.SetDir(t.TempDir())
+			t.Cleanup(restore)
+
+			pr := fakePR(t, "acme", "widgets", 21, "sha-unusable")
+			key := cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA, baseOptsPatternFlag())
+			if err := cache.PutRaw(key, cache.CommandReview, tc.payload); err != nil {
+				t.Fatalf("seeding cache: %v", err)
+			}
+
+			claudeMock := &configurableClaude{
+				review: func(dir string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
+					return &report.ReviewResult{Summary: "Fresh summary"}, nil
+				},
+			}
+			gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
+
+			var out bytes.Buffer
+			if err := (&Runner{Claude: claudeMock, GitHub: gh}).Run(&out, baseOpts()); err != nil {
+				t.Fatalf("Run returned error: %v", err)
+			}
+			if claudeMock.reviewCalls != 1 {
+				t.Errorf("Review calls = %d, want 1 — an unusable entry is a miss", claudeMock.reviewCalls)
+			}
+			if strings.Contains(out.String(), "STALE SHAPE") {
+				t.Errorf("rendered the unusable entry:\n%s", out.String())
+			}
+			if !strings.Contains(out.String(), "Fresh summary") {
+				t.Errorf("missing the fresh review:\n%s", out.String())
+			}
+			// The run replaced it with an entry the next run can read.
+			if cached, ok := readCachedResult(t, key); !ok || cached.Summary != "Fresh summary" {
+				t.Errorf("the unusable entry was not replaced, got ok=%v %+v", ok, cached)
+			}
+		})
+	}
+}
+
+// TestRun_CoverageMapFailureStaysAbsentOnCacheHit is the other half of storing
+// the map: a coverage pass that failed contributed no map, and the hit must
+// render the report the same way — without one — rather than inventing a section.
+func TestRun_CoverageMapFailureStaysAbsentOnCacheHit(t *testing.T) {
+	// Not t.Parallel(): cache.SetDir mutates a package-level variable.
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	claudeMock := &configurableClaude{
+		review: func(dir string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
+			return &report.ReviewResult{Summary: "Primary"}, nil
+		},
+		coverage: func(dir, baseBranch string) (*report.CoverageResult, error) {
+			return nil, errors.New("coverage failed")
+		},
+	}
+	gh := &githubtest.Fake{
+		FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return fakePR(t, "acme", "widgets", 15, "sha-cov-err"), nil },
+	}
+	opts := baseOpts()
+	opts.CoverageMap = true
+
+	var first bytes.Buffer
+	if err := (&Runner{Claude: claudeMock, GitHub: gh}).Run(&first, opts); err != nil {
+		t.Fatalf("first Run returned error: %v", err)
+	}
+	if strings.Contains(first.String(), "## Test Coverage Map") {
+		t.Fatalf("a failed coverage pass must render no map:\n%s", first.String())
+	}
+
+	var second bytes.Buffer
+	if err := (&Runner{Claude: &configurableClaude{}, GitHub: gh}).Run(&second, opts); err != nil {
+		t.Fatalf("second Run returned error: %v", err)
+	}
+	if strings.Contains(second.String(), "## Test Coverage Map") {
+		t.Errorf("the cached run rendered a coverage map the original never had:\n%s", second.String())
 	}
 }
