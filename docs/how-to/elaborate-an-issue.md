@@ -122,6 +122,36 @@ one. Both the skill and the command do this, and a Go test
 (`TestBuildIssueBody_MatchesSharedFormat`) fails when the two paths disagree
 about the format.
 
+## Large plans stay whole: a budget, and a continuation comment
+
+An elaborated body is written to a budget of 40,000 characters, roughly 10,000
+tokens. The body is injected whole into every planning, implementation, and
+verification prompt that reads the issue, so the budget is what keeps those
+prompts affordable, and the elaboration prompt names the moves that bring a
+draft under it without dropping a decision, a criterion, or a citation: state
+each fact once in the section that owns it, cite `path:line` instead of quoting
+code, one sentence per rejected alternative. The skill measures the draft in its
+scoring phase and treats an over-budget body as a gap to close. With
+`--review`, the command's refine loop does the same; without it, the command
+logs a warning and writes the body as it is.
+
+GitHub caps a body at 65,536 characters, and a plan that still exceeds the cap
+is not truncated. `--update-issue` writes it as the body plus one or more
+**continuation comments**: the body keeps the header, the leading sections, and
+the footer, and ends with a `<!-- planwerk-agent:continued 1/N -->` marker and
+a pointer naming the sections that follow; each continuation comment opens with
+`<!-- planwerk-agent:continuation k/N -->`. The cut falls on a section boundary
+where one is available, and never inside a fenced code block. Every command
+that reads an issue body (`implement`, `elaborate`, `prompt`) finds the parts by
+those markers and merges them back into one document before it reads a
+section, and the skills do the same. A part the body announces and no comment
+carries aborts the run rather than planning against a truncated issue. A
+rewrite reuses the existing continuation comments in place and deletes the ones
+a shorter body no longer needs, so the thread never carries a stale part.
+`--post-comment` posts an oversized elaboration as a run of comments the same
+way. The convention the skills follow is specified in
+`plugins/planwerk/shared/issue-format.md`.
+
 ## Score the draft before output (`--review`)
 
 `--review` adds a reviewer pass between elaboration and output. A reviewer

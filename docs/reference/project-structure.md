@@ -62,6 +62,7 @@ planwerk-agent/
 │   ├── github/
 │   │   ├── client.go           # Client: the one value every command's GitHub interface is satisfied by
 │   │   ├── comments.go         # Post/update PR comments (gh CLI)
+│   │   ├── continuation.go     # Split an oversized issue body into continuation comments, and merge them back
 │   │   ├── comments_test.go
 │   │   ├── diff.go             # Fetch and parse PR diffs (DiffMap)
 │   │   ├── diff_test.go

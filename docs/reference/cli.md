@@ -393,6 +393,13 @@ planwerk-agent elaborate --post-comment owner/repo#123
 
 `--update-issue` and `--post-comment` are mutually exclusive.
 
+The body is written to a 40,000-character budget: over it, `--review` refines
+the draft to size, and a run without it logs a warning. A body over GitHub's
+65,536-character cap is not truncated: `--update-issue` writes it as the body
+plus continuation comments and `--post-comment` as a run of comments, and every
+command that reads the issue merges the parts back first. See
+[Elaborate an issue](/how-to/elaborate-an-issue#large-plans-stay-whole-a-budget-and-a-continuation-comment).
+
 ## `prompt`
 
 Deterministically render a copy-paste-ready Claude Code prompt for an existing
