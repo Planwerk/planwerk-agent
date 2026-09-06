@@ -164,10 +164,15 @@ func (Client) GetIssue(owner, name string, number int) (*Issue, error) {
 	return &iss, nil
 }
 
-// IssueComment is a single comment on a GitHub issue. Only the body is read:
-// the implement command scans comment bodies to find an implementation plan it
-// posted on an earlier run and can reuse instead of re-planning.
+// IssueComment is a single comment on a GitHub issue. The implement command
+// scans comment bodies to find an implementation plan it posted on an earlier
+// run and can reuse instead of re-planning; every issue reader scans them for
+// the continuation comments an oversized body was split into (see
+// MergeContinuations). ID is the comment's GraphQL node id, which
+// EditIssueComment and DeleteIssueComment take when a rewrite of the body
+// rewrites or drops its continuations.
 type IssueComment struct {
+	ID   string `json:"id"`
 	Body string `json:"body"`
 }
 
@@ -186,6 +191,32 @@ func (Client) ListIssueComments(owner, name string, number int) ([]IssueComment,
 		return nil, fmt.Errorf("gh issue view: %s: %w", strings.TrimSpace(string(out)), err)
 	}
 	return parseIssueComments(out)
+}
+
+// EditIssueComment replaces the body of an existing issue comment, addressed
+// by its GraphQL node id (the ID ListIssueComments returns).
+func (Client) EditIssueComment(commentID, body string) error {
+	_, err := editComment("", commentID, body)
+	return err
+}
+
+// DeleteIssueComment removes an issue comment, addressed by its GraphQL node
+// id. PublishIssueBody uses it to drop a continuation comment a shorter body no
+// longer needs.
+func (Client) DeleteIssueComment(commentID string) error {
+	query := `mutation($id: ID!) { deleteIssueComment(input: {id: $id}) { clientMutationId } }`
+
+	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "gh", "api", "graphql",
+		"-f", "query="+query,
+		"-f", "id="+commentID,
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("gh api graphql (delete comment): %s: %w", strings.TrimSpace(string(out)), err)
+	}
+	return nil
 }
 
 // parseIssueComments decodes the {"comments":[{"body":...}]} payload gh emits

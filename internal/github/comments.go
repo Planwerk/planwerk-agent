@@ -37,8 +37,9 @@ func PostBestEffort(w io.Writer, what, target string, post func() (string, error
 }
 
 const (
-	// maxCommentLen is the GitHub API limit for issue/PR comment bodies.
-	maxCommentLen = 65536
+	// maxCommentLen is the GitHub API limit for issue/PR comment bodies, the
+	// same cap MaxIssueBodyLen names for issue bodies.
+	maxCommentLen = MaxIssueBodyLen
 	// commentSignature is appended to comments so we can detect duplicates.
 	commentSignature = "<!-- planwerk-agent -->"
 )

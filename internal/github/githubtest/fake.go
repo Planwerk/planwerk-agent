@@ -155,6 +155,8 @@ type Fake struct {
 	EditIssueBodyFn          func(owner, name string, number int, body string) error
 	CloseIssueFn             func(owner, name string, number int) error
 	AddIssueCommentFn        func(owner, name string, number int, body string) (string, error)
+	EditIssueCommentFn       func(commentID, body string) error
+	DeleteIssueCommentFn     func(commentID string) error
 	OpenLocalPRFn            func(ref string, opts github.LocalOptions) (*github.PR, error)
 	UseLocalRepoFn           func(ref string, opts github.LocalOptions) (*github.Repo, error)
 	PullFFOnlyFn             func(dir, branch string) error
@@ -511,6 +513,26 @@ func (f *Fake) AddIssueComment(owner, name string, number int, body string) (str
 		return "", f.CommentErr
 	}
 	return fmt.Sprintf("https://github.com/%s/%s/issues/%d#issuecomment-1", owner, name, number), nil
+}
+
+func (f *Fake) EditIssueComment(commentID, body string) error {
+	i := f.record("EditIssueComment", commentID, body)
+	var err error
+	if f.EditIssueCommentFn != nil {
+		err = f.EditIssueCommentFn(commentID, body)
+	}
+	f.setErr(i, err)
+	return err
+}
+
+func (f *Fake) DeleteIssueComment(commentID string) error {
+	i := f.record("DeleteIssueComment", commentID)
+	var err error
+	if f.DeleteIssueCommentFn != nil {
+		err = f.DeleteIssueCommentFn(commentID)
+	}
+	f.setErr(i, err)
+	return err
 }
 
 func (f *Fake) ListAllIssues(owner, name string) ([]github.ExistingIssue, error) {
