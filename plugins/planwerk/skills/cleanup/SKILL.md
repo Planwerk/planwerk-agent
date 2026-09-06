@@ -229,8 +229,10 @@ Show the author:
 
 Then ask, with `AskUserQuestion`, whether to file the Meta Issue as shown,
 adjust it, or cancel — and recommend one. File only on an explicit yes: write
-the body to a temporary file, pass `--body-file` to `gh issue create`, and
-print the new issue's URL.
+the body to a temporary file, count it (over GitHub's cap it is created as
+part 1 with its continuation comments posted right after, per
+`issue-format.md`), pass `--body-file` to `gh issue create`, and print the new
+issue's URL.
 
 ## Phase 8 — Report
 

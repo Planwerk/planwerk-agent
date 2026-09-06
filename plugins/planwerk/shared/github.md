@@ -36,6 +36,22 @@ gh issue list --repo <owner/repo> --search "<distinctive words from the title>" 
 gh issue view <number> --repo <owner/repo> --comments
 ```
 
+A body can continue in comments. When it ends, above its footer, with
+`<!-- planwerk-agent:continued 1/N -->`, the rest of the document is in the
+comments that open with `<!-- planwerk-agent:continuation k/N -->`. Read the
+parts as one document — the body's sections, then each continuation's in part
+order, footer last — before you decide anything about the issue: its depth, its
+criteria, what to diff. List them, with the ids a rewrite needs:
+
+```bash
+gh api "repos/<owner/repo>/issues/<number>/comments" --paginate \
+  --jq '.[] | select(.body | startswith("<!-- planwerk-agent:continuation")) | "\(.id)\t\(.body | split("\n")[0])"'
+```
+
+A part the body announces and no comment carries is missing content, not a
+shorter plan: stop and say so. `issue-format.md` says how a body is split and
+how a rewrite keeps the comments in step.
+
 ## Referring to another repository
 
 Anything you name that lives outside the repository the text is written to gets
@@ -78,9 +94,14 @@ gh issue edit <number> --repo <owner/repo> --body-file <path>
 gh issue comment <number> --repo <owner/repo> --body-file <path>
 
 gh pr edit <number> --repo <owner/repo> --body-file <path>
+
+# Rewrite or drop a continuation comment, by the numeric id the listing above prints
+gh api -X PATCH "repos/<owner/repo>/issues/comments/<id>" -F body=@<path>
+gh api -X DELETE "repos/<owner/repo>/issues/comments/<id>"
 ```
 
-Write the body to a temporary file first, then pass its path. `gh issue create`
+Write the body to a temporary file first, count it (`wc -c`; over 65,536
+characters it is split per `issue-format.md`), then pass its path. `gh issue create`
 prints the new issue's URL on stdout; parse the trailing number from it rather
 than assuming the next number in sequence.
 
