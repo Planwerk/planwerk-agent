@@ -2,7 +2,7 @@
 name: decide
 description: Works through the decisions a Meta Issue deferred when it was split — a block of open items, each carrying an unverified recommendation, that its Sub Issues already assume are settled. Verifies each one against the repository and whatever the item itself names as its source, puts the genuine judgment calls to the author, and records the outcomes in the Meta Issue and every Sub Issue whose body assumed one. Use when a Meta Issue carries a decisions or spike section with items nobody has confirmed yet, or when a Sub Issue exists solely to verify and record them.
 argument-hint: "<issue-ref>"
-allowed-tools: AskUserQuestion Read Grep Glob Write Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue view:*) Bash(gh issue edit:*) Bash(gh issue comment:*) Bash(gh api:*) Bash(git fetch:*) Bash(git status:*) Bash(git log:*) Bash(git show:*)
+allowed-tools: AskUserQuestion Read Grep Glob Write Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue view:*) Bash(gh issue edit:*) Bash(gh issue comment:*) Bash(gh api:*) Bash(git fetch:*) Bash(git status:*) Bash(git log:*) Bash(git show:*) Bash(wc:*)
 ---
 
 # Settle a Meta Issue's decisions

@@ -2,7 +2,7 @@
 name: clarify
 description: Resolves the open questions that block an issue from being implemented — the decisions a planning session raised and could not make for itself — and records the answers in the issue body, where the next planning session reads them. Use when a plan reported NEEDS_CONTEXT, or when an issue carries unresolved decisions an implementer would have to guess at.
 argument-hint: "<issue-ref>"
-allowed-tools: AskUserQuestion Read Grep Glob Write Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue view:*) Bash(gh issue edit:*) Bash(gh issue comment:*) Bash(gh api:*) Bash(git fetch:*) Bash(git status:*) Bash(git log:*) Bash(git show:*)
+allowed-tools: AskUserQuestion Read Grep Glob Write Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue view:*) Bash(gh issue edit:*) Bash(gh issue comment:*) Bash(gh api:*) Bash(git fetch:*) Bash(git status:*) Bash(git log:*) Bash(git show:*) Bash(wc:*)
 ---
 
 # Clarify an issue

@@ -113,7 +113,9 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 
 	// A body over GitHub's cap continues in comments; re-elaborating such an
 	// issue must start from the whole document, and the cache fingerprint
-	// below must cover it.
+	// below must cover it. Whether it was continued decides, in finish,
+	// whether a comment-mode elaboration may be posted as a run of its own.
+	sourceContinued := github.IsContinued(issue.Body)
 	if err := github.CompleteIssueBody(r.GitHub, issue); err != nil {
 		return err
 	}
@@ -147,7 +149,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 			var result Result
 			if err := json.Unmarshal(data, &result); err == nil {
 				slog.Info("using cached elaboration — skipping clone", "issue", number)
-				return r.finish(w, &result, owner, name, number, opts)
+				return r.finish(w, &result, owner, name, number, opts, sourceContinued)
 			}
 			slog.Warn("cache corrupted, running fresh elaboration")
 		}
@@ -221,12 +223,13 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	}
 
 	slog.Info("elaboration complete")
-	return r.finish(w, result, owner, name, number, opts)
+	return r.finish(w, result, owner, name, number, opts, sourceContinued)
 }
 
 // finish renders the elaborated result and applies the configured update
-// mode to the upstream issue.
-func (r *Runner) finish(w io.Writer, result *Result, owner, name string, number int, opts Options) error {
+// mode to the upstream issue. sourceContinued says whether the issue body
+// was itself continued in comments when it was fetched.
+func (r *Runner) finish(w io.Writer, result *Result, owner, name string, number int, opts Options, sourceContinued bool) error {
 	switch opts.Format {
 	case "json":
 		enc := json.NewEncoder(w)
@@ -256,8 +259,14 @@ func (r *Runner) finish(w io.Writer, result *Result, owner, name string, number 
 	case UpdateComment:
 		// A comment has the same cap as a body, so an oversized elaboration is
 		// posted as a run of comments, the later ones marked as continuations
-		// of the first.
-		for i, part := range github.SplitIssueBody(result.Body) {
+		// of the first. Not on an issue whose body is itself continued: the
+		// run's comments carry the same markers as the body's, and every later
+		// read would merge them into the body.
+		parts := github.SplitIssueBody(result.Body)
+		if len(parts) > 1 && sourceContinued {
+			return fmt.Errorf("posting the elaboration of issue #%d as a comment: it is %d characters, over GitHub's %d cap, and the issue body itself continues in comments; a second run of continuation comments would be merged into the body on every later read. Use --update-issue", number, len(result.Body), github.MaxIssueBodyLen)
+		}
+		for i, part := range parts {
 			url, err := r.GitHub.AddIssueComment(owner, name, number, part)
 			if err != nil {
 				return fmt.Errorf("posting issue comment %d: %w", i+1, err)

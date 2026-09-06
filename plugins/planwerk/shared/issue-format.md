@@ -125,8 +125,11 @@ as it is. Over it, split it:
 
    ```markdown
    <!-- planwerk-agent:continued 1/N -->
-   _This body continues in a comment below (part 2 of N: <the `## ` sections it carries>). GitHub caps a body at 65,536 characters; read the parts as one document._
+   _This body continues in a comment below (part 2 of 2: <the `## ` sections it carries>). GitHub caps a body at 65,536 characters; read the parts as one document._
    ```
+
+   With more than one comment the pointer reads `N-1 comments below (parts 2
+   to N of N: <the `## ` sections they carry>)`.
 
 4. Every further part is a comment that opens with these two lines, then a
    blank line, then the part:
@@ -135,6 +138,10 @@ as it is. Over it, split it:
    <!-- planwerk-agent:continuation k/N -->
    _Issue body, continued (part k of N). The sections below belong to the body above, which reached GitHub's 65,536-character cap. Read them as part of the body; whoever rewrites the body rewrites this comment with it._
    ```
+
+5. Write each part as its own file with `Write` — the draft is in your
+   context, so no shell tool has to cut it — and count each file: `wc -c`, at
+   most 65,536.
 
 `N` counts the body, so a body and one comment are `1/2` and `2/2`. The HTML
 markers are the contract: `planwerk-agent implement`, `elaborate`, and `prompt`
@@ -150,3 +157,12 @@ that shrank back under the cap therefore leaves no comment behind, which
 matters because the next reader would merge a stale continuation into the new
 body. A new issue is created with part 1, and its continuations are posted
 right after.
+
+A document posted as a comment rather than as the body — `elaborate`'s second
+landing option — meets the same cap. Split it the same way and post the parts
+in order: part 1, with its `continued` marker, pointer, and footer, as the
+first comment, then each continuation comment. Nothing merges a comment run by
+machine; people read it in thread order. Never post one on an issue whose body
+is itself continued: its continuation comments carry the same markers, and
+every later read would merge the run's parts into the body. Replace the body
+there instead, or stop.
