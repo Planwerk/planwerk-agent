@@ -2,7 +2,7 @@
 name: elaborate
 description: Expands a high-level GitHub issue into a deeply detailed engineering plan grounded in the actual repository, with the open decisions resolved by its author. Use when an issue needs a plan before it can be implemented, or when the user asks to elaborate, deepen, or flesh out an issue.
 argument-hint: "<issue-ref>"
-allowed-tools: AskUserQuestion Read Grep Glob Write Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue view:*) Bash(gh issue edit:*) Bash(gh issue comment:*) Bash(gh issue create:*) Bash(gh api:*)
+allowed-tools: AskUserQuestion Read Grep Glob Write Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue view:*) Bash(gh issue edit:*) Bash(gh issue comment:*) Bash(gh issue create:*) Bash(gh api:*) Bash(wc:*)
 ---
 
 # Elaborate an issue
@@ -104,6 +104,10 @@ line preserved from the existing issue, then `## Description`, `## Motivation`,
 an optional `## User Stories`, `## Affected Areas`, `## Acceptance Criteria`,
 `## Non-Goals`, `## References`, then the `Elaborated by` footer.
 
+Write the draft to a file outside the checkout, `body.md` under the system
+temp directory, so it never lands in a commit. Phase 5 measures that file and
+Phase 6 writes it back from it.
+
 Plan the smallest change that satisfies the issue. Do not invent scope.
 Enumerate every affected area — source, tests, docs, schema, generated
 artifacts, CI. A surprise file in a PR is a process smell.
@@ -164,7 +168,7 @@ phase to move without moving the plan. Two rules keep it honest:
   behind it is invalid — the previous score stands.
 - **A round that finds nothing is a round that did not look.** If a re-score
   surfaces no gap at all while the score is still below 8, you are validating
-  your draft rather than doubting it. Go back to the six checks and work one
+  your draft rather than doubting it. Go back to the seven checks and work one
   concrete failing example per check, or stop and report what you could not
   close.
 
@@ -181,7 +185,10 @@ where it should land, and recommend one:
   what `implement` reads. A body over GitHub's cap is written per the
   continuation rule in `issue-format.md`, with its comments in step.
 - **Post it as a comment** (`gh issue comment --body-file`) — when the original
-  body must survive.
+  body must survive. A comment has the same cap: a document over it is posted
+  as a run of comments per `issue-format.md`. Not on an issue whose body is
+  itself continued — the two runs would merge into each other on every later
+  read — there, replace the body or stop.
 - **Neither** — print it and stop.
 
 Write only on an explicit yes.

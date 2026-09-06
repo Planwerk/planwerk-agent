@@ -940,3 +940,56 @@ func TestRun_ReviewLoop_SizeGapRefinesAcceptedDraft(t *testing.T) {
 		t.Error("the tightened draft must be the one rendered")
 	}
 }
+
+func TestRun_UpdateComment_RefusesOversizedRunOnContinuedBody(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	patternDir := seedPatternDir(t)
+	repo := fakeRepo(t, "acme", "widgets")
+	newFake := func() *githubtest.Fake {
+		return &githubtest.Fake{
+			GetIssueFn: func(owner, name string, number int) (*github.Issue, error) {
+				return &github.Issue{Owner: owner, Name: name, Number: number, Title: "T", Body: continuedBody}, nil
+			},
+			IssueComments: []github.IssueComment{{ID: "c2", Body: continuationComment}},
+			CloneRepoFn:   func(ref string) (*github.Repo, error) { return repo, nil },
+		}
+	}
+	huge := strings.Repeat("A paragraph of plan prose, repeated until the body is far over GitHub's cap.\n\n", 1150)
+
+	t.Run("an oversized run is refused before anything is posted", func(t *testing.T) {
+		gh := newFake()
+		cl := &fakeClaude{fn: func(dir string, ctx Context) (*Result, error) {
+			return &Result{Description: huge, Motivation: "m"}, nil
+		}}
+		r := &Runner{Claude: cl, GitHub: gh}
+		opts := baseOpts(patternDir)
+		opts.NoCache = true
+		opts.UpdateMode = UpdateComment
+		err := r.Run(&bytes.Buffer{}, opts)
+		if err == nil || !strings.Contains(err.Error(), "continues in comments") || !strings.Contains(err.Error(), "--update-issue") {
+			t.Fatalf("a run of continuation comments on a continued body must be refused and point at --update-issue, got %v", err)
+		}
+		if gh.Count("AddIssueComment") != 0 {
+			t.Errorf("no comment may be posted, got %d", gh.Count("AddIssueComment"))
+		}
+	})
+
+	t.Run("a single comment still lands", func(t *testing.T) {
+		gh := newFake()
+		cl := &fakeClaude{fn: func(dir string, ctx Context) (*Result, error) {
+			return &Result{Description: "d", Motivation: "m"}, nil
+		}}
+		r := &Runner{Claude: cl, GitHub: gh}
+		opts := baseOpts(patternDir)
+		opts.NoCache = true
+		opts.UpdateMode = UpdateComment
+		if err := r.Run(&bytes.Buffer{}, opts); err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		if gh.Count("AddIssueComment") != 1 {
+			t.Errorf("a comment within the cap is posted once, got %d", gh.Count("AddIssueComment"))
+		}
+	})
+}

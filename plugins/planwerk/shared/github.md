@@ -46,6 +46,10 @@ criteria, what to diff. List them, with the ids a rewrite needs:
 ```bash
 gh api "repos/<owner/repo>/issues/<number>/comments" --paginate \
   --jq '.[] | select(.body | startswith("<!-- planwerk-agent:continuation")) | "\(.id)\t\(.body | split("\n")[0])"'
+
+# The parts themselves, in thread order
+gh api "repos/<owner/repo>/issues/<number>/comments" --paginate \
+  --jq '.[] | select(.body | startswith("<!-- planwerk-agent:continuation")) | .body'
 ```
 
 A part the body announces and no comment carries is missing content, not a
@@ -101,7 +105,8 @@ gh api -X DELETE "repos/<owner/repo>/issues/comments/<id>"
 ```
 
 Write the body to a temporary file first, count it (`wc -c`; over 65,536
-characters it is split per `issue-format.md`), then pass its path. `gh issue create`
+characters it is split per `issue-format.md`, and a comment has the same cap),
+then pass its path. `gh issue create`
 prints the new issue's URL on stdout; parse the trailing number from it rather
 than assuming the next number in sequence.
 

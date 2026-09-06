@@ -149,8 +149,10 @@ carries aborts the run rather than planning against a truncated issue. A
 rewrite reuses the existing continuation comments in place and deletes the ones
 a shorter body no longer needs, so the thread never carries a stale part.
 `--post-comment` posts an oversized elaboration as a run of comments the same
-way. The convention the skills follow is specified in
-`plugins/planwerk/shared/issue-format.md`.
+way, except on an issue whose body is itself continued: there the run is
+refused, because its parts carry the same markers as the body's and every later
+read would merge them into the body; use `--update-issue`. The convention the
+skills follow is specified in `plugins/planwerk/shared/issue-format.md`.
 
 ## Score the draft before output (`--review`)
 
