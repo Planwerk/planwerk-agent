@@ -111,6 +111,13 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	}
 	slog.Info("fetched issue", "repo", fmt.Sprintf("%s/%s", owner, name), "issue", number, "title", issue.Title)
 
+	// A body over GitHub's cap continues in comments; re-elaborating such an
+	// issue must start from the whole document, and the cache fingerprint
+	// below must cover it.
+	if err := github.CompleteIssueBody(r.GitHub, issue); err != nil {
+		return err
+	}
+
 	// Resolve the issue's Meta/Sub-Issue neighborhood so a Sub Issue is
 	// elaborated against its Meta Issue and sibling Sub Issues, not in
 	// isolation. Best-effort: a repo without sub-issue relationships, a token
@@ -231,18 +238,32 @@ func (r *Runner) finish(w io.Writer, result *Result, owner, name string, number 
 		RenderMarkdown(w, fmt.Sprintf("%s/%s", owner, name), number, opts.Version, result)
 	}
 
+	if n := len(result.Body); n > BodyBudget {
+		slog.Warn("elaborated body exceeds the size budget", "issue", number, "chars", n, "budget", BodyBudget, "cap", github.MaxIssueBodyLen)
+	}
+
 	switch opts.UpdateMode {
 	case UpdateReplace:
-		if err := r.GitHub.EditIssueBody(owner, name, number, result.Body); err != nil {
+		parts, err := github.PublishIssueBody(r.GitHub, owner, name, number, result.Body)
+		if err != nil {
 			return fmt.Errorf("updating issue body: %w", err)
 		}
-		slog.Info("updated issue body", "issue", number)
-	case UpdateComment:
-		url, err := r.GitHub.AddIssueComment(owner, name, number, result.Body)
-		if err != nil {
-			return fmt.Errorf("posting issue comment: %w", err)
+		if parts > 1 {
+			slog.Info("updated issue body; it exceeds GitHub's cap and continues in comments", "issue", number, "continuations", parts-1)
+		} else {
+			slog.Info("updated issue body", "issue", number)
 		}
-		slog.Info("posted elaboration comment", "issue", number, "url", url)
+	case UpdateComment:
+		// A comment has the same cap as a body, so an oversized elaboration is
+		// posted as a run of comments, the later ones marked as continuations
+		// of the first.
+		for i, part := range github.SplitIssueBody(result.Body) {
+			url, err := r.GitHub.AddIssueComment(owner, name, number, part)
+			if err != nil {
+				return fmt.Errorf("posting issue comment %d: %w", i+1, err)
+			}
+			slog.Info("posted elaboration comment", "issue", number, "url", url)
+		}
 	}
 	return nil
 }
@@ -296,17 +317,24 @@ func (r *Runner) runReviewLoop(dir string, baseCtx Context, result *Result, opts
 		}
 		score := review.Score
 		result.ReviewScore = &score
-		if review.Score >= passingReviewScore {
+		// The reviewer cannot count characters; the runner can. A body over
+		// BodyBudget is a gap like the reviewer's own, closed in the same round,
+		// and it keeps a draft the reviewer already passed in the loop.
+		gaps := review.Gaps
+		if g := sizeGap(result.Body); g != "" {
+			gaps = append(append([]string{}, gaps...), g)
+		}
+		if review.Score >= passingReviewScore && len(gaps) == len(review.Gaps) {
 			slog.Info("elaboration cleared the executability bar", "iteration", i, "score", review.Score)
 			result.Body = BuildIssueBody(result)
 			return result
 		}
-		slog.Info("reviewer scored the elaboration below the bar; refining", "iteration", i, "score", review.Score, "gaps", len(review.Gaps))
+		slog.Info("elaboration has gaps; refining", "iteration", i, "score", review.Score, "gaps", len(gaps), "chars", len(result.Body))
 
 		if i == maxIter {
 			// Out of budget — surface the score, surviving gaps, and target.
-			slog.Warn("elaboration still below the executability bar after max iterations", "score", review.Score, "gaps", len(review.Gaps))
-			result.UnresolvedGaps = review.Gaps
+			slog.Warn("elaboration still has gaps after max iterations", "score", review.Score, "gaps", len(gaps))
+			result.UnresolvedGaps = gaps
 			result.ReviewTarget = review.ToReachTen
 			result.Body = BuildIssueBody(result)
 			return result
@@ -315,7 +343,7 @@ func (r *Runner) runReviewLoop(dir string, baseCtx Context, result *Result, opts
 		priorBody := result.Body
 		refineCtx := baseCtx
 		refineCtx.PriorDraft = priorBody
-		refineCtx.ReviewGaps = review.Gaps
+		refineCtx.ReviewGaps = gaps
 		refineCtx.ReviewTarget = review.ToReachTen
 		refined, err := r.Claude.Elaborate(dir, refineCtx)
 		if err != nil {
@@ -337,8 +365,8 @@ func (r *Runner) runReviewLoop(dir string, baseCtx Context, result *Result, opts
 		// while nothing improves. Stop and surface the gaps this round reported.
 		if refined.Body == priorBody {
 			slog.Warn("refinement returned an unchanged draft; stopping the loop",
-				"iteration", i, "score", review.Score, "gaps", len(review.Gaps))
-			result.UnresolvedGaps = review.Gaps
+				"iteration", i, "score", review.Score, "gaps", len(gaps))
+			result.UnresolvedGaps = gaps
 			result.ReviewTarget = review.ToReachTen
 			result.Body = BuildIssueBody(result)
 			return result

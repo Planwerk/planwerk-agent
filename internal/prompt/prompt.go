@@ -61,6 +61,9 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	if err != nil {
 		return fmt.Errorf("fetching issue: %w", err)
 	}
+	if err := github.CompleteIssueBody(r.GitHub, issue); err != nil {
+		return err
+	}
 
 	mode := opts.Mode
 	if mode == ModeAuto {

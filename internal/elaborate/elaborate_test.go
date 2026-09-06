@@ -725,3 +725,218 @@ func TestRun_ReviewLoop_StopsOnUnchangedDraft(t *testing.T) {
 		t.Error("the near-miss score must stay visible on the published body")
 	}
 }
+
+// continuedBody and continuationComment are a house-format issue whose body
+// reached GitHub's cap and continues in one comment (see github.SplitIssueBody).
+const (
+	continuedBody = "**Category**: feature | **Scope**: Large\n\n## Description\n\nIntro.\n\n" +
+		"<!-- planwerk-agent:continued 1/2 -->\n_This body continues in a comment below (part 2 of 2: Acceptance Criteria)._\n\n" +
+		"---\n\n_Elaborated by [planwerk-agent](https://github.com/planwerk/planwerk-agent) with Claude_\n"
+	continuationComment = "<!-- planwerk-agent:continuation 2/2 -->\n_Issue body, continued (part 2 of 2)._\n\n" +
+		"## Acceptance Criteria\n\n- [ ] Criterion from the continuation\n"
+)
+
+func TestRun_MergesContinuedSourceBody(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	patternDir := seedPatternDir(t)
+	repo := fakeRepo(t, "acme", "widgets")
+	gh := &githubtest.Fake{
+		GetIssueFn: func(owner, name string, number int) (*github.Issue, error) {
+			return &github.Issue{Owner: owner, Name: name, Number: number, Title: "T", Body: continuedBody}, nil
+		},
+		IssueComments: []github.IssueComment{{ID: "c2", Body: continuationComment}},
+		CloneRepoFn:   func(ref string) (*github.Repo, error) { return repo, nil },
+	}
+	var seen string
+	cl := &fakeClaude{fn: func(dir string, ctx Context) (*Result, error) {
+		seen = ctx.Issue.Body
+		return &Result{Description: "d", Motivation: "m"}, nil
+	}}
+	r := &Runner{Claude: cl, GitHub: gh}
+	opts := baseOpts(patternDir)
+	opts.NoCache = true
+	if err := r.Run(&bytes.Buffer{}, opts); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if github.IsContinued(seen) {
+		t.Error("the elaboration must see the merged body, not the continued marker")
+	}
+	if !strings.Contains(seen, "Criterion from the continuation") {
+		t.Errorf("the continuation's section did not reach the elaboration prompt:\n%s", seen)
+	}
+}
+
+func TestRun_ContinuedSourceBodyWithMissingPartAborts(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	patternDir := seedPatternDir(t)
+	gh := &githubtest.Fake{
+		GetIssueFn: func(owner, name string, number int) (*github.Issue, error) {
+			return &github.Issue{Owner: owner, Name: name, Number: number, Title: "T", Body: continuedBody}, nil
+		},
+	}
+	cl := &fakeClaude{}
+	r := &Runner{Claude: cl, GitHub: gh}
+	opts := baseOpts(patternDir)
+	opts.NoCache = true
+	err := r.Run(&bytes.Buffer{}, opts)
+	if err == nil || !strings.Contains(err.Error(), "missing") {
+		t.Fatalf("a continued body whose part is missing must abort, got %v", err)
+	}
+	if atomic.LoadInt32(&cl.calls) != 0 {
+		t.Error("no elaboration may run against a truncated body")
+	}
+}
+
+func TestRun_UpdateReplace_ContinuesOversizedBody(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	patternDir := seedPatternDir(t)
+	repo := fakeRepo(t, "acme", "widgets")
+	var (
+		editedID, editedBody string
+		deletedIDs           []string
+	)
+	gh := &githubtest.Fake{
+		GetIssueFn: func(owner, name string, number int) (*github.Issue, error) {
+			return &github.Issue{Owner: owner, Name: name, Number: number, Title: "T", Body: "B"}, nil
+		},
+		CloneRepoFn: func(ref string) (*github.Repo, error) { return repo, nil },
+		// An earlier, longer write left two continuations; a plan comment sits
+		// between them and must be left alone.
+		IssueComments: []github.IssueComment{
+			{ID: "old2", Body: "<!-- planwerk-agent:continuation 2/3 -->\n\nold two"},
+			{ID: "plan", Body: "## Implementation Plan (issue #42)\n\nSTATUS: PLAN_READY"},
+			{ID: "old3", Body: "<!-- planwerk-agent:continuation 3/3 -->\n\nold three"},
+		},
+		EditIssueCommentFn:   func(id, body string) error { editedID, editedBody = id, body; return nil },
+		DeleteIssueCommentFn: func(id string) error { deletedIDs = append(deletedIDs, id); return nil },
+	}
+	// ~90 KB of Description: a body and exactly one continuation.
+	huge := strings.Repeat("A paragraph of plan prose, repeated until the body is far over GitHub's cap.\n\n", 1150)
+	cl := &fakeClaude{fn: func(dir string, ctx Context) (*Result, error) {
+		return &Result{Description: huge, Motivation: "m", AcceptanceCriteria: []string{"Do the thing"}}, nil
+	}}
+	r := &Runner{Claude: cl, GitHub: gh}
+	opts := baseOpts(patternDir)
+	opts.NoCache = true
+	opts.UpdateMode = UpdateReplace
+	var out bytes.Buffer
+	if err := r.Run(&out, opts); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	edits := gh.Edits()
+	if len(edits) != 1 {
+		t.Fatalf("EditIssueBody called %d times, want 1", len(edits))
+	}
+	body := edits[0]
+	if len(body) > github.MaxIssueBodyLen {
+		t.Errorf("the written body is %d bytes, over the %d cap", len(body), github.MaxIssueBodyLen)
+	}
+	if !github.IsContinued(body) {
+		t.Error("an oversized body must be written with the continued marker")
+	}
+	if !strings.Contains(body, "_Elaborated by [planwerk-agent](") {
+		t.Error("the footer must stay on the body")
+	}
+	if gh.Count("AddIssueComment") != 0 || editedID != "old2" || len(deletedIDs) != 1 || deletedIDs[0] != "old3" {
+		t.Errorf("the first existing continuation must be rewritten and the surplus one deleted; added=%d edited=%q deleted=%v",
+			gh.Count("AddIssueComment"), editedID, deletedIDs)
+	}
+	if !strings.Contains(editedBody, "## Acceptance Criteria") || !strings.Contains(editedBody, "- [ ] Do the thing") {
+		t.Errorf("the criteria must land in the continuation:\n%s", editedBody[:200])
+	}
+	merged, err := github.MergeContinuations(body, []github.IssueComment{{ID: "old2", Body: editedBody}})
+	if err != nil {
+		t.Fatalf("merging what was written: %v", err)
+	}
+	if !strings.Contains(out.String(), merged) {
+		t.Error("the body and its continuation must merge back into the rendered elaboration")
+	}
+}
+
+func TestRun_UpdateComment_SplitsOversizedBody(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	patternDir := seedPatternDir(t)
+	repo := fakeRepo(t, "acme", "widgets")
+	gh := &githubtest.Fake{
+		GetIssueFn: func(owner, name string, number int) (*github.Issue, error) {
+			return &github.Issue{Owner: owner, Name: name, Number: number, Title: "T", Body: "B"}, nil
+		},
+		CloneRepoFn: func(ref string) (*github.Repo, error) { return repo, nil },
+	}
+	huge := strings.Repeat("A paragraph of plan prose, repeated until the body is far over GitHub's cap.\n\n", 1150)
+	cl := &fakeClaude{fn: func(dir string, ctx Context) (*Result, error) {
+		return &Result{Description: huge, Motivation: "m"}, nil
+	}}
+	r := &Runner{Claude: cl, GitHub: gh}
+	opts := baseOpts(patternDir)
+	opts.NoCache = true
+	opts.UpdateMode = UpdateComment
+	if err := r.Run(&bytes.Buffer{}, opts); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	comments := gh.Comments()
+	if len(comments) != 2 {
+		t.Fatalf("an oversized elaboration is posted as %d comment(s), want 2", len(comments))
+	}
+	for i, c := range comments {
+		if len(c) > github.MaxIssueBodyLen {
+			t.Errorf("comment %d is %d bytes, over the cap", i+1, len(c))
+		}
+	}
+	if !strings.HasPrefix(comments[1], "<!-- planwerk-agent:continuation 2/2 -->") {
+		t.Errorf("the second comment must be marked as the continuation of the first; got %q", comments[1][:60])
+	}
+}
+
+func TestRun_ReviewLoop_SizeGapRefinesAcceptedDraft(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	patternDir := seedPatternDir(t)
+	repo := fakeRepo(t, "acme", "widgets")
+	gh := reviewLoopGitHub(t, repo)
+
+	long := strings.Repeat("word ", BodyBudget/5+500)
+	var gapsSeen []string
+	cl := &fakeClaude{fn: func(dir string, ctx Context) (*Result, error) {
+		if ctx.PriorDraft == "" {
+			return &Result{Description: long, Motivation: "m"}, nil
+		}
+		gapsSeen = ctx.ReviewGaps
+		return &Result{Description: "Tightened.", Motivation: "m"}, nil
+	}}
+	// The reviewer is content with both drafts: only the size keeps the
+	// first one in the loop.
+	rv := &fakeReviewer{fn: func(dir string, ctx Context, draft string) (*ReviewResult, error) {
+		return &ReviewResult{Score: 9}, nil
+	}}
+	r := &Runner{Claude: cl, GitHub: gh, Reviewer: rv}
+	opts := baseOpts(patternDir)
+	opts.NoCache = true
+	opts.Review = true
+	var out bytes.Buffer
+	if err := r.Run(&out, opts); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := atomic.LoadInt32(&cl.calls); got != 2 {
+		t.Errorf("elaborate called %d times, want 2 (draft, then one size refinement)", got)
+	}
+	if len(gapsSeen) != 1 || !strings.HasPrefix(gapsSeen[0], "Size") || !strings.Contains(gapsSeen[0], fmt.Sprint(BodyBudget)) {
+		t.Errorf("the refinement must be handed the size gap alone, got %q", gapsSeen)
+	}
+	if strings.Contains(out.String(), "Reviewer Notes") {
+		t.Error("a refinement that came under budget leaves no unresolved gap")
+	}
+	if !strings.Contains(out.String(), "Tightened.") {
+		t.Error("the tightened draft must be the one rendered")
+	}
+}

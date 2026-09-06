@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/planwerk/planwerk-agent/internal/elaborate"
+	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 )
 
@@ -92,7 +93,7 @@ Calibrate the detail to the reader: write for an engineer who is competent with 
 
 ## Output Sections (in this order)
 
-- **Description**: Multi-paragraph prose. Include numbered "concrete boundaries" subsections that pair "already exists" facts (with file path citations) against "this issue adds". This is the densest section — the example issue we model after had ~9 numbered concrete-boundaries items. Do not be afraid of length when each line carries information.
+- **Description**: Multi-paragraph prose. Include numbered "concrete boundaries" subsections that pair "already exists" facts (with file path citations) against "this issue adds". This is the densest section, and the one that pushes a plan over its size budget (see Size below): one numbered boundary per seam the change goes through, and no narration of code nothing changes.
 - **Motivation**: 2-4 paragraphs. Open on the concrete problem and its impact — never on background ("Background: the system has many components…" is throat-clearing; cut it). Structure it as a short arc: the current state → the gap this issue addresses (the "however") → what this change does about it. Why does this matter NOW? What downstream work depends on it? What goes wrong if we skip it?
 - **User Stories** (optional): Group the acceptance criteria under user stories, each written as "As a {role}, I want {want}, so that {so_that}" followed by the acceptance criteria that serve it, so the work is anchored to who benefits and why. Proportionality is the rule: generate exactly as many stories as the issue REQUIRES — never pad with redundant stories to reach a minimum, and never omit a needed one. Not every change has a user to name: for purely mechanical or infrastructure work (dependency bumps, formatter sweeps, CI fixes, rebases, refactors) emit ZERO stories and omit the section entirely. Never invent a synthetic persona to fill it — "As a developer, I want clean code" is noise, not a story.
 - **Affected Areas**: Bullet list of every file, package, or directory that will be touched, with a parenthetical describing what changes there.
@@ -111,7 +112,19 @@ The plan must be executable, not merely readable. These are plan failures — ne
 
 Every Acceptance Criterion must map to a concrete, named change somewhere in Description or Affected Areas.
 
-## Edge-Case Enumeration
+`)
+
+	fmt.Fprintf(&sb, `## Size
+
+The finished body has a budget of %d characters, roughly 10,000 tokens. It is injected whole into every planning, implementation, and verification prompt that reads the issue, and GitHub rejects a body over %d characters outright. Length is not detail: a plan that runs over is restating itself. When a draft runs over, tighten it without dropping a decision, a criterion, a citation, or an edge case:
+- State each fact once, in the section that owns it. The Description says what changes and why; a criterion says how to observe it. Do not restate a criterion's check in the Description, or a boundary's design in the criterion.
+- Cite path:line instead of quoting code the implementer will open anyway. Quote only what the plan changes: a signature, a schema, a message.
+- A boundary that only narrates code nothing changes is context the implementer can read for themselves; cut it to the one sentence the plan needs.
+- A rejected alternative gets one sentence under Non-Goals, not a paragraph in the Description.
+
+`, elaborate.BodyBudget, github.MaxIssueBodyLen)
+
+	sb.WriteString(`## Edge-Case Enumeration
 
 A data-flow acceptance criterion is any criterion about a function, handler, or pipeline that consumes input and produces output. For EVERY such criterion, do not stop at the happy path — spell out its shadow paths as SEPARATE acceptance-criterion entries (one observable check each, since each renders as its own checkbox):
 - Empty or zero-length input: the empty string, the empty slice or map, a zero count. State the expected behavior (e.g. return an empty result, not an error).
@@ -149,6 +162,7 @@ Before you output the elaborated issue, review your own draft and fix what you f
 4. Citation check — every cited file path, symbol, and migration exists in the repository, or is explicitly marked as an assumption per the Anti-Hallucination Rules.
 5. Edge-case coverage — every data-flow acceptance criterion enumerates its empty/zero-length, nil/absent, and upstream-error shadow paths as separate entries, each naming the concrete error (see Edge-Case Enumeration).
 6. Domain sweep — walk the Domain Sweep list once more against the finished draft. For each domain, either name the Acceptance Criterion or Affected Areas entry that carries it, or state to yourself that the issue does not touch it. A domain you can do neither for is a gap; close it before emitting.
+7. Size — estimate the draft's length against the budget in Size. Over it, apply the Size moves before emitting; a draft is never shortened by dropping a criterion, a citation, or an edge case.
 
 `)
 

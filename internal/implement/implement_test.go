@@ -3327,3 +3327,51 @@ func TestRun_ReviewLoopResolvedSectionConverges(t *testing.T) {
 		t.Errorf("an apply that resolved a finding must not trip the nothing-resolved exit:\n%s", buf.String())
 	}
 }
+
+// continuedBody and continuationComment are a house-format issue whose body
+// reached GitHub's cap and continues in one comment (see github.SplitIssueBody).
+const (
+	continuedBody = "## Description\n\nFoo widget does X.\n\n" +
+		"<!-- planwerk-agent:continued 1/2 -->\n_This body continues in a comment below (part 2 of 2: Acceptance Criteria)._\n\n" +
+		"---\n\n_Elaborated by [planwerk-agent](https://github.com/planwerk/planwerk-agent) with Claude_\n"
+	continuationComment = "<!-- planwerk-agent:continuation 2/2 -->\n_Issue body, continued (part 2 of 2)._\n\n" +
+		"## Acceptance Criteria\n\n- [ ] Criterion from the continuation\n"
+)
+
+func TestRun_MergesContinuedIssueBody(t *testing.T) {
+	issue := sampleIssue()
+	issue.Body = continuedBody
+	gh := &githubtest.Fake{Issue: issue, Dir: t.TempDir(), IssueComments: []github.IssueComment{{ID: "c2", Body: continuationComment}}}
+	cl := &fakeClaude{report: validImplReport}
+	fp := &fakePlanner{plan: "## Implementation Plan (issue #42)\n\nSTATUS: PLAN_READY"}
+	r := newRunner(gh, cl)
+	r.Planner = fp
+
+	if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42"}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	for who, body := range map[string]string{"planner": fp.ctx.IssueBody, "implementer": cl.ctx.IssueBody} {
+		if github.IsContinued(body) {
+			t.Errorf("the %s must see the merged body, not the continued marker", who)
+		}
+		if !strings.Contains(body, "Criterion from the continuation") {
+			t.Errorf("the continuation's criteria did not reach the %s:\n%s", who, body)
+		}
+	}
+}
+
+func TestRun_ContinuedIssueBodyCommentFetchFailureAborts(t *testing.T) {
+	issue := sampleIssue()
+	issue.Body = continuedBody
+	gh := &githubtest.Fake{Issue: issue, Dir: t.TempDir(), IssueCommentsErr: errors.New("offline")}
+	cl := &fakeClaude{report: validImplReport}
+	r := newRunner(gh, cl)
+
+	err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42"})
+	if err == nil || !strings.Contains(err.Error(), "continues in comments") {
+		t.Fatalf("a continued body whose comments cannot be read must abort, got %v", err)
+	}
+	if cl.called.Load() != 0 {
+		t.Error("nothing may be implemented against a truncated body")
+	}
+}
