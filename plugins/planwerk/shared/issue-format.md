@@ -12,10 +12,11 @@ elaborated issue plans it. Nothing in between.
 `cleanup` files a Meta Issue at depth 1 plus the sections its findings need —
 see `issue-format-survey.md`.
 
-This file carries depth 1 and the two rules every issue obeys whatever its
-depth: the title and the footer. Depth 2, and the rules a plan must satisfy to
-be executable, are in `issue-format-plan.md`. The survey Meta Issue `cleanup`
-files is in `issue-format-survey.md`. Read the one your skill writes.
+This file carries depth 1 and the three rules every issue obeys whatever its
+depth: the title, the footer, and what to do when a body exceeds GitHub's cap.
+Depth 2, and the rules a plan must satisfy to be executable, are in
+`issue-format-plan.md`. The survey Meta Issue `cleanup` files is in
+`issue-format-survey.md`. Read the one your skill writes.
 
 ## Depth 1 — draft
 
@@ -101,3 +102,51 @@ Append your exact model id when your runtime context provides it (for example
 `with Claude:claude-opus-5`). Otherwise write a bare `with Claude` — never
 guess the id. Keep the `[planwerk-agent]` link intact so the issue points back
 at the tool that produced it. Add the footer once, as the last line.
+
+## GitHub's cap, and the continuation comment
+
+GitHub caps an issue body at 65,536 characters and rejects a longer write
+outright. The elaborated depth has a budget of its own, well under the cap, in
+`issue-format-plan.md`; this section is for the body that still exceeds the cap
+once that budget has been applied. Such a body is not shortened by dropping
+content. It is written as the body plus one or more **continuation comments**,
+and every skill that reads an issue reads the parts as one document (the
+reading rule is in `github.md`, under Reading).
+
+Count before every write: `wc -c < body.md`. At or under 65,536, write the body
+as it is. Over it, split it:
+
+1. Detach the footer: the trailing `---` rule and the italic line under it.
+2. Cut the rest into parts of at most 64,000 characters. Cut on a `## ` heading
+   when one falls in the upper half of the part, otherwise on the nearest `### `
+   heading or blank line, and never inside a fenced code block.
+3. The body is part 1, then a blank line, then these two lines, then a blank
+   line and the footer:
+
+   ```markdown
+   <!-- planwerk-agent:continued 1/N -->
+   _This body continues in a comment below (part 2 of N: <the `## ` sections it carries>). GitHub caps a body at 65,536 characters; read the parts as one document._
+   ```
+
+4. Every further part is a comment that opens with these two lines, then a
+   blank line, then the part:
+
+   ```markdown
+   <!-- planwerk-agent:continuation k/N -->
+   _Issue body, continued (part k of N). The sections below belong to the body above, which reached GitHub's 65,536-character cap. Read them as part of the body; whoever rewrites the body rewrites this comment with it._
+   ```
+
+`N` counts the body, so a body and one comment are `1/2` and `2/2`. The HTML
+markers are the contract: `planwerk-agent implement`, `elaborate`, and `prompt`
+find the parts by them and merge them before they read a section, and the
+skills do the same by hand.
+
+A rewrite owns the continuations. Whenever you replace a body, list the issue's
+continuation comments first (the query is in `github.md`) and then, in this
+order: edit the body; rewrite each existing continuation comment in place with
+the new part of the same number; post a new comment for every part beyond
+them; delete every existing continuation comment beyond the new count. A body
+that shrank back under the cap therefore leaves no comment behind, which
+matters because the next reader would merge a stale continuation into the new
+body. A new issue is created with part 1, and its continuations are posted
+right after.

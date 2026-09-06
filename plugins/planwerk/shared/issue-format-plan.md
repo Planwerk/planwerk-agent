@@ -35,7 +35,9 @@ Section rules, in the order they appear:
 
 - **Description** — multi-paragraph prose. Include numbered "concrete
   boundaries" subsections that pair an "already exists" fact (with a file-path
-  citation) against what "this issue adds". This is the densest section.
+  citation) against what "this issue adds". This is the densest section, and
+  the one that pushes a plan over the size budget below: one numbered boundary
+  per seam the change goes through, and no narration of code nothing changes.
 - **Motivation** — 2-4 paragraphs. Open on the concrete problem and its impact,
   never on background. Structure it as an arc: the current state, the gap this
   issue closes, what this change does about it.
@@ -63,6 +65,30 @@ headings, because they annotate the plan rather than belonging to the issue:
 
 - <gap the refine loop could not close>
 ```
+
+## Size budget
+
+The finished body has a budget of 40,000 characters, roughly 10,000 tokens. It
+is injected whole into every planning, implementation, and verification prompt
+that reads the issue, and GitHub rejects a body over 65,536 characters outright
+(`issue-format.md` says how such a body is written). Length is not detail: a
+plan that runs over is restating itself. Measure before you score it, with
+`wc -c < body.md`, and when a draft runs over, tighten it without dropping a
+decision, a criterion, a citation, or an edge case:
+
+- State each fact once, in the section that owns it. The Description says what
+  changes and why; a criterion says how to observe it. Do not restate a
+  criterion's check in the Description, or a boundary's design in the criterion.
+- Cite `path:line` instead of quoting code the implementer will open anyway.
+  Quote only what the plan changes: a signature, a schema, a message.
+- A boundary that only narrates code nothing changes is context the implementer
+  can read for themselves; cut it to the one sentence the plan needs.
+- A rejected alternative gets one sentence under Non-Goals, not a paragraph in
+  the Description.
+
+A plan that cannot come under the budget without losing a decision is usually
+more than one plan. Say so to the author and point at `/planwerk:meta`; if they
+want it kept whole, the cap rule in `issue-format.md` writes it whole.
 
 ## Acceptance criteria must be executable
 

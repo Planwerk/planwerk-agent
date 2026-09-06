@@ -59,8 +59,9 @@ with you standing in for them.
 
 Resolve the issue from `$ARGUMENTS` per `github.md`. Read its title, body,
 state, and comments — a `/planwerk:clarify` answer or a moved goalpost sits in
-the comments, and the body alone can be stale. A closed issue is not
-implemented again; say so and stop.
+the comments, and the body alone can be stale. A body that continues in
+comments (`github.md`, Reading) is one document: its criteria count wherever
+they sit. A closed issue is not implemented again; say so and stop.
 
 You must be inside a checkout of the issue's repository, because the plan and
 the implementation are both computed against the tree under you:

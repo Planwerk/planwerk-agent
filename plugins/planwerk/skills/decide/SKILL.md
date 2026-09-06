@@ -72,7 +72,8 @@ the author decide before you read a single file.
 verify its decisions. Run the neighborhood query in `github-relations.md` to tell which:
 
 - **A Sub Issue** (`parent` is non-null) — the parent is the Meta Issue. Read
-  both bodies. The Sub Issue usually restates, in its own words, which items it
+  both bodies, whole: one that continues in comments is read with them
+  (`github.md`, Reading). The Sub Issue usually restates, in its own words, which items it
   exists to verify; treat that restatement as a cross-check on what you find in
   the Meta Issue, not as the source of record.
 - **A Meta Issue** (`subIssues` is non-empty) — read its body directly for the
@@ -262,7 +263,8 @@ If the author contests a single sibling's correction, ask about that sibling on
 its own rather than re-opening the whole batch.
 
 Write only on an explicit yes, through `gh issue edit --body-file` per issue
-changed. When a spike Sub Issue exists, post a comment on it summarizing the
+changed; a body over GitHub's cap is written per `issue-format.md`, its
+continuation comments with it. When a spike Sub Issue exists, post a comment on it summarizing the
 outcome and stating that its verification job is complete — never edit its
 body, and never close it.
 

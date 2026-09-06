@@ -33,7 +33,8 @@ belongs to a different repo, say so and stop.
 
 ## Phase 1 — Read the issue and its neighborhood
 
-Fetch the issue body. Then check whether it sits inside a Meta Issue, with the
+Fetch the issue body, whole: a body that continues in comments is read with
+them (`github.md`, Reading). Then check whether it sits inside a Meta Issue, with the
 neighborhood query in `github-relations.md` — REST's `sub_issues` endpoint lists an issue's
 children, so it can never tell you it has a parent.
 
@@ -145,9 +146,14 @@ Check, in order:
    of it to a follow-up issue, and no Non-Goal that defers work the Description
    requires. A Non-Goal pointing at a counterpart in another repository is not a
    violation: that work could never have shipped in this pull request.
+7. **Size** — `wc -c < body.md` against the 40,000-character budget in
+   `issue-format-plan.md`. Over it, tighten with the moves listed there. A
+   draft is never shortened by dropping a criterion, a citation, or an edge
+   case.
 
 Only gaps that would make an implementer build the wrong thing or get stuck
-count. Wording preferences are not gaps.
+count, plus the size check: an over-budget body is a gap every later prompt
+pays for. Wording preferences are not gaps.
 
 Refine and re-score until the score reaches 8, or until you have refined three
 times. You are scoring your own work, so the score is the easiest thing in this
@@ -172,7 +178,8 @@ Show the complete rendered body and the score. Then ask, with `AskUserQuestion`,
 where it should land, and recommend one:
 
 - **Replace the issue body** (`gh issue edit --body-file`) — the default, and
-  what `implement` reads.
+  what `implement` reads. A body over GitHub's cap is written per the
+  continuation rule in `issue-format.md`, with its comments in step.
 - **Post it as a comment** (`gh issue comment --body-file`) — when the original
   body must survive.
 - **Neither** — print it and stop.
@@ -188,3 +195,5 @@ Write only on an explicit yes.
 - Every file path in the body exists in the checkout.
 - The body is English, whatever language the conversation used.
 - Unresolved decisions are recorded in the body, not only in the chat.
+- The body is within GitHub's cap, or split per `issue-format.md` with its
+  continuation comments rewritten, added, or deleted to match.

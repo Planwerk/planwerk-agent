@@ -30,7 +30,8 @@ finished proposal to accept, adjust, or reject — not a blank page.
 
 ## Phase 1 — Read the Meta Issue
 
-Fetch the body. Enumerate, verbatim, every work package it already names: a
+Fetch the body, whole: one that continues in comments is read with them
+(`github.md`, Reading). Enumerate, verbatim, every work package it already names: a
 checkbox list, numbered tiers, lettered workstreams, `### 1` / `### 2` sections.
 Write that enumeration down; Phase 3 checks your split against it.
 

@@ -57,7 +57,8 @@ the author decide before you read a single file.
 
 Fetch the body, and the comments with it. A comment is where an author moves the
 goalposts after filing, and a plan that ignores its own thread is re-checked
-against the wrong target.
+against the wrong target. A body that continues in comments (`github.md`,
+Reading) is one document; decide its depth from the merged whole.
 
 Decide the depth from the **body**, never from the title:
 
@@ -210,7 +211,8 @@ Then ask, with `AskUserQuestion`, where the correction lands, and recommend one:
 
 - **Replace the issue body** (`gh issue edit --body-file`) — the default.
   `implement` and `ship` read the body, so this is the only option that reaches
-  them.
+  them. A body over GitHub's cap is written per `issue-format.md`, its
+  continuation comments with it.
 - **Post it as a comment** (`gh issue comment --body-file`) — when the original
   body must survive. Say plainly that the stale body is what `implement` will
   read.
