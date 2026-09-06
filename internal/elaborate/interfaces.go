@@ -95,16 +95,21 @@ func (a reviewFnAdapter) ReviewElaboration(dir string, ctx Context, draftBody st
 
 // GitHubClient wraps the GitHub operations the elaborate pipeline needs:
 // resolving the default-branch HEAD for cache keying, fetching the source
-// issue, cloning the repo, and (optionally) writing the elaborated body
-// back to the issue.
+// issue and the comments its body may continue in, cloning the repo, and
+// (optionally) writing the elaborated body back to the issue — as the body
+// plus continuation comments when it exceeds GitHub's cap, which is why the
+// comment edit and delete are here (see github.PublishIssueBody).
 type GitHubClient interface {
 	DefaultBranchHEAD(owner, name string) (string, error)
 	GetIssue(owner, name string, number int) (*github.Issue, error)
 	GetIssueRelations(owner, name string, number int) (*github.IssueRelations, error)
+	ListIssueComments(owner, name string, number int) ([]github.IssueComment, error)
 	CloneRepo(ref string) (*github.Repo, error)
 	UseLocalRepo(ref string, opts github.LocalOptions) (*github.Repo, error)
 	EditIssueBody(owner, name string, number int, body string) error
 	AddIssueComment(owner, name string, number int, body string) (string, error)
+	EditIssueComment(commentID, body string) error
+	DeleteIssueComment(commentID string) error
 }
 
 // The production client satisfies the interface structurally; a drift in

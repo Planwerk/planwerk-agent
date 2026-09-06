@@ -124,3 +124,28 @@ func TestInferModeDetectsAuditBySeverityMarker(t *testing.T) {
 		t.Errorf("inferMode for body without severity marker = %v, want ModeImplement", got)
 	}
 }
+
+func TestRun_MergesContinuedIssueBody(t *testing.T) {
+	gh := &githubtest.Fake{
+		GetIssueFn: func(owner, name string, number int) (*github.Issue, error) {
+			return &github.Issue{
+				Owner: owner, Name: name, Number: number,
+				Title: "Add label registry",
+				Body: "## Description\n\nPlan.\n\n<!-- planwerk-agent:continued 1/2 -->\n_This body continues in a comment below (part 2 of 2)._\n\n" +
+					"---\n\n_Elaborated by [planwerk-agent](https://github.com/planwerk/planwerk-agent) with Claude_\n",
+			}, nil
+		},
+		IssueComments: []github.IssueComment{{ID: "c2", Body: "<!-- planwerk-agent:continuation 2/2 -->\n_Issue body, continued (part 2 of 2)._\n\n## Acceptance Criteria\n\n- [ ] Criterion from the continuation\n"}},
+	}
+	r := &Runner{GitHub: gh}
+	var out bytes.Buffer
+	if err := r.Run(&out, Options{IssueRef: "acme/widgets#1", Mode: ModeAuto}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !strings.Contains(out.String(), "Criterion from the continuation") {
+		t.Error("the continuation's section must reach the rendered prompt")
+	}
+	if strings.Contains(out.String(), "planwerk-agent:continued") {
+		t.Error("the continued marker must not leak into the prompt")
+	}
+}

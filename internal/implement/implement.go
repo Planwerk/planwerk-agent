@@ -387,6 +387,14 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	}
 	slog.Info("fetched issue", "repo", fullName, "issue", number, "title", issue.Title)
 
+	// A body over GitHub's cap continues in comments. Read it whole before
+	// anything plans or verifies against it: a criterion in a continuation is
+	// still a criterion. Load-bearing, like the plan-reuse lookup — a plan made
+	// from a truncated body is wrong, not shorter.
+	if err := github.CompleteIssueBody(r.GitHub, issue); err != nil {
+		return err
+	}
+
 	ctx := Context{
 		RepoFullName: fullName,
 		IssueNumber:  number,
