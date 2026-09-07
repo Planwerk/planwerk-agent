@@ -36,8 +36,9 @@ Section rules, in the order they appear:
 - **Description** — multi-paragraph prose. Include numbered "concrete
   boundaries" subsections that pair an "already exists" fact (with a file-path
   citation) against what "this issue adds". This is the densest section, and
-  the one that pushes a plan over the size budget below: one numbered boundary
-  per seam the change goes through, and no narration of code nothing changes.
+  the one that carries a plan past the body's limit below: one numbered
+  boundary per seam the change goes through, and no narration of code nothing
+  changes.
 - **Motivation** — 2-4 paragraphs. Open on the concrete problem and its impact,
   never on background. Structure it as an arc: the current state, the gap this
   issue closes, what this change does about it.
@@ -66,15 +67,20 @@ headings, because they annotate the plan rather than belonging to the issue:
 - <gap the refine loop could not close>
 ```
 
-## Size budget
+## Size, and the body's limit
 
-The finished body has a budget of 40,000 characters, roughly 10,000 tokens. It
-is injected whole into every planning, implementation, and verification prompt
-that reads the issue, and GitHub rejects a body over 65,536 characters outright
-(`issue-format.md` says how such a body is written). Length is not detail: a
-plan that runs over is restating itself. Measure before you score it, with
-`wc -c < body.md`, and when a draft runs over, tighten it without dropping a
-decision, a criterion, a citation, or an edge case:
+A body holds at most 40,000 characters once it carries a plan, roughly 10,000
+tokens: the body is injected whole into every planning, implementation, and
+verification prompt that reads the issue, and GitHub rejects a body over
+65,536 characters outright. A plan that runs past the limit is not shortened.
+It is written as the body plus continuation comments, per `issue-format.md`,
+and every reader merges the parts back into one document before it reads a
+section. Length is settled by that split at write-back, never by cutting: a
+finished draft is not tightened to come under the limit, and never shortened
+by dropping a decision, a criterion, a citation, or an edge case.
+
+Length is still not detail — a plan that restates itself is longer, not
+better — so write densely from the first line:
 
 - State each fact once, in the section that owns it. The Description says what
   changes and why; a criterion says how to observe it. Do not restate a
@@ -82,13 +88,17 @@ decision, a criterion, a citation, or an edge case:
 - Cite `path:line` instead of quoting code the implementer will open anyway.
   Quote only what the plan changes: a signature, a schema, a message.
 - A boundary that only narrates code nothing changes is context the implementer
-  can read for themselves; cut it to the one sentence the plan needs.
+  can read for themselves; give it the one sentence the plan needs.
 - A rejected alternative gets one sentence under Non-Goals, not a paragraph in
   the Description.
 
-A plan that cannot come under the budget without losing a decision is usually
-more than one plan. Say so to the author and point at `/planwerk:meta`; if they
-want it kept whole, the cap rule in `issue-format.md` writes it whole.
+These shape the writing as it happens. They are not a lever to pull on a
+finished draft: when the count comes in over the limit, the answer is the
+split, not a rewrite.
+
+A plan that runs to several continuation comments is often more than one plan.
+Say so to the author and point at `/planwerk:meta`; unless they choose to split
+the work, write it whole.
 
 ## Acceptance criteria must be executable
 

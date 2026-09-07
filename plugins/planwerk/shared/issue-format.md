@@ -13,7 +13,8 @@ elaborated issue plans it. Nothing in between.
 see `issue-format-survey.md`.
 
 This file carries depth 1 and the three rules every issue obeys whatever its
-depth: the title, the footer, and what to do when a body exceeds GitHub's cap.
+depth: the title, the footer, and what to do when a document exceeds its
+body's limit.
 Depth 2, and the rules a plan must satisfy to be executable, are in
 `issue-format-plan.md`. The survey Meta Issue `cleanup` files is in
 `issue-format-survey.md`. Read the one your skill writes.
@@ -103,29 +104,33 @@ Append your exact model id when your runtime context provides it (for example
 guess the id. Keep the `[planwerk-agent]` link intact so the issue points back
 at the tool that produced it. Add the footer once, as the last line.
 
-## GitHub's cap, and the continuation comment
+## The body's limit, and the continuation comment
 
-GitHub caps an issue body at 65,536 characters and rejects a longer write
-outright. The elaborated depth has a budget of its own, well under the cap, in
-`issue-format-plan.md`; this section is for the body that still exceeds the cap
-once that budget has been applied. Such a body is not shortened by dropping
-content. It is written as the body plus one or more **continuation comments**,
-and every skill that reads an issue reads the parts as one document (the
-reading rule is in `github.md`, under Reading).
+A body has a limit, and a document over it is not shortened. Once a body
+carries a plan — the elaborated depth — it holds at most 40,000 characters
+(`issue-format-plan.md` says why). A draft-depth body and a survey Meta Issue
+are bounded only by GitHub's cap of 65,536 characters, which GitHub enforces
+on every body and every comment by rejecting a longer write outright. A
+document over its limit is written as the body plus one or more **continuation
+comments**, and every skill that reads an issue reads the parts as one
+document (the reading rule is in `github.md`, under Reading). Nothing is
+dropped, tightened, or summarised to avoid the split. It is lossless: the split
+changes where the text is stored and nothing else.
 
-Count before every write: `wc -c < body.md`. At or under 65,536, write the body
-as it is. Over it, split it:
+Count before every write: `wc -c < body.md`. At or under the limit, write the
+body as it is. Over it, split it:
 
 1. Detach the footer: the trailing `---` rule and the italic line under it.
-2. Cut the rest into parts of at most 64,000 characters. Cut on a `## ` heading
-   when one falls in the upper half of the part, otherwise on the nearest `### `
+2. Cut the rest into parts of at most 38,000 characters, which leaves the body
+   room for its pointer and footer under 40,000. Cut on a `## ` heading when
+   one falls in the upper half of the part, otherwise on the nearest `### `
    heading or blank line, and never inside a fenced code block.
 3. The body is part 1, then a blank line, then these two lines, then a blank
    line and the footer:
 
    ```markdown
    <!-- planwerk-agent:continued 1/N -->
-   _This body continues in a comment below (part 2 of 2: <the `## ` sections it carries>). GitHub caps a body at 65,536 characters; read the parts as one document._
+   _This body continues in a comment below (part 2 of 2: <the `## ` sections it carries>). Read the parts as one document._
    ```
 
    With more than one comment the pointer reads `N-1 comments below (parts 2
@@ -136,12 +141,12 @@ as it is. Over it, split it:
 
    ```markdown
    <!-- planwerk-agent:continuation k/N -->
-   _Issue body, continued (part k of N). The sections below belong to the body above, which reached GitHub's 65,536-character cap. Read them as part of the body; whoever rewrites the body rewrites this comment with it._
+   _Issue body, continued (part k of N). The sections below belong to the body above, which reached its size limit. Read them as part of the body; whoever rewrites the body rewrites this comment with it._
    ```
 
 5. Write each part as its own file with `Write` — the draft is in your
-   context, so no shell tool has to cut it — and count each file: `wc -c`, at
-   most 65,536.
+   context, so no shell tool has to cut it — and count each file: `wc -c`, the
+   body at most 40,000 characters and no comment larger.
 
 `N` counts the body, so a body and one comment are `1/2` and `2/2`. The HTML
 markers are the contract: `planwerk-agent implement`, `elaborate`, and `prompt`
@@ -153,16 +158,16 @@ continuation comments first (the query is in `github.md`) and then, in this
 order: edit the body; rewrite each existing continuation comment in place with
 the new part of the same number; post a new comment for every part beyond
 them; delete every existing continuation comment beyond the new count. A body
-that shrank back under the cap therefore leaves no comment behind, which
+that shrank back under its limit therefore leaves no comment behind, which
 matters because the next reader would merge a stale continuation into the new
 body. A new issue is created with part 1, and its continuations are posted
 right after.
 
 A document posted as a comment rather than as the body — `elaborate`'s second
-landing option — meets the same cap. Split it the same way and post the parts
-in order: part 1, with its `continued` marker, pointer, and footer, as the
-first comment, then each continuation comment. Nothing merges a comment run by
-machine; people read it in thread order. Never post one on an issue whose body
-is itself continued: its continuation comments carry the same markers, and
-every later read would merge the run's parts into the body. Replace the body
-there instead, or stop.
+landing option — meets GitHub's cap on a comment. Over it, split the document
+the same way, at the same part size, and post the parts in order: part 1, with
+its `continued` marker, pointer, and footer, as the first comment, then each
+continuation comment. Nothing merges a comment run by machine; people read it in
+thread order. Never post one on an issue whose body is itself continued: its
+continuation comments carry the same markers, and every later read would merge
+the run's parts into the body. Replace the body there instead, or stop.

@@ -211,8 +211,8 @@ Then ask, with `AskUserQuestion`, where the correction lands, and recommend one:
 
 - **Replace the issue body** (`gh issue edit --body-file`) — the default.
   `implement` and `ship` read the body, so this is the only option that reaches
-  them. A body over GitHub's cap is written per `issue-format.md`, its
-  continuation comments with it.
+  them. A body over its limit — 40,000 characters once it carries a plan — is
+  written per `issue-format.md`, its continuation comments with it.
 - **Post it as a comment** (`gh issue comment --body-file`) — when the original
   body must survive. Say plainly that the stale body is what `implement` will
   read.

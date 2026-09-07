@@ -270,10 +270,11 @@ elaborated depth in `issue-format-plan.md` and the survey Meta Issue in
 `issue-format-survey.md`, so a skill loads only the depth it writes. A Go test
 (`TestBuildIssueBody_MatchesSharedFormat`) fails when the `elaborate` command's
 renderer and that document disagree, so the two `elaborate` paths cannot drift.
-`issue-format.md` also specifies how a body over GitHub's 65,536-character cap
-continues in marked comments, which every skill and command merges back into
-one document before reading it; `issue-format-plan.md` carries the
-40,000-character budget a plan is written to so that split stays rare.
+`issue-format.md` also specifies how a body over its limit — 40,000 characters
+once it carries a plan, GitHub's 65,536-character cap otherwise — continues in
+marked comments, which every skill and command merges back into one document
+before reading it; `issue-format-plan.md` says why a plan's body stops there,
+and that a plan over it is split at write-back, never shortened to fit.
 
 ## Declare the repositories that follow this one
 

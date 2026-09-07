@@ -44,6 +44,10 @@ query($owner: String!, $name: String!, $number: Int!) {
   of `MERGED` is the only state that shipped code, and `CLOSED` means it was
   abandoned. **A merged PR is what a sibling delivered. Its issue body is only
   what it promised.**
+- A `body` here is the body alone. A parent or sibling whose body ends, above
+  its footer, with `<!-- planwerk-agent:continued 1/N -->` is a document that
+  continues in its comments: read it whole per `github.md`, Reading, before
+  you take its framing, its decisions, or its scope from it.
 
 `planwerk-agent`'s own `GetIssueRelations` (`internal/github/relations.go`)
 issues this same query, so the skills and the commands see one neighborhood.

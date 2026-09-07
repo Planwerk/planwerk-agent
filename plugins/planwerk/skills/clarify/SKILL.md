@@ -292,8 +292,9 @@ Show the author:
 Then ask, with `AskUserQuestion`, where the correction lands, and recommend one:
 
 - **Replace the issue body** (`gh issue edit --body-file`) — the default, and the
-  only option a fresh planning session reads. A body over GitHub's cap is
-  written per `issue-format.md`, its continuation comments with it.
+  only option a fresh planning session reads. A body over its limit — 40,000
+  characters once it carries a plan — is written per `issue-format.md`, its
+  continuation comments with it.
 - **Post it as a comment** (`gh issue comment --body-file`) — when the original
   body must survive. Say plainly that the next planning session re-plans from the
   body, so a comment leaves the issue as underspecified as it was.
