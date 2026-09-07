@@ -30,9 +30,13 @@ func readSharedDoc(t *testing.T, path string) string {
 
 // TestSharedIssueFormatDocMatchesContinuationContract fails when the writing
 // rule the skills follow stops agreeing with SplitIssueBody on the markers,
-// the visible lines the merge strips by prefix, the cap, or the part size.
+// the visible lines the merge strips by prefix, the two limits, or the part
+// size.
 func TestSharedIssueFormatDocMatchesContinuationContract(t *testing.T) {
-	doc := readSharedDoc(t, sharedIssueFormatDoc)
+	// The doc wraps its prose at 80 columns, so every phrase is matched against
+	// the doc with its whitespace collapsed. The markers and the prefixes carry
+	// single spaces only and come through the collapse unchanged.
+	doc := strings.Join(strings.Fields(readSharedDoc(t, sharedIssueFormatDoc)), " ")
 
 	continuedMarker := fmt.Sprintf(continuedMarkerFmt, 1, 0)
 	continuedMarker = strings.Replace(continuedMarker, "1/0", "1/N", 1)
@@ -48,12 +52,14 @@ func TestSharedIssueFormatDocMatchesContinuationContract(t *testing.T) {
 		{"the pointer line the merge strips by prefix", continuedPointerPrefix},
 		{"the note line the merge strips by prefix", continuationNotePrefix},
 		{"GitHub's cap", "65,536"},
+		{"the limit a plan's body is split at", "at most 40,000 characters"},
+		{"a document over its limit is split, never shortened", "is not shortened"},
 		{"the pointer for two parts, as SplitIssueBody renders it", "a comment below (part 2 of 2"},
 		{"the pointer for more parts, as SplitIssueBody renders it", "comments below (parts 2"},
 		{"the marker counts the body", "`1/2` and `2/2`"},
 		{"the footer stays on the body", "Detach the footer"},
 		{"a rewrite keeps the comments in step", "A rewrite owns the continuations"},
-		{"a comment run is refused on a continued body", "Never post one on an issue whose body\nis itself continued"},
+		{"a comment run is refused on a continued body", "Never post one on an issue whose body is itself continued"},
 	} {
 		if !strings.Contains(doc, tc.marker) {
 			t.Errorf("%s: %s does not mention %q", tc.rule, sharedIssueFormatDoc, tc.marker)
@@ -70,12 +76,22 @@ func TestSharedIssueFormatDocMatchesContinuationContract(t *testing.T) {
 	}
 
 	// The doc's part size must leave room for the marker lines and a footer
-	// within the cap, or a part written by the doc's rule is rejected.
-	const docPartSize = 64000
-	if !strings.Contains(doc, "at most 64,000 characters") {
-		t.Errorf("%s no longer states the part size this test checks (64,000)", sharedIssueFormatDoc)
+	// within the limit the skills split a plan at, and within GitHub's cap
+	// that bounds every other body and every comment, or a part written by
+	// the doc's rule is over one of them. The limit mirrors
+	// elaborate.BodyBudget, which internal/elaborate/format_test.go pins to
+	// the plan spec; this package cannot import it without a cycle.
+	const (
+		docBodyLimit = 40000
+		docPartSize  = 38000
+	)
+	if !strings.Contains(doc, "at most 38,000 characters") {
+		t.Errorf("%s no longer states the part size this test checks (38,000)", sharedIssueFormatDoc)
 	}
 	footer := "---\n\n_Elaborated by [planwerk-agent](https://github.com/planwerk/planwerk-agent) with Claude:claude-fable-5-1_"
+	if limit := docBodyLimit - continuationReserve - len(footer); docPartSize > limit {
+		t.Errorf("the doc's part size %d exceeds the %d a body keeps for its part under the %d-character limit", docPartSize, limit, docBodyLimit)
+	}
 	if limit := MaxIssueBodyLen - continuationReserve - len(footer); docPartSize > limit {
 		t.Errorf("the doc's part size %d exceeds the %d SplitIssueBody keeps for a part", docPartSize, limit)
 	}

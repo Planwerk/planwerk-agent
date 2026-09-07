@@ -124,16 +124,19 @@ about the format.
 
 ## Large plans stay whole: a budget, and a continuation comment
 
-An elaborated body is written to a budget of 40,000 characters, roughly 10,000
-tokens. The body is injected whole into every planning, implementation, and
+An elaborated body has a budget of 40,000 characters, roughly 10,000 tokens.
+The body is injected whole into every planning, implementation, and
 verification prompt that reads the issue, so the budget is what keeps those
-prompts affordable, and the elaboration prompt names the moves that bring a
-draft under it without dropping a decision, a criterion, or a citation: state
-each fact once in the section that owns it, cite `path:line` instead of quoting
-code, one sentence per rejected alternative. The skill measures the draft in its
-scoring phase and treats an over-budget body as a gap to close. With
-`--review`, the command's refine loop does the same; without it, the command
-logs a warning and writes the body as it is.
+prompts affordable. The command writes to it: the elaboration prompt names the
+moves that bring a draft under it without dropping a decision, a criterion, or
+a citation — state each fact once in the section that owns it, cite
+`path:line` instead of quoting code, one sentence per rejected alternative —
+and with `--review` the refine loop treats an over-budget body as a gap to
+close; without it, the command logs a warning and writes the body as it is.
+The skill treats the number as the body's limit instead, and never shortens a
+finished draft to reach it: it counts the draft once, at write-back, and a plan
+past 40,000 characters is written whole as the body plus continuation comments
+(design decision 93).
 
 GitHub caps a body at 65,536 characters, and a plan that still exceeds the cap
 is not truncated. `--update-issue` writes it as the body plus one or more
@@ -152,7 +155,9 @@ a shorter body no longer needs, so the thread never carries a stale part.
 way, except on an issue whose body is itself continued: there the run is
 refused, because its parts carry the same markers as the body's and every later
 read would merge them into the body; use `--update-issue`. The convention the
-skills follow is specified in `plugins/planwerk/shared/issue-format.md`.
+skills follow is specified in `plugins/planwerk/shared/issue-format.md`, where
+a plan is split at the body's 40,000-character limit rather than at the cap; a
+draft-depth or survey body is split only at the cap.
 
 ## Score the draft before output (`--review`)
 

@@ -1,7 +1,7 @@
 {
   "name": "planwerk",
   "description": "Guided, interactive skills for the planwerk-agent workflow",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "author": {
     "name": "planwerk"
   },

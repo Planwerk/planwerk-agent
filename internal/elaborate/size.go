@@ -11,7 +11,9 @@ import "fmt"
 // implementation, and verification prompt that reads the issue, where at
 // roughly 10,000 tokens it is already the largest single block. The
 // elaboration prompt and the skill-side format
-// (plugins/planwerk/shared/issue-format-plan.md) state the same number.
+// (plugins/planwerk/shared/issue-format-plan.md) state the same number, with
+// one difference in what they do with it: the command writes to it, while the
+// skill splits at it (design decision 93) and never shortens a draft.
 const BodyBudget = 40000
 
 // sizeGap returns the gap an over-budget body earns in the reviewer refine

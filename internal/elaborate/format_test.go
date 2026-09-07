@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -111,6 +112,37 @@ func TestBuildIssueBody_MatchesSharedFormat(t *testing.T) {
 			t.Error("the shared spec must document the `Elaborated by` footer verb")
 		}
 	})
+}
+
+// TestSharedPlanFormatStatesBodyBudget fails when the plan spec the skill
+// writes to stops naming the number BodyBudget holds. The command writes to
+// the budget and the skill splits at it (design decision 93): the two paths
+// do different things with the number, so they must at least agree on it, and
+// internal/github/continuation_doc_test.go checks the split rule against the
+// same figure.
+func TestSharedPlanFormatStatesBodyBudget(t *testing.T) {
+	planSpec, err := os.ReadFile(filepath.Clean(sharedPlanFormatPath))
+	if err != nil {
+		t.Fatalf("reading the shared elaborated-format spec: %v", err)
+	}
+	want := "at most " + withThousands(BodyBudget) + " characters"
+	if !strings.Contains(string(planSpec), want) {
+		t.Errorf("%s does not state the body limit %q that BodyBudget holds", sharedPlanFormatPath, want)
+	}
+}
+
+// withThousands renders n the way the shared documents write a size: with a
+// comma every three digits.
+func withThousands(n int) string {
+	digits := strconv.Itoa(n)
+	var b strings.Builder
+	for i, r := range digits {
+		if i > 0 && (len(digits)-i)%3 == 0 {
+			b.WriteByte(',')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 // specSectionFrom returns the part of the spec at and below the given heading,

@@ -104,9 +104,9 @@ gh api -X PATCH "repos/<owner/repo>/issues/comments/<id>" -F body=@<path>
 gh api -X DELETE "repos/<owner/repo>/issues/comments/<id>"
 ```
 
-Write the body to a temporary file first, count it (`wc -c`; over 65,536
-characters it is split per `issue-format.md`, and a comment has the same cap),
-then pass its path. `gh issue create`
+Write the body to a temporary file first, count it (`wc -c`; over its limit —
+40,000 characters once it carries a plan, GitHub's 65,536 otherwise — it is
+split per `issue-format.md`), then pass its path. `gh issue create`
 prints the new issue's URL on stdout; parse the trailing number from it rather
 than assuming the next number in sequence.
 

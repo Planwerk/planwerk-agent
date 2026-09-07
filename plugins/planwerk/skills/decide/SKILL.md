@@ -263,8 +263,9 @@ If the author contests a single sibling's correction, ask about that sibling on
 its own rather than re-opening the whole batch.
 
 Write only on an explicit yes, through `gh issue edit --body-file` per issue
-changed; a body over GitHub's cap is written per `issue-format.md`, its
-continuation comments with it. When a spike Sub Issue exists, post a comment on it summarizing the
+changed; a body over its limit — 40,000 characters once it carries a plan — is
+written per `issue-format.md`, its continuation comments with it. When a spike
+Sub Issue exists, post a comment on it summarizing the
 outcome and stating that its verification job is complete — never edit its
 body, and never close it.
 

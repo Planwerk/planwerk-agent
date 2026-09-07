@@ -21,7 +21,7 @@ Arguments: $ARGUMENTS
 Read these before you start, in full:
 
 - `${CLAUDE_SKILL_DIR}/../../shared/interaction.md` — how to ask, and when to stop
-- `${CLAUDE_SKILL_DIR}/../../shared/issue-format.md` — the header line, the title, and the footer
+- `${CLAUDE_SKILL_DIR}/../../shared/issue-format.md` — the header line, the title, the footer, and the continuation comment
 - `${CLAUDE_SKILL_DIR}/../../shared/issue-format-plan.md` — the elaborated format and the edge-case rules
 - `${CLAUDE_SKILL_DIR}/../../shared/house-style.md` — prose, citations, anti-hallucination
 - `${CLAUDE_SKILL_DIR}/../../shared/github.md` — the `gh` commands
@@ -105,10 +105,13 @@ an optional `## User Stories`, `## Affected Areas`, `## Acceptance Criteria`,
 `## Non-Goals`, `## References`, then the `Elaborated by` footer.
 
 Write the draft to a file outside the checkout, `body.md` under the system
-temp directory, so it never lands in a commit. Phase 5 measures that file and
-Phase 6 writes it back from it.
+temp directory, so it never lands in a commit. Phase 6 counts that file and
+writes it back from it.
 
-Plan the smallest change that satisfies the issue. Do not invent scope.
+Plan the smallest change that satisfies the issue. Do not invent scope. Write
+densely, per the size rules in `issue-format-plan.md`, and write everything the
+implementer needs: a plan past the body's 40,000-character limit continues in
+comments at write-back, and is never shortened for it.
 Enumerate every affected area — source, tests, docs, schema, generated
 artifacts, CI. A surprise file in a PR is a process smell.
 
@@ -150,14 +153,10 @@ Check, in order:
    of it to a follow-up issue, and no Non-Goal that defers work the Description
    requires. A Non-Goal pointing at a counterpart in another repository is not a
    violation: that work could never have shipped in this pull request.
-7. **Size** — `wc -c < body.md` against the 40,000-character budget in
-   `issue-format-plan.md`. Over it, tighten with the moves listed there. A
-   draft is never shortened by dropping a criterion, a citation, or an edge
-   case.
 
 Only gaps that would make an implementer build the wrong thing or get stuck
-count, plus the size check: an over-budget body is a gap every later prompt
-pays for. Wording preferences are not gaps.
+count. Wording preferences are not gaps, and neither is length: a draft over
+the body's limit is split at write-back in Phase 6, not shortened here.
 
 Refine and re-score until the score reaches 8, or until you have refined three
 times. You are scoring your own work, so the score is the easiest thing in this
@@ -168,7 +167,7 @@ phase to move without moving the plan. Two rules keep it honest:
   behind it is invalid — the previous score stands.
 - **A round that finds nothing is a round that did not look.** If a re-score
   surfaces no gap at all while the score is still below 8, you are validating
-  your draft rather than doubting it. Go back to the seven checks and work one
+  your draft rather than doubting it. Go back to the six checks and work one
   concrete failing example per check, or stop and report what you could not
   close.
 
@@ -182,13 +181,14 @@ Show the complete rendered body and the score. Then ask, with `AskUserQuestion`,
 where it should land, and recommend one:
 
 - **Replace the issue body** (`gh issue edit --body-file`) — the default, and
-  what `implement` reads. A body over GitHub's cap is written per the
-  continuation rule in `issue-format.md`, with its comments in step.
+  what `implement` reads. Count the file first: over 40,000 characters it is
+  written whole, as the body plus continuation comments per `issue-format.md`,
+  with the comments in step. It is never shortened to fit.
 - **Post it as a comment** (`gh issue comment --body-file`) — when the original
-  body must survive. A comment has the same cap: a document over it is posted
-  as a run of comments per `issue-format.md`. Not on an issue whose body is
-  itself continued — the two runs would merge into each other on every later
-  read — there, replace the body or stop.
+  body must survive. GitHub caps a comment at 65,536 characters: a document
+  over that is posted as a run of comments per `issue-format.md`. Not on an
+  issue whose body is itself continued — the two runs would merge into each
+  other on every later read — there, replace the body or stop.
 - **Neither** — print it and stop.
 
 Write only on an explicit yes.
@@ -202,5 +202,6 @@ Write only on an explicit yes.
 - Every file path in the body exists in the checkout.
 - The body is English, whatever language the conversation used.
 - Unresolved decisions are recorded in the body, not only in the chat.
-- The body is within GitHub's cap, or split per `issue-format.md` with its
-  continuation comments rewritten, added, or deleted to match.
+- The body is within its 40,000-character limit, or split per
+  `issue-format.md` with its continuation comments rewritten, added, or
+  deleted to match — and nothing was cut to bring it under.
