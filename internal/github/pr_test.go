@@ -316,3 +316,25 @@ func TestPRCleanupNoOpWhenLocal(t *testing.T) {
 		t.Fatalf("non-local PR.Cleanup must remove the temp dir, stat err = %v", err)
 	}
 }
+
+// TestHasCommit locks the diff-base guard a resumed review round relies on: an
+// existing commit id (full or abbreviated) is present, an unknown one, an empty
+// one, and a non-commit ref are not — none of them as an error.
+func TestHasCommit(t *testing.T) {
+	dir := initGitRepoForDiff(t)
+	head, err := client.HeadSHA(dir)
+	if err != nil {
+		t.Fatalf("HeadSHA: %v", err)
+	}
+	if !client.HasCommit(dir, head) {
+		t.Errorf("HasCommit(HEAD %s) = false, want true", head)
+	}
+	if !client.HasCommit(dir, head[:8]) {
+		t.Errorf("HasCommit(abbreviated %s) = false, want true", head[:8])
+	}
+	for _, sha := range []string{"", "0123456789abcdef0123456789abcdef01234567", "not-a-sha"} {
+		if client.HasCommit(dir, sha) {
+			t.Errorf("HasCommit(%q) = true, want false", sha)
+		}
+	}
+}

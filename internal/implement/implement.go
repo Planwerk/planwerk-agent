@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"regexp"
 	"strings"
 
 	"golang.org/x/sync/errgroup"
@@ -494,13 +495,28 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// and check that branch out, and hand the implement session the commits
 	// already on it so it continues from where the earlier run stopped instead of
 	// recreating the branch and redoing the work. Off with --no-resume.
+	var resumed *resumedPasses
 	if !opts.NoResume {
-		r.prepareResume(w, owner, name, repo.Dir, number, &ctx)
+		resumed = r.prepareResume(w, owner, name, repo.Dir, number, &ctx)
 	}
 
-	implReport, model, err := r.Claude.Implement(repo.Dir, ctx)
-	if err != nil {
-		return fmt.Errorf("claude implement: %w", err)
+	// A resumed branch whose implementation report on the issue already says
+	// DONE was fully implemented by the earlier run; it stopped in one of the
+	// passes after the implement session (typically at a usage limit). Running
+	// the session again would only cost the tokens to rediscover that nothing is
+	// left, so the run continues from the passes instead, with that report
+	// standing in for the session's output (design decision 94).
+	var implReport, model string
+	if resumed != nil && resumed.implReport != "" {
+		implReport = resumed.implReport
+		slog.Info("implementation already complete on the resumed branch; skipping the implement session", "issue", number)
+		_, _ = fmt.Fprintln(w, "\nThe issue already carries a complete implementation report for this branch; skipping the implement session and continuing with the passes that had not finished.")
+	} else {
+		var err error
+		implReport, model, err = r.Claude.Implement(repo.Dir, ctx)
+		if err != nil {
+			return fmt.Errorf("claude implement: %w", err)
+		}
 	}
 
 	// Guard the run on a complete implementation report. A one-shot, headless
@@ -527,8 +543,10 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		return fmt.Errorf("the implement session did not produce a complete implementation report (missing the %q heading or a terminal STATUS line); the implementation did not finish and no pull request was opened", reportHeading)
 	}
 
-	_, _ = fmt.Fprintf(w, "\nClaude implementation report:\n%s\n", implReport)
-	r.postReportComment(w, opts, owner, name, number, implReport, model)
+	if resumed == nil || resumed.implReport == "" {
+		_, _ = fmt.Fprintf(w, "\nClaude implementation report:\n%s\n", implReport)
+		r.postReportComment(w, opts, owner, name, number, implReport, model)
+	}
 
 	// A BLOCKED / NEEDS_CONTEXT report means the session stopped before finishing
 	// the work (a wrong issue, an unreachable criterion). The report is already
@@ -563,7 +581,12 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// --no-simplify or an unwired dependency skips it. Non-fatal, like the verify
 	// passes.
 	if !opts.NoSimplify && r.Simplifier != nil && r.SimplifyApplier != nil {
-		r.runSimplify(w, repo.Dir, owner, name, number, ctx)
+		if resumed != nil && resumed.simplified {
+			slog.Info("simplify pass already ran on an earlier run; skipping", "issue", number)
+			_, _ = fmt.Fprintln(w, "\nSimplify pass skipped: an earlier run already posted its simplification report for this branch.")
+		} else {
+			r.runSimplify(w, repo.Dir, owner, name, number, ctx)
+		}
 	}
 
 	// Review-and-fix pass: runs after the simplify pass (a full run is
@@ -573,7 +596,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// the verify and simplify passes. Its findings feed the capture pass below.
 	var reviewFindings []report.Finding
 	if !opts.NoReview && r.AdversarialVerifier != nil && r.ReviewApplier != nil {
-		reviewFindings = r.runReview(w, repo.Dir, owner, name, number, ctx, opts)
+		reviewFindings = r.runReview(w, repo.Dir, owner, name, number, ctx, opts, resumed)
 	}
 
 	// Capture pass: read-only proposal of new wiki review patterns and memory
@@ -600,6 +623,10 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// failure: the finalize session opens no PR and says so.)
 	if r.Finalizer != nil {
 		if err := r.runFinalize(w, repo.Dir, ctx); err != nil {
+			// The branch is complete but unshipped. Keep it reachable for the next
+			// run, which resumes it and, finding the implementation report on the
+			// issue, skips straight to the passes and the pull request.
+			r.persistPartialProgress(w, opts, repo.Dir)
 			return err
 		}
 	}
@@ -631,15 +658,22 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 // instead of re-deriving everything. The lookup is best-effort, mirroring the
 // branch detection: a failed fetch or an issue without such a comment resumes
 // on the commits alone.
-func (r *Runner) prepareResume(w io.Writer, owner, name, dir string, number int, ctx *Context) {
+//
+// When that account is a complete (DONE / DONE_WITH_CONCERNS) implementation
+// report, the earlier run finished implementing and stopped in a later pass. The
+// returned resumedPasses then carries that report and which of the passes after
+// it already posted their reports, so Run skips the implement session and the
+// finished passes and continues with the ones that had not run (design decision
+// 94). It is nil whenever the implement session must run.
+func (r *Runner) prepareResume(w io.Writer, owner, name, dir string, number int, ctx *Context) *resumedPasses {
 	state, err := r.GitHub.PrepareResume(dir, number)
 	if err != nil {
 		slog.Warn("could not check for a resumable branch; implementing fresh", "issue", number, "err", err)
 		_, _ = fmt.Fprintf(w, "\nCould not check for an earlier aborted run to resume: %v\n", err)
-		return
+		return nil
 	}
 	if state == nil || len(state.Commits) == 0 {
-		return
+		return nil
 	}
 	ctx.Resume = &ResumeContext{Branch: state.Branch, Commits: state.Commits}
 	slog.Info("resuming an earlier aborted run", "issue", number, "branch", state.Branch, "commits", len(state.Commits))
@@ -648,13 +682,60 @@ func (r *Runner) prepareResume(w io.Writer, owner, name, dir string, number int,
 	comments, err := r.GitHub.ListIssueComments(owner, name, number)
 	if err != nil {
 		slog.Warn("could not read issue comments for the stopped session's account; resuming on the commits alone", "issue", number, "err", err)
-		return
+		return nil
 	}
-	if account := mostRecentSessionAccount(comments); account != "" {
+	idx, account, complete := latestSessionAccount(comments)
+	if account == "" {
+		return nil
+	}
+	if !complete {
 		ctx.Resume.PriorReport = account
 		slog.Info("feeding the stopped session's last account into the resume", "issue", number)
 		_, _ = fmt.Fprintf(w, "Feeding the stopped session's last account (progress note or partial report) into the resumed session.\n")
+		return nil
 	}
+	passes := passesAfter(comments[idx+1:])
+	passes.implReport = account
+	slog.Info("the resumed branch is fully implemented; continuing with the passes",
+		"issue", number, "simplified", passes.simplified, "reviewRounds", passes.reviewRounds)
+	_, _ = fmt.Fprintf(w, "The earlier run finished implementing (simplify pass posted: %t, review rounds posted: %d); continuing from there.\n",
+		passes.simplified, passes.reviewRounds)
+	return &passes
+}
+
+// resumedPasses records how far an earlier run got past its implement session,
+// read from the reports it posted on the issue: the complete implementation
+// report itself, whether the simplify pass posted its report, how many review
+// rounds posted theirs, and the pre-fix commit the last of those rounds
+// recorded so the next round re-reviews just its fixes.
+type resumedPasses struct {
+	implReport   string
+	simplified   bool
+	reviewRounds int
+	reviewSince  string
+}
+
+// passesAfter reads the pass reports out of the comments posted after the
+// implementation report they belong to. Each kind is identified by heading plus
+// attribution marker, like the session accounts. A simplify pass that found
+// nothing posts no report, so it is not detected and runs again on a resume; a
+// review round always posts one (an applied report or the withheld-only report),
+// so the count is exact.
+func passesAfter(comments []github.IssueComment) resumedPasses {
+	var p resumedPasses
+	for _, c := range comments {
+		switch {
+		case strings.Contains(c.Body, simplifyHeading) && strings.Contains(c.Body, simplifyCommentMarker):
+			p.simplified = true
+		case strings.Contains(c.Body, reviewHeading) && strings.Contains(c.Body, reviewCommentMarker):
+			p.reviewRounds++
+			p.reviewSince = ""
+			if m := reviewRoundMarkerRe.FindStringSubmatch(c.Body); m != nil {
+				p.reviewSince = m[2]
+			}
+		}
+	}
+	return p
 }
 
 // persistPartialProgress preserves the commits an aborted implement session left
@@ -952,16 +1033,28 @@ func (r *Runner) postProgressNote(w io.Writer, opts Options, owner, name string,
 // account. gh lists comments oldest-first, so the walk runs newest-first and
 // returns the first match; "" when no comment is one.
 func mostRecentSessionAccount(comments []github.IssueComment) string {
+	_, account, _ := latestSessionAccount(comments)
+	return account
+}
+
+// latestSessionAccount is mostRecentSessionAccount with the comment's index and
+// whether the account is a complete implementation report — one whose terminal
+// STATUS is DONE or DONE_WITH_CONCERNS, so the run that posted it had nothing
+// left to implement when it stopped. A progress note or a PARTIAL / escalated
+// report is never complete. idx is -1 when no comment is an account.
+func latestSessionAccount(comments []github.IssueComment) (idx int, account string, complete bool) {
 	for i := len(comments) - 1; i >= 0; i-- {
 		body := comments[i].Body
 		switch {
 		case strings.Contains(body, progressNoteHeading) && strings.Contains(body, progressNoteMarker):
-			return stripCommentFooter(body, progressNoteMarker)
+			return i, stripCommentFooter(body, progressNoteMarker), false
 		case strings.Contains(body, reportHeading) && strings.Contains(body, reportCommentMarker):
-			return stripCommentFooter(body, reportCommentMarker)
+			account = stripCommentFooter(body, reportCommentMarker)
+			status := implementReportStatus(account)
+			return i, account, status == report.StatusDone || status == statusDoneWithConcerns
 		}
 	}
-	return ""
+	return -1, "", false
 }
 
 // Terminal STATUS markers a plan or implementation report can carry, aliased
@@ -1202,6 +1295,14 @@ func simplifyCommentFooter(model string) string {
 	return attribution.CommentFooter("Simplification report generated by", "implement", model)
 }
 
+// simplifyHeading and simplifyCommentMarker double-key a posted simplification
+// report the way reportHeading and reportCommentMarker key an implementation
+// report: a resumed run reads them to know the simplify pass already ran.
+const (
+	simplifyHeading       = "## Simplification Report"
+	simplifyCommentMarker = "_Simplification report generated by " + attribution.Link
+)
+
 // formatSimplifyComment wraps the simplification report in the issue-comment
 // body: the report verbatim (it already carries its own "## Simplification
 // Report" heading) followed by the attribution footer.
@@ -1256,7 +1357,14 @@ func (r *Runner) postSimplifyComment(w io.Writer, owner, name string, number int
 // (both applied and withheld), so the capture pass can mine the merged,
 // provenance-tagged set for generalizable review patterns. A skipped or failed
 // pass, and a pass that found nothing, return nil.
-func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx Context, opts Options) []report.Finding {
+//
+// On a resumed run (resumed non-nil, see prepareResume) the loop continues where
+// the earlier run's loop stopped: it starts at the round after the last one
+// that posted its report, counts those rounds against the same budget, and
+// scopes itself to the pre-fix commit that round recorded — when the checkout
+// still has it; otherwise the round reviews the whole branch, as a round with an
+// unknown pre-fix commit always does.
+func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx Context, opts Options, resumed *resumedPasses) []report.Finding {
 	slog.Info("running review-and-fix pass over the produced diff")
 	branch, err := r.GitHub.CurrentBranchRef(dir)
 	if err != nil {
@@ -1276,7 +1384,25 @@ func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx
 	// second round on, which re-reviews only what the fixes changed. See
 	// gatherReviewFindings.
 	var sinceRef string
-	for i := 1; i <= maxIter; i++ {
+	start := 1
+	if resumed != nil && resumed.reviewRounds > 0 {
+		start = resumed.reviewRounds + 1
+		if start > maxIter {
+			slog.Info("review pass already used its iteration budget on earlier runs; skipping", "issue", number, "iterations", maxIter)
+			_, _ = fmt.Fprintf(w, "\nReview pass skipped: earlier runs already used its %d iteration(s) for this branch.\n", maxIter)
+			return nil
+		}
+		switch {
+		case resumed.reviewSince == "":
+		case r.GitHub.HasCommit(dir, resumed.reviewSince):
+			sinceRef = resumed.reviewSince
+		default:
+			slog.Warn("the last review round's pre-fix commit is not in this checkout; re-reviewing the whole branch", "issue", number, "since", resumed.reviewSince)
+		}
+		slog.Info("resuming the review pass", "issue", number, "round", start, "since", sinceRef)
+		_, _ = fmt.Fprintf(w, "\nResuming the review pass at round %d of %d.\n", start, maxIter)
+	}
+	for i := start; i <= maxIter; i++ {
 		// The changed-file set scopes the specialist gate and the snippet gate. A
 		// failure fails open (nil): the specialist gate runs every specialist and
 		// the snippet gate skips on an empty haystack, so a missing signal never
@@ -1328,7 +1454,7 @@ func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx
 			slog.Info("review pass withheld every finding as unverified; nothing applied", "issue", number, "withheld", len(unverified))
 			withheld := withheldOnlyReport(unvSection)
 			_, _ = fmt.Fprintf(w, "\nReview report:\n%s\n", withheld)
-			r.postReviewComment(w, owner, name, number, withheld, "")
+			r.postReviewComment(w, owner, name, number, withheld, "", i, "")
 			return allFindings
 		}
 
@@ -1359,7 +1485,7 @@ func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx
 			_, _ = fmt.Fprintf(w, "\nReview report:\n%s\n", roundReport)
 			// Post the report before the escalation check so an escalated report
 			// still lands on the issue for the human who must look at it.
-			r.postReviewComment(w, owner, name, number, roundReport, model)
+			r.postReviewComment(w, owner, name, number, roundReport, model, i, preFix)
 		}
 		if status := planEscalation(reviewReport); status != "" {
 			_, _ = fmt.Fprintf(w, "\nClaude reported %s — stopping the review pass.\n", status)
@@ -1618,11 +1744,33 @@ func reviewCommentFooter(model string) string {
 	return attribution.CommentFooter("Review report generated by", "implement", model)
 }
 
+// reviewHeading and reviewCommentMarker double-key a posted review report, and
+// the round marker — an HTML comment GitHub does not render — records which
+// round posted it and the pre-fix commit that round's fixes were applied on top
+// of. A resumed run reads them to continue the review loop where it stopped: the
+// count gives the next round, the commit gives that round's diff base.
+const (
+	reviewHeading           = "## Review Report"
+	reviewCommentMarker     = "_Review report generated by " + attribution.Link
+	reviewRoundMarkerPrefix = "<!-- planwerk-agent:review-round "
+)
+
+var reviewRoundMarkerRe = regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(reviewRoundMarkerPrefix) + `(\d+)(?: since=([0-9a-fA-F]+))? -->$`)
+
+// reviewRoundMarker renders the round marker for round n; since is the pre-fix
+// commit, omitted when the round could not record one.
+func reviewRoundMarker(n int, since string) string {
+	if since == "" {
+		return fmt.Sprintf("%s%d -->", reviewRoundMarkerPrefix, n)
+	}
+	return fmt.Sprintf("%s%d since=%s -->", reviewRoundMarkerPrefix, n, since)
+}
+
 // formatReviewComment wraps the review report in the issue-comment body: the
-// report verbatim (it already carries its own "## Review Report" heading)
-// followed by the attribution footer.
-func formatReviewComment(reviewReport, model string) string {
-	return strings.TrimSpace(reviewReport) + "\n\n---\n\n" + reviewCommentFooter(model) + "\n"
+// report verbatim (it already carries its own "## Review Report" heading), the
+// round marker, and the attribution footer.
+func formatReviewComment(reviewReport, model string, round int, since string) string {
+	return strings.TrimSpace(reviewReport) + "\n\n" + reviewRoundMarker(round, since) + "\n\n---\n\n" + reviewCommentFooter(model) + "\n"
 }
 
 // postReviewComment posts the review report as a comment on the source issue, so
@@ -1633,9 +1781,9 @@ func formatReviewComment(reviewReport, model string) string {
 // Posting is best-effort: a failure to reach GitHub is logged and surfaced to
 // the operator but never aborts the run — the fixes are already folded into the
 // branch, and the report is on stdout regardless.
-func (r *Runner) postReviewComment(w io.Writer, owner, name string, number int, reviewReport, model string) {
+func (r *Runner) postReviewComment(w io.Writer, owner, name string, number int, reviewReport, model string, round int, since string) {
 	github.PostBestEffort(w, "review report", fmt.Sprintf("issue #%d", number), func() (string, error) {
-		return r.GitHub.AddIssueComment(owner, name, number, formatReviewComment(reviewReport, model))
+		return r.GitHub.AddIssueComment(owner, name, number, formatReviewComment(reviewReport, model, round, since))
 	})
 }
 

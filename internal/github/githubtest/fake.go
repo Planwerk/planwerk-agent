@@ -82,6 +82,9 @@ type Fake struct {
 	// call so a test can tell which commit a later step scoped itself to.
 	HeadSHAErr error
 
+	// MissingCommits lists the shas HasCommit denies; every other sha exists.
+	MissingCommits []string
+
 	// ChangedFiles is what DiffNames returns; ChangedFilesErr fails it.
 	ChangedFiles    []string
 	ChangedFilesErr error
@@ -948,6 +951,16 @@ func (f *Fake) ForceWithLeasePush(dir, branch string) error {
 	}
 	f.setErr(i, err)
 	return err
+}
+
+func (f *Fake) HasCommit(dir, sha string) bool {
+	f.record("HasCommit", dir, sha)
+	for _, m := range f.MissingCommits {
+		if m == sha {
+			return false
+		}
+	}
+	return true
 }
 
 func (f *Fake) PushHead(dir, branch string) error {

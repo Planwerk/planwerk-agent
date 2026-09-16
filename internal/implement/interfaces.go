@@ -486,6 +486,11 @@ type GitHubClient interface {
 	// that pass changed; the editing passes rewrite the branch, so only a commit
 	// id survives as a diff base.
 	HeadSHA(dir string) (string, error)
+	// HasCommit reports whether sha is a commit the checkout can diff against. A
+	// resumed run scopes its next review round to the pre-fix commit the last
+	// round recorded on the issue, but only when that object still exists here;
+	// otherwise the round falls back to the branch-wide scope.
+	HasCommit(dir, sha string) bool
 }
 
 // The production client satisfies the interface structurally; a drift in

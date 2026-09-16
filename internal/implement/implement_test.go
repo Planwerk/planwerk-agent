@@ -3125,7 +3125,7 @@ func TestRunReview_GroundsFindersInPatterns(t *testing.T) {
 	r := &Runner{GitHub: gh, AdversarialVerifier: av, ReviewApplier: ra, SpecialistReviewer: spec}
 	ctx := Context{RepoFullName: testRepoFullName, IssueNumber: 42, Patterns: pats, MaxPatterns: 7}
 
-	r.runReview(io.Discard, gh.Dir, "owner", "repo", 42, ctx, Options{NoReportComment: true})
+	r.runReview(io.Discard, gh.Dir, "owner", "repo", 42, ctx, Options{NoReportComment: true}, nil)
 
 	if len(av.pats) != 1 || av.pats[0].Name != "Go Error Wrapping" {
 		t.Errorf("adversarial finder got pats %+v, want the loaded catalog", av.pats)
@@ -3373,5 +3373,307 @@ func TestRun_ContinuedIssueBodyCommentFetchFailureAborts(t *testing.T) {
 	}
 	if cl.called.Load() != 0 {
 		t.Error("nothing may be implemented against a truncated body")
+	}
+}
+
+// --- Resuming past a completed implement session (design decision 94) ---
+
+// doneReportComment is a posted, complete implementation report: the account a
+// run leaves when its implement session finished and it stopped in a later pass.
+func doneReportComment() github.IssueComment {
+	return github.IssueComment{Body: formatReportComment(validImplReport, "m")}
+}
+
+// TestRun_ResumeSkipsImplementWhenReportIsDone locks the core of decision 94:
+// a resumable branch plus a DONE implementation report on the issue means the
+// implement session is not run again, no second report is posted, and the run
+// still goes on to open the pull request.
+func TestRun_ResumeSkipsImplementWhenReportIsDone(t *testing.T) {
+	gh := &githubtest.Fake{
+		Issue:         sampleIssue(),
+		Dir:           t.TempDir(),
+		ResumeState:   &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "abc1234", Subject: "done"}}},
+		IssueComments: []github.IssueComment{doneReportComment()},
+	}
+	cl := &fakeClaude{report: "## Implementation Report (issue #42)\n\nSTATUS: PARTIAL"}
+	ff := &fakeFinalizer{report: defaultFinalizeReport}
+	r := newRunner(gh, cl)
+	r.Finalizer = ff
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if cl.called.Load() != 0 {
+		t.Errorf("Claude.Implement called %d times, want 0 — the report on the issue already says DONE", cl.called.Load())
+	}
+	if ff.called.Load() != 1 {
+		t.Errorf("finalizer called %d times, want 1", ff.called.Load())
+	}
+	for _, c := range gh.Comments() {
+		if strings.Contains(c, reportCommentMarker) {
+			t.Errorf("a second implementation report was posted:\n%s", c)
+		}
+	}
+	if !strings.Contains(buf.String(), "skipping the implement session") {
+		t.Errorf("missing the skip notice in output:\n%s", buf.String())
+	}
+}
+
+// TestRun_ResumeRunsImplementWhenReportIsNotComplete locks the boundary: a
+// PARTIAL report, or a progress note posted after a DONE report, is not a
+// complete implementation, so the session runs with the account fed in.
+func TestRun_ResumeRunsImplementWhenReportIsNotComplete(t *testing.T) {
+	cases := []struct {
+		name     string
+		comments []github.IssueComment
+	}{
+		{"partial report", []github.IssueComment{{Body: formatReportComment("## Implementation Report (issue #42)\n\nSTATUS: PARTIAL", "m")}}},
+		{"progress note after a done report", []github.IssueComment{doneReportComment(), {Body: formatProgressNoteComment("stopped again", 42, "m")}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			gh := &githubtest.Fake{
+				Issue:         sampleIssue(),
+				Dir:           t.TempDir(),
+				ResumeState:   &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "abc1234", Subject: "wip"}}},
+				IssueComments: tc.comments,
+			}
+			cl := &fakeClaude{report: validImplReport}
+			r := newRunner(gh, cl)
+			if err := r.Run(io.Discard, Options{IssueRef: "owner/repo#42"}); err != nil {
+				t.Fatalf("Run returned %v, want nil", err)
+			}
+			if cl.called.Load() != 1 {
+				t.Errorf("Claude.Implement called %d times, want 1", cl.called.Load())
+			}
+			if cl.ctx.Resume == nil || cl.ctx.Resume.PriorReport == "" {
+				t.Errorf("PriorReport not fed to the session: %+v", cl.ctx.Resume)
+			}
+		})
+	}
+}
+
+// TestRun_ResumeSkipsSimplifyWhenReported locks that a simplification report
+// posted after the DONE report means the simplify pass is not run again.
+func TestRun_ResumeSkipsSimplifyWhenReported(t *testing.T) {
+	gh := &githubtest.Fake{
+		Issue:       sampleIssue(),
+		Dir:         t.TempDir(),
+		BranchRef:   &github.BranchRef{BaseBranch: reviewTestBase, HeadBranch: testResumeBranch},
+		ResumeState: &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "abc1234", Subject: "done"}}},
+		IssueComments: []github.IssueComment{
+			doneReportComment(),
+			{Body: formatSimplifyComment("## Simplification Report\n\nFolded two collapses.", "m")},
+		},
+	}
+	sf := &fakeSimplifyFinder{result: oneReviewFinding(reviewTestProdFile)}
+	sa := &fakeSimplifyApplier{report: "## Simplification Report\n\nSTATUS: DONE"}
+	r := simplifyRunner(gh, &fakeClaude{}, sf, sa)
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if sf.called.Load() != 0 || sa.called.Load() != 0 {
+		t.Errorf("simplify finder/applier called %d/%d times, want 0/0", sf.called.Load(), sa.called.Load())
+	}
+	if !strings.Contains(buf.String(), "Simplify pass skipped") {
+		t.Errorf("missing the simplify skip notice in output:\n%s", buf.String())
+	}
+}
+
+// TestRun_ResumeSimplifyRunsWithoutReport locks the documented gap: a simplify
+// pass that found nothing posts no report, so a resume cannot tell it ran and
+// runs it again.
+func TestRun_ResumeSimplifyRunsWithoutReport(t *testing.T) {
+	gh := &githubtest.Fake{
+		Issue:         sampleIssue(),
+		Dir:           t.TempDir(),
+		BranchRef:     &github.BranchRef{BaseBranch: reviewTestBase, HeadBranch: testResumeBranch},
+		ResumeState:   &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "abc1234", Subject: "done"}}},
+		IssueComments: []github.IssueComment{doneReportComment()},
+	}
+	sf := &fakeSimplifyFinder{result: &report.ReviewResult{}}
+	r := simplifyRunner(gh, &fakeClaude{}, sf, &fakeSimplifyApplier{})
+	if err := r.Run(io.Discard, Options{IssueRef: "owner/repo#42"}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if sf.called.Load() != 1 {
+		t.Errorf("simplify finder called %d times, want 1", sf.called.Load())
+	}
+}
+
+// resumedReviewGH is a resumable, fully implemented branch whose issue carries
+// the given review-round comments after the DONE report.
+func resumedReviewGH(t *testing.T, rounds ...github.IssueComment) *githubtest.Fake {
+	t.Helper()
+	gh := reviewGH(t)
+	gh.ResumeState = &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "abc1234", Subject: "done"}}}
+	gh.IssueComments = append([]github.IssueComment{doneReportComment()}, rounds...)
+	return gh
+}
+
+func reviewRoundComment(round int, since string) github.IssueComment {
+	return github.IssueComment{Body: formatReviewComment("## Review Report\n\n### Resolved\n- fixed a thing\n\nSTATUS: DONE", "m", round, since)}
+}
+
+// TestRun_ResumeContinuesReviewLoopAtNextRound is the scenario that motivated
+// decision 94: two review rounds posted their reports, the third hit a usage
+// limit. The resumed run starts at round 3, scoped to the pre-fix commit round 2
+// recorded, without the first-round specialist fan-out, and counts the two
+// earlier rounds against the budget (so one round is left of the default 3).
+func TestRun_ResumeContinuesReviewLoopAtNextRound(t *testing.T) {
+	gh := resumedReviewGH(t, reviewRoundComment(1, "sha1"), reviewRoundComment(2, "86868f2d"))
+	av := &fakeAdversarialVerifier{result: &report.ReviewResult{Findings: []report.Finding{criticalFinding("still there", reviewTestProdFile)}}}
+	ra := &fakeReviewApplier{report: "## Review Report\n\n### Resolved\n- still there\n\nSTATUS: DONE"}
+	spec := &fakeSpecialistReviewer{}
+	r := reviewRunner(gh, &fakeClaude{}, av, ra)
+	r.SpecialistReviewer = spec
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	av.mu.Lock()
+	defer av.mu.Unlock()
+	if len(av.sinceRefs) != 1 {
+		t.Fatalf("adversarial finder ran %d times, want 1 (round 3 of 3)", len(av.sinceRefs))
+	}
+	if av.sinceRefs[0] != "86868f2d" {
+		t.Errorf("round 3 scoped to %q, want the pre-fix commit round 2 recorded", av.sinceRefs[0])
+	}
+	if spec.called.Load() != 0 {
+		t.Errorf("specialist fan-out ran %d times on a resumed later round, want 0", spec.called.Load())
+	}
+	if ra.called.Load() != 1 {
+		t.Errorf("review applier called %d times, want 1", ra.called.Load())
+	}
+	if !strings.Contains(buf.String(), "Resuming the review pass at round 3 of 3") {
+		t.Errorf("missing the resume notice in output:\n%s", buf.String())
+	}
+	var posted string
+	for _, c := range gh.Comments() {
+		if strings.Contains(c, reviewCommentMarker) {
+			posted = c
+		}
+	}
+	if !strings.Contains(posted, reviewRoundMarkerPrefix+"3 since=") {
+		t.Errorf("round 3's report lacks its round marker:\n%s", posted)
+	}
+	if !strings.Contains(buf.String(), "stopped after 3 iteration(s)") {
+		t.Errorf("the two earlier rounds were not counted against the budget:\n%s", buf.String())
+	}
+}
+
+// TestRun_ResumeReviewFallsBackWhenPreFixCommitMissing locks the diff-base
+// guard: when the checkout no longer has the recorded pre-fix commit (a fresh
+// clone after an autosquash), the resumed round reviews the whole branch.
+func TestRun_ResumeReviewFallsBackWhenPreFixCommitMissing(t *testing.T) {
+	gh := resumedReviewGH(t, reviewRoundComment(1, "deadbeef"))
+	gh.MissingCommits = []string{"deadbeef"}
+	av := &fakeAdversarialVerifier{result: &report.ReviewResult{}}
+	r := reviewRunner(gh, &fakeClaude{}, av, &fakeReviewApplier{})
+
+	if err := r.Run(io.Discard, Options{IssueRef: "owner/repo#42"}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	av.mu.Lock()
+	defer av.mu.Unlock()
+	if len(av.sinceRefs) != 1 || av.sinceRefs[0] != "" {
+		t.Errorf("sinceRefs = %q, want one branch-wide round", av.sinceRefs)
+	}
+}
+
+// TestRun_ResumeReviewBudgetAlreadySpent locks that rounds posted by earlier
+// runs exhaust the budget: with three reports on the issue and the default cap
+// of three, the resumed run reviews nothing and still opens the PR.
+func TestRun_ResumeReviewBudgetAlreadySpent(t *testing.T) {
+	gh := resumedReviewGH(t, reviewRoundComment(1, ""), reviewRoundComment(2, "sha2"), reviewRoundComment(3, "sha3"))
+	av := &fakeAdversarialVerifier{result: oneReviewFinding(reviewTestProdFile)}
+	ff := &fakeFinalizer{report: defaultFinalizeReport}
+	r := reviewRunner(gh, &fakeClaude{}, av, &fakeReviewApplier{})
+	r.Finalizer = ff
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if av.called.Load() != 0 {
+		t.Errorf("adversarial finder ran %d times, want 0", av.called.Load())
+	}
+	if ff.called.Load() != 1 {
+		t.Errorf("finalizer called %d times, want 1", ff.called.Load())
+	}
+	if !strings.Contains(buf.String(), "already used its 3 iteration(s)") {
+		t.Errorf("missing the budget notice in output:\n%s", buf.String())
+	}
+}
+
+// TestRun_FinalizeErrorPersistsBranch locks that a failed finalize keeps the
+// complete branch reachable for the resume: in clone mode it is pushed.
+func TestRun_FinalizeErrorPersistsBranch(t *testing.T) {
+	gh := &githubtest.Fake{
+		Issue:         sampleIssue(),
+		Dir:           t.TempDir(),
+		ProgressState: &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "abc1234", Subject: "done"}}},
+	}
+	r := newRunner(gh, &fakeClaude{report: validImplReport})
+	r.Finalizer = &fakeFinalizer{err: errors.New("api error 429")}
+
+	if err := r.Run(io.Discard, Options{IssueRef: "owner/repo#42"}); err == nil {
+		t.Fatal("Run returned nil, want the fatal finalize error")
+	}
+	if gh.Count("PushHead") != 1 {
+		t.Errorf("PushHead called %d times, want 1 — the complete branch must survive the clone", gh.Count("PushHead"))
+	}
+}
+
+// TestPassesAfter locks the comment parsing: heading plus marker identifies a
+// pass report, the review count is exact, the newest round's pre-fix commit
+// wins (and an earlier round's does not leak), and hand-written comments that
+// quote a heading are ignored.
+func TestPassesAfter(t *testing.T) {
+	got := passesAfter([]github.IssueComment{
+		{Body: "someone wrote: ## Simplification Report looks fine"},
+		{Body: formatSimplifyComment("## Simplification Report\n\nfolded", "m")},
+		{Body: formatReviewComment("## Review Report\n\nround one", "m", 1, "aaa111")},
+		{Body: formatReviewComment(withheldOnlyReport("### Unverified\n- x"), "", 2, "")},
+	})
+	if !got.simplified {
+		t.Error("simplified = false, want true")
+	}
+	if got.reviewRounds != 2 {
+		t.Errorf("reviewRounds = %d, want 2", got.reviewRounds)
+	}
+	if got.reviewSince != "" {
+		t.Errorf("reviewSince = %q, want empty (the last round recorded none)", got.reviewSince)
+	}
+	got = passesAfter([]github.IssueComment{{Body: formatReviewComment("## Review Report\n\nr", "m", 1, "abc123")}})
+	if got.reviewSince != "abc123" || got.reviewRounds != 1 {
+		t.Errorf("got %+v, want one round since abc123", got)
+	}
+}
+
+// TestLatestSessionAccount_Complete locks which accounts count as a finished
+// implementation: DONE and DONE_WITH_CONCERNS do; PARTIAL, escalations, and
+// progress notes do not.
+func TestLatestSessionAccount_Complete(t *testing.T) {
+	cases := map[string]bool{
+		"STATUS: DONE":               true,
+		"STATUS: DONE_WITH_CONCERNS": true,
+		"STATUS: PARTIAL":            false,
+		"STATUS: BLOCKED":            false,
+		"STATUS: NEEDS_CONTEXT":      false,
+	}
+	for status, want := range cases {
+		body := formatReportComment("## Implementation Report (issue #42)\n\n"+status, "m")
+		idx, _, complete := latestSessionAccount([]github.IssueComment{{Body: "plan"}, {Body: body}})
+		if idx != 1 || complete != want {
+			t.Errorf("%s: idx=%d complete=%t, want idx=1 complete=%t", status, idx, complete, want)
+		}
+	}
+	if idx, _, complete := latestSessionAccount([]github.IssueComment{{Body: formatProgressNoteComment("n", 42, "m")}}); idx != 0 || complete {
+		t.Errorf("progress note: idx=%d complete=%t, want 0/false", idx, complete)
 	}
 }
