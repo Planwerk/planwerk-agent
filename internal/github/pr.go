@@ -84,6 +84,21 @@ func (Client) HeadSHA(dir string) (string, error) {
 	return sha, nil
 }
 
+// HasCommit reports whether sha names a commit object the checkout in dir can
+// diff against. A resumed implement run reads the pre-fix commit its last review
+// round recorded on the issue and must not hand the finder a base the repository
+// no longer has (a fresh clone carries only the rewritten branch, not the
+// commits an autosquash replaced); an unresolvable sha is reported as absent
+// rather than as an error, since the caller falls back to the branch-wide scope
+// either way.
+func (Client) HasCommit(dir, sha string) bool {
+	if sha == "" {
+		return false
+	}
+	_, err := gitOutput(dir, "cat-file", "-e", sha+"^{commit}")
+	return err == nil
+}
+
 // defaultBranch resolves the repository's default branch name (e.g. "main" or
 // "master") for the checkout in dir from refs/remotes/origin/HEAD, which clone
 // points at the remote's default branch. The symbolic ref reads back as

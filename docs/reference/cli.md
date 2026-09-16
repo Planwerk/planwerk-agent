@@ -583,6 +583,18 @@ partial progress to `origin` (no PR) so the next clone can fetch and resume it.
 Pass `--no-resume` to start a fresh branch and disable pushing partial
 progress and the progress note.
 
+When the run that stopped had already finished implementing — its
+implementation report on the issue says `DONE` (or `DONE_WITH_CONCERNS`) and it
+stopped in one of the passes after the session, typically at a usage limit —
+the resume continues from that pass instead of running the implement session
+again: a posted simplification report skips the simplify pass, each posted
+review report counts as a used round of `--max-review-iterations`, and the
+review loop resumes at the next round, scoped to the fixes of the last one
+(branch-wide when the checkout no longer has that round's pre-fix commit).
+Capture, verification, and the finalize session then run as usual. A finalize
+session that fails persists the branch the same way an abort does, so the next
+run resumes it and opens the pull request.
+
 `--verify` is a verification pass that runs over the actual committed diff, not
 the implementer's self-report, and checks it for acceptance-criteria coverage.
 It is non-fatal — a finding is reported, it
