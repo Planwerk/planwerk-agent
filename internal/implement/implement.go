@@ -622,7 +622,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// operator must know the PR was not created. (An empty change set is not a
 	// failure: the finalize session opens no PR and says so.)
 	if r.Finalizer != nil {
-		if err := r.runFinalize(w, repo.Dir, ctx); err != nil {
+		if err := r.runFinalize(w, repo.Dir, ctx, implReport); err != nil {
 			// The branch is complete but unshipped. Keep it reachable for the next
 			// run, which resumes it and, finding the implementation report on the
 			// issue, skips straight to the passes and the pull request.
@@ -1867,7 +1867,7 @@ func (r *Runner) runCapture(w io.Writer, dir, owner, name string, number int, ct
 // set is NOT a failure — the finalize session opens no PR, reports that nothing
 // was shippable, and returns no error, exactly as the implement session does when
 // the issue turns out to be already implemented.
-func (r *Runner) runFinalize(w io.Writer, dir string, ctx Context) error {
+func (r *Runner) runFinalize(w io.Writer, dir string, ctx Context, implReport string) error {
 	slog.Info("running finalize pass to open the pull request", "issue", ctx.IssueNumber)
 	// The finalize report carries the PR URL and goes to stdout; the PR is
 	// auto-linked onto the issue by its issue-reference body, so the model id (used
@@ -1875,9 +1875,10 @@ func (r *Runner) runFinalize(w io.Writer, dir string, ctx Context) error {
 	// ever runs for a complete implementation (a PARTIAL run aborts before it), so
 	// the PR always links with the closing "Closes #N" keyword.
 	finalizeReport, _, err := r.Finalizer.FinalizePR(dir, FinalizeContext{
-		RepoFullName: ctx.RepoFullName,
-		IssueNumber:  ctx.IssueNumber,
-		IssueTitle:   ctx.IssueTitle,
+		RepoFullName:         ctx.RepoFullName,
+		IssueNumber:          ctx.IssueNumber,
+		IssueTitle:           ctx.IssueTitle,
+		ImplementationReport: implReport,
 	})
 	if err != nil {
 		slog.Warn("finalize pass failed; no pull request was opened", "issue", ctx.IssueNumber, "err", err)
@@ -1886,6 +1887,14 @@ func (r *Runner) runFinalize(w io.Writer, dir string, ctx Context) error {
 	}
 	if finalizeReport != "" {
 		_, _ = fmt.Fprintf(w, "\nPull request:\n%s\n", finalizeReport)
+	}
+	// The session ran, but it may have reported that the push or the PR failed
+	// (its prompt routes both to BLOCKED). That is the same outcome as an error
+	// above: no pull request, the branch unshipped.
+	switch status := report.TerminalStatus(finalizeReport); status {
+	case report.StatusBlocked, report.StatusNeedsContext:
+		slog.Warn("finalize session reported it could not open the pull request", "issue", ctx.IssueNumber, "status", status)
+		return fmt.Errorf("opening the pull request: the finalize session reported %s", status)
 	}
 	slog.Info("finalize pass complete", "issue", ctx.IssueNumber)
 	return nil

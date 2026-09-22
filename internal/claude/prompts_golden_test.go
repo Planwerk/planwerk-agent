@@ -695,9 +695,10 @@ func TestBuildReviewApplyPrompt_Golden(t *testing.T) {
 
 func goldenFinalizeContext() implement.FinalizeContext {
 	return implement.FinalizeContext{
-		RepoFullName: "planwerk/planwerk-agent",
-		IssueNumber:  42,
-		IssueTitle:   "Add snapshot tests for prompt builders",
+		RepoFullName:         "planwerk/planwerk-agent",
+		IssueNumber:          42,
+		IssueTitle:           "Add snapshot tests for prompt builders",
+		ImplementationReport: "## Implementation Report (issue #42)\n\nDONE — golden tests cover every builder.\n\n### Deviations from the issue\n- none\n### Noticed but not touching\n- none\n### Status\nSTATUS: DONE",
 	}
 }
 

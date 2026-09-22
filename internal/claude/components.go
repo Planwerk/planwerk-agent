@@ -727,7 +727,7 @@ EVERY commit you create MUST end with exactly these two trailers, in this order:
     Signed-off-by: <committer name> <committer email>
 
 - Pass ` + "`-s`" + ` to ` + "`git commit`" + ` so git appends the ` + "`Signed-off-by`" + ` line from the committer identity. It MUST be the very last line of the message.
-- Add an ` + "`Assisted-by: Claude`" + ` trailer naming yourself as the assistant. Append your exact model id when your runtime context provides it (e.g. ` + "`Assisted-by: Claude:claude-opus-5-5`" + `); otherwise emit ` + "`Assisted-by: Claude`" + ` alone — never guess the id. Pass it as the final ` + "`-m`" + ` paragraph, NOT via ` + "`--trailer`" + ` (git places ` + "`--trailer`" + ` values after the sign-off), so it lands directly above ` + "`Signed-off-by`" + `.
+- Add an ` + "`Assisted-by: Claude`" + ` trailer naming yourself as the assistant. Append your exact model id when your runtime context provides it (e.g. ` + "`Assisted-by: Claude:claude-opus-5-5`" + `), without a bracketed suffix such as ` + "`[1m]`" + `; otherwise emit ` + "`Assisted-by: Claude`" + ` alone — never guess the id. Pass it as the final ` + "`-m`" + ` paragraph, NOT via ` + "`--trailer`" + ` (git places ` + "`--trailer`" + ` values after the sign-off), so it lands directly above ` + "`Signed-off-by`" + `.
 - NEVER add a ` + "`Co-authored-by`" + ` trailer — not for Claude, not for planwerk-agent, not for anyone.
 
 `
@@ -759,7 +759,7 @@ End every GitHub artifact you author yourself — the pull request description, 
 
     _` + verb + ` ` + attribution.Tool() + ` with Claude:<your model id>_
 
-- Append your exact model id when your runtime context provides it (e.g. ` + "`with Claude:claude-opus-5-5`" + `); otherwise write a bare ` + "`with Claude`" + ` — never guess the id. This mirrors the Assisted-by commit trailer.
+- Append your exact model id when your runtime context provides it (e.g. ` + "`with Claude:claude-opus-5-5`" + `), without a bracketed suffix such as ` + "`[1m]`" + `; otherwise write a bare ` + "`with Claude`" + ` — never guess the id. This mirrors the Assisted-by commit trailer.
 - Keep the ` + "`[planwerk-agent]`" + ` link intact so the artifact points back at the tool that produced it.
 - Add the footer once, as the last line of the artifact — do NOT repeat it per section.
 
@@ -806,10 +806,10 @@ Each row is an excuse sessions reach for. When you catch yourself forming one, t
 
 | The excuse | The reality |
 |---|---|
-| "This issue is too large for one session — I'll ship the core and open a follow-up." | Nothing follows this session. A curated subset of a multi-package issue is an abandoned contract, not prudence. Implement every package, or report PARTIAL and open no PR. |
+| "This issue is too large for one session — I'll ship the core and open a follow-up." | Nothing is scheduled after this session. A curated subset of a multi-package issue is an abandoned contract, not prudence. Implement every package, or report PARTIAL and open no PR. |
 | "The issue (or the plan) says one commit ≈ one PR, so splitting is what was asked." | A delivery-splitting note contradicts this contract. Ignore it: the whole issue lands as exactly ONE pull request. |
 | "The scope grew, so this is a circuit breaker — PARTIAL is legitimate." | The breakers fire on thrashing and on scope the issue never asked for, never on the size of the scope it did ask for. Implementing the packages the issue lists IS the required scope; assessing it as too large is never a route to PARTIAL. |
-| "This test was already failing / is flaky — skipping it is fine." | You cannot tell a flaky test from the defect you just introduced. Fix the root cause; never weaken, skip, or delete the test to go green. |
+| "This test was already failing / is flaky — skipping it is fine." | Run it on the base commit. If it passes there, your change broke it: fix the root cause, and never weaken, skip, or delete the test to go green. If it fails there too, it is pre-existing: leave it alone and record it as "fail — pre-existing on <base>". |
 | "I'll start the test run in the background and commit once it is green." | This session has no later turn. A backgrounded run is killed when you stop, its result never arrives, and the commit it gated never happens. Run it in the foreground and wait. |
 | "This refactor is basically required to do the change cleanly." | Unless it is listed in Affected Areas, it is scope the issue did not ask for. Make the change the issue asked for; note the refactor and leave it. |
 | "I noticed a bug next door — fixing it is a courtesy." | It is an unsolicited change a reviewer did not ask for and cannot attribute. Record it under "Noticed but not touching" and move on. |

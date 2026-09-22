@@ -16,7 +16,7 @@ import (
 // report: it diffs the feature branch and reads the actual committed code.
 // Findings are returned for every criterion that is not fully satisfied.
 func (c *Client) VerifyImplementation(dir, issueTitle, issueBody string) (*report.ReviewResult, error) {
-	raw, model, err := c.runClaudeAuto(dir, buildVerifyImplementationPrompt(issueTitle, issueBody), "verify-implementation")
+	raw, model, err := c.runClaudeFinder(dir, buildVerifyImplementationPrompt(issueTitle, issueBody), "verify-implementation")
 	if err != nil {
 		return nil, fmt.Errorf("running implementation verification: %w", err)
 	}
@@ -275,26 +275,13 @@ func BuildImplementPrompt(ctx implement.Context) string {
 	sb.WriteString(outputLanguageBlock())
 	sb.WriteString(`You implement and commit the change on a feature branch; you do NOT open a pull request. After you finish, automated simplify and review passes run over your diff, and only then is the pull request opened — so leave the branch committed and report, nothing more.
 
-This is a single, non-interactive, one-shot session: there is NO next turn, no human to hand work back to, and nothing re-invokes you after you stop. Do everything to completion now, within this one response — read the issue, edit, run the tests in the FOREGROUND and wait for them to finish, commit every change, then output the report as the last thing you do. NEVER launch a long-running command (a test run, a build) in the background and then yield to "wait" for it or to be "notified" when it finishes: when this session ends the backgrounded job is killed, its result never arrives, and the work it gated — the next commit, the fix it would have informed — never happens. When a single command genuinely outlives the Bash tool's foreground time limit, run it in the background and POLL its output from within this same turn — check it repeatedly until the command exits — instead of ending the turn: polling is how you wait; yielding is how the result is lost. NEVER defer a step to later ("I'll commit once the tests pass", "waiting for the run to complete before committing"): anything left unfinished when you stop is finished never.
+This is a single, non-interactive, one-shot session: there is NO next turn, no human to hand work back to, and nothing re-invokes you after you stop. Do everything to completion now, within this one response — read the issue, edit, run the tests in the FOREGROUND and wait for them to finish, commit every change the issue needs, then output the report as the last thing you do. NEVER launch a long-running command (a test run, a build) in the background and then yield to "wait" for it or to be "notified" when it finishes: when this session ends the backgrounded job is killed, its result never arrives, and the work it gated — the next commit, the fix it would have informed — never happens. When a single command genuinely outlives the Bash tool's foreground time limit, run it in the background and POLL its output from within this same turn — check it repeatedly until the command exits — instead of ending the turn: polling is how you wait; yielding is how the result is lost. NEVER defer a step to later ("I'll commit once the tests pass", "waiting for the run to complete before committing"): anything left unfinished when you stop is finished never.
 
 `)
 	if orchestrated {
 		sb.WriteString(orchestrationBlock())
 	}
-	sb.WriteString(`Apply these task-specific thinking patterns on top of the baseline above:
-- "Read the issue first, in full." — Acceptance Criteria, Non-Goals, Affected Areas, References. Do NOT start editing before you have read every section.
-- "Verify the ground truth." — For every file, symbol, package, or migration the issue cites, open the file and confirm it exists and matches the description. If it does not, STOP and report — do not invent code on top of a stale spec.
-- "Implement EVERY work package — the whole issue is the contract." — When the issue decomposes the work into multiple parts — ` + workBreakdownDefinition() + ` — you must implement ALL of them in this session, each with its own deliverables (the unit / integration / e2e tests and docs the package calls for). Implementing only the first package or two and stopping is an INCOMPLETE implementation, not a "smaller" one. There is no later session to pick up the rest: whatever you leave unimplemented stays unimplemented.
-- "Smallest change that satisfies every Acceptance Criterion." — "Smallest" governs HOW each part is built — no speculative scope, no drive-by refactors, no renames the issue did not ask for — NOT HOW MANY of the issue's listed parts you implement.
-- "Mirror existing conventions." — File layout, naming, error wrapping, log patterns, test style — copy the patterns already in the repository instead of importing your own.
-- "Tests are part of the change." — Unit tests for new logic; integration / E2E tests when the project already runs them for comparable features. Every new test must exercise at least one error or edge path (empty/zero-length, nil/absent, an upstream error), not the happy path only. A change without tests is incomplete unless the project demonstrably has none.
-- "Documentation is part of the change." — README, CHANGELOG, doc comments, CLI help text, generated API docs — every user-visible behavior change updates docs in the same change set.
-- "Commits tell the story." — Stage the work as a sequence of small, reviewable commits; do not produce a single monolithic diff. Write each commit message cleanly: a concise, imperative subject line and, when the change needs it, a body that explains the why. Wrap EVERY line — subject and body alike — at 72 characters or fewer.
-- "Self-review before you hand off." — Walk the diff once more as a reviewer. Reject anything you would push back on.
-- "Stay inside the agreed scope." — If the issue's Non-Goals exclude something, do NOT do it.
-- "Note it, don't fix it." — When you notice something worth improving that the issue did not ask for, write it down for the report's "Noticed but not touching" section and leave the code alone.
-
-`)
+	sb.WriteString(implementThinkingPatterns("Self-review before you hand off."))
 
 	fmt.Fprintf(&sb, "## Source Issue\n\n- Repository: %s\n- Issue #%d: %s\n",
 		ctx.RepoFullName, ctx.IssueNumber, ctx.IssueTitle)
@@ -318,7 +305,7 @@ This is a single, non-interactive, one-shot session: there is NO next turn, no h
 
 	if len(ctx.Patterns) > 0 {
 		sb.WriteString("## Project Review Patterns to Honor\n\n")
-		sb.WriteString("These patterns are the catalog the project's review/audit/elaborate tools share — including any project-specific patterns shipped under `.planwerk/review_patterns/` in this repository. Treat them as binding constraints on the implementation: every commit you push MUST stay consistent with them. When the change touches an area covered by a pattern, prefer the resolution the pattern endorses.\n\n")
+		sb.WriteString("These patterns are the catalog the project's review/audit/elaborate tools share — including any project-specific patterns shipped under `.planwerk/review_patterns/` in this repository. Apply them to the code you write or change: every commit you make stays consistent with them, and where the change touches an area a pattern covers, prefer the resolution it endorses. They never license changing code the issue does not touch; a pre-existing violation goes under \"Noticed but not touching\".\n\n")
 		sb.WriteString("<review-patterns>\n")
 		sb.WriteString(patterns.FormatGroupedForPrompt(ctx.Patterns, ctx.MaxPatterns))
 		sb.WriteString("</review-patterns>\n\n")
@@ -378,10 +365,12 @@ Run these steps in order. Do not skip ahead.
 `)
 	}
 	sb.WriteString(`6. VERIFY LOCALLY before you hand off:
-   - Run every command in the FOREGROUND and wait for it to finish before the next step — never background a test or build run and move on. You need its real exit status in hand to commit and to fill in the report; a backgrounded run's result never reaches this one-shot session. If a command outlives the Bash tool's foreground time limit, background it and poll its output within this same turn until it exits.
+   - ` + foregroundRunLine() + `
    - Run the project's test suite (or the targeted subset that covers the new code).
    - Run lint / vet / formatter / type-checker as the project configures them.
+   - When a check fails, run it on the base commit too: a failure that also happens there is pre-existing. Leave it alone and record it as "fail — pre-existing on <base>" with its output; fix only what your change broke.
    - Capture the exact commands you ran and their pass/fail status for the report below.
+   - Leave a clean tree: ` + "`git status`" + ` shows nothing uncommitted. Delete the scratch scripts, throwaway tests, and debug output you made only to check something; keep a new test only where the issue asks for it or the repository keeps tests of that kind, sized like its neighbors.
 7. SELF-REVIEW the diff against the issue's Acceptance Criteria. Remove anything that is not strictly required. Stop if you have drifted into a Non-Goal.
 8. STOP after committing on the feature branch. Do NOT push and do NOT open a pull request — automated simplify and review passes run over your diff next, and a dedicated finalize step opens the draft PR (linking the issue with "Closes #` + fmt.Sprintf("%d", ctx.IssueNumber) + `") once they are done. Leave the branch checked out with your commits on it.
 9. OUTPUT the structured implementation report below.
@@ -399,7 +388,7 @@ ALWAYS end the session with this report — it is mandatory and is the last thin
    - (List EVERY work package the issue breaks the work into. Write "None — the issue is a single undivided change" when the issue has no multi-part breakdown. STATUS: DONE is only legitimate when every package here is "done".)
    ### Acceptance Criteria
    - <criterion verbatim>
-     - Status: <satisfied | partial>
+     - Status: <satisfied | partial | missing>
      - Evidence: <file:lines that satisfy it, or the test that exercises it — cite the edge or error test, not a happy-path one, when a new test covers the criterion>
    ### Commits
    - <sha7> <subject>
@@ -414,14 +403,14 @@ ALWAYS end the session with this report — it is mandatory and is the last thin
    - (Write "none" when you saw nothing outside the issue's scope. This section is for observations you deliberately left alone — a bug next door, a stale doc, a refactor the issue never asked for — so a reviewer can tell a disciplined omission from an oversight. NEVER park a work package or an Acceptance Criterion here: anything the issue asks for is in scope and is implemented, not noted.)
    ### Status
    STATUS: <DONE | DONE_WITH_CONCERNS | PARTIAL | BLOCKED | NEEDS_CONTEXT>
-   (DONE = EVERY work package implemented and tested on the feature branch, every Acceptance Criterion satisfied — no package left partial or not started; DONE_WITH_CONCERNS = every package likewise complete, but with reservations a reviewer should see; PARTIAL = at least one work package is unfinished because a circuit breaker below genuinely interrupted the work — NEVER a scoping choice; BLOCKED = could not implement, nothing shippable; NEEDS_CONTEXT = the issue is underspecified and a human must clarify.)
+   (DONE = EVERY work package implemented and tested on the feature branch, every Acceptance Criterion satisfied, and every Local verification command passing or failing only in a way shown to be pre-existing on the base — no package left partial or not started; DONE_WITH_CONCERNS = every package likewise complete, but with reservations a reviewer should see; PARTIAL = at least one work package is unfinished because a circuit breaker below genuinely interrupted the work — NEVER a scoping choice; BLOCKED = could not implement, nothing shippable; NEEDS_CONTEXT = the issue is underspecified and a human must clarify.)
    Next: <on any verdict but DONE only: the single action a human takes next — e.g. on PARTIAL "rerun implement on branch <branch>"; omit this line on DONE>
    Do NOT report DONE or DONE_WITH_CONCERNS when any work package is partial or not started — that is exactly the false "this closes the issue" signal this report exists to prevent. A complete subset of a multi-package issue is PARTIAL, not DONE. On PARTIAL the orchestrator opens NO pull request: it keeps the branch so a follow-up run resumes it and finishes the remaining packages — the single pull request (linking "Closes #` + fmt.Sprintf("%d", ctx.IssueNumber) + `") opens only once every package is done.
 
 ## Circuit breakers — stop instead of thrashing
 
 You run fully autonomously, with no human in the loop and a bounded budget, so a thrash loop burns the whole budget before anyone notices. STOP and output the report the moment you detect any of these conditions — do not push through them:
-- Fighting the test suite: the same test (or set of tests) keeps failing across repeated, distinct fix attempts and you are not converging. NEVER weaken, skip, or delete the test to go green — that masks the defect instead of fixing it; stop instead.
+- Fighting the test suite: the same test (or set of tests) keeps failing across repeated, distinct fix attempts and you are not converging. NEVER weaken, skip, or delete the test to go green — that masks the defect instead of fixing it; stop instead. A test that fails on the base commit too is pre-existing, not a fight: record it and carry on.
 - Ballooning scope: the change set is growing past the plan and the issue's implied blast radius — new top-level packages or files the issue never asked for — to force something to work. Implementing the work packages the issue EXPLICITLY lists (including a new package or files it names) is required scope, NOT ballooning; this breaker is only for scope the issue never asked for.
 - Reverting in circles: you have reverted and rewritten the same code more than once without converging on a working change.
 
@@ -439,12 +428,14 @@ When you hit a circuit breaker, halt immediately and emit STATUS: PARTIAL when a
 - NEVER split the issue's delivery or pre-emptively descope it. The whole issue lands as exactly ONE pull request. Never propose follow-up issues or PRs as a substitute for implementing listed scope.
 - NEVER push or force-push, and do NOT open a pull request — the finalize step does that after the simplify and review passes. Your job ends at committing on the branch.
 - NEVER background a command and stop to wait for its result, and NEVER defer work to "after" something finishes — this one-shot session has no later turn. Run tests and builds in the foreground to completion (polling a backgrounded run within the turn only when it outlives the foreground time limit), commit, then output the report, all within this single response.
-- If the issue is wrong (a cited file does not exist; an Acceptance Criterion is unreachable; the Non-Goals contradict the Description), STOP and post a clarifying comment on the issue instead of inventing scope. Output the report explaining what you did NOT do and why.
+- If the issue is wrong (a cited file is gone and nothing replaces it; an Acceptance Criterion is unreachable; the Non-Goals contradict the Description), STOP instead of inventing scope, and report NEEDS_CONTEXT naming what is wrong and what you did NOT do. The orchestrator posts your report on the issue.
 - If there is nothing to commit (the issue turns out to already be implemented), do NOT create an empty commit; output the report explaining what you found.
-- It is OK to stop and report BLOCKED or NEEDS_CONTEXT. Bad work is worse than no work; escalating is not penalized. Emit the matching STATUS instead of inventing scope or shipping a half-built change.
+- It is OK to stop and report BLOCKED or NEEDS_CONTEXT for the conditions above — never for the size of the listed scope. Bad work is worse than no work; escalating is not penalized. Emit the matching STATUS instead of inventing scope or shipping a half-built change.
 `)
 	if orchestrated {
 		sb.WriteString("- NEVER create or edit a file yourself in this orchestrated session — every code change is delivered by an `" + implementerAgentName + "` delegation, and every gap your verification finds goes back to one as a follow-up task.\n")
+	} else {
+		sb.WriteString("- Make every edit and commit yourself. A subagent may search or read the repository for you, but never delegate edits or commits to one: it does not see this prompt's scope, test, and commit-trailer rules, and parallel writers race on the git index.\n")
 	}
 
 	return sb.String()
@@ -471,7 +462,7 @@ This session runs in ORCHESTRATOR mode: your job is to keep the WHOLE issue in v
 - Write each delegation brief SELF-CONTAINED: the worker shares your checkout but NOT your context — it sees neither the issue, nor the plan, nor this prompt. Include the work package's description verbatim, its Acceptance Criteria, the files the plan names for it, the test and documentation expectations, and every review pattern or project skill that constrains it. A brief that says "see the issue" delivers nothing.
 - Instruct every worker to commit its finished work on the current branch and to leave the working tree clean before returning.
 - VERIFY every worker's result yourself before moving on: read the commits it made (git log, git diff), run the tests in the FOREGROUND, and check the package's Acceptance Criteria against the actual diff. Do NOT take the worker's summary at its word.
-- When your verification finds gaps, dispatch a follow-up ` + name + ` task carrying your concrete findings — the file:line, the failing command's output, the unmet criterion — instead of fixing the code yourself. Repeat until the package genuinely passes, then move to the next one.
+- When your verification finds gaps, dispatch a follow-up ` + name + ` task carrying your concrete findings — the file:line, the failing command's output, the unmet criterion — instead of fixing the code yourself. Repeat until the package genuinely passes, then move to the next one. Each follow-up delegation for the same package counts as one fix attempt toward the circuit breakers below.
 - If a worker returns with uncommitted changes or a broken intermediate state, dispatch a follow-up task to finish and commit — never patch the tree yourself.
 - The Implementation Report below stays YOURS: fill it in from your own verification — the commits and test runs you checked — not from the workers' summaries.
 
@@ -540,20 +531,7 @@ func BuildBareImplementPrompt(ctx implement.BareContext) string {
 `)
 	sb.WriteString(baselineBehavioralPrinciples)
 	sb.WriteString(outputLanguageBlock())
-	sb.WriteString(`Apply these task-specific thinking patterns on top of the baseline above:
-- "Read the issue first, in full." — Acceptance Criteria, Non-Goals, Affected Areas, References. Do NOT start editing before you have read every section.
-- "Verify the ground truth." — For every file, symbol, package, or migration the issue cites, open the file and confirm it exists and matches the description. If it does not, STOP and report — do not invent code on top of a stale spec.
-- "Implement EVERY work package — the whole issue is the contract." — When the issue decomposes the work into multiple parts — ` + workBreakdownDefinition() + ` — you must implement ALL of them in this session, each with its own deliverables (the unit / integration / e2e tests and docs the package calls for). Implementing only the first package or two and stopping is an INCOMPLETE implementation, not a "smaller" one.
-- "Smallest change that satisfies every Acceptance Criterion." — "Smallest" governs HOW each part is built — no speculative scope, no drive-by refactors, no renames the issue did not ask for — NOT HOW MANY of the issue's listed parts you implement. Skipping a listed work package is not "smaller"; it is unfinished.
-- "Mirror existing conventions." — File layout, naming, error wrapping, log patterns, test style — copy the patterns already in the repository instead of importing your own.
-- "Tests are part of the change." — Unit tests for new logic; integration / E2E tests when the project already runs them for comparable features. Every new test must exercise at least one error or edge path (empty/zero-length, nil/absent, an upstream error), not the happy path only. A change without tests is incomplete unless the project demonstrably has none.
-- "Documentation is part of the change." — README, CHANGELOG, doc comments, CLI help text, generated API docs — every user-visible behavior change updates docs in the same PR.
-- "Commits tell the story." — Stage the work as a sequence of small, reviewable commits; do not produce a single monolithic diff. Write each commit message cleanly: a concise, imperative subject line and, when the change needs it, a body that explains the why. Wrap EVERY line — subject and body alike — at 72 characters or fewer.
-- "Self-review before opening the PR." — Walk the diff once more as a reviewer. Reject anything you would push back on.
-- "Stay inside the agreed scope." — If the issue's Non-Goals exclude something, do NOT do it.
-- "Note it, don't fix it." — When you notice something worth improving that the issue did not ask for, write it down for the report's "Noticed but not touching" section and leave the code alone.
-
-`)
+	sb.WriteString(implementThinkingPatterns("Self-review before opening the PR."))
 
 	fmt.Fprintf(&sb, "## Source Issue\n\n- Repository: %s\n- Issue #%d\n\n", repoFullName, issueNumber)
 
@@ -600,10 +578,12 @@ Run these steps in order. Do not skip ahead.
    - Add or update documentation (README, CHANGELOG, doc comments, CLI help, generated API references) for every user-visible change.
    - Commit in small, reviewable steps with descriptive messages.
 6. VERIFY LOCALLY before opening the PR:
-   - Run every command in the FOREGROUND and wait for it to finish before the next step — never background a test or build run and move on. You need its real exit status in hand to commit and to fill in the report; a backgrounded run's result never reaches this one-shot session. If a command outlives the Bash tool's foreground time limit, background it and poll its output within this same turn until it exits.
+   - ` + foregroundRunLine() + `
    - Run the project's test suite (or the targeted subset that covers the new code).
    - Run lint / vet / formatter / type-checker as the project configures them.
+   - When a check fails, run it on the base commit too: a failure that also happens there is pre-existing. Leave it alone and record it as "fail — pre-existing on <base>" with its output; fix only what your change broke.
    - Capture the exact commands you ran and their pass/fail status for the report below.
+   - Leave a clean tree: ` + "`git status`" + ` shows nothing uncommitted. Delete the scratch scripts, throwaway tests, and debug output you made only to check something; keep a new test only where the issue asks for it or the repository keeps tests of that kind, sized like its neighbors.
 7. SELF-REVIEW the diff against the issue's Acceptance Criteria. Remove anything that is not strictly required. Stop if you have drifted into a Non-Goal.
 8. PUSH the branch and — ONLY when you implemented the WHOLE issue — OPEN A DRAFT PULL REQUEST linked to issue #` + fmt.Sprintf("%d", issueNumber) + `:
    - If you implemented EVERY work package and satisfied every Acceptance Criterion (a DONE / DONE_WITH_CONCERNS implementation): link with the GitHub closing keyword "Closes #` + fmt.Sprintf("%d", issueNumber) + `" on its own line, so GitHub auto-links the PR and closes the issue on merge. Do NOT use a bare "Implements #` + fmt.Sprintf("%d", issueNumber) + `" mention — GitHub only recognizes the closing keywords (close/closes/closed, fix/fixes/fixed, resolve/resolves/resolved), so a plain reference does NOT create the linkage GitHub displays.
@@ -625,7 +605,7 @@ ALWAYS end the session with this report — even if you stopped early or hit a c
    - (List EVERY work package the issue breaks the work into. Write "None — the issue is a single undivided change" when the issue has no multi-part breakdown. STATUS: DONE is only legitimate when every package here is "done".)
    ### Acceptance Criteria
    - <criterion verbatim>
-     - Status: <satisfied | partial>
+     - Status: <satisfied | partial | missing>
      - Evidence: <file:lines that satisfy it, or the test that exercises it — cite the edge or error test, not a happy-path one, when a new test covers the criterion — or "see PR description">
    ### Commits
    - <sha7> <subject>
@@ -641,14 +621,14 @@ ALWAYS end the session with this report — even if you stopped early or hit a c
    - (Write "none" when you saw nothing outside the issue's scope. This section is for observations you deliberately left alone — a bug next door, a stale doc, a refactor the issue never asked for — so a reviewer can tell a disciplined omission from an oversight. NEVER park a work package or an Acceptance Criterion here: anything the issue asks for is in scope and is implemented, not noted.)
    ### Status
    STATUS: <DONE | DONE_WITH_CONCERNS | PARTIAL | BLOCKED | NEEDS_CONTEXT>
-   (DONE = EVERY work package implemented and tested, every Acceptance Criterion satisfied, and the PR opened with a "Closes #` + fmt.Sprintf("%d", issueNumber) + `" link; DONE_WITH_CONCERNS = every package likewise complete and the closing PR opened, but with reservations a reviewer should see; PARTIAL = at least one work package is unfinished because a circuit breaker below genuinely interrupted the work — NEVER a scoping choice; the branch is pushed but NO pull request is opened, and a follow-up session on this branch finishes the rest; BLOCKED = could not implement, nothing shippable; NEEDS_CONTEXT = the issue is underspecified and a human must clarify.)
+   (DONE = EVERY work package implemented and tested, every Acceptance Criterion satisfied, every Local verification command passing or failing only in a way shown to be pre-existing on the base, and the PR opened with a "Closes #` + fmt.Sprintf("%d", issueNumber) + `" link; DONE_WITH_CONCERNS = every package likewise complete and the closing PR opened, but with reservations a reviewer should see; PARTIAL = at least one work package is unfinished because a circuit breaker below genuinely interrupted the work — NEVER a scoping choice; the branch is pushed but NO pull request is opened, and a follow-up session on this branch finishes the rest; BLOCKED = could not implement, nothing shippable; NEEDS_CONTEXT = the issue is underspecified and a human must clarify.)
    Next: <on any verdict but DONE only: the single action a human takes next — e.g. on PARTIAL "rerun implement on branch <branch>"; omit this line on DONE>
    Do NOT report DONE or DONE_WITH_CONCERNS when any work package is partial or not started — a complete subset of a multi-package issue is PARTIAL, and PARTIAL opens no pull request.
 
 ## Circuit breakers — stop instead of thrashing
 
 You run fully autonomously, with no human in the loop and a bounded budget, so a thrash loop burns the whole budget before anyone notices. STOP and output the report the moment you detect any of these conditions — do not push through them:
-- Fighting the test suite: the same test (or set of tests) keeps failing across repeated, distinct fix attempts and you are not converging. NEVER weaken, skip, or delete the test to go green — that masks the defect instead of fixing it; stop instead.
+- Fighting the test suite: the same test (or set of tests) keeps failing across repeated, distinct fix attempts and you are not converging. NEVER weaken, skip, or delete the test to go green — that masks the defect instead of fixing it; stop instead. A test that fails on the base commit too is pre-existing, not a fight: record it and carry on.
 - Ballooning scope: the change set is growing past the plan and the issue's implied blast radius — new top-level packages or files the issue never asked for — to force something to work. Implementing the work packages the issue EXPLICITLY lists (including a new package or files it names) is required scope, NOT ballooning; this breaker is only for scope the issue never asked for.
 - Reverting in circles: you have reverted and rewritten the same code more than once without converging on a working change.
 
@@ -668,8 +648,37 @@ When you hit a circuit breaker, halt immediately and emit STATUS: PARTIAL when a
 - NEVER background a command and stop to wait for its result, and NEVER defer work to "after" something finishes — this one-shot session has no later turn. Run tests and builds in the foreground to completion (polling a backgrounded run within the turn only when it outlives the foreground time limit), commit, push, open the PR, then output the report, all within this single response.
 - If the issue is wrong (a cited file does not exist; an Acceptance Criterion is unreachable; the Non-Goals contradict the Description), STOP and post a clarifying comment on the issue instead of inventing scope. Output the report explaining what you did NOT do and why.
 - If there is nothing to commit (the issue turns out to already be implemented), do NOT open an empty PR; output the report explaining what you found.
-- It is OK to stop and report BLOCKED or NEEDS_CONTEXT. Bad work is worse than no work; escalating is not penalized. Emit the matching STATUS instead of inventing scope or shipping a half-built change.
+- It is OK to stop and report BLOCKED or NEEDS_CONTEXT for the conditions above — never for the size of the listed scope. Bad work is worse than no work; escalating is not penalized. Emit the matching STATUS instead of inventing scope or shipping a half-built change.
+- Make every edit and commit yourself. A subagent may search or read the repository for you, but never delegate edits or commits to one: it does not see this prompt's scope, test, and commit-trailer rules, and parallel writers race on the git index.
 `)
 
 	return sb.String()
+}
+
+// implementThinkingPatterns returns the task-specific thinking patterns the
+// implement and bare-implement prompts share. The two copies had drifted: one
+// carried "Skipping a listed work package is not smaller; it is unfinished",
+// the other a claim that no later session exists, which the resume design in
+// the same prompt contradicts. selfReviewLabel is the one wording that differs
+// on purpose — the bare session opens the pull request itself.
+//
+// "Verify the ground truth" separates a cited file that moved (follow it and
+// record the deviation) from one that is gone (stop): an older issue's line
+// numbers are routinely stale, and a literal reading of "if it does not match,
+// STOP" turned that into a BLOCKED run and no pull request.
+func implementThinkingPatterns(selfReviewLabel string) string {
+	return `Apply these task-specific thinking patterns on top of the baseline above:
+- "Read the issue first, in full." — Acceptance Criteria, Non-Goals, Affected Areas, References. Do NOT start editing before you have read every section.
+- "Verify the ground truth." — For every file, symbol, package, or migration the issue cites, open it and confirm it exists and matches the description. If a cited file or symbol moved or was renamed, follow it and record that under "Deviations from the issue". STOP and report only when what the issue asks for cannot be built on what exists: the thing is gone and nothing replaces it, or a criterion is unreachable.
+- "Implement EVERY work package — the whole issue is the contract." — When the issue decomposes the work into multiple parts — ` + workBreakdownDefinition() + ` — you must implement ALL of them in this session, each with its own deliverables (the unit / integration / e2e tests and docs the package calls for). Implementing only the first package or two and stopping is an INCOMPLETE implementation, not a "smaller" one. No later session is scheduled to finish what you choose to leave out: a follow-up run happens only after a circuit breaker stops the work.
+- "Smallest change that satisfies every Acceptance Criterion." — "Smallest" governs HOW each part is built — no speculative scope, no drive-by refactors, no renames the issue did not ask for — NOT HOW MANY of the issue's listed parts you implement. Skipping a listed work package is not "smaller"; it is unfinished.
+- "Mirror existing conventions." — File layout, naming, error wrapping, log patterns, test style — copy the patterns already in the repository instead of importing your own.
+- "Tests are part of the change." — Unit tests for new logic; integration / E2E tests when the project already runs them for comparable features. Every new test must exercise at least one error or edge path (empty/zero-length, nil/absent, an upstream error), not the happy path only. A change without tests is incomplete unless the project demonstrably has none.
+- "Documentation is part of the change." — README, CHANGELOG, doc comments, CLI help text, generated API docs — every user-visible behavior change updates docs in the same change set.
+- "Commits tell the story." — Stage the work as a sequence of small, reviewable commits; do not produce a single monolithic diff. Write each commit message cleanly: a concise, imperative subject line and, when the change needs it, a body that explains the why. Wrap EVERY line — subject and body alike — at 72 characters or fewer.
+- "` + selfReviewLabel + `" — Walk the diff once more as a reviewer. Reject anything you would push back on.
+- "Stay inside the agreed scope." — If the issue's Non-Goals exclude something, do NOT do it.
+- "Note it, don't fix it." — When you notice something worth improving that the issue did not ask for, write it down for the report's "Noticed but not touching" section and leave the code alone.
+
+`
 }
