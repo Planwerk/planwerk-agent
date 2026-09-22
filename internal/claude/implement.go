@@ -39,7 +39,10 @@ You are inside a checkout currently on the implementation's feature branch.
 
 `)
 
-	fmt.Fprintf(&sb, "## Source Issue: %s\n\n<issue-body>\n%s\n</issue-body>\n\n", issueTitle, strings.TrimSpace(issueBody))
+	fmt.Fprintf(&sb, "## Source Issue: %s\n\n", issueTitle)
+	sb.WriteString(fencedData("issue-body", "", strings.TrimSpace(issueBody)))
+	sb.WriteString("\n")
+	sb.WriteString(untrustedDataLine("It is the specification you verify the branch against.", "issue-body"))
 
 	sb.WriteString(`## Your task
 
@@ -301,9 +304,17 @@ This is a single, non-interactive, one-shot session: there is NO next turn, no h
 	if ctx.IssueState != "" {
 		fmt.Fprintf(&sb, "- State: %s\n", ctx.IssueState)
 	}
-	sb.WriteString("\n<issue-body>\n")
-	sb.WriteString(strings.TrimSpace(ctx.IssueBody))
-	sb.WriteString("\n</issue-body>\n\n")
+	sb.WriteString("\n")
+	sb.WriteString(fencedData("issue-body", "", strings.TrimSpace(ctx.IssueBody)))
+	sb.WriteString("\n")
+	outside := []string{"issue-body"}
+	if strings.TrimSpace(ctx.Plan) != "" {
+		outside = append(outside, "implementation-plan")
+	}
+	if ctx.Resume != nil && len(ctx.Resume.Commits) > 0 && strings.TrimSpace(ctx.Resume.PriorReport) != "" {
+		outside = append(outside, "previous-session-account")
+	}
+	sb.WriteString(untrustedDataLine("It defines the work: what to build and, where a plan or an earlier session's account is included below, how it was planned and how far it got.", outside...))
 
 	if len(ctx.Patterns) > 0 {
 		sb.WriteString("## Project Review Patterns to Honor\n\n")
@@ -321,9 +332,8 @@ This is a single, non-interactive, one-shot session: there is NO next turn, no h
 	if hasPlan {
 		sb.WriteString("## Implementation Plan (from the planning session)\n\n")
 		sb.WriteString("A dedicated read-only planning session already grounded this issue in the repository and produced the plan below. Treat it as the default route: adopt its change set, commit sequence, test plan, and documentation plan. Re-verify its Ground-Truth Notes as you work — when the repository contradicts the plan, deviate as narrowly as possible and record the deviation (with rationale) under \"Deviations from the issue\" in your report.\n\n")
-		sb.WriteString("<implementation-plan>\n")
-		sb.WriteString(strings.TrimSpace(ctx.Plan))
-		sb.WriteString("\n</implementation-plan>\n\n")
+		sb.WriteString(fencedData("implementation-plan", "", strings.TrimSpace(ctx.Plan)))
+		sb.WriteString("\n")
 	}
 
 	hasResume := ctx.Resume != nil && len(ctx.Resume.Commits) > 0
@@ -492,10 +502,7 @@ func renderResumeSection(rc *implement.ResumeContext) string {
 		sb.WriteString(`
 The stopped session's final account is preserved below. Treat it as your map, not as truth: it records what that session had already implemented and verified — commits made, verification commands that already passed, and what was still outstanding when it stopped. Focus your work on the outstanding part, re-verify the account's claims cheaply (git log, re-run a check only where doubt exists) instead of redoing every verification from scratch, and never contradict the actual repository state in its favor.
 
-<previous-session-account>
-` + prior + `
-</previous-session-account>
-`)
+` + fencedData("previous-session-account", "", prior))
 	}
 	sb.WriteString(`
 Continue that work — do NOT start over:

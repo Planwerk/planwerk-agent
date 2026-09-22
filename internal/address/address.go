@@ -174,8 +174,8 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		return nil
 	}
 
-	pats := loadPatterns(opts, pr.Dir)
-	sks := skills.Load(pr.Dir)
+	pats := loadPatterns(opts, pr.Dir, "origin/"+pr.BaseBranch)
+	sks := skills.LoadFromRef(pr.Dir, "origin/"+pr.BaseBranch)
 
 	if opts.PrintPrompt {
 		unit := selected
@@ -409,13 +409,14 @@ func anyAddressed(threads []report.AddressedThread) bool {
 // the address change is grounded in the same pattern set the rest of the tool
 // uses, plus any project-specific patterns under .planwerk/review_patterns/.
 // Failures are non-fatal: the run falls back to no patterns.
-func loadPatterns(opts Options, repoDir string) []patterns.Pattern {
+func loadPatterns(opts Options, repoDir, baseRef string) []patterns.Pattern {
 	tags := detect.Technologies(repoDir)
 	if len(tags) > 0 {
 		slog.Info("detected technologies", "technologies", strings.Join(tags, ", "))
 	}
 	pats := patterns.LoadForRepoOrWarn(patterns.RepoLoadOptions{
 		RepoDir:    repoDir,
+		RepoRef:    baseRef,
 		Extra:      opts.PatternDirs,
 		Tags:       tags,
 		NoEmbedded: opts.NoLocalPatterns,

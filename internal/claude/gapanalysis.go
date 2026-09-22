@@ -67,9 +67,10 @@ func buildGapAnalysisPrompt(ctx gapanalysis.AnalysisContext) string {
 	for _, f := range ctx.Features {
 		base := filepath.Base(f.FilePath)
 		fmt.Fprintf(&sb, "<feature id=%q file=%q>\n", f.FeatureID, base)
-		sb.WriteString(f.FormatForPrompt())
+		sb.WriteString(escapeFence("feature", f.FormatForPrompt()))
 		fmt.Fprintf(&sb, "</feature>\n\n")
 	}
+	sb.WriteString(untrustedDataLine("It is the specification you check the codebase against.", "feature"))
 
 	sb.WriteString(`## What counts as a gap
 

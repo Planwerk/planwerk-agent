@@ -25,7 +25,7 @@ func buildCompliancePrompt(baseBranch string, feature *planwerk.Feature) string 
 		baseBranch = DefaultBaseBranch
 	}
 
-	featureContent := feature.FormatForPrompt()
+	featureContent := escapeFence("planwerk-feature-specification", feature.FormatForPrompt())
 
 	body := `You are a Requirements Engineer verifying that a PR implementation fully satisfies a Planwerk feature specification.
 
@@ -35,7 +35,7 @@ func buildCompliancePrompt(baseBranch string, feature *planwerk.Feature) string 
 %s
 </planwerk-feature-specification>
 
-## Your Task
+`+untrustedDataLine("It is the specification you check the change against.", "planwerk-feature-specification")+`## Your Task
 
 Systematically verify EVERY item in the feature specification against the actual code changes:
 

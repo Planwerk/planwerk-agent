@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+
+	"github.com/planwerk/planwerk-agent/internal/gitref"
 )
 
 // BundledURLBase is the public raw-markdown URL prefix under which the
@@ -69,6 +71,11 @@ type RepoLoadOptions struct {
 	// RepoDir is the target repository checkout root, consulted for its
 	// .planwerk/review_patterns directory unless NoRepo is set.
 	RepoDir string
+	// RepoRef, when set, reads .planwerk/review_patterns as it stands at this
+	// ref of RepoDir (a pull request's base branch) instead of from the working
+	// tree, so a pull request cannot rewrite the patterns it is reviewed or
+	// repaired against. A directory absent at the ref means no repo patterns.
+	RepoRef string
 	// Wiki is the resolved local directory of the repo's GitHub Wiki review
 	// patterns (see ResolveWiki); empty means none.
 	Wiki string
@@ -91,9 +98,15 @@ type RepoLoadOptions struct {
 // embedded one. It is the one loader every subcommand goes through; the
 // error names the step that failed.
 func LoadForRepo(opts RepoLoadOptions) ([]Pattern, error) {
+	repoDir, noRepo := opts.RepoDir, opts.NoRepo
+	if opts.RepoRef != "" && !noRepo {
+		root, cleanup, ok := gitref.Materialize(opts.RepoDir, opts.RepoRef, ".planwerk/review_patterns")
+		defer cleanup()
+		repoDir, noRepo = root, !ok
+	}
 	dirs, err := Resolve(ResolveOptions{
-		NoRepo:  opts.NoRepo,
-		RepoDir: opts.RepoDir,
+		NoRepo:  noRepo,
+		RepoDir: repoDir,
 		Wiki:    opts.Wiki,
 		Extra:   opts.Extra,
 	})

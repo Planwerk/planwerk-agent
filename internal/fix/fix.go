@@ -323,7 +323,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 			}
 		}
 
-		pats := loadPatterns(opts, fresh.Dir)
+		pats := loadPatterns(opts, fresh.Dir, "origin/"+pr.BaseBranch)
 
 		fixReport, model, fixErr := r.Claude.Fix(fresh.Dir, Context{
 			RepoFullName:   fullName,
@@ -336,7 +336,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 			FailedChecks:   failed,
 			Patterns:       pats,
 			MaxPatterns:    opts.MaxPatterns,
-			Skills:         skills.Load(fresh.Dir),
+			Skills:         skills.LoadFromRef(fresh.Dir, "origin/"+pr.BaseBranch),
 			StyleGuidePath: styleguide.Find(fresh.Dir),
 			Local:          opts.Local,
 			Fixup:          !opts.NoFixup,
@@ -568,13 +568,14 @@ type stdinPrompter = workspace.StdinPrompter
 //
 // Failures are non-fatal: the loop falls back to running without patterns
 // rather than blocking a CI fix on a corrupt pattern source.
-func loadPatterns(opts Options, repoDir string) []patterns.Pattern {
+func loadPatterns(opts Options, repoDir, baseRef string) []patterns.Pattern {
 	tags := detect.Technologies(repoDir)
 	if len(tags) > 0 {
 		slog.Info("detected technologies", "technologies", strings.Join(tags, ", "))
 	}
 	pats := patterns.LoadForRepoOrWarn(patterns.RepoLoadOptions{
 		RepoDir:    repoDir,
+		RepoRef:    baseRef,
 		Extra:      opts.PatternDirs,
 		Tags:       tags,
 		NoEmbedded: opts.NoLocalPatterns,

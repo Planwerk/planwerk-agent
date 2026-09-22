@@ -18,6 +18,8 @@ import (
 	"strings"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/planwerk/planwerk-agent/internal/gitref"
 )
 
 // maxSkillsInPrompt caps how many discovered skills are injected into a prompt.
@@ -128,4 +130,18 @@ func extractFrontmatter(content string) (string, bool) {
 		return "", false
 	}
 	return rest[:end], true
+}
+
+// LoadFromRef is Load reading .claude/skills/ as it stands at ref (the pull
+// request's base branch) instead of from the working tree. The fix and address
+// sessions run in a checkout of a pull request's head and are obliged to use
+// the skills this returns; read from the head, a pull request could add the
+// recipe the session that repairs it must follow.
+func LoadFromRef(repoDir, ref string) []Skill {
+	root, cleanup, ok := gitref.Materialize(repoDir, ref, ".claude/skills")
+	defer cleanup()
+	if !ok {
+		return nil
+	}
+	return Load(root)
 }

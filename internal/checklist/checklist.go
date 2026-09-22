@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+
+	"github.com/planwerk/planwerk-agent/internal/gitref"
 )
 
 // maxFileSize is the maximum size of a checklist override file (64 KB).
@@ -38,5 +40,18 @@ func Load(repoDir string) string {
 
 // Default returns the embedded default checklist content.
 func Default() string {
+	return defaultChecklist
+}
+
+// LoadFromRef is Load reading the override as it stands at ref (the pull
+// request's base branch) instead of from the working tree. The review runs in a
+// checkout of the pull request's head, and the checklist is spliced into the
+// review prompt as instructions: read from the head, a pull request could
+// rewrite the checklist it is reviewed against. An override absent at ref, or
+// larger than 64 KB, falls back to the embedded default.
+func LoadFromRef(repoDir, ref string) string {
+	if body, ok := gitref.Show(repoDir, ref, ".planwerk/checklist.md", maxFileSize); ok && body != "" {
+		return body
+	}
 	return defaultChecklist
 }

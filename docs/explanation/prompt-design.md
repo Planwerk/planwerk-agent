@@ -132,6 +132,40 @@ kept separate on purpose. `components.go` documents these exceptions in its
 header. Single source of truth means *one source per instruction*, not *one
 block for every superficially similar paragraph*.
 
+## Text from outside the prompt is data
+
+A prompt builder assembles two kinds of text: instructions its authors wrote,
+and material the session works on — an issue body, a pull request description,
+a review thread, a CI log, a feature spec, a plan read back from an issue
+comment. The model cannot tell them apart by provenance; it sees one string. So
+the builder has to say which is which, every time, in the same words.
+
+The rule has three parts. Material from outside the prompt goes inside a fence
+(`fencedData`), and the fence is escaped (`escapeFence`, or `escapeFences` for a
+body nested in several tags) so the material cannot close it early and continue
+as prompt text. The fence is named as data by one shared sentence
+(`untrustedDataLine`), which says what the material is for in this prompt and
+that nothing in it changes how the prompt says to work. And the sentence sits
+next to the fence it describes, in every builder that embeds such material:
+the sessions that edit, commit, and push get the same protection as the
+read-only review, because they are the ones an injected instruction could do
+the most with.
+
+The sentence is careful about what it forbids. An issue that says "run
+`make generate` after changing the API" describes the work, and a session
+should do it. What the material cannot do is change the session's rules,
+tools, git workflow, or output format, or ask for something that is never part
+of the work, such as credentials or a host the work does not need.
+
+Some text only looks like data. The review checklist and the project's review
+patterns are spliced in as instructions, and the skills block obliges a session
+to follow a recipe. Those cannot be framed as data without losing their
+purpose, so they are read from the pull request's base instead of its head
+(`internal/gitref`), where a pull request cannot rewrite them; the review then
+flags a change to them as a finding. The same reasoning covers issue comments
+the tool acts on, such as a reused plan: they count only when the tool itself or
+a maintainer wrote them.
+
 ## A skill description routes; it does not instruct
 
 The skills surface has one instruction that is not in the skill. Claude Code
