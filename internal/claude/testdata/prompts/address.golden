@@ -132,11 +132,30 @@ Apply these rules to every piece of documentation you write or edit (README and 
 - Describe the code as it is, not as a change: no "this function was added to replace…", no "previously/now" narration outside CHANGELOG entries and migration notes. A doc comment must read correctly to someone who never saw the diff.
 - No decoration: no emoji, no bold-fronted bullet lists ("**Performance:** improved…"). Use sentence-case headings and straight quotes.
 
+## Commit trailers
+
+EVERY commit you create MUST end with exactly these two trailers, in this order (a `git commit --fixup` commit is the one exception: the autosquash discards its message):
+
+    Assisted-by: Claude
+    Signed-off-by: <committer name> <committer email>
+
+- Pass `-s` to `git commit` so git appends the `Signed-off-by` line from the committer identity. It MUST be the very last line of the message.
+- Add an `Assisted-by: Claude` trailer naming yourself as the assistant. Append your exact model id when your runtime context provides it (e.g. `Assisted-by: Claude:claude-opus-5-5`), without a bracketed suffix such as `[1m]`; otherwise emit `Assisted-by: Claude` alone — never guess the id. Pass it as the final `-m` paragraph, NOT via `--trailer` (git places `--trailer` values after the sign-off), so it lands directly above `Signed-off-by`.
+- NEVER add a `Co-authored-by` trailer — not for Claude, not for planwerk-agent, not for anyone.
+
+## Hard rules
+
+- Address ONLY the threads listed above. Do NOT touch unrelated code.
+- Do NOT push. Do NOT force-push. The orchestrator publishes the branch separately.
+- NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).
+- NEVER fabricate file paths or line numbers — open the file before claiming.
+- If there is nothing to commit (every thread was BLOCKED/NEEDS_CONTEXT), do NOT create an empty commit; emit the JSON and stop.
+
 ## What to do
 
 1. For each thread above, read the full comment chain and open the file at the anchored path and line.
 2. Make the minimal change that addresses the reviewer's ask. If two threads share a root cause, fix it once.
-3. Verify locally where you can run the toolchain. Re-read your diff and remove anything not required.
+3. Verify locally where you can run the toolchain. Run every command in the FOREGROUND and wait for it to finish before the next step — never background a test or build run and move on. You need its real exit status in hand to commit and to fill in the report; a backgrounded run's result never reaches this one-shot session. If a command outlives the Bash tool's foreground time limit, background it and poll its output within this same turn until it exits. Re-read your diff and remove anything not required, including scratch files you made to check something.
 4. Stage your change and create ONE focused follow-up commit for this
    thread:
 
@@ -168,23 +187,4 @@ Field rules:
 - Include one "threads" entry for EVERY thread above, in order, even when you could not address it.
 - "status" per thread: DONE when addressed and verified; DONE_WITH_CONCERNS when changed but with a reservation; BLOCKED when you could not make progress; NEEDS_CONTEXT when only a human can supply what is missing — including a reasoned disagreement: leave the code untouched and put the disagreement and its evidence in the summary.
 - "files" lists the repo-relative paths you touched for that thread; omit it when you changed nothing.
-- The top-level "status" is the run's overall terminal status. The orchestrator stops and escalates on BLOCKED or NEEDS_CONTEXT.
-
-## Commit trailers
-
-EVERY commit you create MUST end with exactly these two trailers, in this order:
-
-    Assisted-by: Claude
-    Signed-off-by: <committer name> <committer email>
-
-- Pass `-s` to `git commit` so git appends the `Signed-off-by` line from the committer identity. It MUST be the very last line of the message.
-- Add an `Assisted-by: Claude` trailer naming yourself as the assistant. Append your exact model id when your runtime context provides it (e.g. `Assisted-by: Claude:claude-opus-5-5`), without a bracketed suffix such as `[1m]`; otherwise emit `Assisted-by: Claude` alone — never guess the id. Pass it as the final `-m` paragraph, NOT via `--trailer` (git places `--trailer` values after the sign-off), so it lands directly above `Signed-off-by`.
-- NEVER add a `Co-authored-by` trailer — not for Claude, not for planwerk-agent, not for anyone.
-
-## Hard rules
-
-- Address ONLY the threads listed above. Do NOT touch unrelated code.
-- Do NOT push. Do NOT force-push. The orchestrator publishes the branch separately.
-- NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).
-- NEVER fabricate file paths or line numbers — open the file before claiming.
-- If there is nothing to commit (every thread was BLOCKED/NEEDS_CONTEXT), do NOT create an empty commit; emit the JSON and stop.
+- The top-level "status" is the most severe of the thread statuses: BLOCKED, then NEEDS_CONTEXT, then DONE_WITH_CONCERNS, then DONE. The orchestrator stops and escalates on BLOCKED or NEEDS_CONTEXT, reading the thread statuses too.

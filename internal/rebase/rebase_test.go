@@ -21,6 +21,7 @@ type fakeClaude struct {
 	applyCalls   atomic.Int32
 
 	resolveErr error
+	resolveOut string
 	analyzeErr error
 	applyErr   error
 
@@ -34,6 +35,9 @@ type fakeClaude struct {
 func (f *fakeClaude) ResolveConflict(_ string, ctx ConflictContext) (string, error) {
 	f.resolveCalls.Add(1)
 	f.lastConflict = ctx
+	if f.resolveOut != "" {
+		return f.resolveOut, f.resolveErr
+	}
 	return "resolved", f.resolveErr
 }
 
@@ -160,6 +164,35 @@ func TestRun_MaxIterationsAborts(t *testing.T) {
 	}
 	if cl.analyzeCalls.Load() != 0 {
 		t.Errorf("analysis must not run after an aborted rebase, got %d calls", cl.analyzeCalls.Load())
+	}
+}
+
+// TestRun_UnresolvedConflictAborts: a session that says it could not reconcile
+// a file ends the rebase with that reason instead of being retried on the same
+// commit until the iteration cap.
+func TestRun_UnresolvedConflictAborts(t *testing.T) {
+	gh := &githubtest.Fake{
+		PR:           github.PR{HeadBranch: "feat/x", HeadSHA: "headsha"},
+		MergeBaseSHA: "base000",
+		RebaseStates: []github.RebaseState{conflicted("deadbee", "stubborn commit", "a.go")},
+	}
+	cl := &fakeClaude{resolveOut: "Kept both sides in b.go.\n\n- UNRESOLVED: a.go — upstream deleted the function this commit extends"}
+	r := newRunner(gh, cl)
+
+	opts := hermeticOpts("o/r#7")
+	opts.MaxIterations = 5
+	err := r.Run(io.Discard, opts)
+	if !errors.Is(err, ErrConflictUnresolved) {
+		t.Fatalf("Run err = %v, want ErrConflictUnresolved", err)
+	}
+	if !strings.Contains(err.Error(), "a.go — upstream deleted the function") {
+		t.Errorf("error must carry the session's reason, got: %v", err)
+	}
+	if cl.resolveCalls.Load() != 1 {
+		t.Errorf("ResolveConflict called %d times, want 1 — an unresolved file is not retried", cl.resolveCalls.Load())
+	}
+	if gh.Count("RebaseAbort") != 1 {
+		t.Errorf("RebaseAbort called %d times, want 1", gh.Count("RebaseAbort"))
 	}
 }
 

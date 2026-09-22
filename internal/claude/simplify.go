@@ -233,15 +233,7 @@ func foldSteps(baseBranch string, foldStep int) string {
 
       GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash "$(git merge-base origin/%[2]s HEAD)"
 
-   e. If the rebase stops on a conflict, resolve the file to the content your
-      change intended, `+"`git add`"+` it, and run `+"`git rebase --continue`"+`. If you cannot
-      resolve it, run `+"`git rebase --abort`"+`, leave the fixups unfolded on the
-      branch, and report DONE_WITH_CONCERNS naming them.
-   f. Before the report, `+"`git status`"+` shows no rebase in progress. If you
-      resolved a conflict, run the tests again: the tree changed after you
-      verified it.
-
-   Do NOT push and do NOT open a pull request. Leave the rewritten commits on the
+`+foldConflictSteps('e', "the report")+`   Do NOT push and do NOT open a pull request. Leave the rewritten commits on the
    local branch — the finalize step opens the PR once the simplify and review
    passes are done.
 

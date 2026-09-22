@@ -95,16 +95,16 @@ func BuildRebaseConflictPrompt(ctx rebase.ConflictContext) string {
 
 1. For each conflicted file, open it and read the conflict markers. Use git to inspect both sides and the upstream commit that changed them.
 2. Produce a resolution that keeps the replayed commit's intent AND the upstream change. Reconcile renamed symbols, changed signatures, removed helpers, and reformatted code — do not regress either side.
-3. Verify the resolved files parse / compile where you can run the toolchain locally.
+3. Verify the resolved files parse / compile where you can run the toolchain locally. ` + foregroundRunLine() + `
 4. Verify no conflict markers remain before staging — this command MUST print nothing:
 
-   grep -nE '^(<<<<<<<|=======|>>>>>>>)' -- <each resolved file>
+   grep -nE '^(<<<<<<<|>>>>>>>)( |$)|^=======$' -- <each resolved file>
 
 5. Stage every resolved file:
 
    git add -- <each resolved file>
 
-6. Output a one-paragraph summary of how you reconciled each file.
+6. Output a one-paragraph summary of how you reconciled each file. End with one line per file you could not reconcile, in the form ` + "`UNRESOLVED: <file> — <reason>`" + `, and leave that file unstaged; the orchestrator aborts the rebase and shows the operator your reason. Write no such line when every file is resolved and staged.
 
 ## Hard rules
 
@@ -112,7 +112,7 @@ func BuildRebaseConflictPrompt(ctx rebase.ConflictContext) string {
 - Do NOT run ` + "`git rebase --continue`" + ` — the orchestrator runs it after this session, once the files are staged.
 - Do NOT run ` + "`git rebase --abort`, `git commit`, `git push`" + `, or any force-push. Your job ends at ` + "`git add`" + `.
 - Leave NO conflict markers in any file.
-- NEVER pick one side blindly to make the conflict "go away" — that silently drops a change. If you genuinely cannot reconcile the two sides, STOP and explain rather than guessing.
+- NEVER pick one side blindly to make the conflict "go away" — that silently drops a change. If you cannot reconcile a file, report it on an UNRESOLVED line (step 6) instead of guessing.
 `)
 	sb.WriteString(noSkipHooksLine())
 
@@ -158,7 +158,7 @@ For EACH rebased commit above:
 2. Compare against the upstream commits. Decide whether any upstream change invalidates an assumption in this commit — even with no textual conflict.
 3. Report each concrete adjustment the commit needs. If the commit's assumptions still hold, return an empty adjustments array for it.
 
-Open the actual files; do not guess. Report only adjustments you can ground in the diff.
+Open the actual files; do not guess. Report every adjustment you find with its confidence: use "uncertain" when you cannot quote the upstream line that breaks the commit, rather than leaving the adjustment out.
 
 ` + jsonSchemaOnlyLine() + `
 
@@ -220,7 +220,8 @@ func BuildRebaseApplyPrompt(ctx rebase.ApplyContext) string {
 	fmt.Fprintf(&sb, `## What to do
 
 1. For each adjustment, open the named file and confirm it still applies — the analysis marks each with a confidence and can be wrong or already handled. Apply exactly the described change; if it is a false positive or no longer applies, SKIP it and record why in the report.
-2. Verify locally where you can run the toolchain.
+   Confirm a "likely" or "uncertain" adjustment against the file before you apply it, and SKIP one you cannot confirm.
+2. Verify locally where you can run the toolchain. `+foregroundRunLine()+`
 3. Fold each change into the commit it belongs to (the branch's own commits are the range origin/%[1]s..HEAD):
 
    a. List the branch's commits (oldest first):
@@ -234,11 +235,13 @@ func BuildRebaseApplyPrompt(ctx rebase.ApplyContext) string {
       git add -- <files for this change>
       git commit --fixup=<target-sha>
 
-   c. Once every change is recorded as a fixup, fold them in non-interactively:
+   c. Once every change is recorded as a fixup, fold them in non-interactively
+      (no editor opens), bounded to the merge-base so only this branch's own
+      commits are folded:
 
-      GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash origin/%[1]s
+      GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash "$(git merge-base origin/%[1]s HEAD)"
 
-4. Output a report in this exact shape:
+`+foldConflictSteps('d', "the report")+`4. Output a report in this exact shape:
 
    ### Applied
    - <adjustment> — folded into <sha> <subject>
@@ -291,18 +294,21 @@ func BuildBareRebasePrompt(ctx rebase.BareContext) string {
 
 	fmt.Fprintf(&sb, `## What to do
 
-1. Fetch the base and replay this branch's commits onto it, preserving individual commits:
+1. Fetch the base, record where this branch forked from it (step 3 needs that
+   point, and it no longer exists once the rebase has moved the branch), then
+   replay this branch's commits onto it, preserving individual commits:
 
    git fetch origin %[1]s
+   git merge-base HEAD origin/%[1]s
    git rebase origin/%[1]s
 
 2. On each conflict, resolve it semantically (keep both the replayed commit's intent and the upstream change), `+"`git add`"+` the resolved files, then:
 
    git rebase --continue
 
-   Repeat until the rebase completes. If a conflict cannot be reconciled, STOP and explain — never blind-pick a side.
+   Repeat until the rebase completes. If a conflict cannot be reconciled, run `+"`git rebase --abort`"+`, STOP, and explain which file and why — never blind-pick a side.
 
-3. After a clean rebase, analyze each rebased commit (origin/%[1]s..HEAD) against the upstream range (the commits that entered origin/%[1]s since this branch forked — `+"`git log <merge-base>..origin/%[1]s`"+`). For each rebased commit, report whether an upstream change invalidates an assumption, even with no textual conflict.
+3. After a clean rebase, analyze each rebased commit (origin/%[1]s..HEAD) against the upstream range (the commits that entered origin/%[1]s since this branch forked — `+"`git log <fork point from step 1>..origin/%[1]s`"+`). For each rebased commit, report whether an upstream change invalidates an assumption, even with no textual conflict.
 
 4. Output the analysis as a per-commit report (commit, then the concrete adjustments it needs, or "no adjustments").
 
@@ -358,6 +364,9 @@ func formatApplyAdjustments(a report.RebaseAnalysis) string {
 			fmt.Fprintf(&sb, "- **%s** in `%s` — %s\n  - Action: %s\n", adj.Kind, adj.File, adj.Detail, adj.Action)
 			if adj.UpstreamRef != "" {
 				fmt.Fprintf(&sb, "  - Upstream: %s\n", adj.UpstreamRef)
+			}
+			if adj.Confidence != "" {
+				fmt.Fprintf(&sb, "  - Confidence: %s\n", adj.Confidence)
 			}
 		}
 		sb.WriteString("\n")

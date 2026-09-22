@@ -96,6 +96,13 @@ var ErrMaxIterations = errors.New("reached max iterations without completing the
 // aborted before it is returned.
 var ErrRebaseStopped = errors.New("rebase stopped without a resolvable conflict")
 
+// ErrConflictUnresolved is returned when the conflict session reports a file it
+// could not reconcile (an "UNRESOLVED: <file> — <reason>" line). Retrying the
+// same commit with the same prompt would only push a later session toward the
+// blind side-pick the prompt forbids, so the rebase aborts and the reason
+// reaches the operator.
+var ErrConflictUnresolved = errors.New("conflict resolution could not reconcile a file")
+
 // Run executes the rebase pipeline:
 //  1. Resolve the PR (clone or --local).
 //  2. Fetch the base branch and pin the PR's original merge-base.
@@ -215,7 +222,7 @@ func (r *Runner) runRebaseLoop(w io.Writer, opts Options, pr *github.PR, onto, f
 		_, _ = fmt.Fprintf(w, "Resolving conflict on %s %q (%d file(s))...\n",
 			report.ShortSHA(state.StoppedSHA), state.StoppedSubject, len(state.ConflictedFiles))
 
-		if _, err := r.Claude.ResolveConflict(pr.Dir, ConflictContext{
+		summary, err := r.Claude.ResolveConflict(pr.Dir, ConflictContext{
 			RepoFullName:    fullName,
 			PRNumber:        number,
 			Onto:            onto,
@@ -224,9 +231,18 @@ func (r *Runner) runRebaseLoop(w io.Writer, opts Options, pr *github.PR, onto, f
 			ConflictedFiles: state.ConflictedFiles,
 			Patterns:        pats,
 			MaxPatterns:     opts.MaxPatterns,
-		}); err != nil {
+		})
+		if err != nil {
 			_ = r.GitHub.RebaseAbort(pr.Dir)
 			return fmt.Errorf("resolving conflict on %s: %w", report.ShortSHA(state.StoppedSHA), err)
+		}
+		if s := strings.TrimSpace(summary); s != "" {
+			_, _ = fmt.Fprintf(w, "%s\n", s)
+		}
+		if unresolved := unresolvedLines(summary); len(unresolved) > 0 {
+			_ = r.GitHub.RebaseAbort(pr.Dir)
+			return fmt.Errorf("%w on %s %q: %s", ErrConflictUnresolved,
+				report.ShortSHA(state.StoppedSHA), state.StoppedSubject, strings.Join(unresolved, "; "))
 		}
 
 		state, err = r.GitHub.RebaseContinue(pr.Dir)
@@ -406,4 +422,18 @@ func loadPatterns(opts Options, repoDir string) []patterns.Pattern {
 		slog.Info("loaded review patterns", "count", len(pats))
 	}
 	return pats
+}
+
+// unresolvedLines returns the "UNRESOLVED: …" lines of a conflict session's
+// output, without the prefix, in order. A line may carry Markdown decoration
+// (a bullet, bold markers) in front of the prefix.
+func unresolvedLines(out string) []string {
+	var lines []string
+	for _, l := range strings.Split(out, "\n") {
+		l = strings.TrimLeft(strings.TrimSpace(l), "-*> `")
+		if rest, ok := strings.CutPrefix(l, "UNRESOLVED:"); ok {
+			lines = append(lines, strings.Trim(strings.TrimSpace(rest), "*`"))
+		}
+	}
+	return lines
 }

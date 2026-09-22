@@ -1,6 +1,10 @@
 package address
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/planwerk/planwerk-agent/internal/report"
+)
 
 // Status is the machine-readable terminal status an address session reports in
 // its structured output so the orchestrator can react deterministically. It
@@ -51,4 +55,37 @@ func (s Status) ShouldEscalate() bool {
 // being marked resolved.
 func (s Status) addressed() bool {
 	return s == StatusDone || s == StatusDoneWithConcerns
+}
+
+// severity orders the statuses for overallStatus: a human-facing stop outranks
+// a reservation, which outranks a clean result.
+func (s Status) severity() int {
+	switch s {
+	case StatusBlocked:
+		return 4
+	case StatusNeedsContext:
+		return 3
+	case StatusDoneWithConcerns:
+		return 2
+	case StatusDone:
+		return 1
+	}
+	return 0
+}
+
+// overallStatus is the run status the orchestrator acts on: the most severe of
+// the session's top-level status and every per-thread status. Reading only the
+// top-level field let a session that marked one thread NEEDS_CONTEXT but wrote
+// DONE at the top, or wrote no top-level status at all, pass as a clean run.
+func overallStatus(result *report.AddressResult) Status {
+	if result == nil {
+		return StatusUnknown
+	}
+	overall := parseStatus(result.Status)
+	for _, t := range result.Threads {
+		if st := parseStatus(t.Status); st.severity() > overall.severity() {
+			overall = st
+		}
+	}
+	return overall
 }

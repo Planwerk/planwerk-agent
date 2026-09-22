@@ -33,7 +33,7 @@ For EACH rebased commit above:
 2. Compare against the upstream commits. Decide whether any upstream change invalidates an assumption in this commit — even with no textual conflict.
 3. Report each concrete adjustment the commit needs. If the commit's assumptions still hold, return an empty adjustments array for it.
 
-Open the actual files; do not guess. Report only adjustments you can ground in the diff.
+Open the actual files; do not guess. Report every adjustment you find with its confidence: use "uncertain" when you cannot quote the upstream line that breaks the commit, rather than leaving the adjustment out.
 
 Output ONLY valid JSON matching this exact schema (no markdown fences, no surrounding text):
 

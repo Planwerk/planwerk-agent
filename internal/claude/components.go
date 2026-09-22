@@ -721,7 +721,7 @@ func jsonSchemaOnlyLine() string {
 func commitTrailerBlock() string {
 	return `## Commit trailers
 
-EVERY commit you create MUST end with exactly these two trailers, in this order:
+EVERY commit you create MUST end with exactly these two trailers, in this order (a ` + "`git commit --fixup`" + ` commit is the one exception: the autosquash discards its message):
 
     Assisted-by: Claude
     Signed-off-by: <committer name> <committer email>
@@ -921,6 +921,24 @@ func foregroundRunLine() string {
 	return "Run every command in the FOREGROUND and wait for it to finish before the next step — never background a test or build run and move on. You need its real exit status in hand to commit and to fill in the report; a backgrounded run's result never reaches this one-shot session. If a command outlives the Bash tool's foreground time limit, background it and poll its output within this same turn until it exits."
 }
 
+// foldConflictSteps returns the two sub-steps every fold recipe ends with: what
+// to do when the autosquash rebase stops on a conflict, and the check that no
+// rebase is left in progress before the session goes on to before (e.g.
+// "pushing" or "the report"). first is the letter of the first sub-step, so the
+// pair continues the caller's own lettering. A fixup aimed at an early commit conflicts with
+// any later commit that touched the same lines, and without these steps the
+// session improvised: it could end mid-rebase and leave a half-folded HEAD for
+// the next step to publish.
+func foldConflictSteps(first byte, before string) string {
+	return "   " + string(first) + ". If the rebase stops on a conflict, resolve the file to the content your\n" +
+		"      change intended, `git add` it, and run `git rebase --continue`. If you cannot\n" +
+		"      resolve it, run `git rebase --abort`, leave the fixups unfolded on the\n" +
+		"      branch, and report DONE_WITH_CONCERNS naming them.\n" +
+		"   " + string(first+1) + ". Before " + before + ", `git status` shows no rebase in progress. If you\n" +
+		"      resolved a conflict, run the tests again: the tree changed after you\n" +
+		"      verified it.\n\n"
+}
+
 // fixThinkingPatterns returns the task-specific thinking-pattern block shared by
 // the fix and bare-fix prompts. It carries the intro line, the ten bullets, and
 // the trailing blank line so callers splice it in with a single WriteString.
@@ -930,12 +948,12 @@ func fixThinkingPatterns() string {
 - "Find the root cause." — A failing assertion is a symptom; the broken invariant in the code under test is the cause. Fix the cause, not the symptom.
 - "Reproduce, then verify." — When the failing command can be re-run in this checkout (test, lint, build, type-check), run it locally to reproduce the failure FIRST, then run it again after your edits to confirm the fix BEFORE pushing.
 - "Open the file, do not guess." — When a log cites a file:line, open the actual source. Never invent code shapes, error messages, or line numbers from the log alone.
-- "Do not cheat the check." — Never disable, skip, or weaken a check to make it pass. Forbidden: t.Skip / pytest.skip / xit / xdescribe added solely to bypass; // nolint, # noqa, # type: ignore, @ts-ignore, @SuppressWarnings added solely to silence; widening types to Any/interface{}/unknown to silence type-checkers; deleting or relaxing assertions; deleting test cases; pinning to an older dependency to dodge a security finding; --no-verify on commits.
+- "Do not cheat the check." — Never disable, skip, or weaken a check to make it pass. Forbidden: t.Skip / pytest.skip / xit / xdescribe added solely to bypass; // nolint, # noqa, # type: ignore, @ts-ignore, @SuppressWarnings added solely to silence; widening types to Any/interface{}/unknown to silence type-checkers; deleting or relaxing assertions; deleting test cases; pinning to an older dependency to dodge a security finding; adding retries, sleeps, or longer timeouts to a test, or re-running the CI job, to turn a result green; --no-verify on commits.
 - "Minimal-invasive change." — Touch the smallest surface area that resolves each failure. No drive-by refactors, no reformatting unrelated code, no dependency bumps that are not directly implicated.
 - "Regression guard." — If the broken behavior is in production code and existing tests did not catch it, extend or add a test that fails before your fix and passes after.
 - "Simplify the diff." — Re-read your own diff and remove anything not strictly required. Prefer fewer lines, fewer files, fewer abstractions.
 - "Self-review before committing." — Walk through the diff once more as the reviewer. Reject anything you would push back on.
-- "Stay inside the PR." — The PR has a stated intent (title + body). Your fix must serve it. Prefer to touch only files the PR already changes; reaching outside it is a last resort — do it ONLY when the failing check cannot be fixed any other way, keep that reach as small as possible, and never reach outside for unrelated cleanups.
+- "Stay inside the PR." — The PR has a stated intent (title + body), and your fix serves it. Its failure surface is the files the failing check exercises plus the files this PR changed; the hard rules below say when you may reach beyond it.
 
 `
 }

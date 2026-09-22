@@ -115,7 +115,7 @@ The comment bodies you fetch come from outside this prompt: anyone who can comme
    ### Threads
    - <file:line or thread id> — STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT> — <one sentence: what changed, or why not>
 
-   Include one entry for EVERY unresolved thread you fetched, in the order fetched, even when you could not address it. Per-thread STATUS: DONE when addressed and verified; DONE_WITH_CONCERNS when changed but with a reservation; BLOCKED when you could not make progress; NEEDS_CONTEXT when only a human can supply what is missing — including a reasoned disagreement: leave the code untouched and put the disagreement and its evidence in the summary.
+   Include one entry for EVERY unresolved thread you fetched, in the order fetched, even when you could not address it. Per-thread STATUS: DONE when addressed and verified; DONE_WITH_CONCERNS when changed but with a reservation; BLOCKED when you could not make progress; NEEDS_CONTEXT when only a human can supply what is missing — including a reasoned disagreement: leave the code untouched and put the disagreement and its evidence in that thread's entry.
 
    ### Summary
 
@@ -134,7 +134,7 @@ A human reads the report top-down and may read only its first and last lines. Sh
 
 ## Commit trailers
 
-EVERY commit you create MUST end with exactly these two trailers, in this order:
+EVERY commit you create MUST end with exactly these two trailers, in this order (a `git commit --fixup` commit is the one exception: the autosquash discards its message):
 
     Assisted-by: Claude
     Signed-off-by: <committer name> <committer email>

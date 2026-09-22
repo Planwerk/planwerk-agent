@@ -67,18 +67,21 @@ To load each pattern, fetch its URL — use the WebFetch tool when available, or
 
 ## What to do
 
-1. Fetch the base and replay this branch's commits onto it, preserving individual commits:
+1. Fetch the base, record where this branch forked from it (step 3 needs that
+   point, and it no longer exists once the rebase has moved the branch), then
+   replay this branch's commits onto it, preserving individual commits:
 
    git fetch origin main
+   git merge-base HEAD origin/main
    git rebase origin/main
 
 2. On each conflict, resolve it semantically (keep both the replayed commit's intent and the upstream change), `git add` the resolved files, then:
 
    git rebase --continue
 
-   Repeat until the rebase completes. If a conflict cannot be reconciled, STOP and explain — never blind-pick a side.
+   Repeat until the rebase completes. If a conflict cannot be reconciled, run `git rebase --abort`, STOP, and explain which file and why — never blind-pick a side.
 
-3. After a clean rebase, analyze each rebased commit (origin/main..HEAD) against the upstream range (the commits that entered origin/main since this branch forked — `git log <merge-base>..origin/main`). For each rebased commit, report whether an upstream change invalidates an assumption, even with no textual conflict.
+3. After a clean rebase, analyze each rebased commit (origin/main..HEAD) against the upstream range (the commits that entered origin/main since this branch forked — `git log <fork point from step 1>..origin/main`). For each rebased commit, report whether an upstream change invalidates an assumption, even with no textual conflict.
 
 4. Output the analysis as a per-commit report (commit, then the concrete adjustments it needs, or "no adjustments").
 
