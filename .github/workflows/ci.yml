@@ -42,6 +42,22 @@ jobs:
           go-version-file: go.mod
       - run: go build ./cmd/planwerk-agent/
 
+  # Proves the contributor default end to end: a runner that installs no Go
+  # builds the toolbox image and compiles the binary inside it. CI=true
+  # resolves TOOLBOX to 0 for every other use of make, so this job opts back
+  # in on the command line.
+  toolbox-smoke:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: make build TOOLBOX=1
+      - name: Assert the binary landed in the checkout, owned by the runner user
+        run: |
+          test -x planwerk-agent
+          test "$(stat -c '%u' planwerk-agent)" = "$(id -u)"
+          ./planwerk-agent --version
+
   fuzz:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest

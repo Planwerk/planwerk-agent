@@ -143,6 +143,10 @@ planwerk-agent/
 │           ├── draft/SKILL.md
 │           ├── elaborate/SKILL.md
 │           └── meta/SKILL.md
+├── tools/
+│   └── toolbox/
+│       ├── Dockerfile          # Toolbox image every make target runs in (Go, golangci-lint, claude)
+│       └── run.sh              # Starts the toolbox container around the checkout
 ├── Makefile
 ├── go.mod
 ├── go.sum

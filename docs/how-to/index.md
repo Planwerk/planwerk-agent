@@ -25,6 +25,7 @@ solves one specific problem.
 - [Use local mode](/how-to/use-local-mode)
 - [Wire it up as a GitHub Action](/how-to/use-the-github-action)
 - [Install shell completions & man pages](/how-to/install-completions-and-man-pages)
+- [Build from source](/how-to/build-from-source)
 - [Write your own review patterns](/how-to/write-review-patterns)
 - [Configure the project](/how-to/configure-the-project)
 - [Run the output-quality eval](/how-to/run-the-quality-eval)

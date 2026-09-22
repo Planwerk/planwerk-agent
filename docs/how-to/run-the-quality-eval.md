@@ -9,6 +9,11 @@ and scores the findings for precision, recall, and severity accuracy.
 > authenticated Claude Code install and network access. It is deliberately kept
 > out of `make test` and CI — it never runs in unit CI. Only the loader and the
 > scorer are unit-tested (no model calls).
+>
+> `make` runs the eval inside the toolbox container, whose `claude` cannot see
+> your host login: export `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`
+> first, or run it natively with `TOOLBOX=0`. See
+> [Build from source](/how-to/build-from-source#run-the-eval-in-the-toolbox).
 
 ```bash
 # Score every case in the corpus (human-readable table)
