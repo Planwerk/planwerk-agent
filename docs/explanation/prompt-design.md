@@ -188,6 +188,49 @@ against, it carries a `Use when …` trigger the model can route on, and it does
 not sequence steps. The last is a narrow heuristic against the one tell we
 shipped; the rule is broader than the regex, and this page is where it lives.
 
+## Writing for the model the prompt runs on
+
+A prompt is written for a reader, and the reader here is a specific model. The
+orchestrator passes Claude Code aliases, so the prompts run on the current
+Claude family: the finders, implement, and the repair sessions on Opus, the
+planning session on Fable, the structuring tier on Sonnet. These models follow
+instructions closely and literally, and four habits follow from that.
+
+**State each constraint once, plainly, with its reason.** Capitalized emphasis
+was a fix for models that under-weighted an instruction. On a literal reader a
+stack of `MUST`, `NEVER`, and `MANDATORY` makes it rigid in gray areas instead
+of careful, and when every rule is emphatic the emphasis carries no signal.
+Emphasis stays where one rule has been shown to lose to another (the one-shot
+foreground rule, the single-pull-request contract); everywhere else the reason
+next to the rule does the work.
+
+**A finder reports; the pipeline filters.** Told "never on unchanged
+surrounding context", "state what WILL happen", or "report only CRITICAL
+issues", a current model finds the bug and then does not report it. The
+pipeline already filters downstream: the Unverified section, `--min-severity`,
+the snippet and claim gates. So a finder prompt names concrete classes of false
+positive to skip, and never a bar of conviction; a finding the model is unsure
+of is reported with its uncertainty in the Confidence label.
+
+**Describe the goal for judgment work; script only what is fragile.** A
+step-by-step workflow for a judgment task (planning, reviewing) restates the
+output format around it and makes the model follow the script instead of its
+own plan, which on Fable measurably lowers the quality of the result. Exact
+scripts stay where exactly one sequence is safe: git history rewrites, pushes,
+the output contracts Go parses.
+
+**Tell an unattended session that it is unattended, and what its last message
+must hold.** A session that does not know nobody reads it mid-run asks a
+question and stops, and whatever it ended on is what the orchestrator parses.
+Every autonomous prompt says so, and every result the orchestrator acts on is
+checked for its contract (a plan heading and a verdict, a report heading and a
+STATUS line) before it is posted or acted on.
+
+These habits are relative to a model. Each new model release is the prompt to
+re-read the builders against the vendor's migration guidance, with the
+prompt-auditor agent (`.claude/agents/prompt-auditor.md`), before assuming what
+worked on the last model still does.
+
 ## The named failure modes
 
 The audit that pays this doctrine back across the builders looks for five
