@@ -94,6 +94,7 @@ export default defineConfig({
               text: 'Install completions & man pages',
               link: '/how-to/install-completions-and-man-pages',
             },
+            { text: 'Build from source', link: '/how-to/build-from-source' },
             {
               text: 'Write review patterns',
               link: '/how-to/write-review-patterns',
