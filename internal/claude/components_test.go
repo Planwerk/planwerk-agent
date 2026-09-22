@@ -255,7 +255,7 @@ func TestFixScopeLinesNamesTheCommit(t *testing.T) {
 // are mutually exclusive, so a re-review cannot silently widen back to the branch.
 func TestAdversarialPromptScopeSwitchesOnSinceRef(t *testing.T) {
 	branchWide := buildAdversarialPrompt("main", "", nil, 0)
-	if !strings.Contains(branchWide, "git diff origin/main --name-only") {
+	if !strings.Contains(branchWide, "git diff origin/main...HEAD --name-only") {
 		t.Error("without a sinceRef the finder must review the whole branch diff")
 	}
 
@@ -263,7 +263,7 @@ func TestAdversarialPromptScopeSwitchesOnSinceRef(t *testing.T) {
 	if !strings.Contains(fixesOnly, "git diff abc1234 --name-only") {
 		t.Error("with a sinceRef the finder must review only what changed since it")
 	}
-	if strings.Contains(fixesOnly, "git diff origin/main --name-only") {
+	if strings.Contains(fixesOnly, "git diff origin/main...HEAD --name-only") {
 		t.Error("the re-review still carries the branch-wide scope line")
 	}
 }

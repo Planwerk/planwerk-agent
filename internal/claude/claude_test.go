@@ -51,7 +51,7 @@ func TestStripMarkdownFences(t *testing.T) {
 func TestBuildReviewPrompt_ScopeCoversAllCommits(t *testing.T) {
 	prompt := buildReviewPrompt(ReviewContext{BaseBranch: "develop"})
 	checks := []string{
-		"Review Scope (MANDATORY)",
+		"## Review Scope\n",
 		"every commit between origin/develop and HEAD",
 		"git diff origin/develop...HEAD",
 		"git log origin/develop..HEAD --oneline",

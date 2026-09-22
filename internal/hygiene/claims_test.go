@@ -178,3 +178,22 @@ func TestVerifyClaims_PartialVerdictsLeaveNoVerdict(t *testing.T) {
 		t.Errorf("uncovered finding = %q, want no-verdict", result.Findings[1].ClaimCheck)
 	}
 }
+
+// TestVerifyClaims_UnverifiableIsNotAConfirmation: a claim the verifier could
+// not check passes unchanged but stays stamped no-verdict, so the gate's record
+// separates "checked and true" from "not checked".
+func TestVerifyClaims_UnverifiableIsNotAConfirmation(t *testing.T) {
+	verify := func(_ string, _ []report.Finding) ([]ClaimVerdict, error) {
+		return []ClaimVerdict{{Index: 0, Verdict: "unverifiable", Reason: "depends on the deployed config"}}, nil
+	}
+
+	result := blockingAndWarning()
+	VerifyClaims(result, t.TempDir(), verify)
+
+	if want := (report.ClaimGateStats{Sent: 1, Verdicts: 1, Refuted: 0}); claimStats(t, result) != want {
+		t.Errorf("stats = %+v, want %+v", claimStats(t, result), want)
+	}
+	if got := result.Findings[0]; got.ClaimCheck != report.ClaimCheckNoVerdict || got.Confidence == report.ConfidenceUncertain {
+		t.Errorf("unverifiable finding: check=%q confidence=%q, want no-verdict and unchanged confidence", got.ClaimCheck, got.Confidence)
+	}
+}

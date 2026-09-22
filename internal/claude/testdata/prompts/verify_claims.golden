@@ -6,14 +6,12 @@ Write your entire output in English, whatever language the input is written in �
 
 ## Task
 
-For each finding below:
-1. Open the file it cites in the checkout and read the surrounding code.
-2. Decide whether the finding's claimed problem is actually true in the code as it stands.
-3. Return a verdict:
-   - "confirmed": the claimed problem is real in the code.
-   - "refuted": the claimed problem does NOT hold — the code already handles it, the quoted line does not mean what the finding says, or the cited symbol/behavior is not there.
+For each finding below, test its claim, not its wording: open the code it cites and follow callers and callees as far as the claim depends on them. Then return exactly one verdict:
+   - "confirmed": you found the code that makes the claimed problem real; the evidence quotes that file:line.
+   - "refuted": you found code that makes the claim false (a guard, a caller that already validates, a type that rules the case out), or a symbol or behavior the claim depends on does not exist. The evidence quotes the disproving file:line or, for something absent, names the search you ran and its empty result (e.g. `grep -rn 'func parseToken' .` found nothing).
+   - "unverifiable": the checkout cannot settle it, because the claim depends on runtime configuration, an external service, or code that is not here; the reason names what is missing.
 
-Refute ONLY when you can point to concrete counter-evidence: quote the file:line that disproves the claim. When you cannot find such evidence, confirm — the default is to trust the finding. Never refute on a hunch.
+Only a refutation demotes a finding, so refute only on evidence you can quote or a search you can name. Never refute on a hunch, and never confirm a claim you did not check: say unverifiable instead.
 
 This is a read-only check: do NOT edit any file.
 
@@ -23,9 +21,9 @@ Output ONLY valid JSON matching this exact schema (no markdown fences, no surrou
   "verdicts": [
     {
       "index": 0,
-      "verdict": "confirmed|refuted",
+      "verdict": "confirmed|refuted|unverifiable",
       "evidence": "path/to/file.go:42 — the exact line you grounded the verdict in",
-      "reason": "One sentence. REQUIRED for a refuted verdict; may be empty for confirmed."
+      "reason": "One sentence. REQUIRED for refuted and unverifiable; may be empty for confirmed."
     }
   ]
 }

@@ -56,6 +56,7 @@ Focus ONLY on:
 3. Race conditions and concurrency issues (TOCTOU, double-submit, concurrent mutations)
 4. Data integrity risks (partial writes, lost updates, silent data corruption)
 5. Denial of service vectors (unbounded allocations, CPU-intensive regexes, amplification attacks)
+6. Wrong results on valid input (inverted or off-by-one conditions, the wrong variable or field, an unhandled branch or enum value, a nil, empty, or boundary case the code mishandles)
 
 DO NOT comment on:
 - Code style, naming, or formatting
@@ -64,16 +65,16 @@ DO NOT comment on:
 - Anything that is merely "not ideal" but has no realistic failure mode
 
 For every finding, describe the SPECIFIC attack vector or failure scenario.
-Use severity CRITICAL for exploitable vulnerabilities, WARNING for failure modes, INFO for hardening suggestions.
-A finding whose confidence is "uncertain" MUST NOT be CRITICAL: a theoretical exploit you cannot ground in a quoted line caps at WARNING.
+Rate each finding by its impact on the severity ladder below; hardening with no concrete failure path is INFO.
+A finding whose confidence is "uncertain" is never BLOCKING or CRITICAL: a theoretical exploit you cannot ground in a quoted line caps at WARNING.
 
 For every finding you report:
-- Quote the exact 3-5 lines of vulnerable/problematic code from the diff. If you cannot quote the triggering line(s), set confidence to "uncertain" — NEVER invent, paraphrase, or reconstruct a snippet (QUOTE-OR-DEMOTE).
+- Quote the exact 3-5 lines of vulnerable/problematic code from the diff (the Confidence label below says what to do when you cannot).
 - Provide a concrete proof-of-concept or exploit scenario (for security findings) or failure scenario (for reliability findings)
 - Provide the exact fix code for issues that can be auto-fixed
 - If multiple findings are related (e.g., an injection vector and a missing input validation), note the connection by referencing the other finding's title
 
 An empty findings array is the correct answer when the diff yields no concrete attack vector or failure scenario — do NOT manufacture a speculative finding to appear productive.
 
-` + finderPatternCatalog("## Project review patterns\n\nApply these project review patterns where they intersect the focus areas above — a pass inspecting a fresh diff should know the same patterns a later review of that diff would apply. They do NOT widen your scope: the Focus ONLY and DO NOT comment on rules above still bound what you report.", pats, maxPatterns) + planwerkIgnoreLine() + communicationStyleBlock() + outputLanguageBlock() + findingLabelsBlock()
+` + finderPatternCatalog("## Project review patterns\n\nApply these project review patterns where they intersect the focus areas above — a pass inspecting a fresh diff should know the same patterns a later review of that diff would apply. They do NOT widen your scope: the Focus ONLY and DO NOT comment on rules above still bound what you report.", pats, maxPatterns) + planwerkIgnoreLine() + communicationStyleBlock() + outputLanguageBlock() + severityLadderBlock(scopeDiff) + findingLabelsBlock()
 }

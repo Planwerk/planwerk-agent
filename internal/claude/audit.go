@@ -60,8 +60,8 @@ func buildAuditPrompt(ctx audit.AuditContext) string {
 
 1. First, walk the repository structure to understand the project (language, layout, entry points, tests, docs).
 2. For EACH review pattern above, scan the codebase for violations.
-3. Beyond the patterns, also report any CRITICAL or BLOCKING issues you encounter (security holes, data-loss risks, missing error handling on hot paths) even if no pattern covers them.
-4. Cite concrete file paths and line numbers for every finding, following the citation rule under "Verification of Claims" below; a finding that cannot satisfy that rule must not be reported.
+3. Beyond the patterns, report every defect you find that could cause incorrect behavior, data loss, a security exposure, or a test failure, at the severity the ladder below assigns, even if no pattern covers it.
+4. Cite a concrete file path and line for every finding, following the citation rule under "Verification of Claims" below. When you cannot pin a finding to a line, report it with Confidence uncertain and the "UNVERIFIED:" prefix; never invent a location.
 5. Group duplicate violations: if the same pattern is violated in many places, pick the 3-5 most representative instances and list the remaining files in the "action" field rather than creating dozens of near-identical findings.
 
 `)
