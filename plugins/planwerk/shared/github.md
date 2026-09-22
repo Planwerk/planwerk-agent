@@ -22,6 +22,37 @@ An issue reference is either a URL
 (`https://github.com/owner/repo/issues/123`), a short form (`owner/repo#123`),
 or a bare `#123` / `123` when a checkout supplies the repo.
 
+## The checkout
+
+A skill that judges an issue against the repository reads the default branch as
+it stands on `origin`. Check that before you read a single file:
+
+```bash
+git fetch origin
+git status -sb
+git rev-parse --abbrev-ref origin/HEAD
+```
+
+The last command prints `origin/<default>`. When `origin/HEAD` is not set it
+fails; read the default branch with
+`gh repo view --json defaultBranchRef --jq .defaultBranchRef.name` instead.
+Proceed only when all three hold:
+
+- **On the default branch** — the first line of `git status -sb` reads
+  `## <default>...origin/<default>`.
+- **Clean** — no staged, modified, or deleted tracked file. An untracked file
+  (`??`) shadows nothing on the default branch and does not fail this.
+- **Not behind** — that first line does not say `behind`.
+
+Otherwise, name the condition that fails and offer to fix it:
+
+```bash
+git switch <default> && git merge --ff-only origin/<default>
+```
+
+Run it only on an explicit yes. A dirty tree is the author's to settle: never
+stash, reset, or discard their changes to get past this check.
+
 ## Reading
 
 ```bash

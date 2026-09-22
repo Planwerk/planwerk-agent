@@ -22,6 +22,7 @@ Read these before you start, in full:
 - `${CLAUDE_SKILL_DIR}/../../shared/house-style.md` — prose rules and the language pin
 - `${CLAUDE_SKILL_DIR}/../../shared/github.md` — the `gh` commands
 - `${CLAUDE_SKILL_DIR}/../../shared/cross-repo.md` — when work here needs an issue elsewhere
+- `${CLAUDE_SKILL_DIR}/../../shared/github-relations.md` — the blocked-by call, when a counterpart is filed
 
 **Hard gate: do not produce an issue in your first reply.** Start at Phase 1,
 even when the idea sounds complete. An idea that sounds complete is the most
@@ -122,7 +123,8 @@ decision rather than pretending it was settled.
 - No file path, symbol, acceptance criterion, or implementation step appears
   anywhere in the body.
 - The body is English, whatever language the conversation used.
-- The footer is the last line and names your model id.
+- The footer is the last line and names your model id when the runtime states
+  one, else `with Claude`.
 - Every counterpart you are filing is named in the map and met its condition, and
   its body cites the originating issue as `owner/repo#N`, never a bare `#N`.
 

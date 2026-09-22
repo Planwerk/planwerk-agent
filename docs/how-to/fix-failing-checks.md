@@ -92,7 +92,9 @@ You choose, and the first is recommended:
 - **One follow-up commit on top**, pushed without rewriting history. Right when
   the PR's commits are already under review and a rewritten SHA would strand a
   reviewer's comment.
-- **Leave it in the working tree.** Nothing is committed, nothing is pushed.
+- **Leave it in the working tree.** Nothing is committed, nothing is pushed, so
+  the verdict is at most `DONE_WITH_CONCERNS`: the checks stay red until you
+  push.
 
 The rebase is bounded by `git merge-base`, never by `origin/<base>` itself, so a
 base branch that moved since you branched is not silently rebased onto. Only the

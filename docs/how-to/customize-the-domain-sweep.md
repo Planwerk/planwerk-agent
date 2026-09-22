@@ -1,8 +1,8 @@
 # Customize the domain sweep
 
-Replace the list of domains `elaborate` and `implement`'s planning session walk
-before they settle a change set, so the sweep asks about what actually breaks in
-your system.
+Replace the list of domains `elaborate` (the command and the
+`/planwerk:elaborate` skill) and `implement`'s planning session walk before they
+settle a change set, so the sweep asks about what actually breaks in your system.
 
 ## What the sweep is
 
@@ -12,9 +12,10 @@ never learns about — nothing in the diff points at any of them. Those failures
 have to be caught while the change is still being designed, which is what the
 sweep does.
 
-Both planning-side prompts carry the list. The elaboration folds a touched
-domain into an Acceptance Criterion or an Affected Areas entry, and its reviewer
-scores whether it did. The planning session reports the result in a
+Both planning-side prompts carry the list, and the elaborate skill reads the same
+one (`.planwerk/domains.md` when the repository has it, otherwise the default the
+plugin ships). The elaboration folds a touched domain into an Acceptance
+Criterion or an Affected Areas entry, and its reviewer scores whether it did. The planning session reports the result in a
 `### Domain Sweep` section of the plan:
 
 ```text

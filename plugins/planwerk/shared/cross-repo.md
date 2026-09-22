@@ -38,8 +38,8 @@ and narrows it.
 Read it from the checkout when there is one. Otherwise:
 
 ```bash
-gh api repos/<owner>/<repo>/contents/.planwerk/related-repos.md \
-  --jq .content | base64 -d
+gh api -H "Accept: application/vnd.github.raw" \
+  repos/<owner>/<repo>/contents/.planwerk/related-repos.md
 ```
 
 A repository with no map has no counterparts. That is the normal case, not an

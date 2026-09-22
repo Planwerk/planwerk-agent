@@ -57,10 +57,12 @@ skill's to verify. One the repository cannot settle, that also appears under
 `### Risks & Open Questions`, is a decision the planner could not make — those
 reach you first.
 
-The planner's own `OPEN QUESTION` marker is treated as a guess, not a verdict. An
-entry carrying it that the repository answers is answered, and a risk carrying no
-marker may still hide a decision. `clarify` never files a question as a Decision
-without first opening the files that would have answered it.
+The plan's lead verdict line and its `Next:` line say what the planner found
+blocking; `### Risks & Open Questions` is a plain bulleted list. Both are read as
+guesses, not verdicts: an entry the repository answers is answered, and a risk the
+planner did not call blocking may still hide a decision. `clarify` never files a
+question as a Decision without first opening the files that would have answered
+it.
 
 ## What a decision looks like when it reaches you
 

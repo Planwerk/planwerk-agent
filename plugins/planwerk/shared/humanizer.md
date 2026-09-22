@@ -5,7 +5,7 @@ gives the repair for each. It is the full ruleset behind the compact "Signs of
 AI writing" section in `house-style.md`: every artifact-writing skill honors
 that compact section, and `/planwerk:humanize` applies this full catalog when it
 rewrites an existing document. The unattended sessions carry the same compact
-rules in their prompts; a Go test keeps the three surfaces from drifting.
+rules in their prompts.
 
 Adapted from [blader/humanizer](https://github.com/blader/humanizer) v2.9.1
 (MIT), itself based on Wikipedia's "Signs of AI writing" guide, maintained by
@@ -105,9 +105,10 @@ system preserves the results."
 Avoid em dashes and en dashes in artifact prose; replace each, in order of
 preference, with a period, a comma, a colon, or parentheses, or restructure the
 sentence. Also catch spaced hyphens and double hyphens used the same way.
-Before finishing a rewrite, scan for `—` and `–`; a hit means the draft is not
-done. Exceptions: a report format's mandated lead-line em dash, and a target
-repo style guide that endorses them.
+Before finishing a rewrite, scan the sentences you rewrote for `—` and `–`; a
+hit there means the draft is not done. A sentence you left alone keeps its
+dash (see "What not to flag"). Exceptions: a report format's mandated lead-line
+em dash, and a target repo style guide that endorses them.
 
 **Boldface and decoration.** No mechanical bolding of key phrases, no emoji on
 headings or bullets, no bold-fronted bullet lists ("**Performance:** improved
@@ -170,5 +171,5 @@ them.
    "Does the draft state any fact, name, number, date, or citation that is not
    in the source?" A fabrication is a defect even when it sounds more human
    than the vague original.
-4. Revise into the final text and scan it once more for em and en dashes and
-   the banned vocabulary.
+4. Revise into the final text, and scan the sentences you rewrote once more
+   for em and en dashes and the banned vocabulary.

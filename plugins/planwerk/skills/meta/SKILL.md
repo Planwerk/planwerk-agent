@@ -2,7 +2,7 @@
 name: meta
 description: Decomposes a Meta Issue into the fewest self-contained Sub Issues, filed with native GitHub sub-issue links and blocked-by dependencies. Use when an issue frames a larger body of work as several work packages and the user wants it decomposed.
 argument-hint: "<meta-issue-ref>"
-allowed-tools: AskUserQuestion Read Write Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue view:*) Bash(gh issue create:*) Bash(gh issue edit:*) Bash(gh api:*) Bash(wc:*)
+allowed-tools: AskUserQuestion Read Write Edit Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue view:*) Bash(gh issue create:*) Bash(gh issue edit:*) Bash(gh api:*) Bash(wc:*) Bash(diff:*)
 ---
 
 # Split a Meta Issue
@@ -21,7 +21,7 @@ Read these before you start, in full:
 - `${CLAUDE_SKILL_DIR}/../../shared/issue-format-survey.md` — the survey Meta Issue and the phases `meta` splits
 - `${CLAUDE_SKILL_DIR}/../../shared/house-style.md` — prose rules and the language pin
 - `${CLAUDE_SKILL_DIR}/../../shared/github.md` — the `gh` commands
-- `${CLAUDE_SKILL_DIR}/../../shared/github-relations.md` — sub-issue and blocked-by wiring
+- `${CLAUDE_SKILL_DIR}/../../shared/github-relations.md` — the neighborhood query, and sub-issue and blocked-by wiring
 - `${CLAUDE_SKILL_DIR}/../../shared/cross-repo.md` — when a package belongs in another repository
 
 **Make the breakdown yourself.** Do not ask the author what to split or how.
@@ -37,6 +37,14 @@ Write that enumeration down; Phase 3 checks your split against it.
 
 If the issue names no work packages at all, it may not be a Meta Issue. Say what
 you see and ask before proceeding.
+
+Then run the neighborhood query from `github-relations.md`. A Meta Issue split
+once already has children, and its top-level `subIssues` lists them. Match each
+existing child to the work package it covers, by its title and, where the title
+is not enough, its body. A package an existing child covers is covered: it
+counts toward coverage in Phase 3, and it never gets a second Sub Issue. When
+every package is covered, say so, name the children, and stop — there is
+nothing left to split.
 
 Read the repository's `.planwerk/related-repos.md`, if it has one. A Meta Issue
 that spans a service and its client is the common case for a counterpart, and
@@ -54,7 +62,8 @@ For each Sub Issue, decide:
   delivers and what depends on it.
 - **A Scope**: exactly one of Small, Medium, Large.
 - **A `blockedBy` list**: the keys of the siblings this package genuinely cannot
-  start without, or empty when it is unblocked.
+  start without — an existing child by its number — or empty when it is
+  unblocked.
 - **A `repo`**, only when the package belongs in another repository: the Meta
   Issue's own repository is the default and needs no entry. Place a package
   elsewhere only when the Meta Issue says so, or when the map names that
@@ -63,10 +72,10 @@ For each Sub Issue, decide:
 Two rules govern how many Sub Issues you carve, and they do not conflict:
 
 - **Coverage is hard.** When the Meta Issue enumerates work packages, every
-  listed package maps to exactly one Sub Issue and every Sub Issue maps back to
-  a listed package. Never drop a listed package to keep the split small, never
-  merge two listed packages into one, never invent a package the issue does not
-  describe.
+  listed package maps to exactly one Sub Issue — an existing child, or one you
+  carve — and every Sub Issue maps back to a listed package. Never drop a
+  listed package to keep the split small, never merge two listed packages into
+  one, never invent a package the issue does not describe.
 - **Fewest packages, otherwise.** For work the Meta Issue does *not* already
   enumerate, group it into the fewest sensible packages rather than many tiny
   ones. Never let the breakdown sprawl.
@@ -90,16 +99,17 @@ Run these checks against the split you just carved. Each is a pass/fail you can
 state.
 
 1. **Coverage, both directions.** List every enumerated work package from Phase 1
-   next to the Sub Issue key that owns it. Every package has exactly one key;
-   every key has exactly one package. Report any package with zero or two keys.
+   next to the Sub Issue key that owns it, or the existing child that already
+   covers it. Every package has exactly one owner; every key has exactly one
+   package. Report any package with zero or two owners.
    When a package enumerates individual items — the findings under a survey
    Meta Issue's phase — the Sub Issue that owns it covers all of them. Count
    them and state the count. A description that narrows to the largest item
    drops the rest, and nothing downstream will notice.
 2. **No cycles.** Walk the `blockedBy` graph. A cycle means at least one edge is
    wrong; find it and cut it. Do not present a cyclic split.
-3. **Every blocker exists.** Every key in a `blockedBy` list is a key you
-   declared, and no Sub Issue blocks itself.
+3. **Every blocker exists.** Every entry in a `blockedBy` list is a key you
+   declared or an existing child's number, and no Sub Issue blocks itself.
 4. **Vertical slices.** For each Sub Issue, name what it delivers on its own. A
    Sub Issue whose answer is "nothing until its sibling lands" is a horizontal
    layer — re-cut it.
@@ -122,11 +132,17 @@ reaches Phase 4.
 
 Show the author:
 
-- A table: key, title, scope, the repository when it is not the Meta Issue's, and
-  the keys it is blocked by.
+- The existing children Phase 1 found, first, each with the work package it
+  covers.
+- A table of the Sub Issues you propose: key, title, scope, the repository when
+  it is not the Meta Issue's, and the keys it is blocked by.
 - The dependency graph, as a small ASCII diagram, plus one sentence on why the
   order is what it is.
 - The full body of each Sub Issue.
+- The Meta body's lines Phase 6 will change: each work-package line quoted as it
+  stands, with the key whose issue number it will carry. A proposed Sub Issue
+  whose package has no such line is named here, because it means Phase 6 leaves
+  the body untouched.
 - The result of each Phase 3 check.
 
 Then ask, with `AskUserQuestion`, whether to file the split as proposed, adjust
@@ -160,18 +176,41 @@ referencing an issue that is not there.
 
 ## Phase 6 — Sync the Meta Issue body
 
-Edit the Meta Issue body so its prose and its sub-issue list agree:
+Insert the references Phase 4 showed, so the Meta body's prose and its
+sub-issue list agree, and change nothing else. The body is often hand-written,
+so it is edited as a file, never retyped from memory:
 
-- Reproduce the body verbatim. Change nothing except inserting one `#<number>`
-  reference on the existing line that describes each work package. A Sub Issue in
-  another repository is inserted as `owner/repo#<number>`; a bare `#<number>`
-  there would point at whatever issue carries it in the Meta Issue's repository.
-- One reference per work-package line, only on lines that already describe a
-  package. Do not add, remove, reorder, or reword any line.
-- Write the edited body back **only when every Sub Issue you created resolved to
-  a line**. A partial substitution is worse than none: leave the body untouched,
-  say so, and let the author place the references.
-- If the body carries no work-package list, leave it unchanged.
+1. Fetch the body into two files in the system temp directory, an original to
+   compare against and a copy to edit:
+
+   ```bash
+   gh issue view <meta-number> --repo <owner/repo> --json body --jq .body > meta-body.orig.md
+   gh issue view <meta-number> --repo <owner/repo> --json body --jq .body > meta-body.md
+   ```
+
+2. With `Edit`, insert one `#<number>` reference on each line Phase 4 showed,
+   in `meta-body.md` only. A Sub Issue in another repository is inserted as
+   `owner/repo#<number>`; a bare `#<number>` there would point at whatever
+   issue carries it in the Meta Issue's repository. Never add, remove, reorder,
+   or reword a line.
+3. Compare: `diff meta-body.orig.md meta-body.md`. Every changed line must
+   differ from its original only by the reference inserted on it, and the
+   changed lines must number exactly the Sub Issues you created. Fix anything
+   else before you go on.
+4. Write it back, **only when every Sub Issue you created resolved to a
+   line**:
+
+   ```bash
+   gh issue edit <meta-number> --repo <owner/repo> --body-file meta-body.md
+   ```
+
+   A partial substitution is worse than none: leave the body untouched, say
+   so, and let the author place the references.
+
+If the body carries no work-package list, leave it unchanged. A work-package
+line that sits in a continuation comment (`github.md`, Reading) is edited the
+same way in that comment's text and written back with the `PATCH` call in
+`github.md`.
 
 ## Phase 7 — Report
 

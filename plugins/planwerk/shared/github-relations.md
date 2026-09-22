@@ -19,17 +19,23 @@ query($owner: String!, $name: String!, $number: Int!) {
     issue(number: $number) {
       number
       parent {
-        number title body url state
+        number title body url state repository { nameWithOwner }
         subIssues(first: 100) {
           nodes {
-            number title body url state
+            number title body url state repository { nameWithOwner }
             closedByPullRequestsReferences(first: 10, includeClosedPrs: true) {
-              nodes { number title url state isDraft mergedAt }
+              nodes {
+                number title url state isDraft mergedAt
+                repository { nameWithOwner }
+              }
             }
           }
         }
       }
-      subIssues(first: 100) { totalCount nodes { number title url state } }
+      subIssues(first: 100) {
+        totalCount
+        nodes { number title url state repository { nameWithOwner } }
+      }
     }
   }
 }'
@@ -48,9 +54,6 @@ query($owner: String!, $name: String!, $number: Int!) {
   its footer, with `<!-- planwerk-agent:continued 1/N -->` is a document that
   continues in its comments: read it whole per `github.md`, Reading, before
   you take its framing, its decisions, or its scope from it.
-
-`planwerk-agent`'s own `GetIssueRelations` (`internal/github/relations.go`)
-issues this same query, so the skills and the commands see one neighborhood.
 
 ## Sub-issues and dependencies
 
@@ -123,5 +126,5 @@ queried. The REST dependency endpoints report each entry's `repository.full_name
 and the GraphQL query selects `repository { nameWithOwner }` per node. Use those
 rather than assuming the queried repository.
 
-Use `gh api` for this, not the `--blocked-by` flag on `gh issue create`: the flag
-needs gh 2.94 or newer, while the API calls work on any version.
+Use `gh api` for this, not the `--blocked-by` flag on `gh issue create`: only
+recent `gh` releases have the flag, while the API calls work with any `gh`.
