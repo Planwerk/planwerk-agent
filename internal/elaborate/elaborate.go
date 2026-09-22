@@ -204,6 +204,11 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	if err != nil {
 		return fmt.Errorf("claude elaborate: %w", err)
 	}
+	// A session that ended on a question or a closing remark structures into
+	// an empty shell; written back, it would replace the issue's own text.
+	if strings.TrimSpace(result.Description) == "" || len(result.AcceptanceCriteria) == 0 {
+		return fmt.Errorf("the elaboration came back without a Description or without Acceptance Criteria; nothing was written to issue #%d (rerun, or use --no-cache if a cached result is involved)", number)
+	}
 	if result.Title == "" {
 		result.Title = issue.Title
 	}

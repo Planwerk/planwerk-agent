@@ -17,7 +17,7 @@ Field rules:
 - "title": If the elaboration does not change the title, copy this exact source title: "Add snapshot tests for prompt builders".
 - "description" and "motivation": Preserve the Markdown structure (bold subheadings, bullet lists, numbered items, inline code) so the issue body renders the same way the example does.
 - "user_stories": Populate ONLY if the elaboration emitted a User Stories section; each entry needs role/want/so_that and at least one criterion. Emit [] when the elaboration has none (purely mechanical or infrastructure work) — never synthesize a story the elaboration did not write.
-- "affected_areas", "acceptance_criteria", "non_goals", "references": Plain strings, one per array entry. No leading bullets — the renderer adds them.
+- "affected_areas", "acceptance_criteria", "non_goals", "references": Plain strings, one per array entry, with no leading bullet or checkbox marker ("- ", "- [ ] ") — the renderer adds them.
 - Do NOT invent fields beyond the schema.
 
 <elaboration-output>

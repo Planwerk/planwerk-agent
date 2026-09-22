@@ -23,7 +23,7 @@ type fakeClaude struct {
 func (f *fakeClaude) Elaborate(dir string, ctx Context) (*Result, error) {
 	atomic.AddInt32(&f.calls, 1)
 	if f.fn == nil {
-		return &Result{Description: "desc", Motivation: "motiv"}, nil
+		return &Result{Description: "desc", Motivation: "motiv", AcceptanceCriteria: []string{"ac"}}, nil
 	}
 	return f.fn(dir, ctx)
 }
@@ -57,12 +57,12 @@ func TestRun_ReviewLoop_RefinesUntilApproved(t *testing.T) {
 	var elabCalls int32
 	cl := &fakeClaude{fn: func(dir string, ctx Context) (*Result, error) {
 		if atomic.AddInt32(&elabCalls, 1) == 1 {
-			return &Result{Title: "Title", Description: "first draft"}, nil
+			return &Result{Title: "Title", Description: "first draft", AcceptanceCriteria: []string{"ac"}}, nil
 		}
 		if ctx.PriorDraft == "" || len(ctx.ReviewGaps) == 0 {
 			t.Errorf("refine pass missing prior draft/gaps: %+v", ctx)
 		}
-		return &Result{Title: "Title", Description: "refined draft"}, nil
+		return &Result{Title: "Title", Description: "refined draft", AcceptanceCriteria: []string{"ac"}}, nil
 	}}
 	rv := &fakeReviewer{}
 	rv.fn = func(dir string, ctx Context, draft string) (*ReviewResult, error) {
@@ -107,7 +107,7 @@ func TestRun_ReviewLoop_SurfacesUnresolvedGaps(t *testing.T) {
 	var elabCalls int32
 	cl := &fakeClaude{fn: func(dir string, ctx Context) (*Result, error) {
 		n := atomic.AddInt32(&elabCalls, 1)
-		return &Result{Title: "Title", Description: fmt.Sprintf("draft revision %d", n)}, nil
+		return &Result{Title: "Title", Description: fmt.Sprintf("draft revision %d", n), AcceptanceCriteria: []string{"ac"}}, nil
 	}}
 	rv := &fakeReviewer{fn: func(dir string, ctx Context, draft string) (*ReviewResult, error) {
 		return &ReviewResult{Score: 4, Gaps: []string{"persistent gap Y"}, ToReachTen: "enumerate the empty-slice path"}, nil
@@ -143,7 +143,7 @@ func TestRun_ReviewLoop_DisabledByDefault(t *testing.T) {
 	gh := reviewLoopGitHub(t, fakeRepo(t, "acme", "widgets"))
 
 	cl := &fakeClaude{fn: func(dir string, ctx Context) (*Result, error) {
-		return &Result{Title: "Title", Description: "draft"}, nil
+		return &Result{Title: "Title", Description: "draft", AcceptanceCriteria: []string{"ac"}}, nil
 	}}
 	rv := &fakeReviewer{fn: func(dir string, ctx Context, draft string) (*ReviewResult, error) {
 		t.Fatal("reviewer must not run when opts.Review is false")
@@ -271,7 +271,7 @@ func TestRun_ThreadsMetaAndSiblingContext(t *testing.T) {
 		if len(ctx.SiblingIssues) != 1 || ctx.SiblingIssues[0].Number != 2 {
 			t.Fatalf("SiblingIssues not threaded into context: %+v", ctx.SiblingIssues)
 		}
-		return &Result{Title: "Sub", Description: "d", Motivation: "m"}, nil
+		return &Result{Title: "Sub", Description: "d", Motivation: "m", AcceptanceCriteria: []string{"ac"}}, nil
 	}}
 	r := &Runner{Claude: cl, GitHub: gh}
 
@@ -308,7 +308,7 @@ func TestRun_SiblingChangeBustsCache(t *testing.T) {
 		CloneRepoFn: func(ref string) (*github.Repo, error) { return repo, nil },
 	}
 	cl := &fakeClaude{fn: func(dir string, ctx Context) (*Result, error) {
-		return &Result{Title: "Sub", Description: "d", Motivation: "m"}, nil
+		return &Result{Title: "Sub", Description: "d", Motivation: "m", AcceptanceCriteria: []string{"ac"}}, nil
 	}}
 	r := &Runner{Claude: cl, GitHub: gh}
 
@@ -358,7 +358,7 @@ func TestRun_SiblingPRChangeBustsCache(t *testing.T) {
 		CloneRepoFn: func(ref string) (*github.Repo, error) { return repo, nil },
 	}
 	cl := &fakeClaude{fn: func(dir string, ctx Context) (*Result, error) {
-		return &Result{Title: "Sub", Description: "d", Motivation: "m"}, nil
+		return &Result{Title: "Sub", Description: "d", Motivation: "m", AcceptanceCriteria: []string{"ac"}}, nil
 	}}
 	r := &Runner{Claude: cl, GitHub: gh}
 
@@ -396,7 +396,7 @@ func TestRun_NoCacheBypassesCache(t *testing.T) {
 	}
 	cl := &fakeClaude{
 		fn: func(dir string, ctx Context) (*Result, error) {
-			return &Result{Description: "fresh"}, nil
+			return &Result{Description: "fresh", AcceptanceCriteria: []string{"ac"}}, nil
 		},
 	}
 	r := &Runner{Claude: cl, GitHub: gh}
@@ -618,6 +618,39 @@ func TestBuildIssueBody_UserStories(t *testing.T) {
 	})
 }
 
+// TestRun_RefusesAnEmptyElaboration: a session that ended on a question
+// structures into a shell with no Description or no Acceptance Criteria. With
+// --update-issue it would replace the issue's own text, so nothing is written.
+func TestRun_RefusesAnEmptyElaboration(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	patternDir := seedPatternDir(t)
+	repo := fakeRepo(t, "acme", "widgets")
+	gh := &githubtest.Fake{
+		GetIssueFn: func(owner, name string, number int) (*github.Issue, error) {
+			return &github.Issue{Owner: owner, Name: name, Number: number, Title: "T", Body: "the author's idea"}, nil
+		},
+		CloneRepoFn: func(ref string) (*github.Repo, error) { return repo, nil },
+	}
+	cl := &fakeClaude{
+		fn: func(dir string, ctx Context) (*Result, error) {
+			return &Result{Description: "Should the cache be per-user?"}, nil
+		},
+	}
+	r := &Runner{Claude: cl, GitHub: gh}
+	opts := baseOpts(patternDir)
+	opts.UpdateMode = UpdateReplace
+
+	err := r.Run(&bytes.Buffer{}, opts)
+	if err == nil || !strings.Contains(err.Error(), "nothing was written") {
+		t.Fatalf("Run = %v, want the refusal", err)
+	}
+	if gh.Count("EditIssueBody") != 0 {
+		t.Errorf("EditIssueBody called %d times, want 0", gh.Count("EditIssueBody"))
+	}
+}
+
 func TestRun_FillsTitleFromIssueWhenClaudeOmitsIt(t *testing.T) {
 	restore := cache.SetDir(t.TempDir())
 	t.Cleanup(restore)
@@ -632,7 +665,7 @@ func TestRun_FillsTitleFromIssueWhenClaudeOmitsIt(t *testing.T) {
 	}
 	cl := &fakeClaude{
 		fn: func(dir string, ctx Context) (*Result, error) {
-			return &Result{Description: "d"}, nil
+			return &Result{Description: "d", AcceptanceCriteria: []string{"ac"}}, nil
 		},
 	}
 	r := &Runner{Claude: cl, GitHub: gh}
@@ -693,7 +726,7 @@ func TestRun_ReviewLoop_StopsOnUnchangedDraft(t *testing.T) {
 	var elabCalls int32
 	cl := &fakeClaude{fn: func(dir string, ctx Context) (*Result, error) {
 		atomic.AddInt32(&elabCalls, 1)
-		return &Result{Title: "Title", Description: "an unmoved draft"}, nil
+		return &Result{Title: "Title", Description: "an unmoved draft", AcceptanceCriteria: []string{"ac"}}, nil
 	}}
 	rv := &fakeReviewer{}
 	rv.fn = func(dir string, ctx Context, draft string) (*ReviewResult, error) {
@@ -752,7 +785,7 @@ func TestRun_MergesContinuedSourceBody(t *testing.T) {
 	var seen string
 	cl := &fakeClaude{fn: func(dir string, ctx Context) (*Result, error) {
 		seen = ctx.Issue.Body
-		return &Result{Description: "d", Motivation: "m"}, nil
+		return &Result{Description: "d", Motivation: "m", AcceptanceCriteria: []string{"ac"}}, nil
 	}}
 	r := &Runner{Claude: cl, GitHub: gh}
 	opts := baseOpts(patternDir)
@@ -874,7 +907,7 @@ func TestRun_UpdateComment_SplitsOversizedBody(t *testing.T) {
 	}
 	huge := strings.Repeat("A paragraph of plan prose, repeated until the body is far over GitHub's cap.\n\n", 1150)
 	cl := &fakeClaude{fn: func(dir string, ctx Context) (*Result, error) {
-		return &Result{Description: huge, Motivation: "m"}, nil
+		return &Result{Description: huge, Motivation: "m", AcceptanceCriteria: []string{"ac"}}, nil
 	}}
 	r := &Runner{Claude: cl, GitHub: gh}
 	opts := baseOpts(patternDir)
@@ -909,10 +942,10 @@ func TestRun_ReviewLoop_SizeGapRefinesAcceptedDraft(t *testing.T) {
 	var gapsSeen []string
 	cl := &fakeClaude{fn: func(dir string, ctx Context) (*Result, error) {
 		if ctx.PriorDraft == "" {
-			return &Result{Description: long, Motivation: "m"}, nil
+			return &Result{Description: long, Motivation: "m", AcceptanceCriteria: []string{"ac"}}, nil
 		}
 		gapsSeen = ctx.ReviewGaps
-		return &Result{Description: "Tightened.", Motivation: "m"}, nil
+		return &Result{Description: "Tightened.", Motivation: "m", AcceptanceCriteria: []string{"ac"}}, nil
 	}}
 	// The reviewer is content with both drafts: only the size keeps the
 	// first one in the loop.
@@ -961,7 +994,7 @@ func TestRun_UpdateComment_RefusesOversizedRunOnContinuedBody(t *testing.T) {
 	t.Run("an oversized run is refused before anything is posted", func(t *testing.T) {
 		gh := newFake()
 		cl := &fakeClaude{fn: func(dir string, ctx Context) (*Result, error) {
-			return &Result{Description: huge, Motivation: "m"}, nil
+			return &Result{Description: huge, Motivation: "m", AcceptanceCriteria: []string{"ac"}}, nil
 		}}
 		r := &Runner{Claude: cl, GitHub: gh}
 		opts := baseOpts(patternDir)
@@ -979,7 +1012,7 @@ func TestRun_UpdateComment_RefusesOversizedRunOnContinuedBody(t *testing.T) {
 	t.Run("a single comment still lands", func(t *testing.T) {
 		gh := newFake()
 		cl := &fakeClaude{fn: func(dir string, ctx Context) (*Result, error) {
-			return &Result{Description: "d", Motivation: "m"}, nil
+			return &Result{Description: "d", Motivation: "m", AcceptanceCriteria: []string{"ac"}}, nil
 		}}
 		r := &Runner{Claude: cl, GitHub: gh}
 		opts := baseOpts(patternDir)

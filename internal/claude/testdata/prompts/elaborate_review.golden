@@ -42,27 +42,28 @@ The draft was written against this list. You are checking whether it actually wa
 4. Name consistency — a symbol must be named identically throughout. Two names for one thing is a gap.
 5. Executable acceptance criteria — each criterion is an observable check, not a vague goal.
 6. Edge-case coverage — every data-flow acceptance criterion enumerates its empty/zero-length, nil/absent, and upstream-error shadow paths as separate entries, each naming the concrete error (e.g. io.EOF, sql.ErrNoRows, a wrapped fmt.Errorf). A data-flow criterion that covers only the happy path is a gap.
-7. Single-delivery contract — the issue is implemented by ONE session and lands as exactly ONE pull request. Any note prescribing a different delivery structure — "one commit ≈ one PR", "split into separate PRs", deferring described work to a follow-up issue or PR — is a gap, as is a Non-Goal that defers work the Description requires.
+7. Single-delivery contract — the issue is implemented by ONE session and lands as exactly ONE pull request. Any note prescribing a different delivery structure — "one commit ≈ one PR", "split into separate PRs", deferring described work to a follow-up issue or PR — is a gap, as is a Non-Goal that defers work the Description requires. A Non-Goal that hands part of a shared task to a sibling Sub Issue listed above, or work in another repository to a counterpart issue (`owner/repo#N`), is scoping, not deferral, and never a gap.
 8. Domain coverage — for each domain of the sweep above, decide from the repository whether this change touches it. When it does, an Acceptance Criterion or an Affected Areas entry must carry its consequence; when it does not, the draft owes it nothing. An uncovered touched domain is a gap: name the domain and the specific consequence that has no home. A domain the change does not touch is never a gap — do NOT report one to look thorough, and do NOT ask for a Domain Sweep section in the body, which the house format has no room for.
+9. Density — length is not detail. A section that restates what another section owns, or a boundary that narrates code the change does not touch, is a gap: name the section to tighten. The implementer re-reads this body in every later prompt, so padding costs on every run.
 
 ## Scoring rubric
 
 Score executability on this scale — the number is what the refine loop optimizes against, so calibrate it honestly:
-- 10: an implementer with zero context executes the plan correctly without asking a single question.
-- 8-9: solid; at most cosmetic gaps that would not change what gets built.
-- 4-7: real gaps that would make the implementer build the wrong thing or get stuck on a decision the plan should have made.
-- 0-3: not executable — missing coverage, placeholders, or citations that do not exist.
+- 10: no gaps. An implementer who can read the repository but has no other context executes the plan correctly without asking a single question.
+- 8-9: every gap is one the implementer would resolve correctly from the repository alone. List each one.
+- 4-7: at least one gap would make the implementer build the wrong thing or stop to ask about a decision the plan should have made.
+- 0-3: not executable — most criteria have no mapped change, the plan is mostly placeholders, or most of its citations do not exist. A single citation that does not exist is a gap at any score.
 
-Only count gaps that would make an implementer build the wrong thing or get stuck. Minor wording and stylistic preferences are NOT gaps.
+Minor wording and stylistic preferences are NOT gaps.
 
 ## Output
 
 Output ONLY valid JSON (no markdown fences, no surrounding text):
 
 {
-  "score": 8,
-  "gaps": [],
-  "to_reach_ten": ""
+  "score": <integer 0-10>,
+  "gaps": ["<section or criterion>: <the problem>"],
+  "to_reach_ten": "<one or two sentences>"
 }
 
 - "score": integer 0-10 from the rubric above.
