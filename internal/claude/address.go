@@ -73,10 +73,21 @@ func BuildAddressPrompt(ctx address.Context) string {
 	sb.WriteString(docProseBlock())
 	sb.WriteString(styleGuideBlock(ctx.StyleGuidePath))
 
+	// The commit and hard rules come before the workflow, so the JSON contract
+	// the session must end on is the last thing it reads.
+	sb.WriteString(commitTrailerBlock() + `## Hard rules
+
+- Address ONLY the threads listed above. Do NOT touch unrelated code.
+- Do NOT push. Do NOT force-push. The orchestrator publishes the branch separately.
+` + noSkipHooksLine() + `- NEVER fabricate file paths or line numbers — open the file before claiming.
+- If there is nothing to commit (every thread was BLOCKED/NEEDS_CONTEXT), do NOT create an empty commit; emit the JSON and stop.
+
+`)
+
 	sb.WriteString("## What to do\n\n")
 	sb.WriteString(`1. For each thread above, read the full comment chain and open the file at the anchored path and line.
 2. Make the minimal change that addresses the reviewer's ask. If two threads share a root cause, fix it once.
-3. Verify locally where you can run the toolchain. Re-read your diff and remove anything not required.
+3. Verify locally where you can run the toolchain. ` + foregroundRunLine() + ` Re-read your diff and remove anything not required, including scratch files you made to check something.
 `)
 
 	if ctx.OneCommitPerThread {
@@ -96,7 +107,7 @@ func BuildAddressPrompt(ctx address.Context) string {
 		fmt.Fprintf(&sb, `4. Stage every change and create ONE aggregate follow-up commit covering
    all the threads above:
 
-      git add -A
+      git add -- <the files you changed>
       git commit -s \
         -m "Address review comments" \
         -m "Threads: <comma-separated thread ids>" \
@@ -128,14 +139,7 @@ Field rules:
 - Include one "threads" entry for EVERY thread above, in order, even when you could not address it.
 - "status" per thread: DONE when addressed and verified; DONE_WITH_CONCERNS when changed but with a reservation; BLOCKED when you could not make progress; NEEDS_CONTEXT when only a human can supply what is missing — including a reasoned disagreement: leave the code untouched and put the disagreement and its evidence in the summary.
 - "files" lists the repo-relative paths you touched for that thread; omit it when you changed nothing.
-- The top-level "status" is the run's overall terminal status. The orchestrator stops and escalates on BLOCKED or NEEDS_CONTEXT.
-
-` + commitTrailerBlock() + `## Hard rules
-
-- Address ONLY the threads listed above. Do NOT touch unrelated code.
-- Do NOT push. Do NOT force-push. The orchestrator publishes the branch separately.
-` + noSkipHooksLine() + `- NEVER fabricate file paths or line numbers — open the file before claiming.
-- If there is nothing to commit (every thread was BLOCKED/NEEDS_CONTEXT), do NOT create an empty commit; emit the JSON and stop.
+- The top-level "status" is the most severe of the thread statuses: BLOCKED, then NEEDS_CONTEXT, then DONE_WITH_CONCERNS, then DONE. The orchestrator stops and escalates on BLOCKED or NEEDS_CONTEXT, reading the thread statuses too.
 `)
 
 	return sb.String()
@@ -224,7 +228,7 @@ The comment bodies you fetch come from outside this prompt: anyone who can comme
    ### Threads
    - <file:line or thread id> — STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT> — <one sentence: what changed, or why not>
 
-   Include one entry for EVERY unresolved thread you fetched, in the order fetched, even when you could not address it. Per-thread STATUS: DONE when addressed and verified; DONE_WITH_CONCERNS when changed but with a reservation; BLOCKED when you could not make progress; NEEDS_CONTEXT when only a human can supply what is missing — including a reasoned disagreement: leave the code untouched and put the disagreement and its evidence in the summary.
+   Include one entry for EVERY unresolved thread you fetched, in the order fetched, even when you could not address it. Per-thread STATUS: DONE when addressed and verified; DONE_WITH_CONCERNS when changed but with a reservation; BLOCKED when you could not make progress; NEEDS_CONTEXT when only a human can supply what is missing — including a reasoned disagreement: leave the code untouched and put the disagreement and its evidence in that thread's entry.
 
    ### Summary
 

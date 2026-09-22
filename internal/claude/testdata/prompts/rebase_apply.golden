@@ -58,6 +58,7 @@ Apply these task-specific thinking patterns on top of the baseline above:
 - **renamed-symbol** in `internal/claude/runner.go` — Upstream renamed runClaude to runSession; this commit still calls runClaude.
   - Action: Call runSession instead of runClaude.
   - Upstream: 9999999 Rename runClaude to runSession
+  - Confidence: verified
 
 
 ## Project Review Patterns to Honor
@@ -93,7 +94,8 @@ Secrets MUST be loaded from environment variables or a secret manager.
 ## What to do
 
 1. For each adjustment, open the named file and confirm it still applies — the analysis marks each with a confidence and can be wrong or already handled. Apply exactly the described change; if it is a false positive or no longer applies, SKIP it and record why in the report.
-2. Verify locally where you can run the toolchain.
+   Confirm a "likely" or "uncertain" adjustment against the file before you apply it, and SKIP one you cannot confirm.
+2. Verify locally where you can run the toolchain. Run every command in the FOREGROUND and wait for it to finish before the next step — never background a test or build run and move on. You need its real exit status in hand to commit and to fill in the report; a backgrounded run's result never reaches this one-shot session. If a command outlives the Bash tool's foreground time limit, background it and poll its output within this same turn until it exits.
 3. Fold each change into the commit it belongs to (the branch's own commits are the range origin/main..HEAD):
 
    a. List the branch's commits (oldest first):
@@ -107,9 +109,19 @@ Secrets MUST be loaded from environment variables or a secret manager.
       git add -- <files for this change>
       git commit --fixup=<target-sha>
 
-   c. Once every change is recorded as a fixup, fold them in non-interactively:
+   c. Once every change is recorded as a fixup, fold them in non-interactively
+      (no editor opens), bounded to the merge-base so only this branch's own
+      commits are folded:
 
-      GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash origin/main
+      GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash "$(git merge-base origin/main HEAD)"
+
+   d. If the rebase stops on a conflict, resolve the file to the content your
+      change intended, `git add` it, and run `git rebase --continue`. If you cannot
+      resolve it, run `git rebase --abort`, leave the fixups unfolded on the
+      branch, and report DONE_WITH_CONCERNS naming them.
+   e. Before the report, `git status` shows no rebase in progress. If you
+      resolved a conflict, run the tests again: the tree changed after you
+      verified it.
 
 4. Output a report in this exact shape:
 

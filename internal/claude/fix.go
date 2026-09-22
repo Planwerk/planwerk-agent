@@ -123,15 +123,16 @@ Run these steps for EACH failing check above before editing any code:
    - type-check error (mypy, basedpyright, tsc, golangci-lint typecheck)
    - dependency / SBOM / security scan finding
    - infra / transient flake (network timeout, expired token, runner OOM)
+   Call a failure a flake only on evidence: the failing step is infrastructure (network, runner, token) outside the code this PR touches, or the exact failing command passes locally on an unchanged tree. A timeout or panic in a test that runs this PR's code is a test failure until shown otherwise.
 2. LOCATE the offending code by opening the file at the cited path:line. Do not work from memory of what the log says — open the file.
 3. UNDERSTAND THE INTENT: read surrounding code, the relevant test, and the PR title/body. Decide what the code SHOULD do.
 4. CHOOSE A FIX STRATEGY:
    - Production code is wrong → fix production code; if no test caught the bug, add or extend one.
-   - Test encodes outdated behavior → update the test, and explain in the report WHY the new expectation is correct.
+   - Test encodes outdated behavior → only when this PR deliberately changed that behavior. Cite the line of the PR title or body, or the commit, that changed it, then update the test. If you cannot cite one, the production code is wrong. If both readings are plausible, change nothing and report NEEDS_CONTEXT, quoting the assertion and the code it tests.
    - Lint/format/type-check finding → apply the real fix (formatter, missing annotation, narrowed type). Suppression comments are forbidden unless they were already idiomatic in this file before this PR.
    - Flake / infra / unreachable secret → STOP and report. Do not commit a placebo fix.
 5. APPLY the minimal change. If two failing checks share a single root cause, fix it once.
-6. VERIFY LOCALLY: re-run the exact command that failed in CI (or the closest local equivalent — e.g. ` + "`go test ./internal/foo`, `pytest tests/test_x.py::test_y`, `golangci-lint run`, `tsc --noEmit`" + `). Capture the command and pass/fail in your final report. If the command cannot run in this environment, say so explicitly.
+6. VERIFY LOCALLY: re-run the exact command that failed in CI (or the closest local equivalent — e.g. ` + "`go test ./internal/foo`, `pytest tests/test_x.py::test_y`, `golangci-lint run`, `tsc --noEmit`" + `). Capture the command and pass/fail in your final report. If the command cannot run in this environment, say so explicitly. If it passes locally before you change anything, find the environmental difference in the log (a version, an environment variable, the OS) and fix that, or report BLOCKED: never push a change you cannot connect to the failure.
 7. ADD A REGRESSION TEST when the fix is in production code and the existing suite did not catch the bug. Skip this step ONLY for: lint/format-only fixes, fixes inside test code itself, or fixes for failures that no unit/integration test could plausibly catch (e.g. SBOM signature, runtime infra config).
 
 ## What to do
@@ -156,6 +157,7 @@ Run these steps for EACH failing check above before editing any code:
 			"      own commits are folded and the branch is never silently advanced onto a\n"+
 			"      moved base:\n\n"+
 			"      GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash \"$(git merge-base origin/%[1]s HEAD)\"\n\n"+
+			foldConflictSteps('e', "pushing")+
 			"   Create a NEW standalone commit ONLY when a change genuinely belongs to no\n"+
 			"   existing commit on this branch (e.g. an entirely new file unrelated to any\n"+
 			"   of them). That is the rare exception, not the default — and only then:\n\n"+
@@ -189,8 +191,10 @@ Run these steps for EACH failing check above before editing any code:
 			"   so in the report.\n\n",
 			ctx.BaseBranch, ctx.HeadBranch, ctx.PRNumber, ctx.RepoFullName)
 	} else {
-		fmt.Fprintf(&sb, "2. Stage your changes, create ONE follow-up commit using:\n\n"+
-			"   git add -A\n"+
+		fmt.Fprintf(&sb, "2. Delete any scratch files you made to reproduce the failure, then stage the\n"+
+			"   files you changed and create ONE follow-up commit (a regression test goes into\n"+
+			"   the package's existing test file unless it has none):\n\n"+
+			"   git add -- <the files you changed>\n"+
 			"   git commit -s -m \"Fix failing CI checks (iteration %d)\" -m \"Failed checks: <comma-separated names>\" -m \"Assisted-by: Claude\"\n\n"+
 			"3. Push to the PR head branch:\n\n"+
 			"   git push origin HEAD:%s\n\n",
@@ -229,7 +233,7 @@ Run these steps for EACH failing check above before editing any code:
 
 	sb.WriteString(`   ### Status
    STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT>
-   (DONE = all checks fixed and verified; DONE_WITH_CONCERNS = pushed but with reservations a human should see; BLOCKED = could not make progress; NEEDS_CONTEXT = missing information only a human can supply. The orchestrator reads this line and stops the loop on BLOCKED or NEEDS_CONTEXT.)
+   (DONE = every check fixed and its command passing locally; DONE_WITH_CONCERNS = pushed, but with a fix you could not run locally or another reservation a human should see; BLOCKED = could not make progress; NEEDS_CONTEXT = missing information only a human can supply. DONE and DONE_WITH_CONCERNS mean you pushed a commit: every STOP in this prompt, and a run with nothing to commit, is BLOCKED, or NEEDS_CONTEXT when only a human can supply the missing fact. The orchestrator reads this line and stops the loop on BLOCKED or NEEDS_CONTEXT.)
    Next: <on any verdict but DONE only: the single action a human takes next; omit this line on DONE>
 
 ` + reportShapeBlock("DONE") + commitTrailerBlock() + `## Hard rules
@@ -243,7 +247,7 @@ Run these steps for EACH failing check above before editing any code:
 		sb.WriteString("- NEVER force-push.\n")
 	}
 
-	sb.WriteString(`- PREFER to change only files on the failure surface. Reaching outside it is a last resort, reserved for the worst case where the failing check genuinely cannot be fixed any other way — then make the smallest out-of-scope change that works and call it out explicitly in the report. NEVER reach outside for convenience, drive-by cleanups, or unrelated improvements.
+	sb.WriteString(`- Touch only the failure surface: the files the failing check exercises and the files this PR changed. Reaching beyond it is a last resort for a check that cannot be fixed any other way: make the smallest change that works and call it out in the report. NEVER reach outside for convenience, drive-by cleanups, or unrelated improvements, and never revert the PR's intended behavior to satisfy an old test.
 - NEVER skip, weaken, or suppress the failing check (see the "Do not cheat the check." pattern above for the explicit forbidden list).
 `)
 	sb.WriteString(noSkipHooksLine())
@@ -332,15 +336,16 @@ Run these steps for EACH failing check before editing any code:
    - type-check error (mypy, basedpyright, tsc, golangci-lint typecheck)
    - dependency / SBOM / security scan finding
    - infra / transient flake (network timeout, expired token, runner OOM)
+   Call a failure a flake only on evidence: the failing step is infrastructure (network, runner, token) outside the code this PR touches, or the exact failing command passes locally on an unchanged tree. A timeout or panic in a test that runs this PR's code is a test failure until shown otherwise.
 2. LOCATE the offending code by opening the file at the cited path:line. Do not work from memory of what the log says — open the file.
 3. UNDERSTAND THE INTENT: read surrounding code, the relevant test, and the PR title/body. Decide what the code SHOULD do.
 4. CHOOSE A FIX STRATEGY:
    - Production code is wrong → fix production code; if no test caught the bug, add or extend one.
-   - Test encodes outdated behavior → update the test, and explain in the report WHY the new expectation is correct.
+   - Test encodes outdated behavior → only when this PR deliberately changed that behavior. Cite the line of the PR title or body, or the commit, that changed it, then update the test. If you cannot cite one, the production code is wrong. If both readings are plausible, change nothing and report NEEDS_CONTEXT, quoting the assertion and the code it tests.
    - Lint/format/type-check finding → apply the real fix (formatter, missing annotation, narrowed type). Suppression comments are forbidden unless they were already idiomatic in this file before this PR.
    - Flake / infra / unreachable secret → STOP and report. Do not commit a placebo fix.
 5. APPLY the minimal change. If two failing checks share a single root cause, fix it once.
-6. VERIFY LOCALLY: re-run the exact command that failed in CI (or the closest local equivalent — e.g. ` + "`go test ./internal/foo`, `pytest tests/test_x.py::test_y`, `golangci-lint run`, `tsc --noEmit`" + `). Capture the command and pass/fail in your final report. If the command cannot run in this environment, say so explicitly.
+6. VERIFY LOCALLY: re-run the exact command that failed in CI (or the closest local equivalent — e.g. ` + "`go test ./internal/foo`, `pytest tests/test_x.py::test_y`, `golangci-lint run`, `tsc --noEmit`" + `). Capture the command and pass/fail in your final report. If the command cannot run in this environment, say so explicitly. If it passes locally before you change anything, find the environmental difference in the log (a version, an environment variable, the OS) and fix that, or report BLOCKED: never push a change you cannot connect to the failure.
 7. ADD A REGRESSION TEST when the fix is in production code and the existing suite did not catch the bug. Skip this step ONLY for: lint/format-only fixes, fixes inside test code itself, or fixes for failures that no unit/integration test could plausibly catch (e.g. SBOM signature, runtime infra config).
 
 ## What to do
@@ -382,7 +387,7 @@ Run these steps for EACH failing check before editing any code:
 
       GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash "$(git merge-base origin/<base> HEAD)"
 
-   Create a NEW standalone commit ONLY when a change genuinely belongs to no
+`+foldConflictSteps('e', "pushing")+`   Create a NEW standalone commit ONLY when a change genuinely belongs to no
    existing commit on this branch (e.g. an entirely new file unrelated to any
    of them). That is the rare exception, not the default — and only then:
 
@@ -429,8 +434,10 @@ Run these steps for EACH failing check before editing any code:
 
 `, ctx.PRNumber, ctx.RepoFullName)
 	} else {
-		sb.WriteString("6. Stage your changes and create ONE follow-up commit:\n\n" +
-			"   git add -A\n" +
+		sb.WriteString("6. Delete any scratch files you made to reproduce the failure, then stage the\n" +
+			"   files you changed and create ONE follow-up commit (a regression test goes into\n" +
+			"   the package's existing test file unless it has none):\n\n" +
+			"   git add -- <the files you changed>\n" +
 			"   git commit -s -m \"Fix failing CI checks\" -m \"Failed checks: <comma-separated names>\" -m \"Assisted-by: Claude\"\n\n" +
 			"7. Push back to the PR's head branch:\n\n" +
 			"   git push origin HEAD\n\n")
@@ -461,7 +468,7 @@ Run these steps for EACH failing check before editing any code:
 
 	sb.WriteString(`   ### Status
    STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT>
-   (DONE = all checks fixed and verified; DONE_WITH_CONCERNS = pushed but with reservations a human should see; BLOCKED = could not make progress; NEEDS_CONTEXT = missing information only a human can supply. The orchestrator reads this line and stops the loop on BLOCKED or NEEDS_CONTEXT.)
+   (DONE = every check fixed and its command passing locally; DONE_WITH_CONCERNS = pushed, but with a fix you could not run locally or another reservation a human should see; BLOCKED = could not make progress; NEEDS_CONTEXT = missing information only a human can supply. DONE and DONE_WITH_CONCERNS mean you pushed a commit: every STOP in this prompt, and a run with nothing to commit, is BLOCKED, or NEEDS_CONTEXT when only a human can supply the missing fact.)
    Next: <on any verdict but DONE only: the single action a human takes next; omit this line on DONE>
 
 ` + reportShapeBlock("DONE") + commitTrailerBlock() + `## Hard rules
@@ -475,13 +482,13 @@ Run these steps for EACH failing check before editing any code:
 		sb.WriteString("- NEVER force-push.\n")
 	}
 
-	sb.WriteString(`- PREFER to change only files on the failure surface. Reaching outside it is a last resort, reserved for the worst case where the failing check genuinely cannot be fixed any other way — then make the smallest out-of-scope change that works and call it out explicitly in the report. NEVER reach outside for convenience, drive-by cleanups, or unrelated improvements.
+	sb.WriteString(`- Touch only the failure surface: the files the failing check exercises and the files this PR changed. Reaching beyond it is a last resort for a check that cannot be fixed any other way: make the smallest change that works and call it out in the report. NEVER reach outside for convenience, drive-by cleanups, or unrelated improvements, and never revert the PR's intended behavior to satisfy an old test.
 - NEVER skip, weaken, or suppress the failing check (see the "Do not cheat the check." pattern above for the explicit forbidden list).
 `)
 	sb.WriteString(noSkipHooksLine())
 	sb.WriteString(`- NEVER bump dependencies that the failure log does not directly implicate.
 - NEVER fabricate file paths, line numbers, or error messages — open the file before claiming.
-- NEVER claim "fixed" without either local verification (step 6) or an explicit "not reproducible locally" note in the report.
+- NEVER claim "fixed" without either local verification (Diagnosis Workflow step 6) or an explicit "not reproducible locally" note in the report.
 - If you cannot diagnose a failure from the logs (truncation, infra flake, expired secret, third-party check without logs), STOP and explain — do not invent a fix.
 - If there is nothing to commit after the fix attempt, do NOT create an empty commit; output the report and stop.
 - It is OK to stop and report BLOCKED or NEEDS_CONTEXT. Bad work is worse than no work; escalating is not penalized. Emit the matching STATUS and do not push a placebo fix.

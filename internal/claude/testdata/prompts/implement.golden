@@ -207,7 +207,7 @@ A human reads the report top-down and may read only its first and last lines. Sh
 
 ## Commit trailers
 
-EVERY commit you create MUST end with exactly these two trailers, in this order:
+EVERY commit you create MUST end with exactly these two trailers, in this order (a `git commit --fixup` commit is the one exception: the autosquash discards its message):
 
     Assisted-by: Claude
     Signed-off-by: <committer name> <committer email>

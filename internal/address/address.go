@@ -222,7 +222,7 @@ func (r *Runner) dispatch(w io.Writer, opts Options, pr *github.PR, fullName str
 			if s := strings.TrimSpace(result.Summary); s != "" {
 				summaries = append(summaries, s)
 			}
-			if st := parseStatus(result.Status); st.ShouldEscalate() {
+			if st := overallStatus(result); st.ShouldEscalate() {
 				escalated = st
 				break
 			}
@@ -239,7 +239,7 @@ func (r *Runner) dispatch(w io.Writer, opts Options, pr *github.PR, fullName str
 		if s := strings.TrimSpace(result.Summary); s != "" {
 			summaries = append(summaries, s)
 		}
-		if st := parseStatus(result.Status); st.ShouldEscalate() {
+		if st := overallStatus(result); st.ShouldEscalate() {
 			escalated = st
 		}
 	}
