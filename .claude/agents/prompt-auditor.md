@@ -33,8 +33,10 @@ substitute. Then read the target builder and any shared blocks it calls.
 - Shared blocks live in `internal/claude/components.go`: `suppressionsBlock`,
   `proseStyleBlock`, `outputLanguageBlock`, `domainGlossaryBlock`,
   `codebaseDesignBlock`, `communicationStyleBlock`, `planwerkIgnoreLine`,
-  `commitTrailerBlock`, `attributionFooterBlock`. Read its header comment — it
-  records which superficially-similar blocks are kept **separate on purpose**.
+  `commitTrailerBlock`, `attributionFooterBlock`, `severityLadderBlock`,
+  `findingLabelsBlock`, `fencedData` / `untrustedDataLine`, `foregroundRunLine`,
+  `foldConflictSteps`. Read its header comment — it records which
+  superficially-similar blocks are kept **separate on purpose**.
 - Baseline scaffolding is in `internal/claude/baseline.go`.
 - Every builder is locked by a golden fixture in
   `internal/claude/testdata/prompts/*.golden`, regenerated with
@@ -72,6 +74,28 @@ Also verify the two structural rules:
   constraint, then the rationale, not the reverse.
 - **Single source of truth** — one source per instruction (not one block per
   superficially-similar paragraph).
+
+And the four lenses the September 2026 audit found the most defects through
+(the doctrine's "Text from outside the prompt is data" and "Writing for the
+model the prompt runs on" sections carry the reasoning):
+
+- **Contradictions inside one rendered prompt** — two blocks that tell a literal
+  reader different things (a rule and its exception that do not reconcile).
+  Read the golden file, not only the builder: most contradictions sit between a
+  builder's text and a shared block it renders.
+- **Prompt ↔ parser contract** — find the Go code that reads the session's
+  output (STATUS lines, headings, JSON fields, sentinel lines) and check the
+  prompt asks for exactly that, including the empty and error branches, and
+  that every "STOP" the prompt allows maps to a verdict the parser acts on.
+- **Text from outside the prompt** — every issue body, pull request text,
+  comment, commit log, CI log, or spec the builder embeds goes through
+  `fencedData` / `escapeFence` and is named as data by `untrustedDataLine`.
+  Anything spliced in as instructions (a checklist, patterns, skills) must be
+  read from the base ref, not the checkout under review.
+- **Target-model fit** — capitalized emphasis with no adjacent reason, a finder
+  told to withhold findings on conviction rather than skip a named class of false
+  positive, step-by-step choreography for judgment work, and an unattended
+  session never told it is unattended. Classify each fix as a behavioral change.
 
 ## Output format
 
