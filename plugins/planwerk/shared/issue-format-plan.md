@@ -72,12 +72,14 @@ headings, because they annotate the plan rather than belonging to the issue:
 A body holds at most 40,000 characters once it carries a plan, roughly 10,000
 tokens: the body is injected whole into every planning, implementation, and
 verification prompt that reads the issue, and GitHub rejects a body over
-65,536 characters outright. A plan that runs past the limit is not shortened.
-It is written as the body plus continuation comments, per `issue-format.md`,
-and every reader merges the parts back into one document before it reads a
-section. Length is settled by that split at write-back, never by cutting: a
-finished draft is not tightened to come under the limit, and never shortened
-by dropping a decision, a criterion, a citation, or an edge case.
+65,536 characters outright.
+
+**A plan over the limit is split, never shortened.** It is written as the body
+plus continuation comments, per `issue-format.md`, and every reader merges the
+parts back into one document before it reads a section. Length is settled by
+that split at write-back, on the finished draft as it stands: nothing is
+tightened to come under the limit, and no decision, criterion, citation, or
+edge case is dropped for it.
 
 Length is still not detail — a plan that restates itself is longer, not
 better — so write densely from the first line:
@@ -92,9 +94,7 @@ better — so write densely from the first line:
 - A rejected alternative gets one sentence under Non-Goals, not a paragraph in
   the Description.
 
-These shape the writing as it happens. They are not a lever to pull on a
-finished draft: when the count comes in over the limit, the answer is the
-split, not a rewrite.
+These shape the writing as it happens, not a finished draft.
 
 A plan that runs to several continuation comments is often more than one plan.
 Say so to the author and point at `/planwerk:meta`; unless they choose to split

@@ -52,18 +52,15 @@ run. Say which rules you suspended.
 
 ## Phase 3 — Rewrite, file by file
 
-For each file, run the rewrite loop from `humanizer.md`:
+For each file, run the rewrite loop in `humanizer.md`, then write the final
+text its last step produces back to the file in place. Two rules sharpen its
+step 2 here:
 
-1. Identify every pattern instance.
-2. Draft the rewrite. Prose only: code blocks, identifiers, frontmatter, data
-   tables, and link targets stay byte-identical. A reference to an issue, pull
-   request, or commit is one of those identifiers — never shorten `owner/repo#N`
-   to `#N` or a commit to its bare sha to make a sentence read better; the
-   repository is part of what it points at. In source files, only comments and
-   docstrings change.
-3. Audit the draft: what still reads machine-written, and does it state any
-   fact not in the source? Fix both.
-4. Write the final text back to the file in place.
+- A reference to an issue, pull request, or commit is one of the identifiers
+  that stay byte-identical. Never shorten `owner/repo#N` to `#N`, or a commit to
+  its bare sha, to make a sentence read better; the repository is part of what
+  it points at.
+- In source files, only comments and docstrings change.
 
 Keep the document's own language: a German README is rewritten in German, never
 translated. (The English pin the other skills follow governs the artifacts this

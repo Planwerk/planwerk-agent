@@ -17,9 +17,10 @@ Signed-off-by: <committer name> <committer email>
   committer identity. It must be the very last line of the message.
 - Name yourself in an `Assisted-by` trailer. Append your exact model id when your
   runtime provides it (`Assisted-by: Claude:claude-opus-5-5`); otherwise emit
-  `Assisted-by: Claude` alone — never guess the id. Pass it as the final `-m`
-  paragraph, not via `--trailer`: git places `--trailer` values *after* the
-  sign-off, which breaks the order.
+  `Assisted-by: Claude` alone — never guess the id. Drop any bracketed suffix
+  such as `[1m]`: it names a context window, not the model. Pass the trailer as
+  the final `-m` paragraph, not via `--trailer`: git places `--trailer` values
+  *after* the sign-off, which breaks the order.
 - Never add a `Co-authored-by` trailer — not for Claude, not for planwerk-agent,
   not for anyone.
 - Never pass `--no-verify` or `--no-gpg-sign`. A pre-commit hook that rejects

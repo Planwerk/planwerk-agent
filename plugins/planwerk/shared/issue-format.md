@@ -100,22 +100,23 @@ document. Every Sub Issue it actually corrects still gets the verb swap, since
 `meta` already left one to replace.
 
 Append your exact model id when your runtime context provides it (for example
-`with Claude:claude-opus-5-5`). Otherwise write a bare `with Claude` — never
-guess the id. Keep the `[planwerk-agent]` link intact so the issue points back
-at the tool that produced it. Add the footer once, as the last line.
+`with Claude:claude-opus-5-5`), and drop any bracketed suffix such as `[1m]`:
+it names a context window, not the model. Otherwise write a bare `with Claude`
+— never guess the id. Keep the `[planwerk-agent]` link intact so the issue
+points back at the tool that produced it. Add the footer once, as the last line.
 
 ## The body's limit, and the continuation comment
 
 A body has a limit, and a document over it is not shortened. Once a body
 carries a plan — the elaborated depth — it holds at most 40,000 characters
-(`issue-format-plan.md` says why). A draft-depth body and a survey Meta Issue
-are bounded only by GitHub's cap of 65,536 characters, which GitHub enforces
-on every body and every comment by rejecting a longer write outright. A
-document over its limit is written as the body plus one or more **continuation
-comments**, and every skill that reads an issue reads the parts as one
-document (the reading rule is in `github.md`, under Reading). Nothing is
-dropped, tightened, or summarised to avoid the split. It is lossless: the split
-changes where the text is stored and nothing else.
+(`issue-format-plan.md` says why, and what that means for a plan). A
+draft-depth body and a survey Meta Issue are bounded only by GitHub's cap of
+65,536 characters, which GitHub enforces on every body and every comment by
+rejecting a longer write outright. A document over its limit is written as the
+body plus one or more **continuation comments**, and every skill that reads an
+issue reads the parts as one document (the reading rule is in `github.md`,
+under Reading). The split is lossless: it changes where the text is stored and
+nothing else.
 
 Count before every write: `wc -c < body.md`. At or under the limit, write the
 body as it is. Over it, split it:

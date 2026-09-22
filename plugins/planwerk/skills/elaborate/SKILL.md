@@ -27,6 +27,7 @@ Read these before you start, in full:
 - `${CLAUDE_SKILL_DIR}/../../shared/github.md` — the `gh` commands
 - `${CLAUDE_SKILL_DIR}/../../shared/github-relations.md` — the neighborhood query
 - `${CLAUDE_SKILL_DIR}/../../shared/cross-repo.md` — when the plan implies work in another repository
+- `${CLAUDE_SKILL_DIR}/../../shared/domains.md` — the domain sweep, when the repository commits no `.planwerk/domains.md` of its own
 
 You must be inside a checkout of the issue's repository. If the working tree
 belongs to a different repo, say so and stop.
@@ -54,8 +55,15 @@ its sibling Sub Issues before planning, and obey these rules:
   `owner/repo#K`, and its pull request or commit the same way — a bare `#K` in a
   body written here points at this repository's issue K.
 
-When the issue **is itself** a Meta Issue (it has Sub Issues), it does not want
-an elaboration. Say so and point at `/planwerk:meta`.
+When the issue **is itself** a Meta Issue, it does not want an elaboration:
+
+- **It has Sub Issues** (the query's own `subIssues` is non-empty). The plans
+  belong to them. Say so and point at elaborating the open ones one by one,
+  `/planwerk:elaborate <sub-issue-ref>` each.
+- **It has none yet, but frames a larger body of work as several
+  self-contained work packages.** It has not been split. Say so and point at
+  `/planwerk:meta`. An issue whose work breakdown is the steps of one delivery
+  is not this case: plan it whole.
 
 ## Phase 2 — Walk the repository, before you ask anything
 
@@ -68,6 +76,13 @@ Distinguish what **already exists** from what **this issue adds**, with concrete
 boundaries.
 
 Never ask the author a question the repository answers.
+
+This walk is also where a counterpart first becomes visible: you now know which
+interfaces the plan moves, which the draft could only guess at. When the map
+names a repository whose `When:` condition this plan meets, and no counterpart
+issue is linked yet, note it: Phase 3 offers to file one at draft depth, as its
+own question, gated like any other write. Filing it is catching what the draft
+missed, so if one already exists, say so and move on.
 
 ## Phase 3 — Resolve the decisions the plan cannot make
 
@@ -90,12 +105,7 @@ correct change already settles. Decide those yourself.
 If the author declines to answer, record the open question under Non-Goals or as
 an explicit assumption in the Description. Never resolve it silently.
 
-Phase 2 is also where a counterpart first becomes visible: you now know which
-interfaces the plan moves, which the draft could only guess at. When the map
-names a repository whose `When:` condition this plan meets, and no counterpart
-issue is linked yet, offer to file one at draft depth — its own question, gated
-like any other write. Filing it here is catching what the draft missed, so if
-one already exists, say so and move on.
+Then offer the counterpart Phase 2 noted, when there is one.
 
 ## Phase 4 — Write the plan
 
@@ -109,11 +119,10 @@ temp directory, so it never lands in a commit. Phase 6 counts that file and
 writes it back from it.
 
 Plan the smallest change that satisfies the issue. Do not invent scope. Write
-densely, per the size rules in `issue-format-plan.md`, and write everything the
-implementer needs: a plan past the body's 40,000-character limit continues in
-comments at write-back, and is never shortened for it.
-Enumerate every affected area — source, tests, docs, schema, generated
-artifacts, CI. A surprise file in a PR is a process smell.
+densely, and write everything the implementer needs: how a plan past the body's
+limit is written is settled under Size in `issue-format-plan.md`. Enumerate
+every affected area — source, tests, docs, schema, generated artifacts, CI. A
+surprise file in a PR is a process smell.
 
 Record a counterpart under Non-Goals, citing it as `owner/repo#N`. That is
 scoping, not delivery-splitting: a pull request cannot span repositories, so the
@@ -124,6 +133,17 @@ Every data-flow acceptance criterion spells out its empty, nil, and
 upstream-error paths as separate criteria, each naming the concrete error. The
 edge-case and plan-quality rules in `issue-format-plan.md` are the bar; read them
 again before you write the criteria, not after.
+
+Sweep the domains before the criteria are final: the list in the repository's
+`.planwerk/domains.md` when it commits a non-empty one, otherwise the one in
+`domains.md`. A domain the issue touches must surface in the issue itself: as an
+Acceptance Criterion when it adds an observable check, and as an Affected Areas
+entry when it adds a file to touch. A domain the issue does not touch needs
+nothing at all. Never add a Domain Sweep section, list, or note to the body: the
+sweep is how you arrive at the criteria, never something the issue reports.
+Sweeping never widens scope either: a consequence you find is either already
+required by the issue, or it belongs under Non-Goals with its one sentence of
+why.
 
 ## Phase 5 — Score it, then close the gaps
 
@@ -153,10 +173,15 @@ Check, in order:
    of it to a follow-up issue, and no Non-Goal that defers work the Description
    requires. A Non-Goal pointing at a counterpart in another repository is not a
    violation: that work could never have shipped in this pull request.
+7. **Domain coverage** — for each domain of the sweep, decide from the
+   repository whether this change touches it. A touched domain whose
+   consequence no Acceptance Criterion or Affected Areas entry carries is a
+   gap: name the domain and the consequence that has no home. A domain the
+   change does not touch is never a gap.
 
 Only gaps that would make an implementer build the wrong thing or get stuck
-count. Wording preferences are not gaps, and neither is length: a draft over
-the body's limit is split at write-back in Phase 6, not shortened here.
+count. Wording preferences are not gaps, and neither is length: Phase 6 settles
+the body's limit.
 
 Refine and re-score until the score reaches 8, or until you have refined three
 times. You are scoring your own work, so the score is the easiest thing in this
@@ -167,7 +192,7 @@ phase to move without moving the plan. Two rules keep it honest:
   behind it is invalid — the previous score stands.
 - **A round that finds nothing is a round that did not look.** If a re-score
   surfaces no gap at all while the score is still below 8, you are validating
-  your draft rather than doubting it. Go back to the six checks and work one
+  your draft rather than doubting it. Go back to the seven checks and work one
   concrete failing example per check, or stop and report what you could not
   close.
 
@@ -183,7 +208,7 @@ where it should land, and recommend one:
 - **Replace the issue body** (`gh issue edit --body-file`) — the default, and
   what `implement` reads. Count the file first: over 40,000 characters it is
   written whole, as the body plus continuation comments per `issue-format.md`,
-  with the comments in step. It is never shortened to fit.
+  with the comments in step.
 - **Post it as a comment** (`gh issue comment --body-file`) — when the original
   body must survive. GitHub caps a comment at 65,536 characters: a document
   over that is posted as a run of comments per `issue-format.md`. Not on an
