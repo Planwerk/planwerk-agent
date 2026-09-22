@@ -201,6 +201,28 @@ func withReadOnlyDenied(args []string, readOnly bool) []string {
 	return append(args, claudeReadOnlyDeniedTools...)
 }
 
+// readOnlyHookSettings is the --settings value the read-only sessions carry. A
+// read-only pass runs in a checkout of the change under review, which may be a
+// pull request from a fork, and --setting-sources project loads that checkout's
+// .claude/settings.json: any hook it declares would run as the operator, with
+// the operator's GitHub token in the environment, before the model reads a
+// single line. Settings passed on the command line outrank project settings, so
+// this switches every hook off for the session.
+const readOnlyHookSettings = `{"disableAllHooks":true}`
+
+// withHooksDisabled appends --settings readOnlyHookSettings when readOnly is
+// true (a no-op otherwise). The mutating sessions keep the project's hooks: they
+// work on a branch of the operator's own repository, where the hooks
+// (formatters, commit guards) are part of how the repository expects changes to
+// be made. --settings takes exactly one value, so it may sit anywhere before the
+// trailing variadic tool flags.
+func withHooksDisabled(args []string, readOnly bool) []string {
+	if !readOnly {
+		return args
+	}
+	return append(args, "--settings", readOnlyHookSettings)
+}
+
 // withNoTools appends --tools followed by a single empty value, which is how
 // Claude Code is told to load none of its built-in tools. It replaces
 // withReadOnlyDenied and withAllowedTools rather than joining them: denying the
@@ -759,6 +781,7 @@ func (c *Client) claudeArgs(spec runSpec, outputFormat string, extra ...string) 
 	args = withSession(args, spec)
 	args = withAgents(args, spec.agentsJSON)
 	args = c.hermeticArgs(args)
+	args = withHooksDisabled(args, spec.readOnly || spec.noTools)
 	if spec.noTools {
 		return withNoTools(args)
 	}
