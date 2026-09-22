@@ -660,6 +660,30 @@ func TestClaudeArgs_NoToolsReplacesTheToolFlags(t *testing.T) {
 	}
 }
 
+// TestClaudeArgs_ReadOnlyDisablesProjectHooks locks in that a read-only session
+// (an analysis pass or a structuring pass) switches off every hook, so a
+// .claude/settings.json in the checkout under review cannot run a command as the
+// operator, while a mutating session keeps the repository's own hooks.
+func TestClaudeArgs_ReadOnlyDisablesProjectHooks(t *testing.T) {
+	t.Parallel()
+
+	for _, spec := range []runSpec{
+		{model: "opus", effort: "xhigh", readOnly: true},
+		{model: "sonnet", effort: "medium", readOnly: true, noTools: true},
+	} {
+		args := NewClient().claudeArgs(spec, "json")
+		i := slices.Index(args, "--settings")
+		if i == -1 || i+1 >= len(args) || args[i+1] != readOnlyHookSettings {
+			t.Errorf("read-only spec %+v: want --settings %s; got %v", spec, readOnlyHookSettings, args)
+		}
+	}
+
+	args := NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", permissionMode: claudeAutoPermissionMode}, "json")
+	if slices.Contains(args, "--settings") {
+		t.Errorf("a mutating session must keep the project's hooks; got %v", args)
+	}
+}
+
 // TestClaudeArgs_ToolFlagsSurviveWithoutNoTools guards the other direction: every
 // session that is not a structuring pass keeps the deny/allow pair exactly as
 // before, and never carries --tools.
