@@ -1139,13 +1139,27 @@ func (r *Runner) runVerification(w io.Writer, dir string, ctx Context) {
 		return
 	}
 
-	slog.Info("feeding verification findings into the review applier", "findings", len(result.Findings))
+	// The same survive-before-apply gate the review loop applies (decision 72):
+	// a finding the verifier could not ground is reported above, never edited
+	// from.
+	var gaps []report.Finding
+	for _, f := range result.Findings {
+		if !f.Unverified() {
+			gaps = append(gaps, f)
+		}
+	}
+	if len(gaps) == 0 {
+		return
+	}
+
+	slog.Info("feeding verification findings into the review applier", "findings", len(gaps))
 	verifyReport, _, err := r.ReviewApplier.ApplyReview(dir, ReviewApplyContext{
 		RepoFullName: ctx.RepoFullName,
 		BaseBranch:   branch.BaseBranch,
-		Findings:     result.Findings,
+		Findings:     gaps,
 		Patterns:     ctx.Patterns,
 		MaxPatterns:  ctx.MaxPatterns,
+		Source:       ReviewApplySourceVerification,
 	})
 	if err != nil {
 		slog.Warn("verification apply failed", "err", err)

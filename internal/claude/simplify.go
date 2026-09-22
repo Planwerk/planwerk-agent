@@ -54,8 +54,8 @@ Flag ONLY:
 1. Speculative abstractions — interfaces with a single implementation, factories where a constructor suffices, generics or config knobs with one concrete use.
 2. Reinvented wheels — hand-rolled code that the stdlib, the framework, or an already-present dependency already provides.
 3. Dead or unreachable complexity — unused parameters kept "for the future", branches that cannot be taken, commented-out code.
-4. Over-built control flow — layers of indirection, wrappers that only forward, defensive handling for impossible states.
-5. Code that is simply longer than it needs to be — a 200-line solution that a senior engineer would write in 50.
+4. Over-built control flow — layers of indirection, wrappers that only forward.
+5. A block that a named standard-library call, framework feature, or existing helper replaces outright.
 
 ` + simplifyFindGuardrailBlock() + `
 For every finding you report:
@@ -126,7 +126,7 @@ func BuildSimplifyApplyPrompt(ctx implement.SimplifyApplyContext) string {
 
 	if len(ctx.Patterns) > 0 {
 		sb.WriteString("## Project Review Patterns to Honor\n\n")
-		sb.WriteString("These patterns are the catalog the project's review/audit/elaborate tools share — including any project-specific patterns shipped under `.planwerk/review_patterns/` in this repository. The simplified result you push MUST stay consistent with them. When a simplification touches an area covered by a pattern, prefer the resolution the pattern endorses.\n\n")
+		sb.WriteString("These patterns are the catalog the project's review/audit/elaborate tools share — including any project-specific patterns shipped under `.planwerk/review_patterns/` in this repository. The simplified result MUST stay consistent with them. When a simplification touches an area covered by a pattern, prefer the resolution the pattern endorses.\n\n")
 		sb.WriteString("<review-patterns>\n")
 		sb.WriteString(patterns.FormatGroupedForPrompt(ctx.Patterns, ctx.MaxPatterns))
 		sb.WriteString("</review-patterns>\n\n")
@@ -136,8 +136,8 @@ func BuildSimplifyApplyPrompt(ctx implement.SimplifyApplyContext) string {
 ## What to do
 
 1. For each simplification above, confirm it removes accidental complexity only and changes no observable behavior. Skip any that would touch the guardrail areas.
-2. Apply the change — delete or collapse the code to the simpler form.
-3. Verify locally: build the project and run the tests (or the targeted subset covering the touched code). Capture the exact commands and pass/fail in the report. If a command cannot run in this environment, say so explicitly.
+2. Apply the change — delete or collapse the code to the simpler form. Edit only the lines the finding names; do not rewrite a function or a file it does not name. In this pass the guardrail above and "Delete, do not redesign" win over the baseline's "no error handling for impossible scenarios" and "rewrite it" lines: error handling and validation stay.
+3. Verify locally: build the project and run the tests (or the targeted subset covering the touched code). ` + foregroundRunLine() + ` Record the exact commands and their results under Verification in the report. If a command cannot run in this environment, say so explicitly.
 `)
 
 	sb.WriteString(foldSteps(ctx.BaseBranch, 4))
@@ -147,9 +147,11 @@ func BuildSimplifyApplyPrompt(ctx implement.SimplifyApplyContext) string {
    ## Simplification Report
 
    ### Applied
-   - <finding title> — <what was removed/collapsed and to what> (folded into <sha> <subject>)
+   - <finding title> — <what was removed/collapsed and to what> (folded into <commit subject>)
    ### Skipped
    - <finding title> — <why: would change behavior, touches a guardrail area, or no longer present>
+   ### Verification
+   - <exact command> — <PASS | FAIL: first failing line | not run: reason>
    ### Diff summary
    - Files: <comma-separated list>
    - Approx lines added/removed: <+N/-M>
@@ -194,7 +196,7 @@ func renderSimplifyFindings(findings []report.Finding) string {
 			fmt.Fprintf(&sb, "   - Collapse to: %s\n", f.Action)
 		}
 		if f.CodeSnippet != "" {
-			fmt.Fprintf(&sb, "   - Code:\n\n```\n%s\n```\n", strings.TrimRight(f.CodeSnippet, "\n"))
+			sb.WriteString("   - Code:\n\n" + fenceSnippet(strings.TrimRight(f.CodeSnippet, "\n")) + "\n")
 		}
 	}
 	return sb.String()
@@ -230,6 +232,14 @@ func foldSteps(baseBranch string, foldStep int) string {
       moved base:
 
       GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash "$(git merge-base origin/%[2]s HEAD)"
+
+   e. If the rebase stops on a conflict, resolve the file to the content your
+      change intended, `+"`git add`"+` it, and run `+"`git rebase --continue`"+`. If you cannot
+      resolve it, run `+"`git rebase --abort`"+`, leave the fixups unfolded on the
+      branch, and report DONE_WITH_CONCERNS naming them.
+   f. Before the report, `+"`git status`"+` shows no rebase in progress. If you
+      resolved a conflict, run the tests again: the tree changed after you
+      verified it.
 
    Do NOT push and do NOT open a pull request. Leave the rewritten commits on the
    local branch — the finalize step opens the PR once the simplify and review

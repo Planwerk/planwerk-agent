@@ -92,6 +92,10 @@ func domainPatternCatalog(intro string, pats []patterns.Pattern, maxPatterns int
 //     session sweep before committing to a change set (decision #86). Only the
 //     list is shared; each caller passes its own landing sentence, for the
 //     reason spelled out at the function.
+//   - fencedData / escapeFences / untrustedDataLine — the fence and the one
+//     framing sentence for text from outside the prompt (decision 97).
+//   - foregroundRunLine — the run-it-in-the-foreground rule every session that
+//     verifies its own edits carries.
 //
 // A few near-copies stay per-builder on purpose and are NOT shared here:
 //   - The fifth simplify-guardrail bullet differs between the find and apply
@@ -899,9 +903,22 @@ If applying a finding would touch any of these, SKIP that finding and record why
 
 // selfReviewPatternLine returns the "Self-review before you finish" thinking
 // pattern shared by the simplify-apply and review-apply prompts, carrying its
-// own trailing newline.
+// own trailing newline. It scopes the re-read to the session's own changes:
+// neither prompt carries the issue, and after the fold "the diff" is the whole
+// feature, so "remove anything not strictly required" over it licensed cuts no
+// finding asked for.
 func selfReviewPatternLine() string {
-	return "- \"Self-review before you finish.\" — Re-read the diff. The result MUST still build, pass the tests, and satisfy the issue. Remove anything not strictly required.\n"
+	return "- \"Self-review before you finish.\" — Re-read your own changes (the fixup commits). The branch MUST still build and pass the tests. Remove anything in your changes that no listed finding required.\n"
+}
+
+// foregroundRunLine is the rule for running tests and builds in a one-shot
+// session, shared by every session that verifies its own edits before it
+// reports. The failure it prevents is the most frequent one the completion
+// nudge sees (completion.go): a session that starts the test run in the
+// background and ends its turn to wait for it, which kills the run and loses
+// its result. It carries no list prefix and no trailing newline.
+func foregroundRunLine() string {
+	return "Run every command in the FOREGROUND and wait for it to finish before the next step — never background a test or build run and move on. You need its real exit status in hand to commit and to fill in the report; a backgrounded run's result never reaches this one-shot session. If a command outlives the Bash tool's foreground time limit, background it and poll its output within this same turn until it exits."
 }
 
 // fixThinkingPatterns returns the task-specific thinking-pattern block shared by

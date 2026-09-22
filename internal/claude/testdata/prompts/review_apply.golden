@@ -43,7 +43,7 @@ Apply these task-specific thinking patterns on top of the baseline above:
 - "Find the root cause." — Each finding names a symptom; fix the broken invariant in the code under it, not just the surface. Open the cited file before editing — never patch from the finding text alone.
 - "Minimal-invasive change." — Touch the smallest surface area that resolves each finding. No drive-by refactors, no reformatting unrelated code, no dependency bumps the finding does not implicate.
 - "Regression guard." — When the fix is in production code and the existing tests did not catch the issue, add or extend a test that fails before your fix and passes after. This pass IS allowed to add tests.
-- "Self-review before you finish." — Re-read the diff. The result MUST still build, pass the tests, and satisfy the issue. Remove anything not strictly required.
+- "Self-review before you finish." — Re-read your own changes (the fixup commits). The branch MUST still build and pass the tests. Remove anything in your changes that no listed finding required.
 
 ## Branch
 
@@ -66,7 +66,7 @@ db.Query("SELECT * FROM users WHERE name = '" + name + "'")
 
 ## Project Review Patterns to Honor
 
-These patterns are the catalog the project's review/audit/elaborate tools share — including any project-specific patterns shipped under `.planwerk/review_patterns/` in this repository. The fixed result you push MUST stay consistent with them: do not introduce code or test changes that would themselves be flagged by a pattern below. When a fix touches an area covered by a pattern, prefer the resolution the pattern endorses.
+These patterns are the catalog the project's review/audit/elaborate tools share — including any project-specific patterns shipped under `.planwerk/review_patterns/` in this repository. The fixed result MUST stay consistent with them: do not introduce code or test changes that would themselves be flagged by a pattern below. When a fix touches an area covered by a pattern, prefer the resolution the pattern endorses.
 
 <review-patterns>
 <technology-patterns>
@@ -99,7 +99,7 @@ Secrets MUST be loaded from environment variables or a secret manager.
 1. For each finding above, confirm it is a real issue worth fixing. If a finding is a false positive or no longer applies to the current diff, skip it and record why in the report.
 2. Fix the root cause with the minimal change that resolves the finding. Open the cited file before editing; do not patch the symptom or reach into unrelated cleanups.
 3. Add a regression test when the fix is in production code and the existing suite did not catch the issue — a test that fails before your fix and passes after. Skip this only for fixes inside test code itself or fixes no unit/integration test could plausibly catch.
-4. Verify locally: build the project and run the tests (or the targeted subset covering the touched code). Capture the exact commands and pass/fail in the report. If a command cannot run in this environment, say so explicitly.
+4. Verify locally: build the project and run the tests (or the targeted subset covering the touched code). Run every command in the FOREGROUND and wait for it to finish before the next step — never background a test or build run and move on. You need its real exit status in hand to commit and to fill in the report; a backgrounded run's result never reaches this one-shot session. If a command outlives the Bash tool's foreground time limit, background it and poll its output within this same turn until it exits. Record the exact commands and their results under Verification in the report. If a command cannot run in this environment, say so explicitly.
 5. Fold each change into the commit it belongs to. This branch may carry more
    than one commit, and a removal of code that an earlier commit introduced
    belongs IN that commit — not in a new commit stacked on top.
@@ -123,6 +123,14 @@ Secrets MUST be loaded from environment variables or a secret manager.
 
       GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash "$(git merge-base origin/main HEAD)"
 
+   e. If the rebase stops on a conflict, resolve the file to the content your
+      change intended, `git add` it, and run `git rebase --continue`. If you cannot
+      resolve it, run `git rebase --abort`, leave the fixups unfolded on the
+      branch, and report DONE_WITH_CONCERNS naming them.
+   f. Before the report, `git status` shows no rebase in progress. If you
+      resolved a conflict, run the tests again: the tree changed after you
+      verified it.
+
    Do NOT push and do NOT open a pull request. Leave the rewritten commits on the
    local branch — the finalize step opens the PR once the simplify and review
    passes are done.
@@ -132,9 +140,11 @@ Secrets MUST be loaded from environment variables or a secret manager.
    ## Review Report
 
    ### Resolved
-   - <finding title> — <root cause and the fix> (folded into <sha> <subject>)
+   - <finding title> — <root cause and the fix> (folded into <commit subject>)
    ### Skipped
-   - <finding title> — <why: false positive, no longer present, or out of scope for this pass>
+   - <finding title> — <why: false positive, no longer present, or needs discussion>
+   ### Verification
+   - <exact command> — <PASS | FAIL: first failing line | not run: reason>
    ### Diff summary
    - Files: <comma-separated list>
    - Approx lines added/removed: <+N/-M>
@@ -161,5 +171,6 @@ EVERY commit you create MUST end with exactly these two trailers, in this order:
 - NEVER fabricate file paths, line numbers, or symbols — open the file before claiming.
 - PREFER to change only files the branch already touches. Reaching outside it is a last resort; make the smallest out-of-scope change that resolves the finding and call it out in the report.
 - If a finding is a false positive or no longer applies, SKIP it and record why — do not invent a change to satisfy it.
+- An architectural finding, or a needs-discussion finding whose fix would change a public interface or observable behavior beyond the finding's own defect, needs a human decision: list it under Skipped as "needs discussion" and change nothing for it.
 - If there is nothing to fix after review, do NOT create an empty commit; output the report with an empty Resolved list and stop.
 - It is OK to stop and report BLOCKED or NEEDS_CONTEXT. Bad work is worse than no work; escalating is not penalized.

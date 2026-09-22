@@ -356,7 +356,20 @@ type ReviewApplyContext struct {
 	Findings     []report.Finding
 	Patterns     []patterns.Pattern
 	MaxPatterns  int
+	// Source says which pass produced Findings, so the prompt can describe
+	// them truthfully: the review fan-out's defects (the zero value), or the
+	// independent verification's unmet Acceptance Criteria.
+	Source ReviewApplySource
 }
+
+// ReviewApplySource names the pass whose findings a review-apply session
+// resolves.
+type ReviewApplySource string
+
+// ReviewApplySourceVerification marks findings from the independent
+// implementation verification: each is an Acceptance Criterion the branch does
+// not yet satisfy, not a defect in code it wrote.
+const ReviewApplySourceVerification ReviewApplySource = "verification"
 
 // ReviewApplier resolves the review pass's findings and folds each fix into the
 // commit it belongs to via fixup/autosquash on the local branch (no push). It
