@@ -35,7 +35,7 @@ Output ONLY valid JSON matching this exact schema (no markdown fences, no surrou
 
 Field rules:
 - "id": leave as empty string — it is assigned automatically.
-- "type": one of the four values above. Pick the type that matches WHAT IS MISSING.
+- "type": one of the four values above, copied from the gap type the analysis states.
 - "severity": uppercase, never BLOCKING (gap analysis runs on already-merged work).
 - "feature_id" / "feature_file": copy from the surrounding feature block.
 - "source": include the verbatim text from the spec — criterion, scenario, task, or test name.

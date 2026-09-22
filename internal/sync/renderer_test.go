@@ -109,3 +109,22 @@ func TestSyncResult_PartitionersAndDeletionPaths(t *testing.T) {
 		t.Fatalf("DeletionPaths = %v, want 2 unique paths", paths)
 	}
 }
+
+// TestSyncResult_PrunablePaths holds back what the write phase must not delete
+// unattended: an entry the analysis did not verify, and one another flagged
+// entry names as the copy to keep.
+func TestSyncResult_PrunablePaths(t *testing.T) {
+	r := SyncResult{Entries: []FlaggedEntry{
+		{Path: "review_patterns/gone.md", Classification: ClassStale, Confidence: "verified"},
+		{Path: "review_patterns/maybe.md", Classification: ClassStale, Confidence: "uncertain"},
+		{Path: "memory/a.md", Classification: ClassRedundant, SupersededBy: "memory/b.md", Confidence: "verified"},
+		{Path: "memory/b.md", Classification: ClassRedundant, SupersededBy: "memory/a.md", Confidence: "verified"},
+	}}
+	paths, held := r.PrunablePaths()
+	if len(paths) != 1 || paths[0] != "review_patterns/gone.md" {
+		t.Errorf("prunable = %v, want only the verified stale entry", paths)
+	}
+	if len(held) != 3 {
+		t.Errorf("held = %v, want the unverified entry and both copies of the duplicate", held)
+	}
+}

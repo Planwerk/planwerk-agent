@@ -54,15 +54,16 @@ The wiki holds two kinds of knowledge that drift as the code changes: review pat
 You are running inside a fresh checkout of the repository. For EACH wiki entry below, classify it as exactly one of:
 
 - **stale** — it references concrete code (a file path, package, type, function, method, symbol, CLI command, or flag) that no longer exists in this checkout. You MUST confirm the reference is gone by searching the codebase (grep/glob, then read the file) — do not guess. An entry that states a general principle and names no concrete code reference is NOT stale.
-- **redundant** — it is duplicated or wholly superseded by ANOTHER entry in the list below. Name the superseding entry's exact path in superseded_by. Two entries expressing the same rule are redundant; two entries covering different rules are not.
+- **redundant** — it is duplicated or wholly superseded by ANOTHER entry in the list below. Name the superseding entry's exact path in superseded_by. Two entries expressing the same rule are redundant; two entries covering different rules are not. Of a group of duplicates, keep one and flag only the others: never flag an entry that another flagged entry names as its superseding entry.
 - **current** — leave it unflagged. Most entries are current; flag only the ones you can justify with a concrete citation.
 
 ## Verification rules
 
 These are MANDATORY — violating them produces a misleading report that drives a destructive deletion.
 
-- NEVER write "this is probably removed" or "this likely no longer applies" — grep for the path/symbol and confirm its absence, or do not flag it.
-- When you cannot confirm a reference is gone (e.g. a symbol name too generic to search reliably), either leave the entry current or flag it with confidence "uncertain" and say what you could not verify.
+- NEVER write "this is probably removed" or "this likely no longer applies" — grep for the path/symbol and confirm its absence before you call an entry stale with confidence "verified".
+- When you cannot confirm a reference is gone (e.g. a symbol name too generic to search reliably), flag the entry with confidence "uncertain" and say what you could not verify. An uncertain entry is reported to the operator but never deleted.
+- For every entry you flag, state its path, its classification, the concrete missing reference (stale) or the superseding path (redundant), and a confidence: verified, likely, or uncertain. Only verified entries are ever deleted.
 - Quote the concrete missing reference (the path, symbol, or flag) in every stale reason. A reason without a concrete reference is not a valid stale finding.
 - This is a READ-ONLY analysis. NEVER edit, create, move, or delete any file in the checkout or the wiki. The flagged entries are deleted later, in a separate step that asks the operator to confirm.
 
@@ -111,7 +112,7 @@ func buildSyncStructurePrompt(rawAnalysis string) string {
   ]
 }
 
-Use the entry's exact wiki path from the analysis (e.g. "review_patterns/no-raw-sql.md", "memory/decisions.md"). Set "kind" to "pattern" for a review_patterns/ entry and "memory" for a memory/ entry. Leave "superseded_by" empty unless the classification is "redundant". If the analysis flagged nothing, emit {"entries": []}.
+Use the entry's exact wiki path from the analysis (e.g. "review_patterns/no-raw-sql.md", "memory/decisions.md"). Set "kind" to "pattern" for a review_patterns/ entry and "memory" for a memory/ entry. Leave "superseded_by" empty unless the classification is "redundant". Copy the confidence the analysis states for each entry; when it states none, use "uncertain". If the analysis flagged nothing, emit {"entries": []}.
 
 <analysis-output>
 ` + rawAnalysis + `

@@ -8,6 +8,8 @@
 // read-only pass.
 package sync
 
+import "strings"
+
 // Entry kinds and flag classifications, kept as constants so the renderer, the
 // prompt, and the structuring schema agree on the spelling.
 const (
@@ -91,4 +93,40 @@ func (r SyncResult) DeletionPaths() []string {
 		paths = append(paths, e.Path)
 	}
 	return paths
+}
+
+// PrunablePaths returns the flagged paths the write phase may delete, and the
+// flagged paths it leaves for a human, each with the reason, both in
+// first-seen order and de-duplicated.
+//
+// Deletion is irreversible and runs unattended under --yes, so two kinds of
+// flagged entry are held back. An entry whose confidence is not "verified":
+// the analysis could not confirm the missing reference, and its prompt tells
+// it to flag such an entry "uncertain" rather than not at all. And an entry
+// another flagged entry names as its superseded_by target: of two copies of a
+// duplicate the model can flag each as superseded by the other, and deleting
+// both loses the knowledge they share.
+func (r SyncResult) PrunablePaths() (paths, held []string) {
+	supersedes := make(map[string]bool)
+	for _, e := range r.Entries {
+		if e.SupersededBy != "" {
+			supersedes[e.SupersededBy] = true
+		}
+	}
+	seen := make(map[string]bool, len(r.Entries))
+	for _, e := range r.Entries {
+		if e.Path == "" || seen[e.Path] {
+			continue
+		}
+		seen[e.Path] = true
+		switch {
+		case !strings.EqualFold(strings.TrimSpace(e.Confidence), "verified"):
+			held = append(held, e.Path+" (not verified)")
+		case supersedes[e.Path]:
+			held = append(held, e.Path+" (another flagged entry names it as the one to keep)")
+		default:
+			paths = append(paths, e.Path)
+		}
+	}
+	return paths, held
 }

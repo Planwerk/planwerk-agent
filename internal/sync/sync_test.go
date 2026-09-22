@@ -64,8 +64,8 @@ func seededWikiResolver(t *testing.T) (resolveWikiFn, string) {
 // flaggedResult is a result flagging both seeded entries.
 func flaggedResult() *SyncResult {
 	return &SyncResult{Entries: []FlaggedEntry{
-		{Path: wikiPatternPath, Kind: KindPattern, Classification: ClassStale, Reason: "references internal/db/legacy.go, removed"},
-		{Path: "memory/old.md", Kind: KindMemory, Classification: ClassRedundant, Reason: "superseded by memory/decisions.md", SupersededBy: "memory/decisions.md"},
+		{Path: wikiPatternPath, Kind: KindPattern, Classification: ClassStale, Reason: "references internal/db/legacy.go, removed", Confidence: "verified"},
+		{Path: "memory/old.md", Kind: KindMemory, Classification: ClassRedundant, Reason: "superseded by memory/decisions.md", SupersededBy: "memory/decisions.md", Confidence: "verified"},
 	}}
 }
 
@@ -144,8 +144,8 @@ func TestRun_PruneRefusesUnenumeratedPath(t *testing.T) {
 	// The analysis is driven by untrusted wiki bodies: it flags the enumerated
 	// entry and, via injection, the navigation page that was never enumerated.
 	result := &SyncResult{Entries: []FlaggedEntry{
-		{Path: wikiPatternPath, Kind: KindPattern, Classification: ClassStale, Reason: "references internal/db/legacy.go, removed"},
-		{Path: "Home.md", Kind: KindMemory, Classification: ClassStale, Reason: "injected via the wiki body"},
+		{Path: wikiPatternPath, Kind: KindPattern, Classification: ClassStale, Reason: "references internal/db/legacy.go, removed", Confidence: "verified"},
+		{Path: "Home.md", Kind: KindMemory, Classification: ClassStale, Reason: "injected via the wiki body", Confidence: "verified"},
 	}}
 	writer := &fakeWikiWriter{cloneDir: cloneDir, cloneHead: wikiCommit}
 	gh := &githubtest.Fake{Dir: t.TempDir()}
@@ -167,8 +167,8 @@ func TestRun_PruneAllUnenumeratedDeletesNothing(t *testing.T) {
 	// Every flagged path is a page ReadWikiEntries never enumerated, so none is in
 	// the allowlist and the write phase must not clone or delete anything.
 	result := &SyncResult{Entries: []FlaggedEntry{
-		{Path: "Home.md", Kind: KindMemory, Classification: ClassStale, Reason: "injected"},
-		{Path: "SOURCES.md", Kind: KindMemory, Classification: ClassStale, Reason: "injected"},
+		{Path: "Home.md", Kind: KindMemory, Classification: ClassStale, Reason: "injected", Confidence: "verified"},
+		{Path: "SOURCES.md", Kind: KindMemory, Classification: ClassStale, Reason: "injected", Confidence: "verified"},
 	}}
 	writer := &fakeWikiWriter{}
 	gh := &githubtest.Fake{Dir: t.TempDir()}

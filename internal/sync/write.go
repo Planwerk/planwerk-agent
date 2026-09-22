@@ -22,8 +22,12 @@ import (
 // this gate a crafted page could steer the analysis to flag — and an unattended
 // --prune --yes job to delete — a page that was never enumerated.
 func (r *Runner) runWritePhase(w io.Writer, opts Options, result *SyncResult, allowed map[string]bool) error {
+	prunable, held := result.PrunablePaths()
+	for _, h := range held {
+		_, _ = fmt.Fprintf(w, "Leaving %s for a human to review.\n", h)
+	}
 	var paths []string
-	for _, p := range result.DeletionPaths() {
+	for _, p := range prunable {
 		if allowed[p] {
 			paths = append(paths, p)
 		} else {
@@ -31,7 +35,11 @@ func (r *Runner) runWritePhase(w io.Writer, opts Options, result *SyncResult, al
 		}
 	}
 	if len(paths) == 0 {
-		_, _ = fmt.Fprintln(w, "Nothing to prune — no flagged entry matched an enumerated wiki page.")
+		if len(prunable) == 0 && len(held) > 0 {
+			_, _ = fmt.Fprintln(w, "Nothing to prune — every flagged entry needs a human's review first.")
+		} else {
+			_, _ = fmt.Fprintln(w, "Nothing to prune — no flagged entry matched an enumerated wiki page.")
+		}
 		return nil
 	}
 

@@ -15,7 +15,7 @@ Output ONLY valid JSON matching this exact schema (no markdown fences, no surrou
   ]
 }
 
-Use the entry's exact wiki path from the analysis (e.g. "review_patterns/no-raw-sql.md", "memory/decisions.md"). Set "kind" to "pattern" for a review_patterns/ entry and "memory" for a memory/ entry. Leave "superseded_by" empty unless the classification is "redundant". If the analysis flagged nothing, emit {"entries": []}.
+Use the entry's exact wiki path from the analysis (e.g. "review_patterns/no-raw-sql.md", "memory/decisions.md"). Set "kind" to "pattern" for a review_patterns/ entry and "memory" for a memory/ entry. Leave "superseded_by" empty unless the classification is "redundant". Copy the confidence the analysis states for each entry; when it states none, use "uncertain". If the analysis flagged nothing, emit {"entries": []}.
 
 <analysis-output>
 Entry review_patterns/old.md references internal/db/legacy.go, which no longer exists.

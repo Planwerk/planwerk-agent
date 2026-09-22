@@ -11,7 +11,7 @@ Output ONLY valid JSON matching this exact schema (no markdown fences, no surrou
       "feature_file": "PX-0028-...json",
       "title": "Feature title from the spec",
       "summary": "1-3 sentence verdict for this specific feature.",
-      "improved_json": { "...": "the full rewritten feature JSON content as a JSON OBJECT (not a string). Required when present in the analysis. Preserve every top-level key from the original." },
+      "improved_json": { "...": "the rewritten feature JSON the report gives for this feature, copied as a JSON OBJECT (not a string); omit the field when the report gives none" },
       "findings": [
         {
           "id": "",
@@ -35,10 +35,10 @@ Field rules:
 - "category": exactly one of the values above.
 - "severity": uppercase, never BLOCKING.
 - "feature_id" / "feature_file": copy from the surrounding feature block.
-- "spec_pointer": MUST point to a real path in the original JSON. If the finding is about a missing field, point to the parent (e.g. "stories[1]" for a story missing criteria).
-- "suggestion": describe the change as a concrete edit. When proposing new text, write the exact wording.
+- "spec_pointer": copy the pointer the report states for the finding. If it states only a missing field, copy the parent it names (e.g. "stories[1]" for a story missing criteria).
+- "suggestion": copy the edit the report gives, with its exact wording.
 - If a feature has no findings, include it with an empty findings array and a positive summary.
-- "improved_json": ALWAYS include for every feature — emit the full rewritten feature JSON as a nested JSON object (NOT a string). Preserve feature_id, slug, status, status_history, execution_history exactly as the input.
+- "improved_json": copy the rewritten feature JSON the report gives for this feature, verbatim, as a nested JSON object (NOT a string). When the report gives none for a feature, omit the field for it — never construct one: you have neither the original file nor the checkout, and a constructed rewrite would be committed as if the analysis wrote it.
 
 <review-report>
 Feature CC-0042: stories[0].criteria[0] uses the vague verb "handle".
