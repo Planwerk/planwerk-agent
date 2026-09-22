@@ -29,9 +29,10 @@ const (
 	DefaultClaudeTimeout = 60 * time.Minute
 	// DefaultClaudeModel is the compiled-in default model passed to Claude
 	// Code via --model. The "opus" alias runs the latest Opus release
-	// automatically, without re-pinning on each model bump; Opus follows
-	// instructions more literally than smaller models, which matches the
-	// strict MUST/NEVER style used throughout the review prompts. Override
+	// automatically, without re-pinning on each model bump. It follows
+	// instructions literally, which is why the prompts state each constraint
+	// plainly and once, with its reason: stacked emphasis makes a literal
+	// reader rigid in gray areas rather than more careful. Override
 	// with SetModel (driven by the --claude-model flag / PLANWERK_CLAUDE_MODEL
 	// env var) to run reviews on a different model, e.g. "fable".
 	DefaultClaudeModel = "opus"
