@@ -24,8 +24,8 @@ Flag ONLY:
 1. Speculative abstractions — interfaces with a single implementation, factories where a constructor suffices, generics or config knobs with one concrete use.
 2. Reinvented wheels — hand-rolled code that the stdlib, the framework, or an already-present dependency already provides.
 3. Dead or unreachable complexity — unused parameters kept "for the future", branches that cannot be taken, commented-out code.
-4. Over-built control flow — layers of indirection, wrappers that only forward, defensive handling for impossible states.
-5. Code that is simply longer than it needs to be — a 200-line solution that a senior engineer would write in 50.
+4. Over-built control flow — layers of indirection, wrappers that only forward.
+5. A block that a named standard-library call, framework feature, or existing helper replaces outright.
 
 ## HARD GUARDRAIL — never flag these
 Simplification removes accidental complexity, NEVER essential behavior. Do NOT flag,

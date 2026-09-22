@@ -1281,12 +1281,43 @@ func TestRun_VerifyFeedsUnmetCriteriaToApplier(t *testing.T) {
 	if ra.ctx.BaseBranch != reviewTestBase {
 		t.Errorf("applier got base %q, want main threaded from CurrentBranchRef", ra.ctx.BaseBranch)
 	}
+	if ra.ctx.Source != ReviewApplySourceVerification {
+		t.Errorf("applier got source %q, want the verification source so the prompt names the findings as unmet criteria", ra.ctx.Source)
+	}
 	out := buf.String()
 	if !strings.Contains(out, "unmet criterion finding") {
 		t.Errorf("the render output must still appear alongside the apply:\n%s", out)
 	}
 	if !strings.Contains(out, "Verification fixes report:") {
 		t.Errorf("missing the apply report in output:\n%s", out)
+	}
+}
+
+// TestRun_VerifyWithholdsUnverifiedFindings: a verification finding that did
+// not survive hygiene (uncertain WARNING/INFO) is reported but never applied,
+// the same survive-before-apply gate the review loop has (decision 72).
+func TestRun_VerifyWithholdsUnverifiedFindings(t *testing.T) {
+	gh := &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       t.TempDir(),
+		BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	}
+	cl := &fakeClaude{report: validImplReport}
+	fv := &fakeVerifier{result: &report.ReviewResult{Findings: []report.Finding{
+		{Severity: report.SeverityWarning, Confidence: report.ConfidenceUncertain, Title: "maybe unmet", File: "foo.go"},
+	}}}
+	ra := &fakeReviewApplier{report: "unused"}
+	r := verifyApplyRunner(gh, cl, fv, ra)
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", Verify: true, NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if ra.called.Load() != 0 {
+		t.Errorf("applier called %d times, want 0 — an unverified finding is reported, never applied", ra.called.Load())
+	}
+	if !strings.Contains(buf.String(), "maybe unmet") {
+		t.Errorf("the withheld finding must still be reported:\n%s", buf.String())
 	}
 }
 

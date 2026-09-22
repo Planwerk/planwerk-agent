@@ -57,13 +57,17 @@ func BuildReviewApplyPrompt(ctx implement.ReviewApplyContext) string {
 		ctx.RepoFullName, ctx.BaseBranch)
 
 	sb.WriteString("## Review findings to resolve\n\n")
-	sb.WriteString("These are the findings from the read-only review pass over the produced diff. Resolve each one — fix the root cause — unless it is a false positive or no longer applies to the current diff, in which case skip it and say so in the report.\n\n")
+	if ctx.Source == implement.ReviewApplySourceVerification {
+		sb.WriteString("These are the gaps an independent verification found between the issue's Acceptance Criteria and the produced diff: each names a criterion the branch does not yet satisfy. Close each one — implement what the criterion requires — unless it is a false positive or no longer applies to the current diff, in which case skip it and say so in the report.\n\n")
+	} else {
+		sb.WriteString("These are the findings from the read-only review pass over the produced diff. Resolve each one — fix the root cause — unless it is a false positive or no longer applies to the current diff, in which case skip it and say so in the report.\n\n")
+	}
 	sb.WriteString(renderReviewFindings(ctx.Findings))
 	sb.WriteString("\n")
 
 	if len(ctx.Patterns) > 0 {
 		sb.WriteString("## Project Review Patterns to Honor\n\n")
-		sb.WriteString("These patterns are the catalog the project's review/audit/elaborate tools share — including any project-specific patterns shipped under `.planwerk/review_patterns/` in this repository. The fixed result you push MUST stay consistent with them: do not introduce code or test changes that would themselves be flagged by a pattern below. When a fix touches an area covered by a pattern, prefer the resolution the pattern endorses.\n\n")
+		sb.WriteString("These patterns are the catalog the project's review/audit/elaborate tools share — including any project-specific patterns shipped under `.planwerk/review_patterns/` in this repository. The fixed result MUST stay consistent with them: do not introduce code or test changes that would themselves be flagged by a pattern below. When a fix touches an area covered by a pattern, prefer the resolution the pattern endorses.\n\n")
 		sb.WriteString("<review-patterns>\n")
 		sb.WriteString(patterns.FormatGroupedForPrompt(ctx.Patterns, ctx.MaxPatterns))
 		sb.WriteString("</review-patterns>\n\n")
@@ -74,7 +78,7 @@ func BuildReviewApplyPrompt(ctx implement.ReviewApplyContext) string {
 1. For each finding above, confirm it is a real issue worth fixing. If a finding is a false positive or no longer applies to the current diff, skip it and record why in the report.
 2. Fix the root cause with the minimal change that resolves the finding. Open the cited file before editing; do not patch the symptom or reach into unrelated cleanups.
 3. Add a regression test when the fix is in production code and the existing suite did not catch the issue — a test that fails before your fix and passes after. Skip this only for fixes inside test code itself or fixes no unit/integration test could plausibly catch.
-4. Verify locally: build the project and run the tests (or the targeted subset covering the touched code). Capture the exact commands and pass/fail in the report. If a command cannot run in this environment, say so explicitly.
+4. Verify locally: build the project and run the tests (or the targeted subset covering the touched code). ` + foregroundRunLine() + ` Record the exact commands and their results under Verification in the report. If a command cannot run in this environment, say so explicitly.
 `)
 
 	sb.WriteString(foldSteps(ctx.BaseBranch, 5))
@@ -84,9 +88,11 @@ func BuildReviewApplyPrompt(ctx implement.ReviewApplyContext) string {
    ## Review Report
 
    ### Resolved
-   - <finding title> — <root cause and the fix> (folded into <sha> <subject>)
+   - <finding title> — <root cause and the fix> (folded into <commit subject>)
    ### Skipped
-   - <finding title> — <why: false positive, no longer present, or out of scope for this pass>
+   - <finding title> — <why: false positive, no longer present, or needs discussion>
+   ### Verification
+   - <exact command> — <PASS | FAIL: first failing line | not run: reason>
    ### Diff summary
    - Files: <comma-separated list>
    - Approx lines added/removed: <+N/-M>
@@ -104,6 +110,7 @@ func BuildReviewApplyPrompt(ctx implement.ReviewApplyContext) string {
 	sb.WriteString(`- NEVER fabricate file paths, line numbers, or symbols — open the file before claiming.
 - PREFER to change only files the branch already touches. Reaching outside it is a last resort; make the smallest out-of-scope change that resolves the finding and call it out in the report.
 - If a finding is a false positive or no longer applies, SKIP it and record why — do not invent a change to satisfy it.
+- An architectural finding, or a needs-discussion finding whose fix would change a public interface or observable behavior beyond the finding's own defect, needs a human decision: list it under Skipped as "needs discussion" and change nothing for it.
 - If there is nothing to fix after review, do NOT create an empty commit; output the report with an empty Resolved list and stop.
 - It is OK to stop and report BLOCKED or NEEDS_CONTEXT. Bad work is worse than no work; escalating is not penalized.
 `)
@@ -121,8 +128,8 @@ func renderReviewFindings(findings []report.Finding) string {
 	var sb strings.Builder
 	for i, f := range findings {
 		fmt.Fprintf(&sb, "%d. %s", i+1, f.Title)
-		if f.Severity != "" {
-			fmt.Fprintf(&sb, " [%s]", f.Severity)
+		if label := findingLabel(f); label != "" {
+			fmt.Fprintf(&sb, " [%s]", label)
 		}
 		if f.File != "" {
 			fmt.Fprintf(&sb, " (%s)", f.File)
@@ -137,8 +144,22 @@ func renderReviewFindings(findings []report.Finding) string {
 			fmt.Fprintf(&sb, "   - Suggested fix: %s\n", f.Action)
 		}
 		if f.CodeSnippet != "" {
-			fmt.Fprintf(&sb, "   - Code:\n\n```\n%s\n```\n", strings.TrimRight(f.CodeSnippet, "\n"))
+			sb.WriteString("   - Code:\n\n" + fenceSnippet(strings.TrimRight(f.CodeSnippet, "\n")) + "\n")
 		}
 	}
 	return sb.String()
+}
+
+// findingLabel renders a finding's severity and actionability as "CRITICAL,
+// architectural" (either half may be absent). The actionability is what the
+// apply session's skip rule turns on, so it travels with the finding.
+func findingLabel(f report.Finding) string {
+	var parts []string
+	if f.Severity != "" {
+		parts = append(parts, string(f.Severity))
+	}
+	if f.Actionability != "" {
+		parts = append(parts, string(f.Actionability))
+	}
+	return strings.Join(parts, ", ")
 }

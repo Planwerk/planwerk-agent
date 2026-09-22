@@ -43,7 +43,7 @@ Apply these task-specific thinking patterns on top of the baseline above:
 - "Decision ladder." — For every piece of complexity, prefer the simplest rung that still does the job: not building it (YAGNI) -> the standard library -> a platform/framework-native feature -> a dependency already present -> a one-liner -> only then the minimum new code. Collapse toward the top.
 - "Delete, do not redesign." — Simplification removes accidental complexity. It is NOT a refactor, an API redesign, or a behavior change. If a change alters observable behavior, it is out of scope — leave it.
 - "Each removal folds into the commit that introduced it." — A simplification to code an earlier commit added belongs IN that commit, not in a new commit stacked on top.
-- "Self-review before you finish." — Re-read the diff. The result MUST still build, pass the tests, and satisfy the issue. Remove anything not strictly required.
+- "Self-review before you finish." — Re-read your own changes (the fixup commits). The branch MUST still build and pass the tests. Remove anything in your changes that no listed finding required.
 
 ## Branch
 
@@ -68,7 +68,7 @@ type Runner interface {
 
 ## Project Review Patterns to Honor
 
-These patterns are the catalog the project's review/audit/elaborate tools share — including any project-specific patterns shipped under `.planwerk/review_patterns/` in this repository. The simplified result you push MUST stay consistent with them. When a simplification touches an area covered by a pattern, prefer the resolution the pattern endorses.
+These patterns are the catalog the project's review/audit/elaborate tools share — including any project-specific patterns shipped under `.planwerk/review_patterns/` in this repository. The simplified result MUST stay consistent with them. When a simplification touches an area covered by a pattern, prefer the resolution the pattern endorses.
 
 <review-patterns>
 <technology-patterns>
@@ -109,8 +109,8 @@ If applying a finding would touch any of these, SKIP that finding and record why
 ## What to do
 
 1. For each simplification above, confirm it removes accidental complexity only and changes no observable behavior. Skip any that would touch the guardrail areas.
-2. Apply the change — delete or collapse the code to the simpler form.
-3. Verify locally: build the project and run the tests (or the targeted subset covering the touched code). Capture the exact commands and pass/fail in the report. If a command cannot run in this environment, say so explicitly.
+2. Apply the change — delete or collapse the code to the simpler form. Edit only the lines the finding names; do not rewrite a function or a file it does not name. In this pass the guardrail above and "Delete, do not redesign" win over the baseline's "no error handling for impossible scenarios" and "rewrite it" lines: error handling and validation stay.
+3. Verify locally: build the project and run the tests (or the targeted subset covering the touched code). Run every command in the FOREGROUND and wait for it to finish before the next step — never background a test or build run and move on. You need its real exit status in hand to commit and to fill in the report; a backgrounded run's result never reaches this one-shot session. If a command outlives the Bash tool's foreground time limit, background it and poll its output within this same turn until it exits. Record the exact commands and their results under Verification in the report. If a command cannot run in this environment, say so explicitly.
 4. Fold each change into the commit it belongs to. This branch may carry more
    than one commit, and a removal of code that an earlier commit introduced
    belongs IN that commit — not in a new commit stacked on top.
@@ -134,6 +134,14 @@ If applying a finding would touch any of these, SKIP that finding and record why
 
       GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash "$(git merge-base origin/main HEAD)"
 
+   e. If the rebase stops on a conflict, resolve the file to the content your
+      change intended, `git add` it, and run `git rebase --continue`. If you cannot
+      resolve it, run `git rebase --abort`, leave the fixups unfolded on the
+      branch, and report DONE_WITH_CONCERNS naming them.
+   f. Before the report, `git status` shows no rebase in progress. If you
+      resolved a conflict, run the tests again: the tree changed after you
+      verified it.
+
    Do NOT push and do NOT open a pull request. Leave the rewritten commits on the
    local branch — the finalize step opens the PR once the simplify and review
    passes are done.
@@ -143,9 +151,11 @@ If applying a finding would touch any of these, SKIP that finding and record why
    ## Simplification Report
 
    ### Applied
-   - <finding title> — <what was removed/collapsed and to what> (folded into <sha> <subject>)
+   - <finding title> — <what was removed/collapsed and to what> (folded into <commit subject>)
    ### Skipped
    - <finding title> — <why: would change behavior, touches a guardrail area, or no longer present>
+   ### Verification
+   - <exact command> — <PASS | FAIL: first failing line | not run: reason>
    ### Diff summary
    - Files: <comma-separated list>
    - Approx lines added/removed: <+N/-M>
