@@ -11,7 +11,7 @@ func sampleResult() SyncResult {
 	return SyncResult{
 		WikiRepo:   "acme/widgets",
 		WikiCommit: "0123456789abcdef",
-		Model:      "claude-opus-5",
+		Model:      "claude-opus-5-5",
 		Entries: []FlaggedEntry{
 			{
 				Path:           wikiPatternPath,

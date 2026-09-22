@@ -85,7 +85,7 @@ func TestReadStream_PrefersStructuredOutputOnResultEvent(t *testing.T) {
 }
 
 func TestReadStream_CapturesResolvedModelFromInitEvent(t *testing.T) {
-	const stream = `{"type":"system","subtype":"init","model":"claude-opus-5"}
+	const stream = `{"type":"system","subtype":"init","model":"claude-opus-5-5"}
 {"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}
 {"type":"result","result":"ok"}
 `
@@ -93,8 +93,8 @@ func TestReadStream_CapturesResolvedModelFromInitEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("readStream: %v", err)
 	}
-	if model != "claude-opus-5" {
-		t.Errorf("resolved model = %q, want %q", model, "claude-opus-5")
+	if model != "claude-opus-5-5" {
+		t.Errorf("resolved model = %q, want %q", model, "claude-opus-5-5")
 	}
 }
 
@@ -251,7 +251,7 @@ func TestHandleStreamLine_SkipsAssistantTextWithEmptyString(t *testing.T) {
 // never wrote to stderr. Both runners then feed the same envelopeFailure, which
 // is what keeps them from drifting on how a failure is reported.
 func TestReadStream_CapturesFailedResultLine(t *testing.T) {
-	stream := `{"type":"system","subtype":"init","model":"claude-fable-5"}
+	stream := `{"type":"system","subtype":"init","model":"claude-fable-5-1"}
 {"type":"result","subtype":"success","is_error":true,"api_error_status":429,"result":"You've reached your Fable 5 limit."}
 `
 	_, _, _, _, _, failLine, err := readStream(strings.NewReader(stream), "plan", &recordingSink{})
