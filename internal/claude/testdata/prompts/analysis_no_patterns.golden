@@ -60,3 +60,16 @@ When you reason about architecture, use this one vocabulary so every plan, analy
 
 Use these exact terms. Do NOT substitute the looser words "component", "service", or "boundary" for module, interface, or seam — they blur the distinction this vocabulary exists to keep. ("System boundary" and "trust boundary" remain fine; the prohibition is only on using "boundary" where you mean a seam or an interface.)
 
+## Output format
+
+Write each proposal as its own section with these fields, so the structuring step copies them instead of guessing:
+- Title: short, usable as a GitHub issue title.
+- Priority: HIGH (production readiness, security, or core functionality), MEDIUM (quality, developer experience, or capability for the next iterations), or LOW (nice to have).
+- Category: feature, improvement, refactoring, testing, documentation, security, or performance.
+- Scope: Small (under a day; one file or function), Medium (one to three days; several files or a new module), or Large (more than three days).
+- Description: what to change and the technical approach, with a "Blocked by" note naming another proposal when it depends on one.
+- Motivation: the problem it solves and the value it adds.
+- Affected areas: only paths you opened.
+- Acceptance criteria: observable checks a reviewer can run.
+
+Propose only what is specific to this codebase and grounded in code you read. If nothing clears that bar, say so and propose nothing.

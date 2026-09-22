@@ -212,6 +212,33 @@ func TestRun_LocalWithCreatePR(t *testing.T) {
 	}
 }
 
+// TestRun_CreatePRSkipsARewriteOfAnotherFeature: an improved JSON that is not a
+// rewrite of its own feature (here, another feature's id) is never committed
+// over the author's file.
+func TestRun_CreatePRSkipsARewriteOfAnotherFeature(t *testing.T) {
+	dir := t.TempDir()
+	writeFeature(t, dir, "PX-0001-prepared.json", planwerk.Feature{FeatureID: "PX-0001", Status: "prepared", Title: "Foo"})
+
+	gh := &githubtest.Fake{Dir: dir}
+	cl := &fakeClaude{fn: func(_ string, _ AnalysisContext) (*Result, error) {
+		return &Result{Features: []FeatureReview{{
+			FeatureID:    "PX-0001",
+			FeatureFile:  "PX-0001-prepared.json",
+			Title:        "Foo",
+			ImprovedJSON: json.RawMessage(`{"feature_id":"PX-9999","status":"prepared"}`),
+		}}}, nil
+	}}
+	r := &Runner{Claude: cl, GitHub: gh}
+
+	opts := Options{RepoRef: "o/n", NoLocalPatterns: true, NoRepoPatterns: true, Format: "markdown", Version: "test", Local: true, CreatePR: true}
+	if err := r.Run(&bytes.Buffer{}, opts); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if n := len(gh.ImprovementPRs()); n != 0 {
+		t.Errorf("opened %d PR(s), want none for a rewrite of another feature", n)
+	}
+}
+
 // TestRun_CreatePRCleansUpTheCloneOnFailure is the regression test for the
 // leaked temp clone: cleanup used to be deferred only when --create-pr was
 // OFF, so on the --create-pr path nothing was registered and any failure

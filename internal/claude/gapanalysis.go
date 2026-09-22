@@ -79,24 +79,24 @@ For EACH feature, walk these four checks. Every check produces a separate gap_ty
 1. **missing_criterion** — for every story acceptance criterion, search the codebase for the behavior it describes. If you cannot find code that implements it, file a gap. Cite the criterion verbatim in "source".
 2. **missing_scenario** — for every requirement scenario (When / Then / And then), check whether the described behavior exists. If the production path or the matching test is absent, file a gap. Cite the scenario in "source".
 3. **missing_test** — for every TestSpecification, run a literal grep for the test_function in the test_file. If the test does not exist (or exists but does not assert what "expected" describes), file a gap. Cite test_file/test_function in "source".
-4. **missing_task** — for every task with status="completed", verify the task description is reflected in the code (a file/function/migration/CLI flag named in the task). If the task description has no visible counterpart, file a gap. Cite task ID and title in "source".
+4. **missing_task** — for every task whose status is done or completed, verify its title is reflected in the code (a file, function, migration, or CLI flag the title names). If it has no visible counterpart, file a gap. Cite task ID and title in "source".
 
 ## Severity mapping
 
 - A gap inherits the requirement's priority when one is mapped:
-  - critical / must / blocker → CRITICAL
-  - high / should → WARNING
-  - medium / could → WARNING
+  - SHALL / MUST / critical / blocker → CRITICAL
+  - SHOULD / high → WARNING
+  - MAY / could / medium → WARNING
   - low / nice-to-have → INFO
-- Default to WARNING when no priority is stated.
+- Default to WARNING when no priority is stated, or when the stated one is none of the above.
 - A missing TEST for a critical requirement is at most WARNING — it is a documentation/coverage hole, not a runtime bug.
 - A missing CRITERION or SCENARIO that implies missing PRODUCTION code can escalate to CRITICAL when a critical priority is mapped.
 - Never use BLOCKING — a gap on already-merged "completed" work is by definition not blocking new merges.
 
 ## Verification rules (mandatory)
 
-- Every gap MUST cite concrete evidence (a path you grepped, a function you searched for, a config you read). If you cannot cite evidence, do NOT report the gap.
-- "I assume X is implemented elsewhere" is NOT acceptable — set confidence: "uncertain" and prefix the description with "UNVERIFIED:" in those cases.
+- Every gap cites concrete evidence: a path you grepped, a function you searched for, a config you read, or, for something absent, the search that came back empty.
+- When you cannot settle whether something is implemented, report the gap with confidence "uncertain" and prefix its description with "UNVERIFIED:". "I assume X is implemented elsewhere" is never evidence.
 - A test that calls a function but does not assert the expected behavior counts as missing_test, not missing_criterion. Pick the gap_type that matches what is missing.
 - If a feature is FULLY implemented, emit it in the result with an empty gaps array and a one-sentence summary confirming completeness.
 - Do not invent new types of gaps beyond the four listed above.
@@ -225,7 +225,7 @@ func buildGapStructurePrompt(rawAnalysis string) string {
 
 Field rules:
 - ` + emptyIDLine() + `
-- "type": one of the four values above. Pick the type that matches WHAT IS MISSING.
+- "type": one of the four values above, copied from the gap type the analysis states.
 - "severity": uppercase, never BLOCKING (gap analysis runs on already-merged work).
 - "feature_id" / "feature_file": copy from the surrounding feature block.
 - "source": include the verbatim text from the spec — criterion, scenario, task, or test name.

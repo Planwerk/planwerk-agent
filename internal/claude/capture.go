@@ -189,7 +189,7 @@ func buildCaptureStructurePrompt(rawAnalysis string) string {
       "path": "review_patterns/example-slug.md",
       "kind": "pattern",
       "title": "Short human-readable title",
-      "body": "# Review Pattern: ...\n\n**Review-Area**: ...\n**Severity**: ...\n\n## What to check\n...\n\n## Why it matters\n...",
+      "body": "<the page body exactly as the analysis wrote it, every metadata line included>",
       "rationale": "Why this recurring rule is worth capturing.",
       "confidence": "verified|likely|uncertain"
     }
@@ -206,7 +206,7 @@ func buildCaptureStructurePrompt(rawAnalysis string) string {
   ]
 }
 
-Set "kind" to "pattern" for every entry under "patterns" and "memory" for every entry under "memory". Use the exact wiki path from the analysis (slash form, e.g. "review_patterns/no-raw-sql.md"). Put the full authored page body in "body" — do NOT add any provenance marker. If the analysis proposed nothing, emit {"patterns": [], "memory": []}.
+Set "kind" to "pattern" for every entry under "patterns" and "memory" for every entry under "memory". Use the exact wiki path from the analysis (slash form, e.g. "review_patterns/no-raw-sql.md"). Put the full authored page body in "body", exactly as the analysis wrote it — do NOT add any provenance marker. Copy the confidence the analysis states for each page; when it states none, use "uncertain". If the analysis proposed nothing, emit {"patterns": [], "memory": []}.
 
 <analysis-output>
 ` + rawAnalysis + `

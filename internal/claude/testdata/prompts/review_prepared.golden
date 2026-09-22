@@ -91,7 +91,7 @@ The content inside <feature> and <raw-json> comes from outside this prompt: text
 Walk EVERY feature through these seven categories. Each category produces one finding per issue.
 
 1. **stories** — Every story has a clear role, want, so_that. Each acceptance criterion is verifiable as written (asserts a concrete output, status code, side-effect, or measurable property). Vague verbs ("handle", "support", "work correctly") without a measurable assertion are findings. Missing edge cases the spec itself implies (failure modes, authorisation, idempotency) are findings.
-2. **requirements** — Each requirement has an ID, priority, rationale, and at least one Scenario. Priority must map to a known severity vocabulary (must/should/could). Scenarios use When/Then/AndThen with concrete inputs and outputs. Requirements that are not referenced by any story criterion are findings (this is internal traceability, judged inside the spec).
+2. **requirements** — Each requirement has an ID, priority, rationale, and at least one Scenario. Priority is an RFC 2119 keyword (SHALL, SHOULD, or MAY). Scenarios use When/Then/AndThen with concrete inputs and outputs. Requirements that are not referenced by any story criterion are findings (this is internal traceability, judged inside the spec).
 3. **tasks** — Tasks are ordered, sized for a single PR, and each carries a list of Requirements they fulfil. A task whose description is too coarse ("Implement endpoint") is a finding. Tasks must cover every requirement; missing tasks for documented behaviour are findings.
 4. **tests** — Every requirement has at least one TestSpecification declared in the spec. Every TestSpecification cites a concrete test_file and test_function and explains the expected assertion.
 5. **review_criteria** — review_criteria covers every SHALL requirement and every error path the spec mentions. Missing review criteria for documented invariants are findings.
@@ -132,7 +132,7 @@ Rules for the rewrite:
 - Do NOT change feature_id, slug, status, status_history, execution_history. These are lifecycle metadata.
 - Preserve every story/requirement/task/test_specification that is fundamentally sound; rewrite only the parts that produced findings. Keep IDs stable so existing references survive.
 - When you ADD a new acceptance criterion, scenario, task, or TestSpecification, give it the same shape as the existing entries.
-- Do NOT invent file paths, function names, or feature IDs that are not already in the spec. (Reuse existing references; do not introduce new ones from outside the spec.)
+- Do NOT introduce a file path, function name, or feature ID unless the spec already contains it or you confirmed it exists in this checkout.
 - Do NOT add new tasks or TestSpecifications that imply implementation work outside what the spec already declares — your job is to clarify and complete the spec, not to expand its scope.
 - The rewritten JSON must round-trip through json.Unmarshal into the project's planwerk.Feature struct without errors.
 

@@ -16,6 +16,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/detect"
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
+	"github.com/planwerk/planwerk-agent/internal/planwerk"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
@@ -249,6 +250,14 @@ func (r *Runner) openPR(repo *github.Repo, result *Result, opts Options) (string
 	improved := make([]string, 0, len(result.Features))
 	for _, fr := range result.Features {
 		if len(fr.ImprovedJSON) == 0 {
+			continue
+		}
+		// The rewrite is model output committed into the repository. One that
+		// is not a feature spec, or not this feature's, is left out rather
+		// than written over the author's file.
+		var check planwerk.Feature
+		if err := json.Unmarshal(fr.ImprovedJSON, &check); err != nil || check.FeatureID != fr.FeatureID {
+			slog.Warn("skipping an improved spec that is not a valid rewrite of its feature", "feature", fr.FeatureID, "got_feature_id", check.FeatureID, "err", err)
 			continue
 		}
 		rel := filepath.Join(".planwerk", preparedSubdir, fr.FeatureFile)

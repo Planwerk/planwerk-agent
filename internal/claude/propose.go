@@ -92,9 +92,31 @@ For feature proposals, prefer a vertical slice: one that cuts end-to-end through
 	sb.WriteString(domainGlossaryBlock(ctx.Glossary))
 	sb.WriteString(projectMemoryBlock(ctx.Memory))
 	sb.WriteString(codebaseDesignBlock())
+	sb.WriteString(proposalOutputFormat)
 
 	return sb.String()
 }
+
+// proposalOutputFormat is the analysis prompt's output contract. The fields a
+// filed issue carries (priority, scope, affected areas, acceptance criteria)
+// are decided here, by the session that read the code; the structuring pass
+// that follows has no tools and no checkout, so it copies them. Before this
+// contract existed the analysis never stated them and the structuring model
+// filled them in.
+const proposalOutputFormat = `## Output format
+
+Write each proposal as its own section with these fields, so the structuring step copies them instead of guessing:
+- Title: short, usable as a GitHub issue title.
+- Priority: HIGH (production readiness, security, or core functionality), MEDIUM (quality, developer experience, or capability for the next iterations), or LOW (nice to have).
+- Category: feature, improvement, refactoring, testing, documentation, security, or performance.
+- Scope: Small (under a day; one file or function), Medium (one to three days; several files or a new module), or Large (more than three days).
+- Description: what to change and the technical approach, with a "Blocked by" note naming another proposal when it depends on one.
+- Motivation: the problem it solves and the value it adds.
+- Affected areas: only paths you opened.
+- Acceptance criteria: observable checks a reviewer can run.
+
+Propose only what is specific to this codebase and grounded in code you read. If nothing clears that bar, say so and propose nothing.
+`
 
 func (c *Client) structureProposals(rawAnalysis string) (*propose.ProposalResult, error) {
 	result, err := structure[propose.ProposalResult](c, buildProposalStructurePrompt(rawAnalysis), "proposals", "structured proposals")
@@ -105,7 +127,7 @@ func (c *Client) structureProposals(rawAnalysis string) (*propose.ProposalResult
 }
 
 func buildProposalStructurePrompt(rawAnalysis string) string {
-	return `Convert the following codebase analysis into structured JSON feature proposals. Extract every concrete, actionable proposal mentioned.
+	return `Convert the following codebase analysis into structured JSON feature proposals. Transcribe every proposal the analysis writes out; do not add ideas it only mentioned, rejected, or put out of scope.
 
 ` + jsonSchemaOnlyLine() + `
 
@@ -116,38 +138,22 @@ func buildProposalStructurePrompt(rawAnalysis string) string {
       "id": "",
       "priority": "HIGH|MEDIUM|LOW",
       "category": "feature|improvement|refactoring|testing|documentation|security|performance",
-      "title": "Short, descriptive title suitable as GitHub issue title",
-      "description": "Detailed description of what should be implemented or changed. Be specific about the technical approach.",
-      "motivation": "Why this proposal matters. What problem does it solve? What value does it add?",
+      "title": "the proposal's title",
+      "description": "the proposal's description, including any Blocked by note",
+      "motivation": "the proposal's motivation",
       "scope": "Small|Medium|Large",
-      "affected_areas": ["path/to/relevant/file.go", "package/name", "subsystem"],
+      "affected_areas": ["path/to/relevant/file.go"],
       "acceptance_criteria": ["Criterion 1", "Criterion 2"]
     }
   ]
 }
 
-Priority levels:
-- HIGH: Critical for production readiness, security, or core functionality — should be addressed soon
-- MEDIUM: Valuable improvements that enhance quality, DX, or capabilities — plan for next iterations
-- LOW: Nice-to-have improvements, minor enhancements — consider when time allows
-
-Categories:
-- feature: New user-facing functionality
-- improvement: Enhancement to existing functionality
-- refactoring: Internal code quality improvement
-- testing: Test coverage or test infrastructure
-- documentation: Documentation improvements
-- security: Security hardening
-- performance: Performance optimization
-
-Scope:
-- Small: < 1 day of work, single file or function changes
-- Medium: 1-3 days of work, multiple files or a new module
-- Large: > 3 days of work, significant new functionality or architectural changes
-
-` + emptyIDLine() + `
-When the analysis says a feature proposal is blocked by another, carry that "Blocked by" dependency in the proposal's "description" prose — the schema has no separate field for it.
-Emit one proposal per concrete, actionable item the analysis surfaced — typically 5 to 20 for a codebase of real size. Never invent proposals to reach a count: if the analysis yields fewer, emit only those; if it yields none, return an empty proposals array.
+Field rules:
+- ` + emptyIDLine() + `
+- Copy every field the analysis states for a proposal. Where it states none, use an empty string or an empty array; never infer a path, a criterion, or a description the analysis did not write.
+- "priority", "category", "scope": copy the stated value. When the analysis states none for a proposal, use MEDIUM, improvement, and Medium respectively.
+- When the analysis says a feature proposal is blocked by another, keep that "Blocked by" note in the proposal's "description"; the schema has no separate field for it.
+- If the analysis proposes nothing, return an empty proposals array.
 
 <analysis-output>
 ` + rawAnalysis + `
