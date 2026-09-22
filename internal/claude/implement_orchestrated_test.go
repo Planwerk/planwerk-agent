@@ -91,11 +91,11 @@ func TestImplementAgentsJSON_DefaultsWorkerEffort(t *testing.T) {
 func TestImplementAttributionModel(t *testing.T) {
 	orch := goldenImplementContext()
 	orch.WorkerModel = testWorkerModel
-	if got := implementAttributionModel(orch, "claude-fable-5"); got != testWorkerModel {
+	if got := implementAttributionModel(orch, "claude-fable-5-1"); got != testWorkerModel {
 		t.Errorf("orchestrated attribution = %q, want the worker model %q", got, testWorkerModel)
 	}
-	if got := implementAttributionModel(goldenImplementContext(), "claude-fable-5"); got != "claude-fable-5" {
-		t.Errorf("single-session attribution = %q, want the session model %q", got, "claude-fable-5")
+	if got := implementAttributionModel(goldenImplementContext(), "claude-fable-5-1"); got != "claude-fable-5-1" {
+		t.Errorf("single-session attribution = %q, want the session model %q", got, "claude-fable-5-1")
 	}
 }
 

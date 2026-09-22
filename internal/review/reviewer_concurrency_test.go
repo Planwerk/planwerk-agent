@@ -35,7 +35,7 @@ func TestRunner_ConcurrentRunsDoNotLeakModel(t *testing.T) {
 		return &Runner{Claude: cl, GitHub: gh}
 	}
 
-	const modelA, modelB = "claude-opus-5", "claude-fable-5"
+	const modelA, modelB = "claude-opus-5-5", "claude-fable-5-1"
 	rA, rB := makeRunner(modelA), makeRunner(modelB)
 
 	optsA := baseOpts()

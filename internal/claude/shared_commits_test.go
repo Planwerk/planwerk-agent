@@ -36,7 +36,7 @@ func TestSharedCommitsDocMatchesTrailerBlock(t *testing.T) {
 		marker string
 	}{
 		{"the Assisted-by trailer names Claude", "Assisted-by: Claude"},
-		{"the model id is appended when known", "claude-opus-5"},
+		{"the model id is appended when known", "claude-opus-5-5"},
 		{"git commit -s supplies the sign-off", "Signed-off-by"},
 		{"the sign-off comes from `-s`", "`-s`"},
 		{"--trailer is rejected because it lands after the sign-off", "--trailer"},

@@ -155,14 +155,14 @@ func TestRunClaudeStream_KeepsStderrTail(t *testing.T) {
 func TestRunClaude_FeedsPromptOnStdin(t *testing.T) {
 	dir := t.TempDir()
 	seen := filepath.Join(dir, "stdin")
-	fakeClaude(t, "cat > "+seen+"\nprintf '%s' '{\"result\":\"ok\",\"model\":\"claude-opus-5\"}'\n")
+	fakeClaude(t, "cat > "+seen+"\nprintf '%s' '{\"result\":\"ok\",\"model\":\"claude-opus-5-5\"}'\n")
 	c := NewClient()
 
 	out, model, err := c.runClaudeWithPermission(runSpec{label: "review", model: "opus", effort: "xhigh"}, "the prompt body")
 	if err != nil {
 		t.Fatalf("runClaudeWithPermission: %v", err)
 	}
-	if out != "ok" || model != "claude-opus-5" {
+	if out != "ok" || model != "claude-opus-5-5" {
 		t.Errorf("out = %q, model = %q", out, model)
 	}
 	raw, err := os.ReadFile(seen)

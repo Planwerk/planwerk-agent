@@ -288,9 +288,9 @@ func TestExtractText(t *testing.T) {
 	}{
 		{
 			name:      "valid envelope",
-			raw:       `{"type":"result","result":"the answer","model":"claude-opus-5"}`,
+			raw:       `{"type":"result","result":"the answer","model":"claude-opus-5-5"}`,
 			wantText:  "the answer",
-			wantModel: "claude-opus-5",
+			wantModel: "claude-opus-5-5",
 		},
 		{
 			// The full envelope carries usage and cost; all four token fields

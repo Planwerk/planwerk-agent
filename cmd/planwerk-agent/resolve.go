@@ -63,7 +63,7 @@ const envShowClaudeOutput = "PLANWERK_SHOW_CLAUDE_OUTPUT"
 const envClaudeTimeout = "PLANWERK_CLAUDE_TIMEOUT"
 
 // envClaudeModel overrides the model passed to Claude Code via --model for
-// every subcommand (e.g. "fable", "claude-fable-5", "sonnet"). The
+// every subcommand (e.g. "fable", "claude-fable-5-1", "sonnet"). The
 // --claude-model CLI flag takes precedence when explicitly set.
 const envClaudeModel = "PLANWERK_CLAUDE_MODEL"
 
@@ -90,7 +90,7 @@ const envImplementModel = "PLANWERK_IMPLEMENT_MODEL"
 
 // envImplementWorkerModel overrides the model the implementer subagents run on
 // in the implement/ship commands' orchestrated mode (e.g. "opus",
-// "claude-opus-5"). Empty or unset keeps orchestrator mode OFF and the
+// "claude-opus-5-5"). Empty or unset keeps orchestrator mode OFF and the
 // implement session writes the code itself, as before the worker tier existed.
 // The --implement-worker-model CLI flag takes precedence when explicitly set.
 const envImplementWorkerModel = "PLANWERK_IMPLEMENT_WORKER_MODEL"
