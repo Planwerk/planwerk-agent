@@ -18,7 +18,7 @@ rendered. The diagrams below show the data flow for each workflow.
 Review:
 ┌──────────────┐     ┌──────────────────┐     ┌───────────────┐     ┌──────────────┐
 │  GitHub PR   │────▶│  planwerk-agent │────▶│  Claude Code  │────▶│  Markdown    │
-│  (URL/Ref)   │     │                  │     │  /review      │     │  Report      │
+│  (URL/Ref)   │     │                  │     │  review       │     │  Report      │
 └──────────────┘     └──────────────────┘     └───────────────┘     └──────────────┘
                             │                                              │
                             ▼                                              ├──▶ stdout

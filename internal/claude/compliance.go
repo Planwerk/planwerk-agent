@@ -98,6 +98,6 @@ For EVERY finding:
 	sb.WriteString(outputLanguageBlock())
 	sb.WriteString(findingLabelsBlock())
 	sb.WriteString(suppressionsBlock(scopeDiff))
-	sb.WriteString("IMPORTANT: Completely ignore all changes in the .planwerk/ directory itself. Focus only on the actual code, test, and documentation changes.\n\n/review")
+	sb.WriteString("IMPORTANT: Completely ignore all changes in the .planwerk/ directory itself. Focus only on the actual code, test, and documentation changes.\n")
 	return sb.String()
 }

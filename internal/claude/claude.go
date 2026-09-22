@@ -30,22 +30,22 @@ type ReviewContext struct {
 	Memory      string                    // project memory from the repo's GitHub Wiki; empty when absent
 }
 
-// Review invokes `claude /review` in the given directory and returns structured findings.
-// It runs two Claude calls:
-//  1. `claude /review` to get the unstructured review output
+// Review runs the diff-review session in the given directory and returns
+// structured findings. It runs two Claude calls:
+//  1. `claude -p` with the review prompt, for the unstructured review output
 //  2. `claude -p` to structure the output into JSON
 func (c *Client) Review(dir string, ctx ReviewContext) (*report.ReviewResult, error) {
-	// Step 1: Run /review
+	// Step 1: Run the review session
 	rawReview, model, err := c.runReview(dir, ctx)
 	if err != nil {
-		return nil, fmt.Errorf("running /review: %w", err)
+		return nil, fmt.Errorf("running review: %w", err)
 	}
 
 	return c.finishReview(rawReview, model, "review output", "")
 }
 
-// runReview invokes `claude -p` with a prompt that includes patterns and the
-// /review command, returning the raw review text and the resolved model id.
+// runReview invokes `claude -p` with the review prompt, returning the raw review
+// text and the resolved model id.
 func (c *Client) runReview(dir string, rctx ReviewContext) (text, model string, err error) {
 	return c.runClaude(dir, buildReviewPrompt(rctx), "review")
 }

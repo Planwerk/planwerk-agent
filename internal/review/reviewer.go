@@ -105,7 +105,7 @@ func Run(w io.Writer, opts Options, client *claude.Client) error {
 }
 
 // Run executes the full review pipeline:
-// fetch & checkout PR → load patterns → claude /review → structure → render report.
+// fetch & checkout PR → load patterns → review session → structure → render report.
 func (r *Runner) Run(w io.Writer, opts Options) error {
 	// 1. Fetch and checkout PR
 	slog.Info("fetching and checking out PR", "pr", opts.PRRef)

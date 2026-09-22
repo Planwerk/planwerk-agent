@@ -252,4 +252,3 @@ A zero-finding review is a valid outcome: when the diff is clean after the full 
 
 IMPORTANT: Completely ignore all changes in the .planwerk/ directory. Do not create any findings for files inside .planwerk/. These are project management artifacts that are always expected in the diff.
 
-/review

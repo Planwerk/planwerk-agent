@@ -34,7 +34,7 @@ planwerk-agent/
 │   │   └── domains_test.go
 │   ├── claude/
 │   │   ├── claude.go           # Review command entry point (Review, ReviewContext)
-│   │   ├── prompt.go           # /review prompt builder (buildReviewPrompt)
+│   │   ├── prompt.go           # review prompt builder (buildReviewPrompt)
 │   │   ├── runner.go           # Claude Code subprocess invocation (runClaude, timeout/model)
 │   │   ├── repair.go           # JSON decode with one-shot Claude repair
 │   │   ├── structure.go        # Review output → structured findings + IDs

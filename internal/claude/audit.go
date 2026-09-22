@@ -27,7 +27,7 @@ func (c *Client) Audit(dir string, ctx audit.AuditContext) (*report.ReviewResult
 func buildAuditPrompt(ctx audit.AuditContext) string {
 	var sb strings.Builder
 
-	// Staff Engineer persona (same cognitive frame as /review, applied to the whole codebase)
+	// Staff Engineer persona (same cognitive frame as the diff review, applied to the whole codebase)
 	sb.WriteString(`You are a Staff Engineer performing a codebase audit. Apply these thinking patterns:
 - "What happens at 10x scale?" — Consider load, data volume, and concurrent users
 - "What's the blast radius?" — If this code fails, what else breaks?

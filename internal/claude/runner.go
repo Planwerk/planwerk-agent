@@ -359,8 +359,8 @@ func cliJSONSchema(doc string) string {
 //
 // It deliberately does NOT suppress a user-global ~/.claude/CLAUDE.md: Claude
 // Code loads memory independently of --setting-sources, and the only switch
-// that drops it (--bare) also strips Read/Grep/Glob and the /review skill the
-// analysis passes depend on. In CI — the primary use case — no user-global
+// that drops it (--bare) also strips Read/Grep/Glob, which the analysis passes
+// depend on. In CI — the primary use case — no user-global
 // CLAUDE.md exists, so that residual is a local-run caveat (see design decision
 // #45 and the configuration reference). WithInheritUserConfig(true) opts out of
 // hermetic mode entirely for an environment whose claude authentication lives
