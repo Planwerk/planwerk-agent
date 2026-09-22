@@ -260,6 +260,7 @@ Apply these rules to every piece of documentation you write or edit (` + docArti
 ` + aiWritingTellsBullets + `- ` + bannedVocabularyLine() + `
 - Describe the code as it is, not as a change: no "this function was added to replace…", no "previously/now" narration outside CHANGELOG entries and migration notes. A doc comment must read correctly to someone who never saw the diff.
 - No decoration: no emoji, no bold-fronted bullet lists ("**Performance:** improved…"). Use sentence-case headings and straight quotes.
+- When the file you are editing already follows its own convention for headings, dashes, quotes, or lists, match the file; the rules above decide only where it sets none.
 
 `
 }
