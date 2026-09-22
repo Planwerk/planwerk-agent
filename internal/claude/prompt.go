@@ -19,7 +19,7 @@ func buildReviewPrompt(ctx ReviewContext) string {
 
 	// Review scope: pin the review to the cumulative PR diff so multi-commit PRs
 	// are reviewed as a whole instead of just the latest (or first) commit.
-	fmt.Fprintf(&sb, `## Review Scope (MANDATORY)
+	fmt.Fprintf(&sb, `## Review Scope
 
 Review the FULL pull request diff — every commit between origin/%s and HEAD must be considered together as one cumulative change set.
 
@@ -27,6 +27,9 @@ Review the FULL pull request diff — every commit between origin/%s and HEAD mu
 - Every added/modified line in any commit on this branch is in scope, regardless of which commit introduced it.
 - Do NOT restrict the review to HEAD alone, to the most recent commit, to the first commit, or to the working-tree diff. All commits on the branch are part of this PR.
 - When a later commit fixes or supersedes something an earlier commit introduced, judge the final state — do not flag the intermediate state.
+- Ignore changes under .planwerk/: they are planning artifacts that are always expected in the diff, so create no findings for them. Two exceptions change how this repository is reviewed and worked on, and are findings in their own right:
+  - A change to .planwerk/checklist.md or .planwerk/review_patterns/ changes the rules pull requests are reviewed against. Report it as a needs-discussion WARNING titled "Review Configuration Changed: <file>" and say which rule it adds, drops, or weakens.
+  - A change to .claude/ (settings, hooks, skills, commands, agents) changes what AI agent sessions in this repository do. Report it as a needs-discussion WARNING titled "Agent Configuration Changed: <file>" and say what the change makes a session do.
 
 `, baseBranch, baseBranch, baseBranch)
 
@@ -43,7 +46,7 @@ Review the FULL pull request diff — every commit between origin/%s and HEAD mu
 
 	// Review patterns (grouped by category: technology, design-principle, project)
 	if len(ctx.Patterns) > 0 {
-		sb.WriteString("Apply these review patterns grouped by category. Flag violations in your review, noting the pattern source when referencing best practice patterns:\n\n")
+		sb.WriteString("Apply these review patterns grouped by category. Flag violations in your review, and name the pattern (its \"Pattern:\" title) in any finding that applies one:\n\n")
 		sb.WriteString("<review-patterns>\n")
 		sb.WriteString(patterns.FormatGroupedForPrompt(ctx.Patterns, ctx.MaxPatterns))
 		sb.WriteString("</review-patterns>\n\n")
@@ -52,14 +55,14 @@ Review the FULL pull request diff — every commit between origin/%s and HEAD mu
 	// Verification of claims — anti-hallucination rules
 	sb.WriteString(`## Verification of Claims
 
-These rules are MANDATORY. Violating them produces a misleading review.
+These rules exist because a reader acts on what the review claims, and a claim the code does not back misleads them.
 
 - QUOTE-OR-DEMOTE: every finding MUST quote the exact triggering line(s) verbatim from the diff in its code snippet. If you cannot quote the line, set confidence to "uncertain" — NEVER invent, paraphrase, or reconstruct a snippet to make a finding look verified. Unverifiable findings are downgraded automatically; fabricating a snippet defeats the gate.
 - NEVER say "this is probably tested" — name the specific test file and test function, or flag as "test coverage unknown"
 - NEVER say "this is handled elsewhere" — cite the exact file and line that handles it, or say "not verified"
 - NEVER say "the caller validates this" — name the caller and the validation, or say "unverified assumption"
 - NEVER assume error handling exists unless you can see it in the diff or trace it in the codebase
-- If you are uncertain whether something is a real issue, say "UNVERIFIED: [claim]" rather than presenting it as fact
+- If you are not sure an issue is real, report it anyway: state the claim plainly, prefix its problem with "UNVERIFIED:", and set its Confidence to uncertain. Uncertain findings are filed in a separate section, so reporting one costs the reader little, while dropping a real bug costs a lot.
 - When referencing code outside the diff, always prefix with the file path (e.g. "In cmd/main.go:42, ...")
 
 `)
@@ -136,7 +139,7 @@ For every NEW public API, CLI flag, configuration option, or user-facing behavio
 	// Dependency Freshness & Maintenance Verification
 	sb.WriteString(`## Dependency Freshness & Maintenance Verification
 
-When the diff introduces ANY new dependency, you MUST verify its freshness and maintenance status.
+When the diff introduces a new dependency, check its freshness and maintenance status. Look each fact up with WebSearch or WebFetch (the package registry, the project's releases page, or its repository) instead of answering from memory: your training data is months behind the current releases, and a stale "latest version" is a false finding. Put the URL you checked in the finding; if the lookup fails, say so and set its Confidence to uncertain.
 
 ### What counts as a new dependency
 - A new entry in go.mod, requirements.txt, pyproject.toml, package.json, Cargo.toml, pom.xml, build.gradle, Gemfile
@@ -146,7 +149,7 @@ When the diff introduces ANY new dependency, you MUST verify its freshness and m
 - Any other external dependency introduced for the first time
 
 ### What to check for each new dependency
-1. **Version Currency**: Is the pinned version the latest stable release? If the diff pins an old version (e.g. v1.2 when v3.1 is current), flag it. Minor version lag (one or two patch versions behind) is acceptable; major version lag is not.
+1. **Version Currency**: A newer patch or minor release is not a finding; a newer major release is. If the diff pins an old major version (e.g. v1.2 when v3.1 is current), flag it.
 2. **Active Maintenance**: Does the project show signs of active maintenance (recent commits, releases within the last 12 months, responsive issue tracker)? If the repository is archived, abandoned, or has had no activity for over a year, flag it.
 3. **Deprecation Status**: Has the project been officially deprecated or superseded by a replacement? Check for deprecation notices in the repository README, GitHub archive status, or well-known replacements (e.g. actions/create-release is deprecated in favor of softprops/action-gh-release).
 
@@ -206,9 +209,9 @@ When the diff introduces ANY new dependency, you MUST verify its freshness and m
 	// Finding enrichment for machine processing
 	sb.WriteString(`## Finding Enrichment
 
-For EVERY finding you report, you MUST include:
+Every finding you report includes:
 
-1. **Code Snippet**: Quote the exact 3-5 lines of problematic code from the diff. Use the original line numbers. If the issue spans multiple lines, include all affected lines.
+1. **Code Snippet**: Quote the exact 3-5 lines of problematic code, verbatim and without line-number prefixes (line numbers belong in the location and the Line Range). If the issue spans multiple lines, include all affected lines. For a missing test or missing documentation, quote the added declaration that needs it.
 
 2. **Suggested Fix**: For auto-fix findings, provide the EXACT replacement code that resolves the issue. The fix code MUST:
    - Use the exact indentation from the original file
@@ -245,15 +248,11 @@ Then end with ONE recommendation line in exactly this form:
 
 Recommendation: <merge | merge after fixes | do not merge> because <name the single most important finding by its title and state the specific reason it drives the decision>.
 
-The reason MUST name a specific finding and what it breaks. Generic justifications — "because it's safer", "to improve quality", "follows best practice", "because it's cleaner" — are not acceptable; if you cannot name a specific blocking finding, recommend merge.
+The reason MUST name a specific finding and what it breaks. Generic justifications — "because it's safer", "to improve quality", "follows best practice", "because it's cleaner" — are not acceptable; if no finding must be fixed before merge, recommend merge.
 
 A zero-finding review is a valid outcome: when the diff is clean after the full checklist, report an empty findings list, say the PR is clean in the summary, and recommend merge — do NOT invent a finding to appear productive.
 
 `)
-
-	sb.WriteString("Ignore changes under .planwerk/: they are planning artifacts that are always expected in the diff, so create no findings for them. Two exceptions change how this repository is reviewed and worked on, and are findings in their own right:\n")
-	sb.WriteString("- A change to .planwerk/checklist.md or .planwerk/review_patterns/ changes the rules pull requests are reviewed against. Report it as a needs-discussion WARNING titled \"Review Configuration Changed: <file>\" and say which rule it adds, drops, or weakens.\n")
-	sb.WriteString("- A change to .claude/ (settings, hooks, skills, commands, agents) changes what AI agent sessions in this repository do. Report it as a needs-discussion WARNING titled \"Agent Configuration Changed: <file>\" and say what the change makes a session do.\n")
 
 	return sb.String()
 }

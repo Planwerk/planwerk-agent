@@ -126,8 +126,17 @@ const (
 
 // suppressionsBlock returns the "## Suppressions — DO NOT flag these" section.
 // The common bullets apply to every review type; the two diff-only bullets
-// (already-addressed-in-the-same-diff, and only-review-changed-lines) are
-// emitted only for scopeDiff, where a diff actually exists.
+// (already-addressed-in-the-same-diff, and pre-existing problems in unchanged
+// code) are emitted only for scopeDiff, where a diff actually exists. The
+// library bullet's carve-out is worded per scope: a diff review protects the
+// findings for newly introduced dependencies, an audit its Dependency Freshness
+// findings for every dependency.
+//
+// Each bullet names a class of false positive, not a severity bar. The one that
+// used to read "never on unchanged surrounding context" was a bar: a model that
+// follows it literally drops the change that breaks an unchanged caller, the
+// most valuable finding a review makes, so it now suppresses only problems that
+// predate the change.
 //
 // For scopeDiff this reproduces the canonical review suppression list verbatim.
 func suppressionsBlock(scope promptScope) string {
@@ -146,12 +155,16 @@ func suppressionsBlock(scope promptScope) string {
 	if scope == scopeDiff {
 		bullets = append(bullets, `Issues that are already addressed elsewhere in the same diff — read the FULL diff before commenting`)
 	}
+	library := `"Consider using X library" when the current approach works correctly — this does NOT suppress flagging deprecated, unmaintained, or severely outdated versions of NEWLY INTRODUCED dependencies`
+	if scope == scopeCodebase {
+		library = `"Consider using X library" when the current approach works correctly — this does NOT suppress the Dependency Freshness findings for deprecated, unmaintained, or severely outdated dependencies`
+	}
 	bullets = append(bullets,
 		`Suggestions to "add logging" when the error path already returns a descriptive error`,
-		`"Consider using X library" when the current approach works correctly — this does NOT suppress flagging deprecated, unmaintained, or severely outdated versions of NEWLY INTRODUCED dependencies`,
+		library,
 	)
 	if scope == scopeDiff {
-		bullets = append(bullets, `Code that was not changed in this diff — only review and comment on added or modified lines, never on unchanged surrounding context`)
+		bullets = append(bullets, `Pre-existing problems in code that was not changed in this diff — this does NOT suppress breakage the change causes in unchanged code (an unchanged caller, switch, or document that the changed contract now breaks): report that, anchored on the changed line, and cite the unchanged file:line`)
 	}
 
 	var b strings.Builder
@@ -555,13 +568,18 @@ func bannedVocabularyLine() string {
 // communicationStyleBlock returns the anti-sycophancy "## Communication Style"
 // section. Directness is universal across every review type, so the same
 // block is shared verbatim by review, audit, adversarial, and compliance.
+//
+// It governs wording, never whether to report. An earlier version forbade any
+// uncertainty in the prose ("state what WILL happen") next to rules that ask
+// for the UNVERIFIED: prefix and an uncertain label; a model that follows both
+// literally has only one way out for a finding it cannot prove, which is to
+// drop it. Certainty now lives in the Confidence label.
 func communicationStyleBlock() string {
 	return `## Communication Style
 
-Be direct and decisive in your findings. Do NOT hedge:
-- Do NOT write "you might want to consider..." — state what IS wrong
-- Do NOT write "this could potentially cause..." — state what WILL happen
-- Do NOT write "it might be worth looking into..." — state the specific problem
+Be direct and decisive in how you word findings, and put your certainty in the Confidence label rather than in hedged prose:
+- State each finding as a plain claim about what the code does and what goes wrong, not as "you might want to consider...", "this could potentially cause...", or "it might be worth looking into...".
+- When you are not sure, say so through the label (likely or uncertain, plus the "UNVERIFIED:" prefix where this prompt asks for it) and still report the finding. Directness governs how you word a finding, never whether you report it.
 - Take a clear position on every finding. If something is wrong, say it is wrong.
 - If something is fine, do not mention it at all.
 - ` + bannedVocabularyLine() + `
@@ -582,7 +600,7 @@ Be direct and decisive in your findings. Do NOT hedge:
 // to actual code/test/doc changes. Those are builder-specific elaborations, not
 // drift, so they are not collapsed here.
 func planwerkIgnoreLine() string {
-	return "IMPORTANT: Completely ignore all changes in the .planwerk/ directory.\n\n"
+	return "Ignore changes under .planwerk/: they are planwerk's own planning artifacts, not code under review.\n\n"
 }
 
 // noSkipHooksLine returns the single "## Hard rules" bullet that forbids
@@ -619,21 +637,25 @@ func foldDisciplineRule(baseBranch string) string {
 // fixed before merge") are emitted only for scopeDiff, where a merge decision
 // exists; the codebase audit (scopeCodebase) omits them rather than inventing
 // audit-specific wording — the same omit-don't-rewrite mechanism as
-// suppressionsBlock. For scopeDiff this reproduces the recovered structure
-// rubric verbatim.
+// suppressionsBlock.
+//
+// The levels are defined by impact, with an example of each, because the
+// earlier wording ("Fundamental architecture or security issues" for BLOCKING,
+// "Bugs, security vulnerabilities" for CRITICAL) put a security bug in two
+// levels at once and left the model to pick one per run.
 func severityLadderBlock(scope promptScope) string {
-	blocking := "BLOCKING: Fundamental architecture or security issues"
-	critical := "CRITICAL: Bugs, security vulnerabilities, severe problems"
+	blocking := "BLOCKING: an exploitable security vulnerability, data loss or corruption, or a design flaw that needs the change reworked rather than patched"
+	critical := "CRITICAL: a defect that breaks correct behavior on a normal path, such as a crash, a wrong result, or a broken contract with a caller"
 	if scope == scopeDiff {
 		blocking += " — PR must not be merged"
 		critical += " — must be fixed before merge"
 	}
 	return "## Severity Ladder\n\n" +
-		"Assign every finding's severity against these definitions:\n\n" +
+		"Assign every finding's severity by its impact, against these definitions:\n\n" +
 		"- " + blocking + "\n" +
 		"- " + critical + "\n" +
-		"- WARNING: Code quality issues, potential problems — should be fixed\n" +
-		"- INFO: Style suggestions, minor improvements — optional\n\n"
+		"- WARNING: a defect on an edge or failure path, or one that erodes reliability over time (a resource leak, a swallowed error, missing validation at a boundary), and code quality problems that should be fixed\n" +
+		"- INFO: style suggestions and minor improvements — optional\n\n"
 }
 
 // findingLabelsBlock returns the "## Finding Labels" section shared by every
@@ -652,14 +674,15 @@ func severityLadderBlock(scope promptScope) string {
 func findingLabelsBlock() string {
 	return `## Finding Labels
 
-Every finding you report MUST carry these three explicit labels. They are authoritative: the downstream structuring pass transcribes them unchanged and never re-derives them, so a label you omit is a label the report loses.
+Every finding you report carries its location and three explicit labels. The labels are authoritative: the downstream structuring pass transcribes them unchanged and never re-derives them, so a label you omit is a label the report loses.
 
+- **Location**: the repo-relative path and the line or line range of the triggering code (e.g. ` + "`internal/store/query.go:42-45`" + `); for something missing, the file and line where it belongs. Later passes merge and verify findings by their location.
 - **Severity**: one of BLOCKING, CRITICAL, WARNING, INFO (per the severity guidance above).
 - **Actionability**: one of auto-fix, needs-discussion, architectural:
   - auto-fix: A senior engineer would apply this fix without discussion (dead code removal, N+1 query fixes, stale comment cleanup, magic number extraction, missing error wrapping, simple nil checks). These will be marked as AUTO-FIX — an agent should apply them directly.
   - needs-discussion: Requires team input before fixing (security fixes, race condition resolutions, API/design changes, anything changing observable behavior). These will be marked as ASK — requires human confirmation.
   - architectural: Fundamental design issue that needs a broader conversation (wrong abstraction, missing layer, significant refactor needed). These will be marked as ASK.
-- **Confidence**: one of verified (visible in the code with certainty), likely (strong evidence, depends on wider context), or uncertain (needs investigation). If you cannot quote the triggering line, use uncertain.
+- **Confidence**: one of verified (visible in the code with certainty), likely (strong evidence, depends on wider context), or uncertain (needs investigation). If you cannot quote the triggering line verbatim, use uncertain; never invent, paraphrase, or reconstruct a quote to raise it.
 
 `
 }
@@ -798,11 +821,16 @@ Each row is an excuse sessions reach for. When you catch yourself forming one, t
 // builder and stays inline at each call site. baseBranch fills both origin/<b>
 // references; the block carries its own trailing newline.
 //
+// The diff is three-dot (origin/<b>...HEAD), the same range the review prompt
+// pins: a two-dot diff against origin/<b> compares the base's tip with the
+// working tree, so once the base moves on, files only the base changed enter
+// the finders' scope and their changes read as removals.
+//
 // The coverage prompt is deliberately NOT a caller: it has no SCOPE sentence,
 // shares only the "git diff --name-only" command line, and keeps its own task
 // lead — splicing this lead in would add wording to its output.
 func diffScopeLines(baseBranch string) string {
-	return fmt.Sprintf("SCOPE: Only review files changed in the current branch compared to origin/%[1]s.\nFirst run: git diff origin/%[1]s --name-only\n", baseBranch)
+	return fmt.Sprintf("SCOPE: Only review files this branch changed since it forked from origin/%[1]s.\nFirst run: git diff origin/%[1]s...HEAD --name-only\n", baseBranch)
 }
 
 // fixScopeLines is diffScopeLines for a re-review: it scopes the pass to what an

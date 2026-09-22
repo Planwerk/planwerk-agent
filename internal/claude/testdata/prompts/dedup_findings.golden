@@ -7,7 +7,7 @@ Output ONLY valid JSON matching this exact schema (no markdown fences, no surrou
 }
 
 Each inner array lists the 0-based indices of findings that describe the same issue. Rules:
-- Group ONLY findings that are genuinely the same issue — same defect, same location, or same root cause.
+- Group two findings only when fixing one would fix the other: the same defect, or the same root cause. A shared location or file is not evidence on its own.
 - Every index appears in at most one group, and a group has at least two indices.
 - Do NOT group findings that merely touch the same file or area but describe different problems.
 - An empty "duplicate_groups" array is the correct answer when nothing is duplicated. Do NOT invent groups.

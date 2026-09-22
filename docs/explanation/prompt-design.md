@@ -234,9 +234,17 @@ You cannot settle that by re-reading the prompt. You settle it by counting: the
 pass logs `sent`, `verdicts`, and `refuted` on every run (`claimStats` in
 `internal/review/reviewer.go`). A refutation rate that stays at zero across real
 runs is the evidence that the pass has stopped earning its tokens, and the
-signal to sharpen it or delete it. Until that evidence exists, the prompt stays
-as it is — instrumenting a suspicion is cheap, and rewriting a prompt on one is
-how a hedge gets written.
+signal to sharpen it or delete it. Instrumenting a suspicion is cheap, and
+rewriting a prompt on one is how a hedge gets written.
+
+A contradiction is a different matter from a suspicion. The verifier's
+definition of "refuted" included "the cited symbol is not there", while its
+evidence rule demanded a quoted file:line, which an absence cannot supply; and a
+claim it could not check at all had nowhere to go but "confirmed". Both made the
+count lie. The pass now refutes an absence with the search that came back empty,
+and reports a claim it could not check as "unverifiable", which the gate records
+as no verdict rather than as a confirmation, so the ratio counts only what was
+actually checked.
 
 The same idea guards the elaborate refine loop from the other direction. Its
 reviewer is a fresh call that never sees the previous score, so it cannot be

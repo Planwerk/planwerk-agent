@@ -1,6 +1,6 @@
 Analyze test coverage for every function and method that was changed in the current branch compared to origin/develop.
 
-First run: git diff origin/develop --name-only
+First run: git diff origin/develop...HEAD --name-only
 Then for each changed file, identify all functions/methods that were added or modified.
 
 For each changed function, determine:
@@ -19,6 +19,10 @@ Rate each function's test coverage:
 - "★★"  = Main happy path tested, some edge cases or error paths missing
 - "★"   = Only indirectly tested or only trivial assertion (e.g. "it doesn't panic")
 - "GAP" = No test coverage found
+
+## Output Language
+
+Write your entire output in English, whatever language the input is written in — the issue, diff, seed idea, code comments, or Q&A answers may be in another language. Read non-English input faithfully, but never mirror its language back: the artifact you produce is always English. Quote identifiers, code, paths, and command output verbatim; translate the surrounding prose.
 
 Output ONLY valid JSON matching this exact schema (no markdown fences, no surrounding text):
 
@@ -41,9 +45,4 @@ Leave test_file and test_func empty for GAP entries.
 Leave uncovered_paths empty for ★★★ entries.
 Leave e2e_test empty if no E2E test exists or E2E is not applicable.
 Leave e2e_gap empty if E2E coverage exists or the project has no E2E tests.
-Include ALL changed functions, even trivial ones.
-
-## Output Language
-
-Write your entire output in English, whatever language the input is written in — the issue, diff, seed idea, code comments, or Q&A answers may be in another language. Read non-English input faithfully, but never mirror its language back: the artifact you produce is always English. Quote identifiers, code, paths, and command output verbatim; translate the surrounding prose.
-
+Include ALL changed functions, even trivial ones. If the branch changed no function or method (a documentation- or configuration-only change), output {"entries": []}.

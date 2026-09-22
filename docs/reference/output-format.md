@@ -81,9 +81,9 @@ so the report headers and the comment footers read identically.
 
 | Level | Meaning | Action |
 |-------|---------|--------|
-| **BLOCKING** | Fundamental architecture/security issues | PR must not be merged |
-| **CRITICAL** | Bugs, security vulnerabilities, severe problems | Must be fixed before merge |
-| **WARNING** | Code quality, potential issues | Should be fixed |
+| **BLOCKING** | An exploitable security vulnerability, data loss or corruption, or a design flaw that needs the change reworked | PR must not be merged |
+| **CRITICAL** | A defect that breaks correct behavior on a normal path: a crash, a wrong result, a broken contract | Must be fixed before merge |
+| **WARNING** | A defect on an edge or failure path, one that erodes reliability over time (a leak, a swallowed error), or a code quality problem | Should be fixed |
 | **INFO** | Style questions, improvement suggestions | Optional, for information |
 
 ## Actionability Levels

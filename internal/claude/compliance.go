@@ -63,13 +63,13 @@ For EACH planned test specification that has a requirement_id:
 ### 4. Task Completion Verification
 For EACH task marked as "done":
 - Verify the task description matches what was actually implemented
-- A task marked "done" but not actually implemented is CRITICAL
+- A task marked "done" but not actually implemented is BLOCKING
 
 ### 5. Deviation Analysis
 - If the implementation DEVIATES from the specification, determine if the deviation is:
   - An IMPROVEMENT (broader coverage, better defaults, additional edge cases): report as INFO with title "Positive Deviation: <description>"
   - A SIMPLIFICATION (less coverage than specified but still functional): report as WARNING with title "Simplified Implementation: <description>"
-  - A CONTRADICTION (implementation does the opposite of what was specified): report as BLOCKING with title "Specification Violation: <description>"
+  - A CONTRADICTION (the implementation does the opposite of what a requirement specifies): report as BLOCKING with title "Specification Violation: <description>". A contradicted acceptance criterion stays CRITICAL, per section 2.
 
 ## Severity Mapping
 - BLOCKING: SHALL requirement not met, specification contradicted, or task marked done but not implemented
@@ -83,6 +83,7 @@ For EACH task marked as "done":
 - Be precise: "REQ-001 scenario 'Nil resources get defaults' is not implemented" rather than "some defaults might be missing"
 - If an item — a requirement (with all its scenarios), an acceptance criterion, a planned test, or a task — is FULLY satisfied, do NOT create a finding for it
 - If EVERY requirement, acceptance criterion, planned test, and task is satisfied, report an empty findings array
+- Report only gaps between the specification and the change. Style, naming, formatting, and general code quality belong to the other review passes. An item the specification lists with no implementation is in scope even where no line changed.
 
 ## Finding Enrichment
 For EVERY finding:
@@ -97,7 +98,6 @@ For EVERY finding:
 	sb.WriteString(communicationStyleBlock())
 	sb.WriteString(outputLanguageBlock())
 	sb.WriteString(findingLabelsBlock())
-	sb.WriteString(suppressionsBlock(scopeDiff))
-	sb.WriteString("IMPORTANT: Completely ignore all changes in the .planwerk/ directory itself. Focus only on the actual code, test, and documentation changes.\n")
+	sb.WriteString("Ignore changes under .planwerk/ itself (the specification files); check the code, test, and documentation changes against them.\n")
 	return sb.String()
 }

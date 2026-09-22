@@ -203,7 +203,7 @@ func buildSpecialistPrompt(baseBranch string, sp Specialist, pats []patterns.Pat
 
 	fmt.Fprintf(&sb, "You are a %s specialist performing a focused code review. Review ONLY your domain.\n\n", sp.Key)
 	sb.WriteString(diffScopeLines(baseBranch))
-	fmt.Fprintf(&sb, `Then review ONLY the added/modified lines in those files.
+	fmt.Fprintf(&sb, `Then review the added and modified lines in those files. A finding's cause must be in the diff; its evidence may sit in unchanged code the change now affects (a consumer it breaks, a routine a new caller makes slow), so quote that file and line.
 
 ## Your domain (%s)
 %s
@@ -219,7 +219,7 @@ If your domain has no issues in this diff, return an empty findings array.
 
 	sb.WriteString(`## Finding Enrichment
 
-For EVERY finding, include: a code snippet (the exact problematic lines from the diff) and a concrete suggested fix. Quote the triggering line verbatim; if you cannot, set confidence to "uncertain".
+For EVERY finding, include: a code snippet (the exact problematic lines from the diff) and a concrete suggested fix.
 
 `)
 	sb.WriteString(severityLadderBlock(scopeDiff))

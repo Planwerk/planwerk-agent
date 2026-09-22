@@ -10,8 +10,10 @@ import (
 // ClaimVerdict is one entry of the claim-verification pass's output: the model's
 // judgment of whether a single finding's CLAIM holds against the checkout.
 // Index refers to the finding's position in the batch VerifyClaimsFn was given.
-// Verdict is "confirmed" or "refuted"; Evidence quotes the file:line the model
-// grounded its judgment in; Reason explains a refutation.
+// Verdict is "confirmed", "refuted", or "unverifiable" (the checkout cannot
+// settle the claim); Evidence quotes the file:line the model grounded its
+// judgment in, or the search that came back empty; Reason explains a refutation
+// or what is missing.
 type ClaimVerdict struct {
 	Index    int    `json:"index"`
 	Verdict  string `json:"verdict"`
@@ -78,6 +80,12 @@ func VerifyClaims(result *report.ReviewResult, dir string, verify VerifyClaimsFn
 			continue // ignore an out-of-range index the model may return
 		}
 		fi := selectedIdx[v.Index]
+		if strings.EqualFold(strings.TrimSpace(v.Verdict), "unverifiable") {
+			// The verifier could not check the claim: the finding passes
+			// unchanged, recorded as no-verdict so it does not count as a
+			// confirmation in the gate's own no-op signal.
+			continue
+		}
 		if !strings.EqualFold(strings.TrimSpace(v.Verdict), "refuted") {
 			// The gate's decision is binary; an off-enum verdict that lets the
 			// finding through records as a confirmation.

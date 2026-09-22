@@ -37,24 +37,26 @@ func (c *Client) VerifyFindingClaims(dir string, findings []report.Finding) ([]h
 }
 
 // buildClaimVerificationPrompt renders the numbered finding list the verifier
-// judges against the checkout. It frames the task as confirming or refuting each
-// finding's CLAIM (not its quote), demands concrete quoted counter-evidence
-// before a refutation, and defaults to confirming when none is found.
+// judges against the checkout. It frames the task as testing each finding's
+// CLAIM (not its quote) and asks for one of three verdicts: confirmed (the code
+// that makes it true, quoted), refuted (the code that makes it false, or a named
+// search that shows a symbol it depends on is absent), or unverifiable (the
+// checkout cannot settle it). Unverifiable exists so that a claim nobody checked
+// is not recorded as a confirmation: the gate's refuted/sent ratio is the pass's
+// only evidence that it verifies anything.
 func buildClaimVerificationPrompt(findings []report.Finding) string {
 	var b strings.Builder
 	b.WriteString("You are verifying the highest-severity findings from a code review against the actual checkout. Your job is to confirm or refute each finding's CLAIM — not merely whether it quoted a real line.\n\n")
 	b.WriteString(outputLanguageBlock())
 	b.WriteString("## Task\n\n")
-	b.WriteString("For each finding below:\n")
-	b.WriteString("1. Open the file it cites in the checkout and read the surrounding code.\n")
-	b.WriteString("2. Decide whether the finding's claimed problem is actually true in the code as it stands.\n")
-	b.WriteString("3. Return a verdict:\n")
-	b.WriteString("   - \"confirmed\": the claimed problem is real in the code.\n")
-	b.WriteString("   - \"refuted\": the claimed problem does NOT hold — the code already handles it, the quoted line does not mean what the finding says, or the cited symbol/behavior is not there.\n\n")
-	b.WriteString("Refute ONLY when you can point to concrete counter-evidence: quote the file:line that disproves the claim. When you cannot find such evidence, confirm — the default is to trust the finding. Never refute on a hunch.\n\n")
+	b.WriteString("For each finding below, test its claim, not its wording: open the code it cites and follow callers and callees as far as the claim depends on them. Then return exactly one verdict:\n")
+	b.WriteString("   - \"confirmed\": you found the code that makes the claimed problem real; the evidence quotes that file:line.\n")
+	b.WriteString("   - \"refuted\": you found code that makes the claim false (a guard, a caller that already validates, a type that rules the case out), or a symbol or behavior the claim depends on does not exist. The evidence quotes the disproving file:line or, for something absent, names the search you ran and its empty result (e.g. `grep -rn 'func parseToken' .` found nothing).\n")
+	b.WriteString("   - \"unverifiable\": the checkout cannot settle it, because the claim depends on runtime configuration, an external service, or code that is not here; the reason names what is missing.\n\n")
+	b.WriteString("Only a refutation demotes a finding, so refute only on evidence you can quote or a search you can name. Never refute on a hunch, and never confirm a claim you did not check: say unverifiable instead.\n\n")
 	b.WriteString("This is a read-only check: do NOT edit any file.\n\n")
 	b.WriteString(jsonSchemaOnlyLine())
-	b.WriteString("\n\n{\n  \"verdicts\": [\n    {\n      \"index\": 0,\n      \"verdict\": \"confirmed|refuted\",\n      \"evidence\": \"path/to/file.go:42 — the exact line you grounded the verdict in\",\n      \"reason\": \"One sentence. REQUIRED for a refuted verdict; may be empty for confirmed.\"\n    }\n  ]\n}\n\n")
+	b.WriteString("\n\n{\n  \"verdicts\": [\n    {\n      \"index\": 0,\n      \"verdict\": \"confirmed|refuted|unverifiable\",\n      \"evidence\": \"path/to/file.go:42 — the exact line you grounded the verdict in\",\n      \"reason\": \"One sentence. REQUIRED for refuted and unverifiable; may be empty for confirmed.\"\n    }\n  ]\n}\n\n")
 	b.WriteString("Return exactly one verdict per finding, keyed by its index. Do NOT invent findings.\n\n")
 	b.WriteString("<findings>\n")
 	for i, f := range findings {
