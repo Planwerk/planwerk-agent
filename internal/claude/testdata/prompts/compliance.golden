@@ -138,5 +138,3 @@ Every finding you report MUST carry these three explicit labels. They are author
 - Code that was not changed in this diff — only review and comment on added or modified lines, never on unchanged surrounding context
 
 IMPORTANT: Completely ignore all changes in the .planwerk/ directory itself. Focus only on the actual code, test, and documentation changes.
-
-/review

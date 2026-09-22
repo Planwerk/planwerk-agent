@@ -77,7 +77,6 @@ For EVERY finding, include: the Acceptance Criterion it concerns (quote it in th
 `)
 	sb.WriteString(findingLabelsBlock())
 	sb.WriteString(planwerkIgnoreLine())
-	sb.WriteString("/review")
 
 	return sb.String()
 }

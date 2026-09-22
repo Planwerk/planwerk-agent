@@ -7,7 +7,8 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 )
 
-// buildReviewPrompt constructs a prompt that includes patterns and triggers /review.
+// buildReviewPrompt constructs the diff-review prompt: scope, persona, patterns,
+// checks, and the output contract the structuring pass transcribes.
 func buildReviewPrompt(ctx ReviewContext) string {
 	var sb strings.Builder
 
@@ -16,7 +17,7 @@ func buildReviewPrompt(ctx ReviewContext) string {
 		baseBranch = DefaultBaseBranch
 	}
 
-	// Review scope: pin /review to the cumulative PR diff so multi-commit PRs
+	// Review scope: pin the review to the cumulative PR diff so multi-commit PRs
 	// are reviewed as a whole instead of just the latest (or first) commit.
 	fmt.Fprintf(&sb, `## Review Scope (MANDATORY)
 
@@ -251,7 +252,6 @@ A zero-finding review is a valid outcome: when the diff is clean after the full 
 `)
 
 	sb.WriteString("IMPORTANT: Completely ignore all changes in the .planwerk/ directory. Do not create any findings for files inside .planwerk/. These are project management artifacts that are always expected in the diff.\n\n")
-	sb.WriteString("/review")
 
 	return sb.String()
 }

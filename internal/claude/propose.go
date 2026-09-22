@@ -49,7 +49,7 @@ func buildAnalysisPrompt(ctx propose.AnalysisContext) string {
 
 	if len(ctx.Patterns) > 0 {
 		sb.WriteString("## Review Patterns to Ground Proposals In\n\n")
-		sb.WriteString("The patterns below are the same catalog used by /review and /audit. Use them as a lens when proposing features or improvements: when a proposal addresses a pattern (closes a gap, hardens against a violation, or extends coverage) reference the pattern by name in the proposal description so reviewers can trace the rationale back to the catalog.\n\n")
+		sb.WriteString("The patterns below are the same catalog the review and audit commands apply. Use them as a lens when proposing features or improvements: when a proposal addresses a pattern (closes a gap, hardens against a violation, or extends coverage) reference the pattern by name in the proposal description so reviewers can trace the rationale back to the catalog.\n\n")
 		sb.WriteString("<review-patterns>\n")
 		sb.WriteString(patterns.FormatGroupedForPrompt(ctx.Patterns, ctx.MaxPatterns))
 		sb.WriteString("</review-patterns>\n\n")

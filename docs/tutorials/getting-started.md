@@ -45,8 +45,8 @@ the short `owner/repo#number` form:
 planwerk-agent owner/repo#123
 ```
 
-planwerk-agent checks out the PR, loads its review patterns, runs Claude Code's
-`/review` with a structured prompt, and aggregates the results. The structured
+planwerk-agent checks out the PR, loads its review patterns, runs a Claude Code
+session with a structured review prompt, and aggregates the results. The structured
 report is written to `stdout`.
 
 ## Step 3: Read the report

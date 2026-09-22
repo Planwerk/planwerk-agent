@@ -17,7 +17,7 @@ The tool systematically builds knowledge over time:
 ```text
 First Review           Subsequent Reviews       Mature System
 ────────────          ────────────────────      ─────────────
-Claude /review   ──▶  Claude /review       ──▶  Claude /review
+Claude review    ──▶  Claude review        ──▶  Claude review
 (no patterns)         + general patterns        + general patterns
                       + repo-specific           + repo-specific
       │               patterns                  patterns (many)

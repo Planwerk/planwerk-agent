@@ -36,7 +36,7 @@ report, see [Output format](/reference/output-format).
 3. **Load Review Patterns**: Patterns are loaded from two sources:
    - the planwerk-agent pattern catalog, embedded in the binary (source: `internal/patterns/patterns/`)
    - `.planwerk/review_patterns/` in the target repository (repo-specific patterns)
-4. **Claude Code Review**: `claude /review` is executed with a structured prompt that includes persona framing, scope analysis, a two-pass checklist, suppression rules, and review patterns.
+4. **Claude Code Review**: a `claude -p` session runs a structured review prompt that includes persona framing, scope analysis, a two-pass checklist, suppression rules, and review patterns.
 5. **Result Aggregation**: Review results are collected, deduplicated, categorized by severity, and classified by actionability. Findings are enriched with code snippets, suggested fixes, confidence levels, and cross-references.
 6. **Output**: A structured report is written to `stdout`, optionally posted as a PR comment (`--post-review`), or posted as inline review comments on the PR diff (`--inline`).
 
