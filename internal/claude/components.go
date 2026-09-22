@@ -783,7 +783,7 @@ func findingBudgetBlock(maxFindings int) string {
 // verify-implementation, and plan prompts keep their own leading and trailing
 // clauses, so only the enumeration itself is shared.
 func workBreakdownDefinition() string {
-	return `a "Work breakdown" / "Work packages" / "Work items" section, numbered items (1., 2., 3. or ### 1 / ### 2), lettered workstreams, tiered phases, or a checkbox task list`
+	return `a "Work breakdown" / "Work packages" / "Work items" section, numbered items (1., 2., 3. or ### 1 / ### 2), lettered workstreams, tiered phases, or a checkbox task list — but not the Acceptance Criteria checklist or the numbered boundaries in the Description, which every elaborated issue carries`
 }
 
 // implementRationalizationsBlock returns the excuse/rebuttal table both

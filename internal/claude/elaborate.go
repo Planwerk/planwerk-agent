@@ -34,7 +34,7 @@ func buildElaboratePrompt(ctx elaborate.Context) string {
 
 	sb.WriteString(`You are a Staff Engineer turning a high-level GitHub issue into a deeply detailed engineering plan.
 
-Calibrate the detail to the reader: write for an engineer who is competent with the language but has ZERO context for this codebase and questionable taste — assume they know almost nothing about the problem domain and tend to skip tests. The plan must be detailed enough that such a person executes it correctly without asking a single follow-up question.
+Calibrate the detail to the reader: an engineer who can open every file in this repository but took part in none of the discussion behind the issue, and who will skip any test the plan does not name. Write down every decision the plan makes and every constraint the code does not show; do not narrate code they can read. The plan must be detailed enough that they execute it correctly without asking a single follow-up question.
 
 `)
 
@@ -135,16 +135,12 @@ Name the actual error or exception value, never a vague "handle the error case".
 
 ## Anti-Hallucination Rules
 
-These are MANDATORY:
+An implementer acts on every name the plan gives, so each one has to exist:
 
 - Every file path you cite MUST exist in the repository. If you are not sure, walk the directory before naming the file.
 - Every line-number citation must be verifiable. Prefer file-only citations when you cannot verify the line.
 - NEVER invent symbol names, function signatures, or migration numbers — open the file and read them.
 - If the issue references something the repo does not yet have ("S006", "S009", "PX-0011"), preserve the reference exactly as written but mark it as "per the issue" so reviewers know it is an assumption.
-
-## Communication Style
-
-Be direct. State what IS, not what "could be considered". Match the density and precision of a senior engineer's design doc, not a marketing brief.
 `)
 
 	sb.WriteString("\n")
@@ -153,9 +149,9 @@ Be direct. State what IS, not what "could be considered". Match the density and 
 	sb.WriteString(outputLanguageBlock())
 	sb.WriteString(domainGlossaryBlock(ctx.Glossary))
 
-	sb.WriteString(`## Self-Review (run before emitting the plan)
+	sb.WriteString(`## Before you finish
 
-Before you output the elaborated issue, review your own draft and fix what you find:
+Settle the design in your reasoning, then write the elaborated issue once, in your final message; do not draft the whole document in your reasoning and copy it out. The issue you emit satisfies all of these:
 1. Spec coverage — every Acceptance Criterion maps to a concrete change named in Description or Affected Areas. List any criterion that does not, then close the gap.
 2. Placeholder scan — no "TBD" / "add error handling" / "see Task N"-style placeholders remain (see Plan Quality Rules).
 3. Name consistency — each symbol is named identically everywhere. A function called clearLayers() in one section and clearFullLayers() in another is a bug; reconcile it.
@@ -166,7 +162,7 @@ Before you output the elaborated issue, review your own draft and fix what you f
 
 `)
 
-	sb.WriteString("\nNow walk the repository, then produce the elaborated issue. Use the section headings above (**Description**, **Motivation**, **User Stories**, **Affected Areas**, **Acceptance Criteria**, **Non-Goals**, **References**) so the structuring step can extract them reliably.\n")
+	sb.WriteString("\nNow walk the repository, then produce the elaborated issue. Use the section headings above (**Description**, **Motivation**, **User Stories**, **Affected Areas**, **Acceptance Criteria**, **Non-Goals**, **References**) so the structuring step can extract them reliably. Your final message is the only text captured, so it must be the complete elaborated issue.\n")
 
 	return sb.String()
 }
@@ -203,7 +199,7 @@ Field rules:
 - "title": If the elaboration does not change the title, copy this exact source title: ` + jsonString(title) + `.
 - "description" and "motivation": Preserve the Markdown structure (bold subheadings, bullet lists, numbered items, inline code) so the issue body renders the same way the example does.
 - "user_stories": Populate ONLY if the elaboration emitted a User Stories section; each entry needs role/want/so_that and at least one criterion. Emit [] when the elaboration has none (purely mechanical or infrastructure work) — never synthesize a story the elaboration did not write.
-- "affected_areas", "acceptance_criteria", "non_goals", "references": Plain strings, one per array entry. No leading bullets — the renderer adds them.
+- "affected_areas", "acceptance_criteria", "non_goals", "references": Plain strings, one per array entry, with no leading bullet or checkbox marker ("- ", "- [ ] ") — the renderer adds them.
 - Do NOT invent fields beyond the schema.
 
 <elaboration-output>
@@ -262,6 +258,8 @@ Do NOT rewrite the plan. Do NOT assume it is correct because it looks thorough �
 		}
 	}
 
+	renderIssueRelations(&sb, ctx.RepoName, ctx.MetaIssue, ctx.SiblingIssues, ctx.ChildIssues)
+
 	sb.WriteString(fencedData("draft-plan", "", strings.TrimSpace(draftBody)))
 	sb.WriteString("\n")
 
@@ -275,27 +273,28 @@ Do NOT rewrite the plan. Do NOT assume it is correct because it looks thorough �
 4. Name consistency — a symbol must be named identically throughout. Two names for one thing is a gap.
 5. Executable acceptance criteria — each criterion is an observable check, not a vague goal.
 6. Edge-case coverage — every data-flow acceptance criterion enumerates its empty/zero-length, nil/absent, and upstream-error shadow paths as separate entries, each naming the concrete error (e.g. io.EOF, sql.ErrNoRows, a wrapped fmt.Errorf). A data-flow criterion that covers only the happy path is a gap.
-7. Single-delivery contract — the issue is implemented by ONE session and lands as exactly ONE pull request. Any note prescribing a different delivery structure — "one commit ≈ one PR", "split into separate PRs", deferring described work to a follow-up issue or PR — is a gap, as is a Non-Goal that defers work the Description requires.
+7. Single-delivery contract — the issue is implemented by ONE session and lands as exactly ONE pull request. Any note prescribing a different delivery structure — "one commit ≈ one PR", "split into separate PRs", deferring described work to a follow-up issue or PR — is a gap, as is a Non-Goal that defers work the Description requires. A Non-Goal that hands part of a shared task to a sibling Sub Issue listed above, or work in another repository to a counterpart issue (` + "`owner/repo#N`" + `), is scoping, not deferral, and never a gap.
 8. Domain coverage — for each domain of the sweep above, decide from the repository whether this change touches it. When it does, an Acceptance Criterion or an Affected Areas entry must carry its consequence; when it does not, the draft owes it nothing. An uncovered touched domain is a gap: name the domain and the specific consequence that has no home. A domain the change does not touch is never a gap — do NOT report one to look thorough, and do NOT ask for a Domain Sweep section in the body, which the house format has no room for.
+9. Density — length is not detail. A section that restates what another section owns, or a boundary that narrates code the change does not touch, is a gap: name the section to tighten. The implementer re-reads this body in every later prompt, so padding costs on every run.
 
 ## Scoring rubric
 
 Score executability on this scale — the number is what the refine loop optimizes against, so calibrate it honestly:
-- 10: an implementer with zero context executes the plan correctly without asking a single question.
-- 8-9: solid; at most cosmetic gaps that would not change what gets built.
-- 4-7: real gaps that would make the implementer build the wrong thing or get stuck on a decision the plan should have made.
-- 0-3: not executable — missing coverage, placeholders, or citations that do not exist.
+- 10: no gaps. An implementer who can read the repository but has no other context executes the plan correctly without asking a single question.
+- 8-9: every gap is one the implementer would resolve correctly from the repository alone. List each one.
+- 4-7: at least one gap would make the implementer build the wrong thing or stop to ask about a decision the plan should have made.
+- 0-3: not executable — most criteria have no mapped change, the plan is mostly placeholders, or most of its citations do not exist. A single citation that does not exist is a gap at any score.
 
-Only count gaps that would make an implementer build the wrong thing or get stuck. Minor wording and stylistic preferences are NOT gaps.
+Minor wording and stylistic preferences are NOT gaps.
 
 ## Output
 
 Output ONLY valid JSON (no markdown fences, no surrounding text):
 
 {
-  "score": 8,
-  "gaps": [],
-  "to_reach_ten": ""
+  "score": <integer 0-10>,
+  "gaps": ["<section or criterion>: <the problem>"],
+  "to_reach_ten": "<one or two sentences>"
 }
 
 - "score": integer 0-10 from the rubric above.

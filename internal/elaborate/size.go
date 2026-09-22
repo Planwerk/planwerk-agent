@@ -24,5 +24,5 @@ func sizeGap(body string) string {
 	if len(body) <= BodyBudget {
 		return ""
 	}
-	return fmt.Sprintf("Size — the body is %d characters against a budget of %d. Tighten it without dropping a decision, a criterion, a citation, or an edge case: state each fact once, in the section that owns it (the Description says what changes and why, a criterion says how to observe it); cite path:line instead of quoting code the implementer will open anyway; cut a boundary that only narrates code nothing changes to the one sentence the plan needs; give a rejected alternative one sentence under Non-Goals.", len(body), BodyBudget)
+	return fmt.Sprintf("Size — the body is %d characters against a budget of %d. Tighten it with the moves in the Size section, without dropping a decision, a criterion, a citation, or an edge case.", len(body), BodyBudget)
 }

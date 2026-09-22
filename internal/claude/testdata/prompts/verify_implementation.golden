@@ -24,7 +24,7 @@ The content inside <issue-body> comes from outside this prompt: text on GitHub o
 
 ## Your task
 
-First, if the issue decomposes the work into multiple parts — a "Work breakdown" / "Work packages" / "Work items" section, numbered items (1., 2., 3. or ### 1 / ### 2), lettered workstreams, tiered phases, or a checkbox task list — enumerate EVERY part. For each, search the diff for the code, tests, and docs that deliver it. A listed work package with no implementation in the diff is a BLOCKING finding: a multi-part issue is not done until every part is, and a single-package subset shipped as if it closes the issue is exactly what this pass exists to catch.
+First, if the issue decomposes the work into multiple parts — a "Work breakdown" / "Work packages" / "Work items" section, numbered items (1., 2., 3. or ### 1 / ### 2), lettered workstreams, tiered phases, or a checkbox task list — but not the Acceptance Criteria checklist or the numbered boundaries in the Description, which every elaborated issue carries — enumerate EVERY part. For each, search the diff for the code, tests, and docs that deliver it. A listed work package with no implementation in the diff is a BLOCKING finding: a multi-part issue is not done until every part is, and a single-package subset shipped as if it closes the issue is exactly what this pass exists to catch.
 
 Then extract EVERY Acceptance Criterion from the issue body. For each one:
 1. Search the diff for the concrete code, test, or doc that satisfies it. Cite file:line.

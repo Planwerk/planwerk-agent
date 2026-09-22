@@ -848,6 +848,35 @@ func TestRun_PlanEscalationAbortsBeforeImplement(t *testing.T) {
 	}
 }
 
+// TestRun_IncompletePlanAbortsWithoutPosting: a planning session that ended on
+// a question or a closing remark returns no plan. It must not run the implement
+// session, and must not be posted, since a posted comment is reused on the
+// next run as if it were a plan.
+func TestRun_IncompletePlanAbortsWithoutPosting(t *testing.T) {
+	for name, out := range map[string]string{
+		"a question":     "Before I plan this, should the cache be per-user or global?",
+		"no status line": "## Implementation Plan (issue #42)\n\n### Summary\n- half a plan",
+	} {
+		t.Run(name, func(t *testing.T) {
+			gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
+			cl := &fakeClaude{report: "unused"}
+			r := newRunner(gh, cl)
+			r.Planner = &fakePlanner{plan: out}
+
+			err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42"})
+			if err == nil || !strings.Contains(err.Error(), "no complete plan") {
+				t.Fatalf("Run returned %v, want the no-complete-plan error", err)
+			}
+			if cl.called.Load() != 0 {
+				t.Errorf("implement called %d times, want 0", cl.called.Load())
+			}
+			if gh.Count("AddIssueComment") != 0 {
+				t.Errorf("AddIssueComment called %d times, want 0 — an incomplete plan is never posted", gh.Count("AddIssueComment"))
+			}
+		})
+	}
+}
+
 func TestPlanEscalation(t *testing.T) {
 	// A plan whose subject IS the BLOCKED/NEEDS_CONTEXT status values (issue
 	// #89 hardens the implement session's stop conditions) mentions those

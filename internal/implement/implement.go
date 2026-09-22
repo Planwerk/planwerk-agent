@@ -823,6 +823,21 @@ func (r *Runner) preparePlan(w io.Writer, opts Options, owner, name, dir string,
 	return r.runPlanning(w, opts, owner, name, dir, ctx)
 }
 
+// planComplete reports whether a fresh planning result is a plan at all: it
+// carries the plan heading and a terminal verdict from the plan vocabulary.
+// planEscalation stays lenient because the apply reports share it; this check
+// applies only to the output of a planning session, whose contract is exact.
+func planComplete(plan string) bool {
+	if !strings.Contains(plan, planHeading) {
+		return false
+	}
+	switch report.TerminalStatus(plan, report.StatusPlanReady) {
+	case report.StatusPlanReady, report.StatusBlocked, report.StatusNeedsContext:
+		return true
+	}
+	return false
+}
+
 // mostRecentPlanComment returns the body — footer stripped — of the most recent
 // comment that planwerk-agent posted as an implementation plan, or "" when no
 // comment is one. A plan comment is identified by carrying BOTH the
@@ -888,10 +903,17 @@ func (r *Runner) runPlanning(w io.Writer, opts Options, owner, name, dir string,
 		return fmt.Errorf("claude plan: %w (use --plan-model to plan on a different model, or --no-plan to skip the planning phase)", err)
 	}
 	plan = strings.TrimSpace(plan)
-	if plan != "" {
-		_, _ = fmt.Fprintf(w, "\nImplementation plan:\n%s\n", plan)
-		r.postPlanComment(w, opts, owner, name, ctx.IssueNumber, plan, model)
+	if !planComplete(plan) {
+		// A session that ended on a question, or on a closing line after its
+		// last tool call, returns text with no plan in it. Posted, it would be
+		// reused on the next run as if it were one.
+		if plan != "" {
+			_, _ = fmt.Fprintf(w, "\nThe planning session returned no complete plan:\n%s\n", plan)
+		}
+		return fmt.Errorf("planning session returned no complete plan (it needs the %q heading and a STATUS line); rerun, or rerun with --no-plan to skip planning", planHeading)
 	}
+	_, _ = fmt.Fprintf(w, "\nImplementation plan:\n%s\n", plan)
+	r.postPlanComment(w, opts, owner, name, ctx.IssueNumber, plan, model)
 	if status := planEscalation(plan); status != "" {
 		return fmt.Errorf("planning session reported %s; review the plan above and clarify the issue, or rerun with --no-plan", status)
 	}
