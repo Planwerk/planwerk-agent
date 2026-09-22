@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -174,11 +175,54 @@ func (Client) GetIssue(owner, name string, number int) (*Issue, error) {
 type IssueComment struct {
 	ID   string `json:"id"`
 	Body string `json:"body"`
+	// AuthorAssociation is the author's relation to the repository as GitHub
+	// reports it (OWNER, MEMBER, COLLABORATOR, CONTRIBUTOR, NONE, …), and
+	// ViewerDidAuthor whether the authenticated gh user wrote the comment.
+	// Together they decide Trusted.
+	AuthorAssociation string `json:"authorAssociation"`
+	ViewerDidAuthor   bool   `json:"viewerDidAuthor"`
+}
+
+// Trusted reports whether the tool may act on the comment: the authenticated
+// user wrote it (which covers every comment this tool posts), or the
+// repository's owner, a member of its organization, or a collaborator did.
+//
+// Every reader of issue comments here acts on what it finds — a posted plan
+// becomes the implement session's default route, a posted report can skip the
+// implement session, a continuation comment becomes part of the issue body —
+// and each recognizes its comment by text anyone can type. Without the author
+// check, anyone able to comment on an issue could write the plan an unattended
+// session follows.
+func (c IssueComment) Trusted() bool {
+	if c.ViewerDidAuthor {
+		return true
+	}
+	switch c.AuthorAssociation {
+	case "OWNER", "MEMBER", "COLLABORATOR":
+		return true
+	}
+	return false
+}
+
+// trustedComments keeps the comments Trusted accepts, in order.
+func trustedComments(comments []IssueComment) []IssueComment {
+	kept := comments[:0:0]
+	for _, c := range comments {
+		if c.Trusted() {
+			kept = append(kept, c)
+		}
+	}
+	if dropped := len(comments) - len(kept); dropped > 0 {
+		slog.Info("ignoring issue comments from outside the repository's maintainers", "count", dropped)
+	}
+	return kept
 }
 
 // ListIssueComments fetches the comments on an issue via gh, in the order gh
-// returns them (oldest first). Used by the implement command to detect and
-// reuse an implementation plan it posted on an earlier run.
+// returns them (oldest first), keeping only the ones Trusted accepts: every
+// caller acts on what it finds (plan reuse, the resume account, continuation
+// comments), so a comment from outside the repository's maintainers is never
+// returned.
 func (Client) ListIssueComments(owner, name string, number int) ([]IssueComment, error) {
 	repo := fmt.Sprintf("%s/%s", owner, name)
 	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
@@ -190,7 +234,11 @@ func (Client) ListIssueComments(owner, name string, number int) ([]IssueComment,
 	if err != nil {
 		return nil, fmt.Errorf("gh issue view: %s: %w", strings.TrimSpace(string(out)), err)
 	}
-	return parseIssueComments(out)
+	comments, err := parseIssueComments(out)
+	if err != nil {
+		return nil, err
+	}
+	return trustedComments(comments), nil
 }
 
 // EditIssueComment replaces the body of an existing issue comment, addressed

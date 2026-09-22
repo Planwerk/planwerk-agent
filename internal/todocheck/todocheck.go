@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/planwerk/planwerk-agent/internal/gitref"
 )
 
 // maxFileSize is the maximum size of a TODO file (64 KB).
@@ -39,5 +41,20 @@ func Load(repoDir string) string {
 		}
 	}
 
+	return ""
+}
+
+// LoadFromRef is Load reading the TODO file as it stands at ref (the pull
+// request's base branch) instead of from the working tree, so the open items a
+// review cross-references are the ones the maintainers merged, not a list the
+// pull request under review wrote. The same candidates and size limit apply.
+func LoadFromRef(repoDir, ref string) string {
+	for _, name := range []string{"TODOS.md", "TODO.md", "todos.md"} {
+		if body, ok := gitref.Show(repoDir, ref, name, maxFileSize); ok {
+			if body = strings.TrimSpace(body); body != "" {
+				return body
+			}
+		}
+	}
 	return ""
 }

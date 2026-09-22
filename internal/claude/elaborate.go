@@ -48,9 +48,10 @@ Calibrate the detail to the reader: write for an engineer who is competent with 
 		if ctx.Issue.URL != "" {
 			fmt.Fprintf(&sb, "**URL**: %s\n", ctx.Issue.URL)
 		}
-		sb.WriteString("\n<issue-body>\n")
-		sb.WriteString(strings.TrimSpace(ctx.Issue.Body))
-		sb.WriteString("\n</issue-body>\n\n")
+		sb.WriteString("\n")
+		sb.WriteString(fencedData("issue-body", "", strings.TrimSpace(ctx.Issue.Body)))
+		sb.WriteString("\n")
+		sb.WriteString(untrustedDataLine("It is the idea you elaborate.", "issue-body"))
 	}
 
 	renderIssueRelations(&sb, ctx.RepoName, ctx.MetaIssue, ctx.SiblingIssues, ctx.ChildIssues)
@@ -76,9 +77,8 @@ Calibrate the detail to the reader: write for an engineer who is competent with 
 		if t := strings.TrimSpace(ctx.ReviewTarget); t != "" {
 			fmt.Fprintf(&sb, "What a 10/10 plan would look like: %s\n\n", t)
 		}
-		sb.WriteString("<prior-draft>\n")
-		sb.WriteString(strings.TrimSpace(ctx.PriorDraft))
-		sb.WriteString("\n</prior-draft>\n\n")
+		sb.WriteString(fencedData("prior-draft", "", strings.TrimSpace(ctx.PriorDraft)))
+		sb.WriteString("\n")
 	}
 
 	sb.WriteString(`## Methodology
@@ -256,15 +256,14 @@ Do NOT rewrite the plan. Do NOT assume it is correct because it looks thorough â
 	if ctx.Issue != nil {
 		fmt.Fprintf(&sb, "## Source Issue #%d: %s\n\n", ctx.Issue.Number, ctx.Issue.Title)
 		if body := strings.TrimSpace(ctx.Issue.Body); body != "" {
-			sb.WriteString("<issue-body>\n")
-			sb.WriteString(body)
-			sb.WriteString("\n</issue-body>\n\n")
+			sb.WriteString(fencedData("issue-body", "", body))
+			sb.WriteString("\n")
+			sb.WriteString(untrustedDataLine("It is the idea the draft elaborates.", "issue-body"))
 		}
 	}
 
-	sb.WriteString("<draft-plan>\n")
-	sb.WriteString(strings.TrimSpace(draftBody))
-	sb.WriteString("\n</draft-plan>\n\n")
+	sb.WriteString(fencedData("draft-plan", "", strings.TrimSpace(draftBody)))
+	sb.WriteString("\n")
 
 	sb.WriteString(domainSweepBlock(ctx.Domains, `The draft was written against this list. You are checking whether it actually was â€” check 8 below is scored against these domains and nothing else. Judge each one against the repository, not against how thorough the draft reads: a domain the change plainly touches and no criterion covers is a gap even when the draft never mentions the domain at all.`))
 

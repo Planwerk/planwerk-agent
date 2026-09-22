@@ -41,8 +41,9 @@ func renderIssueRelations(sb *strings.Builder, repoFullName string, meta *github
 		sb.WriteString("- A closed sibling is already-implemented context you build on, not work to redo; an open sibling is work that may land in parallel or later, so coordinate rather than collide.\n")
 		sb.WriteString("- A sibling Sub Issue may already carry an open pull request (listed under `<linked-prs>` in its block) — a prepared implementation not yet merged to the default branch. Treat that PR as the source of truth for the sibling's slice: build on its direction, do not duplicate or contradict it, and cross-reference it by the reference it is labelled with rather than re-implementing the work. A PR outside this repository is labelled `owner/repo#N`; cite it that way, since a bare `#N` resolves against this repository.\n\n")
 
+		sb.WriteString(untrustedDataLine("It describes the larger effort this issue belongs to and the work around it.", "meta-issue", "sibling", "linked-prs"))
 		fmt.Fprintf(sb, "<meta-issue number=%d state=%s>\n", meta.Number, issueState(meta.State))
-		fmt.Fprintf(sb, "**Meta Issue %s**: %s\n", promptIssueRef(repoFullName, *meta), meta.Title)
+		fmt.Fprintf(sb, "**Meta Issue %s**: %s\n", promptIssueRef(repoFullName, *meta), escapeFences(meta.Title, relationFences...))
 		writeIssueBody(sb, meta.Body)
 		sb.WriteString("</meta-issue>\n\n")
 
@@ -60,6 +61,7 @@ func renderIssueRelations(sb *strings.Builder, repoFullName string, meta *github
 	if len(children) > 0 {
 		sb.WriteString("This issue is itself a **Meta Issue** — a larger effort split into the Sub Issues below. Plan it as the umbrella: keep each Sub Issue's slice in mind, do not absorb work a Sub Issue owns, and make sure the slices compose into the whole.\n\n")
 		sb.WriteString("A Sub Issue listed below may already carry an open pull request (listed under `<linked-prs>` in its block) — a prepared implementation not yet merged to the default branch. Account for it when checking that the slices compose, and reference it by the reference it is labelled with (`owner/repo#N` for a PR outside this repository, where a bare `#N` would point at an unrelated one) instead of assuming the work is unstarted.\n\n")
+		sb.WriteString(untrustedDataLine("It describes the Sub Issues this effort is split into.", "sub-issue", "linked-prs"))
 		sb.WriteString("<child-sub-issues>\n")
 		for _, c := range children {
 			writeRelatedSubIssue(sb, "sub-issue", repoFullName, c)
@@ -75,7 +77,7 @@ func renderIssueRelations(sb *strings.Builder, repoFullName string, meta *github
 // the session is told to cross-reference it by.
 func writeRelatedSubIssue(sb *strings.Builder, tag, repoFullName string, issue github.Issue) {
 	fmt.Fprintf(sb, "<%s number=%d state=%s>\n", tag, issue.Number, issueState(issue.State))
-	fmt.Fprintf(sb, "**%s**: %s\n", promptIssueRef(repoFullName, issue), issue.Title)
+	fmt.Fprintf(sb, "**%s**: %s\n", promptIssueRef(repoFullName, issue), escapeFences(issue.Title, relationFences...))
 	writeIssueBody(sb, issue.Body)
 	writeLinkedPRs(sb, repoFullName, issue.LinkedPRs)
 	fmt.Fprintf(sb, "</%s>\n", tag)
@@ -100,20 +102,26 @@ func writeLinkedPRs(sb *strings.Builder, repoFullName string, prs []github.Linke
 		if pr.IsDraft {
 			state = "draft"
 		}
-		fmt.Fprintf(sb, "- PR %s (%s): %s — %s\n", promptPRRef(repoFullName, pr), state, pr.Title, pr.URL)
+		fmt.Fprintf(sb, "- PR %s (%s): %s — %s\n", promptPRRef(repoFullName, pr), state, escapeFences(pr.Title, relationFences...), pr.URL)
 	}
 	sb.WriteString("</linked-prs>\n")
 }
 
+// relationFences are the tags the Meta / Sub-Issue section nests issue text
+// in. An issue body or title may close any of them, so each is escaped against
+// all of them.
+var relationFences = []string{"meta-issue", "sibling-sub-issues", "sibling", "child-sub-issues", "sub-issue", "linked-prs"}
+
 // writeIssueBody writes a trimmed issue body on its own lines, preceded by a
-// blank line, or nothing when the body is empty.
+// blank line, or nothing when the body is empty. The body is escaped against
+// every relation fence (see relationFences).
 func writeIssueBody(sb *strings.Builder, body string) {
 	body = strings.TrimSpace(body)
 	if body == "" {
 		return
 	}
 	sb.WriteString("\n")
-	sb.WriteString(body)
+	sb.WriteString(escapeFences(body, relationFences...))
 	sb.WriteString("\n")
 }
 

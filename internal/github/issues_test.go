@@ -2,6 +2,7 @@ package github
 
 import (
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -130,5 +131,36 @@ func TestParseIssueRef(t *testing.T) {
 				t.Fatalf("got (%q, %q, %d), want (%q, %q, %d)", owner, repo, num, tc.wantOwner, tc.wantRepo, tc.wantNum)
 			}
 		})
+	}
+}
+
+// TestTrustedComments_KeepsOnlyTheViewerAndMaintainers: a plan, report, or
+// continuation comment is recognized by text anyone can type, so only the
+// authenticated user's own comments and the maintainers' survive.
+func TestTrustedComments_KeepsOnlyTheViewerAndMaintainers(t *testing.T) {
+	in := []IssueComment{
+		{ID: "own", ViewerDidAuthor: true, AuthorAssociation: "NONE"},
+		{ID: "owner", AuthorAssociation: "OWNER"},
+		{ID: "member", AuthorAssociation: "MEMBER"},
+		{ID: "collab", AuthorAssociation: "COLLABORATOR"},
+		{ID: "contributor", AuthorAssociation: "CONTRIBUTOR"},
+		{ID: "stranger", AuthorAssociation: "NONE"},
+		{ID: "unknown"},
+	}
+	got := trustedComments(in)
+	var ids []string
+	for _, c := range got {
+		ids = append(ids, c.ID)
+	}
+	if want := "own owner member collab"; strings.Join(ids, " ") != want {
+		t.Errorf("trusted = %v, want %s", ids, want)
+	}
+}
+
+func TestParseIssueComments_ReadsTheAuthorFields(t *testing.T) {
+	out := []byte(`{"comments":[{"id":"IC_1","body":"b","authorAssociation":"MEMBER","viewerDidAuthor":true}]}`)
+	got, err := parseIssueComments(out)
+	if err != nil || len(got) != 1 || got[0].AuthorAssociation != "MEMBER" || !got[0].ViewerDidAuthor {
+		t.Fatalf("parseIssueComments = %+v, %v", got, err)
 	}
 }

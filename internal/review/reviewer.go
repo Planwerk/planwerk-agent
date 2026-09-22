@@ -179,6 +179,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// 4. Load patterns (filtered by detected technologies)
 	pats, err := patterns.LoadForRepo(patterns.RepoLoadOptions{
 		RepoDir:    pr.Dir,
+		RepoRef:    "origin/" + pr.BaseBranch,
 		Wiki:       wiki.PatternsDir,
 		Extra:      opts.PatternDirs,
 		Tags:       techTags,
@@ -194,8 +195,10 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		slog.Info("loaded review patterns", "count", len(pats))
 	}
 
-	// 5. Load checklist
-	checklistContent := checklist.Load(pr.Dir)
+	// 5. Load the checklist from the base ref, like the patterns above and the
+	// glossary below: it is spliced into the prompt as instructions, so a pull
+	// request must not be able to rewrite the checklist it is reviewed against.
+	checklistContent := checklist.LoadFromRef(pr.Dir, "origin/"+pr.BaseBranch)
 
 	// 5b. Load the repo's domain glossary (CONTEXT.md / .planwerk/context.md)
 	// from the base ref, NOT pr.Dir (the PR head checkout). Reading origin/<base>
@@ -218,7 +221,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	newFeatures := doccheck.CheckNewFeatures(pr.Dir, pr.BaseBranch)
 
 	// 8. Load TODOS.md for cross-reference
-	todoContent := todocheck.Load(pr.Dir)
+	todoContent := todocheck.LoadFromRef(pr.Dir, "origin/"+pr.BaseBranch)
 
 	// 8b. Detect Planwerk feature file for compliance checking
 	feature, _ := planwerk.DetectFeature(pr.Dir, pr.Title, pr.Body, pr.HeadBranch, pr.ChangedFiles)

@@ -98,19 +98,18 @@ func BuildFixPrompt(ctx fix.Context) string {
 				fmt.Fprintf(&sb, "- Title: %s\n", fc.OutputTitle)
 			}
 			if fc.OutputSummary != "" {
-				sb.WriteString("- Summary:\n\n```\n")
-				sb.WriteString(strings.TrimSpace(fc.OutputSummary))
-				sb.WriteString("\n```\n")
+				sb.WriteString("- Summary:\n\n")
+				sb.WriteString(fencedData("check-output", "", strings.TrimSpace(fc.OutputSummary)))
 			}
 			if fc.Logs != "" {
-				sb.WriteString("- Failed-step logs (truncated to the last lines):\n\n```\n")
-				sb.WriteString(tailLines(fc.Logs, 200))
-				sb.WriteString("\n```\n")
+				sb.WriteString("- Failed-step logs (truncated to the last lines):\n\n")
+				sb.WriteString(fencedData("check-log", "", tailLines(fc.Logs, 200)))
 			} else {
 				sb.WriteString("- (No logs available — third-party check or logs expired.)\n")
 			}
 			sb.WriteString("\n")
 		}
+		sb.WriteString(untrustedDataLine("It is evidence of what failed and where.", "check-output", "check-log"))
 	}
 
 	sb.WriteString(`## Diagnosis Workflow

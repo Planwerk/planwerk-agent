@@ -77,9 +77,10 @@ func BuildPlanPrompt(ctx implement.Context) string {
 	if ctx.IssueState != "" {
 		fmt.Fprintf(&sb, "- State: %s\n", ctx.IssueState)
 	}
-	sb.WriteString("\n<issue-body>\n")
-	sb.WriteString(strings.TrimSpace(ctx.IssueBody))
-	sb.WriteString("\n</issue-body>\n\n")
+	sb.WriteString("\n")
+	sb.WriteString(fencedData("issue-body", "", strings.TrimSpace(ctx.IssueBody)))
+	sb.WriteString("\n")
+	sb.WriteString(untrustedDataLine("It specifies what to build.", "issue-body"))
 
 	renderIssueRelations(&sb, ctx.RepoFullName, ctx.MetaIssue, ctx.SiblingIssues, ctx.ChildIssues)
 

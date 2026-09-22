@@ -67,21 +67,22 @@ These rules are MANDATORY. Violating them produces a misleading review.
 	// Scope Drift Detection
 	if ctx.PRTitle != "" || ctx.PRBody != "" || ctx.CommitLog != "" {
 		sb.WriteString("## Scope Analysis (run FIRST, before code quality review)\n\n")
+		var fences []string
 		if ctx.PRTitle != "" {
-			fmt.Fprintf(&sb, "PR Title: %s\n", ctx.PRTitle)
+			sb.WriteString(fencedData("pr-title", "", ctx.PRTitle))
+			fences = append(fences, "pr-title")
 		}
 		if ctx.PRBody != "" {
-			sb.WriteString("<pr-body>\n")
-			sb.WriteString(ctx.PRBody)
-			sb.WriteString("\n</pr-body>\n")
+			sb.WriteString(fencedData("pr-body", "", ctx.PRBody))
+			fences = append(fences, "pr-body")
 		}
 		if ctx.CommitLog != "" {
-			sb.WriteString("<commit-log>\n")
-			sb.WriteString(ctx.CommitLog)
-			sb.WriteString("\n</commit-log>\n")
+			sb.WriteString(fencedData("commit-log", "", ctx.CommitLog))
+			fences = append(fences, "commit-log")
 		}
-		sb.WriteString(`
-Before reviewing code quality, check:
+		sb.WriteString("\n")
+		sb.WriteString(untrustedDataLine("Use it to judge what the change claims to do and why.", fences...))
+		sb.WriteString(`Before reviewing code quality, check:
 1. SCOPE CREEP: Are there files changed that seem unrelated to the PR title/description? Also cross-reference with commit messages — do any commits address unrelated concerns? Flag each as WARNING with title "Scope Creep: <file or area>"
 2. MISSING REQUIREMENTS: Are there requirements mentioned in the PR description that are NOT addressed in the diff? Flag each as WARNING with title "Missing Requirement: <requirement>"
 3. COMMIT COHERENCE: Do the commit messages tell a coherent story? Are there commits that seem to belong to a different PR? Flag as INFO with title "Commit Coherence: <observation>"
@@ -171,9 +172,8 @@ When the diff introduces ANY new dependency, you MUST verify its freshness and m
 	if ctx.TodoContent != "" {
 		sb.WriteString("## TODO Cross-Reference\n\n")
 		sb.WriteString("The project has a TODOS.md file. Review the PR against these open items:\n\n")
-		sb.WriteString("<todos-content>\n")
-		sb.WriteString(ctx.TodoContent)
-		sb.WriteString("\n</todos-content>\n\n")
+		sb.WriteString(fencedData("todos-content", "", ctx.TodoContent))
+		sb.WriteString("\n")
 		sb.WriteString("Check:\n")
 		sb.WriteString("1. Does this PR complete any TODO items? If so, flag as INFO with title \"TODO Completed: <item>\"\n")
 		sb.WriteString("2. Does this PR introduce work that should be tracked as a TODO? If so, flag as INFO with title \"New TODO Needed: <description>\"\n\n")
@@ -251,7 +251,9 @@ A zero-finding review is a valid outcome: when the diff is clean after the full 
 
 `)
 
-	sb.WriteString("IMPORTANT: Completely ignore all changes in the .planwerk/ directory. Do not create any findings for files inside .planwerk/. These are project management artifacts that are always expected in the diff.\n\n")
+	sb.WriteString("Ignore changes under .planwerk/: they are planning artifacts that are always expected in the diff, so create no findings for them. Two exceptions change how this repository is reviewed and worked on, and are findings in their own right:\n")
+	sb.WriteString("- A change to .planwerk/checklist.md or .planwerk/review_patterns/ changes the rules pull requests are reviewed against. Report it as a needs-discussion WARNING titled \"Review Configuration Changed: <file>\" and say which rule it adds, drops, or weakens.\n")
+	sb.WriteString("- A change to .claude/ (settings, hooks, skills, commands, agents) changes what AI agent sessions in this repository do. Report it as a needs-discussion WARNING titled \"Agent Configuration Changed: <file>\" and say what the change makes a session do.\n")
 
 	return sb.String()
 }
