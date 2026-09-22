@@ -55,10 +55,15 @@ func BuildFinalizePrompt(ctx implement.FinalizeContext) string {
 	sb.WriteString(`You are a Staff Engineer opening the draft pull request for a feature branch that has already been implemented, simplified, and self-reviewed by earlier automated sessions. Your only job is to publish the branch and open the PR — do NOT edit code, fix findings, or change the commits.
 
 `)
-	sb.WriteString(baselineBehavioralPrinciples)
 	sb.WriteString(outputLanguageBlock())
 
 	fmt.Fprintf(&sb, "## Source Issue\n\n- Repository: %s\n- Issue #%d: %s\n\n", ctx.RepoFullName, issueNumber, ctx.IssueTitle)
+
+	if r := strings.TrimSpace(ctx.ImplementationReport); r != "" {
+		sb.WriteString("## Implementation report\n\nThe implement session's own report is below. Use its \"Deviations from the issue\" and \"Noticed but not touching\" sections for the description, and check any claim in it against the commits before you repeat it.\n\n")
+		sb.WriteString(fencedData("implementation-report", "", r))
+		sb.WriteString("\n")
+	}
 
 	// Finalize only runs for a complete implementation (a PARTIAL run persists
 	// its branch and aborts before this step), so the PR always links the issue
@@ -81,7 +86,9 @@ Run these steps in order. Do not skip ahead.
 3. OPEN OR UPDATE THE DRAFT PULL REQUEST against the base branch. First check whether one already exists for this branch: run ` + "`gh pr list --head <branch> --json number,url,state`" + ` — an earlier interrupted run may already have opened one. If NONE exists, open a draft PR with ` + "`gh pr create --draft`" + `. If one ALREADY exists, do NOT open a second (the push above already updated its commits) — update its description with ` + "`gh pr edit`" + ` if it needs it, and report that PR's URL. The PR description must:
 ` + linkInstruction + `
    - Walk the reviewer through the change set in commit order, reading the actual commits and diff — not guessing from the issue.
-   - Call out anything in the diff that diverged from the issue (and why), if you can tell from the commits.
+   - Carry over every entry of the implementation report's "Deviations from the issue" section, with its reason, and write "none" when it lists none. Mention what it lists under "Noticed but not touching" in one short list, so a reviewer knows it was seen and left alone.
+   - Write it as plain prose for a reviewer:
+` + indentLines(aiWritingTellsBullets, "     ") + `     - ` + bannedVocabularyLine() + `
 4. OUTPUT the structured report below.
 
 ## Report (final output)
@@ -111,4 +118,16 @@ After opening the draft PR, output a report in this exact shape:
 `)
 
 	return sb.String()
+}
+
+// indentLines prefixes every non-empty line of s with prefix, so a shared
+// bullet list can sit nested under a step of a numbered workflow.
+func indentLines(s, prefix string) string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	for i, l := range lines {
+		if l != "" {
+			lines[i] = prefix + l
+		}
+	}
+	return strings.Join(lines, "\n") + "\n"
 }

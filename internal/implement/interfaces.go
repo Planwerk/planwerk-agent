@@ -436,6 +436,10 @@ type FinalizeContext struct {
 	RepoFullName string
 	IssueNumber  int
 	IssueTitle   string
+	// ImplementationReport is the implement session's report. The pull request
+	// description carries its deviations and out-of-scope observations, which
+	// the commits alone do not show.
+	ImplementationReport string
 }
 
 // PRFinalizer opens the draft pull request for the implemented + simplified +

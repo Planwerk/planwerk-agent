@@ -2490,6 +2490,26 @@ func TestRun_FinalizeErrorIsFatal(t *testing.T) {
 	}
 }
 
+// TestRun_FinalizeBlockedIsFatal: a finalize session that ran but reported
+// BLOCKED (its prompt's route for a failed push or gh pr create) opened no pull
+// request, so the run fails the same way it does on an error, and the branch is
+// kept for a resume.
+func TestRun_FinalizeBlockedIsFatal(t *testing.T) {
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
+	cl := &fakeClaude{report: validImplReport}
+	ff := &fakeFinalizer{report: "## Pull Request\n\nBLOCKED — the push was rejected\n\n### Status\nSTATUS: BLOCKED"}
+	r := newRunner(gh, cl)
+	r.Finalizer = ff
+
+	err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42"})
+	if err == nil || !strings.Contains(err.Error(), "reported BLOCKED") {
+		t.Fatalf("Run returned %v, want a fatal error naming the BLOCKED verdict", err)
+	}
+	if !strings.Contains(ff.ctx.ImplementationReport, "Implementation Report") {
+		t.Errorf("finalizer did not receive the implementation report: %q", ff.ctx.ImplementationReport)
+	}
+}
+
 type fakeClaude struct {
 	called atomic.Int32
 	dir    string

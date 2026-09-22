@@ -586,7 +586,7 @@ func (c *Client) runClaude(dir, prompt, label string) (text, model string, err e
 // runClaudeFinder is runClaude on the finder tier: the read-only passes whose
 // job is to produce findings over a diff — the adversarial pass, each domain
 // specialist, the coverage map, the feature-compliance check, the simplify
-// finder, and claim verification. They share a shape (read the checkout, report
+// finder, claim verification, and the implementation verifier. They share a shape (read the checkout, report
 // findings, mutate nothing) and, with six specialists running concurrently on
 // every fan-out, they are where a cheaper tier would pay off most.
 //
@@ -693,8 +693,8 @@ func (c *Client) runClaudeStructureWithSchema(prompt, label, jsonSchema string) 
 // approval — the orchestrated, one-shot `claude -p` sessions run unattended
 // inside a checkout and must commit and push without a human confirming each
 // step, while the auto-mode classifier still vets every action. The sessions
-// without a terminal-report contract (verify-implementation, address, the
-// rebase sessions) call it directly; the report-bearing mutating sessions go
+// without a terminal-report contract (address, the rebase sessions) call it
+// directly; the report-bearing mutating sessions go
 // through runClaudeAutoReport, which adds the completion nudge on top of the
 // same autoSpec.
 func (c *Client) runClaudeAuto(dir, prompt, label string) (text, model string, err error) {
