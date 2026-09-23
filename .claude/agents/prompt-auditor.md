@@ -8,6 +8,7 @@ description: >-
   it never edits the prompts itself.
 tools: Read, Grep, Glob
 model: opus
+effort: xhigh
 color: purple
 ---
 
