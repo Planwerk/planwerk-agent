@@ -39,7 +39,7 @@ inputs:
     required: false
     default: ''
   structure-effort:
-    description: 'Reasoning effort for the JSON-structuring passes: low, medium, high, xhigh, max (env: PLANWERK_STRUCTURE_EFFORT). Empty keeps the compiled-in default (medium).'
+    description: 'Reasoning effort for the JSON-structuring passes: low, medium, high, xhigh, max (env: PLANWERK_STRUCTURE_EFFORT). Empty keeps the compiled-in default (xhigh).'
     required: false
     default: ''
   local:

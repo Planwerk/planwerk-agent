@@ -37,14 +37,15 @@ const (
 	// env var) to run reviews on a different model, e.g. "fable".
 	DefaultClaudeModel = "opus"
 	// DefaultPlanModel is the compiled-in default model for the implement
-	// command's planning session. The "fable" alias runs the latest Claude
-	// Fable release — Anthropic's most capable model. Planning is a single
-	// read-only session whose output steers the entire implementation, so
-	// the strongest reasoning pays off most there, while the implement
-	// session itself stays on the cheaper DefaultClaudeModel. Override with
-	// SetPlanModel (driven by the implement command's --plan-model flag /
-	// PLANWERK_PLAN_MODEL env var).
-	DefaultPlanModel = "fable"
+	// command's planning session. It is "opus", the same alias as
+	// DefaultClaudeModel: every reasoning tier defaults to Opus at xhigh, so a
+	// run reasons on one model and one effort from plan to pull request. The knob
+	// stays separate from --claude-model because planning is a single
+	// read-only session whose output steers the entire implementation — the
+	// one session where a stronger model is worth choosing per run. Override
+	// with SetPlanModel (driven by the implement command's --plan-model flag /
+	// PLANWERK_PLAN_MODEL env var), e.g. "fable".
+	DefaultPlanModel = "opus"
 	// DefaultClaudeEffort is the compiled-in default reasoning effort.
 	// "xhigh" is Claude Code's own default and the recommended setting for
 	// coding and agentic workloads; "max" buys little on top of it and
@@ -54,14 +55,14 @@ const (
 	DefaultClaudeEffort = "xhigh"
 	// DefaultPlanEffort is the compiled-in default reasoning effort for the
 	// implement command's planning session. "xhigh" matches
-	// DefaultClaudeEffort: on DefaultPlanModel it already delivers the depth
-	// planning needs, and "max" on top of it tends toward overthinking — a
-	// planner that keeps re-deriving alternatives rather than committing to a
-	// change set — for a latency and token cost the extra depth does not repay.
-	// The plan still gets the stronger model (DefaultPlanModel), which is where
-	// the real gain sits. Override with SetPlanEffort (driven by the implement
-	// command's --plan-effort flag / PLANWERK_PLAN_EFFORT env var), e.g. "max"
-	// for an unusually intricate issue.
+	// DefaultClaudeEffort: it already delivers the depth planning needs, and
+	// "max" on top of it tends toward overthinking — a planner that keeps
+	// re-deriving alternatives rather than committing to a change set — for a
+	// latency and token cost the extra depth does not repay. A stronger model
+	// (--plan-model) is the better lever when a plan needs more. Override with
+	// SetPlanEffort (driven by the implement command's --plan-effort flag /
+	// PLANWERK_PLAN_EFFORT env var), e.g. "max" for an unusually intricate
+	// issue.
 	DefaultPlanEffort = "xhigh"
 	// DefaultImplementWorkerEffort is the compiled-in default reasoning effort
 	// for the implementer subagents an orchestrated implement session
@@ -100,21 +101,22 @@ const (
 	// Sonnet release: structuring is bounded extraction-to-schema, not
 	// reasoning, so the heavy DefaultClaudeModel is wasted there. It is
 	// deliberately independent of c.model — like DefaultPlanModel, this is a
-	// dedicated cheap tier, not a derivation of the main model — and the
+	// dedicated tier, not a derivation of the main model — and the
 	// decodeJSONWithRepair backstop catches any malformed output. Override
 	// with WithStructureModel (driven by the --structure-model flag /
-	// PLANWERK_STRUCTURE_MODEL env var); pass "opus" to reproduce the former
-	// behavior of structuring on the main model.
+	// PLANWERK_STRUCTURE_MODEL env var); pass "opus" to structure on the main
+	// model.
 	DefaultStructureModel = "sonnet"
 	// DefaultStructureEffort is the compiled-in default reasoning effort for the
-	// structuring passes. "medium" is enough to transcribe already-reasoned
-	// prose into JSON: the classification (severity / actionability /
-	// confidence) was decided in the upstream reasoning call, so a near-max
-	// thinking budget buys nothing here. The model swap is the primary cost
-	// lever; this is the secondary tunable. Override with WithStructureEffort
-	// (driven by the --structure-effort flag / PLANWERK_STRUCTURE_EFFORT env
-	// var).
-	DefaultStructureEffort = "medium"
+	// structuring passes. "xhigh" matches every other tier: the model swap is
+	// this tier's cost lever, and the effort gives a long transcription the
+	// budget to carry every finding across (see warnOnDroppedFindings). The
+	// classification (severity / actionability / confidence) is decided in the
+	// upstream reasoning call, so "medium" is enough to transcribe
+	// already-reasoned prose into JSON when a run's cost matters. Override
+	// with WithStructureEffort (driven by the --structure-effort flag /
+	// PLANWERK_STRUCTURE_EFFORT env var).
+	DefaultStructureEffort = "xhigh"
 	// claudeAutoPermissionMode is the --permission-mode value the implement
 	// command passes to its orchestrated `claude -p` session so tool calls
 	// run without an interactive confirmation. "auto" is Claude Code's auto
@@ -616,18 +618,17 @@ func firstNonEmpty(override, fallback string) string {
 }
 
 // runClaudePlan is runClaude on the dedicated planning model (planModel,
-// default "fable") at the dedicated planning effort (planEffort, default
-// "max"). The implement command's planning session uses it: the session only
+// default "opus") at the dedicated planning effort (planEffort, default
+// "xhigh"). The implement command's planning session uses it: the session only
 // reads the checkout and emits the implementation plan as text, so it keeps
-// the default (read-only) permission mode while the strongest-reasoning model
-// thinks at the largest budget — the one session where that depth steers the
-// whole implementation.
+// the default (read-only) permission mode, on a tier of its own because it is
+// the one session whose depth steers the whole implementation.
 func (c *Client) runClaudePlan(dir, prompt, label string) (text, model string, err error) {
 	return c.runClaudeWithPermission(runSpec{dir: dir, label: label, model: c.planModel, effort: c.planEffort, readOnly: true}, prompt)
 }
 
 // runClaudeStructure is runClaude on the dedicated structuring tier
-// (structureModel/structureEffort, defaults "sonnet"/"medium"). The JSON
+// (structureModel/structureEffort, defaults "sonnet"/"xhigh"). The JSON
 // structuring passes use it: a structuring call only reads upstream prose and
 // transcribes it into the report schema, so it runs on the cheap mechanical tier
 // rather than the heavy reasoning model the upstream call used. The

@@ -15,10 +15,10 @@ import (
 // only artifact is the plan text, which the subsequent implement session
 // receives verbatim via Context.Plan.
 //
-// It runs on the dedicated planning model (PlanModel, default "fable") at the
-// dedicated planning effort (PlanEffort, default "xhigh") so the strongest
-// reasoning happens where it steers the whole implementation, while the
-// implement session stays on the default model. Like every
+// It runs on the dedicated planning model (PlanModel, default "opus") at the
+// dedicated planning effort (PlanEffort, default "xhigh"), a tier of its own so
+// an operator can give the session that steers the whole implementation a
+// stronger model without moving the implement session. Like every
 // runClaude* call it is a fresh `claude -p` invocation, so plan and
 // implement are two independent sessions by construction.
 func (c *Client) Plan(dir string, ctx implement.Context) (string, string, error) {

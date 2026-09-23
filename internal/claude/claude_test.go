@@ -377,11 +377,13 @@ func TestAssignIDs_DropsRecommendedOptionWhenIDMissing(t *testing.T) {
 }
 
 // testMainModel, testImplementOverride, and testTierOverride are arbitrary
-// non-default values the client tests assign and expect back. Named constants
-// rather than repeated literals: the values collide with real defaults
-// ("fable" is DefaultPlanModel, "sonnet" is DefaultStructureModel, "opus" is
-// DefaultClaudeModel), and goconst flags a literal repeated three times when
-// a constant with that value already exists.
+// values the client tests assign and expect back. Named constants rather than
+// repeated literals, because goconst flags a literal repeated three times.
+// testMainModel ("fable") differs from every compiled-in model default;
+// testImplementOverride ("sonnet") is DefaultStructureModel and
+// testTierOverride ("opus") the default of every other model tier, so an
+// override test uses one that differs from the default it overrides and cannot
+// pass on the default alone.
 const (
 	testMainModel         = "fable"
 	testImplementOverride = "sonnet"
@@ -424,11 +426,11 @@ func TestNewClient_AppliesOptions(t *testing.T) {
 		WithTimeout(42*time.Minute),
 		WithModel("fable"),
 		WithImplementModel(testImplementOverride),
-		WithPlanModel(testTierOverride),
+		WithPlanModel(testMainModel),
 		WithStructureModel(testTierOverride),
 		WithEffort("max"),
 		WithPlanEffort("high"),
-		WithStructureEffort("xhigh"),
+		WithStructureEffort("medium"),
 		WithShowOutput(true),
 	)
 	if c.timeout != 42*time.Minute {
@@ -440,11 +442,11 @@ func TestNewClient_AppliesOptions(t *testing.T) {
 	if c.implementModel != testImplementOverride {
 		t.Errorf("implementModel = %q, want %q", c.implementModel, testImplementOverride)
 	}
-	if c.planModel != testTierOverride {
-		t.Errorf("planModel = %q, want \"opus\"", c.planModel)
+	if c.planModel != testMainModel {
+		t.Errorf("planModel = %q, want %q", c.planModel, testMainModel)
 	}
 	if c.structureModel != testTierOverride {
-		t.Errorf("structureModel = %q, want \"opus\"", c.structureModel)
+		t.Errorf("structureModel = %q, want %q", c.structureModel, testTierOverride)
 	}
 	if c.effort != "max" {
 		t.Errorf("effort = %q, want \"max\"", c.effort)
@@ -452,8 +454,8 @@ func TestNewClient_AppliesOptions(t *testing.T) {
 	if c.planEffort != "high" {
 		t.Errorf("planEffort = %q, want \"high\"", c.planEffort)
 	}
-	if c.structureEffort != "xhigh" {
-		t.Errorf("structureEffort = %q, want \"xhigh\"", c.structureEffort)
+	if c.structureEffort != "medium" {
+		t.Errorf("structureEffort = %q, want \"medium\"", c.structureEffort)
 	}
 	if !c.showOutput {
 		t.Errorf("showOutput = false, want true")
