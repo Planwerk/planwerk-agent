@@ -192,8 +192,9 @@ shipped; the rule is broader than the regex, and this page is where it lives.
 
 A prompt is written for a reader, and the reader here is a specific model. The
 orchestrator passes Claude Code aliases, so the prompts run on the current
-Claude family: the finders, implement, and the repair sessions on Opus, the
-planning session on Fable, the structuring tier on Sonnet. These models follow
+Claude family: the finders, implement, the planning session, and the repair
+sessions on Opus (Fable a flag away for planning), the structuring tier on
+Sonnet. These models follow
 instructions closely and literally, and four habits follow from that.
 
 **State each constraint once, plainly, with its reason.** Capitalized emphasis
