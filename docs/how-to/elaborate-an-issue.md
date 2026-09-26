@@ -68,8 +68,8 @@ command never blocks, and never gets an answer it could not derive.
 
 1. **Issue Input**: The tool receives a GitHub issue reference (URL or `owner/repo#number`).
 2. **Fetch Issue**: Title, body, URL, and state are fetched via `gh issue view`.
-3. **Fetch Relations**: When the issue is a **Sub Issue** of a Meta Issue, the Meta Issue and the other Sub Issues are fetched via the GitHub GraphQL API (best-effort — a repo without sub-issue links, a missing token scope, or an older GitHub Enterprise Server degrades to "no relations" without failing the run). See [Sub Issues are elaborated against their Meta Issue](#sub-issues-are-elaborated-against-their-meta-issue) below.
-4. **Cache Check**: The default-branch HEAD SHA is resolved via `gh api graphql`. The cache key combines repo + HEAD + issue number + a fingerprint of the issue body — plus, when the issue is a Sub Issue, a fingerprint of the Meta Issue and sibling Sub Issues — so the cache invalidates automatically when the repo, the issue, the Meta Issue, or any sibling is edited.
+3. **Fetch Relations**: When the issue is a **Sub Issue** of a Meta Issue, the Meta Issue and the other Sub Issues are fetched via the GitHub GraphQL API (best-effort — a repo without sub-issue links, a missing token scope, or an older GitHub Enterprise Server degrades to "no relations" without failing the run). Each sibling and child Sub Issue carries its native `blockedBy`/`blocking` dependency edges; a deployment that rejects those fields is queried again without them, so the relations still load, without edges. See [Sub Issues are elaborated against their Meta Issue](#sub-issues-are-elaborated-against-their-meta-issue) below.
+4. **Cache Check**: The default-branch HEAD SHA is resolved via `gh api graphql`. The cache key combines repo + HEAD + issue number + a fingerprint of the issue body — plus, when the issue is a Sub Issue, a fingerprint of the Meta Issue and sibling Sub Issues — so the cache invalidates automatically when the repo, the issue, the Meta Issue, or any sibling is edited. The fingerprint also covers each Sub Issue's linked pull requests and dependency edges, so adding or removing an edge, or closing its endpoint, re-elaborates.
 5. **Clone**: On a cache miss, the repository is cloned locally.
 6. **Pattern Load**: The same pattern catalog used by `review` / `audit` / `propose` is loaded, filtered by detected technologies.
 7. **Claude Elaboration**: Claude is instructed to walk the repo first, identify what already exists vs. what the issue adds, and emit a detailed plan in six core sections (Description with concrete "already exists / this story adds" boundaries, Motivation, Affected Areas, Acceptance Criteria, Non-Goals, References), plus an optional **User Stories** section between Motivation and Affected Areas that groups the acceptance criteria under `As a {role}, I want {want}, so that {so_that}` stories. User Stories are proportional — emitted only when the issue serves a distinct persona and omitted entirely for purely mechanical or infrastructure work (dependency bumps, formatter sweeps, CI fixes), never padded with a synthetic "As a developer" story. For a Sub Issue, the Meta Issue and sibling Sub Issues from step 3 are injected so the elaboration covers only this issue's slice and defers adjacent parts to the sibling that owns them.
@@ -95,6 +95,22 @@ A closed sibling is treated as already-implemented context to build on; an open
 one as work that may land in parallel. This is automatic — there is no flag — and
 best-effort: an issue that is not a Sub Issue, or a repo where the relationship
 cannot be read, elaborates exactly as before.
+
+Each sibling block also carries the sibling's native GitHub dependency edges
+as attributes of its opening tag: `blocked-by` names the issues that deliver
+before it and `blocks` the issues that wait on it, each followed by its state,
+with `(this issue)` marking the Sub Issue being elaborated. The edges sit on the
+tag rather than in the block because an issue body can copy any line of its
+block but cannot open the tag. The edges decide the order the Sub Issues
+deliver in, and the elaboration is told never to infer that order from issue
+prose, including `Blocked by` text in a body. A sibling that blocks this issue
+delivers first: once it is closed, its merged pull request is delivered state
+to build on. An open sibling this issue blocks delivers later: its scope is
+off-limits, and nothing it adds exists yet. A closed sibling this issue blocks
+already landed out of order and is read like any closed sibling. A
+neighborhood without edges, or a deployment that does not expose them, renders
+exactly as before. The `/planwerk:elaborate` skill reads the same edges from
+its neighborhood query and follows the same rule.
 
 ## Counterpart work is scoped out, not deferred
 
