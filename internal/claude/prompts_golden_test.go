@@ -250,6 +250,27 @@ func goldenSiblingIssues() []github.Issue {
 	}
 }
 
+// goldenSiblingIssuesWithDependencies is goldenSiblingIssues with native
+// dependency edges: #41 blocks the source issue (#42) and #43, and #43 is
+// blocked by #41 and #42 and blocks a counterpart in another repository. It
+// exercises the (this issue) marker and a qualified foreign edge.
+func goldenSiblingIssuesWithDependencies() []github.Issue {
+	local := func(number int, state string) github.Issue {
+		return github.Issue{Owner: "planwerk", Name: "planwerk-agent", Number: number, State: state}
+	}
+	siblings := goldenSiblingIssues()
+	for i := range siblings {
+		switch siblings[i].Number {
+		case 41:
+			siblings[i].Blocking = []github.Issue{local(42, "open"), local(43, "open")}
+		case 43:
+			siblings[i].BlockedBy = []github.Issue{local(41, "closed"), local(42, "open")}
+			siblings[i].Blocking = []github.Issue{{Owner: "acme", Name: "widgets", Number: 7, State: "open"}}
+		}
+	}
+	return siblings
+}
+
 func goldenElaborateMetaContext() elaborate.Context {
 	ctx := goldenElaborateContext()
 	ctx.MetaIssue = goldenMetaIssue()
@@ -266,6 +287,18 @@ func TestBuildElaboratePrompt_Golden(t *testing.T) {
 // and sibling Sub Issues with the cross-issue scoping guidance.
 func TestBuildElaboratePrompt_Meta_Golden(t *testing.T) {
 	assertGoldenPrompt(t, "elaborate_meta", buildElaboratePrompt(goldenElaborateMetaContext()))
+}
+
+func goldenElaborateMetaDepsContext() elaborate.Context {
+	ctx := goldenElaborateMetaContext()
+	ctx.SiblingIssues = goldenSiblingIssuesWithDependencies()
+	return ctx
+}
+
+// TestBuildElaboratePrompt_MetaDeps_Golden locks the sibling blocks' Blocked by
+// and Blocks lines and the delivery-order bullet that comes with them.
+func TestBuildElaboratePrompt_MetaDeps_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "elaborate_meta_deps", buildElaboratePrompt(goldenElaborateMetaDepsContext()))
 }
 
 func TestBuildElaborateReviewPrompt_Golden(t *testing.T) {
@@ -631,6 +664,18 @@ func TestBuildPlanPrompt_Golden(t *testing.T) {
 // siblings for adjacent parts.
 func TestBuildPlanPrompt_Meta_Golden(t *testing.T) {
 	assertGoldenPrompt(t, "plan_meta", BuildPlanPrompt(goldenPlanMetaContext()))
+}
+
+func goldenPlanMetaDepsContext() implement.Context {
+	ctx := goldenPlanMetaContext()
+	ctx.SiblingIssues = goldenSiblingIssuesWithDependencies()
+	return ctx
+}
+
+// TestBuildPlanPrompt_MetaDeps_Golden locks the planning prompt's rendering of
+// the siblings' native dependency edges and the delivery-order bullet.
+func TestBuildPlanPrompt_MetaDeps_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "plan_meta_deps", BuildPlanPrompt(goldenPlanMetaDepsContext()))
 }
 
 // TestBuildSimplifyFindPrompt_Golden locks the read-only ponytail-style finder

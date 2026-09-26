@@ -81,7 +81,7 @@ This session is autonomous and one-shot: nobody reads it until the plan is poste
 	sb.WriteString("\n")
 	sb.WriteString(untrustedDataLine("It specifies what to build.", "issue-body"))
 
-	renderIssueRelations(&sb, ctx.RepoFullName, ctx.MetaIssue, ctx.SiblingIssues, ctx.ChildIssues)
+	renderIssueRelations(&sb, ctx.RepoFullName, ctx.IssueNumber, ctx.MetaIssue, ctx.SiblingIssues, ctx.ChildIssues)
 
 	if len(ctx.Patterns) > 0 {
 		sb.WriteString("## Project Review Patterns to Honor\n\n")
