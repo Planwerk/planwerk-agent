@@ -1,9 +1,10 @@
 # Use the skills
 
-planwerk-agent ships ten Claude Code Skills. Six author the issues the rest
+planwerk-agent ships eleven Claude Code Skills. Six author the issues the rest
 of the pipeline consumes, one settles the decisions a Meta Issue deferred to a
-spike, one implements a prepared issue directly in your checkout, one repairs
-a pull request whose checks went red, and one rewrites prose that reads
+spike, one implements a prepared issue directly in your checkout, one diagnoses
+a reported bug from a failing reproduction to its fix, one repairs a pull
+request whose checks went red, and one rewrites prose that reads
 machine-written:
 
 | Skill | What it does |
@@ -16,6 +17,7 @@ machine-written:
 | `/planwerk:revisit` | Re-checks a prepared issue against what has actually landed since, and corrects what went stale |
 | `/planwerk:clarify` | Answers the open questions that stopped a planning session, and records them in the issue body |
 | `/planwerk:implement` | Implements a prepared issue in your checkout — a plan you approve in plan mode, one complete pull request behind your yes, none of the pipeline's passes |
+| `/planwerk:diagnose` | Reproduces a reported bug with a feedback loop that goes red before any theory, and fixes the root cause behind a regression test in one pull request |
 | `/planwerk:fix` | Repairs a pull request's failing CI checks, and asks you at the forks a diagnosis cannot settle |
 | `/planwerk:humanize` | Rewrites existing prose to remove the signs of AI writing, preserving every fact |
 
@@ -30,7 +32,8 @@ command when nobody is watching — it has to guess where the skill would have
 asked. For `implement` the difference is more than supervision: the
 [`implement` command](/reference/cli#implement) runs simplify, review, and
 verification passes over the result, which the skill deliberately omits — you
-approve the plan and read the diff instead.
+approve the plan and read the diff instead. `diagnose` exists only as a skill:
+its hypothesis checkpoint and its stop when no loop can be built both need you.
 
 ## Install
 
@@ -44,8 +47,8 @@ claude plugin install planwerk@planwerk-agent
 
 Restart Claude Code. `/planwerk:draft`, `/planwerk:elaborate`,
 `/planwerk:cleanup`, `/planwerk:meta`, `/planwerk:decide`, `/planwerk:revisit`,
-`/planwerk:clarify`, `/planwerk:implement`, `/planwerk:fix`, and
-`/planwerk:humanize` are now available in any session.
+`/planwerk:clarify`, `/planwerk:implement`, `/planwerk:diagnose`,
+`/planwerk:fix`, and `/planwerk:humanize` are now available in any session.
 
 To update after a new release:
 
@@ -70,8 +73,10 @@ succeed. `/planwerk:elaborate`, `/planwerk:decide`, `/planwerk:revisit`, and
 `/planwerk:clarify` read the repository, so run them from inside a checkout of
 the repo whose issue you are working on. `/planwerk:implement` goes further: it
 writes code, so it needs a clean working tree it can branch in, on an
-up-to-date default branch. `/planwerk:fix` needs the PR's own head branch
-checked out, with a clean working tree. `/planwerk:cleanup` surveys the code
+up-to-date default branch. `/planwerk:diagnose` writes code too: it needs a
+clean working tree on an up-to-date default branch, and the repository's own
+build and test tooling, which its loop runs. `/planwerk:fix` needs the PR's own
+head branch checked out, with a clean working tree. `/planwerk:cleanup` surveys the code
 itself, so it always runs from inside a checkout, on an up-to-date default
 branch. `/planwerk:draft`
 and `/planwerk:meta` only talk to the GitHub API and need no checkout.
@@ -200,6 +205,19 @@ request only after you have seen the diff and said yes. It never ships partial
 work: what cannot complete stops as `BLOCKED` with the branch left local. See
 [Implement an issue interactively](/how-to/implement-an-issue-interactively).
 
+## Diagnose a reported bug
+
+```
+/planwerk:diagnose owner/repo#42
+```
+
+For a bug whose cause nobody knows yet. The skill reads the report and builds a
+loop that goes red on the reported symptom before it forms any theory. It then
+shows you three to five ranked hypotheses, tests them with tagged probes it
+removes on every exit path, fixes the root cause behind a regression test it
+watched fail, and opens one pull request after your yes. See
+[Diagnose a reported bug](/how-to/diagnose-a-bug).
+
 ## Fix the pull request when its checks go red
 
 ```
@@ -234,7 +252,7 @@ GitHub; you review the result with `git diff`. See
 
 Every skill reads GitHub freely and writes only once, behind an explicit
 confirmation. If you decline, nothing is created, `/planwerk:fix` pushes
-nothing, and `/planwerk:implement` leaves its branch local. `/planwerk:humanize` never writes to GitHub at all: it edits files in
+nothing, and `/planwerk:implement` and `/planwerk:diagnose` leave their branch local. `/planwerk:humanize` never writes to GitHub at all: it edits files in
 your working tree, and confirms the file list first when it inferred one
 rather than being given it. If you skip a question, the skill records it as an unresolved decision
 in the issue — or, for `fix`, as a concern in its report — rather than quietly
@@ -328,7 +346,9 @@ issue has been sitting long enough for the branch to move under it, and
 `/planwerk:clarify` after it when the planning session stopped at
 `NEEDS_CONTEXT`. For a change small enough that the unattended pipeline costs
 more than it catches, `/planwerk:implement` takes the implement step
-interactively, in your own checkout. Or `/planwerk:meta` → `planwerk-agent ship` to drive every Sub
+interactively, in your own checkout. A reported bug whose cause nobody knows
+yet enters at `/planwerk:diagnose`, and its pull request's checks are
+`/planwerk:fix`'s from there. Or `/planwerk:meta` → `planwerk-agent ship` to drive every Sub
 Issue to merged in dependency order. `ship` reads the native sub-issue and
 `blocked by` relationships `/planwerk:meta` writes, which is why the skill
 records the dependency graph as real GitHub relationships and not as prose.

@@ -19,6 +19,7 @@ solves one specific problem.
 - [Clarify an issue](/how-to/clarify-an-issue)
 - [Generate a fix/implement prompt](/how-to/generate-a-prompt)
 - [Implement an issue](/how-to/implement-an-issue)
+- [Diagnose a reported bug](/how-to/diagnose-a-bug)
 - [Fix failing checks](/how-to/fix-failing-checks)
 - [Rebase a PR](/how-to/rebase-a-pr)
 - [Address review comments](/how-to/address-review-comments)

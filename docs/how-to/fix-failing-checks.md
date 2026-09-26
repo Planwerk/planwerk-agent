@@ -145,3 +145,5 @@ so a pull request carries one report format whichever repaired it.
 - [Address review comments](/how-to/address-review-comments) once the checks are
   green and a human has read the diff.
 - [`fix` command reference](/reference/cli#fix) for the unattended loop.
+- [Diagnose a reported bug](/how-to/diagnose-a-bug) when something is broken and
+  no check is red.
