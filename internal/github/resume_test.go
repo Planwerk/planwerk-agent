@@ -122,6 +122,23 @@ func TestPrepareResumeNothingToResume(t *testing.T) {
 	}
 }
 
+// TestPrepareResumeIgnoresDiagnoseBranch returns (nil, nil) for a branch the
+// diagnose skill created for the same issue: it is a finished diagnosis, not
+// a half-finished implementation, and implement must never resume it.
+func TestPrepareResumeIgnoresDiagnoseBranch(t *testing.T) {
+	dir, _ := initResumeRepo(t)
+	commitFeature(t, dir, "diagnose/issue-42-foo", 1)
+	git(t, dir, "push", "-q", "origin", "diagnose/issue-42-foo")
+
+	state, err := client.PrepareResume(dir, 42) // checkout still on the diagnose branch
+	if err != nil {
+		t.Fatalf("PrepareResume: %v", err)
+	}
+	if state != nil {
+		t.Errorf("PrepareResume = %+v, want nil (a diagnose/ branch is not resumable)", state)
+	}
+}
+
 // TestCurrentFeatureProgressOnBase reports no progress when the checkout is still
 // on the base branch.
 func TestCurrentFeatureProgressOnBase(t *testing.T) {
