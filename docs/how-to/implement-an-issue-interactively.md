@@ -88,3 +88,5 @@ it merges.
   when the change deserves the full pipeline.
 - [Elaborate an issue](/how-to/elaborate-an-issue) when the skill reports the
   issue is still at draft depth.
+- [Diagnose a reported bug](/how-to/diagnose-a-bug) when the issue reports a bug
+  whose cause is not known yet.

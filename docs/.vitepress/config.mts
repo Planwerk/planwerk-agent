@@ -79,6 +79,7 @@ export default defineConfig({
               link: '/how-to/implement-an-issue-interactively',
             },
             { text: 'Ship a Meta Issue', link: '/how-to/ship-a-meta-issue' },
+            { text: 'Diagnose a reported bug', link: '/how-to/diagnose-a-bug' },
             { text: 'Fix failing checks', link: '/how-to/fix-failing-checks' },
             { text: 'Rebase a PR', link: '/how-to/rebase-a-pr' },
             {
