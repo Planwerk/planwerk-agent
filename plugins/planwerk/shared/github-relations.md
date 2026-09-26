@@ -29,6 +29,8 @@ query($owner: String!, $name: String!, $number: Int!) {
                 repository { nameWithOwner }
               }
             }
+            blockedBy(first: 50) { nodes { number state repository { nameWithOwner } } }
+            blocking(first: 50) { nodes { number state repository { nameWithOwner } } }
           }
         }
       }
@@ -50,6 +52,13 @@ query($owner: String!, $name: String!, $number: Int!) {
   of `MERGED` is the only state that shipped code, and `CLOSED` means it was
   abandoned. **A merged PR is what a sibling delivered. Its issue body is only
   what it promised.**
+- `blockedBy` and `blocking` on each sibling are GitHub's native dependency
+  edges, the relationship `meta` records and `planwerk-agent ship` delivers Sub
+  Issues in order by: `blockedBy` lists the issues that deliver before the
+  sibling, `blocking` the issues that wait on it. Each entry names its own
+  repository. A GitHub deployment that does not expose issue dependencies
+  rejects the whole query; run it again without those two fields and read the
+  neighborhood without edges.
 - A `body` here is the body alone. A parent or sibling whose body ends, above
   its footer, with `<!-- planwerk-agent:continued 1/N -->` is a document that
   continues in its comments: read it whole per `github.md`, Reading, before

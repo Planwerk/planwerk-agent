@@ -49,6 +49,14 @@ its sibling Sub Issues before planning, and obey these rules:
   under Non-Goals.
 - A closed sibling is already-implemented context you build on. An open sibling
   may land in parallel — coordinate rather than collide.
+- The siblings' `blockedBy` and `blocking` edges decide the order the Sub
+  Issues deliver in; never infer that order from issue prose. A sibling whose
+  `blocking` names this issue delivers first: once it is closed, its merged
+  pull request is delivered state to build on. An open sibling whose
+  `blockedBy` names this issue delivers later: its scope is off-limits, and
+  nothing it adds exists yet, so do not plan against it. A closed sibling whose
+  `blockedBy` names this issue already landed out of order; treat it like any
+  closed sibling.
 - A parent or sibling in another repository is context, not scope. Read it: when
   this issue is a counterpart, the issue blocking it is where its contract is
   settled. Never plan a change to a repository you are not inside. Cite it as

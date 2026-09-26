@@ -667,3 +667,23 @@ func TestGetIssueRelations_MalformedOutputNotRetried(t *testing.T) {
 		t.Errorf("run called %d times, want 1 (a parse error is not retried)", len(r.queries))
 	}
 }
+
+// sharedRelationsDoc is the skill-side neighborhood query. The skills run it by
+// hand while GetIssueRelations builds its own, so the two may drift; the edge
+// page size may not, or a skill and a headless run would plan against
+// different sets of edges.
+const sharedRelationsDoc = "../../plugins/planwerk/shared/github-relations.md"
+
+func TestSharedRelationsDocSelectsDependencyEdges(t *testing.T) {
+	doc := readSharedDoc(t, sharedRelationsDoc)
+	query := buildRelationsQuery(true)
+	for _, field := range []string{edgeField, "blocking"} {
+		sel := fmt.Sprintf("%s(first: %d)", field, maxDependencyEdgesPerIssue)
+		if !strings.Contains(doc, sel) {
+			t.Errorf("%s does not select %q; the skill and headless queries have drifted", sharedRelationsDoc, sel)
+		}
+		if !strings.Contains(query, sel) {
+			t.Errorf("buildRelationsQuery(true) does not select %q", sel)
+		}
+	}
+}

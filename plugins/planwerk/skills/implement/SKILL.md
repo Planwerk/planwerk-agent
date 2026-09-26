@@ -95,7 +95,13 @@ Then read what the issue gives you. It arrives at one of two depths:
 When the issue is a Sub Issue, run the neighborhood query in `github-relations.md`. The
 plan covers only this issue's slice of the Meta Issue's effort; a shared task
 another sibling owns is deferred to that sibling by an explicit cross-reference,
-not absorbed.
+not absorbed. The siblings' `blockedBy` and `blocking` edges decide the order
+the Sub Issues deliver in; never infer that order from issue prose. A sibling
+whose `blocking` names this issue delivers first: once it is closed, its merged
+pull request is delivered state to build on. An open sibling whose `blockedBy`
+names this issue delivers later: its scope is off-limits, and nothing it adds
+exists yet, so do not plan against it. A closed sibling whose `blockedBy` names
+this issue already landed out of order; treat it like any closed sibling.
 
 When the repository carries `.planwerk/review_patterns/`, read those patterns.
 No review pass will check your diff against them, so you are the one who must
