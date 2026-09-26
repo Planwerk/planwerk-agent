@@ -400,9 +400,10 @@ func issueFingerprint(issue *github.Issue) string {
 }
 
 // relationsFingerprint returns a stable short hash over the Meta Issue and the
-// sibling/child Sub Issues (number, title, body, state of each) so the cache
-// invalidates when any of them is edited. It returns "" when the issue has no
-// relations, so elaborateCacheKey can leave a plain issue's key untouched.
+// sibling/child Sub Issues (number, title, body, state, linked PRs and
+// dependency edges of each) so the cache invalidates when any of them changes.
+// It returns "" when the issue has no relations, so elaborateCacheKey can leave
+// a plain issue's key untouched.
 func relationsFingerprint(relations *github.IssueRelations) string {
 	if relations == nil || (relations.Parent == nil && len(relations.Children) == 0) {
 		return ""
@@ -429,5 +430,14 @@ func writeIssueFingerprint(sb *strings.Builder, issue *github.Issue) {
 	// opened, merged, or removed Sub Issue PR busts the elaboration cache.
 	for _, pr := range issue.LinkedPRs {
 		fmt.Fprintf(sb, "pr=%d:%s:%t\n", pr.Number, pr.State, pr.IsDraft)
+	}
+	// Fold in the native dependency edges too, so adding or removing an edge,
+	// or closing its endpoint, re-elaborates. An issue without edges writes
+	// nothing here, which keeps an edge-free neighborhood's key unchanged.
+	for _, e := range issue.BlockedBy {
+		fmt.Fprintf(sb, "blocked_by=%s/%s#%d:%s\n", e.Owner, e.Name, e.Number, e.State)
+	}
+	for _, e := range issue.Blocking {
+		fmt.Fprintf(sb, "blocking=%s/%s#%d:%s\n", e.Owner, e.Name, e.Number, e.State)
 	}
 }
