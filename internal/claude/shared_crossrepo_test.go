@@ -40,7 +40,7 @@ func TestSharedCrossRepoDocMatchesRelationsBlock(t *testing.T) {
 	var sb strings.Builder
 	meta := &github.Issue{Owner: "acme", Name: "widgets", Number: 40, Title: "Meta", State: "open"}
 	siblings := []github.Issue{{Owner: "acme", Name: "widgets", Number: 43, Title: "Sibling", State: "open"}}
-	renderIssueRelations(&sb, testRepoFullName, meta, siblings, nil)
+	renderIssueRelations(&sb, testRepoFullName, 0, meta, siblings, nil)
 	prompt := flow(sb.String())
 
 	for _, marker := range crossRepoMarkers {

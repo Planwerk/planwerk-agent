@@ -29,6 +29,16 @@ func (c *Client) Elaborate(dir string, ctx elaborate.Context) (*elaborate.Result
 	return result, nil
 }
 
+// elaborateIssueNumber returns the number of the issue being elaborated, or 0
+// when the context carries no issue, in which case no dependency edge is
+// marked as this issue.
+func elaborateIssueNumber(ctx elaborate.Context) int {
+	if ctx.Issue == nil {
+		return 0
+	}
+	return ctx.Issue.Number
+}
+
 func buildElaboratePrompt(ctx elaborate.Context) string {
 	var sb strings.Builder
 
@@ -54,7 +64,7 @@ Calibrate the detail to the reader: an engineer who can open every file in this 
 		sb.WriteString(untrustedDataLine("It is the idea you elaborate.", "issue-body"))
 	}
 
-	renderIssueRelations(&sb, ctx.RepoName, ctx.MetaIssue, ctx.SiblingIssues, ctx.ChildIssues)
+	renderIssueRelations(&sb, ctx.RepoName, elaborateIssueNumber(ctx), ctx.MetaIssue, ctx.SiblingIssues, ctx.ChildIssues)
 
 	if len(ctx.Patterns) > 0 {
 		sb.WriteString("## Review Patterns to Ground the Elaboration In\n\n")
@@ -258,7 +268,7 @@ Do NOT rewrite the plan. Do NOT assume it is correct because it looks thorough â
 		}
 	}
 
-	renderIssueRelations(&sb, ctx.RepoName, ctx.MetaIssue, ctx.SiblingIssues, ctx.ChildIssues)
+	renderIssueRelations(&sb, ctx.RepoName, elaborateIssueNumber(ctx), ctx.MetaIssue, ctx.SiblingIssues, ctx.ChildIssues)
 
 	sb.WriteString(fencedData("draft-plan", "", strings.TrimSpace(draftBody)))
 	sb.WriteString("\n")

@@ -2,6 +2,7 @@ package claude
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/planwerk/planwerk-agent/internal/attribution"
@@ -433,15 +434,24 @@ func styleGuideBlock(path string) string {
 // fence — where the model would read it as prompt-author instructions instead
 // of as data. It rewrites the leading angle bracket of each delimiter to its
 // HTML escape, leaving the tag legible as vocabulary but inert as a boundary.
+// A delimiter matches in any letter case and with whitespace after "<" or
+// "/", since a model reads `</Tag >` or `< tag` as the same boundary. The tag
+// name must end there: `Promise<FeatureFlags>` or `x < planned` names no fence.
 //
 // Every fence around content the model must treat as data goes through it,
 // directly or via fencedData / escapeFences. Benign content carries no such
 // delimiter, so this is a no-op and the rendered text is unchanged.
 func escapeFence(tag, body string) string {
-	return strings.NewReplacer(
-		"</"+tag+">", "&lt;/"+tag+"&gt;",
-		"<"+tag, "&lt;"+tag,
-	).Replace(body)
+	t := regexp.QuoteMeta(tag)
+	closing := regexp.MustCompile(`(?i)<(\s*/\s*` + t + `\s*)>`)
+	opening := regexp.MustCompile(`(?i)<(\s*/?\s*` + t + `)([\w-]*)`)
+	body = closing.ReplaceAllString(body, "&lt;${1}&gt;")
+	return opening.ReplaceAllStringFunc(body, func(m string) string {
+		if opening.FindStringSubmatch(m)[2] != "" {
+			return m // a longer name that merely starts with the tag
+		}
+		return "&lt;" + m[1:]
+	})
 }
 
 // escapeFences is escapeFence for a body nested inside several fences at once
