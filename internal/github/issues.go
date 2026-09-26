@@ -94,6 +94,14 @@ type Issue struct {
 	// closed-by relationship. Populated only for the sibling and child Sub Issues
 	// GetIssueRelations returns; nil for an Issue fetched any other way.
 	LinkedPRs []LinkedPR `json:"-"`
+	// BlockedBy and Blocking are the issues linked to this one through GitHub's
+	// native issue-dependency relationship: BlockedBy the issues that deliver
+	// before it, Blocking the issues that wait on it. Populated only for the
+	// sibling and child Sub Issues GetIssueRelations returns, sorted; nil for an
+	// Issue fetched any other way. Each entry sets Owner, Name, Number and a
+	// lowercased State, and nothing else.
+	BlockedBy []Issue `json:"-"`
+	Blocking  []Issue `json:"-"`
 }
 
 var (

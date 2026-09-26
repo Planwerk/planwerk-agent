@@ -1,11 +1,14 @@
 package github
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -21,6 +24,12 @@ const maxRelatedSubIssues = 100
 // Issue with more open PRs than this is unrealistic; the cap keeps a single
 // GraphQL page sufficient. Truncation past it is logged, never silent.
 const maxLinkedPRsPerSubIssue = 10
+
+// maxDependencyEdgesPerIssue bounds how many blockedBy and how many blocking
+// edges the relations query pulls per sibling/child Sub Issue. A Sub Issue with
+// more dependencies than this is unrealistic; the cap keeps a single GraphQL
+// page sufficient. Truncation past it is logged, never silent.
+const maxDependencyEdgesPerIssue = 50
 
 // LinkedPR is the minimal view of an open pull request linked to a sibling or
 // child Sub Issue via GitHub's closed-by relationship — a Closes/Fixes/Resolves
@@ -64,11 +73,19 @@ type IssueRelations struct {
 	Viewer string
 }
 
-// relationsQuery is the GraphQL query that fetches an issue's parent (with the
-// parent's own sub-issues, i.e. the siblings) and the issue's own sub-issues
-// (the children) in a single round trip. Bodies are included so elaborate/plan
-// can read the Meta Issue and sibling content, not just their titles. Each
-// sibling and child node also pulls its open linked PRs via
+// dependencyEdgesSelection selects a sibling or child node's native
+// issue-dependency edges: the issues blocking it and the issues it blocks,
+// each with its own repository, since a dependency may cross repositories.
+var dependencyEdgesSelection = fmt.Sprintf(
+	"blockedBy(first: %[1]d) { totalCount nodes { number state repository { nameWithOwner } } } "+
+		"blocking(first: %[1]d) { totalCount nodes { number state repository { nameWithOwner } } }",
+	maxDependencyEdgesPerIssue)
+
+// buildRelationsQuery returns the GraphQL query that fetches an issue's parent
+// (with the parent's own sub-issues, i.e. the siblings) and the issue's own
+// sub-issues (the children) in a single round trip. Bodies are included so
+// elaborate/plan can read the Meta Issue and sibling content, not just their
+// titles. Each sibling and child node also pulls its open linked PRs via
 // closedByPullRequestsReferences(includeClosedPrs: false) so the planning
 // context sees a Sub Issue's prepared-but-unmerged implementation; the parent
 // (Meta Issue) is not queried for PRs since it has no implementing PR of its
@@ -80,39 +97,86 @@ type IssueRelations struct {
 // queried repo is not a safe answer for a node's coordinates. Each linked PR
 // node selects it for the same reason — a closing keyword resolves across
 // repositories, so a PR closing this Sub Issue may live in a third one.
-var relationsQuery = fmt.Sprintf(`query($owner: String!, $name: String!, $number: Int!) {
+//
+// withDependencies adds dependencyEdgesSelection to each sibling and child node;
+// the parent and the issue itself get no edges. The edges are best-effort: a
+// GraphQL server that does not know blockedBy rejects the whole query, so
+// false yields the query without them, byte for byte, for the fallback read.
+func buildRelationsQuery(withDependencies bool) string {
+	edges := ""
+	if withDependencies {
+		edges = " " + dependencyEdgesSelection
+	}
+	return fmt.Sprintf(`query($owner: String!, $name: String!, $number: Int!) {
   viewer { login }
   repository(owner: $owner, name: $name) {
     issue(number: $number) {
       number
       parent {
         number title body url state repository { nameWithOwner }
-        subIssues(first: %[1]d) { totalCount nodes { number title body url state repository { nameWithOwner } closedByPullRequestsReferences(first: %[2]d, includeClosedPrs: false) { totalCount nodes { number title url state isDraft repository { nameWithOwner } author { login } } } } }
+        subIssues(first: %[1]d) { totalCount nodes { number title body url state repository { nameWithOwner } closedByPullRequestsReferences(first: %[2]d, includeClosedPrs: false) { totalCount nodes { number title url state isDraft repository { nameWithOwner } author { login } } }%[3]s } }
       }
-      subIssues(first: %[1]d) { totalCount nodes { number title body url state repository { nameWithOwner } closedByPullRequestsReferences(first: %[2]d, includeClosedPrs: false) { totalCount nodes { number title url state isDraft repository { nameWithOwner } author { login } } } } }
+      subIssues(first: %[1]d) { totalCount nodes { number title body url state repository { nameWithOwner } closedByPullRequestsReferences(first: %[2]d, includeClosedPrs: false) { totalCount nodes { number title url state isDraft repository { nameWithOwner } author { login } } }%[3]s } }
     }
   }
-}`, maxRelatedSubIssues, maxLinkedPRsPerSubIssue)
+}`, maxRelatedSubIssues, maxLinkedPRsPerSubIssue, edges)
+}
 
 // GetIssueRelations resolves the Meta/Sub-Issue neighborhood of an issue via a
 // single gh GraphQL call. Callers treat a returned error as best-effort: a repo
 // without sub-issue relationships, a token lacking the scope, or an older GHES
 // that does not expose the fields all surface here and should degrade to "no
 // relations" rather than abort the elaborate/plan run.
+//
+// The siblings' and children's dependency edges are best-effort too. A
+// deployment that does not expose issue dependencies rejects the whole query,
+// so a failed first read is retried once without the edges rather than losing
+// the whole neighborhood (see getIssueRelations). A read that runs out its
+// timeout wraps context.DeadlineExceeded, which getIssueRelations does not
+// retry.
 func (Client) GetIssueRelations(owner, name string, number int) (*IssueRelations, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
-	defer cancel()
-	// owner/name go through -f (verbatim string), not -F: -F type-coerces its
-	// value, so a repository literally named "2048", "404" or "null" would reach
-	// GraphQL as a number or null and be rejected against String!.
-	cmd := exec.CommandContext(ctx, "gh", "api", "graphql",
-		"-f", "owner="+owner,
-		"-f", "name="+name,
-		"-F", "number="+strconv.Itoa(number),
-		"-f", "query="+relationsQuery)
-	out, err := cmd.CombinedOutput()
+	return getIssueRelations(func(query string) ([]byte, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
+		defer cancel()
+		// owner/name go through -f (verbatim string), not -F: -F type-coerces its
+		// value, so a repository literally named "2048", "404" or "null" would reach
+		// GraphQL as a number or null and be rejected against String!.
+		cmd := exec.CommandContext(ctx, "gh", "api", "graphql",
+			"-f", "owner="+owner,
+			"-f", "name="+name,
+			"-F", "number="+strconv.Itoa(number),
+			"-f", "query="+query)
+		out, err := cmd.CombinedOutput()
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, fmt.Errorf("gh api graphql sub-issue relations: %w", ctxErr)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("gh api graphql sub-issue relations: %s: %w", strings.TrimSpace(string(out)), err)
+		}
+		return out, nil
+	}, owner, name, number)
+}
+
+// getIssueRelations reads the relations through run, which executes one GraphQL
+// query and returns its raw output. It asks for the dependency edges first; when
+// that read fails it logs the error and reads again without them, returning the
+// second read's error unchanged if that fails too. A first read that timed out
+// (an error wrapping context.DeadlineExceeded) is returned without a retry: a
+// hung GitHub would make the retry wait out a second full timeout for the same
+// answer. Output that does not parse is returned as a parse error without a
+// retry: the server answered, so the edges were not what it rejected. Kept
+// separate from GetIssueRelations so the fallback is unit-testable without
+// invoking gh.
+func getIssueRelations(run func(query string) ([]byte, error), owner, name string, number int) (*IssueRelations, error) {
+	out, err := run(buildRelationsQuery(true))
 	if err != nil {
-		return nil, fmt.Errorf("gh api graphql sub-issue relations: %s: %w", strings.TrimSpace(string(out)), err)
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
+		slog.Warn("sub-issue relations read with dependency edges failed; reading them without edges", "issue", number, "err", err)
+		if out, err = run(buildRelationsQuery(false)); err != nil {
+			return nil, err
+		}
 	}
 	return parseIssueRelations(out, owner, name, number)
 }
@@ -124,14 +188,19 @@ func (Client) GetIssueRelations(owner, name string, number int) (*IssueRelations
 // Repository carries the node's own repository, which may differ from the
 // queried one; it stays zero-valued on a deployment that does not expose the
 // field, which toIssue treats as "same repo as the query".
+// BlockedBy and Blocking carry the dependency edges requested for sub-issue
+// nodes; they stay zero-valued for the parent and when the query without edges
+// was used.
 type graphqlIssueNode struct {
-	Number      int              `json:"number"`
-	Title       string           `json:"title"`
-	Body        string           `json:"body"`
-	URL         string           `json:"url"`
-	State       string           `json:"state"`
-	Repository  graphqlRepoRef   `json:"repository"`
-	ClosedByPRs graphqlLinkedPRs `json:"closedByPullRequestsReferences"`
+	Number      int                 `json:"number"`
+	Title       string              `json:"title"`
+	Body        string              `json:"body"`
+	URL         string              `json:"url"`
+	State       string              `json:"state"`
+	Repository  graphqlRepoRef      `json:"repository"`
+	ClosedByPRs graphqlLinkedPRs    `json:"closedByPullRequestsReferences"`
+	BlockedBy   graphqlDependencies `json:"blockedBy"`
+	Blocking    graphqlDependencies `json:"blocking"`
 }
 
 // graphqlRepoRef is the repository projection each issue node carries, in the
@@ -162,6 +231,22 @@ type graphqlLinkedPRs struct {
 	Nodes      []graphqlLinkedPRNode `json:"nodes"`
 }
 
+// graphqlDependencyNode is the minimal issue projection the relations query
+// returns for each entry of a sub-issue's blockedBy or blocking connection.
+type graphqlDependencyNode struct {
+	Number     int            `json:"number"`
+	State      string         `json:"state"`
+	Repository graphqlRepoRef `json:"repository"`
+}
+
+// graphqlDependencies is the connection wrapper around a sub-issue's dependency
+// nodes, carrying totalCount so truncation past maxDependencyEdgesPerIssue is
+// detectable.
+type graphqlDependencies struct {
+	TotalCount int                     `json:"totalCount"`
+	Nodes      []graphqlDependencyNode `json:"nodes"`
+}
+
 // graphqlSubIssues is the connection wrapper around a list of sub-issue nodes,
 // carrying totalCount so truncation past maxRelatedSubIssues is detectable.
 type graphqlSubIssues struct {
@@ -169,7 +254,7 @@ type graphqlSubIssues struct {
 	Nodes      []graphqlIssueNode `json:"nodes"`
 }
 
-// graphqlRelationsResponse mirrors the gh api graphql envelope for relationsQuery.
+// graphqlRelationsResponse mirrors the gh api graphql envelope for buildRelationsQuery.
 // Parent is a pointer so a missing parent (the issue is not a Sub Issue) decodes
 // to nil rather than a zero-valued issue.
 type graphqlRelationsResponse struct {
@@ -235,7 +320,7 @@ func nodesToIssues(nodes []graphqlIssueNode, owner, name string, exclude int) []
 
 // toIssue maps a GraphQL node onto the package's Issue type, lowercasing the
 // state enum to match GetIssue's convention and attaching any open linked PRs
-// the node carries.
+// and dependency edges the node carries.
 //
 // The repo coordinates come from the node's own repository when the query
 // returned one, since a parent or sub-issue may live in a different repository.
@@ -254,7 +339,42 @@ func toIssue(n graphqlIssueNode, owner, name string) Issue {
 		URL:       n.URL,
 		State:     strings.ToLower(n.State),
 		LinkedPRs: nodeLinkedPRs(n, owner, name),
+		BlockedBy: nodeDependencies(n.BlockedBy, "blocked_by", n.Number, owner, name),
+		Blocking:  nodeDependencies(n.Blocking, "blocking", n.Number, owner, name),
 	}
+}
+
+// nodeDependencies maps one of a sub-issue node's dependency connections
+// (kind names which, for the log) onto []Issue, lowercasing each state. The
+// result is sorted by repository, case-insensitively, then by number, so the
+// same edges render the same prompt and cache key whatever order GitHub
+// returns them in. A connection whose totalCount exceeds the fetched node count
+// is logged. Returns nil when the connection has no nodes.
+//
+// Each entry's coordinates come from its own repository, since a dependency
+// may cross repositories: the Sub Issue's repo (issueOwner/issueName) is only
+// the fallback for a deployment that does not return the field, the rule
+// nodeLinkedPRs follows.
+func nodeDependencies(conn graphqlDependencies, kind string, issueNumber int, issueOwner, issueName string) []Issue {
+	if conn.TotalCount > len(conn.Nodes) {
+		slog.Warn("dependency edges truncated; some are omitted from the planning context",
+			"issue", issueNumber, "kind", kind, "total", conn.TotalCount, "fetched", len(conn.Nodes), "cap", maxDependencyEdgesPerIssue)
+	}
+	var deps []Issue
+	for _, d := range conn.Nodes {
+		owner, name := issueOwner, issueName
+		if o, nm, ok := splitFullName(d.Repository.NameWithOwner); ok {
+			owner, name = o, nm
+		}
+		deps = append(deps, Issue{Owner: owner, Name: name, Number: d.Number, State: strings.ToLower(d.State)})
+	}
+	slices.SortFunc(deps, func(a, b Issue) int {
+		return cmp.Or(
+			strings.Compare(strings.ToLower(a.Owner+"/"+a.Name), strings.ToLower(b.Owner+"/"+b.Name)),
+			cmp.Compare(a.Number, b.Number),
+		)
+	})
+	return deps
 }
 
 // nodeLinkedPRs maps the open pull requests a sub-issue node carries via
