@@ -20,7 +20,8 @@ type ResumeState struct {
 // resumeBranchPrefix is the required feature-branch prefix the implement prompt
 // mandates for a given issue ("implement/issue-<N>-<slug>"). PrepareResume keys
 // its local/remote branch discovery on it, so the prompt's prefix rule and this
-// detection must stay in lockstep.
+// detection must stay in lockstep. The diagnose skill relies on it too: it names
+// its branches "diagnose/issue-<N>-<slug>" so implement never resumes one.
 func resumeBranchPrefix(issueNumber int) string {
 	return fmt.Sprintf("implement/issue-%d-", issueNumber)
 }
