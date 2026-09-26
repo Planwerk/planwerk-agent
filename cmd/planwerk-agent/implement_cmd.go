@@ -41,6 +41,12 @@ simplify and review passes run over the committed diff first, then a dedicated
 finalize session opens the draft PR so it lands already simplified and
 self-reviewed.
 
+An issue that has not been elaborated — its body carries no Acceptance
+Criteria heading — gives the plan no definition of done, so before cloning the
+run asks whether to implement it anyway. Answering no aborts with the elaborate
+invocation to run first; a non-TTY run refuses instead of asking. Use
+--allow-unelaborated to implement such an issue without the question.
+
 The planning session runs on the dedicated planning model (--plan-model,
 default "` + claude.DefaultPlanModel + `") at the dedicated planning effort (--plan-effort, default
 "` + claude.DefaultPlanEffort + `") on the default read-only permission mode; its only artifact is the
@@ -237,6 +243,7 @@ or short form (owner/repo#123).`,
 	implementFlags.IntVar(&implementCfg.MaxPatterns, "max-patterns", patterns.DefaultMaxPatternsInPrompt, "Max review patterns injected into the prompt (<=0 disables truncation, env: "+envMaxPatterns+")")
 	implementFlags.BoolVar(&implementCfg.Local, "local", false, "Operate on the current working directory instead of cloning into a temp dir")
 	implementFlags.BoolVar(&implementCfg.Force, "force", false, "With --local, skip the confirmation prompt when the working tree is dirty")
+	implementFlags.BoolVar(&implementCfg.AllowUnelaborated, "allow-unelaborated", false, "Implement an issue that has not been elaborated (no Acceptance Criteria) without asking first; without it such a run asks, and a non-TTY run refuses")
 	implementFlags.BoolVar(&implementCfg.NoResume, "no-resume", false, "Start a fresh feature branch instead of resuming the commits an earlier aborted run for this issue left on its branch; also disables pushing partial progress after an abort")
 	addWikiFlags(implementFlags, &wikiEnable, &wikiDisable, &wikiRef)
 

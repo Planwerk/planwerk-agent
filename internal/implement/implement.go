@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"regexp"
 	"strings"
 
@@ -29,6 +30,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/report"
 	"github.com/planwerk/planwerk-agent/internal/skills"
 	"github.com/planwerk/planwerk-agent/internal/styleguide"
+	"github.com/planwerk/planwerk-agent/internal/workspace"
 )
 
 // Options configures the implement subcommand. Mirrors the Options style
@@ -82,6 +84,12 @@ type Options struct {
 	MaxReviewIterations int
 	Local               bool // operate on the current working directory instead of cloning
 	Force               bool // with Local, skip the dirty-working-tree confirmation prompt
+	// AllowUnelaborated implements an issue that has not been elaborated (its
+	// body carries no Acceptance Criteria) without asking first. Unset, such a
+	// run asks whether to implement anyway and refuses a non-TTY run. The
+	// implement command binds it to --allow-unelaborated; ship sets it, because
+	// it runs unattended over the draft-depth Sub Issues meta files.
+	AllowUnelaborated bool
 	// WorkerModel, when non-empty, switches the implement session into
 	// orchestrator mode: the session itself (typically running on a stronger
 	// model via --implement-model) keeps the whole issue in view and delegates
@@ -196,12 +204,13 @@ type Runner struct {
 	// capture.DefaultWikiWriter; a Runner seam so the write-back can be exercised
 	// without cloning or pushing a real wiki.
 	CaptureWriter capture.WikiWriter
-	// In is the stream the capture write-back's confirmation reads from. Defaults
-	// to os.Stdin.
+	// In is the stream the unelaborated-issue and capture write-back
+	// confirmations read from. Defaults to os.Stdin.
 	In io.Reader
-	// IsTTY reports whether the capture write-back may prompt interactively. When
-	// it returns false a --capture-wiki run without --yes refuses rather than
-	// failing open. Defaults to workspace.IsStdinTTY.
+	// IsTTY reports whether the run may prompt interactively. When it returns
+	// false, an unelaborated issue without --allow-unelaborated and a
+	// --capture-wiki run without --yes refuse rather than failing open. Defaults
+	// to workspace.IsStdinTTY.
 	IsTTY func() bool
 }
 
@@ -447,6 +456,8 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	}
 
 	planEnabled := r.Planner != nil && !opts.NoPlan
+	// Checked on the merged body, so criteria that continue in a comment count.
+	unelaborated := !opts.AllowUnelaborated && !hasAcceptanceCriteria(issue.Body)
 
 	if opts.DryRun {
 		if planEnabled {
@@ -456,7 +467,17 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 			_, _ = fmt.Fprintf(w, "[dry-run] would clone %s and run Claude to implement #%d (%s)\n",
 				fullName, number, issue.Title)
 		}
+		if unelaborated {
+			_, _ = fmt.Fprintf(w, "[dry-run] #%d has not been elaborated (no Acceptance Criteria); a real run asks before implementing it\n", number)
+		}
 		return nil
+	}
+
+	// Ask before cloning, so a declined run costs nothing.
+	if unelaborated {
+		if err := r.confirmUnelaborated(w, fullName, number); err != nil {
+			return err
+		}
 	}
 
 	repo, err := github.OpenRepo(r.GitHub, fullName, opts.Local, opts.Force)
@@ -786,6 +807,55 @@ const planHeading = "## Implementation Plan"
 // implementReportStatus, to confirm the implement session returned an actual
 // completed report and not a bailed-session blurb.
 const reportHeading = "## Implementation Report"
+
+// hasAcceptanceCriteria reports whether an issue body carries an Acceptance
+// Criteria heading, the section that tells an elaborated issue from a
+// draft-depth one: elaborate never writes a plan without it, and the house
+// format forbids it at draft depth. Any heading level counts, so a hand-written
+// issue that states its criteria is not asked about.
+func hasAcceptanceCriteria(body string) bool {
+	for _, line := range strings.Split(body, "\n") {
+		t := strings.TrimSpace(line)
+		if !strings.HasPrefix(t, "#") {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(strings.TrimLeft(t, "#")), "Acceptance Criteria") {
+			return true
+		}
+	}
+	return false
+}
+
+// confirmUnelaborated asks whether to implement an issue that has not been
+// elaborated anyway (design decision 102). Without criteria the plan has no
+// definition of done to ground and --verify nothing to check against, so the
+// operator decides rather than the run guessing. A "no" or a non-TTY stdin
+// aborts before anything is cloned; the error names the elaborate invocation
+// that fixes the issue and the flag that skips the question.
+func (r *Runner) confirmUnelaborated(w io.Writer, fullName string, number int) error {
+	ref := fmt.Sprintf("%s#%d", fullName, number)
+	elaborateHint := fmt.Sprintf("elaborate it first with \"planwerk-agent elaborate --update-issue %s\"", ref)
+	isTTY := r.IsTTY
+	if isTTY == nil {
+		isTTY = workspace.IsStdinTTY
+	}
+	if !isTTY() {
+		return fmt.Errorf("issue %s has not been elaborated (its body has no Acceptance Criteria) and stdin is not a TTY to confirm implementing it anyway; %s, or re-run with --allow-unelaborated", ref, elaborateHint)
+	}
+	in := r.In
+	if in == nil {
+		in = os.Stdin
+	}
+	prompter := workspace.StdinPrompter{In: in, Out: w}
+	ok, err := prompter.Confirm(fmt.Sprintf("Issue %s has not been elaborated: its body has no Acceptance Criteria. Implement it anyway? (y/N): ", ref))
+	if err != nil {
+		return fmt.Errorf("confirming implementation of an unelaborated issue: %w", err)
+	}
+	if !ok {
+		return fmt.Errorf("aborted: issue %s has not been elaborated; %s", ref, elaborateHint)
+	}
+	return nil
+}
 
 // preparePlan supplies the implement context with its plan. By default it first
 // looks for an implementation plan planwerk-agent already posted on the source

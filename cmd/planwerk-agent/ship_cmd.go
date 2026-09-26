@@ -109,6 +109,10 @@ or short form (owner/repo#123).`,
 				iopts := implOpts
 				iopts.Version = deps.version
 				iopts.IssueRef = issueRef
+				// ship runs unattended over Sub Issues that meta files at draft
+				// depth, so nobody is there to answer the unelaborated-issue
+				// question; the planning session carries them as before.
+				iopts.AllowUnelaborated = true
 				iopts.Remote = deps.remoteOpts
 				iopts.WorkerModel = resolveString(implementWorkerModel, cmd.Flags().Changed("implement-worker-model"), envImplementWorkerModel, "")
 				iopts.WorkerEffort = resolveString(implementWorkerEffort, cmd.Flags().Changed("implement-worker-effort"), envImplementWorkerEffort, claude.DefaultImplementWorkerEffort)

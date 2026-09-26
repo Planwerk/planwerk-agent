@@ -513,8 +513,16 @@ planned but was aborted before implementing) is reused by default: the planning
 session is skipped and no duplicate plan comment is posted. Use `--no-plan-reuse`
 to force a fresh planning session when the posted plan has gone stale.
 
+An issue that has not been elaborated (its body carries no Acceptance Criteria
+heading) gives the plan no definition of done, so before cloning the run asks
+whether to implement it anyway. Answering no aborts with the `elaborate`
+invocation to run first; a non-TTY run refuses instead of asking. Use
+`--allow-unelaborated` to implement such an issue without the question. `ship`
+never asks: it runs unattended over the draft-depth Sub Issues `meta` files.
+
 ```bash
 planwerk-agent implement owner/repo#123
+planwerk-agent implement --allow-unelaborated owner/repo#123
 planwerk-agent implement --no-plan owner/repo#123
 planwerk-agent implement --no-plan-reuse owner/repo#123
 planwerk-agent implement --verify owner/repo#123
@@ -558,6 +566,7 @@ planwerk-agent implement --wiki --capture-wiki --yes owner/repo#123
 | `--wiki-ref` | Pin the wiki to a branch, tag, or commit (env: `PLANWERK_WIKI_REF`) | - |
 | `--local` | Operate on the current working directory instead of cloning into a temp dir | `false` |
 | `--force` | With `--local`, skip the confirmation prompt when the working tree is dirty | `false` |
+| `--allow-unelaborated` | Implement an issue that has not been elaborated (no Acceptance Criteria) without asking first; without it such a run asks, and a non-TTY run refuses | `false` |
 | `--no-resume` | Start a fresh feature branch instead of resuming the commits an earlier aborted run for this issue left on its branch; also disables pushing partial progress and posting the progress note after an abort | `false` |
 
 `--dry-run`, `--print-prompt`, `--print-bare-prompt`, and `--print-plan-prompt`

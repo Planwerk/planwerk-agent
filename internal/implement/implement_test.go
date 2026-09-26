@@ -2637,6 +2637,104 @@ func TestRun_DryRunSkipsCloneAndClaude(t *testing.T) {
 	if !strings.Contains(buf.String(), "[dry-run]") {
 		t.Errorf("missing dry-run notice: %s", buf.String())
 	}
+	if strings.Contains(buf.String(), "has not been elaborated") {
+		t.Errorf("an elaborated issue must not be flagged as unelaborated: %s", buf.String())
+	}
+}
+
+func TestHasAcceptanceCriteria(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"elaborated", "## Description\n\nx\n\n## Acceptance Criteria\n\n- [ ] y\n", true},
+		{"other heading level and case", "### acceptance criteria  \n- y\n", true},
+		{"draft depth", "**Category**: feature | **Scope**: Small\n\n## Description\n\nx\n\n## Motivation\n\ny\n", false},
+		{"mentioned in prose only", "## Description\n\nWrite the Acceptance Criteria later.\n", false},
+		{"bold label is not a heading", "**Acceptance Criteria**\n- y\n", false},
+		{"empty", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := hasAcceptanceCriteria(tc.body); got != tc.want {
+				t.Errorf("hasAcceptanceCriteria(%q) = %v, want %v", tc.body, got, tc.want)
+			}
+		})
+	}
+}
+
+// draftIssue is sampleIssue at draft depth: a description and a motivation, no
+// Acceptance Criteria, so implement treats it as not yet elaborated.
+func draftIssue() *github.Issue {
+	issue := sampleIssue()
+	issue.Body = "**Category**: feature | **Scope**: Small\n\n## Description\n\nFoo widget does X.\n\n## Motivation\n\nUsers need X.\n"
+	return issue
+}
+
+func TestRun_UnelaboratedIssueAsksBeforeImplementing(t *testing.T) {
+	cases := []struct {
+		name        string
+		tty         bool
+		answer      string
+		allow       bool
+		wantErr     string
+		wantPrompt  bool
+		wantCloned  bool
+		wantImplRun bool
+	}{
+		{name: "yes implements anyway", tty: true, answer: "y\n", wantPrompt: true, wantCloned: true, wantImplRun: true},
+		{name: "no aborts before cloning", tty: true, answer: "n\n", wantErr: `planwerk-agent elaborate --update-issue owner/repo#42`, wantPrompt: true},
+		{name: "empty answer defaults to no", tty: true, answer: "\n", wantErr: "aborted: issue owner/repo#42 has not been elaborated", wantPrompt: true},
+		{name: "non-TTY refuses", tty: false, wantErr: "--allow-unelaborated"},
+		{name: "allow flag skips the question", tty: false, allow: true, wantCloned: true, wantImplRun: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			gh := &githubtest.Fake{Issue: draftIssue(), Dir: t.TempDir()}
+			cl := &fakeClaude{report: validImplReport}
+			r := newRunner(gh, cl)
+			r.IsTTY = func() bool { return tc.tty }
+			r.In = strings.NewReader(tc.answer)
+
+			var buf bytes.Buffer
+			err := r.Run(&buf, Options{IssueRef: "owner/repo#42", AllowUnelaborated: tc.allow})
+			if tc.wantErr == "" && err != nil {
+				t.Fatalf("Run returned %v, want nil", err)
+			}
+			if tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)) {
+				t.Fatalf("Run returned %v, want an error containing %q", err, tc.wantErr)
+			}
+			if got := strings.Contains(buf.String(), "Implement it anyway? (y/N)"); got != tc.wantPrompt {
+				t.Errorf("prompt shown = %v, want %v; output:\n%s", got, tc.wantPrompt, buf.String())
+			}
+			if got := gh.Count("CloneRepo") > 0; got != tc.wantCloned {
+				t.Errorf("cloned = %v, want %v", got, tc.wantCloned)
+			}
+			if got := cl.called.Load() > 0; got != tc.wantImplRun {
+				t.Errorf("implement session ran = %v, want %v", got, tc.wantImplRun)
+			}
+		})
+	}
+}
+
+func TestRun_DryRunNotesUnelaboratedIssueWithoutAsking(t *testing.T) {
+	gh := &githubtest.Fake{Issue: draftIssue()}
+	cl := &fakeClaude{}
+	r := newRunner(gh, cl)
+	r.IsTTY = func() bool { return true }
+	r.In = strings.NewReader("")
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", DryRun: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if !strings.Contains(buf.String(), "[dry-run] #42 has not been elaborated") {
+		t.Errorf("missing unelaborated dry-run note: %s", buf.String())
+	}
+	if strings.Contains(buf.String(), "(y/N)") {
+		t.Errorf("dry-run must not prompt: %s", buf.String())
+	}
 }
 
 func TestRun_PrintPromptWritesPromptAndSkipsClone(t *testing.T) {
