@@ -382,6 +382,84 @@ func TestRun_SiblingPRChangeBustsCache(t *testing.T) {
 	}
 }
 
+// TestRun_SiblingDependencyChangeBustsCache locks the cache-key contribution of
+// a sibling's dependency edges: when an otherwise-identical sibling gains a
+// blocked-by edge between two runs, the relations fingerprint must change so
+// the elaboration re-runs against the new delivery order.
+func TestRun_SiblingDependencyChangeBustsCache(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	patternDir := seedPatternDir(t)
+	repo := fakeRepo(t, "acme", "widgets")
+	withEdge := false
+	gh := &githubtest.Fake{
+		GetIssueFn: func(owner, name string, number int) (*github.Issue, error) {
+			return &github.Issue{Owner: owner, Name: name, Number: number, Title: "Sub", Body: "Body"}, nil
+		},
+		GetIssueRelationsFn: func(owner, name string, number int) (*github.IssueRelations, error) {
+			sibling := github.Issue{Owner: owner, Name: name, Number: 2, Title: "Sibling", Body: "Sibling body", State: "open"}
+			if withEdge {
+				sibling.BlockedBy = []github.Issue{{Owner: owner, Name: name, Number: 1, State: "open"}}
+			}
+			return &github.IssueRelations{
+				Parent:   &github.Issue{Owner: owner, Name: name, Number: 1, Title: "Meta", Body: "Meta body"},
+				Siblings: []github.Issue{sibling},
+			}, nil
+		},
+		CloneRepoFn: func(ref string) (*github.Repo, error) { return repo, nil },
+	}
+	cl := &fakeClaude{fn: func(dir string, ctx Context) (*Result, error) {
+		return &Result{Title: "Sub", Description: "d", Motivation: "m", AcceptanceCriteria: []string{"ac"}}, nil
+	}}
+	r := &Runner{Claude: cl, GitHub: gh}
+
+	var out bytes.Buffer
+	if err := r.Run(&out, baseOpts(patternDir)); err != nil {
+		t.Fatalf("first Run error: %v", err)
+	}
+	if err := r.Run(&out, baseOpts(patternDir)); err != nil {
+		t.Fatalf("cache-hit Run error: %v", err)
+	}
+	if cl.calls != 1 {
+		t.Fatalf("after identical re-run, Claude calls = %d, want 1 (cache hit)", cl.calls)
+	}
+	// The sibling gains a blocked-by edge ⇒ relations fingerprint changes ⇒ cache miss.
+	withEdge = true
+	if err := r.Run(&out, baseOpts(patternDir)); err != nil {
+		t.Fatalf("post-edge Run error: %v", err)
+	}
+	if cl.calls != 2 {
+		t.Fatalf("after sibling edge appears, Claude calls = %d, want 2 (cache miss)", cl.calls)
+	}
+}
+
+// TestRelationsFingerprint_EmptyEdgesUnchanged confirms empty edge slices
+// fingerprint like nil ones, so a neighborhood without edges keeps its cache
+// key, while a real edge (here a blocking one) changes it.
+func TestRelationsFingerprint_EmptyEdgesUnchanged(t *testing.T) {
+	relations := func(sibling github.Issue) *github.IssueRelations {
+		return &github.IssueRelations{
+			Parent:   &github.Issue{Number: 1, Title: "Meta", Body: "Meta body"},
+			Siblings: []github.Issue{sibling},
+		}
+	}
+	sibling := github.Issue{Owner: "acme", Name: "widgets", Number: 2, Title: "Sibling", State: "open"}
+	nilEdges := relationsFingerprint(relations(sibling))
+
+	empty := sibling
+	empty.BlockedBy, empty.Blocking = []github.Issue{}, []github.Issue{}
+	if got := relationsFingerprint(relations(empty)); got != nilEdges {
+		t.Errorf("fingerprint with empty edges = %q, want %q (same as nil edges)", got, nilEdges)
+	}
+
+	blocking := sibling
+	blocking.Blocking = []github.Issue{{Owner: "acme", Name: "widgets", Number: 3, State: "open"}}
+	if got := relationsFingerprint(relations(blocking)); got == nilEdges {
+		t.Errorf("fingerprint with a blocking edge = %q, want it to differ from the edge-free one", got)
+	}
+}
+
 func TestRun_NoCacheBypassesCache(t *testing.T) {
 	restore := cache.SetDir(t.TempDir())
 	t.Cleanup(restore)
