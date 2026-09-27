@@ -3,6 +3,7 @@ package claude
 import (
 	"bytes"
 	"io"
+	"log/slog"
 	"strings"
 	"sync"
 	"testing"
@@ -26,6 +27,14 @@ func (s *safeBuffer) String() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.buf.String()
+}
+
+// captureLogger returns a text-format logger that writes into the returned
+// buffer, so a test can pass it to the code under test and assert on the
+// rendered records.
+func captureLogger() (*slog.Logger, *safeBuffer) {
+	buf := &safeBuffer{}
+	return slog.New(slog.NewTextHandler(buf, nil)), buf
 }
 
 func TestStartProgressTo_EmitsLabeledElapsedUpdates(t *testing.T) {
@@ -65,50 +74,48 @@ func TestStartProgressTo_StopIsSynchronousAndSilentAfter(t *testing.T) {
 	}
 }
 
-func TestStartProgress_NonTerminalEmitsSlogHeartbeat(t *testing.T) {
-	prev := stderrIsTerminalFn
-	stderrIsTerminalFn = func() bool { return false }
-	t.Cleanup(func() { stderrIsTerminalFn = prev })
-
-	// The returned stop must be callable and must not block or panic even
-	// when no heartbeat has fired yet.
-	stop := startProgress("review")
-	stop()
-}
-
 func TestStartProgressLogged_EmitsSlogHeartbeat(t *testing.T) {
-	type entry struct {
-		msg  string
-		args []any
-	}
-	var (
-		mu      sync.Mutex
-		entries []entry
-	)
-	prev := slogInfoFn
-	slogInfoFn = func(msg string, args ...any) {
-		mu.Lock()
-		entries = append(entries, entry{msg: msg, args: args})
-		mu.Unlock()
-	}
-	t.Cleanup(func() { slogInfoFn = prev })
-
-	stop := startProgressLogged("review", 10*time.Millisecond)
+	logger, buf := captureLogger()
+	stop := startProgressLogged(logger, "review", 10*time.Millisecond)
 	time.Sleep(35 * time.Millisecond)
 	stop()
 
-	mu.Lock()
-	defer mu.Unlock()
-	if len(entries) < 2 {
-		t.Fatalf("expected at least two heartbeat log entries, got %d", len(entries))
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	heartbeats := 0
+	for _, line := range lines {
+		if !strings.Contains(line, `msg="claude still running"`) {
+			t.Errorf("unexpected log record: %q", line)
+			continue
+		}
+		if !strings.Contains(line, "label=review") || !strings.Contains(line, "elapsed=") {
+			t.Errorf("heartbeat does not carry the label and elapsed attributes: %q", line)
+		}
+		heartbeats++
 	}
-	for _, e := range entries {
-		if e.msg != "claude still running" {
-			t.Errorf("unexpected heartbeat message: %q", e.msg)
-		}
-		if len(e.args) < 4 {
-			t.Errorf("expected label+elapsed attrs, got %v", e.args)
-		}
+	if heartbeats < 2 {
+		t.Errorf("expected at least two heartbeat records, got %d:\n%s", heartbeats, buf.String())
+	}
+}
+
+// TestStartProgressLogged_StopBeforeFirstTickIsSilent covers a call that ends
+// before the first heartbeat is due: stop must return without waiting for a
+// tick, and nothing may be logged.
+func TestStartProgressLogged_StopBeforeFirstTickIsSilent(t *testing.T) {
+	logger, buf := captureLogger()
+	stop := startProgressLogged(logger, "review", time.Hour)
+
+	done := make(chan struct{})
+	go func() {
+		stop()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("stop() did not return before the first heartbeat was due")
+	}
+	if got := buf.String(); got != "" {
+		t.Errorf("logged before the first tick: %q", got)
 	}
 }
 

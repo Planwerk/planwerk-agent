@@ -27,8 +27,7 @@ const (
 
 // runSessionFn is the seam runWithCompletionNudge runs its sessions through.
 // It defaults to the production runner; the completion tests swap it for a
-// fake that scripts session outputs without invoking the claude CLI, mirroring
-// the streamSinkFn override pattern.
+// fake that scripts session outputs without invoking the claude CLI.
 var runSessionFn = (*Client).runClaudeWithPermission
 
 // terminalReportComplete returns the completion gate for a session whose

@@ -3,7 +3,6 @@ package claude
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"reflect"
 	"strings"
@@ -296,6 +295,7 @@ func TestExtractJSONValue(t *testing.T) {
 }
 
 func TestWarnOnDroppedFindings(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name        string
 		sourceCount int
@@ -310,14 +310,15 @@ func TestWarnOnDroppedFindings(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			warned := false
-			restore := slogWarnFn
-			slogWarnFn = func(string, ...any) { warned = true }
-			t.Cleanup(func() { slogWarnFn = restore })
-
-			warnOnDroppedFindings(tc.sourceCount, tc.emitted)
-			if warned != tc.wantWarn {
-				t.Errorf("warnOnDroppedFindings(%d, %d) warned=%v, want %v", tc.sourceCount, tc.emitted, warned, tc.wantWarn)
+			t.Parallel()
+			logger, buf := captureLogger()
+			warnOnDroppedFindings(logger, tc.sourceCount, tc.emitted)
+			wantWarns := 0
+			if tc.wantWarn {
+				wantWarns = 1
+			}
+			if got := strings.Count(buf.String(), "level=WARN"); got != wantWarns {
+				t.Errorf("warnOnDroppedFindings(%d, %d) logged %d warnings, want %d:\n%s", tc.sourceCount, tc.emitted, got, wantWarns, buf.String())
 			}
 		})
 	}
@@ -336,17 +337,15 @@ func TestValidationRepairPromptUsesValidationRules(t *testing.T) {
 }
 
 func TestNormalizeTranscribedLabels(t *testing.T) {
-	restore := slogWarnFn
-	warns := 0
-	slogWarnFn = func(string, ...any) { warns++ }
-	t.Cleanup(func() { slogWarnFn = restore })
+	t.Parallel()
+	logger, buf := captureLogger()
 
 	result := &report.ReviewResult{Findings: []report.Finding{
 		{Title: "no labels"}, // both empty → defaulted, 2 warns
 		{Title: "labelled", Severity: report.SeverityCritical, Confidence: report.ConfidenceVerified}, // untouched
 		{Title: "sev only", Severity: report.SeverityWarning},                                         // confidence empty → 1 warn
 	}}
-	normalizeTranscribedLabels(result)
+	normalizeTranscribedLabels(logger, result)
 
 	if result.Findings[0].Severity != report.SeverityInfo || result.Findings[0].Confidence != report.ConfidenceUncertain {
 		t.Errorf("empty labels must default to INFO/uncertain, got %q/%q", result.Findings[0].Severity, result.Findings[0].Confidence)
@@ -357,8 +356,8 @@ func TestNormalizeTranscribedLabels(t *testing.T) {
 	if result.Findings[2].Confidence != report.ConfidenceUncertain {
 		t.Errorf("empty confidence must default to uncertain, got %q", result.Findings[2].Confidence)
 	}
-	if warns != 3 {
-		t.Errorf("expected 3 warnings (2 for the label-less finding, 1 for the confidence-less one), got %d", warns)
+	if warns := strings.Count(buf.String(), "level=WARN"); warns != 3 {
+		t.Errorf("expected 3 warnings (2 for the label-less finding, 1 for the confidence-less one), got %d:\n%s", warns, buf.String())
 	}
 }
 
@@ -504,17 +503,15 @@ func TestRepairInvalidReview_RepairsOnlyTheOffendingFinding(t *testing.T) {
 // review can state in words the enum does not have. Settling them here is what
 // leaves the empty title as the only violation a model is ever asked about.
 func TestNormalizeTranscribedLabels_SettlesOffEnumLabels(t *testing.T) {
-	var attrs [][]any
-	restore := slogWarnFn
-	slogWarnFn = func(_ string, a ...any) { attrs = append(attrs, a) }
-	t.Cleanup(func() { slogWarnFn = restore })
+	t.Parallel()
+	logger, buf := captureLogger()
 
 	result := &report.ReviewResult{Findings: []report.Finding{
 		{Title: "off-enum", Severity: "HIGH", Confidence: "certain"},
 		// Case is not a violation: ParseSeverity and ParseConfidence fold it.
 		{Title: "lower case", Severity: "warning", Confidence: "VERIFIED"},
 	}}
-	normalizeTranscribedLabels(result)
+	normalizeTranscribedLabels(logger, result)
 
 	if result.Findings[0].Severity != report.SeverityInfo {
 		t.Errorf("severity = %q, want INFO for a label the enum does not have", result.Findings[0].Severity)
@@ -526,32 +523,34 @@ func TestNormalizeTranscribedLabels_SettlesOffEnumLabels(t *testing.T) {
 		t.Errorf("a differently-cased label is not a violation, got %q/%q",
 			result.Findings[1].Severity, result.Findings[1].Confidence)
 	}
-	if len(attrs) != 2 {
-		t.Fatalf("logged %d warnings, want 2 — one per rejected label on the first finding", len(attrs))
+	warns := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	if got := strings.Count(buf.String(), "level=WARN"); got != 2 || len(warns) != 2 {
+		t.Fatalf("logged %d warnings, want 2 — one per rejected label on the first finding:\n%s", got, buf.String())
 	}
 	// Each warning must name the finding and the label that was rejected, or the
 	// operator cannot tell which finding lost its classification.
-	for _, a := range attrs {
-		joined := fmt.Sprint(a...)
-		if !strings.Contains(joined, "off-enum") {
-			t.Errorf("warning %v does not name the finding's title", a)
+	for _, w := range warns {
+		if !strings.Contains(w, "level=WARN") || !strings.Contains(w, "title=off-enum") {
+			t.Errorf("warning %q does not name the finding's title", w)
 		}
 	}
-	if !strings.Contains(fmt.Sprint(attrs[0]...), "HIGH") || !strings.Contains(fmt.Sprint(attrs[1]...), "certain") {
-		t.Errorf("warnings do not name the rejected labels: %v", attrs)
+	if !strings.Contains(warns[0], "severity=HIGH") || !strings.Contains(warns[1], "confidence=certain") {
+		t.Errorf("warnings do not name the rejected labels:\n%s", buf.String())
 	}
 }
 
 // TestNormalizeTranscribedLabels_EmptyAndNilFindings covers the two shapes that
 // carry nothing to normalize: a review with no findings at all, and a nil slice.
 func TestNormalizeTranscribedLabels_EmptyAndNilFindings(t *testing.T) {
-	restore := slogWarnFn
-	slogWarnFn = func(string, ...any) { t.Error("nothing to normalize must log nothing") }
-	t.Cleanup(func() { slogWarnFn = restore })
+	t.Parallel()
+	logger, buf := captureLogger()
 
-	normalizeTranscribedLabels(&report.ReviewResult{})
-	normalizeTranscribedLabels(&report.ReviewResult{Findings: nil})
-	normalizeTranscribedLabels(&report.ReviewResult{Findings: []report.Finding{}})
+	normalizeTranscribedLabels(logger, &report.ReviewResult{})
+	normalizeTranscribedLabels(logger, &report.ReviewResult{Findings: nil})
+	normalizeTranscribedLabels(logger, &report.ReviewResult{Findings: []report.Finding{}})
+	if got := buf.String(); got != "" {
+		t.Errorf("nothing to normalize must log nothing, got:\n%s", got)
+	}
 }
 
 // TestRepairInvalidReview_RetriesAnUnparseableRepair covers the other way a

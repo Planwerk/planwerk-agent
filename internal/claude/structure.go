@@ -44,11 +44,11 @@ func (c *Client) structureReview(rawReview string) (*report.ReviewResult, error)
 	// severity/confidence label arrives here with an empty one. Fill those
 	// deterministically in Go before validation instead of spending a repair
 	// round on it.
-	normalizeTranscribedLabels(&result)
+	normalizeTranscribedLabels(slog.Default(), &result)
 	if err := c.repairInvalidReview(&result); err != nil {
 		return nil, wrapWithPersistedAnalysis(rawReview, err)
 	}
-	warnOnDroppedFindings(sr.SourceFindingCount, len(result.Findings))
+	warnOnDroppedFindings(slog.Default(), sr.SourceFindingCount, len(result.Findings))
 	return &result, nil
 }
 
@@ -82,38 +82,33 @@ func wrapWithPersistedAnalysis(raw string, cause error) error {
 // normalizeTranscribedLabels settles the two labels the transcribe-only
 // structure tier can leave unusable: one the source review never stated, which
 // arrives empty, and one it stated in words the enum does not have. Both become
-// INFO and uncertain here, logged with the finding's title and the label that
-// was rejected.
+// INFO and uncertain here, logged to logger with the finding's title and the
+// label that was rejected.
 //
 // Deciding them in Go rather than by a model repair round matters twice over. An
 // unlabeled finding would otherwise be dropped silently by Categorize, which
 // skips unknown severities; and these are the two of the three schema rules a
 // parser can settle alone, which leaves the empty title as the only violation
 // that still needs a model to look at it.
-func normalizeTranscribedLabels(result *report.ReviewResult) {
+func normalizeTranscribedLabels(logger *slog.Logger, result *report.ReviewResult) {
 	for i := range result.Findings {
 		f := &result.Findings[i]
 		if sev, err := report.ParseSeverity(string(f.Severity)); err == nil {
 			f.Severity = sev
 		} else {
-			slogWarnFn("structuring left a finding without a usable severity label; defaulting to INFO",
+			logger.Warn("structuring left a finding without a usable severity label; defaulting to INFO",
 				"title", f.Title, "severity", f.Severity)
 			f.Severity = report.SeverityInfo
 		}
 		if conf, err := report.ParseConfidence(string(f.Confidence)); err == nil {
 			f.Confidence = conf
 		} else {
-			slogWarnFn("structuring left a finding without a usable confidence label; defaulting to uncertain",
+			logger.Warn("structuring left a finding without a usable confidence label; defaulting to uncertain",
 				"title", f.Title, "confidence", f.Confidence)
 			f.Confidence = report.ConfidenceUncertain
 		}
 	}
 }
-
-// slogWarnFn is the warn-logging seam (mirrors progress.go's slogInfoFn) so the
-// reconciliation guard can be asserted in tests without parsing global slog
-// output.
-var slogWarnFn = slog.Warn
 
 // warnOnDroppedFindings surfaces a likely silent finding drop by the structuring
 // pass. That pass now defaults to a cheaper model than the upstream reasoning
@@ -121,12 +116,12 @@ var slogWarnFn = slog.Warn
 // token pressure — and a dropped finding never reaches the PR comment at all,
 // unlike a still-present severity downgrade. When the model's own
 // source_finding_count exceeds the findings it actually emitted, log a warning
-// rather than fail: re-running would discard the expensive upstream reasoning
-// for an unprovable gain. A non-positive sourceCount means the model reported
-// none, so there is nothing to reconcile.
-func warnOnDroppedFindings(sourceCount, emitted int) {
+// to logger rather than fail: re-running would discard the expensive upstream
+// reasoning for an unprovable gain. A non-positive sourceCount means the model
+// reported none, so there is nothing to reconcile.
+func warnOnDroppedFindings(logger *slog.Logger, sourceCount, emitted int) {
 	if sourceCount > 0 && emitted < sourceCount {
-		slogWarnFn("structuring emitted fewer findings than the source review reported; a finding may have been dropped in transcription",
+		logger.Warn("structuring emitted fewer findings than the source review reported; a finding may have been dropped in transcription",
 			"source_finding_count", sourceCount, "structured_findings", emitted)
 	}
 }
