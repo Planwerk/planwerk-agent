@@ -71,11 +71,10 @@ type streamSink interface {
 	toolResult(label string)
 }
 
-// streamSinkFn returns the active sink. Overridable in tests.
-var streamSinkFn = newDefaultStreamSink
-
+// newDefaultStreamSink returns the TTY sink when stderr is a terminal and the
+// slog sink otherwise.
 func newDefaultStreamSink() streamSink {
-	if stderrIsTerminalFn() {
+	if stderrIsTerminal() {
 		return ttyStreamSink{w: os.Stderr}
 	}
 	return slogStreamSink{}
@@ -168,7 +167,7 @@ func (c *Client) runClaudeStream(spec runSpec, prompt string) (string, string, e
 	var stderrBuf bytes.Buffer
 	cmd.Stderr = &stderrBuf
 
-	sink := streamSinkFn()
+	sink := newDefaultStreamSink()
 	sink.starting(spec.label)
 
 	if err := cmd.Start(); err != nil {

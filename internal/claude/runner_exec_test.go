@@ -55,8 +55,6 @@ func TestRunClaude_TimeoutNamesTheDeadline(t *testing.T) {
 
 func TestRunClaudeStream_TimeoutNamesTheDeadline(t *testing.T) {
 	fakeClaude(t, "sleep 30\n")
-	streamSinkFn = func() streamSink { return slogStreamSink{} }
-	t.Cleanup(func() { streamSinkFn = newDefaultStreamSink })
 	c := NewClient(WithTimeout(200*time.Millisecond), WithShowOutput(true))
 
 	start := time.Now()
@@ -104,8 +102,6 @@ func TestRunClaudeStream_CountsUsageOfAFailedTurn(t *testing.T) {
 	event := `{"type":"result","is_error":true,"subtype":"error_max_turns",` +
 		`"usage":{"input_tokens":900,"output_tokens":100},"total_cost_usd":0.25}`
 	fakeClaude(t, "cat >/dev/null\nprintf '%s\\n' '"+event+"'\nexit 1\n")
-	streamSinkFn = func() streamSink { return slogStreamSink{} }
-	t.Cleanup(func() { streamSinkFn = newDefaultStreamSink })
 	c := NewClient(WithShowOutput(true))
 
 	_, _, err := c.runClaudeWithPermission(runSpec{label: "fix", model: "opus", effort: "xhigh"}, "prompt")
@@ -137,8 +133,6 @@ func TestRunClaude_UsageUncountedWhenEnvelopeCarriesNone(t *testing.T) {
 // diagnosis on the error path — can be lost.
 func TestRunClaudeStream_KeepsStderrTail(t *testing.T) {
 	fakeClaude(t, "cat >/dev/null\ni=0\nwhile [ $i -lt 200 ]; do echo \"stderr line $i\" >&2; i=$((i+1)); done\nexit 1\n")
-	streamSinkFn = func() streamSink { return slogStreamSink{} }
-	t.Cleanup(func() { streamSinkFn = newDefaultStreamSink })
 	c := NewClient(WithShowOutput(true))
 
 	_, _, err := c.runClaudeWithPermission(runSpec{label: "review", model: "opus", effort: "xhigh"}, "prompt")

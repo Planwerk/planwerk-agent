@@ -9,8 +9,7 @@ import (
 
 // swapRunSession replaces the runSessionFn seam with a scripted fake for the
 // duration of one test and records every invocation. Tests using it must not
-// run in parallel — the seam is package-level, mirroring the streamSinkFn
-// override pattern.
+// run in parallel — the seam is package-level.
 type sessionCall struct {
 	spec   runSpec
 	prompt string

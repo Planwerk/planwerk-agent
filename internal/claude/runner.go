@@ -661,7 +661,7 @@ func structureWorkDir() (string, error) {
 
 // structureWorkDirFn is the working-directory seam the structuring tier resolves
 // through, so a test can point the sessions at a temporary directory without an
-// environment variable. It mirrors slogWarnFn in structure.go.
+// environment variable.
 var structureWorkDirFn = structureWorkDir
 
 // runClaudeStructureWithSchema is runClaudeStructure that additionally passes a

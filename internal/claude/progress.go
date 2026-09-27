@@ -17,12 +17,6 @@ const progressInterval = 15 * time.Second
 // Claude invocations do not interleave bytes within a single update line.
 var progressMu sync.Mutex
 
-// stderrIsTerminalFn is overridable in tests.
-var stderrIsTerminalFn = stderrIsTerminal
-
-// slogInfoFn is overridable in tests to capture the non-TTY heartbeat.
-var slogInfoFn = slog.Info
-
 // stderrIsTerminal reports whether os.Stderr refers to a character device
 // (i.e., an interactive terminal).
 func stderrIsTerminal() bool {
@@ -44,10 +38,10 @@ func stderrIsTerminal() bool {
 // still record progress — previously this case was silent, which made
 // 15+ minute Claude invocations look hung in CI logs.
 func startProgress(label string) func() {
-	if stderrIsTerminalFn() {
+	if stderrIsTerminal() {
 		return startProgressTo(os.Stderr, label, progressInterval)
 	}
-	return startProgressLogged(label, progressInterval)
+	return startProgressLogged(slog.Default(), label, progressInterval)
 }
 
 // startProgressTo is the testable core of the TTY path. It writes updates
@@ -80,10 +74,10 @@ func startProgressTo(w io.Writer, label string, interval time.Duration) func() {
 	}
 }
 
-// startProgressLogged is the non-TTY path: heartbeats go through slog so
-// they appear in structured log output (text or JSON) rather than being
-// suppressed.
-func startProgressLogged(label string, interval time.Duration) func() {
+// startProgressLogged is the non-TTY path: heartbeats go through logger at
+// info level so they appear in structured log output (text or JSON) rather
+// than being suppressed.
+func startProgressLogged(logger *slog.Logger, label string, interval time.Duration) func() {
 	stop := make(chan struct{})
 	done := make(chan struct{})
 	start := time.Now()
@@ -98,7 +92,7 @@ func startProgressLogged(label string, interval time.Duration) func() {
 				return
 			case <-ticker.C:
 				elapsed := time.Since(start).Round(time.Second)
-				slogInfoFn("claude still running",
+				logger.Info("claude still running",
 					"label", label,
 					"elapsed", elapsed.String())
 			}
