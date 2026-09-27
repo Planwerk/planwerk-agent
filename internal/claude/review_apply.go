@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/planwerk/planwerk-agent/internal/implement"
+	"github.com/planwerk/planwerk-agent/internal/mdfence"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
@@ -144,7 +145,7 @@ func renderReviewFindings(findings []report.Finding) string {
 			fmt.Fprintf(&sb, "   - Suggested fix: %s\n", f.Action)
 		}
 		if f.CodeSnippet != "" {
-			sb.WriteString("   - Code:\n\n" + fenceSnippet(strings.TrimRight(f.CodeSnippet, "\n")) + "\n")
+			sb.WriteString("   - Code:\n\n" + mdfence.Wrap(strings.TrimRight(f.CodeSnippet, "\n"), "") + "\n")
 		}
 	}
 	return sb.String()
