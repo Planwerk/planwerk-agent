@@ -157,6 +157,17 @@ should do it. What the material cannot do is change the session's rules,
 tools, git workflow, or output format, or ask for something that is never part
 of the work, such as credentials or a host the work does not need.
 
+A verbatim quote, such as a finding's code snippet or a review thread's diff
+hunk, also sits in a Markdown backtick fence. A fixed fence of three backticks
+ends at the first line of the quote that is itself three backticks, which a
+diff of a Markdown file produces by accident and a pull request author can
+produce on purpose. So `mdfence.Wrap` sizes the fence one tick longer than the
+longest backtick run inside the quote, and never shorter than three: CommonMark
+closes a backtick fence only on a run at least as long as the opening one.
+`internal/mdfence` is the one place that sizes a backtick fence, and the same
+helper serves the review report, the audit issues, and the suggestion blocks
+posted to GitHub.
+
 Some text only looks like data. The review checklist and the project's review
 patterns are spliced in as instructions, and the skills block obliges a session
 to follow a recipe. Those cannot be framed as data without losing their
