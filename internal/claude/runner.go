@@ -18,104 +18,49 @@ import (
 )
 
 const (
-	// DefaultClaudeTimeout is the compiled-in default for the maximum time
-	// allowed for a single Claude Code invocation. 60 minutes gives the
-	// long-running sessions — audit, elaborate, and above all an implement
-	// session that delegates its work packages to implementer subagents and
-	// verifies each result — enough headroom to finish instead of being cut
-	// off mid-branch. Override with WithTimeout (driven by the
-	// --claude-timeout flag / PLANWERK_CLAUDE_TIMEOUT env var) when a run
-	// needs even more.
+	// DefaultClaudeTimeout is the compiled-in maximum time for a single Claude
+	// Code invocation; override it with WithTimeout (--claude-timeout /
+	// PLANWERK_CLAUDE_TIMEOUT) (decision 74).
 	DefaultClaudeTimeout = 60 * time.Minute
-	// DefaultClaudeModel is the compiled-in default model passed to Claude
-	// Code via --model. The "opus" alias runs the latest Opus release
-	// automatically, without re-pinning on each model bump. It follows
-	// instructions literally, which is why the prompts state each constraint
-	// plainly and once, with its reason: stacked emphasis makes a literal
-	// reader rigid in gray areas rather than more careful. Override
-	// with SetModel (driven by the --claude-model flag / PLANWERK_CLAUDE_MODEL
-	// env var) to run reviews on a different model, e.g. "fable".
+	// DefaultClaudeModel is the compiled-in model passed via --model. The "opus"
+	// alias runs the latest Opus release without re-pinning; override it with
+	// WithModel (--claude-model / PLANWERK_CLAUDE_MODEL) (decision 101).
 	DefaultClaudeModel = "opus"
-	// DefaultPlanModel is the compiled-in default model for the implement
-	// command's planning session. It is "opus", the same alias as
-	// DefaultClaudeModel: every reasoning tier defaults to Opus at xhigh, so a
-	// run reasons on one model and one effort from plan to pull request. The knob
-	// stays separate from --claude-model because planning is a single
-	// read-only session whose output steers the entire implementation — the
-	// one session where a stronger model is worth choosing per run. Override
-	// with SetPlanModel (driven by the implement command's --plan-model flag /
-	// PLANWERK_PLAN_MODEL env var), e.g. "fable".
+	// DefaultPlanModel is the compiled-in model for the implement command's
+	// planning session; override it with WithPlanModel (--plan-model /
+	// PLANWERK_PLAN_MODEL) (decision 101).
 	DefaultPlanModel = "opus"
-	// DefaultClaudeEffort is the compiled-in default reasoning effort.
-	// "xhigh" is Claude Code's own default and the recommended setting for
-	// coding and agentic workloads; "max" buys little on top of it and
-	// tends toward overthinking. Override with SetEffort (driven by the
-	// --claude-effort flag / PLANWERK_CLAUDE_EFFORT env var), e.g. "max"
-	// for the largest thinking budget on latency-tolerant one-off runs.
+	// DefaultClaudeEffort is the compiled-in reasoning effort passed via
+	// --effort; override it with WithEffort (--claude-effort /
+	// PLANWERK_CLAUDE_EFFORT) (decision 101).
 	DefaultClaudeEffort = "xhigh"
-	// DefaultPlanEffort is the compiled-in default reasoning effort for the
-	// implement command's planning session. "xhigh" matches
-	// DefaultClaudeEffort: it already delivers the depth planning needs, and
-	// "max" on top of it tends toward overthinking — a planner that keeps
-	// re-deriving alternatives rather than committing to a change set — for a
-	// latency and token cost the extra depth does not repay. A stronger model
-	// (--plan-model) is the better lever when a plan needs more. Override with
-	// SetPlanEffort (driven by the implement command's --plan-effort flag /
-	// PLANWERK_PLAN_EFFORT env var), e.g. "max" for an unusually intricate
-	// issue.
+	// DefaultPlanEffort is the compiled-in reasoning effort for the implement
+	// command's planning session; override it with WithPlanEffort (--plan-effort
+	// / PLANWERK_PLAN_EFFORT) (decision 101).
 	DefaultPlanEffort = "xhigh"
-	// DefaultImplementWorkerEffort is the compiled-in default reasoning effort
-	// for the implementer subagents an orchestrated implement session
-	// delegates its work packages to (--implement-worker-model). "xhigh"
-	// matches DefaultClaudeEffort: the workers do the actual coding, so they
-	// get the same effort the single-session implement run would have spent.
-	// There is no DefaultImplementWorkerModel — the worker tier is opt-in, and
-	// an empty model keeps the historical single-session behavior. Override
-	// with the --implement-worker-effort flag / PLANWERK_IMPLEMENT_WORKER_EFFORT
-	// env var.
+	// DefaultImplementWorkerEffort is the compiled-in reasoning effort for the
+	// implementer subagents of an orchestrated implement session; override it
+	// with --implement-worker-effort / PLANWERK_IMPLEMENT_WORKER_EFFORT. There is
+	// no worker-model default; an empty worker model keeps the single-session
+	// run (decision 74).
 	DefaultImplementWorkerEffort = "xhigh"
-	// DefaultFinderEffort is the compiled-in default reasoning effort for the
-	// read-only finder passes — the adversarial pass, the domain specialists,
-	// the coverage map, the feature-compliance check, the simplify finder, and
-	// claim verification. Empty means "inherit the main effort", which is what
-	// the finders have always run at.
-	//
-	// It is deliberately not lowered here. The finders are where a cheaper tier
-	// would pay off most — six specialists run concurrently on every fan-out —
-	// but their output IS the product (findings a later pass acts on
-	// unattended), so the tier is the one knob that can cost recall rather than
-	// only tokens. The eval harness (`make eval`) scores exactly that: finding
-	// precision, recall, and severity accuracy over the seeded-bug corpus. Lower
-	// this default when a before/after run says the numbers hold, not before;
-	// until then --finder-effort makes the experiment a flag away.
+	// DefaultFinderEffort is the compiled-in reasoning effort for the read-only
+	// finder passes (see runClaudeFinder). Empty inherits the main tier;
+	// override it with --finder-effort / PLANWERK_FINDER_EFFORT (decision 79).
 	DefaultFinderEffort = ""
-	// DefaultFinderModel is the compiled-in default model for the same finder
-	// passes, empty for the same reason and with the same "inherit the main
-	// model" meaning. See DefaultFinderEffort.
+	// DefaultFinderModel is the compiled-in model for the finder passes. Empty
+	// inherits the main tier; override it with --finder-model /
+	// PLANWERK_FINDER_MODEL (decision 79).
 	DefaultFinderModel = ""
-	// DefaultStructureModel is the compiled-in default model for the mechanical
-	// JSON-structuring passes — the secondary `claude -p` calls that cast an
-	// upstream reasoning call's already-reasoned prose into the report schema
-	// (review findings, proposals, elaborations, gap analyses, sync entries,
-	// capture proposals, review-prepared). The "sonnet" alias runs the latest
-	// Sonnet release: structuring is bounded extraction-to-schema, not
-	// reasoning, so the heavy DefaultClaudeModel is wasted there. It is
-	// deliberately independent of c.model — like DefaultPlanModel, this is a
-	// dedicated tier, not a derivation of the main model — and the
-	// decodeJSONWithRepair backstop catches any malformed output. Override
-	// with WithStructureModel (driven by the --structure-model flag /
-	// PLANWERK_STRUCTURE_MODEL env var); pass "opus" to structure on the main
-	// model.
+	// DefaultStructureModel is the compiled-in model for the structuring tier:
+	// the secondary `claude -p` calls that transcribe an upstream call's
+	// already-reasoned prose into the report schema. It is independent of the
+	// main model; override it with WithStructureModel (--structure-model /
+	// PLANWERK_STRUCTURE_MODEL) (decisions 56 and 101).
 	DefaultStructureModel = "sonnet"
-	// DefaultStructureEffort is the compiled-in default reasoning effort for the
-	// structuring passes. "xhigh" matches every other tier: the model swap is
-	// this tier's cost lever, and the effort gives a long transcription the
-	// budget to carry every finding across (see warnOnDroppedFindings). The
-	// classification (severity / actionability / confidence) is decided in the
-	// upstream reasoning call, so "medium" is enough to transcribe
-	// already-reasoned prose into JSON when a run's cost matters. Override
-	// with WithStructureEffort (driven by the --structure-effort flag /
-	// PLANWERK_STRUCTURE_EFFORT env var).
+	// DefaultStructureEffort is the compiled-in reasoning effort for the
+	// structuring tier; override it with WithStructureEffort (--structure-effort
+	// / PLANWERK_STRUCTURE_EFFORT) (decisions 56 and 101).
 	DefaultStructureEffort = "xhigh"
 	// claudeAutoPermissionMode is the --permission-mode value the implement
 	// command passes to its orchestrated `claude -p` session so tool calls
@@ -163,35 +108,25 @@ const (
 var claudeAllowedTools = []string{"WebSearch", "WebFetch"}
 
 // withAllowedTools appends the --allowed-tools flag followed by every entry in
-// claudeAllowedTools. Both the JSON runner (runSession) and the
-// streaming runner (runClaudeStream) route their args through it so the two
-// paths can never drift on which tools a session may use. The prompt is fed on
-// stdin, never as a positional argument, so a trailing variadic flag is safe —
-// there is no positional for the flag to swallow.
+// claudeAllowedTools. The prompt is fed on stdin, never as a positional
+// argument, so a trailing variadic flag is safe — there is no positional for
+// the flag to swallow.
 func withAllowedTools(args []string) []string {
 	args = append(args, "--allowed-tools")
 	return append(args, claudeAllowedTools...)
 }
 
-// claudeReadOnlyDeniedTools are removed from the model's context on the
-// read-only analysis passes (review, audit, propose, elaborate, the specialist
-// and adversarial fan-out, and every structuring/repair call) via
-// --disallowed-tools. A bare tool name removes the tool entirely — a
-// harness-level guarantee, not a prompt-level request — so a pass whose
-// contract is to analyze the checkout and never mutate it cannot edit a file
-// even if the model is steered into trying. The mutating sessions (implement,
-// fix, address, rebase, finalize) keep these tools and pass readOnly=false.
-// NotebookEdit is denied for completeness even though the reviewed repos are
-// Go: a future caller reusing this path on a notebook repo inherits the same
-// guarantee for free.
+// claudeReadOnlyDeniedTools are the write tools --disallowed-tools removes from
+// the read-only passes, so a pass that must not mutate the checkout cannot edit
+// a file even if the model is steered into trying (decision 46).
 var claudeReadOnlyDeniedTools = []string{"Edit", "Write", "NotebookEdit"}
 
 // withReadOnlyDenied appends --disallowed-tools followed by every entry in
-// claudeReadOnlyDeniedTools when readOnly is true (a no-op when readOnly is
-// false). It must be appended before withAllowedTools so
-// --allowed-tools stays the trailing variadic flag: --disallowed-tools is a
-// variadic flag too, but the following --allowed-tools token terminates its
-// value list, and the prompt is fed on stdin so no positional can be swallowed.
+// claudeReadOnlyDeniedTools when readOnly is true (a no-op otherwise). It must
+// be appended before withAllowedTools so --allowed-tools stays the trailing
+// variadic flag: --disallowed-tools is a variadic flag too, but the following
+// --allowed-tools token terminates its value list, and the prompt is fed on
+// stdin so no positional can be swallowed.
 func withReadOnlyDenied(args []string, readOnly bool) []string {
 	if !readOnly {
 		return args
@@ -200,21 +135,14 @@ func withReadOnlyDenied(args []string, readOnly bool) []string {
 	return append(args, claudeReadOnlyDeniedTools...)
 }
 
-// readOnlyHookSettings is the --settings value the read-only sessions carry. A
-// read-only pass runs in a checkout of the change under review, which may be a
-// pull request from a fork, and --setting-sources project loads that checkout's
-// .claude/settings.json: any hook it declares would run as the operator, with
-// the operator's GitHub token in the environment, before the model reads a
-// single line. Settings passed on the command line outrank project settings, so
-// this switches every hook off for the session.
+// readOnlyHookSettings is the --settings value that switches every hook off for
+// a read-only session, so a hook in the reviewed checkout's
+// .claude/settings.json never runs as the operator (decision 95).
 const readOnlyHookSettings = `{"disableAllHooks":true}`
 
 // withHooksDisabled appends --settings readOnlyHookSettings when readOnly is
-// true (a no-op otherwise). The mutating sessions keep the project's hooks: they
-// work on a branch of the operator's own repository, where the hooks
-// (formatters, commit guards) are part of how the repository expects changes to
-// be made. --settings takes exactly one value, so it may sit anywhere before the
-// trailing variadic tool flags.
+// true and nothing otherwise; --settings takes exactly one value, so it may sit
+// anywhere before the trailing variadic tool flags (decision 95).
 func withHooksDisabled(args []string, readOnly bool) []string {
 	if !readOnly {
 		return args
@@ -222,22 +150,18 @@ func withHooksDisabled(args []string, readOnly bool) []string {
 	return append(args, "--settings", readOnlyHookSettings)
 }
 
-// withNoTools appends --tools followed by a single empty value, which is how
-// Claude Code is told to load none of its built-in tools. It replaces
-// withReadOnlyDenied and withAllowedTools rather than joining them: denying the
-// write tools and pre-approving the web tools both describe a session that still
-// has a toolset, and a transcription pass has no use for one. Like
-// --allowed-tools it is variadic, so it is appended last, where no following
-// token can be mistaken for one of its values; the prompt arrives on stdin, so
-// there is no positional for it to swallow.
+// withNoTools appends --tools followed by a single empty value, which loads
+// none of Claude Code's built-in tools, in place of withReadOnlyDenied and
+// withAllowedTools. Like --allowed-tools it is variadic, so it is appended
+// last, where no following token can be mistaken for one of its values
+// (decision 91).
 func withNoTools(args []string) []string {
 	return append(args, "--tools", "")
 }
 
-// runSpec bundles the per-invocation knobs behind one `claude -p` session so
-// the buffered and streaming runners share one shape instead of ten parallel
-// parameters. The runClaude* wrappers construct it; runSession
-// and runClaudeStream consume it.
+// runSpec bundles the per-invocation knobs of one `claude -p` session. The
+// runClaude* wrappers construct it; runSession and
+// runClaudeStream consume it.
 type runSpec struct {
 	dir            string
 	label          string
@@ -245,22 +169,16 @@ type runSpec struct {
 	model          string
 	effort         string
 	readOnly       bool // deny the write tools (withReadOnlyDenied)
-	// noTools removes every built-in tool from the session (withNoTools). It is
-	// stronger than readOnly, which only denies the three write tools, and
-	// supersedes it: a spec that sets noTools emits neither --disallowed-tools
-	// nor --allowed-tools. It also runs the session in structureWorkDir, which
-	// runSession resolves before any process starts. Only
-	// runClaudeStructureWithSchema sets it: those passes transcribe prose the
-	// prompt already carries and read nothing.
+	// noTools removes every built-in tool (withNoTools) and supersedes readOnly:
+	// the spec emits neither --disallowed-tools nor --allowed-tools. It also runs
+	// the session in structureWorkDir, which runSession resolves
+	// before any process starts. Only runClaudeStructureWithSchema sets it.
 	noTools    bool
 	jsonSchema string // --json-schema when non-empty
 	agentsJSON string // --agents when non-empty
-	// sessionID, when non-empty, pins the CLI session's id via --session-id so
-	// a later invocation can resume the very same session with its full
-	// context. resume flips the invocation from starting a fresh session to
-	// resuming sessionID via --resume — the completion nudge's follow-up turn.
-	// Both stay zero for every ordinary one-shot call, leaving the historical
-	// invocation unchanged.
+	// sessionID pins the CLI session's id (--session-id) and resume continues
+	// that session (--resume). Both are zero for a one-shot call; set by the
+	// completion nudge (decision 78).
 	sessionID string
 	resume    bool
 }
@@ -268,9 +186,7 @@ type runSpec struct {
 // withSession appends the session-identity flags: --session-id <id> pins a
 // fresh session's id so a follow-up turn can find it, --resume <id> continues
 // that session in place of starting a fresh one. A no-op when no session id is
-// set — the ordinary one-shot invocation. Both runner paths route their args
-// through it so the buffered and streaming runners cannot drift on how a
-// session is pinned or resumed.
+// set — the ordinary one-shot invocation.
 func withSession(args []string, spec runSpec) []string {
 	if spec.sessionID == "" {
 		return args
@@ -298,15 +214,10 @@ func newSessionID() string {
 
 // withAgents appends the --agents flag carrying the inline subagent
 // definitions (a JSON object mapping agent names to their definition) when
-// agentsJSON is non-empty, and is a no-op otherwise. Passing the definitions
-// as a CLI flag — rather than writing .claude/agents/ files into the target
-// checkout — keeps the orchestrated session hermetic: the flag outranks
-// project settings and leaves the reviewed repository untouched. Only the
-// implement session in orchestrator mode passes a non-empty value (see
-// implementAgentsJSON); every other session runs without subagent
-// definitions. Both runner paths route their args through it so the buffered
-// and streaming runners cannot drift on how a subagent definition reaches the
-// CLI.
+// agentsJSON is non-empty, and is a no-op otherwise. The definitions travel as
+// a flag, not files, so the checkout stays untouched. Only the implement
+// session in orchestrator mode passes a value (see implementAgentsJSON)
+// (decision 74).
 func withAgents(args []string, agentsJSON string) []string {
 	if agentsJSON == "" {
 		return args
@@ -345,27 +256,13 @@ func cliJSONSchema(doc string) string {
 	return string(stripped)
 }
 
-// hermeticArgs appends the flags that isolate an orchestrated `claude -p`
-// session from the invoking user's global configuration so the same input
-// yields the same output across machines and CI — the predictability the
-// prompt-design doctrine treats as the root virtue. --setting-sources project
-// drops the user-global ~/.claude/settings.json (and settings.local.json),
-// keeping only the reviewed repo's committed .claude/settings.json, which
-// travels with the repo and so is reproducible by construction; the CLI flags
-// this runner passes (--model, --permission-mode, the tool flags) outrank
-// project settings, so a reviewed repo cannot override them. --strict-mcp-config
-// with no --mcp-config loads zero MCP servers, dropping any the user configured
-// globally — none of the prompts need one. Both runner paths route through this
-// helper so the JSON and streaming runners cannot drift on isolation.
-//
-// It deliberately does NOT suppress a user-global ~/.claude/CLAUDE.md: Claude
-// Code loads memory independently of --setting-sources, and the only switch
-// that drops it (--bare) also strips Read/Grep/Glob, which the analysis passes
-// depend on. In CI — the primary use case — no user-global
-// CLAUDE.md exists, so that residual is a local-run caveat (see design decision
-// #45 and the configuration reference). WithInheritUserConfig(true) opts out of
-// hermetic mode entirely for an environment whose claude authentication lives
-// in user-global settings (e.g. apiKeyHelper).
+// hermeticArgs appends the flags that isolate a session from the invoking
+// user's global configuration. --setting-sources project drops the user-global
+// ~/.claude/settings.json (and settings.local.json) and keeps the checkout's
+// committed .claude/settings.json; --strict-mcp-config with no --mcp-config
+// loads no MCP servers. WithInheritUserConfig(true) opts out for an
+// environment whose claude authentication lives in user-global settings (e.g.
+// apiKeyHelper) (decision 45).
 func (c *Client) hermeticArgs(args []string) []string {
 	if c.inheritUserConfig {
 		return args
@@ -375,9 +272,8 @@ func (c *Client) hermeticArgs(args []string) []string {
 
 // Client runs Claude Code sessions with a fixed configuration. Each Client
 // owns its own timeout, model, and effort settings, so independent runners can
-// execute concurrently without sharing mutable state — the injectable
-// counterpart to the package-level configuration this type replaces. Construct
-// one with NewClient and thread it through the runners.
+// execute concurrently without sharing mutable state. Construct one with
+// NewClient and thread it through the runners.
 type Client struct {
 	timeout time.Duration
 	model   string
@@ -392,11 +288,8 @@ type Client struct {
 	planModel      string
 	structureModel string
 	// finderModel/finderEffort override model/effort for the read-only finder
-	// passes (adversarial, the domain specialists, coverage, compliance,
-	// simplify-find, claim verification). Like implementModel they have no
-	// compiled-in default: empty means "inherit the main tier", which is how the
-	// finders have always run. See DefaultFinderEffort for why the default is
-	// not lowered in the source.
+	// passes (see runClaudeFinder). Like implementModel they have no compiled-in
+	// default: empty inherits the main tier (decision 79).
 	finderModel     string
 	finderEffort    string
 	effort          string
@@ -404,12 +297,9 @@ type Client struct {
 	structureEffort string
 	showOutput      bool
 
-	// inheritUserConfig, when true, lets orchestrated `claude -p` sessions
-	// load the invoking user's global ~/.claude settings and MCP servers. It
-	// defaults to false: hermeticArgs isolates every session
-	// (--setting-sources project --strict-mcp-config) so a review is
-	// reproducible across machines and CI rather than varying with whoever's
-	// ~/.claude happens to be present. Set via WithInheritUserConfig.
+	// inheritUserConfig, when true, lets sessions load the invoking user's
+	// global ~/.claude settings and MCP servers instead of running hermetically
+	// (see hermeticArgs). Set via WithInheritUserConfig (decision 45).
 	inheritUserConfig bool
 
 	// sessionFn, when set, runs every session in place of the claude CLI. Only tests set it.
@@ -432,8 +322,8 @@ type Client struct {
 type Option func(*Client)
 
 // NewClient returns a Client seeded with the compiled-in defaults
-// (DefaultClaudeTimeout/Model/Effort and the planning defaults), then applies
-// opts. With no options it behaves exactly as the historical package defaults.
+// (DefaultClaudeTimeout/Model/Effort and the planning and structuring
+// defaults), then applies opts.
 func NewClient(opts ...Option) *Client {
 	c := &Client{
 		timeout:         DefaultClaudeTimeout,
@@ -587,17 +477,11 @@ func (c *Client) runClaude(dir, prompt, label string) (text, model string, err e
 	return c.runSession(runSpec{dir: dir, label: label, model: c.model, effort: c.effort, readOnly: true}, prompt)
 }
 
-// runClaudeFinder is runClaude on the finder tier: the read-only passes whose
-// job is to produce findings over a diff — the adversarial pass, each domain
-// specialist, the coverage map, the feature-compliance check, the simplify
-// finder, claim verification, and the implementation verifier. They share a shape (read the checkout, report
-// findings, mutate nothing) and, with six specialists running concurrently on
-// every fan-out, they are where a cheaper tier would pay off most.
-//
-// Both knobs default to empty, which inherits the main model and effort, so the
-// finders run exactly as they always have until --finder-model/--finder-effort
-// says otherwise. DefaultFinderEffort records why the compiled-in default is not
-// lowered on reasoning alone.
+// runClaudeFinder is runClaude on the finder tier, for the read-only passes
+// whose job is to produce findings over a diff: the adversarial pass, each
+// domain specialist, the coverage map, the feature-compliance check, the
+// simplify finder, claim verification, and the implementation verifier. Empty
+// finderModel and finderEffort inherit the main model and effort (decision 79).
 func (c *Client) runClaudeFinder(dir, prompt, label string) (text, model string, err error) {
 	return c.runSession(runSpec{
 		dir:      dir,
@@ -618,12 +502,9 @@ func firstNonEmpty(override, fallback string) string {
 	return fallback
 }
 
-// runClaudePlan is runClaude on the dedicated planning model (planModel,
-// default "opus") at the dedicated planning effort (planEffort, default
-// "xhigh"). The implement command's planning session uses it: the session only
-// reads the checkout and emits the implementation plan as text, so it keeps
-// the default (read-only) permission mode, on a tier of its own because it is
-// the one session whose depth steers the whole implementation.
+// runClaudePlan is runClaude on the dedicated planning tier (planModel,
+// planEffort) for the implement command's read-only planning session
+// (decision 101).
 func (c *Client) runClaudePlan(dir, prompt, label string) (text, model string, err error) {
 	return c.runSession(runSpec{dir: dir, label: label, model: c.planModel, effort: c.planEffort, readOnly: true}, prompt)
 }
@@ -639,20 +520,9 @@ func (c *Client) runClaudeStructure(prompt, label string) (text, model string, e
 }
 
 // structureWorkDir returns the directory the structuring sessions run in: one
-// stable, empty directory this tool owns.
-//
-// A transcription pass needs no checkout, but a `claude -p` session inherits
-// whatever its working directory supplies — the project settings hermeticArgs
-// keeps and the memory it cannot drop. These calls previously passed no
-// directory at all, so they ran wherever the operator launched the tool and
-// loaded that repository's configuration into a pass that only reformats prose.
-// An empty directory makes what they load the same on every machine.
-//
-// It is one fixed directory rather than a fresh temporary one per call because
-// Claude Code keys its session transcripts on the working directory: a new
-// directory per call would leave one project entry behind per structuring
-// session. The location mirrors the result cache (cache.defaultCacheDir),
-// including its fallback for an OS that reports no user cache directory.
+// stable, empty directory this tool owns, structure-workdir under the result
+// cache's root (cache.defaultCacheDir), or planwerk-agent-structure-workdir in
+// the temp dir when the OS reports no user cache directory (decision 91).
 func structureWorkDir() (string, error) {
 	dir := filepath.Join(os.TempDir(), "planwerk-agent-structure-workdir")
 	if base, err := os.UserCacheDir(); err == nil {
@@ -664,34 +534,21 @@ func structureWorkDir() (string, error) {
 	return dir, nil
 }
 
-// runClaudeStructureWithSchema is runClaudeStructure that additionally passes a
-// JSON Schema to the CLI via --json-schema, constraining the structured output
-// to that shape. Only the review structuring pass uses it (with
-// schema.StructuredReview); every other structuring caller uses the schema-less
-// runClaudeStructure, since the CLI's schema enforcement is a hard constraint we
-// only want where a stable wire contract exists. decodeJSONWithRepair still
-// backstops the decode either way.
-//
-// Every structuring call in the package reaches the CLI through here, so this is
-// the one place the tier's isolation is set: the spec sets noTools, so the
-// session runs with no tools in the empty structureWorkDir, which together make
-// its cost the prompt plus the transcription and nothing else. The spec names no
-// dir: runSession resolves structureWorkDir, and a working
-// directory that cannot be created fails the call before a process starts,
-// rather than silently falling back to the operator's own directory.
+// runClaudeStructureWithSchema is runClaudeStructure that also passes jsonSchema
+// to the CLI via --json-schema when it is non-empty; only the review
+// structuring pass sets one (schema.StructuredReview). Every structuring call
+// reaches the CLI through here, so this is where the tier's isolation is set:
+// the spec sets noTools and names no dir, and runSession runs it
+// in structureWorkDir (decisions 56 and 91).
 func (c *Client) runClaudeStructureWithSchema(prompt, label, jsonSchema string) (text, model string, err error) {
 	return c.runSession(runSpec{label: label, model: c.structureModel, effort: c.structureEffort, readOnly: true, noTools: true, jsonSchema: jsonSchema}, prompt)
 }
 
-// runClaudeAuto is runClaude with claudeAutoPermissionMode, letting the
-// session edit files and run git/gh/test commands without an interactive
-// approval — the orchestrated, one-shot `claude -p` sessions run unattended
-// inside a checkout and must commit and push without a human confirming each
-// step, while the auto-mode classifier still vets every action. The sessions
-// without a terminal-report contract (address, the rebase sessions) call it
-// directly; the report-bearing mutating sessions go
-// through runClaudeAutoReport, which adds the completion nudge on top of the
-// same autoSpec.
+// runClaudeAuto is runClaude with claudeAutoPermissionMode and the write tools
+// kept, for the one-shot sessions that edit, commit, and push unattended. The
+// sessions without a terminal-report contract (address, the rebase sessions)
+// call it directly; the report-bearing ones go through runClaudeAutoReport
+// (decision 78).
 func (c *Client) runClaudeAuto(dir, prompt, label string) (text, model string, err error) {
 	return c.runSession(c.autoSpec(dir, label), prompt)
 }
@@ -704,18 +561,10 @@ func (c *Client) autoSpec(dir, label string) runSpec {
 	return runSpec{dir: dir, label: label, permissionMode: claudeAutoPermissionMode, model: c.model, effort: c.effort}
 }
 
-// runClaudeImplement is runClaudeAuto on the implement session's model
-// override (implementModel) when one is set, and on the shared main model
-// otherwise. Only the Implement call uses it: --implement-model swaps the
-// model of the single code-writing session without recoloring the auto-mode
-// sessions around it (simplify/review apply, finalize, fix, address, rebase),
-// which stay on runClaudeAuto and the main model. agentsJSON, when non-empty,
-// carries the inline implementer-subagent definition the orchestrated mode
-// passes via --agents (see implementAgentsJSON); an empty value runs the
-// session without subagent definitions, exactly as before orchestrator mode
-// existed. The session runs under the completion nudge: when it ends without
-// its implementation report (heading + terminal STATUS), the same session is
-// resumed to finish and report instead of the run aborting outright.
+// runClaudeImplement runs the implement session: runClaudeAuto on
+// implementModel when one is set and on the main model otherwise, with
+// agentsJSON passed via --agents when non-empty (orchestrator mode), under the
+// completion nudge (decisions 74 and 78).
 func (c *Client) runClaudeImplement(dir, prompt, label, agentsJSON string) (text, model string, err error) {
 	spec := c.autoSpec(dir, label)
 	spec.model = c.implementSessionModel()
@@ -733,27 +582,6 @@ func (c *Client) implementSessionModel() string {
 	return c.model
 }
 
-// runSession is the shared implementation behind runClaude,
-// runClaudePlan, runClaudeAuto, and runClaudeImplement. The spec carries the
-// per-invocation knobs: permissionMode, when non-empty, is passed to claude as
-// --permission-mode (an empty value leaves claude on its default mode); model
-// and effort are the --model/--effort values the caller selected; readOnly is
-// true for the analysis passes (runClaude, runClaudePlan) and denies the write
-// tools via withReadOnlyDenied so the session cannot mutate the checkout;
-// agentsJSON, when non-empty, is passed via --agents so the session can
-// delegate to inline-defined subagents (only the orchestrated implement
-// session uses it — see withAgents); sessionID/resume pin or resume the CLI
-// session for the completion nudge (see withSession). Every invocation is also
-// isolated from user-global config via hermeticArgs and pre-approves
-// claudeAllowedTools via --allowed-tools (see withAllowedTools). The label
-// tags elapsed-time progress updates (or per-line stream prefixes when
-// streaming is enabled).
-//
-// When c.showOutput is false it uses --output-format json and captures the
-// full result via cmd.Output(). When c.showOutput is true it delegates to
-// runClaudeStream, which uses --output-format stream-json --verbose and
-// surfaces output incrementally; the periodic heartbeat is skipped in that
-// mode because the stream itself is the heartbeat.
 // claudeArgs assembles the claude CLI argv for spec. outputFormat selects the
 // envelope ("json" for the buffered runner, "stream-json" for the streaming
 // one) and extra follows it (the streaming runner adds --verbose). Everything
@@ -798,7 +626,12 @@ func (c *Client) claudeCommand(ctx context.Context, spec runSpec, prompt, output
 	return cmd
 }
 
-// runSession runs one session: through sessionFn when a test set it, through the claude CLI otherwise.
+// runSession runs one session: through sessionFn when a test set it, through
+// the claude CLI otherwise. On the CLI path it first resolves structureWorkDir
+// as a noTools spec's working directory, before any process starts. It then
+// buffers the result via --output-format json or, when c.showOutput is set,
+// streams it through runClaudeStream; the elapsed-time heartbeat runs only in
+// buffered mode, since the stream is its own heartbeat.
 func (c *Client) runSession(spec runSpec, prompt string) (string, string, error) {
 	if c.sessionFn != nil {
 		return c.sessionFn(spec, prompt)
@@ -842,8 +675,7 @@ func (c *Client) runSession(spec runSpec, prompt string) (string, string, error)
 		return "", "", claudeRunError(err, spec.model, out, exitErr.Stderr)
 	}
 	// The returned model is the exact id the envelope reports (e.g.
-	// "claude-opus-5-5"); the caller threads it per-run into the artifact
-	// footers instead of a package-level global, mirroring runClaudeStream.
+	// "claude-opus-5-5"), which the caller threads into the artifact footers.
 	text, resolvedModel, usage, cost, err := extractText(out)
 	if err != nil {
 		return "", "", err
@@ -893,10 +725,9 @@ type claudeResponse struct {
 // timeoutError reports the deadline this Client imposed, or nil when ctx was
 // not the reason the invocation ended. exec.CommandContext kills the child on
 // deadline, and the kill surfaces as an *exec.ExitError ("signal: killed") that
-// wraps nothing about the context — errors.Is(err, context.DeadlineExceeded) is
-// false — so a 60-minute cutoff read exactly like a crashed binary. Only ctx
-// itself still knows. Any stderr the child produced before the kill is kept:
-// it is the last thing the session said.
+// does not wrap context.DeadlineExceeded, so only ctx still knows. Any stderr
+// the child produced before the kill is kept: it is the last thing the session
+// said.
 func (c *Client) timeoutError(ctx context.Context, model string, stderr []byte) error {
 	if !errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return nil
@@ -910,11 +741,9 @@ func (c *Client) timeoutError(ctx context.Context, model string, stderr []byte) 
 // addFailureUsage counts the tokens a FAILED invocation spent. Claude Code
 // reports an exhausted turn budget or an upstream API error by writing its
 // result envelope — usage block included — to stdout and exiting non-zero, and
-// the streaming path repeats those fields on the raw `result` event. Both
-// runners returned before addUsage, so a session that burned 45 minutes and
-// hit error_max_turns was reported as $0 across 0 calls. A payload that is not
-// an envelope, or one that carries no usage at all, records nothing rather than
-// an empty call.
+// the streaming path repeats those fields on the raw `result` event. A payload
+// that is not an envelope, or one that carries no usage at all, records nothing
+// rather than an empty call.
 func (c *Client) addFailureUsage(label string, raw []byte) {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return
@@ -936,17 +765,13 @@ func (c *Client) addFailureUsage(label string, raw []byte) {
 }
 
 // claudeRunError renders a failed `claude -p` invocation into an error that
-// names what actually went wrong. Claude Code reports an API-level failure — a
-// hit rate limit, an exhausted turn budget — by writing its result envelope to
-// STDOUT and exiting non-zero, leaving STDERR empty. A runner that reports only
-// stderr therefore prints "claude: exit status 1\nstderr: " and drops the one
-// sentence that explains the failure ("You've reached your Fable 5 limit."),
-// which reads exactly like a crashed binary. stdout is the buffered envelope —
-// or, on the streaming path, the raw `result` event, which repeats the same
-// fields; stderr carries the failures that never reach the API, such as an
-// unknown flag. The model alias is named either way: the envelope talks about
-// "Fable 5" while the operator only ever typed `implement`, so which session hit
-// the limit is the actionable part.
+// names what went wrong. Claude Code reports an API-level failure (a hit rate
+// limit, an exhausted turn budget) by writing its result envelope to STDOUT and
+// exiting non-zero with STDERR empty. stdout is the buffered envelope or, on the
+// streaming path, the raw `result` event, which repeats the same fields; stderr
+// carries the failures that never reach the API, such as an unknown flag. The
+// model alias is named either way, since which session hit the limit is the
+// actionable part.
 func claudeRunError(err error, model string, stdout, stderr []byte) error {
 	if failure := envelopeFailure(stdout); failure != "" {
 		return fmt.Errorf("claude (model %s): %w: %s", model, err, failure)
