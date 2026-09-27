@@ -62,6 +62,27 @@ func TestFormatInlineComment_AutoFix(t *testing.T) {
 	}
 }
 
+// TestFormatInlineComment_SuggestedFixWithBackticks verifies a suggested fix
+// containing a ``` line stays whole inside its suggestion block, so "Commit
+// suggestion" cannot apply a truncated change.
+func TestFormatInlineComment_SuggestedFixWithBackticks(t *testing.T) {
+	f := Finding{
+		ID:            "C-002",
+		Severity:      SeverityCritical,
+		Title:         "Fence in fix",
+		Actionability: ActionabilityAutoFix,
+		FixClass:      FixClassAutoFix,
+		Problem:       "The fix quotes a code fence.",
+		SuggestedFix:  "a\n```\nb",
+	}
+
+	got := FormatInlineComment(f)
+
+	if !strings.Contains(got, "\n````suggestion\na\n```\nb\n````\n") {
+		t.Errorf("suggestion block must be fenced one tick longer than the fix's longest run, got:\n%s", got)
+	}
+}
+
 func TestFormatInlineComment_FixOptions(t *testing.T) {
 	f := Finding{
 		ID:            "W-003",

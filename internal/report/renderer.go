@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/planwerk/planwerk-agent/internal/attribution"
+	"github.com/planwerk/planwerk-agent/internal/mdfence"
 )
 
 // emDashPlaceholder is rendered in cells/fields that have no value.
@@ -150,11 +151,11 @@ func (r *Renderer) renderFinding(f Finding, last bool) {
 	}
 	_, _ = fmt.Fprintf(r.w, "**Problem**: %s\n\n", f.Problem)
 	if f.CodeSnippet != "" {
-		_, _ = fmt.Fprintf(r.w, "**Code**:\n```\n%s\n```\n\n", f.CodeSnippet)
+		_, _ = fmt.Fprintf(r.w, "**Code**:\n%s\n\n", mdfence.Wrap(f.CodeSnippet, ""))
 	}
 	_, _ = fmt.Fprintf(r.w, "**Action Required**: %s\n\n", f.Action)
 	if f.SuggestedFix != "" {
-		_, _ = fmt.Fprintf(r.w, "**Suggested Fix**:\n```\n%s\n```\n\n", f.SuggestedFix)
+		_, _ = fmt.Fprintf(r.w, "**Suggested Fix**:\n%s\n\n", mdfence.Wrap(f.SuggestedFix, ""))
 	}
 	renderFixOptions(r.w, f)
 	if len(f.RelatedTo) > 0 {
