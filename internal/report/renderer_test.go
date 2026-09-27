@@ -107,6 +107,51 @@ func TestRenderMarkdown_SnippetCheck(t *testing.T) {
 	})
 }
 
+// TestRenderMarkdown_FencesSnippetsWithBackticks verifies a finding's code
+// snippet and suggested fix sit in a fence one tick longer than their longest
+// backtick run, so a quoted ``` line cannot end the block in the posted review,
+// while backtick-free text keeps its three-tick fence.
+func TestRenderMarkdown_FencesSnippetsWithBackticks(t *testing.T) {
+	pr := PRInfo{Owner: "acme", Repo: "widgets", Number: 7, Title: "PR"}
+	render := func(snippet, fix string) string {
+		result := ReviewResult{
+			Findings: []Finding{{
+				ID: "C-001", Severity: SeverityCritical, Title: "Fence",
+				Problem: "p", Action: "a", CodeSnippet: snippet, SuggestedFix: fix,
+			}},
+		}
+		var buf bytes.Buffer
+		NewRenderer(&buf).RenderMarkdown(result, pr, SeverityInfo, "", "v1")
+		return buf.String()
+	}
+
+	t.Run("lengthens the fence around a backtick run", func(t *testing.T) {
+		got := render("a\n```\nb", "c\n```\nd")
+		for _, want := range []string{
+			"**Code**:\n````\na\n```\nb\n````\n\n",
+			"**Suggested Fix**:\n````\nc\n```\nd\n````\n\n",
+		} {
+			if !strings.Contains(got, want) {
+				t.Errorf("expected %q, got:\n%s", want, got)
+			}
+		}
+	})
+
+	t.Run("keeps three ticks for text without backticks", func(t *testing.T) {
+		got := render("x := 1", "")
+		if !strings.Contains(got, "**Code**:\n```\nx := 1\n```\n\n") {
+			t.Errorf("expected the unchanged three-tick fence, got:\n%s", got)
+		}
+	})
+
+	t.Run("omits both blocks when snippet and fix are empty", func(t *testing.T) {
+		got := render("", "")
+		if strings.Contains(got, "**Code**:") || strings.Contains(got, "**Suggested Fix**:") {
+			t.Errorf("empty snippet and fix must render no Code or Suggested Fix block, got:\n%s", got)
+		}
+	})
+}
+
 // TestRenderDataBlock_IncludesGates verifies the run-level gate records ride the
 // machine-readable data block when set, are omitted when nil, and that adding
 // them leaves the existing SHA+findings round-trip (now carrying the per-finding

@@ -3,6 +3,8 @@ package report
 import (
 	"fmt"
 	"strings"
+
+	"github.com/planwerk/planwerk-agent/internal/mdfence"
 )
 
 // FormatInlineComment formats a Finding as a GitHub inline review comment body.
@@ -24,9 +26,7 @@ func FormatInlineComment(f Finding) string {
 
 	// For auto-fix findings with a suggested fix, use GitHub's suggestion syntax
 	if f.Actionability == ActionabilityAutoFix && f.SuggestedFix != "" {
-		sb.WriteString("\n```suggestion\n")
-		sb.WriteString(f.SuggestedFix)
-		sb.WriteString("\n```\n")
+		sb.WriteString("\n" + mdfence.Wrap(f.SuggestedFix, "suggestion") + "\n")
 	} else if f.Action != "" {
 		sb.WriteString("\n**Action**: ")
 		sb.WriteString(f.Action)
