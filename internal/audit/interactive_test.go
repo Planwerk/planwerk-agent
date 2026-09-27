@@ -89,6 +89,33 @@ func TestBuildGroupBody_ContainsAllOccurrences(t *testing.T) {
 	}
 }
 
+// TestBuildGroupBody_FencesSnippetsWithBackticks: a code snippet or suggested
+// fix with a ``` line stays inside its fence in the filed issue, and a finding
+// without either renders no fence at all.
+func TestBuildGroupBody_FencesSnippetsWithBackticks(t *testing.T) {
+	group := func(snippet, fix string) FindingGroup {
+		return FindingGroup{
+			Pattern: "p", File: "a.go", MaxSeverity: report.SeverityWarning,
+			Findings: []report.Finding{{
+				File: "a.go", Line: 1, Severity: report.SeverityWarning, Problem: "x",
+				CodeSnippet: snippet, SuggestedFix: fix,
+			}},
+		}
+	}
+	body := buildGroupBody(group("a\n```\nb\n", "c\n```\nd\n"), "")
+	for _, want := range []string{
+		"````\na\n```\nb\n````\n\n",
+		"**Suggested fix**:\n\n````\nc\n```\nd\n````\n\n",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body missing %q\nfull body:\n%s", want, body)
+		}
+	}
+	if body := buildGroupBody(group("", ""), ""); strings.Contains(body, "```") {
+		t.Errorf("a finding without snippet or fix must render no fence\nfull body:\n%s", body)
+	}
+}
+
 func TestBuildGroupPreview_NoFooter(t *testing.T) {
 	g := FindingGroup{
 		Pattern: "p", File: "a.go", MaxSeverity: report.SeverityInfo,
