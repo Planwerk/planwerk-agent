@@ -2,6 +2,7 @@ package claude
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -35,7 +36,7 @@ func TestRunClaude_TimeoutNamesTheDeadline(t *testing.T) {
 	c := NewClient(WithTimeout(200 * time.Millisecond))
 
 	start := time.Now()
-	_, _, err := c.runClaudeWithPermission(runSpec{label: "review", model: "opus", effort: "xhigh"}, "prompt")
+	_, _, err := c.runSession(runSpec{label: "review", model: "opus", effort: "xhigh"}, "prompt")
 	elapsed := time.Since(start)
 	if err == nil {
 		t.Fatal("expected an error when the invocation outlives the timeout")
@@ -58,7 +59,7 @@ func TestRunClaudeStream_TimeoutNamesTheDeadline(t *testing.T) {
 	c := NewClient(WithTimeout(200*time.Millisecond), WithShowOutput(true))
 
 	start := time.Now()
-	_, _, err := c.runClaudeWithPermission(runSpec{label: "review", model: "opus", effort: "xhigh"}, "prompt")
+	_, _, err := c.runSession(runSpec{label: "review", model: "opus", effort: "xhigh"}, "prompt")
 	elapsed := time.Since(start)
 	if err == nil {
 		t.Fatal("expected an error when the streaming invocation outlives the timeout")
@@ -75,7 +76,7 @@ func TestRunClaude_CountsUsageOfAFailedTurn(t *testing.T) {
 	fakeClaude(t, "cat >/dev/null\nprintf '%s' '"+failureEnvelope+"'\nexit 1\n")
 	c := NewClient()
 
-	_, _, err := c.runClaudeWithPermission(runSpec{label: "implement", model: "opus", effort: "xhigh"}, "prompt")
+	_, _, err := c.runSession(runSpec{label: "implement", model: "opus", effort: "xhigh"}, "prompt")
 	if err == nil {
 		t.Fatal("expected an error for a failed turn")
 	}
@@ -104,7 +105,7 @@ func TestRunClaudeStream_CountsUsageOfAFailedTurn(t *testing.T) {
 	fakeClaude(t, "cat >/dev/null\nprintf '%s\\n' '"+event+"'\nexit 1\n")
 	c := NewClient(WithShowOutput(true))
 
-	_, _, err := c.runClaudeWithPermission(runSpec{label: "fix", model: "opus", effort: "xhigh"}, "prompt")
+	_, _, err := c.runSession(runSpec{label: "fix", model: "opus", effort: "xhigh"}, "prompt")
 	if err == nil {
 		t.Fatal("expected an error for a failed turn")
 	}
@@ -120,7 +121,7 @@ func TestRunClaude_UsageUncountedWhenEnvelopeCarriesNone(t *testing.T) {
 	fakeClaude(t, "cat >/dev/null\necho 'unknown flag' >&2\nexit 2\n")
 	c := NewClient()
 
-	if _, _, err := c.runClaudeWithPermission(runSpec{label: "review", model: "opus", effort: "xhigh"}, "prompt"); err == nil {
+	if _, _, err := c.runSession(runSpec{label: "review", model: "opus", effort: "xhigh"}, "prompt"); err == nil {
 		t.Fatal("expected an error")
 	}
 	if got := c.UsageTotals(); got.Calls != 0 {
@@ -135,7 +136,7 @@ func TestRunClaudeStream_KeepsStderrTail(t *testing.T) {
 	fakeClaude(t, "cat >/dev/null\ni=0\nwhile [ $i -lt 200 ]; do echo \"stderr line $i\" >&2; i=$((i+1)); done\nexit 1\n")
 	c := NewClient(WithShowOutput(true))
 
-	_, _, err := c.runClaudeWithPermission(runSpec{label: "review", model: "opus", effort: "xhigh"}, "prompt")
+	_, _, err := c.runSession(runSpec{label: "review", model: "opus", effort: "xhigh"}, "prompt")
 	if err == nil {
 		t.Fatal("expected an error")
 	}
@@ -152,9 +153,9 @@ func TestRunClaude_FeedsPromptOnStdin(t *testing.T) {
 	fakeClaude(t, "cat > "+seen+"\nprintf '%s' '{\"result\":\"ok\",\"model\":\"claude-opus-5-5\"}'\n")
 	c := NewClient()
 
-	out, model, err := c.runClaudeWithPermission(runSpec{label: "review", model: "opus", effort: "xhigh"}, "the prompt body")
+	out, model, err := c.runSession(runSpec{label: "review", model: "opus", effort: "xhigh"}, "the prompt body")
 	if err != nil {
-		t.Fatalf("runClaudeWithPermission: %v", err)
+		t.Fatalf("runSession: %v", err)
 	}
 	if out != "ok" || model != "claude-opus-5-5" {
 		t.Errorf("out = %q, model = %q", out, model)
@@ -168,77 +169,137 @@ func TestRunClaude_FeedsPromptOnStdin(t *testing.T) {
 	}
 }
 
+// redirectCacheRoot points os.UserCacheDir at root for the duration of the
+// test, on darwin ($HOME/Library/Caches) and linux ($XDG_CACHE_HOME) alike, and
+// returns the structuring directory structureWorkDir resolves under it.
+func redirectCacheRoot(t *testing.T, root string) string {
+	t.Helper()
+	t.Setenv("HOME", root)
+	t.Setenv("XDG_CACHE_HOME", root)
+	base, err := os.UserCacheDir()
+	if err != nil {
+		t.Fatalf("os.UserCacheDir: %v", err)
+	}
+	return filepath.Join(base, "planwerk-agent", "structure-workdir")
+}
+
+// structureRunners are the two runners runSession forks to after it resolves
+// the structuring directory: buffered, and streaming under WithShowOutput. The
+// directory tests run on both, so resolving it below the fork fails them.
+// result is the scripted claude's successful turn in that runner's format.
+var structureRunners = []struct {
+	name       string
+	showOutput bool
+	result     string
+}{
+	{"buffered", false, `printf '%s' '{"result":"{}","model":"claude-sonnet-5"}'`},
+	{"streaming", true, `printf '%s\n' '{"type":"result","result":"{}","model":"claude-sonnet-5"}'`},
+}
+
 // TestRunClaudeStructure_RunsIsolatedFromTheOperatorsDirectory drives a real
 // subprocess to pin what a structuring session is actually given: the empty
-// working directory the tier owns, and an argv with the whole built-in toolset
-// removed. Both were previously the operator's — the pass ran in whatever
-// directory the tool was launched from, with the full read-only toolset — and
-// neither is visible from claudeArgs alone, since only the spawned process can
-// report the directory it was started in.
+// working directory the tier owns under the user cache directory, and an argv
+// with the whole built-in toolset removed. Neither is visible from claudeArgs
+// alone, since only the spawned process can report the directory it was
+// started in.
 func TestRunClaudeStructure_RunsIsolatedFromTheOperatorsDirectory(t *testing.T) {
-	work := t.TempDir()
-	structureWorkDirFn = func() (string, error) { return work, nil }
-	t.Cleanup(func() { structureWorkDirFn = structureWorkDir })
+	for _, r := range structureRunners {
+		t.Run(r.name, func(t *testing.T) {
+			workDir := redirectCacheRoot(t, t.TempDir())
 
-	rec := t.TempDir()
-	pwdFile := filepath.Join(rec, "pwd")
-	argvFile := filepath.Join(rec, "argv")
-	fakeClaude(t, "cat >/dev/null\npwd -P > '"+pwdFile+"'\nprintf '%s\\n' \"$@\" > '"+argvFile+"'\n"+
-		"printf '%s' '{\"result\":\"{}\",\"model\":\"claude-sonnet-5\"}'\n")
+			rec := t.TempDir()
+			pwdFile := filepath.Join(rec, "pwd")
+			argvFile := filepath.Join(rec, "argv")
+			fakeClaude(t, "cat >/dev/null\npwd -P > '"+pwdFile+"'\nprintf '%s\\n' \"$@\" > '"+argvFile+"'\n"+r.result+"\n")
 
-	if _, _, err := NewClient().runClaudeStructure("transcribe this", "structure"); err != nil {
-		t.Fatalf("runClaudeStructure: %v", err)
-	}
+			if _, _, err := NewClient(WithShowOutput(r.showOutput)).runClaudeStructure("transcribe this", "structure"); err != nil {
+				t.Fatalf("runClaudeStructure: %v", err)
+			}
 
-	// pwd -P and EvalSymlinks both resolve the /var -> /private/var indirection
-	// macOS puts in front of a temp directory, so the two sides are comparable.
-	wantDir, err := filepath.EvalSymlinks(work)
-	if err != nil {
-		t.Fatalf("resolving the work dir: %v", err)
-	}
-	gotDir := strings.TrimSpace(readRecorded(t, pwdFile))
-	if gotDir != wantDir {
-		t.Errorf("session ran in %q, want the tier's own empty directory %q", gotDir, wantDir)
-	}
+			// pwd -P and EvalSymlinks both resolve the /var -> /private/var indirection
+			// macOS puts in front of a temp directory, so the two sides are comparable.
+			wantDir, err := filepath.EvalSymlinks(workDir)
+			if err != nil {
+				t.Fatalf("resolving the structuring directory: %v", err)
+			}
+			gotDir := strings.TrimSpace(readRecorded(t, pwdFile))
+			if gotDir != wantDir {
+				t.Errorf("session ran in %q, want the tier's own empty directory %q", gotDir, wantDir)
+			}
 
-	argv := recordedArgv(t, argvFile)
-	i := slices.Index(argv, "--tools")
-	if i == -1 {
-		t.Fatalf("argv carries no --tools: %v", argv)
-	}
-	if i != len(argv)-2 || argv[i+1] != "" {
-		t.Errorf("--tools must trail the argv with one empty value; got %v", argv)
-	}
-	if slices.Contains(argv, "--disallowed-tools") || slices.Contains(argv, "--allowed-tools") {
-		t.Errorf("a structuring session must carry neither tool list; got %v", argv)
-	}
-	if !slices.Contains(argv, "--setting-sources") || !slices.Contains(argv, "--strict-mcp-config") {
-		t.Errorf("a structuring session lost its hermetic flags; got %v", argv)
+			argv := recordedArgv(t, argvFile)
+			i := slices.Index(argv, "--tools")
+			if i == -1 {
+				t.Fatalf("argv carries no --tools: %v", argv)
+			}
+			if i != len(argv)-2 || argv[i+1] != "" {
+				t.Errorf("--tools must trail the argv with one empty value; got %v", argv)
+			}
+			if slices.Contains(argv, "--disallowed-tools") || slices.Contains(argv, "--allowed-tools") {
+				t.Errorf("a structuring session must carry neither tool list; got %v", argv)
+			}
+			if !slices.Contains(argv, "--setting-sources") || !slices.Contains(argv, "--strict-mcp-config") {
+				t.Errorf("a structuring session lost its hermetic flags; got %v", argv)
+			}
+		})
 	}
 }
 
 // TestRunClaudeStructure_WorkDirFailureNeverStartsAProcess covers the error path
-// of the directory the tier now depends on: when it cannot be created the call
+// of the directory the tier depends on: when it cannot be created the call
 // fails with that reason and no session runs, rather than falling back to
-// whatever directory the process happens to sit in.
+// whatever directory the process happens to sit in. The cache root is a regular
+// file, so creating a directory below it fails with ENOTDIR.
 func TestRunClaudeStructure_WorkDirFailureNeverStartsAProcess(t *testing.T) {
-	structureWorkDirFn = func() (string, error) {
-		return "", errors.New("creating the structuring working directory /nope: read-only file system")
-	}
-	t.Cleanup(func() { structureWorkDirFn = structureWorkDir })
+	for _, r := range structureRunners {
+		t.Run(r.name, func(t *testing.T) {
+			notADir := filepath.Join(t.TempDir(), "file")
+			if err := os.WriteFile(notADir, []byte("not a directory"), 0o600); err != nil {
+				t.Fatalf("writing the blocking file: %v", err)
+			}
+			redirectCacheRoot(t, notADir)
 
-	marker := filepath.Join(t.TempDir(), "ran")
-	fakeClaude(t, "touch '"+marker+"'\n")
+			marker := filepath.Join(t.TempDir(), "ran")
+			fakeClaude(t, "touch '"+marker+"'\n")
 
-	_, _, err := NewClient().runClaudeStructure("prompt", "structure")
-	if err == nil {
-		t.Fatal("expected an error when the structuring working directory cannot be created")
+			_, _, err := NewClient(WithShowOutput(r.showOutput)).runClaudeStructure("prompt", "structure")
+			if err == nil {
+				t.Fatal("expected an error when the structuring working directory cannot be created")
+			}
+			if !strings.Contains(err.Error(), "creating the structuring working directory") {
+				t.Errorf("error = %q, want it to name the working directory as the cause", err)
+			}
+			if _, statErr := os.Stat(marker); statErr == nil {
+				t.Error("the CLI was invoked although the working directory could not be created")
+			}
+		})
 	}
-	if !strings.Contains(err.Error(), "creating the structuring working directory") {
-		t.Errorf("error = %q, want it to name the working directory as the cause", err)
+}
+
+// TestRunSession_KeepsTheCallersDirectory covers a spec without noTools: the
+// session runs in the directory the caller named, and the structuring
+// directory is never created.
+func TestRunSession_KeepsTheCallersDirectory(t *testing.T) {
+	workDir := redirectCacheRoot(t, t.TempDir())
+	work := t.TempDir()
+
+	pwdFile := filepath.Join(t.TempDir(), "pwd")
+	fakeClaude(t, "cat >/dev/null\npwd -P > '"+pwdFile+"'\n"+
+		"printf '%s' '{\"result\":\"ok\",\"model\":\"claude-opus-5-5\"}'\n")
+
+	if _, _, err := NewClient().runSession(runSpec{dir: work, label: "review", model: "opus", effort: "xhigh"}, "prompt"); err != nil {
+		t.Fatalf("runSession: %v", err)
 	}
-	if _, statErr := os.Stat(marker); statErr == nil {
-		t.Error("the CLI was invoked although the working directory could not be created")
+
+	wantDir, err := filepath.EvalSymlinks(work)
+	if err != nil {
+		t.Fatalf("resolving the caller's directory: %v", err)
+	}
+	if gotDir := strings.TrimSpace(readRecorded(t, pwdFile)); gotDir != wantDir {
+		t.Errorf("session ran in %q, want the caller's directory %q", gotDir, wantDir)
+	}
+	if _, statErr := os.Stat(workDir); !errors.Is(statErr, fs.ErrNotExist) {
+		t.Errorf("stat %s = %v, want it absent: only a noTools spec creates the structuring directory", workDir, statErr)
 	}
 }
 

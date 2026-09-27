@@ -7,24 +7,26 @@ import (
 	"testing"
 )
 
-// swapRunSession replaces the runSessionFn seam with a scripted fake for the
-// duration of one test and records every invocation. Tests using it must not
-// run in parallel — the seam is package-level.
+// sessionCall is one session a scriptedClient ran: the spec and the prompt it
+// was given.
 type sessionCall struct {
 	spec   runSpec
 	prompt string
 }
 
-func swapRunSession(t *testing.T, script func(call int, spec runSpec, prompt string) (string, string, error)) *[]sessionCall {
+// scriptedClient returns a NewClient(opts...) whose sessions are answered by
+// script instead of the claude CLI, with every invocation recorded in order.
+// script receives the 1-based call number, so a test can answer the first turn
+// and a resumed turn differently.
+func scriptedClient(t *testing.T, script func(call int, spec runSpec, prompt string) (string, string, error), opts ...Option) (*Client, *[]sessionCall) {
 	t.Helper()
 	var calls []sessionCall
-	restore := runSessionFn
-	runSessionFn = func(_ *Client, spec runSpec, prompt string) (string, string, error) {
+	c := NewClient(opts...)
+	c.sessionFn = func(spec runSpec, prompt string) (string, string, error) {
 		calls = append(calls, sessionCall{spec: spec, prompt: prompt})
 		return script(len(calls), spec, prompt)
 	}
-	t.Cleanup(func() { runSessionFn = restore })
-	return &calls
+	return c, &calls
 }
 
 const (
@@ -38,11 +40,12 @@ const (
 // output — and the invocation pins a session id so a nudge would have been
 // possible.
 func TestRunWithCompletionNudge_CompleteFirstTry(t *testing.T) {
-	calls := swapRunSession(t, func(int, runSpec, string) (string, string, error) {
+	t.Parallel()
+	c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
 		return completeImplementReport, testResolvedModel, nil
 	})
 
-	out, model, err := NewClient().runWithCompletionNudge(runSpec{label: "implement"}, "do the thing", implementReportHeading, implementReportStatusChoices)
+	out, model, err := c.runWithCompletionNudge(runSpec{label: "implement"}, "do the thing", implementReportHeading, implementReportStatusChoices)
 	if err != nil {
 		t.Fatalf("runWithCompletionNudge returned error: %v", err)
 	}
@@ -67,7 +70,8 @@ func TestRunWithCompletionNudge_CompleteFirstTry(t *testing.T) {
 // SAME session (same id, resume set, same dir/model/agents) with the nudge
 // prompt, and accept the report the resumed turn produces.
 func TestRunWithCompletionNudge_NudgeCompletes(t *testing.T) {
-	calls := swapRunSession(t, func(call int, _ runSpec, _ string) (string, string, error) {
+	t.Parallel()
+	c, calls := scriptedClient(t, func(call int, _ runSpec, _ string) (string, string, error) {
 		if call == 1 {
 			return "Status so far: the envtest run exceeded the foreground cap and is finishing in the background; I'll report once the notification lands.", testResolvedModel, nil
 		}
@@ -75,7 +79,7 @@ func TestRunWithCompletionNudge_NudgeCompletes(t *testing.T) {
 	})
 
 	spec := runSpec{dir: "/work/clone", label: "implement", permissionMode: "auto", model: "opus", agentsJSON: `{"implementer":{}}`}
-	out, _, err := NewClient().runWithCompletionNudge(spec, "do the thing", implementReportHeading, implementReportStatusChoices)
+	out, _, err := c.runWithCompletionNudge(spec, "do the thing", implementReportHeading, implementReportStatusChoices)
 	if err != nil {
 		t.Fatalf("runWithCompletionNudge returned error: %v", err)
 	}
@@ -108,11 +112,12 @@ func TestRunWithCompletionNudge_NudgeCompletes(t *testing.T) {
 // decides what an incomplete output means (the implement orchestrator persists
 // it as resumable progress).
 func TestRunWithCompletionNudge_GivesUpAfterBoundedNudges(t *testing.T) {
-	calls := swapRunSession(t, func(call int, _ runSpec, _ string) (string, string, error) {
+	t.Parallel()
+	c, calls := scriptedClient(t, func(call int, _ runSpec, _ string) (string, string, error) {
 		return "still no report", "", nil
 	})
 
-	out, _, err := NewClient().runWithCompletionNudge(runSpec{label: "implement"}, "p", implementReportHeading, implementReportStatusChoices)
+	out, _, err := c.runWithCompletionNudge(runSpec{label: "implement"}, "p", implementReportHeading, implementReportStatusChoices)
 	if err != nil {
 		t.Fatalf("runWithCompletionNudge returned error: %v", err)
 	}
@@ -129,17 +134,21 @@ func TestRunWithCompletionNudge_GivesUpAfterBoundedNudges(t *testing.T) {
 // turn cannot fix an API failure, so the error returns unchanged after one
 // invocation.
 func TestRunWithCompletionNudge_RunErrorPropagates(t *testing.T) {
+	t.Parallel()
 	wantErr := errors.New("claude (model opus): exit status 1: api error 429")
-	calls := swapRunSession(t, func(int, runSpec, string) (string, string, error) {
+	c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
 		return "", "", wantErr
 	})
 
-	_, _, err := NewClient().runWithCompletionNudge(runSpec{label: "fix"}, "p", fixReportHeading, reportStatusChoices)
+	_, _, err := c.runWithCompletionNudge(runSpec{label: "fix"}, "p", fixReportHeading, reportStatusChoices)
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("err = %v, want the run error unchanged", err)
 	}
 	if len(*calls) != 1 {
-		t.Errorf("session ran %d times, want 1 (no nudge after a run error)", len(*calls))
+		t.Fatalf("session ran %d times, want 1 (no nudge after a run error)", len(*calls))
+	}
+	if (*calls)[0].spec.resume {
+		t.Error("the only invocation resumed a session; a run error must not reach the nudge")
 	}
 }
 
@@ -148,14 +157,15 @@ func TestRunWithCompletionNudge_RunErrorPropagates(t *testing.T) {
 // previous incomplete output must survive with a nil error so the caller can
 // persist the session's account instead of losing it behind the nudge's error.
 func TestRunWithCompletionNudge_NudgeErrorReturnsIncompleteOutput(t *testing.T) {
-	calls := swapRunSession(t, func(call int, _ runSpec, _ string) (string, string, error) {
+	t.Parallel()
+	c, calls := scriptedClient(t, func(call int, _ runSpec, _ string) (string, string, error) {
 		if call == 1 {
 			return "partial account of the work", testResolvedModel, nil
 		}
 		return "", "", errors.New("api error 429")
 	})
 
-	out, model, err := NewClient().runWithCompletionNudge(runSpec{label: "implement"}, "p", implementReportHeading, implementReportStatusChoices)
+	out, model, err := c.runWithCompletionNudge(runSpec{label: "implement"}, "p", implementReportHeading, implementReportStatusChoices)
 	if err != nil {
 		t.Fatalf("runWithCompletionNudge returned error: %v", err)
 	}
