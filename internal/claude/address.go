@@ -6,6 +6,7 @@ import (
 
 	"github.com/planwerk/planwerk-agent/internal/address"
 	"github.com/planwerk/planwerk-agent/internal/github"
+	"github.com/planwerk/planwerk-agent/internal/mdfence"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
@@ -295,9 +296,7 @@ func formatAddressThreads(threads []github.ReviewThread) string {
 			fmt.Fprintf(&chain, "- **%s**: %s\n", author, strings.TrimSpace(c.Body))
 		}
 		if t.DiffHunk != "" {
-			chain.WriteString("\nDiff hunk the comment is anchored to:\n\n```\n")
-			chain.WriteString(strings.TrimRight(t.DiffHunk, "\n"))
-			chain.WriteString("\n```\n")
+			chain.WriteString("\nDiff hunk the comment is anchored to:\n\n" + mdfence.Wrap(strings.TrimRight(t.DiffHunk, "\n"), "") + "\n")
 		}
 		sb.WriteString(fencedData("review-thread", fmt.Sprintf(" id=%q", t.ID), strings.TrimRight(chain.String(), "\n")))
 		sb.WriteString("\n")
