@@ -136,9 +136,10 @@ func (slogStreamSink) toolResult(label string) {
 
 // runClaudeStream invokes claude with --output-format stream-json --verbose
 // and surfaces assistant text and tool activity through a streamSink as
-// it arrives. The final assistant text is returned. The method is the
-// streaming counterpart of runClaudeWithPermission and shares its timeout,
-// effort, permission-mode, and isolation handling via the same runSpec shape:
+// it arrives. The final assistant text is returned. It is runSession's
+// streaming path, taken when c.showOutput is set. Call runSession, not this
+// method: runSession applies sessionFn, resolves a noTools spec's directory,
+// and normalizes jsonSchema before delegating here. From the runSpec,
 // spec.permissionMode, when non-empty, is passed to claude as
 // --permission-mode; spec.model/spec.effort are the --model/--effort values
 // the caller selected; spec.readOnly denies the write tools on the analysis

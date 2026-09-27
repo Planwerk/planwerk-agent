@@ -16,12 +16,10 @@ import (
 const maxRepairRounds = 3
 
 // repairJSON asks Claude to fix malformed JSON, feeding the parse error (and,
-// when known, the target schema) back so the model can correct it. It is a
-// package variable so tests can substitute a deterministic repair without
-// invoking the claude CLI. The call runs on the *Client's structure tier
-// (structureModel/structureEffort) via runClaudeStructure, matching the
-// structuring pass it backstops.
-var repairJSON = func(c *Client, malformed string, parseErr error, label, schema string) (string, error) {
+// when known, the target schema) back so the model can correct it. The call
+// runs on the Client's structure tier (structureModel/structureEffort) via
+// runClaudeStructure, matching the structuring pass it backstops.
+func (c *Client) repairJSON(malformed string, parseErr error, label, schema string) (string, error) {
 	text, _, err := c.runClaudeStructure(buildRepairPrompt(malformed, parseErr, schema), label+"-repair")
 	return text, err
 }
@@ -29,11 +27,10 @@ var repairJSON = func(c *Client, malformed string, parseErr error, label, schema
 // repairInvalidJSON asks Claude to fix JSON that parsed cleanly but failed
 // schema validation, feeding the validation error back so the model can correct
 // the offending fields. Its payload is one finding, not a whole review: see
-// repairFinding. It is a package variable so tests can substitute a
-// deterministic repair without invoking the claude CLI. The call runs on the
-// *Client's structure tier (structureModel/structureEffort) via
-// runClaudeStructure, matching the structuring pass it backstops.
-var repairInvalidJSON = func(c *Client, invalid string, validationErr error, label string) (string, error) {
+// repairFinding. The call runs on the Client's structure tier
+// (structureModel/structureEffort) via runClaudeStructure, matching the
+// structuring pass it backstops.
+func (c *Client) repairInvalidJSON(invalid string, validationErr error, label string) (string, error) {
 	text, _, err := c.runClaudeStructure(buildValidationRepairPrompt(invalid, validationErr), label+"-schema-repair")
 	return text, err
 }
@@ -62,7 +59,7 @@ func (c *Client) decodeJSONWithRepairSchema(text, label, schema string, v any) e
 	}
 	payload, lastErr := text, err
 	for round := 0; round < maxRepairRounds; round++ {
-		retry, retryErr := repairJSON(c, payload, lastErr, label, schema)
+		retry, retryErr := c.repairJSON(payload, lastErr, label, schema)
 		if retryErr != nil {
 			return fmt.Errorf("parsing %s as JSON: %w\nraw output:\n%s", label, err, text)
 		}

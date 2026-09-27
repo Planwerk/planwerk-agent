@@ -162,7 +162,7 @@ func (c *Client) repairFinding(i int, f report.Finding, verr error) (report.Find
 	}
 	payload := string(current)
 	for round := 0; round < maxRepairRounds; round++ {
-		repaired, err := repairInvalidJSON(c, payload, verr, "structured review finding")
+		repaired, err := c.repairInvalidJSON(payload, verr, "structured review finding")
 		if err != nil {
 			return f, fmt.Errorf("repairing schema-invalid finding %d (%q): %w (validation error: %w)", i, f.Title, err, verr)
 		}

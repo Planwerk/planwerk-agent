@@ -25,11 +25,6 @@ const (
 	implementReportStatusChoices = report.StatusDone + " | " + report.StatusDoneWithConcerns + " | " + report.StatusPartial + " | " + report.StatusBlocked + " | " + report.StatusNeedsContext
 )
 
-// runSessionFn is the seam runWithCompletionNudge runs its sessions through.
-// It defaults to the production runner; the completion tests swap it for a
-// fake that scripts session outputs without invoking the claude CLI.
-var runSessionFn = (*Client).runClaudeWithPermission
-
 // terminalReportComplete returns the completion gate for a session whose
 // contract is a terminal report: the output must carry the session's report
 // heading AND a terminal STATUS line (report.TerminalStatus). A session that
@@ -77,7 +72,7 @@ Output the report as the last thing in this turn, with nothing after it.`, headi
 func (c *Client) runWithCompletionNudge(spec runSpec, prompt, heading, statuses string) (string, string, error) {
 	complete := terminalReportComplete(heading)
 	spec.sessionID = newSessionID()
-	out, model, err := runSessionFn(c, spec, prompt)
+	out, model, err := c.runSession(spec, prompt)
 	if err != nil || complete(out) || spec.sessionID == "" {
 		return out, model, err
 	}
@@ -87,7 +82,7 @@ func (c *Client) runWithCompletionNudge(spec runSpec, prompt, heading, statuses 
 			"label", spec.label, "attempt", attempt, "heading", heading)
 		resumed := spec
 		resumed.resume = true
-		nudgedOut, nudgedModel, nudgeErr := runSessionFn(c, resumed, nudge)
+		nudgedOut, nudgedModel, nudgeErr := c.runSession(resumed, nudge)
 		if nudgeErr != nil {
 			slog.Warn("completion nudge failed; returning the incomplete output", "label", spec.label, "err", nudgeErr)
 			return out, model, nil

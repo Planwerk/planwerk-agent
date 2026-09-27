@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -40,21 +41,18 @@ func addressTestContext() address.Context {
 // TestDecodeAddressResult_Valid exercises the exact decode path Address uses:
 // a fenced AddressResult JSON payload decodes without invoking the repair path.
 func TestDecodeAddressResult_Valid(t *testing.T) {
-	called := false
-	restore := repairJSON
-	repairJSON = func(*Client, string, error, string, string) (string, error) {
-		called = true
-		return "", errors.New("repair must not be called for valid JSON")
-	}
-	t.Cleanup(func() { repairJSON = restore })
+	t.Parallel()
+	c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
+		return "", "", errors.New("repair must not be called for valid JSON")
+	})
 
 	const payload = "```json\n{\"threads\":[{\"thread_id\":\"RT_1\",\"status\":\"DONE\",\"summary\":\"renamed\",\"files\":[\"internal/foo/bar.go\"]}],\"summary\":\"done\",\"status\":\"DONE\"}\n```"
 	var got report.AddressResult
-	if err := (&Client{}).decodeJSONWithRepair(payload, "structured address-result", &got); err != nil {
+	if err := c.decodeJSONWithRepair(payload, "structured address-result", &got); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if called {
-		t.Error("repair was called for valid JSON")
+	if len(*calls) != 0 {
+		t.Errorf("repair ran %d sessions for valid JSON, want 0", len(*calls))
 	}
 	if len(got.Threads) != 1 || got.Threads[0].ThreadID != "RT_1" || got.Status != "DONE" {
 		t.Errorf("decoded %+v, want one DONE thread RT_1", got)
@@ -65,17 +63,18 @@ func TestDecodeAddressResult_Valid(t *testing.T) {
 // payload is repaired once and then decodes, so a one-character glitch in the
 // session's output does not fail the run.
 func TestDecodeAddressResult_Repairs(t *testing.T) {
-	restore := repairJSON
-	repairJSON = func(_ *Client, malformed string, parseErr error, label, schema string) (string, error) {
-		if parseErr == nil {
-			t.Error("repair should receive the original parse error")
+	t.Parallel()
+	const truncated = `{"threads":null,"summary":"recovered","status":"DONE"`
+	parseErr := json.Unmarshal([]byte(truncated), new(report.AddressResult))
+	c := &Client{sessionFn: func(_ runSpec, prompt string) (string, string, error) {
+		if !strings.Contains(prompt, parseErr.Error()) {
+			t.Errorf("repair prompt does not carry the original parse error %q:\n%s", parseErr, prompt)
 		}
-		return `{"threads":null,"summary":"recovered","status":"DONE"}`, nil
-	}
-	t.Cleanup(func() { repairJSON = restore })
+		return `{"threads":null,"summary":"recovered","status":"DONE"}`, "", nil
+	}}
 
 	var got report.AddressResult
-	if err := (&Client{}).decodeJSONWithRepair(`{"threads":null,"summary":"recovered","status":"DONE"`, "structured address-result", &got); err != nil {
+	if err := c.decodeJSONWithRepair(truncated, "structured address-result", &got); err != nil {
 		t.Fatalf("expected repair to succeed, got: %v", err)
 	}
 	if got.Summary != "recovered" || got.Status != "DONE" {

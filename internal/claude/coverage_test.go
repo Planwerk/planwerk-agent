@@ -1,7 +1,9 @@
 package claude
 
 import (
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/planwerk/planwerk-agent/internal/report"
@@ -12,21 +14,18 @@ import (
 // into a populated CoverageResult without ever invoking the repair path, so a
 // stray markdown fence no longer fails the whole coverage pass.
 func TestCoverageDecode_FencedPayload(t *testing.T) {
-	called := false
-	restore := repairJSON
-	repairJSON = func(*Client, string, error, string, string) (string, error) {
-		called = true
-		return "", errors.New("repair must not be called for a fenced-but-valid payload")
-	}
-	t.Cleanup(func() { repairJSON = restore })
+	t.Parallel()
+	c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
+		return "", "", errors.New("repair must not be called for a fenced-but-valid payload")
+	})
 
 	const payload = "```json\n{\"entries\":[{\"function\":\"Foo()\",\"file\":\"foo.go\",\"rating\":\"GAP\"}]}\n```"
 	var result report.CoverageResult
-	if err := (&Client{}).decodeJSONWithRepair(payload, "coverage map", &result); err != nil {
+	if err := c.decodeJSONWithRepair(payload, "coverage map", &result); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if called {
-		t.Error("repair was called for a fenced-but-valid payload")
+	if len(*calls) != 0 {
+		t.Errorf("repair ran %d sessions for a fenced-but-valid payload, want 0", len(*calls))
 	}
 	if len(result.Entries) != 1 || result.Entries[0].Function != "Foo()" || result.Entries[0].Rating != "GAP" {
 		t.Errorf("decoded %+v, want one GAP entry for Foo()", result)
@@ -38,17 +37,18 @@ func TestCoverageDecode_FencedPayload(t *testing.T) {
 // repaired once and then decodes, so a one-character glitch no longer kills the
 // pass.
 func TestCoverageDecode_MalformedRepaired(t *testing.T) {
-	restore := repairJSON
-	repairJSON = func(_ *Client, _ string, parseErr error, _, _ string) (string, error) {
-		if parseErr == nil {
-			t.Error("repair should receive the original parse error")
+	t.Parallel()
+	const truncated = `{"entries":[{"function":"Bar()","file":"bar.go","rating":"★★★"}`
+	parseErr := json.Unmarshal([]byte(truncated), new(report.CoverageResult))
+	c := &Client{sessionFn: func(_ runSpec, prompt string) (string, string, error) {
+		if !strings.Contains(prompt, parseErr.Error()) {
+			t.Errorf("repair prompt does not carry the original parse error %q:\n%s", parseErr, prompt)
 		}
-		return `{"entries":[{"function":"Bar()","file":"bar.go","rating":"★★★"}]}`, nil
-	}
-	t.Cleanup(func() { repairJSON = restore })
+		return `{"entries":[{"function":"Bar()","file":"bar.go","rating":"★★★"}]}`, "", nil
+	}}
 
 	var result report.CoverageResult
-	if err := (&Client{}).decodeJSONWithRepair(`{"entries":[{"function":"Bar()","file":"bar.go","rating":"★★★"}`, "coverage map", &result); err != nil {
+	if err := c.decodeJSONWithRepair(truncated, "coverage map", &result); err != nil {
 		t.Fatalf("expected repair to succeed, got: %v", err)
 	}
 	if len(result.Entries) != 1 || result.Entries[0].Function != "Bar()" {
@@ -63,20 +63,17 @@ func TestCoverageDecode_MalformedRepaired(t *testing.T) {
 // {"status":"ok"} object. That decodes into a CoverageResult with no entries;
 // decodeCoverage must reject it loudly rather than return an empty coverage map.
 func TestDecodeCoverage_PrependedObjectFailsLoud(t *testing.T) {
-	called := false
-	restore := repairJSON
-	repairJSON = func(*Client, string, error, string, string) (string, error) {
-		called = true
-		return "", errors.New("repair should not run: the leading object decodes cleanly")
-	}
-	t.Cleanup(func() { repairJSON = restore })
+	t.Parallel()
+	c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
+		return "", "", errors.New("repair should not run: the leading object decodes cleanly")
+	})
 
 	const payload = `{"status":"ok"}` + "\n" + `{"entries":[{"function":"Foo()","file":"foo.go","rating":"GAP"}]}`
-	if _, err := (&Client{}).decodeCoverage(payload); err == nil {
+	if _, err := c.decodeCoverage(payload); err == nil {
 		t.Fatal("decodeCoverage accepted a payload whose leading object has no entries; want a loud error")
 	}
-	if called {
-		t.Error("repair was called; the guard should reject the entries-less decode, not the repair path")
+	if len(*calls) != 0 {
+		t.Errorf("repair ran %d sessions; the guard should reject the entries-less decode, not the repair path", len(*calls))
 	}
 }
 
