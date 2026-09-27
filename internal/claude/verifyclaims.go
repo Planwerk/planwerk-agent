@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/planwerk/planwerk-agent/internal/hygiene"
+	"github.com/planwerk/planwerk-agent/internal/mdfence"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
@@ -66,30 +67,9 @@ func buildClaimVerificationPrompt(findings []report.Finding) string {
 		}
 		fmt.Fprintf(&b, "%d. [%s] %s — %s\n   Problem: %s\n", i, f.Severity, f.Title, loc, f.Problem)
 		if f.CodeSnippet != "" {
-			fmt.Fprintf(&b, "   Quoted code:\n%s\n", fenceSnippet(f.CodeSnippet))
+			fmt.Fprintf(&b, "   Quoted code:\n%s\n", mdfence.Wrap(f.CodeSnippet, ""))
 		}
 	}
 	b.WriteString("</findings>")
 	return b.String()
-}
-
-// fenceSnippet wraps s in a backtick fence sized longer than the longest run of
-// backticks inside it, so the snippet cannot terminate the fence early. The
-// snippet is a verbatim quote of attacker-controlled PR diff lines; a fixed ```
-// fence lets a diff containing a raw triple-backtick close it and inject
-// free-standing prompt text that instructs this suppression-only verifier to
-// refute a genuine finding.
-func fenceSnippet(s string) string {
-	longest, run := 0, 0
-	for _, r := range s {
-		if r == '`' {
-			if run++; run > longest {
-				longest = run
-			}
-		} else {
-			run = 0
-		}
-	}
-	ticks := strings.Repeat("`", longest+3)
-	return ticks + "\n" + s + "\n" + ticks
 }
