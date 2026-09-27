@@ -163,16 +163,12 @@ const (
 var claudeAllowedTools = []string{"WebSearch", "WebFetch"}
 
 // withAllowedTools appends the --allowed-tools flag followed by every entry in
-// claudeAllowedTools (a no-op when the list is empty). Both the JSON runner
-// (runClaudeWithPermission) and the streaming runner (runClaudeStream) route
-// their args through it so the two paths can never drift on which tools a
-// session may use. The prompt is fed on stdin, never as a positional argument,
-// so a trailing variadic flag is safe — there is no positional for the flag to
-// swallow.
+// claudeAllowedTools. Both the JSON runner (runClaudeWithPermission) and the
+// streaming runner (runClaudeStream) route their args through it so the two
+// paths can never drift on which tools a session may use. The prompt is fed on
+// stdin, never as a positional argument, so a trailing variadic flag is safe —
+// there is no positional for the flag to swallow.
 func withAllowedTools(args []string) []string {
-	if len(claudeAllowedTools) == 0 {
-		return args
-	}
 	args = append(args, "--allowed-tools")
 	return append(args, claudeAllowedTools...)
 }
@@ -192,12 +188,12 @@ var claudeReadOnlyDeniedTools = []string{"Edit", "Write", "NotebookEdit"}
 
 // withReadOnlyDenied appends --disallowed-tools followed by every entry in
 // claudeReadOnlyDeniedTools when readOnly is true (a no-op when readOnly is
-// false or the list is empty). It must be appended before withAllowedTools so
+// false). It must be appended before withAllowedTools so
 // --allowed-tools stays the trailing variadic flag: --disallowed-tools is a
 // variadic flag too, but the following --allowed-tools token terminates its
 // value list, and the prompt is fed on stdin so no positional can be swallowed.
 func withReadOnlyDenied(args []string, readOnly bool) []string {
-	if !readOnly || len(claudeReadOnlyDeniedTools) == 0 {
+	if !readOnly {
 		return args
 	}
 	args = append(args, "--disallowed-tools")
