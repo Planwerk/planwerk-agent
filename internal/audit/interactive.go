@@ -8,6 +8,7 @@ import (
 
 	"github.com/planwerk/planwerk-agent/internal/attribution"
 	"github.com/planwerk/planwerk-agent/internal/github"
+	"github.com/planwerk/planwerk-agent/internal/mdfence"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
@@ -136,10 +137,10 @@ func renderFindingDetails(b *bytes.Buffer, f report.Finding, withLineHeader bool
 		fmt.Fprintf(b, "**Action**: %s\n\n", f.Action)
 	}
 	if f.CodeSnippet != "" {
-		fmt.Fprintf(b, "```\n%s\n```\n\n", strings.TrimRight(f.CodeSnippet, "\n"))
+		fmt.Fprintf(b, "%s\n\n", mdfence.Wrap(strings.TrimRight(f.CodeSnippet, "\n"), ""))
 	}
 	if f.SuggestedFix != "" {
-		fmt.Fprintf(b, "**Suggested fix**:\n\n```\n%s\n```\n\n", strings.TrimRight(f.SuggestedFix, "\n"))
+		fmt.Fprintf(b, "**Suggested fix**:\n\n%s\n\n", mdfence.Wrap(strings.TrimRight(f.SuggestedFix, "\n"), ""))
 	}
 }
 

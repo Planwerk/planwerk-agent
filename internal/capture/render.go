@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/planwerk/planwerk-agent/internal/attribution"
+	"github.com/planwerk/planwerk-agent/internal/mdfence"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
@@ -104,32 +105,9 @@ func (r *Renderer) renderSection(label, gloss string, pages []ProposedPage, prov
 			_, _ = fmt.Fprintf(r.w, "%s\n\n", line)
 		}
 		page := RenderPage(p, prov)
-		fence := fenceFor(page)
+		fence := mdfence.Ticks(page)
 		_, _ = fmt.Fprintf(r.w, "%smarkdown\n", fence)
 		_, _ = fmt.Fprint(r.w, page)
 		_, _ = fmt.Fprintf(r.w, "%s\n\n", fence)
 	}
-}
-
-// fenceFor returns a backtick fence at least one tick longer than the longest
-// run of backticks in s, so a body that itself contains ``` code fences cannot
-// terminate the wrapper early. Pattern bodies carry example ```go/```bash
-// blocks and memory pages are free-form Markdown, so the wrapper length must be
-// computed from the content rather than fixed at three.
-func fenceFor(s string) string {
-	longest, run := 0, 0
-	for _, r := range s {
-		if r == '`' {
-			if run++; run > longest {
-				longest = run
-			}
-		} else {
-			run = 0
-		}
-	}
-	n := longest + 1
-	if n < 3 {
-		n = 3
-	}
-	return strings.Repeat("`", n)
 }
