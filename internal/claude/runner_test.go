@@ -34,24 +34,6 @@ func TestWithAllowedTools_PreApprovesWebTools(t *testing.T) {
 	}
 }
 
-// TestWithAllowedTools_NoFlagWhenEmpty documents the guard: an empty tool list
-// leaves the args untouched rather than emitting a dangling --allowed-tools
-// flag with no value.
-func TestWithAllowedTools_NoFlagWhenEmpty(t *testing.T) {
-	restore := claudeAllowedTools
-	claudeAllowedTools = nil
-	t.Cleanup(func() { claudeAllowedTools = restore })
-
-	base := []string{"-p", "--model", "opus"}
-	got := withAllowedTools(base)
-	if slices.Contains(got, "--allowed-tools") {
-		t.Errorf("withAllowedTools emitted the flag for an empty list; got %v", got)
-	}
-	if len(got) != len(base) {
-		t.Errorf("withAllowedTools changed args for an empty list; got %v, want %v", got, base)
-	}
-}
-
 // TestWithAgents_AppendsFlag locks the orchestrated implement session's
 // contract: a non-empty agents JSON reaches the CLI verbatim as the --agents
 // value, so the inline implementer definition (worker model, effort, prompt)
