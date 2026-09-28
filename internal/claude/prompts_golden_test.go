@@ -140,6 +140,7 @@ func goldenAuditContext() audit.AuditContext {
 func goldenAnalysisContext() propose.AnalysisContext {
 	return propose.AnalysisContext{
 		Patterns:    goldenPatterns(),
+		Catalog:     goldenCatalog(),
 		MaxPatterns: 0,
 		RepoName:    "planwerk/planwerk-agent",
 	}
@@ -205,6 +206,7 @@ func goldenFeature() *planwerk.Feature {
 func goldenElaborateContext() elaborate.Context {
 	return elaborate.Context{
 		Patterns:    goldenPatterns(),
+		Catalog:     goldenCatalog(),
 		MaxPatterns: 0,
 		RepoName:    "planwerk/planwerk-agent",
 		Issue: &github.Issue{
@@ -543,6 +545,7 @@ func TestBuildCoveragePrompt_Golden(t *testing.T) {
 func goldenImplementContext() implement.Context {
 	return implement.Context{
 		Patterns:     goldenPatterns(),
+		Catalog:      goldenCatalog(),
 		MaxPatterns:  0,
 		Skills:       goldenSkills(),
 		RepoFullName: "planwerk/planwerk-agent",
@@ -715,6 +718,7 @@ func goldenSimplifyApplyContext() implement.SimplifyApplyContext {
 			},
 		},
 		Patterns:    goldenPatterns(),
+		Catalog:     goldenCatalog(),
 		MaxPatterns: 0,
 	}
 }
@@ -741,6 +745,7 @@ func goldenReviewApplyContext() implement.ReviewApplyContext {
 			},
 		},
 		Patterns:    goldenPatterns(),
+		Catalog:     goldenCatalog(),
 		MaxPatterns: 0,
 	}
 }
@@ -793,6 +798,7 @@ func goldenFixContext() fix.Context {
 			},
 		},
 		Patterns:    goldenPatterns(),
+		Catalog:     goldenCatalog(),
 		MaxPatterns: 0,
 		Skills:      goldenSkills(),
 		Fixup:       true,
@@ -878,6 +884,7 @@ func goldenAddressContext() address.Context {
 		},
 		OneCommitPerThread: true,
 		Patterns:           goldenPatterns(),
+		Catalog:            goldenCatalog(),
 		MaxPatterns:        0,
 		Skills:             goldenSkills(),
 	}
@@ -937,6 +944,7 @@ func goldenRebaseConflictContext() rebase.ConflictContext {
 		Commit:          github.Commit{SHA: "abc1234def5678", Subject: "Add the snapshot helper"},
 		ConflictedFiles: []string{"internal/claude/runner.go", "internal/claude/runner_test.go"},
 		Patterns:        goldenPatterns(),
+		Catalog:         goldenCatalog(),
 		MaxPatterns:     0,
 	}
 }
@@ -949,6 +957,7 @@ func goldenRebaseAnalysisContext() rebase.AnalysisContext {
 		RebasedCommits:  []github.Commit{{SHA: "1111111aaaa", Subject: "Add the snapshot helper"}, {SHA: "2222222bbbb", Subject: "Wire the helper into the runner"}},
 		UpstreamCommits: []github.Commit{{SHA: "9999999zzzz", Subject: "Rename runClaude to runSession"}},
 		Patterns:        goldenPatterns(),
+		Catalog:         goldenCatalog(),
 		MaxPatterns:     0,
 	}
 }
@@ -980,6 +989,7 @@ func goldenRebaseApplyContext() rebase.ApplyContext {
 			Recommendation: "Apply the rename before pushing.",
 		},
 		Patterns:    goldenPatterns(),
+		Catalog:     goldenCatalog(),
 		MaxPatterns: 0,
 	}
 }
@@ -1021,6 +1031,31 @@ func TestBuildRebaseAnalysisPrompt_NoPatterns(t *testing.T) {
 	ctx := goldenRebaseAnalysisContext()
 	ctx.Patterns = nil
 	assertGoldenPrompt(t, "rebase_analysis_no_patterns", BuildRebaseAnalysisPrompt(ctx))
+}
+
+// TestPrintedPromptsCarryTheBodies covers the render half of the
+// --print-prompt contract. A printed prompt renders before any catalog is
+// written, so its context holds the zero Catalog, and the prompt carries the
+// pattern bodies with no catalog index and no catalog directory.
+func TestPrintedPromptsCarryTheBodies(t *testing.T) {
+	addressCtx := goldenAddressContext()
+	addressCtx.Catalog = patterns.Catalog{}
+	rebaseCtx := goldenRebaseAnalysisContext()
+	rebaseCtx.Catalog = patterns.Catalog{}
+
+	for _, tc := range []struct{ name, prompt string }{
+		{"address", BuildAddressPrompt(addressCtx)},
+		{"rebase-analysis", BuildRebaseAnalysisPrompt(rebaseCtx)},
+	} {
+		if !strings.Contains(tc.prompt, "<review-patterns>") {
+			t.Errorf("%s prompt lacks the <review-patterns> bodies", tc.name)
+		}
+		for _, unwanted := range []string{"<review-patterns-index>", patterns.CatalogDirPrefix} {
+			if strings.Contains(tc.prompt, unwanted) {
+				t.Errorf("%s prompt contains %q; a printed prompt names no catalog", tc.name, unwanted)
+			}
+		}
+	}
 }
 
 // TestBuildRebaseApplyPrompt_Golden locks the apply prompt: fold the
@@ -1202,6 +1237,7 @@ func goldenGapAnalysisContext() gapanalysis.AnalysisContext {
 	return gapanalysis.AnalysisContext{
 		Features:    []*planwerk.Feature{f},
 		Patterns:    goldenPatterns(),
+		Catalog:     goldenCatalog(),
 		MaxPatterns: 0,
 		RepoName:    "planwerk/planwerk-agent",
 	}
@@ -1232,6 +1268,7 @@ func goldenReviewPreparedContext(includeImproved bool) reviewprepared.AnalysisCo
 			},
 		},
 		Patterns:        goldenPatterns(),
+		Catalog:         goldenCatalog(),
 		MaxPatterns:     0,
 		RepoName:        "planwerk/planwerk-agent",
 		IncludeImproved: includeImproved,
