@@ -100,11 +100,14 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	if len(pats) > 0 {
 		slog.Info("loaded review patterns", "count", len(pats))
 	}
+	cat, cleanupCatalog := patterns.MaterializeOrWarn(pats)
+	defer cleanupCatalog()
 
 	slog.Info("running gap analysis with Claude")
 	result, err := r.Claude.GapAnalysis(repo.Dir, AnalysisContext{
 		Features:    features,
 		Patterns:    pats,
+		Catalog:     cat,
 		MaxPatterns: opts.MaxPatterns,
 		RepoName:    repo.FullName(),
 	})

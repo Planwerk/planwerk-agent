@@ -183,6 +183,10 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	} else {
 		slog.Warn("no review patterns loaded — elaboration will not be grounded in the pattern catalog")
 	}
+	// One catalog serves the elaboration and every refinement turn; it is
+	// removed when Run returns.
+	cat, cleanupCatalog := patterns.MaterializeOrWarn(pats)
+	defer cleanupCatalog()
 
 	// Load the repo's domain glossary (CONTEXT.md / .planwerk/context.md).
 	// Best-effort: an unreadable glossary warns and proceeds.
@@ -191,6 +195,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	slog.Info("elaborating issue with Claude")
 	baseCtx := Context{
 		Patterns:      pats,
+		Catalog:       cat,
 		MaxPatterns:   opts.MaxPatterns,
 		RepoName:      repo.FullName(),
 		Issue:         issue,

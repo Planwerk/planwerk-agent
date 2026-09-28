@@ -117,11 +117,16 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		if len(pats) > 0 {
 			slog.Info("loaded review patterns", "count", len(pats))
 		}
+		// Deferred like the clone above, so the catalog is removed when Run
+		// returns.
+		cat, cleanupCatalog := patterns.MaterializeOrWarn(pats)
+		defer cleanupCatalog()
 
 		slog.Info("running review-prepared with Claude", "create_pr", opts.CreatePR)
 		result, err = r.Claude.ReviewPrepared(repo.Dir, AnalysisContext{
 			Features:        features,
 			Patterns:        pats,
+			Catalog:         cat,
 			MaxPatterns:     opts.MaxPatterns,
 			RepoName:        repo.FullName(),
 			IncludeImproved: opts.CreatePR,
