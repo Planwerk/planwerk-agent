@@ -2,8 +2,8 @@
 // materializes a labeled corpus of seeded-bug cases into throwaway git repos,
 // runs the shipped review pipeline against each, and scores the findings for
 // precision, recall, and severity accuracy. It never runs in unit CI — RunCase
-// invokes the real claude CLI and spends tokens; only the loader, the scorer and
-// the repo setup are unit-tested.
+// invokes the real claude CLI and spends tokens; only the loader, the scorer,
+// the baseline comparison and the repo setup are unit-tested.
 //
 // # Corpus storage
 //

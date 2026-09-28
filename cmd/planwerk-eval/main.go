@@ -5,7 +5,9 @@
 //
 // It exits non-zero only on a harness error (bad corpus, git failure, pipeline
 // or JSON error) — never because scores are low. A low score is a signal to
-// read, not a build break.
+// read, not a build break. The same holds for -baseline: a REGRESSED verdict
+// is printed beside the scores, and only a baseline that cannot be loaded or
+// compared is an error.
 package main
 
 import (
@@ -27,23 +29,42 @@ func main() {
 	thorough := flag.Bool("thorough", false, "run the adversarial (thorough) review pass too")
 	specialists := flag.Bool("specialists", false, "run the domain specialist fan-out too")
 	runs := flag.Int("runs", 1, "run each case N times, each with a fresh client, and pool the scores")
+	baseline := flag.String("baseline", "", fmt.Sprintf("compare against a report written by -json (at least %d runs per side)", eval.MinCompareRuns))
 	jsonOut := flag.Bool("json", false, "emit the score report as JSON instead of a table")
 	flag.Parse()
 
 	cfg := eval.Config{Runs: *runs, RunOptions: eval.RunOptions{Thorough: *thorough, Specialists: *specialists}}
-	if err := run(*corpusDir, *caseName, cfg, *jsonOut); err != nil {
+	if err := run(*corpusDir, *caseName, *baseline, cfg, *jsonOut); err != nil {
 		fmt.Fprintln(os.Stderr, "planwerk-eval:", err)
 		os.Exit(1)
 	}
 }
 
-func run(corpusDir, caseName string, cfg eval.Config, jsonOut bool) error {
+func run(corpusDir, caseName, baselinePath string, cfg eval.Config, jsonOut bool) error {
 	if cfg.Runs < 1 {
 		return fmt.Errorf("-runs must be at least 1, got %d", cfg.Runs)
 	}
 	cases, err := loadCases(corpusDir, caseName)
 	if err != nil {
 		return err
+	}
+
+	// Check the baseline before the first case runs, so a mismatch spends no
+	// tokens.
+	var baseline *eval.Report
+	if baselinePath != "" {
+		b, err := eval.LoadReport(baselinePath)
+		if err != nil {
+			return err
+		}
+		names := make([]string, 0, len(cases))
+		for _, c := range cases {
+			names = append(names, c.Name)
+		}
+		if err := eval.Comparable(b, cfg, names); err != nil {
+			return err
+		}
+		baseline = &b
 	}
 
 	scored := make([]eval.Scored, 0, len(cases))
@@ -68,10 +89,22 @@ func run(corpusDir, caseName string, cfg eval.Config, jsonOut bool) error {
 	}
 
 	rep := eval.BuildReport(scored, cfg)
+	if baseline != nil {
+		// A REGRESSED verdict is printed for a person to read, never exited on:
+		// the exit code reports harness errors only (decision 59).
+		cmp, err := eval.Compare(*baseline, rep)
+		if err != nil {
+			return err
+		}
+		rep.Comparison = &cmp
+	}
 	if jsonOut {
 		return eval.RenderJSON(os.Stdout, rep)
 	}
 	eval.RenderTable(os.Stdout, rep)
+	if rep.Comparison != nil {
+		eval.RenderComparison(os.Stdout, *rep.Comparison)
+	}
 	return nil
 }
 
