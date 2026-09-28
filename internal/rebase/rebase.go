@@ -172,15 +172,20 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		return r.dryRun(w, pr, onto, origin, origMergeBase, replay)
 	}
 
+	// One catalog for the conflict, analysis and apply sessions, removed when
+	// Run returns. Print-prompt and dry-run return before it exists.
+	cat, cleanupCatalog := patterns.MaterializeOrWarn(pats)
+	defer cleanupCatalog()
+
 	// Replay onto the base, resolving each conflict with Claude.
-	if err := r.runRebaseLoop(w, opts, pr, onto, fullName, number, pats); err != nil {
+	if err := r.runRebaseLoop(w, opts, pr, onto, fullName, number, pats, cat); err != nil {
 		return err
 	}
 
 	// The rebase is clean. Analyze the rebased commits against the upstream
 	// range, then optionally apply the adjustments.
 	if !opts.NoAnalysis {
-		if err := r.analyzeAndReport(w, opts, pr, onto, origin, origMergeBase, fullName, owner, repo, number, pats); err != nil {
+		if err := r.analyzeAndReport(w, opts, pr, onto, origin, origMergeBase, fullName, owner, repo, number, pats, cat); err != nil {
 			return err
 		}
 	}
@@ -200,7 +205,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 
 // runRebaseLoop performs the rebase and drives the conflict-resolution loop
 // until it completes cleanly or --max-iterations is exhausted (then aborts).
-func (r *Runner) runRebaseLoop(w io.Writer, opts Options, pr *github.PR, onto, fullName string, number int, pats []patterns.Pattern) error {
+func (r *Runner) runRebaseLoop(w io.Writer, opts Options, pr *github.PR, onto, fullName string, number int, pats []patterns.Pattern, cat patterns.Catalog) error {
 	state, err := r.GitHub.StartRebase(pr.Dir, onto)
 	if err != nil {
 		return fmt.Errorf("starting rebase onto %s: %w", onto, err)
@@ -230,6 +235,7 @@ func (r *Runner) runRebaseLoop(w io.Writer, opts Options, pr *github.PR, onto, f
 			Commit:          github.Commit{SHA: state.StoppedSHA, Subject: state.StoppedSubject},
 			ConflictedFiles: state.ConflictedFiles,
 			Patterns:        pats,
+			Catalog:         cat,
 			MaxPatterns:     opts.MaxPatterns,
 		})
 		if err != nil {
@@ -258,7 +264,7 @@ func (r *Runner) runRebaseLoop(w io.Writer, opts Options, pr *github.PR, onto, f
 
 // analyzeAndReport runs the post-rebase analysis, renders it, posts it as a PR
 // comment (unless suppressed), and optionally applies the adjustments.
-func (r *Runner) analyzeAndReport(w io.Writer, opts Options, pr *github.PR, onto, origin, origMergeBase, fullName, owner, repo string, number int, pats []patterns.Pattern) error {
+func (r *Runner) analyzeAndReport(w io.Writer, opts Options, pr *github.PR, onto, origin, origMergeBase, fullName, owner, repo string, number int, pats []patterns.Pattern, cat patterns.Catalog) error {
 	upstream, err := r.GitHub.CommitsInRange(pr.Dir, origMergeBase+".."+origin)
 	if err != nil {
 		return fmt.Errorf("listing upstream commits: %w", err)
@@ -275,6 +281,7 @@ func (r *Runner) analyzeAndReport(w io.Writer, opts Options, pr *github.PR, onto
 		RebasedCommits:  rebased,
 		UpstreamCommits: upstream,
 		Patterns:        pats,
+		Catalog:         cat,
 		MaxPatterns:     opts.MaxPatterns,
 	})
 	if err != nil {
@@ -295,6 +302,7 @@ func (r *Runner) analyzeAndReport(w io.Writer, opts Options, pr *github.PR, onto
 			HeadBranch:   pr.HeadBranch,
 			Analysis:     *analysis,
 			Patterns:     pats,
+			Catalog:      cat,
 			MaxPatterns:  opts.MaxPatterns,
 		})
 		if err != nil {

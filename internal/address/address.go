@@ -182,7 +182,9 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		if opts.OneCommitPerThread {
 			unit = selected[:1] // render the first thread's prompt
 		}
-		prompt := r.BuildPrompt(r.contextFor(opts, pr, unit, pats, sks))
+		// A printed prompt outlives the run, so it carries the pattern bodies
+		// (zero Catalog) instead of pointing at a directory removed on exit.
+		prompt := r.BuildPrompt(r.contextFor(opts, pr, unit, pats, patterns.Catalog{}, sks))
 		if _, err := io.WriteString(w, prompt); err != nil {
 			return fmt.Errorf("writing prompt: %w", err)
 		}
@@ -200,6 +202,11 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 // the per-thread results, posts the aggregate report, and returns an escalation
 // or max-iterations error when the run could not finish cleanly.
 func (r *Runner) dispatch(w io.Writer, opts Options, pr *github.PR, fullName string, selected []github.ReviewThread, pats []patterns.Pattern, sks []skills.Skill) error {
+	// One catalog per address run, shared by every per-thread or aggregate
+	// session and removed when dispatch returns.
+	cat, cleanupCatalog := patterns.MaterializeOrWarn(pats)
+	defer cleanupCatalog()
+
 	var addressed []report.AddressedThread
 	var summaries []string
 	var escalated Status
@@ -213,7 +220,7 @@ func (r *Runner) dispatch(w io.Writer, opts Options, pr *github.PR, fullName str
 			}
 			processed++
 			_, _ = fmt.Fprintf(w, "Addressing thread %s (%s)...\n", t.ID, threadLocation(t))
-			result, err := r.addressUnit(w, opts, pr, []github.ReviewThread{t}, pats, sks)
+			result, err := r.addressUnit(w, opts, pr, []github.ReviewThread{t}, pats, cat, sks)
 			if err != nil {
 				return err
 			}
@@ -229,7 +236,7 @@ func (r *Runner) dispatch(w io.Writer, opts Options, pr *github.PR, fullName str
 		}
 	} else {
 		_, _ = fmt.Fprintf(w, "Addressing %d thread(s) as one aggregate commit...\n", len(selected))
-		result, err := r.addressUnit(w, opts, pr, selected, pats, sks)
+		result, err := r.addressUnit(w, opts, pr, selected, pats, cat, sks)
 		if err != nil {
 			return err
 		}
@@ -264,8 +271,8 @@ func (r *Runner) dispatch(w io.Writer, opts Options, pr *github.PR, fullName str
 // addressUnit runs one Claude address session, publishes the follow-up
 // commit(s) it made, and (gated) replies to and resolves each addressed thread.
 // The push is fatal on failure; replying and resolving are best-effort.
-func (r *Runner) addressUnit(w io.Writer, opts Options, pr *github.PR, threads []github.ReviewThread, pats []patterns.Pattern, sks []skills.Skill) (*report.AddressResult, error) {
-	result, err := r.Claude.Address(pr.Dir, r.contextFor(opts, pr, threads, pats, sks))
+func (r *Runner) addressUnit(w io.Writer, opts Options, pr *github.PR, threads []github.ReviewThread, pats []patterns.Pattern, cat patterns.Catalog, sks []skills.Skill) (*report.AddressResult, error) {
+	result, err := r.Claude.Address(pr.Dir, r.contextFor(opts, pr, threads, pats, cat, sks))
 	if err != nil {
 		return nil, fmt.Errorf("claude address: %w", err)
 	}
@@ -358,7 +365,7 @@ func pickByID(w io.Writer, threads []github.ReviewThread, ids []string) []github
 }
 
 // contextFor assembles the Claude prompt context for a unit of work.
-func (r *Runner) contextFor(opts Options, pr *github.PR, threads []github.ReviewThread, pats []patterns.Pattern, sks []skills.Skill) Context {
+func (r *Runner) contextFor(opts Options, pr *github.PR, threads []github.ReviewThread, pats []patterns.Pattern, cat patterns.Catalog, sks []skills.Skill) Context {
 	return Context{
 		RepoFullName:       fmt.Sprintf("%s/%s", pr.Owner, pr.Repo),
 		PRNumber:           pr.Number,
@@ -368,6 +375,7 @@ func (r *Runner) contextFor(opts Options, pr *github.PR, threads []github.Review
 		Threads:            threads,
 		OneCommitPerThread: opts.OneCommitPerThread,
 		Patterns:           pats,
+		Catalog:            cat,
 		MaxPatterns:        opts.MaxPatterns,
 		Skills:             sks,
 		StyleGuidePath:     styleguide.Find(pr.Dir),

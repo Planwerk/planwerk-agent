@@ -5,13 +5,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
 
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/github/githubtest"
+	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
@@ -30,11 +33,19 @@ type fakeClaude struct {
 	lastConflict ConflictContext
 	lastAnalysis AnalysisContext
 	lastApply    ApplyContext
+
+	// onCatalog, when set, runs inside every session call after it is
+	// recorded, with that session's catalog, so a test can observe on-disk
+	// state while the session "runs".
+	onCatalog func(cat patterns.Catalog)
 }
 
 func (f *fakeClaude) ResolveConflict(_ string, ctx ConflictContext) (string, error) {
 	f.resolveCalls.Add(1)
 	f.lastConflict = ctx
+	if f.onCatalog != nil {
+		f.onCatalog(ctx.Catalog)
+	}
 	if f.resolveOut != "" {
 		return f.resolveOut, f.resolveErr
 	}
@@ -44,6 +55,9 @@ func (f *fakeClaude) ResolveConflict(_ string, ctx ConflictContext) (string, err
 func (f *fakeClaude) AnalyzeRebasedCommits(_ string, ctx AnalysisContext) (*report.RebaseAnalysis, error) {
 	f.analyzeCalls.Add(1)
 	f.lastAnalysis = ctx
+	if f.onCatalog != nil {
+		f.onCatalog(ctx.Catalog)
+	}
 	if f.analyzeErr != nil {
 		return nil, f.analyzeErr
 	}
@@ -56,6 +70,9 @@ func (f *fakeClaude) AnalyzeRebasedCommits(_ string, ctx AnalysisContext) (*repo
 func (f *fakeClaude) ApplyAdjustments(_ string, ctx ApplyContext) (string, error) {
 	f.applyCalls.Add(1)
 	f.lastApply = ctx
+	if f.onCatalog != nil {
+		f.onCatalog(ctx.Catalog)
+	}
 	return "applied", f.applyErr
 }
 
@@ -74,6 +91,30 @@ func done() github.RebaseState { return github.RebaseState{Done: true} }
 func hermeticOpts(ref string) Options {
 	return Options{PRRef: ref, NoLocalPatterns: true, NoRepoPatterns: true}
 }
+
+// writeSamplePattern seeds a --patterns directory holding one pattern named
+// "Sample wiring check", whose catalog file is sampleCatalogFile, and returns
+// the directory.
+func writeSamplePattern(t *testing.T) string {
+	t.Helper()
+	patternsDir := t.TempDir()
+	const patternBody = `# Review Pattern: Sample wiring check
+**Review-Area**: meta
+**Detection-Hint**: anything
+**Severity**: WARNING
+
+## Rule
+Wired patterns must reach the rebase contexts.
+`
+	if err := os.WriteFile(patternsDir+"/sample.md", []byte(patternBody), 0o644); err != nil {
+		t.Fatalf("seeding pattern file: %v", err)
+	}
+	return patternsDir
+}
+
+// sampleCatalogFile is the catalog file name of the pattern writeSamplePattern
+// seeds.
+const sampleCatalogFile = "sample-wiring-check.md"
 
 func TestRun_CleanRebaseThenAnalysis(t *testing.T) {
 	gh := &githubtest.Fake{
@@ -379,6 +420,12 @@ func TestRun_RequiresRefWithoutLocal(t *testing.T) {
 }
 
 func TestRun_PrintPromptWritesPromptSkipsClaude(t *testing.T) {
+	patternsDir := writeSamplePattern(t)
+	// Every t.TempDir above is created before TMPDIR points at tmp, so tmp
+	// holds only what Run writes.
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+
 	gh := &githubtest.Fake{
 		PR:               github.PR{HeadBranch: "feat/x", HeadSHA: "headsha"},
 		CommitsInRangeFn: commitsByRange([]github.Commit{{SHA: "c1", Subject: "first"}}, []github.Commit{{SHA: "u1", Subject: "upstream one"}}),
@@ -386,12 +433,15 @@ func TestRun_PrintPromptWritesPromptSkipsClaude(t *testing.T) {
 	}
 	cl := &fakeClaude{}
 	r := newRunner(gh, cl)
+	var got AnalysisContext
 	r.AnalysisPrompt = func(ctx AnalysisContext) string {
+		got = ctx
 		return fmt.Sprintf("PROMPT pr=%s#%d onto=%s rebased=%d upstream=%d",
 			ctx.RepoFullName, ctx.PRNumber, ctx.Onto, len(ctx.RebasedCommits), len(ctx.UpstreamCommits))
 	}
 
 	opts := hermeticOpts("owner/repo#7")
+	opts.PatternDirs = []string{patternsDir}
 	opts.PrintPrompt = true
 	var buf bytes.Buffer
 	if err := r.Run(&buf, opts); err != nil {
@@ -409,6 +459,23 @@ func TestRun_PrintPromptWritesPromptSkipsClaude(t *testing.T) {
 	}
 	if !strings.HasSuffix(out, "\n") {
 		t.Errorf("prompt output should end with a newline, got: %q", out)
+	}
+	// A printed prompt outlives the run, so it carries the pattern bodies
+	// and no catalog directory is written for it.
+	if n := len(got.Patterns); n != 1 {
+		t.Fatalf("printed prompt got %d patterns, want 1", n)
+	}
+	if got.Catalog.Dir != "" || len(got.Catalog.Entries) != 0 {
+		t.Errorf("printed prompt got catalog %+v, want the zero Catalog", got.Catalog)
+	}
+	entries, err := os.ReadDir(tmp)
+	if err != nil {
+		t.Fatalf("reading TMPDIR: %v", err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), patterns.CatalogDirPrefix) {
+			t.Errorf("TMPDIR holds %s, want no catalog directory for a printed prompt", e.Name())
+		}
 	}
 }
 
@@ -440,18 +507,7 @@ func TestRun_AnalysisCommentFailureIsNonFatal(t *testing.T) {
 }
 
 func TestRun_PassesPatternsToClaude(t *testing.T) {
-	patternsDir := t.TempDir()
-	const patternBody = `# Review Pattern: Sample wiring check
-**Review-Area**: meta
-**Detection-Hint**: anything
-**Severity**: WARNING
-
-## Rule
-Wired patterns must reach the rebase contexts.
-`
-	if err := os.WriteFile(patternsDir+"/sample.md", []byte(patternBody), 0o644); err != nil {
-		t.Fatalf("seeding pattern file: %v", err)
-	}
+	patternsDir := writeSamplePattern(t)
 
 	gh := &githubtest.Fake{
 		PR:           github.PR{HeadBranch: "feat/x", HeadSHA: "h"},
@@ -460,11 +516,21 @@ Wired patterns must reach the rebase contexts.
 		RebaseStates: []github.RebaseState{conflicted("c1", "first", "a.go"), done()},
 	}
 	cl := &fakeClaude{}
+	cl.onCatalog = func(cat patterns.Catalog) {
+		if cat.Dir == "" {
+			t.Errorf("session got no catalog directory, want the one Run wrote")
+			return
+		}
+		if _, err := os.Stat(filepath.Join(cat.Dir, sampleCatalogFile)); err != nil {
+			t.Errorf("stat %s in the catalog during the session: %v, want the file on disk", sampleCatalogFile, err)
+		}
+	}
 	opts := Options{
-		PRRef:           "owner/repo#7",
-		PatternDirs:     []string{patternsDir},
-		NoLocalPatterns: true,
-		NoRepoPatterns:  true,
+		PRRef:            "owner/repo#7",
+		PatternDirs:      []string{patternsDir},
+		NoLocalPatterns:  true,
+		NoRepoPatterns:   true,
+		ApplyAdjustments: true,
 	}
 	if err := newRunner(gh, cl).Run(io.Discard, opts); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
@@ -477,6 +543,25 @@ Wired patterns must reach the rebase contexts.
 	}
 	if got := len(cl.lastAnalysis.Patterns); got != 1 {
 		t.Errorf("analysis ctx got %d patterns, want 1", got)
+	}
+	if cl.applyCalls.Load() != 1 {
+		t.Fatalf("ApplyAdjustments called %d times, want 1", cl.applyCalls.Load())
+	}
+	if got := len(cl.lastApply.Patterns); got != 1 {
+		t.Errorf("apply ctx got %d patterns, want 1", got)
+	}
+	dir := cl.lastConflict.Catalog.Dir
+	if dir == "" {
+		t.Fatalf("conflict ctx got no catalog directory, want the one Run wrote")
+	}
+	if got := cl.lastAnalysis.Catalog.Dir; got != dir {
+		t.Errorf("analysis ctx got catalog %q, want the conflict session's %q", got, dir)
+	}
+	if got := cl.lastApply.Catalog.Dir; got != dir {
+		t.Errorf("apply ctx got catalog %q, want the conflict session's %q", got, dir)
+	}
+	if _, err := os.Stat(dir); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("stat %s after Run: %v, want fs.ErrNotExist (the catalog is removed when Run returns)", dir, err)
 	}
 }
 
