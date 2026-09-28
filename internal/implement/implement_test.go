@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -91,25 +93,40 @@ type fakeSimplifyApplier struct {
 	report string
 	model  string
 	err    error
+	// onApply, when set, runs inside ApplySimplifications after the call is
+	// recorded, so a test can observe on-disk state while the session "runs".
+	onApply func(SimplifyApplyContext)
 }
 
 func (f *fakeSimplifyApplier) ApplySimplifications(dir string, ctx SimplifyApplyContext) (string, string, error) {
 	f.called.Add(1)
 	f.ctx = ctx
+	if f.onApply != nil {
+		f.onApply(ctx)
+	}
 	return f.report, f.model, f.err
 }
 
 type fakeReviewApplier struct {
 	called atomic.Int32
 	ctx    ReviewApplyContext
+	// ctxs holds the context of every ApplyReview call in order; ctx is the last.
+	ctxs   []ReviewApplyContext
 	report string
 	model  string
 	err    error
+	// onApply, when set, runs inside ApplyReview after the call is recorded,
+	// so a test can observe on-disk state while the session "runs".
+	onApply func(ReviewApplyContext)
 }
 
 func (f *fakeReviewApplier) ApplyReview(dir string, ctx ReviewApplyContext) (string, string, error) {
 	f.called.Add(1)
 	f.ctx = ctx
+	f.ctxs = append(f.ctxs, ctx)
+	if f.onApply != nil {
+		f.onApply(ctx)
+	}
 	return f.report, f.model, f.err
 }
 
@@ -2546,12 +2563,18 @@ type fakeClaude struct {
 	report string
 	model  string
 	err    error
+	// onImplement, when set, runs inside Implement after the call is recorded,
+	// so a test can observe on-disk state while the session "runs".
+	onImplement func(Context)
 }
 
 func (f *fakeClaude) Implement(dir string, ctx Context) (string, string, error) {
 	f.called.Add(1)
 	f.dir = dir
 	f.ctx = ctx
+	if f.onImplement != nil {
+		f.onImplement(ctx)
+	}
 	return f.report, f.model, f.err
 }
 
@@ -2925,10 +2948,11 @@ Bare prompts must surface patterns through BareContext.
 	}
 }
 
-func TestRun_PassesPatternsToClaude(t *testing.T) {
-	// Use an in-process patterns dir so LoadFiltered returns at least one
-	// pattern, proving the wiring from Options through to Claude.Implement
-	// actually carries patterns into the prompt context.
+// writeSamplePattern seeds a --patterns directory holding one pattern named
+// "Sample wiring check", whose catalog file is sampleCatalogFile, and returns
+// the directory.
+func writeSamplePattern(t *testing.T) string {
+	t.Helper()
 	patternsDir := t.TempDir()
 	patternFile := patternsDir + "/sample.md"
 	const patternBody = `# Review Pattern: Sample wiring check
@@ -2942,17 +2966,67 @@ Wired patterns must reach the implement Context.
 	if err := os.WriteFile(patternFile, []byte(patternBody), 0o644); err != nil {
 		t.Fatalf("seeding pattern file: %v", err)
 	}
+	return patternsDir
+}
 
-	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
-	cl := &fakeClaude{report: validImplReport}
-	r := newRunner(gh, cl)
+// sampleCatalogFile is the catalog file name of the pattern writeSamplePattern
+// seeds.
+const sampleCatalogFile = "sample-wiring-check.md"
 
-	opts := Options{
+// samplePatternOptions runs owner/repo#42 against only the pattern in
+// patternsDir, so the loaded set is exactly that one pattern.
+func samplePatternOptions(patternsDir string) Options {
+	return Options{
 		IssueRef:        "owner/repo#42",
 		PatternDirs:     []string{patternsDir},
 		NoLocalPatterns: true,
 		NoRepoPatterns:  true,
+		NoReportComment: true,
 	}
+}
+
+func TestRun_PassesPatternsToClaude(t *testing.T) {
+	// Use an in-process patterns dir so LoadFiltered returns at least one
+	// pattern, proving the wiring from Options through to Claude.Implement
+	// actually carries patterns into the prompt context. The plan, simplify,
+	// review and --verify passes run too, so the test also proves every later
+	// session reads the same on-disk catalog as the implement session, and that
+	// the catalog is still on disk while each one runs.
+	patternsDir := writeSamplePattern(t)
+
+	gh := &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       t.TempDir(),
+		BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	}
+	statCatalogFile := func(session, dir string) {
+		if _, err := os.Stat(filepath.Join(dir, sampleCatalogFile)); err != nil {
+			t.Errorf("stat %s in the %s session's catalog %q: %v, want the file on disk", sampleCatalogFile, session, dir, err)
+		}
+	}
+	cl := &fakeClaude{report: validImplReport}
+	cl.onImplement = func(ctx Context) {
+		if ctx.Catalog.Dir == "" {
+			t.Errorf("implement session got no catalog directory, want the one Run wrote")
+			return
+		}
+		statCatalogFile("implement", ctx.Catalog.Dir)
+	}
+	fp := &fakePlanner{plan: "## Implementation Plan (issue #42)\n\nSTATUS: PLAN_READY"}
+	sf := &fakeSimplifyFinder{result: oneSimplifyFinding("internal/foo/foo.go")}
+	sa := &fakeSimplifyApplier{report: "## Simplification Report\n\nSTATUS: DONE"}
+	sa.onApply = func(ctx SimplifyApplyContext) { statCatalogFile("simplify-apply", ctx.Catalog.Dir) }
+	av := &fakeAdversarialVerifier{results: oneThenCleanReview(reviewTestProdFile)}
+	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
+	ra.onApply = func(ctx ReviewApplyContext) { statCatalogFile(fmt.Sprintf("review-apply (source %q)", ctx.Source), ctx.Catalog.Dir) }
+	r := simplifyRunner(gh, cl, sf, sa)
+	r.Planner = fp
+	r.AdversarialVerifier = av
+	r.ReviewApplier = ra
+	r.Verifier = &fakeVerifier{result: oneCriterionFinding()}
+
+	opts := samplePatternOptions(patternsDir)
+	opts.Verify = true
 	if err := r.Run(io.Discard, opts); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
@@ -2961,6 +3035,107 @@ Wired patterns must reach the implement Context.
 	}
 	if cl.ctx.Patterns[0].Name != "Sample wiring check" {
 		t.Errorf("Claude got pattern name %q, want %q", cl.ctx.Patterns[0].Name, "Sample wiring check")
+	}
+	if cl.ctx.Catalog.Dir == "" {
+		t.Fatalf("Claude got no catalog directory, want the one Run wrote")
+	}
+	if fp.called.Load() != 1 {
+		t.Fatalf("planner called %d times, want 1", fp.called.Load())
+	}
+	if got, want := fp.ctx.Catalog.Dir, cl.ctx.Catalog.Dir; got != want {
+		t.Errorf("plan session got catalog %q, want the implement session's %q", got, want)
+	}
+	if sa.called.Load() != 1 {
+		t.Fatalf("simplify applier called %d times, want 1", sa.called.Load())
+	}
+	if got, want := sa.ctx.Catalog.Dir, cl.ctx.Catalog.Dir; got != want {
+		t.Errorf("simplify applier got catalog %q, want the implement session's %q", got, want)
+	}
+	if ra.called.Load() != 2 {
+		t.Fatalf("review applier called %d times, want 2 (the review pass, then the verification fixes)", ra.called.Load())
+	}
+	sawVerification := false
+	for _, ctx := range ra.ctxs {
+		sawVerification = sawVerification || ctx.Source == ReviewApplySourceVerification
+		if got, want := ctx.Catalog.Dir, cl.ctx.Catalog.Dir; got != want {
+			t.Errorf("review applier (source %q) got catalog %q, want the implement session's %q", ctx.Source, got, want)
+		}
+	}
+	if !sawVerification {
+		t.Errorf("no review-apply call carried source %q, want the verification fixes to run", ReviewApplySourceVerification)
+	}
+	if _, err := os.Stat(cl.ctx.Catalog.Dir); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("stat %s after Run: %v, want fs.ErrNotExist (the catalog is removed when Run returns)", cl.ctx.Catalog.Dir, err)
+	}
+}
+
+// TestRun_CatalogWriteFailureCarriesTheBodies locks the fallback: when the
+// catalog cannot be written, Run still succeeds, the session gets the loaded
+// patterns without a catalog directory (so its prompt carries the bodies), and
+// the failure is logged.
+func TestRun_CatalogWriteFailureCarriesTheBodies(t *testing.T) {
+	patternsDir := writeSamplePattern(t)
+	cloneDir := t.TempDir()
+	// A regular file as TMPDIR makes os.MkdirTemp fail. Every t.TempDir above
+	// is created first, while TMPDIR still points at a directory.
+	notADir := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(notADir, nil, 0o600); err != nil {
+		t.Fatalf("seeding the TMPDIR file: %v", err)
+	}
+	t.Setenv("TMPDIR", notADir)
+
+	var logBuf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logBuf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: cloneDir}
+	cl := &fakeClaude{report: validImplReport}
+	r := newRunner(gh, cl)
+
+	if err := r.Run(io.Discard, samplePatternOptions(patternsDir)); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if got := len(cl.ctx.Patterns); got != 1 {
+		t.Fatalf("Claude got %d patterns, want 1 (the bodies still reach the prompt)", got)
+	}
+	if cl.ctx.Catalog.Dir != "" {
+		t.Errorf("Claude got catalog %q, want none when the catalog cannot be written", cl.ctx.Catalog.Dir)
+	}
+	if !strings.Contains(logBuf.String(), "writing the pattern catalog to disk failed") {
+		t.Errorf("expected the catalog fallback warning, got:\n%s", logBuf.String())
+	}
+}
+
+// TestRun_NoPatternsWritesNoCatalog locks that a run without patterns leaves
+// no catalog directory behind in TMPDIR.
+func TestRun_NoPatternsWritesNoCatalog(t *testing.T) {
+	cloneDir := t.TempDir()
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: cloneDir}
+	cl := &fakeClaude{report: validImplReport}
+	r := newRunner(gh, cl)
+
+	opts := Options{IssueRef: "owner/repo#42", NoLocalPatterns: true, NoRepoPatterns: true}
+	if err := r.Run(io.Discard, opts); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if got := len(cl.ctx.Patterns); got != 0 {
+		t.Fatalf("Claude got %d patterns, want 0", got)
+	}
+	if cl.ctx.Catalog.Dir != "" {
+		t.Errorf("Claude got catalog %q, want none without patterns", cl.ctx.Catalog.Dir)
+	}
+	entries, err := os.ReadDir(tmp)
+	if err != nil {
+		t.Fatalf("reading TMPDIR: %v", err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), patterns.CatalogDirPrefix) {
+			t.Errorf("TMPDIR holds %s, want no catalog directory without patterns", e.Name())
+		}
 	}
 }
 
