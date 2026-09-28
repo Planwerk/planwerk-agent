@@ -248,17 +248,27 @@ func FormatIndexForPrompt(pats []Pattern, maxPatterns int) string {
 	var sb strings.Builder
 	for _, p := range pats {
 		sb.WriteString("- ")
-		sb.WriteString(p.Name)
-		sb.WriteString(" (")
-		sb.WriteString(p.ReviewArea)
-		if p.Severity != "" {
-			sb.WriteString(", ")
-			sb.WriteString(p.Severity)
-		}
-		sb.WriteString("): ")
-		sb.WriteString(strings.TrimSpace(p.DetectionHint))
+		sb.WriteString(indexLine(p))
 		sb.WriteString("\n")
 	}
+	return sb.String()
+}
+
+// indexLine renders one pattern's index entry without the bullet or the
+// newline: "<Name> (<ReviewArea>[, <Severity>]): <DetectionHint>". The
+// severity clause is left out when Severity is empty, and the hint is
+// trimmed. FormatIndexForPrompt and FormatCatalogIndex share it.
+func indexLine(p Pattern) string {
+	var sb strings.Builder
+	sb.WriteString(p.Name)
+	sb.WriteString(" (")
+	sb.WriteString(p.ReviewArea)
+	if p.Severity != "" {
+		sb.WriteString(", ")
+		sb.WriteString(p.Severity)
+	}
+	sb.WriteString("): ")
+	sb.WriteString(strings.TrimSpace(p.DetectionHint))
 	return sb.String()
 }
 
@@ -358,29 +368,46 @@ func truncatePatterns(pats []Pattern, maxPatterns int) []Pattern {
 	if maxPatterns <= 0 || len(pats) <= maxPatterns {
 		return pats
 	}
-
-	// Stable sort by severity priority
-	type indexed struct {
-		pattern Pattern
-		order   int
+	keep := truncatedIndices(pats, maxPatterns)
+	result := make([]Pattern, len(keep))
+	for j, i := range keep {
+		result[j] = pats[i]
 	}
-	items := make([]indexed, len(pats))
+	return result
+}
+
+// truncatedIndices returns the indices into pats of the patterns
+// truncatePatterns keeps, in the order it keeps them: every index in input
+// order when maxPatterns <= 0 or pats fits the budget, otherwise the first
+// maxPatterns by severity (BLOCKING > CRITICAL > WARNING > INFO, unknown
+// last), in input order within one severity. A caller holding data parallel
+// to pats, such as the file names of a Catalog, reads it through the indices.
+func truncatedIndices(pats []Pattern, maxPatterns int) []int {
+	if maxPatterns <= 0 || len(pats) <= maxPatterns {
+		keep := make([]int, len(pats))
+		for i := range keep {
+			keep[i] = i
+		}
+		return keep
+	}
+
+	orders := make([]int, len(pats))
 	for i, p := range pats {
 		ord, ok := severityOrder[p.Severity]
 		if !ok {
 			ord = 99 // unknown severity goes last
 		}
-		items[i] = indexed{pattern: p, order: ord}
+		orders[i] = ord
 	}
 
 	// Simple stable selection: pick the first maxPatterns by severity
 	// We do a simple multi-pass to preserve original order within same severity
-	var result []Pattern
-	for targetOrd := 0; targetOrd <= 99 && len(result) < maxPatterns; targetOrd++ {
-		for _, item := range items {
-			if item.order == targetOrd {
-				result = append(result, item.pattern)
-				if len(result) >= maxPatterns {
+	keep := make([]int, 0, maxPatterns)
+	for targetOrd := 0; targetOrd <= 99 && len(keep) < maxPatterns; targetOrd++ {
+		for i, ord := range orders {
+			if ord == targetOrd {
+				keep = append(keep, i)
+				if len(keep) >= maxPatterns {
 					break
 				}
 			}
@@ -388,7 +415,7 @@ func truncatePatterns(pats []Pattern, maxPatterns int) []Pattern {
 	}
 
 	slog.Warn("patterns truncated for prompt budget", "loaded", len(pats), "kept", maxPatterns)
-	return result
+	return keep
 }
 
 // CatalogReference is a single entry in a bare-prompt pattern catalog. It
