@@ -17,7 +17,7 @@ import (
 //     reviewprepared.Result expects, INCLUDING the rewritten feature JSON
 //     when ctx.IncludeImproved is set.
 func (c *Client) ReviewPrepared(dir string, ctx reviewprepared.AnalysisContext) (*reviewprepared.Result, error) {
-	rawAnalysis, model, err := c.runClaude(dir, buildReviewPreparedPrompt(ctx), "review-prepared", noCatalog)
+	rawAnalysis, model, err := c.runClaude(dir, buildReviewPreparedPrompt(ctx), "review-prepared", ctx.Catalog)
 	if err != nil {
 		return nil, fmt.Errorf("running review-prepared analysis: %w", err)
 	}

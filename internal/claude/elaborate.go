@@ -15,7 +15,7 @@ import (
 //  1. Read the issue + walk the repo, producing a freeform elaboration.
 //  2. Structure the elaboration into JSON matching elaborate.Result.
 func (c *Client) Elaborate(dir string, ctx elaborate.Context) (*elaborate.Result, error) {
-	rawElaboration, model, err := c.runClaude(dir, buildElaboratePrompt(ctx), "elaborate", noCatalog)
+	rawElaboration, model, err := c.runClaude(dir, buildElaboratePrompt(ctx), "elaborate", ctx.Catalog)
 	if err != nil {
 		return nil, fmt.Errorf("running elaboration: %w", err)
 	}

@@ -741,6 +741,115 @@ func TestClaudeArgs_NoToolsNeverOpensADirectory(t *testing.T) {
 	}
 }
 
+// TestAdapters_OpenTheCatalogDirectory pins which sessions are handed the
+// pattern catalog directory. Every adapter whose prompt renders the catalog
+// index passes ctx.Catalog to its session, and the completion nudge's
+// resumed turns keep it. The structuring and repair passes behind an adapter
+// get no directory, and neither does the audit session.
+func TestAdapters_OpenTheCatalogDirectory(t *testing.T) {
+	t.Parallel()
+
+	const catalogDir = "/tmp/planwerk-agent-patterns-test"
+	rows := []struct {
+		name, label, addDir string
+		run                 func(c *Client)
+	}{
+		{"Plan", "plan", catalogDir, func(c *Client) {
+			ctx := goldenImplementContext()
+			ctx.Catalog.Dir = catalogDir
+			_, _, _ = c.Plan("", ctx)
+		}},
+		{"Implement", "implement", catalogDir, func(c *Client) {
+			ctx := goldenImplementContext()
+			ctx.Catalog.Dir = catalogDir
+			_, _, _ = c.Implement("", ctx)
+		}},
+		{"ApplySimplifications", "simplify-apply", catalogDir, func(c *Client) {
+			ctx := goldenSimplifyApplyContext()
+			ctx.Catalog.Dir = catalogDir
+			_, _, _ = c.ApplySimplifications("", ctx)
+		}},
+		{"ApplyReview", "review-apply", catalogDir, func(c *Client) {
+			ctx := goldenReviewApplyContext()
+			ctx.Catalog.Dir = catalogDir
+			_, _, _ = c.ApplyReview("", ctx)
+		}},
+		{"Fix", "fix", catalogDir, func(c *Client) {
+			ctx := goldenFixContext()
+			ctx.Catalog.Dir = catalogDir
+			_, _, _ = c.Fix("", ctx)
+		}},
+		{"Address", "address", catalogDir, func(c *Client) {
+			ctx := goldenAddressContext()
+			ctx.Catalog.Dir = catalogDir
+			_, _ = c.Address("", ctx)
+		}},
+		{"ResolveRebaseConflict", "rebase-conflict", catalogDir, func(c *Client) {
+			ctx := goldenRebaseConflictContext()
+			ctx.Catalog.Dir = catalogDir
+			_, _ = c.ResolveRebaseConflict("", ctx)
+		}},
+		{"AnalyzeRebasedCommits", "rebase-analysis", catalogDir, func(c *Client) {
+			ctx := goldenRebaseAnalysisContext()
+			ctx.Catalog.Dir = catalogDir
+			_, _ = c.AnalyzeRebasedCommits("", ctx)
+		}},
+		{"ApplyRebaseAdjustments", "rebase-apply", catalogDir, func(c *Client) {
+			ctx := goldenRebaseApplyContext()
+			ctx.Catalog.Dir = catalogDir
+			_, _ = c.ApplyRebaseAdjustments("", ctx)
+		}},
+		{"Elaborate", "elaborate", catalogDir, func(c *Client) {
+			ctx := goldenElaborateContext()
+			ctx.Catalog.Dir = catalogDir
+			_, _ = c.Elaborate("", ctx)
+		}},
+		{"Propose", "analysis", catalogDir, func(c *Client) {
+			ctx := goldenAnalysisContext()
+			ctx.Catalog.Dir = catalogDir
+			_, _ = c.Propose("", ctx)
+		}},
+		{"GapAnalysis", "gap-analysis", catalogDir, func(c *Client) {
+			ctx := goldenGapAnalysisContext()
+			ctx.Catalog.Dir = catalogDir
+			_, _ = c.GapAnalysis("", ctx)
+		}},
+		{"ReviewPrepared", "review-prepared", catalogDir, func(c *Client) {
+			ctx := goldenReviewPreparedContext(false)
+			ctx.Catalog.Dir = catalogDir
+			_, _ = c.ReviewPrepared("", ctx)
+		}},
+		{"Audit", "audit", "", func(c *Client) {
+			_, _ = c.Audit("", goldenAuditContext())
+		}},
+	}
+	for _, row := range rows {
+		t.Run(row.name, func(t *testing.T) {
+			t.Parallel()
+			c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
+				return "", "", nil
+			})
+			row.run(c)
+
+			if len(*calls) == 0 {
+				t.Fatal("the adapter ran no session")
+			}
+			first := (*calls)[0].spec
+			if first.label != row.label || first.addDir != row.addDir {
+				t.Errorf("first session has label %q, addDir %q; want label %q, addDir %q", first.label, first.addDir, row.label, row.addDir)
+			}
+			for i, call := range *calls {
+				switch {
+				case call.spec.noTools && call.spec.addDir != "":
+					t.Errorf("call %d (%s) is a structuring session but carries addDir %q", i+1, call.spec.label, call.spec.addDir)
+				case !call.spec.noTools && call.spec.addDir != first.addDir:
+					t.Errorf("call %d (%s) carries addDir %q, want the first session's %q", i+1, call.spec.label, call.spec.addDir, first.addDir)
+				}
+			}
+		})
+	}
+}
+
 // TestStructureWorkDir_IsAnEmptyDirectoryOfOurOwn covers what the structuring
 // sessions are given instead of the operator's working directory: a directory
 // this tool owns, under the same cache root the result cache uses, that exists
