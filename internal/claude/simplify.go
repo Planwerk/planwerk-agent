@@ -89,7 +89,7 @@ const simplifyReportHeading = "## Simplification Report"
 // when it ends without its report, the same session is resumed to finish and
 // report instead of the pass losing its work.
 func (c *Client) ApplySimplifications(dir string, ctx implement.SimplifyApplyContext) (string, string, error) {
-	out, model, err := c.runClaudeAutoReport(dir, BuildSimplifyApplyPrompt(ctx), "simplify-apply", simplifyReportHeading, reportStatusChoices, noCatalog)
+	out, model, err := c.runClaudeAutoReport(dir, BuildSimplifyApplyPrompt(ctx), "simplify-apply", simplifyReportHeading, reportStatusChoices, ctx.Catalog)
 	if err != nil {
 		return "", "", fmt.Errorf("running simplify apply: %w", err)
 	}

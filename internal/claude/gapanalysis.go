@@ -16,7 +16,7 @@ import (
 //  1. Analyze the spec vs. the code and produce a free-form gap report.
 //  2. Structure that report into JSON matching gapanalysis.Result.
 func (c *Client) GapAnalysis(dir string, ctx gapanalysis.AnalysisContext) (*gapanalysis.Result, error) {
-	rawAnalysis, model, err := c.runClaude(dir, buildGapAnalysisPrompt(ctx), "gap-analysis", noCatalog)
+	rawAnalysis, model, err := c.runClaude(dir, buildGapAnalysisPrompt(ctx), "gap-analysis", ctx.Catalog)
 	if err != nil {
 		return nil, fmt.Errorf("running gap analysis: %w", err)
 	}

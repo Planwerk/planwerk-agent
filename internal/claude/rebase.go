@@ -18,7 +18,7 @@ import (
 func (c *Client) ResolveRebaseConflict(dir string, ctx rebase.ConflictContext) (string, error) {
 	// The conflict resolution renders no attribution footer, so the resolved
 	// model is not threaded out.
-	out, _, err := c.runClaudeAuto(dir, BuildRebaseConflictPrompt(ctx), "rebase-conflict", noCatalog)
+	out, _, err := c.runClaudeAuto(dir, BuildRebaseConflictPrompt(ctx), "rebase-conflict", ctx.Catalog)
 	if err != nil {
 		return "", fmt.Errorf("resolving rebase conflict: %w", err)
 	}
@@ -30,7 +30,7 @@ func (c *Client) ResolveRebaseConflict(dir string, ctx rebase.ConflictContext) (
 // per-commit adjustments. The decode shares decodeJSONWithRepair so a
 // one-character JSON glitch does not fail the run.
 func (c *Client) AnalyzeRebasedCommits(dir string, ctx rebase.AnalysisContext) (*report.RebaseAnalysis, error) {
-	text, model, err := c.runClaude(dir, BuildRebaseAnalysisPrompt(ctx), "rebase-analysis", noCatalog)
+	text, model, err := c.runClaude(dir, BuildRebaseAnalysisPrompt(ctx), "rebase-analysis", ctx.Catalog)
 	if err != nil {
 		return nil, fmt.Errorf("analyzing rebased commits: %w", err)
 	}
@@ -49,7 +49,7 @@ func (c *Client) AnalyzeRebasedCommits(dir string, ctx rebase.AnalysisContext) (
 func (c *Client) ApplyRebaseAdjustments(dir string, ctx rebase.ApplyContext) (string, error) {
 	// Applying adjustments renders no attribution footer, so the resolved model
 	// is not threaded out.
-	out, _, err := c.runClaudeAuto(dir, BuildRebaseApplyPrompt(ctx), "rebase-apply", noCatalog)
+	out, _, err := c.runClaudeAuto(dir, BuildRebaseApplyPrompt(ctx), "rebase-apply", ctx.Catalog)
 	if err != nil {
 		return "", fmt.Errorf("applying rebase adjustments: %w", err)
 	}
