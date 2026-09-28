@@ -115,7 +115,7 @@ func (c *Client) Implement(dir string, ctx implement.Context) (string, string, e
 	if err != nil {
 		return "", "", err
 	}
-	out, model, err := c.runClaudeImplement(dir, BuildImplementPrompt(ctx), "implement", agentsJSON)
+	out, model, err := c.runClaudeImplement(dir, BuildImplementPrompt(ctx), "implement", agentsJSON, noCatalog)
 	if err != nil {
 		return "", "", fmt.Errorf("running implement: %w", err)
 	}

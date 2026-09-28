@@ -15,7 +15,7 @@ import (
 // CONTEXT-FORMAT document reaches the caller. It returns the Markdown, the
 // resolved model id, and an error.
 func (c *Client) GenerateGlossary(dir string, ctx glossary.GenerateContext) (string, string, error) {
-	out, model, err := c.runClaude(dir, buildGlossaryPrompt(ctx), "glossary")
+	out, model, err := c.runClaude(dir, buildGlossaryPrompt(ctx), "glossary", noCatalog)
 	if err != nil {
 		return "", "", fmt.Errorf("running glossary generation: %w", err)
 	}

@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
@@ -176,6 +177,11 @@ type runSpec struct {
 	noTools    bool
 	jsonSchema string // --json-schema when non-empty
 	agentsJSON string // --agents when non-empty
+	// addDir is passed via --add-dir when non-empty: the on-disk pattern catalog
+	// directory (patterns.Materialize) the session may read pattern bodies from.
+	// A noTools spec never honors it, because a structuring session runs in
+	// structureWorkDir with no tools and must not be handed any other directory.
+	addDir string
 	// sessionID pins the CLI session's id (--session-id) and resume continues
 	// that session (--resume). Both are zero for a one-shot call; set by the
 	// completion nudge (decision 78).
@@ -472,10 +478,15 @@ func WithInheritUserConfig(b bool) Option {
 // id the session reported. Use it for the read-only analysis steps (review,
 // audit, …) that do not mutate the checkout; the JSON-structuring passes —
 // and their repair recovery — use runClaudeStructure for the dedicated cheap
-// tier instead.
-func (c *Client) runClaude(dir, prompt, label string) (text, model string, err error) {
-	return c.runSession(runSpec{dir: dir, label: label, model: c.model, effort: c.effort, readOnly: true}, prompt)
+// tier instead. cat is the pattern catalog whose directory the session may
+// read (--add-dir), noCatalog for a session without one.
+func (c *Client) runClaude(dir, prompt, label string, cat patterns.Catalog) (text, model string, err error) {
+	return c.runSession(runSpec{dir: dir, label: label, model: c.model, effort: c.effort, readOnly: true, addDir: cat.Dir}, prompt)
 }
+
+// noCatalog is what a session without a pattern catalog passes to its runner:
+// the zero Catalog, which opens no directory.
+var noCatalog patterns.Catalog
 
 // runClaudeFinder is runClaude on the finder tier, for the read-only passes
 // whose job is to produce findings over a diff: the adversarial pass, each
@@ -504,9 +515,10 @@ func firstNonEmpty(override, fallback string) string {
 
 // runClaudePlan is runClaude on the dedicated planning tier (planModel,
 // planEffort) for the implement command's read-only planning session
-// (decision 101).
-func (c *Client) runClaudePlan(dir, prompt, label string) (text, model string, err error) {
-	return c.runSession(runSpec{dir: dir, label: label, model: c.planModel, effort: c.planEffort, readOnly: true}, prompt)
+// (decision 101). cat is the pattern catalog whose directory the session may
+// read (--add-dir), noCatalog for a session without one.
+func (c *Client) runClaudePlan(dir, prompt, label string, cat patterns.Catalog) (text, model string, err error) {
+	return c.runSession(runSpec{dir: dir, label: label, model: c.planModel, effort: c.planEffort, readOnly: true, addDir: cat.Dir}, prompt)
 }
 
 // runClaudeStructure is runClaude on the dedicated structuring tier
@@ -548,25 +560,30 @@ func (c *Client) runClaudeStructureWithSchema(prompt, label, jsonSchema string) 
 // kept, for the one-shot sessions that edit, commit, and push unattended. The
 // sessions without a terminal-report contract (address, the rebase sessions)
 // call it directly; the report-bearing ones go through runClaudeAutoReport
-// (decision 78).
-func (c *Client) runClaudeAuto(dir, prompt, label string) (text, model string, err error) {
-	return c.runSession(c.autoSpec(dir, label), prompt)
+// (decision 78). cat is the pattern catalog whose directory the session may
+// read (--add-dir), noCatalog for a session without one.
+func (c *Client) runClaudeAuto(dir, prompt, label string, cat patterns.Catalog) (text, model string, err error) {
+	return c.runSession(c.autoSpec(dir, label, cat), prompt)
 }
 
 // autoSpec is the runSpec every auto-mode mutating session starts from: the
 // shared main model and effort, claudeAutoPermissionMode, and the write tools
 // kept (readOnly false). runClaudeAuto and the completion-gated variants build
-// on it so the auto-mode invocation is defined once.
-func (c *Client) autoSpec(dir, label string) runSpec {
-	return runSpec{dir: dir, label: label, permissionMode: claudeAutoPermissionMode, model: c.model, effort: c.effort}
+// on it so the auto-mode invocation is defined once. cat is the pattern catalog
+// whose directory the session may read (--add-dir), noCatalog for a session
+// without one.
+func (c *Client) autoSpec(dir, label string, cat patterns.Catalog) runSpec {
+	return runSpec{dir: dir, label: label, permissionMode: claudeAutoPermissionMode, model: c.model, effort: c.effort, addDir: cat.Dir}
 }
 
 // runClaudeImplement runs the implement session: runClaudeAuto on
 // implementModel when one is set and on the main model otherwise, with
 // agentsJSON passed via --agents when non-empty (orchestrator mode), under the
-// completion nudge (decisions 74 and 78).
-func (c *Client) runClaudeImplement(dir, prompt, label, agentsJSON string) (text, model string, err error) {
-	spec := c.autoSpec(dir, label)
+// completion nudge (decisions 74 and 78). cat is the pattern catalog whose
+// directory the session may read (--add-dir), noCatalog for a session without
+// one.
+func (c *Client) runClaudeImplement(dir, prompt, label, agentsJSON string, cat patterns.Catalog) (text, model string, err error) {
+	spec := c.autoSpec(dir, label, cat)
 	spec.model = c.implementSessionModel()
 	spec.agentsJSON = agentsJSON
 	return c.runWithCompletionNudge(spec, prompt, implementReportHeading, implementReportStatusChoices)
@@ -597,6 +614,9 @@ func (c *Client) claudeArgs(spec runSpec, outputFormat string, extra ...string) 
 	args = append(args, extra...)
 	if spec.permissionMode != "" {
 		args = append(args, "--permission-mode", spec.permissionMode)
+	}
+	if spec.addDir != "" && !spec.noTools {
+		args = append(args, "--add-dir", spec.addDir)
 	}
 	if spec.jsonSchema != "" {
 		args = append(args, "--json-schema", spec.jsonSchema)

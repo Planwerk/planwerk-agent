@@ -34,7 +34,7 @@ const finalizeReportHeading = "## Pull Request"
 // create` — the same session is resumed to finish and report instead of the
 // run failing with the PR unopened.
 func (c *Client) FinalizePR(dir string, ctx implement.FinalizeContext) (string, string, error) {
-	out, model, err := c.runClaudeAutoReport(dir, BuildFinalizePrompt(ctx), "finalize", finalizeReportHeading, reportStatusChoices)
+	out, model, err := c.runClaudeAutoReport(dir, BuildFinalizePrompt(ctx), "finalize", finalizeReportHeading, reportStatusChoices, noCatalog)
 	if err != nil {
 		return "", "", fmt.Errorf("running finalize: %w", err)
 	}

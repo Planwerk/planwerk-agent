@@ -47,7 +47,7 @@ func (c *Client) Review(dir string, ctx ReviewContext) (*report.ReviewResult, er
 // runReview invokes `claude -p` with the review prompt, returning the raw review
 // text and the resolved model id.
 func (c *Client) runReview(dir string, rctx ReviewContext) (text, model string, err error) {
-	return c.runClaude(dir, buildReviewPrompt(rctx), "review")
+	return c.runClaude(dir, buildReviewPrompt(rctx), "review", noCatalog)
 }
 
 // tokenUsage is a tolerant view over the per-call token counts Claude Code

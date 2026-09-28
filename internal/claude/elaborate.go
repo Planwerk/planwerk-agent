@@ -16,7 +16,7 @@ import (
 //  1. Read the issue + walk the repo, producing a freeform elaboration.
 //  2. Structure the elaboration into JSON matching elaborate.Result.
 func (c *Client) Elaborate(dir string, ctx elaborate.Context) (*elaborate.Result, error) {
-	rawElaboration, model, err := c.runClaude(dir, buildElaboratePrompt(ctx), "elaborate")
+	rawElaboration, model, err := c.runClaude(dir, buildElaboratePrompt(ctx), "elaborate", noCatalog)
 	if err != nil {
 		return nil, fmt.Errorf("running elaboration: %w", err)
 	}
@@ -225,7 +225,7 @@ Field rules:
 func (c *Client) ReviewElaboration(dir string, ctx elaborate.Context, draftBody string) (*elaborate.ReviewResult, error) {
 	// The reviewer gate's score is internal and renders no footer, so the
 	// resolved model is not threaded out.
-	text, _, err := c.runClaude(dir, buildElaborateReviewPrompt(ctx, draftBody), "elaborate-review")
+	text, _, err := c.runClaude(dir, buildElaborateReviewPrompt(ctx, draftBody), "elaborate-review", noCatalog)
 	if err != nil {
 		return nil, fmt.Errorf("running elaboration review: %w", err)
 	}

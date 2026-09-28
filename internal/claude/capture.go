@@ -23,7 +23,7 @@ import (
 // later, in the gated write-back (#139). MarkUpdates labels each proposal that
 // re-proposes an existing wiki path so a re-run updates rather than appends.
 func (c *Client) Capture(dir string, ctx capture.CaptureContext) (*capture.CaptureResult, error) {
-	rawAnalysis, model, err := c.runClaude(dir, buildCapturePrompt(ctx), "capture")
+	rawAnalysis, model, err := c.runClaude(dir, buildCapturePrompt(ctx), "capture", noCatalog)
 	if err != nil {
 		return nil, fmt.Errorf("running capture analysis: %w", err)
 	}
