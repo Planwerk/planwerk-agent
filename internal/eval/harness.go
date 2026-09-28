@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -26,6 +27,11 @@ const evalBaseBranch = "main"
 
 // gitTimeout bounds each git subprocess in the harness setup.
 const gitTimeout = 60 * time.Second
+
+// evalGoMod is the go.mod ensureGoMod writes into every eval repo, so
+// technology detection tags the repo "go" and the review loads the Go patterns
+// a real Go repository gets (decision 106).
+const evalGoMod = "module planwerk-eval/corpus\n\ngo 1.22\n"
 
 // evalGitHubClient is a review.GitHubClient stub for the eval harness. It hands
 // the pipeline a pre-built local PR rooted at the corpus repo and no-ops every
@@ -114,11 +120,11 @@ func RunCase(client *claude.Client, c Case, thorough bool) (report.ReviewResult,
 	return result, nil
 }
 
-// setupRepo builds a git repo in dir: base/ committed on main, an origin/main ref
-// pointing at that commit (so the pipeline's `git diff origin/main` scoping
-// resolves), then head/ overlaid and committed on a feature branch. It returns
-// the repo-relative paths overlaid from head/ (the changed-files set the PR
-// carries).
+// setupRepo builds a git repo in dir: base/ committed on main together with a
+// go.mod (see ensureGoMod), an origin/main ref pointing at that commit (so the
+// pipeline's `git diff origin/main` scoping resolves), then head/ overlaid and
+// committed on a feature branch. It returns the repo-relative paths overlaid
+// from head/ (the changed-files set the PR carries).
 func setupRepo(dir string, c Case) ([]string, error) {
 	// Force the first commit onto main regardless of the user's init.defaultBranch.
 	if err := git(dir, "init"); err != nil {
@@ -139,6 +145,9 @@ func setupRepo(dir string, c Case) ([]string, error) {
 
 	if _, err := materialize(filepath.Join(c.Dir, "base"), dir); err != nil {
 		return nil, fmt.Errorf("materializing base: %w", err)
+	}
+	if err := ensureGoMod(dir); err != nil {
+		return nil, err
 	}
 	if err := git(dir, "add", "-A"); err != nil {
 		return nil, err
@@ -169,6 +178,27 @@ func setupRepo(dir string, c Case) ([]string, error) {
 		return nil, err
 	}
 	return changed, nil
+}
+
+// ensureGoMod writes evalGoMod to dir/go.mod when no go.mod exists there, and
+// leaves an existing one untouched. setupRepo calls it before the base commit,
+// so the file never appears in the changed-files set.
+func ensureGoMod(dir string) error {
+	f, err := os.OpenFile(filepath.Join(dir, "go.mod"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if errors.Is(err, fs.ErrExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("writing go.mod: %w", err)
+	}
+	if _, err := f.WriteString(evalGoMod); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("writing go.mod: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("writing go.mod: %w", err)
+	}
+	return nil
 }
 
 // materialize copies every file under srcDir into dstDir, stripping the .txt from

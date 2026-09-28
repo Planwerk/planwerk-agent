@@ -2,8 +2,8 @@
 // materializes a labeled corpus of seeded-bug cases into throwaway git repos,
 // runs the shipped review pipeline against each, and scores the findings for
 // precision, recall, and severity accuracy. It never runs in unit CI — RunCase
-// invokes the real claude CLI and spends tokens; only the loader and scorer are
-// unit-tested.
+// invokes the real claude CLI and spends tokens; only the loader, the scorer and
+// the repo setup are unit-tested.
 //
 // # Corpus storage
 //
@@ -15,6 +15,10 @@
 // eval package itself. materialize (see harness.go) strips the .txt on copy, so
 // the trees land in the throwaway repo as real .go files. Any file NOT ending in
 // .go.txt (e.g. expected.json) is copied verbatim.
+//
+// A case never ships a go.mod: the harness writes one into each throwaway
+// repo's base commit (ensureGoMod), so technology detection sees a Go
+// repository.
 package eval
 
 import (
