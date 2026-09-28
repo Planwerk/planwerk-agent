@@ -1,0 +1,66 @@
+package main
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+)
+
+// Item is one line of an order.
+type Item struct {
+	SKU      string
+	Quantity int
+}
+
+// Order is a customer's order with its items.
+type Order struct {
+	ID    int64
+	Items []Item
+}
+
+// ListOrdersWithItems returns the customer's orders, each with its items.
+func ListOrdersWithItems(ctx context.Context, db *sql.DB, customerID int64) ([]Order, error) {
+	rows, err := db.QueryContext(ctx, "SELECT id FROM orders WHERE customer_id = $1 ORDER BY id", customerID)
+	if err != nil {
+		return nil, fmt.Errorf("listing orders: %w", err)
+	}
+	defer rows.Close()
+
+	var orders []Order
+	var ids []int64
+	index := make(map[int64]int)
+	for rows.Next() {
+		var o Order
+		if err := rows.Scan(&o.ID); err != nil {
+			return nil, fmt.Errorf("scanning order: %w", err)
+		}
+		index[o.ID] = len(orders)
+		ids = append(ids, o.ID)
+		orders = append(orders, o)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("listing orders: %w", err)
+	}
+	if len(orders) == 0 {
+		return orders, nil
+	}
+
+	items, err := db.QueryContext(ctx, "SELECT order_id, sku, quantity FROM order_items WHERE order_id = ANY($1)", ids)
+	if err != nil {
+		return nil, fmt.Errorf("listing order items: %w", err)
+	}
+	defer items.Close()
+	for items.Next() {
+		var orderID int64
+		var it Item
+		if err := items.Scan(&orderID, &it.SKU, &it.Quantity); err != nil {
+			return nil, fmt.Errorf("scanning order item: %w", err)
+		}
+		o := &orders[index[orderID]]
+		o.Items = append(o.Items, it)
+	}
+	if err := items.Err(); err != nil {
+		return nil, fmt.Errorf("listing order items: %w", err)
+	}
+	return orders, nil
+}

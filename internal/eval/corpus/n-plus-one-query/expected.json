@@ -1,0 +1,12 @@
+{
+  "description": "Order items now load through one query per order inside the loop instead of one batched query, so listing N orders costs N+1 round trips to the database.",
+  "clean": false,
+  "findings": [
+    {
+      "file": "orders.go",
+      "line": 43,
+      "severity": "WARNING",
+      "keywords": ["n+1", "n + 1", "per order", "in a loop", "round trip"]
+    }
+  ]
+}

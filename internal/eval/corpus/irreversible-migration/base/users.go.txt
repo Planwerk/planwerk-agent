@@ -1,0 +1,24 @@
+package main
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+)
+
+// User is a row of the users table.
+type User struct {
+	ID   int64
+	Name string
+}
+
+// userByID loads the user with the given id.
+func userByID(ctx context.Context, db *sql.DB, id int64) (User, error) {
+	var u User
+	err := db.QueryRowContext(ctx, "SELECT id, name FROM users WHERE id = $1", id).
+		Scan(&u.ID, &u.Name)
+	if err != nil {
+		return User{}, fmt.Errorf("loading user %d: %w", id, err)
+	}
+	return u, nil
+}

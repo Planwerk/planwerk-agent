@@ -1,0 +1,12 @@
+{
+  "description": "A new migration drops the users.email column and ships no down migration, so the change cannot be rolled back and every stored address is lost.",
+  "clean": false,
+  "findings": [
+    {
+      "file": "migrations/0002_drop_user_email.up.sql",
+      "line": 1,
+      "severity": "BLOCKING",
+      "keywords": ["irreversible", "rollback", "down migration", "data loss", "drop column"]
+    }
+  ]
+}
