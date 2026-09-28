@@ -26,43 +26,74 @@ func main() {
 	caseName := flag.String("case", "", "run a single case by directory name (default: all cases)")
 	thorough := flag.Bool("thorough", false, "run the adversarial (thorough) review pass too")
 	specialists := flag.Bool("specialists", false, "run the domain specialist fan-out too")
+	runs := flag.Int("runs", 1, "run each case N times, each with a fresh client, and pool the scores")
 	jsonOut := flag.Bool("json", false, "emit the score report as JSON instead of a table")
 	flag.Parse()
 
-	opts := eval.RunOptions{Thorough: *thorough, Specialists: *specialists}
-	if err := run(*corpusDir, *caseName, opts, *jsonOut); err != nil {
+	cfg := eval.Config{Runs: *runs, RunOptions: eval.RunOptions{Thorough: *thorough, Specialists: *specialists}}
+	if err := run(*corpusDir, *caseName, cfg, *jsonOut); err != nil {
 		fmt.Fprintln(os.Stderr, "planwerk-eval:", err)
 		os.Exit(1)
 	}
 }
 
-func run(corpusDir, caseName string, opts eval.RunOptions, jsonOut bool) error {
+func run(corpusDir, caseName string, cfg eval.Config, jsonOut bool) error {
+	if cfg.Runs < 1 {
+		return fmt.Errorf("-runs must be at least 1, got %d", cfg.Runs)
+	}
 	cases, err := loadCases(corpusDir, caseName)
 	if err != nil {
 		return err
 	}
 
-	var scored []eval.Scored
+	scored := make([]eval.Scored, 0, len(cases))
 	for _, c := range cases {
-		// A fresh client per run: RunCase reads the client's cumulative usage.
-		client, err := buildClient()
-		if err != nil {
-			return err
+		runs := make([]eval.Run, 0, cfg.Runs)
+		for i := 1; i <= cfg.Runs; i++ {
+			fmt.Fprintf(os.Stderr, "running case %s (run %d/%d) ...\n", c.Name, i, cfg.Runs)
+			r, err := retry(func() (eval.Run, error) {
+				// A fresh client per attempt: RunCase reads the client's cumulative usage.
+				client, err := buildClient()
+				if err != nil {
+					return eval.Run{}, err
+				}
+				return eval.RunCase(client, c, cfg.RunOptions)
+			})
+			if err != nil {
+				return err
+			}
+			runs = append(runs, r)
 		}
-		fmt.Fprintf(os.Stderr, "running case %s ...\n", c.Name)
-		r, err := eval.RunCase(client, c, opts)
-		if err != nil {
-			return err
-		}
-		scored = append(scored, eval.Scored{Case: c, Score: eval.ScoreCase(c, r.Result)})
+		scored = append(scored, eval.ScoreRuns(c, runs))
 	}
 
-	rep := eval.BuildReport(scored)
+	rep := eval.BuildReport(scored, cfg)
 	if jsonOut {
 		return eval.RenderJSON(os.Stdout, rep)
 	}
 	eval.RenderTable(os.Stdout, rep)
 	return nil
+}
+
+// maxRunAttempts bounds the attempts at one run of one case. A second attempt
+// keeps one transient failure (a timeout, a malformed reply) from discarding
+// every run the eval already paid for; a second failure ends the eval.
+const maxRunAttempts = 2
+
+// retry calls attempt until it succeeds or maxRunAttempts attempts have failed,
+// and returns the last attempt's error when none succeeded.
+func retry(attempt func() (eval.Run, error)) (eval.Run, error) {
+	var err error
+	for n := 1; n <= maxRunAttempts; n++ {
+		var r eval.Run
+		if r, err = attempt(); err == nil {
+			return r, nil
+		}
+		if n < maxRunAttempts {
+			fmt.Fprintf(os.Stderr, "planwerk-eval: %v; retrying\n", err)
+		}
+	}
+	return eval.Run{}, err
 }
 
 // loadCases loads the whole corpus, or a single case when caseName is set.

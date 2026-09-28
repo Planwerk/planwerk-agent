@@ -67,7 +67,8 @@ func (c *evalGitHubClient) FetchReviewComment(string, string, int) (string, bool
 // Thorough mirrors `review --thorough` (the adversarial pass) and Specialists
 // mirrors `review --specialists` (the domain specialist fan-out).
 type RunOptions struct {
-	Thorough, Specialists bool
+	Thorough    bool `json:"thorough"`
+	Specialists bool `json:"specialists"`
 }
 
 // Run is one review of one case: the parsed JSON review result and the token
