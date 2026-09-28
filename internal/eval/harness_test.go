@@ -1,6 +1,7 @@
 package eval
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -8,7 +9,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/planwerk/planwerk-agent/internal/claude"
 	"github.com/planwerk/planwerk-agent/internal/detect"
+	"github.com/planwerk/planwerk-agent/internal/patterns"
+	"github.com/planwerk/planwerk-agent/internal/report"
+	"github.com/planwerk/planwerk-agent/internal/review"
 )
 
 func TestEnsureGoMod(t *testing.T) {
@@ -98,4 +103,53 @@ func TestSetupRepoCommitsGoModInBase(t *testing.T) {
 	if got := strings.TrimSpace(gitOut("diff", "--name-only", evalBaseBranch, "HEAD")); got != "main.go" {
 		t.Errorf("files changed against %s = %q, want main.go", evalBaseBranch, got)
 	}
+}
+
+// failingPasses is a review.ClaudeRunner whose adversarial pass and security
+// specialist fail while every other specialist succeeds.
+type failingPasses struct{ review.ClaudeRunner }
+
+func (failingPasses) AdversarialReview(string, string, string, []patterns.Pattern, int) (*report.ReviewResult, error) {
+	return nil, errors.New("adversarial timed out")
+}
+
+func (failingPasses) SpecialistReview(_, _ string, sp claude.Specialist, _ []patterns.Pattern, _ int) (*report.ReviewResult, error) {
+	if sp.Key == "security" {
+		return nil, errors.New("security timed out")
+	}
+	return &report.ReviewResult{}, nil
+}
+
+// TestPassFailures locks that a secondary pass the pipeline drops on error is
+// still seen by RunCase, which would otherwise score the lost pass as a miss.
+func TestPassFailures(t *testing.T) {
+	t.Run("passes that succeed record nothing", func(t *testing.T) {
+		p := &passFailures{ClaudeRunner: failingPasses{}}
+		if _, err := p.SpecialistReview("", evalBaseBranch, claude.Specialist{Key: "data-migration"}, nil, 0); err != nil {
+			t.Fatalf("SpecialistReview: %v", err)
+		}
+		if err := p.err(); err != nil {
+			t.Errorf("err() = %v, want nil", err)
+		}
+	})
+
+	t.Run("a failed specialist in the fan-out and a failed adversarial pass are recorded", func(t *testing.T) {
+		p := &passFailures{ClaudeRunner: failingPasses{}}
+		// The fan-out calls the specialists concurrently.
+		claude.RunSpecialistFanOut(nil, func(sp claude.Specialist) (*report.ReviewResult, error) {
+			return p.SpecialistReview("", evalBaseBranch, sp, nil, 0)
+		})
+		if _, err := p.AdversarialReview("", evalBaseBranch, "", nil, 0); err == nil {
+			t.Error("AdversarialReview = nil error, want the wrapped runner's error passed through")
+		}
+		err := p.err()
+		if err == nil {
+			t.Fatal("err() = nil, want the recorded failures")
+		}
+		for _, want := range []string{"security timed out", "adversarial timed out"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("err() = %q, want it to contain %q", err, want)
+			}
+		}
+	})
 }

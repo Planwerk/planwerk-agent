@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/planwerk/planwerk-agent/internal/claude"
@@ -62,21 +63,79 @@ func (c *evalGitHubClient) FetchReviewComment(string, string, int) (string, bool
 	return "", false, nil
 }
 
+// RunOptions selects the review passes a case run adds to the primary review.
+// Thorough mirrors `review --thorough` (the adversarial pass) and Specialists
+// mirrors `review --specialists` (the domain specialist fan-out).
+type RunOptions struct {
+	Thorough, Specialists bool
+}
+
+// Run is one review of one case: the parsed JSON review result and the token
+// usage the run spent.
+type Run struct {
+	Result report.ReviewResult
+	Usage  report.Usage
+}
+
+// passFailures wraps the pipeline's Claude runner and records the error of
+// every adversarial or specialist pass that fails. The pipeline logs such a
+// failure and goes on without the pass, so the run would score the lost pass
+// as one that found nothing; RunCase errors instead. The specialists run
+// concurrently, hence the mutex.
+type passFailures struct {
+	review.ClaudeRunner
+
+	mu   sync.Mutex
+	errs []error
+}
+
+func (p *passFailures) AdversarialReview(dir, baseBranch, sinceRef string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
+	res, err := p.ClaudeRunner.AdversarialReview(dir, baseBranch, sinceRef, pats, maxPatterns)
+	p.record(err)
+	return res, err
+}
+
+func (p *passFailures) SpecialistReview(dir, baseBranch string, sp claude.Specialist, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
+	res, err := p.ClaudeRunner.SpecialistReview(dir, baseBranch, sp, pats, maxPatterns)
+	p.record(err)
+	return res, err
+}
+
+func (p *passFailures) record(err error) {
+	if err == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.errs = append(p.errs, err)
+}
+
+// err joins the recorded failures, or returns nil when every pass succeeded.
+func (p *passFailures) err() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return errors.Join(p.errs...)
+}
+
 // RunCase materializes c into a throwaway git repo, runs the shipped review
-// pipeline against it, and returns the parsed JSON review result. It returns an
-// error only for harness failures (git, materialization, pipeline, JSON) — never
-// for a low-quality result, which is scored, not errored. thorough enables the
-// adversarial pass, mirroring `review --thorough`.
-func RunCase(client *claude.Client, c Case, thorough bool) (report.ReviewResult, error) {
+// pipeline against it with the passes opts selects, and returns the parsed JSON
+// review result with the run's usage. It returns an error only for harness
+// failures (git, materialization, pipeline, a failed adversarial or specialist
+// pass, JSON), never for a low-quality result, which is scored, not errored.
+//
+// client must be fresh: Usage is client.UsageTotals() read after the pipeline
+// returns, which is cumulative over the client's life, so a reused client folds
+// every earlier run into this one.
+func RunCase(client *claude.Client, c Case, opts RunOptions) (Run, error) {
 	repoDir, err := os.MkdirTemp("", "planwerk-eval-"+c.Name+"-*")
 	if err != nil {
-		return report.ReviewResult{}, fmt.Errorf("case %s: temp repo: %w", c.Name, err)
+		return Run{}, fmt.Errorf("case %s: temp repo: %w", c.Name, err)
 	}
 	defer func() { _ = os.RemoveAll(repoDir) }()
 
 	changed, err := setupRepo(repoDir, c)
 	if err != nil {
-		return report.ReviewResult{}, fmt.Errorf("case %s: %w", c.Name, err)
+		return Run{}, fmt.Errorf("case %s: %w", c.Name, err)
 	}
 
 	pr := &github.PR{
@@ -93,31 +152,37 @@ func RunCase(client *claude.Client, c Case, thorough bool) (report.ReviewResult,
 	}
 
 	runner := review.NewRunner(client)
+	failures := &passFailures{ClaudeRunner: runner.Claude}
+	runner.Claude = failures
 	runner.GitHub = &evalGitHubClient{pr: pr}
 	// Keep the run hermetic: never resolve a real wiki (no clone, no network).
 	runner.ResolveWiki = func(string, string, patterns.WikiOptions, patterns.RemoteOptions) patterns.ResolvedWiki {
 		return patterns.ResolvedWiki{}
 	}
 
-	opts := review.Options{
+	reviewOpts := review.Options{
 		NoCache:       true,
 		NoCapture:     true,
 		Format:        "json",
 		MinSeverity:   report.SeverityInfo,
 		MinConfidence: report.ConfidenceUncertain,
-		Thorough:      thorough,
+		Thorough:      opts.Thorough,
+		Specialists:   opts.Specialists,
 	}
 
 	var buf bytes.Buffer
-	if err := runner.Run(&buf, opts); err != nil {
-		return report.ReviewResult{}, fmt.Errorf("case %s: review pipeline: %w", c.Name, err)
+	if err := runner.Run(&buf, reviewOpts); err != nil {
+		return Run{}, fmt.Errorf("case %s: review pipeline: %w", c.Name, err)
+	}
+	if err := failures.err(); err != nil {
+		return Run{}, fmt.Errorf("case %s: a review pass failed, and scoring the run would count it as a miss: %w", c.Name, err)
 	}
 
 	var result report.ReviewResult
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
-		return report.ReviewResult{}, fmt.Errorf("case %s: parsing review JSON: %w", c.Name, err)
+		return Run{}, fmt.Errorf("case %s: parsing review JSON: %w", c.Name, err)
 	}
-	return result, nil
+	return Run{Result: result, Usage: client.UsageTotals()}, nil
 }
 
 // setupRepo builds a git repo in dir: base/ committed on main together with a

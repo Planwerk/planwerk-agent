@@ -25,34 +25,36 @@ func main() {
 	corpusDir := flag.String("corpus", filepath.FromSlash("internal/eval/corpus"), "path to the corpus directory")
 	caseName := flag.String("case", "", "run a single case by directory name (default: all cases)")
 	thorough := flag.Bool("thorough", false, "run the adversarial (thorough) review pass too")
+	specialists := flag.Bool("specialists", false, "run the domain specialist fan-out too")
 	jsonOut := flag.Bool("json", false, "emit the score report as JSON instead of a table")
 	flag.Parse()
 
-	if err := run(*corpusDir, *caseName, *thorough, *jsonOut); err != nil {
+	opts := eval.RunOptions{Thorough: *thorough, Specialists: *specialists}
+	if err := run(*corpusDir, *caseName, opts, *jsonOut); err != nil {
 		fmt.Fprintln(os.Stderr, "planwerk-eval:", err)
 		os.Exit(1)
 	}
 }
 
-func run(corpusDir, caseName string, thorough, jsonOut bool) error {
+func run(corpusDir, caseName string, opts eval.RunOptions, jsonOut bool) error {
 	cases, err := loadCases(corpusDir, caseName)
-	if err != nil {
-		return err
-	}
-
-	client, err := buildClient()
 	if err != nil {
 		return err
 	}
 
 	var scored []eval.Scored
 	for _, c := range cases {
-		fmt.Fprintf(os.Stderr, "running case %s ...\n", c.Name)
-		result, err := eval.RunCase(client, c, thorough)
+		// A fresh client per run: RunCase reads the client's cumulative usage.
+		client, err := buildClient()
 		if err != nil {
 			return err
 		}
-		scored = append(scored, eval.Scored{Case: c, Score: eval.ScoreCase(c, result)})
+		fmt.Fprintf(os.Stderr, "running case %s ...\n", c.Name)
+		r, err := eval.RunCase(client, c, opts)
+		if err != nil {
+			return err
+		}
+		scored = append(scored, eval.Scored{Case: c, Score: eval.ScoreCase(c, r.Result)})
 	}
 
 	rep := eval.BuildReport(scored)
