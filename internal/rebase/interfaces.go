@@ -18,7 +18,10 @@ type ConflictContext struct {
 	Commit          github.Commit // the replayed commit that conflicted
 	ConflictedFiles []string
 	Patterns        []patterns.Pattern
-	MaxPatterns     int
+	// Catalog is the on-disk form of Patterns the session reads (written by
+	// patterns.Materialize); a zero Catalog puts the bodies in the prompt.
+	Catalog     patterns.Catalog
+	MaxPatterns int
 }
 
 // AnalysisContext is the input for the post-rebase analysis prompt. It pairs
@@ -32,7 +35,10 @@ type AnalysisContext struct {
 	RebasedCommits  []github.Commit
 	UpstreamCommits []github.Commit
 	Patterns        []patterns.Pattern
-	MaxPatterns     int
+	// Catalog is the on-disk form of Patterns the session reads (written by
+	// patterns.Materialize); a zero Catalog puts the bodies in the prompt.
+	Catalog     patterns.Catalog
+	MaxPatterns int
 }
 
 // ApplyContext is the input for the Claude apply prompt invoked under
@@ -46,7 +52,10 @@ type ApplyContext struct {
 	HeadBranch   string
 	Analysis     report.RebaseAnalysis
 	Patterns     []patterns.Pattern
-	MaxPatterns  int
+	// Catalog is the on-disk form of Patterns the session reads (written by
+	// patterns.Materialize); a zero Catalog puts the bodies in the prompt.
+	Catalog     patterns.Catalog
+	MaxPatterns int
 }
 
 // BareContext is the input for the self-contained ("bare") rebase prompt

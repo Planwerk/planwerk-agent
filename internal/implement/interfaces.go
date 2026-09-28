@@ -24,7 +24,10 @@ type Context struct {
 	IssueURL     string
 	IssueState   string
 	Patterns     []patterns.Pattern
-	MaxPatterns  int
+	// Catalog is the on-disk form of Patterns the session reads (written by
+	// patterns.Materialize); a zero Catalog puts the bodies in the prompt.
+	Catalog     patterns.Catalog
+	MaxPatterns int
 	// Skills lists the Claude Code Agent Skills the target repo ships under
 	// .claude/skills/ (loaded by skills.Load from the checkout). They are
 	// rendered into the implement prompt so the session uses a matching
@@ -296,7 +299,10 @@ type SimplifyApplyContext struct {
 	BaseBranch   string
 	Findings     []report.Finding
 	Patterns     []patterns.Pattern
-	MaxPatterns  int
+	// Catalog is the on-disk form of Patterns the session reads (written by
+	// patterns.Materialize); a zero Catalog puts the bodies in the prompt.
+	Catalog     patterns.Catalog
+	MaxPatterns int
 }
 
 // SimplifyFinder runs the read-only ponytail-style pass over a produced diff and
@@ -355,7 +361,10 @@ type ReviewApplyContext struct {
 	BaseBranch   string
 	Findings     []report.Finding
 	Patterns     []patterns.Pattern
-	MaxPatterns  int
+	// Catalog is the on-disk form of Patterns the session reads (written by
+	// patterns.Materialize); a zero Catalog puts the bodies in the prompt.
+	Catalog     patterns.Catalog
+	MaxPatterns int
 	// Source says which pass produced Findings, so the prompt can describe
 	// them truthfully: the review fan-out's defects (the zero value), or the
 	// independent verification's unmet Acceptance Criteria.

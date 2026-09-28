@@ -9,7 +9,10 @@ import (
 // Patterns let the proposer reference the project's pattern catalog so
 // suggestions stay specific instead of reverting to generic software advice.
 type AnalysisContext struct {
-	Patterns    []patterns.Pattern
+	Patterns []patterns.Pattern
+	// Catalog is the on-disk form of Patterns the session reads (written by
+	// patterns.Materialize); a zero Catalog puts the bodies in the prompt.
+	Catalog     patterns.Catalog
 	MaxPatterns int
 	RepoName    string // "owner/repo" for context in the prompt
 	// OutOfScope carries rejected ideas loaded from the target repo's

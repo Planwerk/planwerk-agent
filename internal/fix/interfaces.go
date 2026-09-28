@@ -35,7 +35,10 @@ type Context struct {
 	MaxIterations int
 	FailedChecks  []FailedCheck
 	Patterns      []patterns.Pattern
-	MaxPatterns   int
+	// Catalog is the on-disk form of Patterns the session reads (written by
+	// patterns.Materialize); a zero Catalog puts the bodies in the prompt.
+	Catalog     patterns.Catalog
+	MaxPatterns int
 	// Skills lists the Agent Skills the target repo ships under .claude/skills/
 	// (loaded by skills.Load from the checkout), rendered into the fix prompt so
 	// the session uses a matching project skill for a specialized fix instead of
