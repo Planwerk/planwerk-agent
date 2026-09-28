@@ -43,7 +43,9 @@ Proposals are grounded in the same review-pattern catalog used by `review` and
 directories you supply, and the target repo's `.planwerk/review_patterns/`. When
 a proposal addresses a pattern (closes a gap, hardens against a violation, or
 extends coverage) Claude references the pattern by name so reviewers can trace
-the rationale back to the catalog.
+the rationale back to the catalog. The propose session receives the catalog's
+index and reads a pattern's file from a directory the run writes when it needs
+one.
 
 ## Existing-issue dedupe
 

@@ -80,6 +80,7 @@ planwerk-agent/
 │   │   ├── snippets.go         # Quote-or-demote snippet gate (VerifySnippets)
 │   │   └── claims.go           # Claim verification demotion (VerifyClaims, ClaimVerdict)
 │   ├── patterns/
+│   │   ├── catalog.go          # Materialize: the loaded catalog on disk, plus its index
 │   │   ├── embedded.go         # //go:embed all:patterns + loadEmbedded()
 │   │   ├── loader.go           # Load patterns from directories
 │   │   ├── pattern.go          # Pattern data structure + parsing
