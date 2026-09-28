@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -21,11 +23,20 @@ type fakeClaude struct {
 	model  string
 	err    error
 	ctx    Context
+	// ctxs holds the Context of every Fix call in order; ctx is the last.
+	ctxs []Context
+	// onFix, when set, runs inside Fix after the call is recorded, so a test
+	// can observe on-disk state while the session "runs".
+	onFix func(Context)
 }
 
 func (f *fakeClaude) Fix(_ string, ctx Context) (string, string, error) {
 	f.called.Add(1)
 	f.ctx = ctx
+	f.ctxs = append(f.ctxs, ctx)
+	if f.onFix != nil {
+		f.onFix(ctx)
+	}
 	return f.report, f.model, f.err
 }
 
@@ -542,10 +553,11 @@ func TestTrimLogs(t *testing.T) {
 	}
 }
 
-func TestRun_PassesPatternsToClaude(t *testing.T) {
-	// Use an in-process patterns dir so LoadFiltered returns at least one
-	// pattern, proving the wiring from Options through to Claude.Fix
-	// actually carries patterns into the prompt context.
+// writeSamplePattern seeds a --patterns directory holding one pattern named
+// "Sample wiring check", whose catalog file is sampleCatalogFile, and returns
+// the directory.
+func writeSamplePattern(t *testing.T) string {
+	t.Helper()
 	patternsDir := t.TempDir()
 	patternFile := patternsDir + "/sample.md"
 	const patternBody = `# Review Pattern: Sample wiring check
@@ -559,6 +571,29 @@ Wired patterns must reach the fix Context.
 	if err := os.WriteFile(patternFile, []byte(patternBody), 0o644); err != nil {
 		t.Fatalf("seeding pattern file: %v", err)
 	}
+	return patternsDir
+}
+
+// sampleCatalogFile is the catalog file name of the pattern writeSamplePattern
+// seeds.
+const sampleCatalogFile = "sample-wiring-check.md"
+
+// samplePatternOptions runs ref against only the pattern in patternsDir, so
+// the loaded set is exactly that one pattern.
+func samplePatternOptions(ref, patternsDir string) Options {
+	return Options{
+		PRRef:           ref,
+		PatternDirs:     []string{patternsDir},
+		NoLocalPatterns: true,
+		NoRepoPatterns:  true,
+	}
+}
+
+func TestRun_PassesPatternsToClaude(t *testing.T) {
+	// Use an in-process patterns dir so LoadFiltered returns at least one
+	// pattern, proving the wiring from Options through to Claude.Fix
+	// actually carries patterns into the prompt context.
+	patternsDir := writeSamplePattern(t)
 
 	gh := &githubtest.Fake{
 		PR: github.PR{Title: "demo", HeadBranch: "feat/x", HeadSHA: "old"},
@@ -570,15 +605,18 @@ Wired patterns must reach the fix Context.
 		Logs:     "FAIL: TestX\n",
 	}
 	cl := &fakeClaude{report: "fixed"}
+	cl.onFix = func(ctx Context) {
+		if ctx.Catalog.Dir == "" {
+			t.Errorf("fix session got no catalog directory, want the one Run wrote")
+			return
+		}
+		if _, err := os.Stat(filepath.Join(ctx.Catalog.Dir, sampleCatalogFile)); err != nil {
+			t.Errorf("stat %s in the catalog during the session: %v, want the file on disk", sampleCatalogFile, err)
+		}
+	}
 	r := newRunner(gh, cl, &fakePrompter{})
 
-	opts := Options{
-		PRRef:           "owner/repo#7",
-		PatternDirs:     []string{patternsDir},
-		NoLocalPatterns: true,
-		NoRepoPatterns:  true,
-	}
-	if err := r.Run(io.Discard, opts); err != nil {
+	if err := r.Run(io.Discard, samplePatternOptions("owner/repo#7", patternsDir)); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
 	if cl.called.Load() != 1 {
@@ -589,6 +627,91 @@ Wired patterns must reach the fix Context.
 	}
 	if cl.ctx.Patterns[0].Name != "Sample wiring check" {
 		t.Errorf("Claude got pattern name %q, want %q", cl.ctx.Patterns[0].Name, "Sample wiring check")
+	}
+	if cl.ctx.Catalog.Dir == "" {
+		t.Fatalf("Claude got no catalog directory, want the one Run wrote")
+	}
+	if _, err := os.Stat(cl.ctx.Catalog.Dir); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("stat %s after Run: %v, want fs.ErrNotExist (the catalog is removed with its iteration's checkout)", cl.ctx.Catalog.Dir, err)
+	}
+}
+
+// TestRun_FixErrorRemovesTheCatalog locks that a failed fix session still
+// removes its iteration's catalog: the loop removes it explicitly rather than
+// by defer, so the removal must come before the error return.
+func TestRun_FixErrorRemovesTheCatalog(t *testing.T) {
+	patternsDir := writeSamplePattern(t)
+
+	gh := &githubtest.Fake{
+		PR:     github.PR{Title: "demo", HeadBranch: "feat/x", HeadSHA: "old"},
+		Checks: [][]github.CheckRun{{failing(1, "test")}},
+		Logs:   "FAIL: TestX\n",
+	}
+	boom := errors.New("boom")
+	cl := &fakeClaude{err: boom}
+	r := newRunner(gh, cl, &fakePrompter{})
+
+	err := r.Run(io.Discard, samplePatternOptions("owner/repo#7", patternsDir))
+	if !errors.Is(err, boom) {
+		t.Fatalf("Run err = %v, want it to wrap %v", err, boom)
+	}
+	if cl.ctx.Catalog.Dir == "" {
+		t.Fatalf("Claude got no catalog directory, want the one the iteration wrote")
+	}
+	if _, err := os.Stat(cl.ctx.Catalog.Dir); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("stat %s after the failed iteration: %v, want fs.ErrNotExist", cl.ctx.Catalog.Dir, err)
+	}
+}
+
+// TestRun_EachFixIterationGetsItsOwnCatalog locks that every iteration writes
+// a fresh catalog and removes it before the next iteration's session runs, so
+// no catalog outlives the checkout its patterns were loaded from.
+func TestRun_EachFixIterationGetsItsOwnCatalog(t *testing.T) {
+	patternsDir := writeSamplePattern(t)
+
+	failures := []github.CheckRun{failing(1, "test")}
+	gh := &githubtest.Fake{
+		PR:     github.PR{Title: "demo", HeadBranch: "b", HeadSHA: "sha0"},
+		Checks: [][]github.CheckRun{failures, failures, failures},
+		// Each iteration advances HEAD so the loop doesn't bail on
+		// "no new commit detected".
+		HeadSHAs: []string{"sha1", "sha2"},
+	}
+	cl := &fakeClaude{report: "tried"}
+	cl.onFix = func(ctx Context) {
+		if len(cl.ctxs) != 2 {
+			return
+		}
+		first := cl.ctxs[0].Catalog.Dir
+		if _, err := os.Stat(first); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("stat iteration 1's catalog %s during iteration 2: %v, want fs.ErrNotExist", first, err)
+		}
+		if _, err := os.Stat(filepath.Join(ctx.Catalog.Dir, sampleCatalogFile)); err != nil {
+			t.Errorf("stat %s in iteration 2's catalog during the session: %v, want the file on disk", sampleCatalogFile, err)
+		}
+	}
+	r := newRunner(gh, cl, &fakePrompter{})
+
+	opts := samplePatternOptions("o/r#1", patternsDir)
+	opts.MaxIterations = 2
+	err := r.Run(io.Discard, opts)
+	if !errors.Is(err, ErrMaxIterations) {
+		t.Fatalf("Run err = %v, want ErrMaxIterations", err)
+	}
+	if got := len(cl.ctxs); got != 2 {
+		t.Fatalf("Claude.Fix called %d times, want 2", got)
+	}
+	first, second := cl.ctxs[0].Catalog.Dir, cl.ctxs[1].Catalog.Dir
+	if first == "" || second == "" {
+		t.Fatalf("catalog directories = %q, %q, want both set", first, second)
+	}
+	if first == second {
+		t.Errorf("both iterations got catalog %q, want a fresh one per iteration", first)
+	}
+	for _, dir := range []string{first, second} {
+		if _, err := os.Stat(dir); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("stat %s after Run: %v, want fs.ErrNotExist", dir, err)
+		}
 	}
 }
 

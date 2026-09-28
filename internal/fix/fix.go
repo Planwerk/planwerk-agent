@@ -324,6 +324,10 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		}
 
 		pats := loadPatterns(opts, fresh.Dir, "origin/"+pr.BaseBranch)
+		// Each iteration writes its own catalog from the base-ref patterns of
+		// its fresh checkout and removes it with that checkout, so none
+		// outlives its iteration.
+		cat, cleanupCatalog := patterns.MaterializeOrWarn(pats)
 
 		fixReport, model, fixErr := r.Claude.Fix(fresh.Dir, Context{
 			RepoFullName:   fullName,
@@ -335,6 +339,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 			MaxIterations:  opts.MaxIterations,
 			FailedChecks:   failed,
 			Patterns:       pats,
+			Catalog:        cat,
 			MaxPatterns:    opts.MaxPatterns,
 			Skills:         skills.LoadFromRef(fresh.Dir, "origin/"+pr.BaseBranch),
 			StyleGuidePath: styleguide.Find(fresh.Dir),
@@ -343,6 +348,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 			BaseBranch:     pr.BaseBranch,
 		})
 		fresh.Cleanup()
+		cleanupCatalog()
 		if fixErr != nil {
 			return fmt.Errorf("claude fix iteration %d: %w", iteration, fixErr)
 		}
