@@ -79,6 +79,20 @@ func goldenPatterns() []patterns.Pattern {
 	}
 }
 
+// goldenCatalog returns goldenPatterns as an on-disk catalog, with the file
+// names patterns.Materialize derives from their names, so a golden can lock
+// the index form of patternCatalogBlock. Nothing is written to Dir.
+func goldenCatalog() patterns.Catalog {
+	pats := goldenPatterns()
+	return patterns.Catalog{
+		Dir: "/tmp/planwerk-agent-patterns-golden",
+		Entries: []patterns.CatalogEntry{
+			{Pattern: pats[0], File: "hardcoded-secrets.md"},
+			{Pattern: pats[1], File: "missing-context-context-parameter.md"},
+		},
+	}
+}
+
 // goldenStyleGuidePath is the deterministic style-guide path shared by the
 // implement, bare-implement, fix, and address style-guide goldens, locking the
 // rendered styleGuideBlock citation.

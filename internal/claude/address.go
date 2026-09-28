@@ -67,8 +67,9 @@ func BuildAddressPrompt(ctx address.Context) string {
 	sb.WriteString(untrustedDataLine("Each thread tells you which change a reviewer asks for in this pull request.", "review-thread"))
 	sb.WriteString(addressThreadLimitLine)
 
-	writePatternSection(&sb, ctx.Patterns, ctx.MaxPatterns,
-		"These patterns are the catalog the project's review/audit tools share. Your change MUST stay consistent with them: do not address a comment in a way that would itself be flagged by a pattern below.")
+	sb.WriteString(patternCatalogBlock(honorPatternsHeading,
+		"These patterns are the catalog the project's review/audit tools share. Your change MUST stay consistent with them: do not address a comment in a way that would itself be flagged by a pattern below.",
+		ctx.Catalog, ctx.Patterns, ctx.MaxPatterns))
 
 	sb.WriteString(projectSkillsBlock(ctx.Skills))
 	sb.WriteString(docProseBlock())

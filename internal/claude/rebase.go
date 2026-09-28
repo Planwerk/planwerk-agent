@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/planwerk/planwerk-agent/internal/github"
-	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/rebase"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
@@ -88,8 +87,9 @@ func BuildRebaseConflictPrompt(ctx rebase.ConflictContext) string {
 		sb.WriteString("\n")
 	}
 
-	writePatternSection(&sb, ctx.Patterns, ctx.MaxPatterns,
-		"These patterns are the catalog the project's review/audit tools share. Your conflict resolution MUST stay consistent with them: do not resolve a conflict in a way that would itself be flagged by a pattern below.")
+	sb.WriteString(patternCatalogBlock(honorPatternsHeading,
+		"These patterns are the catalog the project's review/audit tools share. Your conflict resolution MUST stay consistent with them: do not resolve a conflict in a way that would itself be flagged by a pattern below.",
+		ctx.Catalog, ctx.Patterns, ctx.MaxPatterns))
 
 	sb.WriteString(`## What to do
 
@@ -146,8 +146,9 @@ semantic behavior change it assumed away.
 	sb.WriteString(formatAnalysisCommits(ctx.UpstreamCommits))
 	sb.WriteString("\n")
 
-	writePatternSection(&sb, ctx.Patterns, ctx.MaxPatterns,
-		"Ground your analysis in these patterns: a rebased commit that now violates one because of an upstream change is exactly the kind of adjustment to report.")
+	sb.WriteString(patternCatalogBlock(honorPatternsHeading,
+		"Ground your analysis in these patterns: a rebased commit that now violates one because of an upstream change is exactly the kind of adjustment to report.",
+		ctx.Catalog, ctx.Patterns, ctx.MaxPatterns))
 
 	sb.WriteString(outputLanguageBlock())
 
@@ -214,8 +215,9 @@ func BuildRebaseApplyPrompt(ctx rebase.ApplyContext) string {
 	sb.WriteString(formatApplyAdjustments(ctx.Analysis))
 	sb.WriteString("\n")
 
-	writePatternSection(&sb, ctx.Patterns, ctx.MaxPatterns,
-		"Keep the adjustments consistent with these patterns.")
+	sb.WriteString(patternCatalogBlock(honorPatternsHeading,
+		"Keep the adjustments consistent with these patterns.",
+		ctx.Catalog, ctx.Patterns, ctx.MaxPatterns))
 
 	fmt.Fprintf(&sb, `## What to do
 
@@ -321,19 +323,6 @@ func BuildBareRebasePrompt(ctx rebase.BareContext) string {
 	sb.WriteString(noSkipHooksLine())
 
 	return sb.String()
-}
-
-// writePatternSection appends the shared "Project Review Patterns to Honor"
-// block when patterns are present, with a task-specific lead-in.
-func writePatternSection(sb *strings.Builder, pats []patterns.Pattern, maxPatterns int, leadIn string) {
-	if len(pats) == 0 {
-		return
-	}
-	sb.WriteString("## Project Review Patterns to Honor\n\n")
-	sb.WriteString(leadIn)
-	sb.WriteString("\n\n<review-patterns>\n")
-	sb.WriteString(patterns.FormatGroupedForPrompt(pats, maxPatterns))
-	sb.WriteString("</review-patterns>\n\n")
 }
 
 // formatAnalysisCommits renders a commit list for the analysis prompt, full SHA
