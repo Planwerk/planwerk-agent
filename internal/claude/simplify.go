@@ -6,7 +6,6 @@ import (
 
 	"github.com/planwerk/planwerk-agent/internal/implement"
 	"github.com/planwerk/planwerk-agent/internal/mdfence"
-	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
@@ -125,13 +124,9 @@ func BuildSimplifyApplyPrompt(ctx implement.SimplifyApplyContext) string {
 	sb.WriteString(renderSimplifyFindings(ctx.Findings))
 	sb.WriteString("\n")
 
-	if len(ctx.Patterns) > 0 {
-		sb.WriteString("## Project Review Patterns to Honor\n\n")
-		sb.WriteString("These patterns are the catalog the project's review/audit/elaborate tools share — including any project-specific patterns shipped under `.planwerk/review_patterns/` in this repository. The simplified result MUST stay consistent with them. When a simplification touches an area covered by a pattern, prefer the resolution the pattern endorses.\n\n")
-		sb.WriteString("<review-patterns>\n")
-		sb.WriteString(patterns.FormatGroupedForPrompt(ctx.Patterns, ctx.MaxPatterns))
-		sb.WriteString("</review-patterns>\n\n")
-	}
+	sb.WriteString(patternCatalogBlock(honorPatternsHeading,
+		"These patterns are the catalog the project's review/audit/elaborate tools share — including any project-specific patterns shipped under `.planwerk/review_patterns/` in this repository. The simplified result MUST stay consistent with them. When a simplification touches an area covered by a pattern, prefer the resolution the pattern endorses.",
+		ctx.Catalog, ctx.Patterns, ctx.MaxPatterns))
 
 	sb.WriteString(simplifyApplyGuardrailBlock() + `
 ## What to do

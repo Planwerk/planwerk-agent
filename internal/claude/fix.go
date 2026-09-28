@@ -72,8 +72,9 @@ func BuildFixPrompt(ctx fix.Context) string {
 	}
 	sb.WriteString("\n")
 
-	writePatternSection(&sb, ctx.Patterns, ctx.MaxPatterns,
-		"These patterns are the catalog the project's review/audit/elaborate tools share — including any project-specific patterns shipped under `.planwerk/review_patterns/` in this repository. The fix you push MUST stay consistent with them: do not introduce code or test changes that would itself be flagged by a pattern below. When the fix touches an area covered by a pattern, prefer the resolution the pattern endorses.")
+	sb.WriteString(patternCatalogBlock(honorPatternsHeading,
+		"These patterns are the catalog the project's review/audit/elaborate tools share — including any project-specific patterns shipped under `.planwerk/review_patterns/` in this repository. The fix you push MUST stay consistent with them: do not introduce code or test changes that would itself be flagged by a pattern below. When the fix touches an area covered by a pattern, prefer the resolution the pattern endorses.",
+		ctx.Catalog, ctx.Patterns, ctx.MaxPatterns))
 
 	sb.WriteString(projectSkillsBlock(ctx.Skills))
 	sb.WriteString(docProseBlock())

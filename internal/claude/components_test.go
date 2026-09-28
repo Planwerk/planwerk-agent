@@ -6,6 +6,7 @@ import (
 
 	"github.com/planwerk/planwerk-agent/internal/elaborate"
 	"github.com/planwerk/planwerk-agent/internal/implement"
+	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/skills"
 )
 
@@ -383,5 +384,62 @@ func TestElaboratePromptForbidsASweepSection(t *testing.T) {
 	got := buildElaboratePrompt(elaborate.Context{RepoName: "acme/app"})
 	if !strings.Contains(got, "Do NOT add a Domain Sweep section") {
 		t.Error("the elaboration prompt must forbid emitting a Domain Sweep section")
+	}
+}
+
+// TestPatternCatalogBlock_ZeroCatalogIsTheLegacyBlock locks the fallback: with
+// no on-disk catalog the block renders the heading, the lead-in and the pattern
+// bodies in <review-patterns> tags, byte for byte. A run whose catalog could not
+// be written and every printed prompt render this form.
+func TestPatternCatalogBlock_ZeroCatalogIsTheLegacyBlock(t *testing.T) {
+	pats := goldenPatterns()
+	leadIn := "Keep the change consistent with these patterns."
+	want := honorPatternsHeading + "\n\n" + leadIn + "\n\n<review-patterns>\n" +
+		patterns.FormatGroupedForPrompt(pats, 0) + "</review-patterns>\n\n"
+
+	if got := patternCatalogBlock(honorPatternsHeading, leadIn, patterns.Catalog{}, pats, 0); got != want {
+		t.Errorf("patternCatalogBlock(zero catalog) =\n%s\nwant\n%s", got, want)
+	}
+}
+
+// TestPatternCatalogBlock_NoPatterns verifies a run without patterns renders
+// no section, whether or not a catalog is present.
+func TestPatternCatalogBlock_NoPatterns(t *testing.T) {
+	for name, cat := range map[string]patterns.Catalog{
+		"zero catalog":    {},
+		"on-disk catalog": goldenCatalog(),
+	} {
+		if got := patternCatalogBlock(honorPatternsHeading, "lead-in", cat, nil, 0); got != "" {
+			t.Errorf("%s: patternCatalogBlock(nil patterns) = %q, want empty", name, got)
+		}
+	}
+}
+
+// TestPatternCatalogBlock_IndexForm verifies an on-disk catalog replaces the
+// pattern bodies with the catalog index and the directory the session reads
+// them from.
+func TestPatternCatalogBlock_IndexForm(t *testing.T) {
+	leadIn := "Keep the change consistent with these patterns."
+	got := patternCatalogBlock(honorPatternsHeading, leadIn, goldenCatalog(), goldenPatterns(), 0)
+
+	for _, want := range []string{
+		honorPatternsHeading + "\n\n" + leadIn + "\n\n",
+		"/tmp/planwerk-agent-patterns-golden",
+		"<review-patterns-index>\n",
+		"</review-patterns-index>\n\n",
+		"- hardcoded-secrets.md: Hardcoded secrets (security, CRITICAL): ",
+		"- missing-context-context-parameter.md: Missing context.Context parameter (reliability, WARNING): ",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("index-form block is missing %q:\n%s", want, got)
+		}
+	}
+	for _, unwanted := range []string{
+		"Secrets MUST be loaded",
+		"<review-patterns>\n",
+	} {
+		if strings.Contains(got, unwanted) {
+			t.Errorf("index-form block must not contain %q:\n%s", unwanted, got)
+		}
 	}
 }

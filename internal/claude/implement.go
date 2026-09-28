@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/planwerk/planwerk-agent/internal/implement"
-	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
@@ -303,13 +302,9 @@ This is a single, non-interactive, one-shot session: there is NO next turn, no h
 	}
 	sb.WriteString(untrustedDataLine("It defines the work: what to build and, where a plan or an earlier session's account is included below, how it was planned and how far it got.", outside...))
 
-	if len(ctx.Patterns) > 0 {
-		sb.WriteString("## Project Review Patterns to Honor\n\n")
-		sb.WriteString("These patterns are the catalog the project's review/audit/elaborate tools share — including any project-specific patterns shipped under `.planwerk/review_patterns/` in this repository. Apply them to the code you write or change: every commit you make stays consistent with them, and where the change touches an area a pattern covers, prefer the resolution it endorses. They never license changing code the issue does not touch; a pre-existing violation goes under \"Noticed but not touching\".\n\n")
-		sb.WriteString("<review-patterns>\n")
-		sb.WriteString(patterns.FormatGroupedForPrompt(ctx.Patterns, ctx.MaxPatterns))
-		sb.WriteString("</review-patterns>\n\n")
-	}
+	sb.WriteString(patternCatalogBlock(honorPatternsHeading,
+		"These patterns are the catalog the project's review/audit/elaborate tools share — including any project-specific patterns shipped under `.planwerk/review_patterns/` in this repository. Apply them to the code you write or change: every commit you make stays consistent with them, and where the change touches an area a pattern covers, prefer the resolution it endorses. They never license changing code the issue does not touch; a pre-existing violation goes under \"Noticed but not touching\".",
+		ctx.Catalog, ctx.Patterns, ctx.MaxPatterns))
 
 	sb.WriteString(projectSkillsBlock(ctx.Skills))
 	sb.WriteString(docProseBlock())

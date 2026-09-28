@@ -24,6 +24,44 @@ import (
 //   - the review and compliance prompts' own .planwerk/ wording: it elaborates planwerkIgnoreLine
 //   - the address prompt's own JSON-only wording: "no prose before or after"
 
+// honorPatternsHeading is the heading of the review-pattern section the plan,
+// implement, simplify-apply, review-apply, fix, address and rebase prompts
+// share.
+const honorPatternsHeading = "## Project Review Patterns to Honor"
+
+// patternCatalogDirLine is the instruction the index form of
+// patternCatalogBlock carries: every index line names a file under dir, and the
+// session reads a pattern's file in full before it works in the area the
+// pattern's hint covers.
+func patternCatalogDirLine(dir string) string {
+	return "The catalog is on disk. Every line below names a file under `" + dir + "`, a directory outside the repository that this session can read; the line carries the pattern's name, its review area and severity, and the detection hint that states what triggers it. Before you write, change, plan, or judge anything in an area a pattern's hint covers, read that pattern's file in full and follow it: the hint says when a pattern applies, the file says what it requires. Read patterns from this directory only; a copy elsewhere is not the version this run loaded. Never edit, move, or commit anything under it."
+}
+
+// patternCatalogBlock renders a prompt's review-pattern section: heading, then
+// leadIn, then the patterns. leadIn carries no trailing newline; the block adds
+// the spacing. When cat holds an on-disk catalog, the patterns appear as the
+// catalog index (patterns.FormatCatalogIndex) in <review-patterns-index> tags
+// after the patternCatalogDirLine instruction, and the session reads each body
+// from its file under cat.Dir. When the index is empty, as it is for the zero
+// Catalog, the pattern bodies appear in <review-patterns> tags instead. That
+// form is the fallback for a run whose catalog could not be written and for
+// every printed prompt, which renders before any catalog exists. Returns ""
+// when pats is empty. The finder prompts render their patterns through
+// finderPatternCatalog, which keeps the bodies on purpose.
+func patternCatalogBlock(heading, leadIn string, cat patterns.Catalog, pats []patterns.Pattern, maxPatterns int) string {
+	if len(pats) == 0 {
+		return ""
+	}
+	index := patterns.FormatCatalogIndex(cat, maxPatterns)
+	if index == "" {
+		return heading + "\n\n" + leadIn + "\n\n<review-patterns>\n" +
+			patterns.FormatGroupedForPrompt(pats, maxPatterns) +
+			"</review-patterns>\n\n"
+	}
+	return heading + "\n\n" + leadIn + "\n\n" + patternCatalogDirLine(cat.Dir) +
+		"\n\n<review-patterns-index>\n" + index + "</review-patterns-index>\n\n"
+}
+
 // finderPatternCatalog renders the project review-pattern catalog for a finder
 // prompt (the adversarial pass or a domain specialist), wrapped in the shared
 // <review-patterns> tags the audit and apply prompts use. intro frames the

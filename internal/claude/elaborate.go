@@ -7,7 +7,6 @@ import (
 
 	"github.com/planwerk/planwerk-agent/internal/elaborate"
 	"github.com/planwerk/planwerk-agent/internal/github"
-	"github.com/planwerk/planwerk-agent/internal/patterns"
 )
 
 // Elaborate turns a high-level GitHub issue (typically the output of
@@ -66,13 +65,9 @@ Calibrate the detail to the reader: an engineer who can open every file in this 
 
 	renderIssueRelations(&sb, ctx.RepoName, elaborateIssueNumber(ctx), ctx.MetaIssue, ctx.SiblingIssues, ctx.ChildIssues)
 
-	if len(ctx.Patterns) > 0 {
-		sb.WriteString("## Review Patterns to Ground the Elaboration In\n\n")
-		sb.WriteString("These patterns are the catalog the project's review/audit/propose tools share. When the elaboration touches an area covered by a pattern, reference the pattern by name in the description or motivation so reviewers can trace the rationale.\n\n")
-		sb.WriteString("<review-patterns>\n")
-		sb.WriteString(patterns.FormatGroupedForPrompt(ctx.Patterns, ctx.MaxPatterns))
-		sb.WriteString("</review-patterns>\n\n")
-	}
+	sb.WriteString(patternCatalogBlock("## Review Patterns to Ground the Elaboration In",
+		"These patterns are the catalog the project's review/audit/propose tools share. When the elaboration touches an area covered by a pattern, reference the pattern by name in the description or motivation so reviewers can trace the rationale.",
+		ctx.Catalog, ctx.Patterns, ctx.MaxPatterns))
 
 	if ctx.PriorDraft != "" {
 		sb.WriteString("## Revising a Prior Draft\n\n")

@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/reviewprepared"
 )
 
@@ -52,13 +51,9 @@ Apply these thinking patterns:
 		fmt.Fprintf(&sb, "Repository: %s\n\n", ctx.RepoName)
 	}
 
-	if len(ctx.Patterns) > 0 {
-		sb.WriteString("## Review Patterns (context, not the focus)\n\n")
-		sb.WriteString("These are the project's review patterns. Use them as a sanity lens to judge whether the SPEC anticipates them — for example, if a pattern says 'every public API needs docs' and the spec lacks a docs task, that's a finding.\n\n")
-		sb.WriteString("<review-patterns>\n")
-		sb.WriteString(patterns.FormatGroupedForPrompt(ctx.Patterns, ctx.MaxPatterns))
-		sb.WriteString("</review-patterns>\n\n")
-	}
+	sb.WriteString(patternCatalogBlock("## Review Patterns (context, not the focus)",
+		"These are the project's review patterns. Use them as a sanity lens to judge whether the SPEC anticipates them — for example, if a pattern says 'every public API needs docs' and the spec lacks a docs task, that's a finding.",
+		ctx.Catalog, ctx.Patterns, ctx.MaxPatterns))
 
 	sb.WriteString("## Prepared Feature Specifications to Review\n\n")
 	sb.WriteString(`Each block below is a feature whose Planwerk file declares status="prepared". The team has finished drafting it; the next step is implementation. Your job is to find ANY weakness in the spec TEXT that would make implementation slower, more ambiguous, or more error-prone.

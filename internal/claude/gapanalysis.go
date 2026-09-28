@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/planwerk/planwerk-agent/internal/gapanalysis"
-	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/planwerk"
 )
 
@@ -48,13 +47,9 @@ func buildGapAnalysisPrompt(ctx gapanalysis.AnalysisContext) string {
 		fmt.Fprintf(&sb, "Repository: %s\n\n", ctx.RepoName)
 	}
 
-	if len(ctx.Patterns) > 0 {
-		sb.WriteString("## Review Patterns (context, not the focus)\n\n")
-		sb.WriteString("These are the project's review patterns. Use them as a sanity lens, but the PRIMARY input is the feature specs below. A gap is a spec-vs-code discrepancy, not a generic pattern violation.\n\n")
-		sb.WriteString("<review-patterns>\n")
-		sb.WriteString(patterns.FormatGroupedForPrompt(ctx.Patterns, ctx.MaxPatterns))
-		sb.WriteString("</review-patterns>\n\n")
-	}
+	sb.WriteString(patternCatalogBlock("## Review Patterns (context, not the focus)",
+		"These are the project's review patterns. Use them as a sanity lens, but the PRIMARY input is the feature specs below. A gap is a spec-vs-code discrepancy, not a generic pattern violation.",
+		ctx.Catalog, ctx.Patterns, ctx.MaxPatterns))
 
 	// Spec injection — every feature is included verbatim. Each block carries
 	// the feature_id, the feature_file basename (the JSON file under
