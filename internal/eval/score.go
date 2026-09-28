@@ -230,12 +230,14 @@ type PassRecall struct {
 }
 
 // Report is the full scored corpus: the run configuration, per-case rows, the
-// corpus-wide aggregate, and the recall credited to each pass.
+// corpus-wide aggregate, the recall credited to each pass, and, when the run
+// was compared against a baseline, the comparison.
 type Report struct {
 	Config
-	Cases     []CaseScore  `json:"cases"`
-	Aggregate CaseScore    `json:"aggregate"`
-	Passes    []PassRecall `json:"passes"`
+	Cases      []CaseScore  `json:"cases"`
+	Aggregate  CaseScore    `json:"aggregate"`
+	Passes     []PassRecall `json:"recall_by_pass"`
+	Comparison *Comparison  `json:"comparison,omitempty"`
 }
 
 // BuildReport turns scored cases into the renderable report, computing the
@@ -347,11 +349,12 @@ func renderPassRecall(w io.Writer, passes []PassRecall) {
 // aggregate, then the aggregate's passes, each total divided by rep.Runs.
 func renderCostPerRun(w io.Writer, rep Report) {
 	const header = "%-*s  %6s  %13s  %13s  %8s\n"
-	const row = "%-*s  %6.1f  %13.0f  %13.0f  %8s\n"
+	const row = "%-*s  %6.1f  %13d  %13d  %8s\n"
 	runs := float64(max(rep.Runs, 1))
 	costRow := func(name string, calls int, prompt, output int64, usd float64) {
+		c := perRun(prompt, output, usd, rep.Runs)
 		_, _ = fmt.Fprintf(w, row, labelWidth, truncate(name, labelWidth), float64(calls)/runs,
-			float64(prompt)/runs, float64(output)/runs, fmt.Sprintf("$%.2f", usd/runs))
+			c.PromptTokens, c.OutputTokens, fmt.Sprintf("$%.2f", c.CostUSD))
 	}
 
 	_, _ = fmt.Fprintln(w)
@@ -382,10 +385,14 @@ func yesNo(b bool) string {
 	return "no"
 }
 
+// notApplicable marks an undefined ratio or a change with no base in the
+// rendered report.
+const notApplicable = "n/a"
+
 // pct formats an optional ratio as a percentage, or "n/a" when undefined.
 func pct(v *float64) string {
 	if v == nil {
-		return "n/a"
+		return notApplicable
 	}
 	return fmt.Sprintf("%.0f%%", *v*100)
 }
