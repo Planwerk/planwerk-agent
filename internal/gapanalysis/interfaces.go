@@ -9,8 +9,11 @@ import (
 // AnalysisContext carries everything Claude needs to compare the spec against
 // the code. The runner builds it after loading features and patterns.
 type AnalysisContext struct {
-	Features    []*planwerk.Feature
-	Patterns    []patterns.Pattern
+	Features []*planwerk.Feature
+	Patterns []patterns.Pattern
+	// Catalog is the on-disk form of Patterns the session reads (written by
+	// patterns.Materialize); a zero Catalog puts the bodies in the prompt.
+	Catalog     patterns.Catalog
 	MaxPatterns int
 	RepoName    string // "owner/repo" for context in the prompt
 }

@@ -9,7 +9,10 @@ import (
 // injected so the elaboration is grounded in the same review catalog used
 // by review/audit/propose, instead of the model inventing repo conventions.
 type Context struct {
-	Patterns    []patterns.Pattern
+	Patterns []patterns.Pattern
+	// Catalog is the on-disk form of Patterns the session reads (written by
+	// patterns.Materialize); a zero Catalog puts the bodies in the prompt.
+	Catalog     patterns.Catalog
 	MaxPatterns int
 	RepoName    string
 	Issue       *github.Issue

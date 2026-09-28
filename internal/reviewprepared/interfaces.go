@@ -8,8 +8,11 @@ import (
 // AnalysisContext is everything Claude needs to review one batch of prepared
 // features. Built by the runner after loading features and patterns.
 type AnalysisContext struct {
-	Features    []PreparedFeature
-	Patterns    []patterns.Pattern
+	Features []PreparedFeature
+	Patterns []patterns.Pattern
+	// Catalog is the on-disk form of Patterns the session reads (written by
+	// patterns.Materialize); a zero Catalog puts the bodies in the prompt.
+	Catalog     patterns.Catalog
 	MaxPatterns int
 	RepoName    string
 	// IncludeImproved tells Claude to emit a full rewritten feature JSON
