@@ -4,12 +4,16 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
 
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/github/githubtest"
+	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
@@ -27,11 +31,17 @@ type fakeClaude struct {
 	results []*report.AddressResult
 	err     error
 	ctxs    []Context
+	// onAddress, when set, runs inside Address after the call is recorded,
+	// so a test can observe on-disk state while the session "runs".
+	onAddress func(Context)
 }
 
 func (f *fakeClaude) Address(_ string, ctx Context) (*report.AddressResult, error) {
 	i := int(f.called.Add(1)) - 1
 	f.ctxs = append(f.ctxs, ctx)
+	if f.onAddress != nil {
+		f.onAddress(ctx)
+	}
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -74,6 +84,40 @@ func newRunner(gh *githubtest.Fake, cl *fakeClaude) *Runner {
 // off, one commit per thread) that the CLI would supply.
 func baseOpts(prRef string) Options {
 	return Options{PRRef: prRef, Reply: true, OneCommitPerThread: true}
+}
+
+// writeSamplePattern seeds a --patterns directory holding one pattern named
+// "Sample wiring check", whose catalog file is sampleCatalogFile, and returns
+// the directory.
+func writeSamplePattern(t *testing.T) string {
+	t.Helper()
+	patternsDir := t.TempDir()
+	patternFile := patternsDir + "/sample.md"
+	const patternBody = `# Review Pattern: Sample wiring check
+**Review-Area**: meta
+**Detection-Hint**: anything
+**Severity**: WARNING
+
+## Rule
+Wired patterns must reach the address Context.
+`
+	if err := os.WriteFile(patternFile, []byte(patternBody), 0o644); err != nil {
+		t.Fatalf("seeding pattern file: %v", err)
+	}
+	return patternsDir
+}
+
+// sampleCatalogFile is the catalog file name of the pattern writeSamplePattern
+// seeds.
+const sampleCatalogFile = "sample-wiring-check.md"
+
+// withSamplePattern restricts opts to the pattern in patternsDir, so the
+// loaded set is exactly that one pattern.
+func withSamplePattern(opts Options, patternsDir string) Options {
+	opts.PatternDirs = []string{patternsDir}
+	opts.NoLocalPatterns = true
+	opts.NoRepoPatterns = true
+	return opts
 }
 
 func TestRun_NoThreads(t *testing.T) {
@@ -151,6 +195,53 @@ func TestRun_Aggregate(t *testing.T) {
 	}
 	if len(cl.ctxs[0].Threads) != 2 {
 		t.Errorf("aggregate session got %d threads, want both", len(cl.ctxs[0].Threads))
+	}
+}
+
+// TestRun_PassesPatternCatalogToClaude locks that one address run writes one
+// pattern catalog, shares it with every per-thread session, and removes it
+// when the run ends.
+func TestRun_PassesPatternCatalogToClaude(t *testing.T) {
+	patternsDir := writeSamplePattern(t)
+
+	gh := &githubtest.Fake{PR: github.PR{HeadBranch: "feat/x"}, Dir: t.TempDir(), Threads: sampleThreads()}
+	cl := &fakeClaude{results: []*report.AddressResult{doneResult(threadID1), doneResult(threadID2)}}
+	cl.onAddress = func(ctx Context) {
+		if ctx.Catalog.Dir == "" {
+			t.Errorf("address session got no catalog directory, want the one Run wrote")
+			return
+		}
+		if _, err := os.Stat(filepath.Join(ctx.Catalog.Dir, sampleCatalogFile)); err != nil {
+			t.Errorf("stat %s in the catalog during the session: %v, want the file on disk", sampleCatalogFile, err)
+		}
+	}
+	r := newRunner(gh, cl)
+
+	opts := withSamplePattern(baseOpts("o/r#1"), patternsDir)
+	opts.All = true
+	if err := r.Run(io.Discard, opts); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if got := len(cl.ctxs); got != 2 {
+		t.Fatalf("Claude.Address called %d times, want 2 (one per thread)", got)
+	}
+	for i, ctx := range cl.ctxs {
+		if got := len(ctx.Patterns); got != 1 {
+			t.Fatalf("session %d got %d patterns, want 1 (wiring broken)", i+1, got)
+		}
+		if ctx.Patterns[0].Name != "Sample wiring check" {
+			t.Errorf("session %d got pattern name %q, want %q", i+1, ctx.Patterns[0].Name, "Sample wiring check")
+		}
+	}
+	dir := cl.ctxs[0].Catalog.Dir
+	if dir == "" {
+		t.Fatalf("Claude got no catalog directory, want the one Run wrote")
+	}
+	if got := cl.ctxs[1].Catalog.Dir; got != dir {
+		t.Errorf("second session got catalog %q, want the first session's %q", got, dir)
+	}
+	if _, err := os.Stat(dir); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("stat %s after Run: %v, want fs.ErrNotExist (the catalog is removed when the run ends)", dir, err)
 	}
 }
 
@@ -393,14 +484,22 @@ func TestRun_DryRunSkipsClaude(t *testing.T) {
 }
 
 func TestRun_PrintPromptWritesPromptAndSkipsClaude(t *testing.T) {
+	patternsDir := writeSamplePattern(t)
+	// Every t.TempDir above is created before TMPDIR points at tmp, so tmp
+	// holds only what Run writes.
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+
 	gh := &githubtest.Fake{PR: github.PR{HeadBranch: "feat/x"}, Threads: sampleThreads()}
 	cl := &fakeClaude{}
 	r := newRunner(gh, cl)
+	var got Context
 	r.BuildPrompt = func(ctx Context) string {
+		got = ctx
 		return "PROMPT threads=" + itoa(len(ctx.Threads)) + " first=" + ctx.Threads[0].ID
 	}
 
-	opts := baseOpts("o/r#1")
+	opts := withSamplePattern(baseOpts("o/r#1"), patternsDir)
 	opts.PrintPrompt = true
 	var buf bytes.Buffer
 	if err := r.Run(&buf, opts); err != nil {
@@ -419,6 +518,23 @@ func TestRun_PrintPromptWritesPromptAndSkipsClaude(t *testing.T) {
 	}
 	if !strings.HasSuffix(out, "\n") {
 		t.Errorf("prompt output should end with a newline: %q", out)
+	}
+	// A printed prompt outlives the run, so it carries the pattern bodies
+	// and no catalog directory is written for it.
+	if n := len(got.Patterns); n != 1 {
+		t.Fatalf("printed prompt got %d patterns, want 1", n)
+	}
+	if got.Catalog.Dir != "" || len(got.Catalog.Entries) != 0 {
+		t.Errorf("printed prompt got catalog %+v, want the zero Catalog", got.Catalog)
+	}
+	entries, err := os.ReadDir(tmp)
+	if err != nil {
+		t.Fatalf("reading TMPDIR: %v", err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), patterns.CatalogDirPrefix) {
+			t.Errorf("TMPDIR holds %s, want no catalog directory for a printed prompt", e.Name())
+		}
 	}
 }
 
