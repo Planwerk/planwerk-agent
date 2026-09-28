@@ -165,6 +165,38 @@ positive integer. When more patterns are loaded than the budget allows, the tool
 keeps the highest-priority patterns by severity (`BLOCKING` > `CRITICAL` >
 `WARNING` > `INFO`) and prints a warning to stderr.
 
+## How a Session Receives the Catalog
+
+The finder prompts carry the full pattern bodies: the `review` and `audit`
+prompts, the adversarial pass, and the domain specialists. Their findings are
+what the eval corpus scores.
+
+Thirteen other prompts carry the catalog's index and a directory instead:
+the `implement` run's plan, implement, simplify-apply, and review-apply
+sessions, `fix`, `address`, the three `rebase` sessions (conflict, analysis,
+apply), `elaborate`, `propose`, `gap-analysis`, and `review-prepared`. The
+index has one line per pattern: its file name, name, review area, severity, and
+detection hint. For a Go repository it is about 13 KB, where the bodies of its
+47 patterns are about 123 KB. The prompt tells the session to read a pattern's
+file in full before it works in an area the pattern's hint covers. The
+`**Detection-Hint**` line is optional, so the line of a pattern without one
+tells the session to read that file before it starts.
+
+The directory is a temporary one the tool writes outside the checkout, with one
+`<slug>.md` file per loaded pattern, and opens to the session with the Claude
+Code CLI flag `--add-dir`. The files are written from the catalog the run
+loaded, so the directory holds every pattern whatever its source (embedded,
+wiki, repo-specific, or `--patterns`). It is removed when the run ends. `fix`
+writes one per iteration and removes it with that iteration's checkout.
+
+`--max-patterns` caps the index and the bodies the same way, severity first
+(see [Prompt Budget](#prompt-budget)). A prompt printed with `--print-prompt` or
+`--print-plan-prompt` carries the bodies, because the directory it would name
+is gone by the time the prompt is read; `--print-bare-prompt` keeps its own
+catalog of pattern URLs and checkout paths. The capture pass carries the index
+alone, with no directory. If writing the directory fails, the tool logs a
+warning and the sessions carry the bodies.
+
 ## Pattern Format
 
 ```markdown
