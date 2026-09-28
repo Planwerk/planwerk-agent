@@ -500,6 +500,11 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		slog.Info("resolved wiki", "repo", wiki.Repo, "commit", wiki.CommitSHA)
 	}
 	ctx.Patterns = loadPatterns(opts, repo.Dir, wiki.PatternsDir)
+	// The catalog is written once here and removed when Run returns, so it
+	// outlives every session below: plan, implement, simplify and review apply.
+	var cleanupCatalog func()
+	ctx.Catalog, cleanupCatalog = patterns.MaterializeOrWarn(ctx.Patterns)
+	defer cleanupCatalog()
 	ctx.Skills = skills.Load(repo.Dir)
 	ctx.StyleGuidePath = styleguide.Find(repo.Dir)
 	ctx.Memory = wiki.Memory
@@ -1250,6 +1255,7 @@ func (r *Runner) runVerification(w io.Writer, dir string, ctx Context) {
 		BaseBranch:   branch.BaseBranch,
 		Findings:     gaps,
 		Patterns:     ctx.Patterns,
+		Catalog:      ctx.Catalog,
 		MaxPatterns:  ctx.MaxPatterns,
 		Source:       ReviewApplySourceVerification,
 	})
@@ -1330,6 +1336,7 @@ func (r *Runner) runSimplify(w io.Writer, dir, owner, name string, number int, c
 		BaseBranch:   branch.BaseBranch,
 		Findings:     kept,
 		Patterns:     ctx.Patterns,
+		Catalog:      ctx.Catalog,
 		MaxPatterns:  ctx.MaxPatterns,
 	})
 	if err != nil {
@@ -1579,6 +1586,7 @@ func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx
 			BaseBranch:   branch.BaseBranch,
 			Findings:     actionable,
 			Patterns:     ctx.Patterns,
+			Catalog:      ctx.Catalog,
 			MaxPatterns:  ctx.MaxPatterns,
 		})
 		if err != nil {
