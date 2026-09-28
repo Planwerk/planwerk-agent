@@ -1,0 +1,53 @@
+package handlers
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"log"
+	"net/http"
+)
+
+// ErrNotFound is returned by a UserStore that has no user with the requested id.
+var ErrNotFound = errors.New("user not found")
+
+// User is a stored user.
+type User struct {
+	ID    string
+	Name  string
+	Email string
+}
+
+// UserStore looks users up by id.
+type UserStore interface {
+	User(ctx context.Context, id string) (User, error)
+}
+
+// userResponse is the JSON body GetUser writes.
+type userResponse struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email_address"`
+}
+
+// GetUser serves GET /users/{id}: the user as JSON, 404 when the store has no
+// such user, and 500 on any other store error.
+func GetUser(store UserStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u, err := store.User(r.Context(), r.PathValue("id"))
+		if errors.Is(err, ErrNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		if err != nil {
+			log.Printf("loading user: %v", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		resp := userResponse{ID: u.ID, Name: u.Name, Email: u.Email}
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			log.Printf("encoding user %s: %v", u.ID, err)
+		}
+	}
+}

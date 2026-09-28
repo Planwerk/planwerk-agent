@@ -1,0 +1,12 @@
+{
+  "description": "Discount gains a 15% tier for 100 units or more, but the test file is unchanged, so the new branch has no test.",
+  "clean": false,
+  "findings": [
+    {
+      "file": "discount.go",
+      "line": 7,
+      "severity": "WARNING",
+      "keywords": ["test", "untested", "coverage"]
+    }
+  ]
+}

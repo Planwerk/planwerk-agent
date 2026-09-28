@@ -14,7 +14,7 @@
 // `go vet ./internal/eval/...` ignore the corpus entirely and only compile the
 // eval package itself. materialize (see harness.go) strips the .txt on copy, so
 // the trees land in the throwaway repo as real .go files. Any file NOT ending in
-// .go.txt (e.g. expected.json) is copied verbatim.
+// .go.txt (e.g. a .sql migration) is copied verbatim.
 //
 // A case never ships a go.mod: the harness writes one into each throwaway
 // repo's base commit (ensureGoMod), so technology detection sees a Go

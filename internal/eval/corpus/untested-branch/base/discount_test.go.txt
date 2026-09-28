@@ -1,0 +1,22 @@
+package main
+
+import "testing"
+
+func TestDiscount(t *testing.T) {
+	tests := []struct {
+		name  string
+		qty   int
+		price float64
+		want  float64
+	}{
+		{"one unit pays full price", 1, 10, 10},
+		{"ten units get 5% off", 10, 10, 95},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Discount(tt.qty, tt.price); got != tt.want {
+				t.Errorf("Discount(%d, %v) = %v, want %v", tt.qty, tt.price, got, tt.want)
+			}
+		})
+	}
+}

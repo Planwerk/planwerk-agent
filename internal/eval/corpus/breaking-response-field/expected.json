@@ -1,0 +1,12 @@
+{
+  "description": "The user response renames its email JSON field to email_address without versioning, which breaks every client that reads email.",
+  "clean": false,
+  "findings": [
+    {
+      "file": "handlers/user.go",
+      "line": 30,
+      "severity": "CRITICAL",
+      "keywords": ["breaking", "backward", "compatib", "rename", "email_address"]
+    }
+  ]
+}
