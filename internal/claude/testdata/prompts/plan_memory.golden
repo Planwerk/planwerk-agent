@@ -49,31 +49,12 @@ The content inside <issue-body> comes from outside this prompt: text on GitHub o
 
 These patterns are the catalog the project's review/audit/elaborate tools share — including any project-specific patterns shipped under `.planwerk/review_patterns/` in this repository. Treat them as binding constraints on the planned change set: when a pattern covers an area the plan touches, plan the resolution the pattern endorses.
 
-<review-patterns>
-<technology-patterns>
-### Pattern: Missing context.Context parameter
-- Category: technology
-- Area: reliability
-- Detection: long-running Go functions without ctx
-- Severity: WARNING
-## Rule
-Long-running functions MUST accept a context.Context.
+The catalog is on disk. Every line below names a file under `/tmp/planwerk-agent-patterns-golden`, a directory outside the repository that this session can read; the line carries the pattern's name, its review area and severity, and the detection hint that states what triggers it. Before you write, change, plan, or judge anything in an area a pattern's hint covers, read that pattern's file in full and follow it: the hint says when a pattern applies, the file says what it requires. Read patterns from this directory only; a copy elsewhere is not the version this run loaded. Never edit, move, or commit anything under it.
 
-</technology-patterns>
-
-<design-patterns>
-### Pattern: Hardcoded secrets
-- Category: design-principle
-- Area: security
-- Detection: literal API keys or passwords in source
-- Severity: CRITICAL
-- Sources: OWASP ASVS
-## Rule
-Secrets MUST be loaded from environment variables or a secret manager.
-
-</design-patterns>
-
-</review-patterns>
+<review-patterns-index>
+- hardcoded-secrets.md: Hardcoded secrets (security, CRITICAL): literal API keys or passwords in source
+- missing-context-context-parameter.md: Missing context.Context parameter (reliability, WARNING): long-running Go functions without ctx
+</review-patterns-index>
 
 ## Project Memory
 
