@@ -3,6 +3,9 @@ package eval
 import (
 	"maps"
 	"math"
+	"reflect"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/planwerk/planwerk-agent/internal/report"
@@ -263,7 +266,7 @@ func TestBuildReportAggregate(t *testing.T) {
 		{Case: caseWith(true), Score: Score{Clean: true, FP: 1}},
 	}
 
-	rep := BuildReport(scored)
+	rep := BuildReport(scored, Config{Runs: 1})
 	if len(rep.Cases) != 3 {
 		t.Fatalf("cases = %d, want 3", len(rep.Cases))
 	}
@@ -293,5 +296,153 @@ func TestCaseScoreUndefinedRatiosAreNil(t *testing.T) {
 	cs := toCaseScore("clean", "", Score{Clean: true})
 	if cs.Precision != nil || cs.Recall != nil || cs.SeverityAccuracy != nil {
 		t.Errorf("undefined ratios must be nil, got p=%v r=%v s=%v", cs.Precision, cs.Recall, cs.SeverityAccuracy)
+	}
+}
+
+func TestScoreRuns(t *testing.T) {
+	c := caseWith(false, ef("a.go", 10, "WARNING", "leak"))
+	hit := report.ReviewResult{Findings: []report.Finding{pf("a.go", 10, report.SeverityWarning, "leak", "leaks")}}
+	usage := func(calls int, input int64) report.Usage {
+		return report.Usage{
+			Calls: calls, InputTokens: input,
+			Passes: []report.PassUsage{{Pass: "review", Calls: calls, InputTokens: input}},
+		}
+	}
+
+	t.Run("pools the tallies and sums the usage", func(t *testing.T) {
+		sc := ScoreRuns(c, []Run{
+			{Result: hit, Usage: usage(1, 100)},
+			{Result: report.ReviewResult{}, Usage: usage(2, 200)},
+			{Result: hit, Usage: usage(3, 300)},
+		})
+		if sc.Score.TP != 2 || sc.Score.FN != 1 || sc.Score.FP != 0 {
+			t.Errorf("Score = {TP:%d FP:%d FN:%d}, want {2 0 1}", sc.Score.TP, sc.Score.FP, sc.Score.FN)
+		}
+		if !maps.Equal(sc.Score.FoundBy, map[string]int{"review": 2}) {
+			t.Errorf("FoundBy = %v, want map[review:2]", sc.Score.FoundBy)
+		}
+		want := usage(6, 600)
+		if !reflect.DeepEqual(sc.Usage, want) {
+			t.Errorf("Usage = %+v, want %+v", sc.Usage, want)
+		}
+	})
+
+	t.Run("no runs yield zero tallies and zero usage", func(t *testing.T) {
+		for _, c := range []Case{c, caseWith(true)} {
+			sc := ScoreRuns(c, nil)
+			if want := (Score{Clean: c.Expected.Clean}); !reflect.DeepEqual(sc.Score, want) {
+				t.Errorf("Score = %+v, want %+v", sc.Score, want)
+			}
+			if !reflect.DeepEqual(sc.Usage, report.Usage{}) {
+				t.Errorf("Usage = %+v, want zero", sc.Usage)
+			}
+		}
+	})
+}
+
+func TestBuildReportPasses(t *testing.T) {
+	t.Run("recall per pass over the aggregate TP+FN, config copied", func(t *testing.T) {
+		scored := []Scored{
+			{Case: caseWith(false, ef("a.go", 1, "WARNING", "x")), Score: Score{TP: 5, FN: 1, FoundBy: map[string]int{"review": 5, "specialist:testing": 2}}},
+			{Case: caseWith(false, ef("b.go", 1, "WARNING", "x")), Score: Score{TP: 3, FN: 1, FoundBy: map[string]int{"review": 3}}},
+		}
+		rep := BuildReport(scored, Config{Runs: 3, RunOptions: RunOptions{Thorough: true, Specialists: true}})
+		if rep.Runs != 3 || !rep.Thorough || !rep.Specialists {
+			t.Errorf("config = {Runs:%d Thorough:%v Specialists:%v}, want {3 true true}", rep.Runs, rep.Thorough, rep.Specialists)
+		}
+		if len(rep.Passes) != 2 {
+			t.Fatalf("Passes = %+v, want 2 entries", rep.Passes)
+		}
+		for i, want := range []struct {
+			pass   string
+			found  int
+			recall float64
+		}{{"review", 8, 0.8}, {"specialist:testing", 2, 0.2}} {
+			got := rep.Passes[i]
+			if got.Pass != want.pass || got.Found != want.found || got.Recall == nil || math.Abs(*got.Recall-want.recall) > 1e-9 {
+				t.Errorf("Passes[%d] = {%s %d %v}, want {%s %d %v}", i, got.Pass, got.Found, got.Recall, want.pass, want.found, want.recall)
+			}
+		}
+		if !maps.Equal(rep.Cases[0].FoundBy, scored[0].Score.FoundBy) {
+			t.Errorf("case FoundBy = %v, want %v", rep.Cases[0].FoundBy, scored[0].Score.FoundBy)
+		}
+	})
+
+	t.Run("equal found ties break by name", func(t *testing.T) {
+		scored := []Scored{{Case: caseWith(false, ef("a.go", 1, "WARNING", "x")), Score: Score{TP: 2, FoundBy: map[string]int{"specialist:testing": 1, "adversarial": 1}}}}
+		rep := BuildReport(scored, Config{Runs: 1})
+		if len(rep.Passes) != 2 || rep.Passes[0].Pass != "adversarial" || rep.Passes[1].Pass != "specialist:testing" {
+			t.Errorf("Passes = %+v, want adversarial before specialist:testing", rep.Passes)
+		}
+	})
+}
+
+func TestBuildReportCleanOnly(t *testing.T) {
+	rep := BuildReport([]Scored{{Case: caseWith(true), Score: Score{Clean: true, FP: 2}}}, Config{Runs: 1})
+	if rep.Passes == nil || len(rep.Passes) != 0 {
+		t.Errorf("Passes = %#v, want empty and non-nil", rep.Passes)
+	}
+	if rep.Aggregate.Recall != nil {
+		t.Errorf("aggregate recall = %v, want nil", *rep.Aggregate.Recall)
+	}
+}
+
+func TestBuildReportUsage(t *testing.T) {
+	ua := report.Usage{Calls: 2, InputTokens: 10, CostUSD: 0.2, Passes: []report.PassUsage{{Pass: "review", Calls: 2, InputTokens: 10, CostUSD: 0.2}}}
+	ub := report.Usage{Calls: 1, OutputTokens: 4, CostUSD: 0.5, Passes: []report.PassUsage{{Pass: "specialist-security", Calls: 1, OutputTokens: 4, CostUSD: 0.5}}}
+	scored := []Scored{
+		{Case: caseWith(false, ef("a.go", 1, "WARNING", "x")), Score: Score{TP: 1}, Usage: ua},
+		{Case: caseWith(true), Score: Score{Clean: true}, Usage: ub},
+	}
+	rep := BuildReport(scored, Config{Runs: 1})
+	if !reflect.DeepEqual(rep.Cases[0].Usage, ua) || !reflect.DeepEqual(rep.Cases[1].Usage, ub) {
+		t.Errorf("case usage = %+v / %+v, want %+v / %+v", rep.Cases[0].Usage, rep.Cases[1].Usage, ua, ub)
+	}
+	if want := sumUsage(ua, ub); !reflect.DeepEqual(rep.Aggregate.Usage, want) {
+		t.Errorf("aggregate usage = %+v, want %+v", rep.Aggregate.Usage, want)
+	}
+}
+
+func TestRenderTableSections(t *testing.T) {
+	scored := []Scored{{
+		Case:  Case{Name: "priced", Expected: Expected{Findings: []ExpectedFinding{ef("a.go", 1, "WARNING", "x")}}},
+		Score: Score{TP: 3, SeverityMatches: 3, FoundBy: map[string]int{"review": 3}},
+		Usage: report.Usage{
+			Calls: 6, InputTokens: 1000, CacheReadTokens: 1500, CacheCreationTokens: 500, OutputTokens: 300, CostUSD: 0.3,
+			Passes: []report.PassUsage{{Pass: "review", Calls: 6, InputTokens: 1000, CacheReadTokens: 1500, CacheCreationTokens: 500, OutputTokens: 300, CostUSD: 0.3}},
+		},
+	}}
+	var buf strings.Builder
+	RenderTable(&buf, BuildReport(scored, Config{Runs: 3, RunOptions: RunOptions{Thorough: true}}))
+	out := buf.String()
+
+	for _, want := range []string{"CASE ", "RUNS: 3 per case (thorough: yes, specialists: no)", "RECALL BY PASS", "COST PER RUN"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output lacks %q:\n%s", want, out)
+		}
+	}
+
+	_, cost, ok := strings.Cut(out, "COST PER RUN")
+	if !ok {
+		t.Fatalf("no COST PER RUN section:\n%s", out)
+	}
+	var row []string
+	for _, line := range strings.Split(cost, "\n") {
+		if f := strings.Fields(line); len(f) > 0 && f[0] == "priced" {
+			row = f
+		}
+	}
+	// 3000 prompt tokens over 3 runs: 1000 per run; calls 2.0, output 100, $0.10.
+	if want := []string{"priced", "2.0", "1000", "100", "$0.10"}; !slices.Equal(row, want) {
+		t.Errorf("cost row = %v, want %v\n%s", row, want, out)
+	}
+}
+
+func TestRenderTableNoPasses(t *testing.T) {
+	var buf strings.Builder
+	RenderTable(&buf, BuildReport([]Scored{{Case: caseWith(true), Score: Score{Clean: true}}}, Config{Runs: 1}))
+	_, recall, _ := strings.Cut(buf.String(), "RECALL BY PASS\n")
+	if !strings.HasPrefix(recall, "(none)\n") {
+		t.Errorf("RECALL BY PASS with no credit = %q, want (none)", recall)
 	}
 }

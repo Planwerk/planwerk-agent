@@ -1,9 +1,11 @@
 package eval
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/planwerk/planwerk-agent/internal/hygiene"
@@ -70,10 +72,24 @@ func (s *Score) Add(o Score) {
 	}
 }
 
-// Scored pairs a case with the score computed for its review result.
+// Scored pairs a case with the score pooled over its runs and the usage those
+// runs spent.
 type Scored struct {
 	Case  Case
 	Score Score
+	Usage report.Usage
+}
+
+// ScoreRuns scores every run of c and pools them: the tallies add up, so every
+// ratio of the result is a pooled ratio over the runs, and Usage is the sum of
+// the runs' usage. No runs yield zero tallies with Clean copied from the case.
+func ScoreRuns(c Case, runs []Run) Scored {
+	sc := Scored{Case: c, Score: Score{Clean: c.Expected.Clean}}
+	for _, r := range runs {
+		sc.Score.Add(ScoreCase(c, r.Result))
+		sc.Usage = sumUsage(sc.Usage, r.Usage)
+	}
+	return sc
 }
 
 // ScoreCase compares the predicted findings against the case's expected findings
@@ -180,38 +196,86 @@ func abs(n int) int {
 }
 
 // CaseScore is the JSON/text-facing view of one case's (or the aggregate's)
-// score. Undefined ratios serialize as null and render as "n/a".
+// score. Undefined ratios serialize as null and render as "n/a". Tallies and
+// Usage are totals over all runs.
 type CaseScore struct {
-	Name             string   `json:"name"`
-	Description      string   `json:"description,omitempty"`
-	Clean            bool     `json:"clean"`
-	TP               int      `json:"tp"`
-	FP               int      `json:"fp"`
-	FN               int      `json:"fn"`
-	SeverityMatches  int      `json:"severity_matches"`
-	Precision        *float64 `json:"precision"`
-	Recall           *float64 `json:"recall"`
-	SeverityAccuracy *float64 `json:"severity_accuracy"`
+	Name             string         `json:"name"`
+	Description      string         `json:"description,omitempty"`
+	Clean            bool           `json:"clean"`
+	TP               int            `json:"tp"`
+	FP               int            `json:"fp"`
+	FN               int            `json:"fn"`
+	SeverityMatches  int            `json:"severity_matches"`
+	Precision        *float64       `json:"precision"`
+	Recall           *float64       `json:"recall"`
+	SeverityAccuracy *float64       `json:"severity_accuracy"`
+	FoundBy          map[string]int `json:"found_by,omitempty"`
+	Usage            report.Usage   `json:"usage"`
 }
 
-// Report is the full scored corpus: per-case rows plus the corpus-wide aggregate.
+// Config records how a report's runs were made: the runs per case and the
+// passes each run added to the primary review.
+type Config struct {
+	Runs int `json:"runs"`
+	RunOptions
+}
+
+// PassRecall is one pass's share of the pooled recall: Found expected findings
+// credited to the pass (see ScoreCase) over the aggregate TP+FN. Recall is nil
+// when that denominator is 0.
+type PassRecall struct {
+	Pass   string   `json:"pass"`
+	Found  int      `json:"found"`
+	Recall *float64 `json:"recall"`
+}
+
+// Report is the full scored corpus: the run configuration, per-case rows, the
+// corpus-wide aggregate, and the recall credited to each pass.
 type Report struct {
-	Cases     []CaseScore `json:"cases"`
-	Aggregate CaseScore   `json:"aggregate"`
+	Config
+	Cases     []CaseScore  `json:"cases"`
+	Aggregate CaseScore    `json:"aggregate"`
+	Passes    []PassRecall `json:"passes"`
 }
 
 // BuildReport turns scored cases into the renderable report, computing the
 // aggregate by summing the raw tallies (not by averaging per-case ratios, which
-// would double-weight small cases).
-func BuildReport(scored []Scored) Report {
-	var rep Report
+// would double-weight small cases) and the usage of every case.
+func BuildReport(scored []Scored, cfg Config) Report {
+	rep := Report{Config: cfg}
 	var agg Score
+	var usage report.Usage
 	for _, sc := range scored {
-		rep.Cases = append(rep.Cases, toCaseScore(sc.Case.Name, sc.Case.Expected.Description, sc.Score))
+		cs := toCaseScore(sc.Case.Name, sc.Case.Expected.Description, sc.Score)
+		cs.Usage = sc.Usage
+		rep.Cases = append(rep.Cases, cs)
 		agg.Add(sc.Score)
+		usage = sumUsage(usage, sc.Usage)
 	}
 	rep.Aggregate = toCaseScore("AGGREGATE", "", agg)
+	rep.Aggregate.Usage = usage
+	rep.Passes = passRecalls(agg)
 	return rep
+}
+
+// passRecalls lists one PassRecall per pass agg credits, ordered by Found
+// descending, then by name. It is never nil, so the JSON carries [] rather
+// than null.
+func passRecalls(agg Score) []PassRecall {
+	passes := make([]PassRecall, 0, len(agg.FoundBy))
+	expected := agg.TP + agg.FN
+	for pass, found := range agg.FoundBy {
+		pr := PassRecall{Pass: pass, Found: found}
+		if expected > 0 {
+			v := float64(found) / float64(expected)
+			pr.Recall = &v
+		}
+		passes = append(passes, pr)
+	}
+	slices.SortFunc(passes, func(a, b PassRecall) int {
+		return cmp.Or(cmp.Compare(b.Found, a.Found), cmp.Compare(a.Pass, b.Pass))
+	})
+	return passes
 }
 
 func toCaseScore(name, desc string, s Score) CaseScore {
@@ -223,6 +287,7 @@ func toCaseScore(name, desc string, s Score) CaseScore {
 		FP:              s.FP,
 		FN:              s.FN,
 		SeverityMatches: s.SeverityMatches,
+		FoundBy:         s.FoundBy,
 	}
 	if v, ok := s.Precision(); ok {
 		cs.Precision = &v
@@ -238,7 +303,8 @@ func toCaseScore(name, desc string, s Score) CaseScore {
 
 // RenderTable writes the report as an aligned text table. Undefined ratios show
 // as "n/a"; a clean case's recall is always undefined and is noted in the
-// footer.
+// footer. The table is followed by the run configuration, the recall by pass,
+// and the cost per run, where every value is a total divided by the runs.
 func RenderTable(w io.Writer, rep Report) {
 	const header = "%-22s  %5s  %3s  %3s  %3s  %9s  %7s  %8s\n"
 	const row = "%-22s  %5s  %3d  %3d  %3d  %9s  %7s  %8s\n"
@@ -251,15 +317,69 @@ func RenderTable(w io.Writer, rep Report) {
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintln(w, "PRECISION = TP/(TP+FP), RECALL = TP/(TP+FN), SEV-ACC = severity matches/TP.")
 	_, _ = fmt.Fprintln(w, "A clean case seeds no bug: recall is undefined (n/a) and every finding is a false positive.")
+
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintf(w, "RUNS: %d per case (thorough: %s, specialists: %s)\n",
+		rep.Runs, yesNo(rep.Thorough), yesNo(rep.Specialists))
+	renderPassRecall(w, rep.Passes)
+	renderCostPerRun(w, rep)
+}
+
+// labelWidth is the width of the label column that leads the RECALL BY PASS
+// and COST PER RUN sections and the comparison.
+const labelWidth = 28
+
+// renderPassRecall writes the RECALL BY PASS section.
+func renderPassRecall(w io.Writer, passes []PassRecall) {
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "RECALL BY PASS")
+	if len(passes) == 0 {
+		_, _ = fmt.Fprintln(w, "(none)")
+		return
+	}
+	_, _ = fmt.Fprintf(w, "%-*s  %5s  %7s\n", labelWidth, "PASS", "FOUND", "RECALL")
+	for _, p := range passes {
+		_, _ = fmt.Fprintf(w, "%-*s  %5d  %7s\n", labelWidth, truncate(p.Pass, labelWidth), p.Found, pct(p.Recall))
+	}
+}
+
+// renderCostPerRun writes the COST PER RUN section: one row per case, the
+// aggregate, then the aggregate's passes, each total divided by rep.Runs.
+func renderCostPerRun(w io.Writer, rep Report) {
+	const header = "%-*s  %6s  %13s  %13s  %8s\n"
+	const row = "%-*s  %6.1f  %13.0f  %13.0f  %8s\n"
+	runs := float64(max(rep.Runs, 1))
+	costRow := func(name string, calls int, prompt, output int64, usd float64) {
+		_, _ = fmt.Fprintf(w, row, labelWidth, truncate(name, labelWidth), float64(calls)/runs,
+			float64(prompt)/runs, float64(output)/runs, fmt.Sprintf("$%.2f", usd/runs))
+	}
+
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "COST PER RUN")
+	head := fmt.Sprintf(header, labelWidth, "CASE", "CALLS", "PROMPT TOKENS", "OUTPUT TOKENS", "EST USD")
+	_, _ = io.WriteString(w, head)
+	for _, c := range rep.Cases {
+		costRow(c.Name, c.Usage.Calls, promptTokens(c.Usage), c.Usage.OutputTokens, c.Usage.CostUSD)
+	}
+	// The rule is as wide as the header row, its newline aside.
+	_, _ = fmt.Fprintln(w, strings.Repeat("-", len(head)-1))
+	agg := rep.Aggregate.Usage
+	costRow(rep.Aggregate.Name, agg.Calls, promptTokens(agg), agg.OutputTokens, agg.CostUSD)
+	for _, p := range agg.Passes {
+		costRow("  "+p.Pass, p.Calls, passPromptTokens(p), p.OutputTokens, p.CostUSD)
+	}
 }
 
 func writeRow(w io.Writer, format string, c CaseScore) {
-	clean := "no"
-	if c.Clean {
-		clean = "yes"
-	}
-	_, _ = fmt.Fprintf(w, format, truncate(c.Name, 22), clean, c.TP, c.FP, c.FN,
+	_, _ = fmt.Fprintf(w, format, truncate(c.Name, 22), yesNo(c.Clean), c.TP, c.FP, c.FN,
 		pct(c.Precision), pct(c.Recall), pct(c.SeverityAccuracy))
+}
+
+func yesNo(b bool) string {
+	if b {
+		return "yes"
+	}
+	return "no"
 }
 
 // pct formats an optional ratio as a percentage, or "n/a" when undefined.
