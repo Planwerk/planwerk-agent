@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/planwerk/planwerk-agent/internal/hygiene"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
@@ -24,6 +25,9 @@ type Score struct {
 	FP              int // predictions matching no expected finding
 	FN              int // expected findings left unmatched
 	SeverityMatches int // among TP, predictions whose severity equals the matched expected severity
+	// FoundBy counts, per pass label, the expected findings that pass matched
+	// (see ScoreCase); nil when no pass matched any.
+	FoundBy map[string]int
 }
 
 // Precision is TP/(TP+FP); undefined when nothing was predicted.
@@ -58,6 +62,12 @@ func (s *Score) Add(o Score) {
 	s.FP += o.FP
 	s.FN += o.FN
 	s.SeverityMatches += o.SeverityMatches
+	for pass, n := range o.FoundBy {
+		if s.FoundBy == nil {
+			s.FoundBy = make(map[string]int, len(o.FoundBy))
+		}
+		s.FoundBy[pass] += n
+	}
 }
 
 // Scored pairs a case with the score computed for its review result.
@@ -71,12 +81,25 @@ type Scored struct {
 // each expected finding claims the first not-yet-claimed prediction that matches
 // it (same file, line within tolerance, keyword present). Unclaimed predictions
 // are false positives; unclaimed expected findings are false negatives.
+//
+// FoundBy credits each expected finding once to every pass in the union of
+// ConfirmedBy over all predictions that match it, claimed or not; an empty
+// ConfirmedBy counts as hygiene.PassReview. The credit answers only "did this
+// pass see the bug": an unclaimed duplicate still counts as a false positive,
+// and one prediction matching two expected findings credits its passes for
+// both, so a pass's recall can exceed the pooled recall.
 func ScoreCase(c Case, result report.ReviewResult) Score {
 	preds := result.Findings
 	claimed := make([]bool, len(preds))
 	s := Score{Clean: c.Expected.Clean}
 
 	for _, exp := range c.Expected.Findings {
+		for pass := range passesMatching(preds, exp) {
+			if s.FoundBy == nil {
+				s.FoundBy = make(map[string]int)
+			}
+			s.FoundBy[pass]++
+		}
 		matchIdx := -1
 		for i := range preds {
 			if claimed[i] {
@@ -103,6 +126,26 @@ func ScoreCase(c Case, result report.ReviewResult) Score {
 		}
 	}
 	return s
+}
+
+// passesMatching returns the union of ConfirmedBy over every prediction that
+// matches exp. A prediction with no ConfirmedBy counts as the primary review:
+// the pipeline stamps provenance only when a secondary pass ran.
+func passesMatching(preds []report.Finding, exp ExpectedFinding) map[string]bool {
+	passes := make(map[string]bool)
+	for _, p := range preds {
+		if !matches(p, exp) {
+			continue
+		}
+		if len(p.ConfirmedBy) == 0 {
+			passes[hygiene.PassReview] = true
+			continue
+		}
+		for _, pass := range p.ConfirmedBy {
+			passes[pass] = true
+		}
+	}
+	return passes
 }
 
 // matches reports whether a predicted finding satisfies the match rule for an

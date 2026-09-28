@@ -1,6 +1,7 @@
 package eval
 
 import (
+	"maps"
 	"math"
 	"testing"
 
@@ -10,6 +11,13 @@ import (
 // pf builds a predicted finding.
 func pf(file string, line int, sev report.Severity, title, problem string) report.Finding {
 	return report.Finding{File: file, Line: line, Severity: sev, Title: title, Problem: problem}
+}
+
+// pfBy builds a predicted finding carrying the given ConfirmedBy provenance.
+func pfBy(file string, line int, sev report.Severity, title, problem string, passes ...string) report.Finding {
+	f := pf(file, line, sev, title, problem)
+	f.ConfirmedBy = passes
+	return f
 }
 
 // ef builds an expected finding.
@@ -42,13 +50,15 @@ func TestScoreCase(t *testing.T) {
 		preds              []report.Finding
 		wantTP, wantFP     int
 		wantFN, wantSevHit int
+		wantFoundBy        map[string]int
 	}{
 		{
-			name:       "perfect match",
-			c:          caseWith(false, ef("a.go", 10, "CRITICAL", "leak")),
-			preds:      []report.Finding{pf("a.go", 10, report.SeverityCritical, "Goroutine leak", "leaks forever")},
-			wantTP:     1,
-			wantSevHit: 1,
+			name:        "perfect match",
+			c:           caseWith(false, ef("a.go", 10, "CRITICAL", "leak")),
+			preds:       []report.Finding{pf("a.go", 10, report.SeverityCritical, "Goroutine leak", "leaks forever")},
+			wantTP:      1,
+			wantSevHit:  1,
+			wantFoundBy: map[string]int{"review": 1},
 		},
 		{
 			name:   "wrong file is a miss",
@@ -63,18 +73,20 @@ func TestScoreCase(t *testing.T) {
 			wantFN: 1, wantFP: 1,
 		},
 		{
-			name:       "severity mismatch still true positive",
-			c:          caseWith(false, ef("a.go", 10, "CRITICAL", "leak")),
-			preds:      []report.Finding{pf("a.go", 10, report.SeverityWarning, "leak", "leaks")},
-			wantTP:     1,
-			wantSevHit: 0,
+			name:        "severity mismatch still true positive",
+			c:           caseWith(false, ef("a.go", 10, "CRITICAL", "leak")),
+			preds:       []report.Finding{pf("a.go", 10, report.SeverityWarning, "leak", "leaks")},
+			wantTP:      1,
+			wantSevHit:  0,
+			wantFoundBy: map[string]int{"review": 1},
 		},
 		{
-			name:       "line within tolerance matches",
-			c:          caseWith(false, ef("a.go", 10, "WARNING", "leak")),
-			preds:      []report.Finding{pf("a.go", 13, report.SeverityWarning, "leak", "leaks")},
-			wantTP:     1,
-			wantSevHit: 1,
+			name:        "line within tolerance matches",
+			c:           caseWith(false, ef("a.go", 10, "WARNING", "leak")),
+			preds:       []report.Finding{pf("a.go", 13, report.SeverityWarning, "leak", "leaks")},
+			wantTP:      1,
+			wantSevHit:  1,
+			wantFoundBy: map[string]int{"review": 1},
 		},
 		{
 			name:   "line beyond tolerance misses",
@@ -83,11 +95,12 @@ func TestScoreCase(t *testing.T) {
 			wantFN: 1, wantFP: 1,
 		},
 		{
-			name:       "keyword case-insensitive in problem",
-			c:          caseWith(false, ef("a.go", 10, "BLOCKING", "Injection")),
-			preds:      []report.Finding{pf("a.go", 10, report.SeverityBlocking, "SQL issue", "possible INJECTION via concat")},
-			wantTP:     1,
-			wantSevHit: 1,
+			name:        "keyword case-insensitive in problem",
+			c:           caseWith(false, ef("a.go", 10, "BLOCKING", "Injection")),
+			preds:       []report.Finding{pf("a.go", 10, report.SeverityBlocking, "SQL issue", "possible INJECTION via concat")},
+			wantTP:      1,
+			wantSevHit:  1,
+			wantFoundBy: map[string]int{"review": 1},
 		},
 		{
 			name: "one prediction cannot satisfy two expected (one-to-one)",
@@ -96,6 +109,8 @@ func TestScoreCase(t *testing.T) {
 				pf("a.go", 10, report.SeverityWarning, "leak", "leaks"),
 			},
 			wantTP: 1, wantFN: 1, wantSevHit: 1,
+			// The credit counts every match, claimed or not: the pass saw both.
+			wantFoundBy: map[string]int{"review": 2},
 		},
 		{
 			name: "partial recall and precision",
@@ -106,6 +121,7 @@ func TestScoreCase(t *testing.T) {
 				pf("d.go", 2, report.SeverityInfo, "nit", "naming"),
 			},
 			wantTP: 1, wantFP: 2, wantFN: 1, wantSevHit: 1,
+			wantFoundBy: map[string]int{"review": 1},
 		},
 		{
 			name:   "clean case with false positives",
@@ -116,6 +132,47 @@ func TestScoreCase(t *testing.T) {
 		{
 			name: "clean case with no findings",
 			c:    caseWith(true),
+		},
+		{
+			name:        "a cross-pass match credits every confirming pass",
+			c:           caseWith(false, ef("a.go", 10, "BLOCKING", "injection")),
+			preds:       []report.Finding{pfBy("a.go", 10, report.SeverityBlocking, "SQL injection", "concat", "review", "specialist:security")},
+			wantTP:      1,
+			wantSevHit:  1,
+			wantFoundBy: map[string]int{"review": 1, "specialist:security": 1},
+		},
+		{
+			name: "an unclaimed duplicate is credited yet stays a false positive",
+			c:    caseWith(false, ef("a.go", 10, "WARNING", "untested")),
+			preds: []report.Finding{
+				pfBy("a.go", 10, report.SeverityWarning, "untested branch", "no test", "review"),
+				pfBy("a.go", 11, report.SeverityWarning, "untested branch", "no test", "specialist:testing"),
+			},
+			wantTP: 1, wantFP: 1, wantSevHit: 1,
+			wantFoundBy: map[string]int{"review": 1, "specialist:testing": 1},
+		},
+		{
+			name:        "an empty ConfirmedBy credits the primary review",
+			c:           caseWith(false, ef("a.go", 10, "WARNING", "leak")),
+			preds:       []report.Finding{pfBy("a.go", 10, report.SeverityWarning, "leak", "leaks", []string{}...)},
+			wantTP:      1,
+			wantSevHit:  1,
+			wantFoundBy: map[string]int{"review": 1},
+		},
+		{
+			name:   "nil findings credit no pass",
+			c:      caseWith(false, ef("a.go", 10, "WARNING", "leak")),
+			preds:  nil,
+			wantFN: 1,
+		},
+		{
+			name: "a clean case credits no pass",
+			c:    caseWith(true),
+			preds: []report.Finding{
+				pfBy("a.go", 1, report.SeverityInfo, "x", "y", "review", "specialist:testing"),
+				pfBy("b.go", 2, report.SeverityInfo, "x", "y", "adversarial"),
+			},
+			wantFP: 2,
 		},
 	}
 
@@ -129,7 +186,27 @@ func TestScoreCase(t *testing.T) {
 			if s.Clean != tt.c.Expected.Clean {
 				t.Errorf("Clean = %v, want %v", s.Clean, tt.c.Expected.Clean)
 			}
+			if !maps.Equal(s.FoundBy, tt.wantFoundBy) {
+				t.Errorf("FoundBy = %v, want %v", s.FoundBy, tt.wantFoundBy)
+			}
 		})
+	}
+}
+
+func TestScoreAddFoundBy(t *testing.T) {
+	var s Score
+	s.Add(Score{TP: 1})
+	if s.FoundBy != nil {
+		t.Fatalf("FoundBy = %v after adding a score without credit, want nil", s.FoundBy)
+	}
+	s.Add(Score{TP: 1, FoundBy: map[string]int{"review": 1, "specialist:testing": 1}})
+	s.Add(Score{TP: 1, FoundBy: map[string]int{"review": 1}})
+	want := map[string]int{"review": 2, "specialist:testing": 1}
+	if !maps.Equal(s.FoundBy, want) {
+		t.Errorf("FoundBy = %v, want %v", s.FoundBy, want)
+	}
+	if s.TP != 3 {
+		t.Errorf("TP = %d, want 3", s.TP)
 	}
 }
 
