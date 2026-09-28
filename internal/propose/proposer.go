@@ -140,6 +140,8 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	} else {
 		slog.Warn("no review patterns loaded — proposals will not be grounded in the pattern catalog")
 	}
+	cat, cleanupCatalog := patterns.MaterializeOrWarn(pats)
+	defer cleanupCatalog()
 
 	// Load the rejected-idea knowledge base from the checkout. It needs no
 	// cache-key change: propose only ever sees committed files, so editing
@@ -162,6 +164,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	slog.Info("analyzing codebase with Claude")
 	result, err := r.Claude.Analyze(repo.Dir, AnalysisContext{
 		Patterns:    pats,
+		Catalog:     cat,
 		MaxPatterns: opts.MaxPatterns,
 		RepoName:    repo.FullName(),
 		OutOfScope:  outOfScope,

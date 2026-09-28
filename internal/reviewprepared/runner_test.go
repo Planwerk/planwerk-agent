@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -269,5 +270,57 @@ func TestRun_CreatePRCleansUpTheCloneOnFailure(t *testing.T) {
 	}
 	if _, statErr := os.Stat(clone); !os.IsNotExist(statErr) {
 		t.Errorf("temp clone %s survived a failed --create-pr run: %v", clone, statErr)
+	}
+}
+
+// TestRun_PassesPatternCatalogToClaude locks that a review-prepared run writes
+// the loaded patterns to a catalog the session can read, and removes it when
+// Run returns.
+func TestRun_PassesPatternCatalogToClaude(t *testing.T) {
+	patternDir := t.TempDir()
+	body := "# Review Pattern: Sample wiring check\n\n**Review-Area**: meta\n\n## Rule\nWired patterns must reach the review-prepared context.\n"
+	if err := os.WriteFile(filepath.Join(patternDir, "sample.md"), []byte(body), 0o600); err != nil {
+		t.Fatalf("write pattern: %v", err)
+	}
+	dir := t.TempDir()
+	writeFeature(t, dir, "PX-0001-prepared.json", planwerk.Feature{FeatureID: "PX-0001", Status: "prepared", Title: "Foo"})
+
+	gh := &githubtest.Fake{Dir: dir}
+	var catalogDir string
+	cl := &fakeClaude{fn: func(_ string, ctx AnalysisContext) (*Result, error) {
+		if len(ctx.Patterns) != 1 {
+			t.Errorf("ctx.Patterns len = %d, want 1 (wiring broken)", len(ctx.Patterns))
+		}
+		catalogDir = ctx.Catalog.Dir
+		if catalogDir == "" {
+			t.Error("ctx.Catalog.Dir is empty, want the catalog Run wrote")
+		} else if _, err := os.Stat(filepath.Join(catalogDir, "sample-wiring-check.md")); err != nil {
+			t.Errorf("stat sample-wiring-check.md in the catalog during the session: %v, want the file on disk", err)
+		}
+		return &Result{}, nil
+	}}
+	r := &Runner{Claude: cl, GitHub: gh}
+
+	opts := Options{
+		RepoRef:         "o/n",
+		PatternDirs:     []string{patternDir},
+		NoLocalPatterns: true,
+		NoRepoPatterns:  true,
+		Format:          "markdown",
+		Version:         "test",
+		Local:           true,
+		NoCache:         true,
+	}
+	if err := r.Run(&bytes.Buffer{}, opts); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if n := cl.calls.Load(); n != 1 {
+		t.Fatalf("ReviewPrepared calls = %d, want 1", n)
+	}
+	if catalogDir == "" {
+		t.Fatal("ctx.Catalog.Dir is empty, want the catalog Run wrote")
+	}
+	if _, statErr := os.Stat(catalogDir); !os.IsNotExist(statErr) {
+		t.Errorf("catalog %s survived the run: %v, want it removed when Run returns", catalogDir, statErr)
 	}
 }

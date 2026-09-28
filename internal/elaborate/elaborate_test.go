@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -281,6 +282,62 @@ func TestRun_ThreadsMetaAndSiblingContext(t *testing.T) {
 	}
 	if cl.calls != 1 {
 		t.Fatalf("Claude calls = %d, want 1", cl.calls)
+	}
+}
+
+// TestRun_PassesPatternCatalogToClaude locks that one elaborate run writes one
+// pattern catalog, shares it with the elaboration and its refinement turn, and
+// removes it when Run returns.
+func TestRun_PassesPatternCatalogToClaude(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	patternDir := t.TempDir()
+	body := "# Review Pattern: Sample wiring check\n\n**Review-Area**: meta\n\n## Rule\nWired patterns must reach the elaborate Context.\n"
+	if err := os.WriteFile(filepath.Join(patternDir, "sample.md"), []byte(body), 0o600); err != nil {
+		t.Fatalf("writing pattern: %v", err)
+	}
+	gh := reviewLoopGitHub(t, fakeRepo(t, "acme", "widgets"))
+
+	var ctxs []Context
+	cl := &fakeClaude{fn: func(dir string, ctx Context) (*Result, error) {
+		ctxs = append(ctxs, ctx)
+		if ctx.Catalog.Dir == "" {
+			t.Errorf("elaborate call %d got no catalog directory, want the one Run wrote", len(ctxs))
+		} else if _, err := os.Stat(filepath.Join(ctx.Catalog.Dir, "sample-wiring-check.md")); err != nil {
+			t.Errorf("stat sample-wiring-check.md in the catalog during call %d: %v, want the file on disk", len(ctxs), err)
+		}
+		return &Result{Title: "Title", Description: fmt.Sprintf("draft %d", len(ctxs)), AcceptanceCriteria: []string{"ac"}}, nil
+	}}
+	rv := &fakeReviewer{}
+	rv.fn = func(dir string, ctx Context, draft string) (*ReviewResult, error) {
+		if atomic.LoadInt32(&rv.calls) == 1 {
+			return &ReviewResult{Score: 4, Gaps: []string{"close gap X"}}, nil
+		}
+		return &ReviewResult{Score: 9}, nil
+	}
+	r := &Runner{Claude: cl, GitHub: gh, Reviewer: rv}
+
+	opts := baseOpts(patternDir)
+	opts.Review = true
+	if err := r.Run(&bytes.Buffer{}, opts); err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+	if len(ctxs) != 2 {
+		t.Fatalf("elaborate calls = %d, want 2 (initial + one refine)", len(ctxs))
+	}
+	if n := len(ctxs[0].Patterns); n != 1 {
+		t.Fatalf("elaborate got %d patterns, want 1 (wiring broken)", n)
+	}
+	dir := ctxs[0].Catalog.Dir
+	if dir == "" {
+		t.Fatalf("elaborate got no catalog directory, want the one Run wrote")
+	}
+	if got := ctxs[1].Catalog.Dir; got != dir {
+		t.Errorf("refine call got catalog %q, want the first call's %q", got, dir)
+	}
+	if _, err := os.Stat(dir); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("stat %s after Run: %v, want fs.ErrNotExist (the catalog is removed when Run returns)", dir, err)
 	}
 }
 

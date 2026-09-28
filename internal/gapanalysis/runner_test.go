@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -372,5 +373,55 @@ func TestGapRun_LocalUsesCwd(t *testing.T) {
 	}
 	if _, err := os.Stat(repo.Dir); err != nil {
 		t.Fatalf("local checkout must survive the run: %v", err)
+	}
+}
+
+// TestGapRun_PassesPatternCatalogToClaude locks that a gap-analysis run writes
+// the loaded patterns to a catalog the session can read, and removes it when
+// Run returns.
+func TestGapRun_PassesPatternCatalogToClaude(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	patternDir := t.TempDir()
+	body := "# Review Pattern: Sample wiring check\n\n**Review-Area**: meta\n\n## Rule\nWired patterns must reach the gap-analysis context.\n"
+	if err := os.WriteFile(filepath.Join(patternDir, "sample.md"), []byte(body), 0o600); err != nil {
+		t.Fatalf("write pattern: %v", err)
+	}
+	makeRepo := repoFactory(t, "acme", "widgets", map[string]planwerk.Feature{
+		"CC-0001-foo.json": {FeatureID: testFeatureID, Title: "Foo"},
+	})
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(string) (*github.Repo, error) { return makeRepo(), nil },
+		DefaultBranchHEADFn: func(string, string) (string, error) { return "sha-catalog", nil },
+	}
+	var dir string
+	claudeMock := &fakeClaude{fn: func(_ string, ctx AnalysisContext) (*Result, error) {
+		if len(ctx.Patterns) != 1 {
+			t.Errorf("ctx.Patterns len = %d, want 1 (wiring broken)", len(ctx.Patterns))
+		}
+		dir = ctx.Catalog.Dir
+		if dir == "" {
+			t.Errorf("ctx.Catalog.Dir is empty, want the catalog Run wrote")
+		} else if _, err := os.Stat(filepath.Join(dir, "sample-wiring-check.md")); err != nil {
+			t.Errorf("stat sample-wiring-check.md in the catalog during the session: %v, want the file on disk", err)
+		}
+		return &Result{Features: []FeatureGaps{}}, nil
+	}}
+	runner := &Runner{Claude: claudeMock, GitHub: gh}
+
+	opts := baseGapOpts()
+	opts.PatternDirs = []string{patternDir}
+	if err := runner.Run(&bytes.Buffer{}, opts); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if claudeMock.calls != 1 {
+		t.Fatalf("calls = %d, want 1", claudeMock.calls)
+	}
+	if dir == "" {
+		t.Fatalf("ctx.Catalog.Dir is empty, want the catalog Run wrote")
+	}
+	if _, err := os.Stat(dir); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("stat %s after Run: %v, want fs.ErrNotExist (the catalog is removed when Run returns)", dir, err)
 	}
 }

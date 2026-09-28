@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -396,7 +397,8 @@ func TestProposeRun_DedupeListerErrorIsNonFatal(t *testing.T) {
 func TestProposeRun_LoadsPatternsIntoAnalysisContext(t *testing.T) {
 	// Proposer.Run must load patterns from the pattern directories and forward
 	// them into AnalysisContext so Claude's analysis prompt can ground
-	// proposals in the pattern catalog.
+	// proposals in the pattern catalog. It also writes them to a catalog
+	// directory the session reads, and removes the directory when Run returns.
 	restore := cache.SetDir(t.TempDir())
 	t.Cleanup(restore)
 
@@ -418,7 +420,14 @@ func TestProposeRun_LoadsPatternsIntoAnalysisContext(t *testing.T) {
 		CloneRepoFn:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
 		DefaultBranchHEADFn: func(owner, name string) (string, error) { return "sha-patterns", nil },
 	}
-	claudeMock := &fakeClaude{}
+	claudeMock := &fakeClaude{fn: func(_ string, ctx AnalysisContext) (*ProposalResult, error) {
+		if ctx.Catalog.Dir == "" {
+			t.Errorf("AnalysisContext.Catalog.Dir is empty, want the catalog Run wrote")
+		} else if _, err := os.Stat(filepath.Join(ctx.Catalog.Dir, "sample-pattern.md")); err != nil {
+			t.Errorf("stat sample-pattern.md in the catalog during the session: %v, want the file on disk", err)
+		}
+		return &ProposalResult{RepositoryOverview: "ok"}, nil
+	}}
 	runner := &Runner{Claude: claudeMock, GitHub: gh}
 
 	opts := baseProposeOpts()
@@ -438,6 +447,13 @@ func TestProposeRun_LoadsPatternsIntoAnalysisContext(t *testing.T) {
 	}
 	if claudeMock.lastCtx.RepoName != "acme/widgets" {
 		t.Errorf("AnalysisContext.RepoName = %q, want acme/widgets", claudeMock.lastCtx.RepoName)
+	}
+	dir := claudeMock.lastCtx.Catalog.Dir
+	if dir == "" {
+		t.Fatalf("AnalysisContext.Catalog.Dir is empty, want the catalog Run wrote")
+	}
+	if _, err := os.Stat(dir); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("stat %s after Run: %v, want fs.ErrNotExist (the catalog is removed when Run returns)", dir, err)
 	}
 }
 
