@@ -28,7 +28,7 @@ import (
 // same session is resumed to finish and report instead of the iteration losing
 // its work.
 func (c *Client) Fix(dir string, ctx fix.Context) (string, string, error) {
-	out, model, err := c.runClaudeAutoReport(dir, BuildFixPrompt(ctx), "fix", fixReportHeading, reportStatusChoices)
+	out, model, err := c.runClaudeAutoReport(dir, BuildFixPrompt(ctx), "fix", fixReportHeading, reportStatusChoices, noCatalog)
 	if err != nil {
 		return "", "", fmt.Errorf("running fix: %w", err)
 	}

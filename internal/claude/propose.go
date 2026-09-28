@@ -29,7 +29,7 @@ func (c *Client) Propose(dir string, ctx propose.AnalysisContext) (*propose.Prop
 }
 
 func (c *Client) runAnalysis(dir string, ctx propose.AnalysisContext) (text, model string, err error) {
-	return c.runClaude(dir, buildAnalysisPrompt(ctx), "analysis")
+	return c.runClaude(dir, buildAnalysisPrompt(ctx), "analysis", noCatalog)
 }
 
 // buildAnalysisPrompt constructs the deep-analysis prompt. When patterns are

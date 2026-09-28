@@ -18,7 +18,7 @@ import (
 // the flagged entries happens later, in the command's separate confirmed write
 // phase.
 func (c *Client) Sync(dir string, ctx sync.SyncContext) (*sync.SyncResult, error) {
-	rawAnalysis, model, err := c.runClaude(dir, buildSyncPrompt(ctx), "sync")
+	rawAnalysis, model, err := c.runClaude(dir, buildSyncPrompt(ctx), "sync", noCatalog)
 	if err != nil {
 		return nil, fmt.Errorf("running sync analysis: %w", err)
 	}

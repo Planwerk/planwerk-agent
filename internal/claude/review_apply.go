@@ -26,7 +26,7 @@ const reviewReportHeading = "## Review Report"
 // when it ends without its report, the same session is resumed to finish and
 // report instead of the pass losing its work.
 func (c *Client) ApplyReview(dir string, ctx implement.ReviewApplyContext) (string, string, error) {
-	out, model, err := c.runClaudeAutoReport(dir, BuildReviewApplyPrompt(ctx), "review-apply", reviewReportHeading, reportStatusChoices)
+	out, model, err := c.runClaudeAutoReport(dir, BuildReviewApplyPrompt(ctx), "review-apply", reviewReportHeading, reportStatusChoices, noCatalog)
 	if err != nil {
 		return "", "", fmt.Errorf("running review apply: %w", err)
 	}

@@ -576,7 +576,7 @@ func TestClaudeRunError_NoOutputAtAll(t *testing.T) {
 // streaming runners to one argv: strip the output-format tail each asks for
 // and the rest must be identical.
 func TestClaudeArgs_RunnersDifferOnlyInOutputFormat(t *testing.T) {
-	full := runSpec{model: "opus", effort: "high", permissionMode: "plan", jsonSchema: `{"type":"object"}`, readOnly: true, agentsJSON: "{}", sessionID: "0b6f4a8e-6a4c-4c1e-9a55-3f0d2c1b7e21"}
+	full := runSpec{model: "opus", effort: "high", permissionMode: "plan", jsonSchema: `{"type":"object"}`, readOnly: true, agentsJSON: "{}", sessionID: "0b6f4a8e-6a4c-4c1e-9a55-3f0d2c1b7e21", addDir: "/tmp/planwerk-agent-patterns-test"}
 	structuring := runSpec{model: "sonnet", effort: "medium", readOnly: true, noTools: true, jsonSchema: `{"type":"object"}`}
 
 	for _, tc := range []struct {
@@ -611,7 +611,7 @@ func TestClaudeArgs_RunnersDifferOnlyInOutputFormat(t *testing.T) {
 	}
 
 	c := NewClient()
-	if args := c.claudeArgs(full, "json"); !slices.Contains(args, "--session-id") || !slices.Contains(args, "--permission-mode") {
+	if args := c.claudeArgs(full, "json"); !slices.Contains(args, "--session-id") || !slices.Contains(args, "--permission-mode") || !slices.Contains(args, "--add-dir") {
 		t.Errorf("argv lost a spec-driven flag: %v", args)
 	}
 }
@@ -684,6 +684,60 @@ func TestClaudeArgs_ToolFlagsSurviveWithoutNoTools(t *testing.T) {
 	}
 	if !slices.Equal(args[denyIdx+1:allowIdx], claudeReadOnlyDeniedTools) {
 		t.Errorf("denied tools = %v, want %v", args[denyIdx+1:allowIdx], claudeReadOnlyDeniedTools)
+	}
+}
+
+// TestClaudeArgs_AddDirFollowsThePermissionMode pins where the pattern catalog
+// directory lands in the argv. --add-dir is variadic, so it must carry exactly
+// one value and be followed by another flag, never by a token the CLI could
+// read as a second directory.
+func TestClaudeArgs_AddDirFollowsThePermissionMode(t *testing.T) {
+	t.Parallel()
+
+	args := NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", permissionMode: claudeAutoPermissionMode, addDir: "/x/y"}, "json")
+	i := slices.Index(args, "--permission-mode")
+	if i == -1 || i+4 >= len(args) {
+		t.Fatalf("argv lacks --permission-mode followed by --add-dir, its value and a flag; got %v", args)
+	}
+	if args[i+2] != "--add-dir" || args[i+3] != "/x/y" || !strings.HasPrefix(args[i+4], "--") {
+		t.Errorf("want --add-dir /x/y right after the permission mode, then a flag; got %v", args)
+	}
+
+	// A read-only session has no permission mode and still gets the directory.
+	args = NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", readOnly: true, addDir: "/x/y"}, "json")
+	j := slices.Index(args, "--add-dir")
+	if j == -1 || j+1 >= len(args) || args[j+1] != "/x/y" {
+		t.Errorf("a read-only spec must carry --add-dir /x/y; got %v", args)
+	}
+}
+
+// TestClaudeArgs_NoAddDirWhenEmpty covers a session without a pattern catalog
+// directory: its argv carries no --add-dir at all.
+func TestClaudeArgs_NoAddDirWhenEmpty(t *testing.T) {
+	t.Parallel()
+
+	for _, spec := range []runSpec{
+		{model: "opus", effort: "xhigh", readOnly: true},
+		{model: "opus", effort: "xhigh", permissionMode: claudeAutoPermissionMode},
+	} {
+		if args := NewClient().claudeArgs(spec, "json"); slices.Contains(args, "--add-dir") {
+			t.Errorf("spec %+v without addDir emitted --add-dir; got %v", spec, args)
+		}
+	}
+}
+
+// TestClaudeArgs_NoToolsNeverOpensADirectory guards the structuring tier's
+// isolation: a noTools spec ignores addDir, so the session is handed no
+// directory besides structureWorkDir, and --tools "" stays the trailing flag.
+func TestClaudeArgs_NoToolsNeverOpensADirectory(t *testing.T) {
+	t.Parallel()
+
+	args := NewClient().claudeArgs(runSpec{model: "sonnet", effort: "medium", readOnly: true, noTools: true, addDir: "/x/y"}, "json")
+	if slices.Contains(args, "--add-dir") || slices.Contains(args, "/x/y") {
+		t.Errorf("a no-tools session must not be handed a directory; got %v", args)
+	}
+	if n := len(args); n < 2 || args[n-2] != "--tools" || args[n-1] != "" {
+		t.Errorf("--tools with one empty value must stay the trailing flag; got %v", args)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
@@ -108,6 +109,8 @@ func (c *Client) runWithCompletionNudge(spec runSpec, prompt, heading, statuses 
 // calls runWithCompletionNudge directly. Sessions without a heading + STATUS
 // contract (address returns schema-validated JSON with its own repair
 // recovery, the rebase sessions return free-form text) stay on runClaudeAuto.
-func (c *Client) runClaudeAutoReport(dir, prompt, label, heading, statuses string) (string, string, error) {
-	return c.runWithCompletionNudge(c.autoSpec(dir, label), prompt, heading, statuses)
+// cat is the pattern catalog whose directory the session may read
+// (--add-dir), noCatalog for a session without one.
+func (c *Client) runClaudeAutoReport(dir, prompt, label, heading, statuses string, cat patterns.Catalog) (string, string, error) {
+	return c.runWithCompletionNudge(c.autoSpec(dir, label, cat), prompt, heading, statuses)
 }
