@@ -592,13 +592,15 @@ func (c *Client) autoSpec(dir, label string, cat patterns.Catalog) runSpec {
 // runClaudeImplement runs the implement session: runClaudeAuto on
 // implementModel when one is set and on the main model otherwise, with
 // agentsJSON passed via --agents when non-empty (orchestrator mode), under the
-// completion nudge (decisions 74 and 78). cat is the pattern catalog whose
-// directory the session may read (--add-dir), noCatalog for a session without
-// one.
+// completion nudge (decisions 74 and 78). ImplementSystemPrompt is passed via
+// --append-system-prompt; the nudge's resumed turn carries it too (decision
+// 108). cat is the pattern catalog whose directory the session may read
+// (--add-dir), noCatalog for a session without one.
 func (c *Client) runClaudeImplement(dir, prompt, label, agentsJSON string, cat patterns.Catalog) (text, model string, err error) {
 	spec := c.autoSpec(dir, label, cat)
 	spec.model = c.implementSessionModel()
 	spec.agentsJSON = agentsJSON
+	spec.appendSystemPrompt = ImplementSystemPrompt()
 	return c.runWithCompletionNudge(spec, prompt, implementReportHeading, implementReportStatusChoices)
 }
 

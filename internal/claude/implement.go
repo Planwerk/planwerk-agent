@@ -109,6 +109,9 @@ For EVERY finding, include: the Acceptance Criterion it concerns (quote it in th
 // wrote the code — rather than the orchestrating session's model, so the
 // report's attribution footer credits the implementing model (the workers'
 // own commit trailers already carry their exact model id).
+//
+// The session's system prompt also carries ImplementSystemPrompt (decision
+// 108).
 func (c *Client) Implement(dir string, ctx implement.Context) (string, string, error) {
 	agentsJSON, err := implementAgentsJSON(ctx)
 	if err != nil {
@@ -446,6 +449,21 @@ When you hit a circuit breaker, halt immediately and emit STATUS: PARTIAL when a
 // (decision 108).
 func implementVerdictDefinitions() string {
 	return `(DONE = EVERY work package implemented and tested on the feature branch, every Acceptance Criterion satisfied, and every Local verification command passing or failing only in a way shown to be pre-existing on the base — no package left partial or not started; DONE_WITH_CONCERNS = every package likewise complete, but with reservations a reviewer should see — this is also the verdict when every package is done and one or more Acceptance Criteria are "unproven" in the report's Acceptance Criteria section: their tests are written and committed, and only CI on the pull request can run them; PARTIAL = at least one work package is unfinished because a circuit breaker (thrashing, or scope the issue never asked for) genuinely interrupted the work — NEVER a scoping choice, and NEVER the verdict for a complete implementation whose remaining proof is a CI run: PARTIAL opens no pull request, and CI runs only on one; BLOCKED = could not implement, nothing shippable; NEEDS_CONTEXT = the issue is underspecified and a human must clarify.)`
+}
+
+// ImplementSystemPrompt returns the implement report's status contract, which
+// Implement appends to the session's system prompt via --append-system-prompt.
+// The text is static and the same for every issue (decision 108).
+func ImplementSystemPrompt() string {
+	return `## Implementation report: the status contract
+
+This session ends with an implementation report whose last section is a terminal "STATUS:" line. The definitions below govern that line and stand whatever happened to the conversation before it: after a context compaction they replace anything the summary kept about the report's status.
+
+STATUS: <DONE | DONE_WITH_CONCERNS | PARTIAL | BLOCKED | NEEDS_CONTEXT>
+` + implementVerdictDefinitions() + `
+
+An Acceptance Criterion whose test is written and committed but can only run in CI on the pull request is reported as "unproven" in the report's Acceptance Criteria section, never as a reason for PARTIAL. The orchestrator opens no pull request on PARTIAL, BLOCKED, or NEEDS_CONTEXT.
+`
 }
 
 // orchestrationBlock returns the "## Orchestrated implementation" section

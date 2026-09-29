@@ -593,6 +593,17 @@ func TestBuildImplementPromptOrchestrated_Golden(t *testing.T) {
 	assertGoldenPrompt(t, "implement_orchestrated", BuildImplementPrompt(ctx))
 }
 
+// TestImplementSystemPromptGolden locks the status contract the implement
+// session receives via --append-system-prompt. The text rides every request of
+// the session, so it stays well under 10,000 characters.
+func TestImplementSystemPromptGolden(t *testing.T) {
+	got := ImplementSystemPrompt()
+	if n := len(got); n >= 10000 {
+		t.Errorf("ImplementSystemPrompt() is %d characters, want under 10,000", n)
+	}
+	assertGoldenPrompt(t, "implement_system_prompt", got)
+}
+
 // TestBuildImplementerAgentPrompt_Golden locks the implementer subagent's
 // system prompt — the static half of the --agents definition an orchestrated
 // implement session passes to Claude Code. Determinism here is load-bearing:
