@@ -56,9 +56,9 @@ const (
 	DefaultFinderModel = ""
 	// DefaultStructureModel is the compiled-in model for the structuring tier:
 	// the secondary `claude -p` calls that transcribe an upstream call's
-	// already-reasoned prose into the report schema. It is independent of the
-	// main model; override it with WithStructureModel (--structure-model /
-	// PLANWERK_STRUCTURE_MODEL) (decisions 56 and 101).
+	// already-reasoned prose into its artifact's JSON schema. It is independent
+	// of the main model; override it with WithStructureModel
+	// (--structure-model / PLANWERK_STRUCTURE_MODEL) (decisions 56 and 101).
 	DefaultStructureModel = "sonnet"
 	// DefaultStructureEffort is the compiled-in reasoning effort for the
 	// structuring tier; override it with WithStructureEffort (--structure-effort
@@ -429,9 +429,11 @@ func WithPlanModel(m string) Option {
 	}
 }
 
-// WithStructureModel sets the model used by the JSON-structuring passes (the
-// secondary `claude -p` calls that cast reasoned prose into the report schema).
-// An empty m is ignored so a misconfigured flag cannot select an empty model.
+// WithStructureModel sets the model used by the JSON-structuring passes: the
+// tier that casts an analysis session's prose into its JSON schema (propose,
+// elaborate, gap-analysis, sync, capture, review-prepared) and runs the JSON
+// repair and dedup calls. An empty m is ignored so a misconfigured flag cannot
+// select an empty model.
 func WithStructureModel(m string) Option {
 	return func(c *Client) {
 		if m != "" {

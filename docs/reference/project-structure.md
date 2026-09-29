@@ -37,7 +37,7 @@ planwerk-agent/
 │   │   ├── prompt.go           # review prompt builder (buildReviewPrompt)
 │   │   ├── runner.go           # Claude Code subprocess invocation (runClaude, timeout/model)
 │   │   ├── repair.go           # JSON decode with one-shot Claude repair
-│   │   ├── structure.go        # Review output → structured findings + IDs
+│   │   ├── structure.go        # Finder JSON → findings + IDs, schema repair
 │   │   ├── claude_test.go
 │   │   ├── adversarial.go      # Adversarial review pass (review --thorough, implement's review loop)
 │   │   ├── audit.go            # Full-codebase audit against review patterns
@@ -108,9 +108,10 @@ planwerk-agent/
 │   │   ├── audit_renderer_test.go
 │   │   ├── schema_test.go      # JSON Schema contract tests (fixtures + renderer drift guard)
 │   │   ├── schema/             # Embedded JSON Schemas for --format json output
-│   │   │   ├── schema.go       # //go:embed of the two schema files
+│   │   │   ├── schema.go       # //go:embed of the schema files
 │   │   │   ├── report-result.schema.json  # ReviewResult (review + audit)
-│   │   │   └── proposal.schema.json       # ProposalResult envelope (propose)
+│   │   │   ├── proposal.schema.json       # ProposalResult envelope (propose)
+│   │   │   └── finder-output.schema.json  # Finder pass wire contract (--json-schema)
 │   │   └── testdata/
 │   │       └── schema/         # JSON fixtures validated against the schemas
 │   ├── review/
