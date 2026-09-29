@@ -5,10 +5,12 @@
 // contract. The schemas are the source of truth: the report and propose
 // renderers are kept in sync with them by contract tests in schema_test.go.
 //
-// One schema (AddressResult) is the exception: it is the contract for the
-// `address` command's per-run Claude output, not a `--format json` stdout
-// payload (address has no JSON output mode). It lives here so it reuses the
-// same contract-test harness that guards the renderer-backed schemas.
+// Two schemas are the exception: AddressResult, the contract for the
+// `address` command's per-run Claude output (address has no JSON output
+// mode), and FinderOutput, the contract for the per-run Claude output of every
+// pass that emits findings. Neither is a `--format json` stdout payload. They
+// live here so they reuse the same contract-test harness that guards the
+// renderer-backed schemas.
 package schema
 
 import _ "embed"
@@ -44,14 +46,17 @@ var RebaseAnalysis []byte
 //go:embed address-result.schema.json
 var AddressResult []byte
 
-// StructuredReview is the JSON Schema (draft 2020-12) for the review structuring
-// pass's output. Like AddressResult it is a per-run wire contract, not a
-// `--format json` stdout payload: the review pipeline passes it to the CLI via
-// --json-schema so the transcribe-only structure tier is constrained to the
-// report shape. It mirrors report.ReviewResult plus source_finding_count, minus
-// the Go-derived and pipeline-set fields the structure tier never emits, with
-// the classification enums widened by the empty string so an unlabeled finding
-// is representable at the wire level.
+// FinderOutput is the JSON Schema (draft 2020-12) for the output of every pass
+// that emits findings: the review, the audit, the adversarial pass, each domain
+// specialist, the feature-compliance check, the simplify finder and the
+// implementation verifier. The review and the audit run on --claude-model; the
+// other five run on the --finder-model tier. Like AddressResult it is a per-run
+// wire contract, not a `--format json` stdout payload: each of those sessions
+// receives it via --json-schema and finishReview decodes the session's output
+// against it (decision 109). It mirrors report.ReviewResult minus the
+// Go-derived and pipeline-set fields such a pass never emits, the finding id
+// among them. A finding requires its severity, actionability and confidence
+// labels, and none of the three enums has an empty member.
 //
-//go:embed structured-review.schema.json
-var StructuredReview []byte
+//go:embed finder-output.schema.json
+var FinderOutput []byte

@@ -30,7 +30,7 @@ func (c *Client) structureReview(rawReview string) (*report.ReviewResult, error)
 	// passes the wire schema via --json-schema so the transcribe-only tier is
 	// constrained to the report shape at the CLI level; decodeJSONWithRepair
 	// remains the backstop.
-	wireSchema := string(schema.StructuredReview)
+	wireSchema := string(schema.FinderOutput)
 	text, _, err := c.runClaudeStructureWithSchema(buildStructurePrompt(rawReview), "structure", wireSchema)
 	if err != nil {
 		return nil, err

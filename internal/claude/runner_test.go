@@ -214,13 +214,13 @@ func TestHermeticArgs_InheritWhenEnabled(t *testing.T) {
 }
 
 // TestCLIJSONSchema_StripsDialectFromEmbeddedSchema is the regression guard for
-// the bug that failed every structuring pass: schema.StructuredReview declares
-// $schema 2020-12, and the CLI's draft-07 validator rejects the whole
+// the bug that failed every schema-constrained session: schema.FinderOutput
+// declares $schema 2020-12, and the CLI's draft-07 validator rejects the whole
 // --json-schema flag with "no schema with key or ref …/draft/2020-12/schema"
 // before the model runs. The wire copy must carry no dialect declaration while
 // keeping the document otherwise intact.
 func TestCLIJSONSchema_StripsDialectFromEmbeddedSchema(t *testing.T) {
-	got := cliJSONSchema(string(schema.StructuredReview))
+	got := cliJSONSchema(string(schema.FinderOutput))
 
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(got), &fields); err != nil {
