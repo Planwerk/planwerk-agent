@@ -177,6 +177,9 @@ type runSpec struct {
 	noTools    bool
 	jsonSchema string // --json-schema when non-empty
 	agentsJSON string // --agents when non-empty
+	// appendSystemPrompt is passed as --append-system-prompt when non-empty;
+	// only the implement session sets it (decision 108).
+	appendSystemPrompt string
 	// addDir is passed via --add-dir when non-empty: the on-disk pattern catalog
 	// directory (patterns.Materialize) the session may read pattern bodies from.
 	// A noTools spec never honors it, because a structuring session runs in
@@ -229,6 +232,16 @@ func withAgents(args []string, agentsJSON string) []string {
 		return args
 	}
 	return append(args, "--agents", agentsJSON)
+}
+
+// withAppendSystemPrompt appends --append-system-prompt carrying text when
+// text is non-empty, and is a no-op otherwise. The text is one argv element
+// and never passes through a shell, so it may contain newlines.
+func withAppendSystemPrompt(args []string, text string) []string {
+	if text == "" {
+		return args
+	}
+	return append(args, "--append-system-prompt", text)
 }
 
 // cliJSONSchema prepares a schema document for the CLI's --json-schema flag by
@@ -612,6 +625,7 @@ func (c *Client) claudeArgs(spec runSpec, outputFormat string, extra ...string) 
 		"--output-format", outputFormat,
 	}
 	args = append(args, extra...)
+	args = withAppendSystemPrompt(args, spec.appendSystemPrompt)
 	if spec.permissionMode != "" {
 		args = append(args, "--permission-mode", spec.permissionMode)
 	}

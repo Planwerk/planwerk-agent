@@ -576,7 +576,7 @@ func TestClaudeRunError_NoOutputAtAll(t *testing.T) {
 // streaming runners to one argv: strip the output-format tail each asks for
 // and the rest must be identical.
 func TestClaudeArgs_RunnersDifferOnlyInOutputFormat(t *testing.T) {
-	full := runSpec{model: "opus", effort: "high", permissionMode: "plan", jsonSchema: `{"type":"object"}`, readOnly: true, agentsJSON: "{}", sessionID: "0b6f4a8e-6a4c-4c1e-9a55-3f0d2c1b7e21", addDir: "/tmp/planwerk-agent-patterns-test"}
+	full := runSpec{model: "opus", effort: "high", permissionMode: "plan", jsonSchema: `{"type":"object"}`, readOnly: true, agentsJSON: "{}", appendSystemPrompt: "contract", sessionID: "0b6f4a8e-6a4c-4c1e-9a55-3f0d2c1b7e21", addDir: "/tmp/planwerk-agent-patterns-test"}
 	structuring := runSpec{model: "sonnet", effort: "medium", readOnly: true, noTools: true, jsonSchema: `{"type":"object"}`}
 
 	for _, tc := range []struct {
@@ -611,7 +611,7 @@ func TestClaudeArgs_RunnersDifferOnlyInOutputFormat(t *testing.T) {
 	}
 
 	c := NewClient()
-	if args := c.claudeArgs(full, "json"); !slices.Contains(args, "--session-id") || !slices.Contains(args, "--permission-mode") || !slices.Contains(args, "--add-dir") {
+	if args := c.claudeArgs(full, "json"); !slices.Contains(args, "--session-id") || !slices.Contains(args, "--permission-mode") || !slices.Contains(args, "--add-dir") || !slices.Contains(args, "--append-system-prompt") {
 		t.Errorf("argv lost a spec-driven flag: %v", args)
 	}
 }
@@ -738,6 +738,51 @@ func TestClaudeArgs_NoToolsNeverOpensADirectory(t *testing.T) {
 	}
 	if n := len(args); n < 2 || args[n-2] != "--tools" || args[n-1] != "" {
 		t.Errorf("--tools with one empty value must stay the trailing flag; got %v", args)
+	}
+}
+
+// TestClaudeArgs_AppendSystemPromptPrecedesThePermissionMode pins where the
+// implement session's status contract lands in the argv: one element, newlines
+// intact, before the permission mode, so --add-dir still directly follows the
+// permission mode's value.
+func TestClaudeArgs_AppendSystemPromptPrecedesThePermissionMode(t *testing.T) {
+	t.Parallel()
+
+	const catalogDir = "/tmp/catalog"
+	args := NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", permissionMode: claudeAutoPermissionMode, addDir: catalogDir, appendSystemPrompt: "x\ny"}, "json")
+	i := slices.Index(args, "--append-system-prompt")
+	p := slices.Index(args, "--permission-mode")
+	if i == -1 || p == -1 || i+1 >= len(args) {
+		t.Fatalf("argv lacks --append-system-prompt or --permission-mode; got %v", args)
+	}
+	if args[i+1] != "x\ny" {
+		t.Errorf("--append-system-prompt value = %q, want the text as one element %q", args[i+1], "x\ny")
+	}
+	if i > p {
+		t.Errorf("--append-system-prompt must precede --permission-mode; got %v", args)
+	}
+	if p+3 >= len(args) || args[p+2] != "--add-dir" || args[p+3] != catalogDir {
+		t.Errorf("want --add-dir %s right after the permission mode; got %v", catalogDir, args)
+	}
+}
+
+// TestClaudeArgs_NoAppendSystemPromptWhenEmpty covers every session but
+// implement: an empty field emits no flag, and a structuring session keeps
+// --tools "" as its trailing pair.
+func TestClaudeArgs_NoAppendSystemPromptWhenEmpty(t *testing.T) {
+	t.Parallel()
+
+	for _, spec := range []runSpec{
+		{model: "opus", effort: "xhigh", permissionMode: claudeAutoPermissionMode},
+		{model: "sonnet", effort: "medium", readOnly: true, noTools: true},
+	} {
+		args := NewClient().claudeArgs(spec, "json")
+		if slices.Contains(args, "--append-system-prompt") {
+			t.Errorf("spec %+v without appendSystemPrompt emitted --append-system-prompt; got %v", spec, args)
+		}
+		if n := len(args); spec.noTools && (n < 2 || args[n-2] != "--tools" || args[n-1] != "") {
+			t.Errorf("--tools with one empty value must stay the trailing flag; got %v", args)
+		}
 	}
 }
 
