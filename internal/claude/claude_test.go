@@ -844,6 +844,34 @@ func TestBuildImplementPrompt_ContainsCircuitBreakers(t *testing.T) {
 	}
 }
 
+// TestImplementVerdictDefinitionsAreShared keeps the verdict definitions at
+// one source: the orchestrated prompt and the system prompt render the same
+// text, and that text carries the clauses that keep a complete implementation
+// awaiting CI out of PARTIAL (decision 108). The bare prompt's hand-edited
+// copy must carry those clauses too.
+func TestImplementVerdictDefinitionsAreShared(t *testing.T) {
+	defs := implementVerdictDefinitions()
+	for _, want := range []string{`"unproven"`, "CI runs only on one"} {
+		if !strings.Contains(defs, want) {
+			t.Errorf("verdict definitions lack %q:\n%s", want, defs)
+		}
+	}
+	for name, prompt := range map[string]string{
+		"BuildImplementPrompt":  BuildImplementPrompt(goldenImplementContext()),
+		"ImplementSystemPrompt": ImplementSystemPrompt(),
+	} {
+		if !strings.Contains(prompt, defs) {
+			t.Errorf("%s output does not carry implementVerdictDefinitions() verbatim", name)
+		}
+	}
+	bare := BuildBareImplementPrompt(goldenBareImplementContext())
+	for _, want := range []string{`"unproven"`, "CI runs only on one", "Status: <satisfied | unproven | partial | missing>"} {
+		if !strings.Contains(bare, want) {
+			t.Errorf("BuildBareImplementPrompt output lacks %q", want)
+		}
+	}
+}
+
 // TestBuildImplementPrompt_RequiresEdgeOrErrorTest locks the test-quality bar
 // (issue #89, I4): every new test must exercise at least one error or edge
 // path, not the happy path only, and the report's acceptance-criteria evidence

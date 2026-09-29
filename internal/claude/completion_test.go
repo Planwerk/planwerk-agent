@@ -177,6 +177,35 @@ func TestRunWithCompletionNudge_NudgeErrorReturnsIncompleteOutput(t *testing.T) 
 	}
 }
 
+// TestImplement_CarriesTheStatusContractInTheSystemPrompt is the regression
+// test for a session that lost its verdict definitions to compaction: the
+// implement session gets ImplementSystemPrompt on its first turn, and the
+// nudge turn that resumes a session ending without its report gets it again.
+func TestImplement_CarriesTheStatusContractInTheSystemPrompt(t *testing.T) {
+	t.Parallel()
+	c, calls := scriptedClient(t, func(call int, _ runSpec, _ string) (string, string, error) {
+		if call == 1 {
+			return "Every package is committed; the e2e suites only run in CI.", testResolvedModel, nil
+		}
+		return completeImplementReport, testResolvedModel, nil
+	})
+
+	if _, _, err := c.Implement("", goldenImplementContext()); err != nil {
+		t.Fatalf("Implement returned error: %v", err)
+	}
+	if len(*calls) != 2 {
+		t.Fatalf("session ran %d times, want 2 (initial + one nudge)", len(*calls))
+	}
+	for i, call := range *calls {
+		if call.spec.appendSystemPrompt != ImplementSystemPrompt() {
+			t.Errorf("call %d: appendSystemPrompt = %q, want ImplementSystemPrompt()", i+1, call.spec.appendSystemPrompt)
+		}
+	}
+	if first, second := (*calls)[0], (*calls)[1]; !second.spec.resume || second.spec.sessionID != first.spec.sessionID {
+		t.Errorf("nudge turn resume=%v session=%q, want a resume of %q", second.spec.resume, second.spec.sessionID, first.spec.sessionID)
+	}
+}
+
 // TestTerminalReportComplete locks the gate the nudge keys on: heading AND
 // terminal STATUS line, so a yielded-mid-work blurb, a bare status without the
 // heading, and a heading without a verdict all fail.
