@@ -837,7 +837,7 @@ func TestBuildAnalysisPrompt_ContainsDesignVocabulary(t *testing.T) {
 // prompt (human-supervised) is intentionally left without them.
 func TestBuildImplementPrompt_ContainsCircuitBreakers(t *testing.T) {
 	prompt := BuildImplementPrompt(goldenImplementContext())
-	for _, want := range []string{"Circuit breakers", "Fighting the test suite", "Ballooning scope", "Reverting in circles", "STATUS: PARTIAL", "STATUS: DONE_WITH_CONCERNS"} {
+	for _, want := range []string{"Circuit breakers", "Fighting the test suite", "Ballooning scope", "Reverting in circles", "STATUS: PARTIAL", "STATUS: DONE_WITH_CONCERNS", "unproven"} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("implement prompt should name the circuit-breaker stop conditions; missing %q", want)
 		}
