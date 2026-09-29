@@ -52,8 +52,10 @@ it directly for the full flag set (`go run ./cmd/planwerk-eval -h`):
 The Claude model, effort, and timeout come from the same `PLANWERK_*`
 environment overrides the main CLI honors (`PLANWERK_CLAUDE_MODEL`,
 `PLANWERK_CLAUDE_EFFORT`, `PLANWERK_STRUCTURE_MODEL`,
-`PLANWERK_STRUCTURE_EFFORT`, `PLANWERK_CLAUDE_TIMEOUT`,
-`PLANWERK_CLAUDE_INHERIT_USER_CONFIG`).
+`PLANWERK_STRUCTURE_EFFORT`, `PLANWERK_FINDER_MODEL`,
+`PLANWERK_FINDER_EFFORT`, `PLANWERK_CLAUDE_TIMEOUT`,
+`PLANWERK_CLAUDE_INHERIT_USER_CONFIG`). An effort that is not one of `low`,
+`medium`, `high`, `xhigh`, `max` exits 1 before any case runs.
 
 ## What it measures
 
@@ -191,6 +193,7 @@ PRECISION = TP/(TP+FP), RECALL = TP/(TP+FN), SEV-ACC = severity matches/TP.
 A clean case seeds no bug: recall is undefined (n/a) and every finding is a false positive.
 
 RUNS: 3 per case (thorough: yes, specialists: yes)
+TIERS: claude opus/xhigh, finder opus/xhigh, structure sonnet/xhigh
 
 RECALL BY PASS
 PASS                          FOUND   RECALL
@@ -215,9 +218,11 @@ per-case ratios, which would over-weight small cases). Watch the aggregate over
 time; individual cases are noisy because the model is stochastic. `n/a` marks an
 undefined ratio (recall on a clean case; any ratio with a zero denominator).
 
-Three sections follow the table:
+Four sections follow the table:
 
 - `RUNS:` states how many runs each case had and which passes they added.
+- `TIERS:` names the model and effort the main, finder and structure tiers
+  resolved to, so a report says what it measured.
 - `RECALL BY PASS` lists every pass credited with at least one seeded finding:
   how many it found and its recall.
 - `COST PER RUN` lists calls, prompt tokens, output tokens and the estimated
@@ -231,8 +236,9 @@ provenance labels (`specialist:security`), cost uses the usage labels
 (`specialist-security`).
 
 In `-json` output each case carries `found_by` and `usage` (totals over all
-runs), and the report carries `runs`, `thorough`, `specialists` and
-`recall_by_pass`.
+runs), and the report carries `runs`, `thorough`, `specialists`, `tiers` and
+`recall_by_pass`. `tiers` holds `claude_model`, `claude_effort`,
+`finder_model`, `finder_effort`, `structure_model` and `structure_effort`.
 
 ## Compare a change against a baseline
 
@@ -268,11 +274,15 @@ in its `/tmp` does not survive into a second `make` call.
 The harness loads the baseline and checks the runs, flags and cases before the
 first case runs, so a mismatch exits 1 without spending tokens. A baseline
 from before the harness recorded its runs is rejected with `records no runs`.
-After the table, the comparison prints the verdict, one row per check, the
-recall of each pass on both sides, and both sides' cost per run:
+After the table, the comparison prints the verdict, the tiers each side ran
+on, one row per check, the recall of each pass on both sides, and both sides'
+cost per run. A baseline written before the tiers were recorded prints
+`(unrecorded)` on its tier line.
 
 ```
 VERDICT: HELD
+BASELINE TIERS                claude opus/xhigh, finder opus/xhigh, structure sonnet/xhigh
+CANDIDATE TIERS               claude opus/xhigh, finder opus/xhigh, structure sonnet/xhigh
 
 METRIC                         BASELINE  CANDIDATE      FLOOR  RESULT
 recall                            90.0%      93.3%      90.0%  held
@@ -289,7 +299,8 @@ output tokens                        190000         190000     +0.0%
 est USD                              $21.00         $18.65    -11.2%
 ```
 
-With `-json` the same data is in the report's `comparison` field. A
+With `-json` the same data is in the report's `comparison` field, the tiers
+under `baseline_tiers` and `candidate_tiers`. A
 `REGRESSED` verdict does not change the exit code (decision 59): it is for a
 person to read before the change lands.
 
@@ -300,3 +311,48 @@ person to read before the change lands.
 > discovered in production. Run the recipe in
 > [Compare a change against a baseline](#compare-a-change-against-a-baseline)
 > and paste the verdict, its checks, the pass deltas and the cost lines.
+
+## Try a candidate finder tier
+
+The read-only finder passes share one tier, set by `PLANWERK_FINDER_MODEL`
+and `PLANWERK_FINDER_EFFORT`. The corpus runs three of them: the adversarial
+pass, the domain specialists and claim verification. The coverage map, the
+feature-compliance check, the simplify finder and the implementation verifier
+run on the same tier, but no case measures them.
+
+To measure whether a cheaper tier keeps the recall, record a baseline with
+neither variable set, then compare each candidate against it with one or both
+set. Run every side from one build of the same commit, so the tier is the only
+variable between the sides.
+
+Try a lower effort before a cheaper model, and stop at the first `REGRESSED`
+verdict:
+
+```bash
+# Baseline: the shipped default
+go run ./cmd/planwerk-eval -thorough -specialists -runs 3 -json > /tmp/eval-baseline.json
+
+# Candidate 1: a lower finder effort
+PLANWERK_FINDER_EFFORT=high \
+  go run ./cmd/planwerk-eval -thorough -specialists -runs 3 -baseline /tmp/eval-baseline.json
+
+# Candidate 2, a cheaper model, only after candidate 1 printed VERDICT: HELD
+PLANWERK_FINDER_MODEL=sonnet \
+  go run ./cmd/planwerk-eval -thorough -specialists -runs 3 -baseline /tmp/eval-baseline.json
+
+# Candidate 3, both, only after candidate 2 printed VERDICT: HELD
+PLANWERK_FINDER_MODEL=sonnet PLANWERK_FINDER_EFFORT=high \
+  go run ./cmd/planwerk-eval -thorough -specialists -runs 3 -baseline /tmp/eval-baseline.json
+```
+
+Run the sides natively with `TOOLBOX=0` or all in one `make toolbox-shell`,
+which forwards every `PLANWERK_*` variable into the container (see
+[Build from source](/how-to/build-from-source#run-the-eval-in-the-toolbox)).
+Each side makes 3 runs of every case, so a side takes hours and spends real
+tokens.
+
+The comparison accepts a baseline and a candidate that ran on different tiers
+by design: a differing finder tier is the experiment. Read the
+`BASELINE TIERS` and `CANDIDATE TIERS` lines to check each side. The claude and
+structure tiers must match, and the candidate's finder tier must be the one its
+command set.
