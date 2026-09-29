@@ -580,6 +580,16 @@ session, full context intact, told to finish the outstanding verification and
 emit the report. Only when that fails does the run abort; the session's final
 output is then preserved as a `## Progress Note` comment on the issue.
 
+The implement session also receives its report's status contract (the `STATUS`
+verdict definitions and the `unproven` Acceptance Criterion status) in its
+system prompt, through Claude Code's `--append-system-prompt`, on the first
+turn and on every completion nudge turn. The implement prompt carries the same
+definitions, but it arrives as the session's first message, and a session long
+enough to compact its context can lose them from the summary. Claude Code
+rebuilds the system prompt after a compaction, so the contract is present when
+the session writes its report. `--print-prompt` output is unchanged, since the
+printed prompt already holds the same definitions.
+
 If an earlier run for this issue aborted mid-implementation (for example the
 Claude session hit its usage limit), it left commits on a feature branch. By
 default the next run detects that branch, checks it out, and continues from
@@ -599,7 +609,10 @@ the resume continues from that pass instead of running the implement session
 again: a posted simplification report skips the simplify pass, each posted
 review report counts as a used round of `--max-review-iterations`, and the
 review loop resumes at the next round, scoped to the fixes of the last one
-(branch-wide when the checkout no longer has that round's pre-fix commit).
+(branch-wide when the checkout no longer has that round's pre-fix commit). A
+`PARTIAL` report whose Work Breakdown Coverage lists every work package as done
+counts as a finished implementation: the run that posted it read the verdict as
+`DONE_WITH_CONCERNS` and continued past the implement session.
 Capture, verification, and the finalize session then run as usual. A finalize
 session that fails persists the branch the same way an abort does, so the next
 run resumes it and opens the pull request.

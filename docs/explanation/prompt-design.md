@@ -92,6 +92,12 @@ guard (#38), which refuses to treat output as a report unless it carries both
 the mandated heading and a terminal `STATUS` line. Both are completion criteria
 made checkable and exhaustive at the prompt level.
 
+A completion criterion the model cannot see when it finishes is not checkable.
+A long implement session can compact its context, and the summary that replaces
+its first message can drop the definitions of the report's verdicts. The
+implement status contract is therefore also appended to the session's system
+prompt, which Claude Code rebuilds after a compaction (decision 108).
+
 ## Single source of truth
 
 An instruction that more than one builder needs is written once and shared, not
