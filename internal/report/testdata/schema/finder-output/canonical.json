@@ -1,7 +1,6 @@
 {
   "findings": [
     {
-      "id": "",
       "severity": "CRITICAL",
       "title": "SQL injection in user query",
       "file": "db/users.go",
@@ -28,6 +27,5 @@
     }
   ],
   "summary": "One critical injection to fix before merge.",
-  "recommendation": "Do not merge until the injection is fixed.",
-  "source_finding_count": 1
+  "recommendation": "Do not merge until the injection is fixed."
 }

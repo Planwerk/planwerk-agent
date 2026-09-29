@@ -1,30 +1,28 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "StructuredReview",
-  "description": "Wire contract for the review structuring pass — the JSON the transcribe-only structure tier must emit, passed to the CLI via --json-schema. It mirrors report.ReviewResult plus source_finding_count, minus the Go-derived and pipeline-set fields (fix_class, confirmed_by, verification_note, snippet_check, claim_check, and the run-level gates object) the structure tier never produces. The severity/actionability/confidence enums include the empty string so a finding whose source review stated no such label is representable; the pipeline fills those in afterward.",
+  "title": "FinderOutput",
+  "description": "Wire contract for every pass that emits findings (the review, the audit, the adversarial pass, the domain specialists, the feature-compliance check, the simplify finder and the implementation verifier): the JSON each such session emits, passed to the CLI via --json-schema. It mirrors report.ReviewResult minus the Go-derived and pipeline-set fields (id, fix_class, confirmed_by, verification_note, snippet_check, claim_check, and the run-level gates object) such a pass never produces. Every finding carries its severity, actionability and confidence label, each exactly one enum value.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["findings", "summary", "recommendation", "source_finding_count"],
+  "required": ["findings", "summary", "recommendation"],
   "properties": {
     "findings": {
-      "description": "Findings transcribed from the review. Encoded as null (not []) when there are none.",
+      "description": "Findings the pass reports. May be null or [] when there are none.",
       "type": ["array", "null"],
       "items": { "$ref": "#/$defs/finding" }
     },
     "summary": { "type": "string" },
-    "recommendation": { "type": "string" },
-    "source_finding_count": { "type": "integer" }
+    "recommendation": { "type": "string" }
   },
   "$defs": {
     "finding": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "severity", "title", "file", "problem", "action"],
+      "required": ["severity", "title", "file", "problem", "action", "actionability", "confidence"],
       "properties": {
-        "id": { "type": "string" },
         "severity": {
           "type": "string",
-          "enum": ["BLOCKING", "CRITICAL", "WARNING", "INFO", ""]
+          "enum": ["BLOCKING", "CRITICAL", "WARNING", "INFO"]
         },
         "title": { "type": "string" },
         "file": { "type": "string" },
@@ -33,11 +31,11 @@
         "pattern": { "type": "string" },
         "actionability": {
           "type": "string",
-          "enum": ["auto-fix", "needs-discussion", "architectural", ""]
+          "enum": ["auto-fix", "needs-discussion", "architectural"]
         },
         "confidence": {
           "type": "string",
-          "enum": ["verified", "likely", "uncertain", ""]
+          "enum": ["verified", "likely", "uncertain"]
         },
         "problem": { "type": "string" },
         "action": { "type": "string" },

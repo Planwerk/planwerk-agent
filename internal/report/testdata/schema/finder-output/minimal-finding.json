@@ -1,0 +1,15 @@
+{
+  "findings": [
+    {
+      "severity": "WARNING",
+      "title": "Possible race on shared counter",
+      "file": "worker.go",
+      "problem": "The counter is incremented from two goroutines.",
+      "action": "Guard the counter with a mutex.",
+      "actionability": "auto-fix",
+      "confidence": "likely"
+    }
+  ],
+  "summary": "One race on a shared counter.",
+  "recommendation": ""
+}

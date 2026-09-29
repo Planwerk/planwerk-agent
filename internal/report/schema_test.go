@@ -51,7 +51,7 @@ func TestSchemasCompile(t *testing.T) {
 	compileSchema(t, "proposal.schema.json", schema.Proposal)
 	compileSchema(t, "rebase-analysis.schema.json", schema.RebaseAnalysis)
 	compileSchema(t, "address-result.schema.json", schema.AddressResult)
-	compileSchema(t, "structured-review.schema.json", schema.StructuredReview)
+	compileSchema(t, "finder-output.schema.json", schema.FinderOutput)
 }
 
 // TestFixturesValidateAgainstSchema validates every JSON fixture under
@@ -67,7 +67,7 @@ func TestFixturesValidateAgainstSchema(t *testing.T) {
 		{dir: "proposal", doc: schema.Proposal},
 		{dir: "rebase-analysis", doc: schema.RebaseAnalysis},
 		{dir: "address-result", doc: schema.AddressResult},
-		{dir: "structured-review", doc: schema.StructuredReview},
+		{dir: "finder-output", doc: schema.FinderOutput},
 	} {
 		t.Run(tc.dir, func(t *testing.T) {
 			sch := compileSchema(t, tc.dir, tc.doc)
@@ -178,15 +178,18 @@ func TestInvalidRebaseAnalysisRejected(t *testing.T) {
 	}
 }
 
-// TestInvalidStructuredReviewRejected feeds inline documents that violate the
-// structured-review wire contract and asserts the validator rejects each.
-func TestInvalidStructuredReviewRejected(t *testing.T) {
-	sch := compileSchema(t, "structured-review.schema.json", schema.StructuredReview)
+// TestInvalidFinderOutputRejected feeds inline documents that violate the
+// finder-output wire contract and asserts the validator rejects each: a label
+// that is empty or missing, and a field the finder never emits.
+func TestInvalidFinderOutputRejected(t *testing.T) {
+	sch := compileSchema(t, "finder-output.schema.json", schema.FinderOutput)
 	for name, doc := range map[string]string{
-		"off-enum severity":     `{"findings":[{"id":"","severity":"SEV","title":"t","file":"f","problem":"p","action":"a"}],"summary":"","recommendation":"","source_finding_count":1}`,
-		"missing source count":  `{"findings":null,"summary":"","recommendation":""}`,
-		"top-level extra field": `{"findings":null,"summary":"","recommendation":"","source_finding_count":0,"extra":true}`,
-		"finding extra field":   `{"findings":[{"id":"","severity":"INFO","title":"t","file":"f","problem":"p","action":"a","confirmed_by":["review"]}],"summary":"","recommendation":"","source_finding_count":1}`,
+		"empty severity":            `{"findings":[{"severity":"","title":"t","file":"f","problem":"p","action":"a","actionability":"auto-fix","confidence":"likely"}],"summary":"","recommendation":""}`,
+		"missing confidence":        `{"findings":[{"severity":"INFO","title":"t","file":"f","problem":"p","action":"a","actionability":"auto-fix"}],"summary":"","recommendation":""}`,
+		"missing actionability":     `{"findings":[{"severity":"INFO","title":"t","file":"f","problem":"p","action":"a","confidence":"likely"}],"summary":"","recommendation":""}`,
+		"source finding count":      `{"findings":null,"summary":"","recommendation":"","source_finding_count":0}`,
+		"finding with confirmed_by": `{"findings":[{"severity":"INFO","title":"t","file":"f","problem":"p","action":"a","actionability":"auto-fix","confidence":"likely","confirmed_by":["review"]}],"summary":"","recommendation":""}`,
+		"top-level extra field":     `{"findings":null,"summary":"","recommendation":"","extra":true}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			if err := validate(t, sch, []byte(doc)); err == nil {
