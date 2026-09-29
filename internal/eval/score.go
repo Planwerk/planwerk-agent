@@ -213,11 +213,36 @@ type CaseScore struct {
 	Usage            report.Usage   `json:"usage"`
 }
 
-// Config records how a report's runs were made: the runs per case and the
-// passes each run added to the primary review.
+// Config records how a report's runs were made: the runs per case, the passes
+// each run added to the primary review, and the tiers the runs resolved to.
 type Config struct {
 	Runs int `json:"runs"`
 	RunOptions
+	Tiers Tiers `json:"tiers"`
+}
+
+// Tiers records the model and effort each tier of a run resolved to, so a
+// report says what it measured. Comparable never reads it: a candidate
+// finder tier against the baseline's is the comparison the tier
+// experiment exists for.
+type Tiers struct {
+	ClaudeModel     string `json:"claude_model"`
+	ClaudeEffort    string `json:"claude_effort"`
+	FinderModel     string `json:"finder_model"`
+	FinderEffort    string `json:"finder_effort"`
+	StructureModel  string `json:"structure_model"`
+	StructureEffort string `json:"structure_effort"`
+}
+
+// String renders the tiers as "claude <model>/<effort>, finder
+// <model>/<effort>, structure <model>/<effort>", or "(unrecorded)" for the zero
+// value a report written before the tiers were recorded decodes to.
+func (t Tiers) String() string {
+	if t == (Tiers{}) {
+		return "(unrecorded)"
+	}
+	return fmt.Sprintf("claude %s/%s, finder %s/%s, structure %s/%s",
+		t.ClaudeModel, t.ClaudeEffort, t.FinderModel, t.FinderEffort, t.StructureModel, t.StructureEffort)
 }
 
 // PassRecall is one pass's share of the pooled recall: Found expected findings
@@ -305,8 +330,9 @@ func toCaseScore(name, desc string, s Score) CaseScore {
 
 // RenderTable writes the report as an aligned text table. Undefined ratios show
 // as "n/a"; a clean case's recall is always undefined and is noted in the
-// footer. The table is followed by the run configuration, the recall by pass,
-// and the cost per run, where every value is a total divided by the runs.
+// footer. The table is followed by the run configuration and its tiers, the
+// recall by pass, and the cost per run, where every value is a total divided by
+// the runs.
 func RenderTable(w io.Writer, rep Report) {
 	const header = "%-22s  %5s  %3s  %3s  %3s  %9s  %7s  %8s\n"
 	const row = "%-22s  %5s  %3d  %3d  %3d  %9s  %7s  %8s\n"
@@ -323,6 +349,7 @@ func RenderTable(w io.Writer, rep Report) {
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintf(w, "RUNS: %d per case (thorough: %s, specialists: %s)\n",
 		rep.Runs, yesNo(rep.Thorough), yesNo(rep.Specialists))
+	_, _ = fmt.Fprintf(w, "TIERS: %s\n", rep.Tiers)
 	renderPassRecall(w, rep.Passes)
 	renderCostPerRun(w, rep)
 }

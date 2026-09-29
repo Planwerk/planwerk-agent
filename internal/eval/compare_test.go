@@ -39,7 +39,7 @@ func TestLoadReport(t *testing.T) {
 			},
 			{Case: caseWith(true), Score: Score{Clean: true, FP: 2}},
 		}
-		want := BuildReport(scored, Config{Runs: 3, RunOptions: RunOptions{Specialists: true}})
+		want := BuildReport(scored, Config{Runs: 3, RunOptions: RunOptions{Specialists: true}, Tiers: sampleTiers()})
 		cmp, err := Compare(want, want)
 		if err != nil {
 			t.Fatalf("Compare: %v", err)
@@ -101,6 +101,23 @@ func TestLoadReport(t *testing.T) {
 		wantPasses := []PassRecall{{Pass: "review", Found: 3, Recall: ratio(0.75)}, {Pass: "specialist:security", Found: 1, Recall: ratio(0.25)}}
 		if !reflect.DeepEqual(got.Passes, wantPasses) {
 			t.Errorf("Passes = %+v, want %+v", got.Passes, wantPasses)
+		}
+	})
+
+	t.Run("a baseline without tiers loads with none recorded", func(t *testing.T) {
+		for name, content := range map[string]string{
+			"no tiers key": `{"runs": 3, "cases": [], "aggregate": {}}`,
+			"null tiers":   `{"runs": 3, "tiers": null, "cases": [], "aggregate": {}}`,
+		} {
+			path := filepath.Join(t.TempDir(), "baseline.json")
+			writeFile(t, path, content)
+			got, err := LoadReport(path)
+			if err != nil {
+				t.Fatalf("%s: LoadReport: %v", name, err)
+			}
+			if got.Tiers != (Tiers{}) {
+				t.Errorf("%s: Tiers = %+v, want none recorded", name, got.Tiers)
+			}
 		}
 	})
 

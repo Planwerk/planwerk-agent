@@ -403,6 +403,32 @@ func TestBuildReportUsage(t *testing.T) {
 	}
 }
 
+// sampleTiers is a fully recorded Tiers whose finder effort differs from the
+// main tier's, and sampleTiersLine its rendering.
+func sampleTiers() Tiers {
+	return Tiers{ClaudeModel: "opus", ClaudeEffort: "xhigh", FinderModel: "opus", FinderEffort: "high", StructureModel: "sonnet", StructureEffort: "xhigh"}
+}
+
+const sampleTiersLine = "claude opus/xhigh, finder opus/high, structure sonnet/xhigh"
+
+func TestTiersString(t *testing.T) {
+	tests := []struct {
+		name  string
+		tiers Tiers
+		want  string
+	}{
+		{"the zero value is unrecorded", Tiers{}, "(unrecorded)"},
+		{"a full value names every tier", sampleTiers(), sampleTiersLine},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.tiers.String(); got != tt.want {
+				t.Errorf("String() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRenderTableSections(t *testing.T) {
 	scored := []Scored{{
 		Case:  Case{Name: "priced", Expected: Expected{Findings: []ExpectedFinding{ef("a.go", 1, "WARNING", "x")}}},
@@ -413,13 +439,17 @@ func TestRenderTableSections(t *testing.T) {
 		},
 	}}
 	var buf strings.Builder
-	RenderTable(&buf, BuildReport(scored, Config{Runs: 3, RunOptions: RunOptions{Thorough: true}}))
+	RenderTable(&buf, BuildReport(scored, Config{Runs: 3, RunOptions: RunOptions{Thorough: true}, Tiers: sampleTiers()}))
 	out := buf.String()
 
-	for _, want := range []string{"CASE ", "RUNS: 3 per case (thorough: yes, specialists: no)", "RECALL BY PASS", "COST PER RUN"} {
+	const runsLine = "RUNS: 3 per case (thorough: yes, specialists: no)"
+	for _, want := range []string{"CASE ", runsLine, "TIERS: " + sampleTiersLine, "RECALL BY PASS", "COST PER RUN"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
 		}
+	}
+	if _, after, ok := strings.Cut(out, runsLine+"\n"); !ok || !strings.HasPrefix(after, "TIERS: "+sampleTiersLine+"\n") {
+		t.Errorf("the line after %q is not the TIERS line:\n%s", runsLine, out)
 	}
 
 	_, cost, ok := strings.Cut(out, "COST PER RUN")
@@ -435,6 +465,14 @@ func TestRenderTableSections(t *testing.T) {
 	// 3000 prompt tokens over 3 runs: 1000 per run; calls 2.0, output 100, $0.10.
 	if want := []string{"priced", "2.0", "1000", "100", "$0.10"}; !slices.Equal(row, want) {
 		t.Errorf("cost row = %v, want %v\n%s", row, want, out)
+	}
+}
+
+func TestRenderTableUnrecordedTiers(t *testing.T) {
+	var buf strings.Builder
+	RenderTable(&buf, BuildReport([]Scored{{Case: caseWith(true), Score: Score{Clean: true}}}, Config{Runs: 1}))
+	if !strings.Contains(buf.String(), "\nTIERS: (unrecorded)\n") {
+		t.Errorf("a report with no tiers lacks TIERS: (unrecorded):\n%s", buf.String())
 	}
 }
 
