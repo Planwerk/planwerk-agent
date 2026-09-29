@@ -371,6 +371,9 @@ func TestRun_PostsReportComment(t *testing.T) {
 	if !strings.Contains(gh.Comments()[0], cl.report) {
 		t.Errorf("posted comment %q does not contain the report %q", gh.Comments()[0], cl.report)
 	}
+	if want := formatReportComment(cl.report, ""); gh.Comments()[0] != want {
+		t.Errorf("a DONE report must post without an orchestrator note:\ngot  %q\nwant %q", gh.Comments()[0], want)
+	}
 	if !strings.Contains(gh.Comments()[0], reportCommentFooter("")) {
 		t.Errorf("posted comment is missing the attribution footer:\n%s", gh.Comments()[0])
 	}
@@ -2474,21 +2477,24 @@ func TestRun_FinalizeOpensPR(t *testing.T) {
 // partial branch for a later resume and aborts instead of shipping a subset.
 func TestRun_FinalizeByStatus(t *testing.T) {
 	cases := []struct {
-		status       string
+		name         string
+		report       string
 		wantFinalize bool
 	}{
-		{"DONE", true},
-		{"DONE_WITH_CONCERNS", true},
-		{"PARTIAL", false},
+		{"DONE", "## Implementation Report (issue #42)\n\nSTATUS: DONE", true},
+		{"DONE_WITH_CONCERNS", "## Implementation Report (issue #42)\n\nSTATUS: DONE_WITH_CONCERNS", true},
+		{"PARTIAL", "## Implementation Report (issue #42)\n\nSTATUS: PARTIAL", false},
+		// Only a coverage list whose every package is done overrides PARTIAL.
+		{"PARTIAL with mixed coverage", implReportWithCoverage("- A — done — abc1234\n- B — partial — def5678\n", "PARTIAL"), false},
 	}
 	for _, tc := range cases {
-		t.Run(tc.status, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			gh := &githubtest.Fake{
 				Issue:         sampleIssue(),
 				Dir:           t.TempDir(),
 				ProgressState: &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "abc1234", Subject: "wip"}}},
 			}
-			cl := &fakeClaude{report: "## Implementation Report (issue #42)\n\nSTATUS: " + tc.status}
+			cl := &fakeClaude{report: tc.report}
 			ff := &fakeFinalizer{report: defaultFinalizeReport}
 			r := newRunner(gh, cl)
 			r.Finalizer = ff
@@ -2496,14 +2502,14 @@ func TestRun_FinalizeByStatus(t *testing.T) {
 			err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42"})
 			if tc.wantFinalize {
 				if err != nil {
-					t.Fatalf("Run returned %v, want nil for a %s report", err, tc.status)
+					t.Fatalf("Run returned %v, want nil for a %s report", err, tc.name)
 				}
 				if ff.called.Load() != 1 {
-					t.Fatalf("finalizer called %d times, want 1 — a %s report opens the closing PR", ff.called.Load(), tc.status)
+					t.Fatalf("finalizer called %d times, want 1 — a %s report opens the closing PR", ff.called.Load(), tc.name)
 				}
 				return
 			}
-			if err == nil || !strings.Contains(err.Error(), "PARTIAL") {
+			if err == nil || !strings.Contains(err.Error(), "reported PARTIAL") {
 				t.Fatalf("Run returned %v, want a PARTIAL abort error — partial work must not ship as a PR", err)
 			}
 			if ff.called.Load() != 0 {
@@ -2513,6 +2519,87 @@ func TestRun_FinalizeByStatus(t *testing.T) {
 				t.Errorf("PushHead called %d times with %q, want exactly 1 push of the partial branch for a later resume", gh.Count("PushHead"), lastPushed(gh))
 			}
 		})
+	}
+}
+
+// TestEffectiveImplementStatus locks the one verdict the orchestrator
+// overrides: PARTIAL under a coverage list whose every package is done reads
+// as DONE_WITH_CONCERNS. Any other verdict, and a PARTIAL whose coverage is
+// mixed or names no package, stands (decision 108).
+func TestEffectiveImplementStatus(t *testing.T) {
+	cases := []struct {
+		name              string
+		report            string
+		wantStatus        string
+		wantReinterpreted bool
+	}{
+		{"DONE", validImplReport, "DONE", false},
+		{"PARTIAL with every package done", partialAllDoneReport, "DONE_WITH_CONCERNS", true},
+		{"PARTIAL with a partial package", implReportWithCoverage("- A — done — abc1234\n- B — partial — def5678\n", "PARTIAL"), "PARTIAL", false},
+		{"PARTIAL with the single-change sentinel", implReportWithCoverage("- None — the issue is a single undivided change\n", "PARTIAL"), "PARTIAL", false},
+		{"PARTIAL with a state word in a title", implReportWithCoverage("- A — done — abc1234\n- WP2: Done-marker handling — partial — def5678\n", "PARTIAL"), "PARTIAL", false},
+		{"BLOCKED with every package done", implReportWithCoverage("- A — done — abc1234\n- B — done — def5678\n", "BLOCKED"), "BLOCKED", false},
+		{"empty", "", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			status, reinterpreted := effectiveImplementStatus(tc.report)
+			if status != tc.wantStatus || reinterpreted != tc.wantReinterpreted {
+				t.Errorf("effectiveImplementStatus() = %q, %t, want %q, %t", status, reinterpreted, tc.wantStatus, tc.wantReinterpreted)
+			}
+		})
+	}
+}
+
+// TestRun_PartialWithEveryPackageDoneContinuesAsDoneWithConcerns is the
+// regression test for cobaltcore#1120: a session that finished every package
+// but reported PARTIAL must not strand the branch. The run continues to the
+// pull request, says why on stdout, and posts the session's own report with
+// the orchestrator's note above the footer; finalize receives that note too.
+func TestRun_PartialWithEveryPackageDoneContinuesAsDoneWithConcerns(t *testing.T) {
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
+	cl := &fakeClaude{report: partialAllDoneReport}
+	ff := &fakeFinalizer{report: defaultFinalizeReport}
+	r := newRunner(gh, cl)
+	r.Finalizer = ff
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
+		t.Fatalf("Run returned %v, want nil — every package is done", err)
+	}
+	if ff.called.Load() != 1 {
+		t.Errorf("finalizer called %d times, want 1 — the pull request must open", ff.called.Load())
+	}
+	if !strings.Contains(ff.ctx.ImplementationReport, partialReadAsCompleteNote) {
+		t.Errorf("finalize must receive the orchestrator note with the PARTIAL report:\n%s", ff.ctx.ImplementationReport)
+	}
+	if !strings.Contains(buf.String(), "reserved for an unfinished package") {
+		t.Errorf("missing the reinterpretation notice in output:\n%s", buf.String())
+	}
+	if gh.Count("AddIssueComment") != 1 {
+		t.Fatalf("AddIssueComment called %d times, want 1", gh.Count("AddIssueComment"))
+	}
+	body := gh.Comments()[0]
+	note, footer := strings.Index(body, partialReadAsCompleteNote), strings.Index(body, reportCommentMarker)
+	if !strings.Contains(body, "STATUS: PARTIAL") || note == -1 || footer == -1 || note > footer {
+		t.Errorf("want the session's STATUS: PARTIAL line and the orchestrator note above the footer:\n%s", body)
+	}
+}
+
+// TestFormatReportComment_Note locks the note's place in the comment: it
+// never changes the verdict TerminalStatus reads, it survives the footer strip
+// a resume applies, and without one the body is the plain report and footer.
+func TestFormatReportComment_Note(t *testing.T) {
+	body := formatReportComment(partialAllDoneReport+"\n\n"+partialReadAsCompleteNote, "m")
+	if got := report.TerminalStatus(body); got != report.StatusPartial {
+		t.Errorf("TerminalStatus(comment) = %q, want the session's own PARTIAL", got)
+	}
+	stripped := stripCommentFooter(body, reportCommentMarker)
+	if !strings.Contains(stripped, partialReadAsCompleteNote) || strings.Contains(stripped, reportCommentMarker) {
+		t.Errorf("stripCommentFooter must keep the note and drop the footer:\n%s", stripped)
+	}
+	if got, want := formatReportComment(validImplReport, "m"), validImplReport+"\n\n---\n\n"+reportCommentFooter("m")+"\n"; got != want {
+		t.Errorf("formatReportComment without a note = %q, want %q", got, want)
 	}
 }
 
@@ -2605,6 +2692,16 @@ const defaultFinalizeReport = "## Pull Request\n\n- URL: https://github.com/owne
 // accepts. Tests that drive a successful Run past the implement step use it so
 // the guard does not (correctly) abort on a missing or incomplete report.
 const validImplReport = "## Implementation Report (issue #42)\n\nSTATUS: DONE"
+
+// implReportWithCoverage is an implementation report whose Work Breakdown
+// Coverage section holds coverage and whose terminal verdict is status.
+func implReportWithCoverage(coverage, status string) string {
+	return "## Implementation Report (issue #42)\n\n### Work Breakdown Coverage\n" + coverage + "### Acceptance Criteria\n- Golden file exists\n  - Status: unproven\n### Status\nSTATUS: " + status
+}
+
+// partialAllDoneReport is the cobaltcore#1120 contradiction: a PARTIAL verdict
+// under a coverage list whose every package is done (decision 108).
+var partialAllDoneReport = implReportWithCoverage("- 1. Parser — done — abc1234\n- 2. Runner — done — def5678\n", "PARTIAL")
 
 // newRunner wires a default no-op finalizer so the full Run path — which now ends
 // by opening the PR — completes in tests that do not exercise finalize directly.
@@ -3740,36 +3837,53 @@ func doneReportComment() github.IssueComment {
 // TestRun_ResumeSkipsImplementWhenReportIsDone locks the core of decision 94:
 // a resumable branch plus a DONE implementation report on the issue means the
 // implement session is not run again, no second report is posted, and the run
-// still goes on to open the pull request.
+// still goes on to open the pull request. A posted PARTIAL report whose
+// coverage lists every package as done is complete the same way (decision
+// 108), and finalize receives its orchestrator note exactly once.
 func TestRun_ResumeSkipsImplementWhenReportIsDone(t *testing.T) {
-	gh := &githubtest.Fake{
-		Issue:         sampleIssue(),
-		Dir:           t.TempDir(),
-		ResumeState:   &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "abc1234", Subject: "done"}}},
-		IssueComments: []github.IssueComment{doneReportComment()},
+	cases := []struct {
+		name      string
+		comment   github.IssueComment
+		wantNotes int
+	}{
+		{"DONE report", doneReportComment(), 0},
+		{"PARTIAL report with every package done", github.IssueComment{Body: formatReportComment(partialAllDoneReport+"\n\n"+partialReadAsCompleteNote, "m")}, 1},
 	}
-	cl := &fakeClaude{report: "## Implementation Report (issue #42)\n\nSTATUS: PARTIAL"}
-	ff := &fakeFinalizer{report: defaultFinalizeReport}
-	r := newRunner(gh, cl)
-	r.Finalizer = ff
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			gh := &githubtest.Fake{
+				Issue:         sampleIssue(),
+				Dir:           t.TempDir(),
+				ResumeState:   &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "abc1234", Subject: "done"}}},
+				IssueComments: []github.IssueComment{tc.comment},
+			}
+			cl := &fakeClaude{report: "## Implementation Report (issue #42)\n\nSTATUS: PARTIAL"}
+			ff := &fakeFinalizer{report: defaultFinalizeReport}
+			r := newRunner(gh, cl)
+			r.Finalizer = ff
 
-	var buf bytes.Buffer
-	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
-		t.Fatalf("Run returned %v, want nil", err)
-	}
-	if cl.called.Load() != 0 {
-		t.Errorf("Claude.Implement called %d times, want 0 — the report on the issue already says DONE", cl.called.Load())
-	}
-	if ff.called.Load() != 1 {
-		t.Errorf("finalizer called %d times, want 1", ff.called.Load())
-	}
-	for _, c := range gh.Comments() {
-		if strings.Contains(c, reportCommentMarker) {
-			t.Errorf("a second implementation report was posted:\n%s", c)
-		}
-	}
-	if !strings.Contains(buf.String(), "skipping the implement session") {
-		t.Errorf("missing the skip notice in output:\n%s", buf.String())
+			var buf bytes.Buffer
+			if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
+				t.Fatalf("Run returned %v, want nil", err)
+			}
+			if cl.called.Load() != 0 {
+				t.Errorf("Claude.Implement called %d times, want 0 — the report on the issue is already complete", cl.called.Load())
+			}
+			if ff.called.Load() != 1 {
+				t.Errorf("finalizer called %d times, want 1", ff.called.Load())
+			}
+			if got := strings.Count(ff.ctx.ImplementationReport, partialReadAsCompleteNote); got != tc.wantNotes {
+				t.Errorf("finalize report carries the orchestrator note %d times, want %d:\n%s", got, tc.wantNotes, ff.ctx.ImplementationReport)
+			}
+			for _, c := range gh.Comments() {
+				if strings.Contains(c, reportCommentMarker) {
+					t.Errorf("a second implementation report was posted:\n%s", c)
+				}
+			}
+			if !strings.Contains(buf.String(), "skipping the implement session") {
+				t.Errorf("missing the skip notice in output:\n%s", buf.String())
+			}
+		})
 	}
 }
 
@@ -4009,21 +4123,24 @@ func TestPassesAfter(t *testing.T) {
 }
 
 // TestLatestSessionAccount_Complete locks which accounts count as a finished
-// implementation: DONE and DONE_WITH_CONCERNS do; PARTIAL, escalations, and
+// implementation: DONE and DONE_WITH_CONCERNS do, and so does a PARTIAL whose
+// coverage lists every package as done; any other PARTIAL, escalations, and
 // progress notes do not.
 func TestLatestSessionAccount_Complete(t *testing.T) {
 	cases := map[string]bool{
-		"STATUS: DONE":               true,
-		"STATUS: DONE_WITH_CONCERNS": true,
-		"STATUS: PARTIAL":            false,
-		"STATUS: BLOCKED":            false,
-		"STATUS: NEEDS_CONTEXT":      false,
+		"## Implementation Report (issue #42)\n\nSTATUS: DONE":               true,
+		"## Implementation Report (issue #42)\n\nSTATUS: DONE_WITH_CONCERNS": true,
+		"## Implementation Report (issue #42)\n\nSTATUS: PARTIAL":            false,
+		"## Implementation Report (issue #42)\n\nSTATUS: BLOCKED":            false,
+		"## Implementation Report (issue #42)\n\nSTATUS: NEEDS_CONTEXT":      false,
+		partialAllDoneReport: true,
+		implReportWithCoverage("- A — done — abc1234\n- B — partial — def5678\n", "PARTIAL"): false,
 	}
-	for status, want := range cases {
-		body := formatReportComment("## Implementation Report (issue #42)\n\n"+status, "m")
+	for account, want := range cases {
+		body := formatReportComment(account, "m")
 		idx, _, complete := latestSessionAccount([]github.IssueComment{{Body: "plan"}, {Body: body}})
 		if idx != 1 || complete != want {
-			t.Errorf("%s: idx=%d complete=%t, want idx=1 complete=%t", status, idx, complete, want)
+			t.Errorf("%q: idx=%d complete=%t, want idx=1 complete=%t", account, idx, complete, want)
 		}
 	}
 	if idx, _, complete := latestSessionAccount([]github.IssueComment{{Body: formatProgressNoteComment("n", 42, "m")}}); idx != 0 || complete {

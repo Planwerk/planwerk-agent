@@ -152,7 +152,7 @@ func TestBuildImplementPrompt_OrchestrationOnlyWithWorkerModel(t *testing.T) {
 
 // TestBuildImplementPrompt_OrchestratedKeepsReportContract guards the seam the
 // Go orchestrator keys on: orchestrator mode must not change the report
-// heading or the terminal STATUS contract, or implementReportStatus and the
+// heading or the terminal STATUS contract, or effectiveImplementStatus and the
 // PARTIAL/BLOCKED guards in the implement package would stop recognizing the
 // session's output.
 func TestBuildImplementPrompt_OrchestratedKeepsReportContract(t *testing.T) {

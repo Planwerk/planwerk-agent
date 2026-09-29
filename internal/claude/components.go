@@ -225,7 +225,7 @@ Apply these rules to every piece of documentation you write or edit (` + docArti
 // top-down (plan, implement, finalize, fix, and the bare address variant). It
 // pins the report's lead line and its single next action (decision 75). The
 // lead line never carries the "STATUS:" prefix: the escalation parsers
-// (planEscalation, implementReportStatus, fix.parseStatus) are line-anchored on
+// (planEscalation, effectiveImplementStatus, fix.parseStatus) are line-anchored on
 // that prefix, which only the terminal STATUS line carries (decision 38).
 // successVerdict names the report's fully-successful verdict ("DONE", or
 // "PLAN_READY" for the plan) so the next-action rule can key on it.
