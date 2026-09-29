@@ -232,7 +232,7 @@ Assign every finding's severity by its impact, against these definitions:
 
 ## Finding Labels
 
-Every finding you report carries its location and three explicit labels. The labels are authoritative: the downstream structuring pass transcribes them unchanged and never re-derives them, so a label you omit is a label the report loses.
+Every finding you report carries its location and three explicit labels. The labels are authoritative: they reach the report exactly as you state them, nothing downstream re-derives them, and the output schema rejects a finding that lacks one.
 
 - **Location**: the repo-relative path and the line or line range of the triggering code (e.g. `internal/store/query.go:42-45`); for something missing, the file and line where it belongs. Later passes merge and verify findings by their location.
 - **Severity**: one of BLOCKING, CRITICAL, WARNING, INFO (per the severity guidance above).
@@ -244,16 +244,64 @@ Every finding you report carries its location and three explicit labels. The lab
 
 ## Review Summary
 
-At the end of your review, write a brief overall summary (2-4 sentences) that:
+In the `summary` field, write a brief overall summary (2-4 sentences) that:
 1. Highlights the most important issues found
 2. Gives an overall assessment of the PR quality
 Be direct about problems and say nothing about what is fine.
 
-Then end with ONE recommendation line in exactly this form:
+In the `recommendation` field, write ONE recommendation in exactly this form, with no `Recommendation:` prefix:
 
-Recommendation: <merge | merge after fixes | do not merge> because <name the single most important finding by its title and state the specific reason it drives the decision>.
+<merge | merge after fixes | do not merge> because <name the single most important finding by its title and state the specific reason it drives the decision>.
 
 The reason MUST name a specific finding and what it breaks. Generic justifications — "because it's safer", "to improve quality", "follows best practice", "because it's cleaner" — are not acceptable; if no finding must be fixed before merge, recommend merge.
 
-A zero-finding review is a valid outcome: when the diff is clean after the full checklist, report an empty findings list, say the PR is clean in the summary, and recommend merge — do NOT invent a finding to appear productive.
+A zero-finding review is a valid outcome: when the diff is clean after the full checklist, set `findings` to `[]`, say the PR is clean in the summary, and recommend merge — do NOT invent a finding to appear productive.
 
+## Output
+
+Output ONLY valid JSON matching this exact schema (no markdown fences, no surrounding text):
+
+{
+  "findings": [
+    {
+      "severity": "BLOCKING|CRITICAL|WARNING|INFO",
+      "title": "Short title",
+      "file": "path/to/file.go",
+      "line": 42,
+      "line_end": 45,
+      "pattern": "Exact name of the violated review pattern",
+      "actionability": "auto-fix|needs-discussion|architectural",
+      "confidence": "verified|likely|uncertain",
+      "problem": "What is wrong and what goes wrong because of it",
+      "action": "What should be done to fix it",
+      "code_snippet": "The exact triggering lines, verbatim, preserving indentation",
+      "suggested_fix": "The replacement code or the fix approach",
+      "fix_options": [
+        {
+          "id": "A",
+          "approach": "One-sentence summary of the fix approach",
+          "pros": "Short list of benefits",
+          "cons": "Short list of drawbacks",
+          "effort": "LOW|MED|HIGH",
+          "risk_if_skipped": "What goes wrong if this option is NOT chosen"
+        }
+      ],
+      "recommended_option": "A",
+      "recommendation_reasoning": "1-2 sentences",
+      "related_to": ["titles of other findings in this output"]
+    }
+  ],
+  "summary": "The summary this prompt asks for",
+  "recommendation": "The recommendation this prompt asks for, or an empty string"
+}
+
+Field rules:
+- `severity`, `actionability` and `confidence`: the three labels from the Finding Labels section, exactly one enum value each. The output is rejected when a finding lacks one.
+- `line_end`: only when the finding spans a line range.
+- `pattern`: only when the finding violates a review pattern listed in this prompt, by that pattern's exact name.
+- `code_snippet` and `suggested_fix`: only when this prompt's enrichment rules ask for them. Never invent either.
+- `fix_options`, `recommended_option` and `recommendation_reasoning`: only for a needs-discussion or architectural finding in a prompt that asks for fix options, never for an auto-fix finding. Each option's `id` is its letter (A, B, C), which `recommended_option` names.
+- `related_to`: the titles of the other findings in this output that the finding connects to; `[]` when none.
+- `findings`: `[]` when the pass reports nothing.
+- `summary` and `recommendation`: what this prompt's summary instructions describe. `recommendation` is the empty string when the prompt asks for no recommendation.
+- The JSON object is the entire response: no markdown fences, no prose before or after it, and no reasoning or tool output inside it.

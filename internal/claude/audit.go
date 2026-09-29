@@ -143,14 +143,17 @@ For EVERY finding you report, you MUST include:
 	// Summary instructions
 	sb.WriteString(`## Audit Summary
 
-At the end of your audit, write a brief overall summary (3-5 sentences) that:
+In the ` + "`summary`" + ` field, write a brief overall summary (3-5 sentences) that:
 1. States the overall health of the codebase.
 2. Highlights the most important findings (top themes, not a list of every issue).
 3. Names the 1-3 highest-leverage improvements the team should tackle first.
 
+Leave the ` + "`recommendation`" + ` field as the empty string.
+
 `)
 
-	sb.WriteString("Now perform the audit. When you are done, emit the findings with the enrichment fields above, followed by the audit summary. If a pattern yields no violations, report nothing for it rather than inventing a weak finding; if the whole codebase is clean, emit an empty findings list and say so in the summary.\n")
+	sb.WriteString("Now perform the audit. When you are done, emit the JSON object described under Output below. If a pattern yields no violations, report nothing for it rather than inventing a weak finding; if the whole codebase is clean, emit an empty findings list and say so in the summary.\n\n")
+	sb.WriteString(findingsOutputBlock())
 
 	return sb.String()
 }

@@ -98,6 +98,8 @@ For EVERY finding:
 	sb.WriteString(communicationStyleBlock())
 	sb.WriteString(outputLanguageBlock())
 	sb.WriteString(findingLabelsBlock())
-	sb.WriteString("Ignore changes under .planwerk/ itself (the specification files); check the code, test, and documentation changes against them.\n")
+	sb.WriteString("Ignore changes under .planwerk/ itself (the specification files); check the code, test, and documentation changes against them.\n\n")
+	sb.WriteString(passSummaryLine())
+	sb.WriteString(findingsOutputBlock())
 	return sb.String()
 }

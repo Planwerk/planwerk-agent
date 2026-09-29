@@ -113,7 +113,7 @@ Write your entire output in English, whatever language the input is written in â
 
 ## Finding Labels
 
-Every finding you report carries its location and three explicit labels. The labels are authoritative: the downstream structuring pass transcribes them unchanged and never re-derives them, so a label you omit is a label the report loses.
+Every finding you report carries its location and three explicit labels. The labels are authoritative: they reach the report exactly as you state them, nothing downstream re-derives them, and the output schema rejects a finding that lacks one.
 
 - **Location**: the repo-relative path and the line or line range of the triggering code (e.g. `internal/store/query.go:42-45`); for something missing, the file and line where it belongs. Later passes merge and verify findings by their location.
 - **Severity**: one of BLOCKING, CRITICAL, WARNING, INFO (per the severity guidance above).
@@ -124,3 +124,54 @@ Every finding you report carries its location and three explicit labels. The lab
 - **Confidence**: one of verified (visible in the code with certainty), likely (strong evidence, depends on wider context), or uncertain (needs investigation). If you cannot quote the triggering line verbatim, use uncertain; never invent, paraphrase, or reconstruct a quote to raise it.
 
 Ignore changes under .planwerk/ itself (the specification files); check the code, test, and documentation changes against them.
+
+In `summary`, state in one to three sentences what this pass found, or that it found nothing; leave `recommendation` as the empty string.
+
+## Output
+
+Output ONLY valid JSON matching this exact schema (no markdown fences, no surrounding text):
+
+{
+  "findings": [
+    {
+      "severity": "BLOCKING|CRITICAL|WARNING|INFO",
+      "title": "Short title",
+      "file": "path/to/file.go",
+      "line": 42,
+      "line_end": 45,
+      "pattern": "Exact name of the violated review pattern",
+      "actionability": "auto-fix|needs-discussion|architectural",
+      "confidence": "verified|likely|uncertain",
+      "problem": "What is wrong and what goes wrong because of it",
+      "action": "What should be done to fix it",
+      "code_snippet": "The exact triggering lines, verbatim, preserving indentation",
+      "suggested_fix": "The replacement code or the fix approach",
+      "fix_options": [
+        {
+          "id": "A",
+          "approach": "One-sentence summary of the fix approach",
+          "pros": "Short list of benefits",
+          "cons": "Short list of drawbacks",
+          "effort": "LOW|MED|HIGH",
+          "risk_if_skipped": "What goes wrong if this option is NOT chosen"
+        }
+      ],
+      "recommended_option": "A",
+      "recommendation_reasoning": "1-2 sentences",
+      "related_to": ["titles of other findings in this output"]
+    }
+  ],
+  "summary": "The summary this prompt asks for",
+  "recommendation": "The recommendation this prompt asks for, or an empty string"
+}
+
+Field rules:
+- `severity`, `actionability` and `confidence`: the three labels from the Finding Labels section, exactly one enum value each. The output is rejected when a finding lacks one.
+- `line_end`: only when the finding spans a line range.
+- `pattern`: only when the finding violates a review pattern listed in this prompt, by that pattern's exact name.
+- `code_snippet` and `suggested_fix`: only when this prompt's enrichment rules ask for them. Never invent either.
+- `fix_options`, `recommended_option` and `recommendation_reasoning`: only for a needs-discussion or architectural finding in a prompt that asks for fix options, never for an auto-fix finding. Each option's `id` is its letter (A, B, C), which `recommended_option` names.
+- `related_to`: the titles of the other findings in this output that the finding connects to; `[]` when none.
+- `findings`: `[]` when the pass reports nothing.
+- `summary` and `recommendation`: what this prompt's summary instructions describe. `recommendation` is the empty string when the prompt asks for no recommendation.
+- The JSON object is the entire response: no markdown fences, no prose before or after it, and no reasoning or tool output inside it.

@@ -1,12 +1,16 @@
 package claude
 
 import (
+	"encoding/json"
+	"maps"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/planwerk/planwerk-agent/internal/elaborate"
 	"github.com/planwerk/planwerk-agent/internal/implement"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
+	"github.com/planwerk/planwerk-agent/internal/report/schema"
 	"github.com/planwerk/planwerk-agent/internal/skills"
 )
 
@@ -291,6 +295,97 @@ func TestAdversarialPromptScopeSwitchesOnSinceRef(t *testing.T) {
 	}
 	if strings.Contains(fixesOnly, "git diff origin/main...HEAD --name-only") {
 		t.Error("the re-review still carries the branch-wide scope line")
+	}
+}
+
+// TestFindingsOutputBlock_RendersEachFieldOnce pins the JSON shape the finder
+// passes emit: each label, the two top-level strings, and the one "id" (the fix
+// option's; a finding carries none, since assignIDs sets it) named once, so the
+// shape cannot drift into two versions.
+func TestFindingsOutputBlock_RendersEachFieldOnce(t *testing.T) {
+	block := findingsOutputBlock()
+	if !strings.HasPrefix(block, "## Output\n\n"+jsonSchemaOnlyLine()) {
+		t.Errorf("block must open with the Output heading and the JSON-only line:\n%s", block)
+	}
+	for _, key := range []string{`"id"`, `"severity"`, `"actionability"`, `"confidence"`, `"summary"`, `"recommendation"`} {
+		if got := strings.Count(block, key); got != 1 {
+			t.Errorf("block renders %s %d times, want exactly 1", key, got)
+		}
+	}
+}
+
+// TestFindingsOutputBlock_MatchesFinderOutputSchema is the drift guard between
+// the two copies of the finder output shape: the example every finder prompt
+// shows and schema.FinderOutput, which the CLI enforces with
+// additionalProperties false. At each level (the output, a finding, a fix
+// option) the example names exactly the properties the schema defines, so a key
+// added to or renamed in only one of them fails here rather than failing every
+// finder session's --json-schema validation.
+func TestFindingsOutputBlock_MatchesFinderOutputSchema(t *testing.T) {
+	var example map[string]any
+	if err := json.Unmarshal([]byte(extractJSONValue(findingsOutputBlock())), &example); err != nil {
+		t.Fatalf("the block's example is not valid JSON: %v", err)
+	}
+	findings, _ := example["findings"].([]any)
+	if len(findings) != 1 {
+		t.Fatalf("the example shows %d findings, want 1", len(findings))
+	}
+	finding, _ := findings[0].(map[string]any)
+	options, _ := finding["fix_options"].([]any)
+	if len(options) != 1 {
+		t.Fatalf("the example finding shows %d fix options, want 1", len(options))
+	}
+	option, _ := options[0].(map[string]any)
+
+	var doc struct {
+		Properties map[string]json.RawMessage `json:"properties"`
+		Defs       map[string]struct {
+			Properties map[string]json.RawMessage `json:"properties"`
+		} `json:"$defs"`
+	}
+	if err := json.Unmarshal(schema.FinderOutput, &doc); err != nil {
+		t.Fatalf("decoding schema.FinderOutput: %v", err)
+	}
+	for _, level := range []struct {
+		name          string
+		shape, schema []string
+	}{
+		{"output", slices.Sorted(maps.Keys(example)), slices.Sorted(maps.Keys(doc.Properties))},
+		{"finding", slices.Sorted(maps.Keys(finding)), slices.Sorted(maps.Keys(doc.Defs["finding"].Properties))},
+		{"fix option", slices.Sorted(maps.Keys(option)), slices.Sorted(maps.Keys(doc.Defs["fixOption"].Properties))},
+	} {
+		if !slices.Equal(level.shape, level.schema) {
+			t.Errorf("the example's %s keys are %q, schema.FinderOutput defines %q", level.name, level.shape, level.schema)
+		}
+	}
+}
+
+// TestFinderPromptsEndWithTheOutputBlock proves each of the seven finder
+// prompts ends with the shared output block and renders the JSON shape once,
+// with the arguments their golden tests use. A prompt that still told the
+// session a structuring pass transcribes its findings would contradict it.
+func TestFinderPromptsEndWithTheOutputBlock(t *testing.T) {
+	ictx := goldenImplementContext()
+	for name, prompt := range map[string]string{
+		"review":                buildReviewPrompt(goldenReviewContext()),
+		"audit":                 buildAuditPrompt(goldenAuditContext()),
+		"adversarial":           buildAdversarialPrompt("develop", "", nil, 0),
+		"specialist":            buildSpecialistPrompt("develop", specialistByKey(t, "security"), nil, 0),
+		"compliance":            buildCompliancePrompt("develop", goldenFeature()),
+		"simplify":              buildSimplifyFindPrompt("develop"),
+		"verify-implementation": buildVerifyImplementationPrompt(ictx.IssueTitle, ictx.IssueBody),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if !strings.HasSuffix(prompt, findingsOutputBlock()) {
+				t.Errorf("prompt does not end with findingsOutputBlock():\n%s", prompt[max(0, len(prompt)-600):])
+			}
+			if got := strings.Count(prompt, `"confidence"`); got != 1 {
+				t.Errorf("prompt renders \"confidence\" %d times, want 1: the shape must appear once", got)
+			}
+			if strings.Contains(prompt, "structuring pass") {
+				t.Error("prompt still names a structuring pass")
+			}
+		})
 	}
 }
 
