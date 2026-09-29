@@ -145,17 +145,16 @@ A run that spent its tokens across more than one pass follows the totals with a
 per-pass breakdown, most expensive first:
 
 ```text
-claude usage: 412.0k in / 38.1k out across 14 calls, est. $12.80
+claude usage: 350.0k in / 33.0k out across 7 calls, est. $12.29
   implement                 1 call   180.0k in / 21.0k out, est. $7.40
   plan                      1 call   96.0k in / 8.0k out, est. $2.90
   specialist-security       1 call   38.0k in / 1.4k out, est. $0.62
-  structure                 7 calls  62.0k in / 5.1k out, est. $0.51
   +4 further passes         4 calls  36.0k in / 2.6k out, est. $1.37
 ```
 
 The pass name is the label the runner tags the `claude -p` invocation with, so
-calls that belong to the same pass (the structuring call behind every finder, the
-finder rounds of a review loop) accumulate together. At most eight rows are
+calls that belong to the same pass (the finder rounds of a review loop)
+accumulate together. At most eight rows are
 shown; the rest are summed into a trailing `+N further passes` line, so the
 breakdown always accounts for the whole run.
 

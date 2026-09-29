@@ -228,8 +228,7 @@ Three sections follow the table:
 
 The two sections spell the pass labels differently. Recall uses the
 provenance labels (`specialist:security`), cost uses the usage labels
-(`specialist-security`, plus `structure` for the structuring calls behind each
-pass).
+(`specialist-security`).
 
 In `-json` output each case carries `found_by` and `usage` (totals over all
 runs), and the report carries `runs`, `thorough`, `specialists` and
