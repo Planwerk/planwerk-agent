@@ -338,9 +338,9 @@ func (r *Renderer) renderAuditVerdict(cf CategorizedFindings) {
 //
 // Passes breaks the same totals down by the pass that spent them. A run fans
 // out over a dozen sessions — a review runs the primary pass, the adversarial
-// pass, one session per domain specialist, and a structuring call behind each —
-// so the totals alone cannot say which pass a cost belongs to, and a change
-// meant to make one pass cheaper cannot be shown to have worked. It is omitted
+// pass, and one session per domain specialist — so the totals alone cannot say
+// which pass a cost belongs to, and a change meant to make one pass cheaper
+// cannot be shown to have worked. It is omitted
 // from the wire form when empty, so a payload written before this existed (or
 // by a caller that tracks no passes) is unchanged.
 type Usage struct {
@@ -355,8 +355,8 @@ type Usage struct {
 
 // PassUsage is one pass's share of a Run's Usage, named by the label the runner
 // tags its `claude -p` invocation with ("review", "adversarial",
-// "specialist-security", "structure", …). The counters mean exactly what their
-// Usage counterparts do; only the scope is narrower.
+// "specialist-security", "elaborate-structure", …). The counters mean exactly
+// what their Usage counterparts do; only the scope is narrower.
 type PassUsage struct {
 	Pass                string  `json:"pass"`
 	Calls               int     `json:"calls"`

@@ -16,6 +16,7 @@ import (
 
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
+	"github.com/planwerk/planwerk-agent/internal/report/schema"
 )
 
 const (
@@ -46,7 +47,7 @@ const (
 	// run (decision 74).
 	DefaultImplementWorkerEffort = "xhigh"
 	// DefaultFinderEffort is the compiled-in reasoning effort for the read-only
-	// finder passes (see runClaudeFinder). Empty inherits the main tier;
+	// finder passes (see finderSpec). Empty inherits the main tier;
 	// override it with --finder-effort / PLANWERK_FINDER_EFFORT (decision 79).
 	DefaultFinderEffort = ""
 	// DefaultFinderModel is the compiled-in model for the finder passes. Empty
@@ -173,9 +174,12 @@ type runSpec struct {
 	// noTools removes every built-in tool (withNoTools) and supersedes readOnly:
 	// the spec emits neither --disallowed-tools nor --allowed-tools. It also runs
 	// the session in structureWorkDir, which runSession resolves
-	// before any process starts. Only runClaudeStructureWithSchema sets it.
-	noTools    bool
-	jsonSchema string // --json-schema when non-empty
+	// before any process starts. Only runClaudeStructure sets it.
+	noTools bool
+	// jsonSchema is passed via --json-schema when non-empty. The runners of the
+	// passes that emit findings, runClaudeFindings and runClaudeFinderFindings,
+	// set it (decision 109).
+	jsonSchema string
 	agentsJSON string // --agents when non-empty
 	// appendSystemPrompt is passed as --append-system-prompt when non-empty;
 	// only the implement session sets it (decision 108).
@@ -250,7 +254,7 @@ func withAppendSystemPrompt(args []string, text string) []string {
 // registered, so a document declaring that dialect is rejected outright —
 // "--json-schema is not a valid JSON Schema: no schema with key or ref
 // https://json-schema.org/draft/2020-12/schema" — and the session exits before
-// the model is ever called, failing every structuring pass. Without the
+// the model is ever called, failing every finder pass. Without the
 // declaration the CLI applies its own dialect, and the keywords the embedded
 // schemas use ($defs, $ref, type, enum, items, required, additionalProperties)
 // mean the same thing under both drafts, so nothing is validated more loosely.
@@ -488,32 +492,60 @@ func WithInheritUserConfig(b bool) Option {
 
 // runClaude invokes claude in the given directory on its default permission
 // mode and returns the extracted text response along with the resolved model
-// id the session reported. Use it for the read-only analysis steps (review,
-// audit, …) that do not mutate the checkout; the JSON-structuring passes —
-// and their repair recovery — use runClaudeStructure for the dedicated cheap
-// tier instead. cat is the pattern catalog whose directory the session may
+// id the session reported. Use it for the read-only analysis steps (propose,
+// elaborate, sync, capture, …) that do not mutate the checkout; the review and
+// the audit use runClaudeFindings, and the JSON-structuring passes — and their
+// repair recovery — use runClaudeStructure for the dedicated cheap tier
+// instead. cat is the pattern catalog whose directory the session may
 // read (--add-dir), noCatalog for a session without one.
 func (c *Client) runClaude(dir, prompt, label string, cat patterns.Catalog) (text, model string, err error) {
 	return c.runSession(runSpec{dir: dir, label: label, model: c.model, effort: c.effort, readOnly: true, addDir: cat.Dir}, prompt)
+}
+
+// runClaudeFindings is runClaude, on the main --claude-model tier, that also
+// passes schema.FinderOutput to the CLI via --json-schema, so the session emits
+// its findings as JSON itself. The review and the audit call it; the other five
+// passes that emit findings run on the finder tier through
+// runClaudeFinderFindings (decision 109).
+func (c *Client) runClaudeFindings(dir, prompt, label string) (text, model string, err error) {
+	return c.runSession(runSpec{dir: dir, label: label, model: c.model, effort: c.effort, readOnly: true, jsonSchema: string(schema.FinderOutput)}, prompt)
 }
 
 // noCatalog is what a session without a pattern catalog passes to its runner:
 // the zero Catalog, which opens no directory.
 var noCatalog patterns.Catalog
 
-// runClaudeFinder is runClaude on the finder tier, for the read-only passes
-// whose job is to produce findings over a diff: the adversarial pass, each
-// domain specialist, the coverage map, the feature-compliance check, the
-// simplify finder, claim verification, and the implementation verifier. Empty
+// finderSpec is the read-only session spec on the finder tier, which both
+// finder runners build on so their tier resolution cannot drift apart. Empty
 // finderModel and finderEffort inherit the main model and effort (decision 79).
-func (c *Client) runClaudeFinder(dir, prompt, label string) (text, model string, err error) {
-	return c.runSession(runSpec{
+func (c *Client) finderSpec(dir, label string) runSpec {
+	return runSpec{
 		dir:      dir,
 		label:    label,
 		model:    firstNonEmpty(c.finderModel, c.model),
 		effort:   firstNonEmpty(c.finderEffort, c.effort),
 		readOnly: true,
-	}, prompt)
+	}
+}
+
+// runClaudeFinder is runClaude on the finder tier (finderSpec), for the
+// read-only finder passes that return prose or their own JSON rather than
+// schema.FinderOutput: the coverage map and claim verification. The finder-tier
+// passes that emit findings use runClaudeFinderFindings.
+func (c *Client) runClaudeFinder(dir, prompt, label string) (text, model string, err error) {
+	return c.runSession(c.finderSpec(dir, label), prompt)
+}
+
+// runClaudeFinderFindings is runClaudeFinder, on the --finder-model tier, that
+// also passes schema.FinderOutput to the CLI via --json-schema. Five of the
+// seven passes that emit findings call it: the adversarial pass, each domain
+// specialist, the feature-compliance check, the simplify finder, and the
+// implementation verifier. The review and the audit run on --claude-model
+// through runClaudeFindings (decision 109).
+func (c *Client) runClaudeFinderFindings(dir, prompt, label string) (text, model string, err error) {
+	spec := c.finderSpec(dir, label)
+	spec.jsonSchema = string(schema.FinderOutput)
+	return c.runSession(spec, prompt)
 }
 
 // firstNonEmpty returns override when it is set and fallback otherwise — the
@@ -536,12 +568,16 @@ func (c *Client) runClaudePlan(dir, prompt, label string, cat patterns.Catalog) 
 
 // runClaudeStructure is runClaude on the dedicated structuring tier
 // (structureModel/structureEffort, defaults "sonnet"/"xhigh"). The JSON
-// structuring passes use it: a structuring call only reads upstream prose and
-// transcribes it into the report schema, so it runs on the cheap mechanical tier
-// rather than the heavy reasoning model the upstream call used. The
-// decodeJSONWithRepair backstop guards malformed output.
+// structuring passes use it: a structuring call only reads an analysis
+// session's prose and casts it into that artifact's JSON schema, so it runs on
+// the cheap mechanical tier rather than the heavy reasoning model the analysis
+// used. The JSON repair and the dedup fallback run here too. The
+// decodeJSONWithRepair backstop guards malformed output. Every structuring and
+// repair call reaches the CLI through here, so this is where the tier's
+// isolation is set: the spec sets noTools and names no dir, and runSession runs
+// it in structureWorkDir (decisions 56 and 91).
 func (c *Client) runClaudeStructure(prompt, label string) (text, model string, err error) {
-	return c.runClaudeStructureWithSchema(prompt, label, "")
+	return c.runSession(runSpec{label: label, model: c.structureModel, effort: c.structureEffort, readOnly: true, noTools: true}, prompt)
 }
 
 // structureWorkDir returns the directory the structuring sessions run in: one
@@ -557,16 +593,6 @@ func structureWorkDir() (string, error) {
 		return "", fmt.Errorf("creating the structuring working directory %s: %w", dir, err)
 	}
 	return dir, nil
-}
-
-// runClaudeStructureWithSchema is runClaudeStructure that also passes jsonSchema
-// to the CLI via --json-schema when it is non-empty; only the review
-// structuring pass sets one (schema.StructuredReview). Every structuring call
-// reaches the CLI through here, so this is where the tier's isolation is set:
-// the spec sets noTools and names no dir, and runSession runs it
-// in structureWorkDir (decisions 56 and 91).
-func (c *Client) runClaudeStructureWithSchema(prompt, label, jsonSchema string) (text, model string, err error) {
-	return c.runSession(runSpec{label: label, model: c.structureModel, effort: c.structureEffort, readOnly: true, noTools: true, jsonSchema: jsonSchema}, prompt)
 }
 
 // runClaudeAuto is runClaude with claudeAutoPermissionMode and the write tools
@@ -724,7 +750,7 @@ type claudeResponse struct {
 	Result string `json:"result"`
 	// StructuredOutput carries the schema-validated object the CLI produces when
 	// invoked with --json-schema. It is preferred over Result when present so a
-	// structuring pass reads the constrained output directly; when the flag was
+	// finder pass reads the constrained output directly; when the flag was
 	// not passed (or the CLI carries the object in Result instead) it stays nil
 	// and extractText falls back to Result. Captured raw and stringified in
 	// extractText, so an envelope that omits it costs nothing.

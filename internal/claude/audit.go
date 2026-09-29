@@ -9,12 +9,12 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
-// Audit performs a full-codebase audit against loaded review patterns.
-// It runs two Claude calls:
-//  1. Audit the codebase against all patterns and emit an unstructured finding list.
-//  2. Structure the output into JSON matching report.ReviewResult.
+// Audit performs a full-codebase audit against loaded review patterns. One
+// session audits the codebase and emits its findings as JSON under
+// --json-schema with schema.FinderOutput, and finishReview decodes that output
+// (decision 109).
 func (c *Client) Audit(dir string, ctx audit.AuditContext) (*report.ReviewResult, error) {
-	rawAudit, model, err := c.runClaude(dir, buildAuditPrompt(ctx), "audit", noCatalog)
+	rawAudit, model, err := c.runClaudeFindings(dir, buildAuditPrompt(ctx), "audit")
 	if err != nil {
 		return nil, fmt.Errorf("running audit: %w", err)
 	}

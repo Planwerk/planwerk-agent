@@ -15,7 +15,7 @@ import (
 // report: it diffs the feature branch and reads the actual committed code.
 // Findings are returned for every criterion that is not fully satisfied.
 func (c *Client) VerifyImplementation(dir, issueTitle, issueBody string) (*report.ReviewResult, error) {
-	raw, model, err := c.runClaudeFinder(dir, buildVerifyImplementationPrompt(issueTitle, issueBody), "verify-implementation")
+	raw, model, err := c.runClaudeFinderFindings(dir, buildVerifyImplementationPrompt(issueTitle, issueBody), "verify-implementation")
 	if err != nil {
 		return nil, fmt.Errorf("running implementation verification: %w", err)
 	}

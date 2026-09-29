@@ -30,12 +30,10 @@ type ReviewContext struct {
 	Memory      string                    // project memory from the repo's GitHub Wiki; empty when absent
 }
 
-// Review runs the diff-review session in the given directory and returns
-// structured findings. It runs two Claude calls:
-//  1. `claude -p` with the review prompt, for the unstructured review output
-//  2. `claude -p` to structure the output into JSON
+// Review runs the diff-review session in the given directory and returns its
+// findings. The session emits them as JSON under --json-schema with
+// schema.FinderOutput, and finishReview decodes that output (decision 109).
 func (c *Client) Review(dir string, ctx ReviewContext) (*report.ReviewResult, error) {
-	// Step 1: Run the review session
 	rawReview, model, err := c.runReview(dir, ctx)
 	if err != nil {
 		return nil, fmt.Errorf("running review: %w", err)
@@ -44,10 +42,10 @@ func (c *Client) Review(dir string, ctx ReviewContext) (*report.ReviewResult, er
 	return c.finishReview(rawReview, model, "review output", "")
 }
 
-// runReview invokes `claude -p` with the review prompt, returning the raw review
-// text and the resolved model id.
+// runReview invokes `claude -p` with the review prompt, returning the review's
+// JSON output and the resolved model id.
 func (c *Client) runReview(dir string, rctx ReviewContext) (text, model string, err error) {
-	return c.runClaude(dir, buildReviewPrompt(rctx), "review", noCatalog)
+	return c.runClaudeFindings(dir, buildReviewPrompt(rctx), "review")
 }
 
 // tokenUsage is a tolerant view over the per-call token counts Claude Code
@@ -70,13 +68,12 @@ type tokenUsage struct {
 // a drift-prone per-model pricing table.
 //
 // label is the runner's own name for the invocation ("review", "adversarial",
-// "specialist-security", "structure", …). The same counts are folded a second
-// time into the per-pass accumulator under that label, so a run's cost can be
-// attributed to the pass that spent it rather than only to the run as a whole.
-// Calls that share a label — the structuring call behind every finder, the
-// finder rounds of the review loop — accumulate together, which is the intent:
-// the question the breakdown answers is what a *pass* costs, not what one
-// invocation of it did.
+// "specialist-security", "elaborate-structure", …). The same counts are folded
+// a second time into the per-pass accumulator under that label, so a run's cost
+// can be attributed to the pass that spent it rather than only to the run as a
+// whole. Calls that share a label (the finder rounds of the review loop)
+// accumulate together, which is the intent: the question the breakdown answers
+// is what a *pass* costs, not what one invocation of it did.
 func (c *Client) addUsage(label string, u tokenUsage, costUSD float64) {
 	c.usageMu.Lock()
 	defer c.usageMu.Unlock()

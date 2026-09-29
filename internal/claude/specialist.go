@@ -188,7 +188,7 @@ func RunSpecialistFanOut(changedFiles []string, call func(Specialist) (*report.R
 // to sp.Areas when it declares them; an empty catalog leaves the prompt
 // unchanged.
 func (c *Client) SpecialistReview(dir, baseBranch string, sp Specialist, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
-	raw, model, err := c.runClaudeFinder(dir, buildSpecialistPrompt(baseBranch, sp, pats, maxPatterns), "specialist-"+sp.Key)
+	raw, model, err := c.runClaudeFinderFindings(dir, buildSpecialistPrompt(baseBranch, sp, pats, maxPatterns), "specialist-"+sp.Key)
 	if err != nil {
 		return nil, fmt.Errorf("running %s specialist review: %w", sp.Key, err)
 	}
