@@ -11,6 +11,7 @@
 package main
 
 import (
+	"cmp"
 	"flag"
 	"fmt"
 	"os"
@@ -33,7 +34,12 @@ func main() {
 	jsonOut := flag.Bool("json", false, "emit the score report as JSON instead of a table")
 	flag.Parse()
 
-	cfg := eval.Config{Runs: *runs, RunOptions: eval.RunOptions{Thorough: *thorough, Specialists: *specialists}}
+	tiers, err := resolveTiers()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "planwerk-eval:", err)
+		os.Exit(1)
+	}
+	cfg := eval.Config{Runs: *runs, RunOptions: eval.RunOptions{Thorough: *thorough, Specialists: *specialists}, Tiers: tiers}
 	if err := run(*corpusDir, *caseName, *baseline, cfg, *jsonOut); err != nil {
 		fmt.Fprintln(os.Stderr, "planwerk-eval:", err)
 		os.Exit(1)
@@ -74,7 +80,7 @@ func run(corpusDir, caseName, baselinePath string, cfg eval.Config, jsonOut bool
 			fmt.Fprintf(os.Stderr, "running case %s (run %d/%d) ...\n", c.Name, i, cfg.Runs)
 			r, err := retry(func() (eval.Run, error) {
 				// A fresh client per attempt: RunCase reads the client's cumulative usage.
-				client, err := buildClient()
+				client, err := buildClient(cfg.Tiers)
 				if err != nil {
 					return eval.Run{}, err
 				}
@@ -141,24 +147,67 @@ func loadCases(corpusDir, caseName string) ([]eval.Case, error) {
 	return eval.LoadCorpus(corpusDir)
 }
 
-// buildClient constructs a Claude client from the same PLANWERK_* env overrides
-// the shipped CLI honors, applying each only when set so the compiled-in
-// defaults otherwise stand. It is the minimal mirror of the root command's
-// resolve* helpers, which are unexported in cmd/planwerk-agent.
-func buildClient() (*claude.Client, error) {
-	var opts []claude.Option
+// The model and effort variables of each tier, named as the root command
+// names them. resolveTiers is the one place the eval reads them.
+const (
+	envClaudeModel     = "PLANWERK_CLAUDE_MODEL"
+	envClaudeEffort    = "PLANWERK_CLAUDE_EFFORT"
+	envFinderModel     = "PLANWERK_FINDER_MODEL"
+	envFinderEffort    = "PLANWERK_FINDER_EFFORT"
+	envStructureModel  = "PLANWERK_STRUCTURE_MODEL"
+	envStructureEffort = "PLANWERK_STRUCTURE_EFFORT"
+)
 
-	if v := strings.TrimSpace(os.Getenv("PLANWERK_CLAUDE_MODEL")); v != "" {
-		opts = append(opts, claude.WithModel(v))
+// resolveTiers resolves the model and effort of the main, finder and
+// structure tiers from their PLANWERK_* variables. A variable that is unset
+// or only whitespace leaves the compiled-in default, and an empty finder
+// value inherits the main tier as claude.Client.FinderTier resolves it, so the
+// recorded tier is the tier that runs. It rejects an effort that is not one
+// of the levels Claude Code accepts; a compiled-in default is never invalid,
+// so an unset variable cannot fail. main calls it before the first case runs.
+func resolveTiers() (eval.Tiers, error) {
+	env := func(name string) string { return strings.TrimSpace(os.Getenv(name)) }
+	model := cmp.Or(env(envClaudeModel), claude.DefaultClaudeModel)
+	effort := cmp.Or(env(envClaudeEffort), claude.DefaultClaudeEffort)
+	finderModel, finderEffort := claude.NewClient(
+		claude.WithModel(model), claude.WithEffort(effort),
+		claude.WithFinderModel(env(envFinderModel)), claude.WithFinderEffort(env(envFinderEffort)),
+	).FinderTier()
+	t := eval.Tiers{
+		ClaudeModel:     model,
+		ClaudeEffort:    effort,
+		FinderModel:     finderModel,
+		FinderEffort:    finderEffort,
+		StructureModel:  cmp.Or(env(envStructureModel), claude.DefaultStructureModel),
+		StructureEffort: cmp.Or(env(envStructureEffort), claude.DefaultStructureEffort),
 	}
-	if v := strings.TrimSpace(os.Getenv("PLANWERK_CLAUDE_EFFORT")); v != "" {
-		opts = append(opts, claude.WithEffort(v))
+	for _, e := range []struct{ name, value string }{
+		{envClaudeEffort, t.ClaudeEffort},
+		{envFinderEffort, t.FinderEffort},
+		{envStructureEffort, t.StructureEffort},
+	} {
+		if !claude.ValidEffort(e.value) {
+			return eval.Tiers{}, fmt.Errorf("invalid %s=%q: must be one of %s", e.name, e.value, claude.EffortLevels())
+		}
 	}
-	if v := strings.TrimSpace(os.Getenv("PLANWERK_STRUCTURE_MODEL")); v != "" {
-		opts = append(opts, claude.WithStructureModel(v))
-	}
-	if v := strings.TrimSpace(os.Getenv("PLANWERK_STRUCTURE_EFFORT")); v != "" {
-		opts = append(opts, claude.WithStructureEffort(v))
+	return t, nil
+}
+
+// buildClient constructs a Claude client on tiers, then applies the timeout,
+// inherit-user-config and show-output overrides the shipped CLI honors, each
+// only when set so the compiled-in defaults otherwise stand. The model and
+// effort variables are read in resolveTiers alone. It is the minimal mirror of
+// the root command's resolve* helpers, which are unexported in
+// cmd/planwerk-agent. Every tier option ignores an empty value, so the zero
+// Tiers yields the compiled-in defaults.
+func buildClient(tiers eval.Tiers) (*claude.Client, error) {
+	opts := []claude.Option{
+		claude.WithModel(tiers.ClaudeModel),
+		claude.WithEffort(tiers.ClaudeEffort),
+		claude.WithStructureModel(tiers.StructureModel),
+		claude.WithStructureEffort(tiers.StructureEffort),
+		claude.WithFinderModel(tiers.FinderModel),
+		claude.WithFinderEffort(tiers.FinderEffort),
 	}
 	if v := strings.TrimSpace(os.Getenv("PLANWERK_CLAUDE_TIMEOUT")); v != "" {
 		d, err := time.ParseDuration(v)

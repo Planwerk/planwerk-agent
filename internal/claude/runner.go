@@ -541,7 +541,8 @@ var noCatalog patterns.Catalog
 
 // FinderTier returns the resolved model and effort the finder passes run on:
 // the finder tier's own value where set, the main tier's otherwise (decision
-// 79). finderSpec runs on it.
+// 79). finderSpec runs on it, and cmd/planwerk-eval records it as the finder
+// tier a report ran on.
 func (c *Client) FinderTier() (model, effort string) {
 	return firstNonEmpty(c.finderModel, c.model), firstNonEmpty(c.finderEffort, c.effort)
 }
@@ -610,6 +611,13 @@ func (c *Client) runClaudePlan(dir, prompt, label string, cat patterns.Catalog) 
 // it in structureWorkDir (decisions 56 and 91).
 func (c *Client) runClaudeStructure(prompt, label string) (text, model string, err error) {
 	return c.runSession(runSpec{label: label, model: c.structureModel, effort: c.structureEffort, readOnly: true, noTools: true}, prompt)
+}
+
+// StructureTier returns the model and effort runClaudeStructure runs the
+// structuring passes on. cmd/planwerk-eval's tests read it to prove buildClient
+// wires the structure tier.
+func (c *Client) StructureTier() (model, effort string) {
+	return c.structureModel, c.structureEffort
 }
 
 // structureWorkDir returns the directory the structuring sessions run in: one

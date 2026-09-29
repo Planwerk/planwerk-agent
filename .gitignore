@@ -1,6 +1,8 @@
 # Compiled binary
 planwerk-agent
 !cmd/planwerk-agent/
+planwerk-eval
+!cmd/planwerk-eval/
 
 # Go build artifacts
 dist/

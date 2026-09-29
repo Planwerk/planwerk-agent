@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"errors"
 	"os"
 	"path/filepath"
@@ -8,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/planwerk/planwerk-agent/internal/claude"
 	"github.com/planwerk/planwerk-agent/internal/eval"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
@@ -96,4 +98,176 @@ func TestRunGuardsSpendNoTokens(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The tier a test selects in place of a compiled-in default, the effort no
+// tier accepts, and the reason resolveTiers gives for it.
+const (
+	testTierModel   = "sonnet"
+	testTierEffort  = "high"
+	testBadEffort   = "maximum"
+	badEffortReason = ": must be one of low, medium, high, xhigh, max"
+)
+
+// clearTierEnv empties every variable resolveTiers and buildClient read, so a
+// test sees only the variables it sets itself.
+func clearTierEnv(t *testing.T) {
+	t.Helper()
+	for _, name := range []string{
+		envClaudeModel, envClaudeEffort, envFinderModel, envFinderEffort, envStructureModel, envStructureEffort,
+		"PLANWERK_CLAUDE_TIMEOUT", "PLANWERK_CLAUDE_INHERIT_USER_CONFIG", "PLANWERK_SHOW_CLAUDE_OUTPUT",
+	} {
+		t.Setenv(name, "")
+	}
+}
+
+func TestResolveTiers(t *testing.T) {
+	defaults := eval.Tiers{
+		ClaudeModel:     claude.DefaultClaudeModel,
+		ClaudeEffort:    claude.DefaultClaudeEffort,
+		FinderModel:     cmp.Or(claude.DefaultFinderModel, claude.DefaultClaudeModel),
+		FinderEffort:    cmp.Or(claude.DefaultFinderEffort, claude.DefaultClaudeEffort),
+		StructureModel:  claude.DefaultStructureModel,
+		StructureEffort: claude.DefaultStructureEffort,
+	}
+	with := func(edit func(*eval.Tiers)) eval.Tiers {
+		tiers := defaults
+		edit(&tiers)
+		return tiers
+	}
+	tests := []struct {
+		name    string
+		env     map[string]string
+		want    eval.Tiers
+		wantErr string
+	}{
+		{name: "every variable unset leaves the compiled-in defaults", want: defaults},
+		{
+			name: "a finder effort alone moves only the finder effort",
+			env:  map[string]string{envFinderEffort: testTierEffort},
+			want: with(func(tr *eval.Tiers) { tr.FinderEffort = testTierEffort }),
+		},
+		{
+			name: "a finder model is trimmed",
+			env:  map[string]string{envFinderModel: " " + testTierModel + " "},
+			want: with(func(tr *eval.Tiers) { tr.FinderModel = testTierModel }),
+		},
+		{
+			name: "the finder model follows the main model when no finder variable is set",
+			env:  map[string]string{envClaudeModel: testTierModel},
+			want: with(func(tr *eval.Tiers) {
+				tr.ClaudeModel = testTierModel
+				tr.FinderModel = cmp.Or(claude.DefaultFinderModel, testTierModel)
+			}),
+		},
+		{
+			name: "the finder effort follows the main effort when no finder variable is set",
+			env:  map[string]string{envClaudeEffort: testTierEffort},
+			want: with(func(tr *eval.Tiers) {
+				tr.ClaudeEffort = testTierEffort
+				tr.FinderEffort = cmp.Or(claude.DefaultFinderEffort, testTierEffort)
+			}),
+		},
+		{
+			name: "whitespace counts as unset",
+			env:  map[string]string{envClaudeEffort: " "},
+			want: defaults,
+		},
+		{
+			name:    "an invalid finder effort names its variable",
+			env:     map[string]string{envFinderEffort: testBadEffort},
+			wantErr: `invalid PLANWERK_FINDER_EFFORT="maximum"` + badEffortReason,
+		},
+		{
+			name:    "an invalid main effort names its variable",
+			env:     map[string]string{envClaudeEffort: testBadEffort},
+			wantErr: `invalid PLANWERK_CLAUDE_EFFORT="maximum"` + badEffortReason,
+		},
+		{
+			name:    "an invalid structure effort names its variable",
+			env:     map[string]string{envStructureEffort: testBadEffort},
+			wantErr: `invalid PLANWERK_STRUCTURE_EFFORT="maximum"` + badEffortReason,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clearTierEnv(t)
+			for name, v := range tt.env {
+				t.Setenv(name, v)
+			}
+			got, err := resolveTiers()
+			if tt.wantErr != "" {
+				if err == nil || err.Error() != tt.wantErr {
+					t.Errorf("resolveTiers() error = %v, want %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("resolveTiers() = %v, want no error", err)
+			}
+			if got != tt.want {
+				t.Errorf("resolveTiers() = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildClientAppliesTheTiers(t *testing.T) {
+	tests := []struct {
+		name                                    string
+		tiers                                   eval.Tiers
+		wantFinderModel, wantFinderEffort       string
+		wantStructureModel, wantStructureEffort string
+	}{
+		{
+			name: "every tier set runs the finders and the structuring on their tiers",
+			tiers: eval.Tiers{
+				ClaudeModel: "opus", ClaudeEffort: "xhigh",
+				FinderModel: testTierModel, FinderEffort: testTierEffort,
+				StructureModel: "opus", StructureEffort: testTierEffort,
+			},
+			wantFinderModel:     testTierModel,
+			wantFinderEffort:    testTierEffort,
+			wantStructureModel:  "opus",
+			wantStructureEffort: testTierEffort,
+		},
+		{
+			name:                "the main tier reaches the client and the finders inherit it",
+			tiers:               eval.Tiers{ClaudeModel: testTierModel, ClaudeEffort: testTierEffort},
+			wantFinderModel:     cmp.Or(claude.DefaultFinderModel, testTierModel),
+			wantFinderEffort:    cmp.Or(claude.DefaultFinderEffort, testTierEffort),
+			wantStructureModel:  claude.DefaultStructureModel,
+			wantStructureEffort: claude.DefaultStructureEffort,
+		},
+		{
+			name:                "the zero tiers leave the compiled-in defaults",
+			wantFinderModel:     cmp.Or(claude.DefaultFinderModel, claude.DefaultClaudeModel),
+			wantFinderEffort:    cmp.Or(claude.DefaultFinderEffort, claude.DefaultClaudeEffort),
+			wantStructureModel:  claude.DefaultStructureModel,
+			wantStructureEffort: claude.DefaultStructureEffort,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clearTierEnv(t)
+			client, err := buildClient(tt.tiers)
+			if err != nil {
+				t.Fatalf("buildClient = %v, want a client", err)
+			}
+			if model, effort := client.FinderTier(); model != tt.wantFinderModel || effort != tt.wantFinderEffort {
+				t.Errorf("FinderTier() = %q/%q, want %q/%q", model, effort, tt.wantFinderModel, tt.wantFinderEffort)
+			}
+			if model, effort := client.StructureTier(); model != tt.wantStructureModel || effort != tt.wantStructureEffort {
+				t.Errorf("StructureTier() = %q/%q, want %q/%q", model, effort, tt.wantStructureModel, tt.wantStructureEffort)
+			}
+		})
+	}
+
+	t.Run("a bogus timeout is still rejected", func(t *testing.T) {
+		clearTierEnv(t)
+		t.Setenv("PLANWERK_CLAUDE_TIMEOUT", "bogus")
+		if _, err := buildClient(eval.Tiers{}); err == nil || !strings.Contains(err.Error(), "invalid PLANWERK_CLAUDE_TIMEOUT") {
+			t.Errorf("buildClient = %v, want an invalid PLANWERK_CLAUDE_TIMEOUT error", err)
+		}
+	})
 }
