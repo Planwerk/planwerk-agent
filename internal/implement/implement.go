@@ -553,7 +553,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// as a report, and do NOT run the simplify/review/finalize passes (which open
 	// the pull request) on a half-built branch. The session's raw output still
 	// goes to stdout so the operator can see what came back.
-	status := implementReportStatus(implReport)
+	status, reinterpreted := effectiveImplementStatus(implReport)
 	if !strings.Contains(implReport, reportHeading) || status == "" {
 		if strings.TrimSpace(implReport) != "" {
 			_, _ = fmt.Fprintf(w, "\nClaude returned no valid implementation report:\n%s\n", implReport)
@@ -567,6 +567,16 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		r.postProgressNote(w, opts, owner, name, number, implReport, model)
 		r.persistPartialProgress(w, opts, repo.Dir)
 		return fmt.Errorf("the implement session did not produce a complete implementation report (missing the %q heading or a terminal STATUS line); the implementation did not finish and no pull request was opened", reportHeading)
+	}
+
+	// The note travels with the report into the issue comment and into the
+	// capture and finalize passes; a resumed account may already carry it.
+	if reinterpreted {
+		slog.Warn("implement session reported PARTIAL although its Work Breakdown Coverage lists every package as done; reading it as DONE_WITH_CONCERNS", "issue", number)
+		_, _ = fmt.Fprintln(w, "\nThe implementation report says PARTIAL, but its Work Breakdown Coverage lists every work package as done. PARTIAL is reserved for an unfinished package, so the run continues as DONE_WITH_CONCERNS: the simplify, review, and finalize passes run and the pull request opens.")
+		if !strings.Contains(implReport, partialReadAsCompleteNote) {
+			implReport += "\n\n" + partialReadAsCompleteNote
+		}
 	}
 
 	if resumed == nil || resumed.implReport == "" {
@@ -809,7 +819,7 @@ const planHeading = "## Implementation Plan"
 // claude.implementReportHeading; the constant is duplicated here rather than
 // imported because the import direction is claude -> implement, so implement
 // cannot reach into the claude package. Run uses it, together with
-// implementReportStatus, to confirm the implement session returned an actual
+// effectiveImplementStatus, to confirm the implement session returned an actual
 // completed report and not a bailed-session blurb.
 const reportHeading = "## Implementation Report"
 
@@ -1066,6 +1076,13 @@ func formatReportComment(report, model string) string {
 	return report + "\n\n---\n\n" + reportCommentFooter(model) + "\n"
 }
 
+// partialReadAsCompleteNote is the orchestrator's note under a PARTIAL report
+// that effectiveImplementStatus read as DONE_WITH_CONCERNS. No line of it
+// starts with "STATUS:", so report.TerminalStatus still returns the session's
+// own verdict from the comment, and stripCommentFooter keeps the note in the
+// account a resume reads back.
+const partialReadAsCompleteNote = "_Orchestrator note: this report says PARTIAL, but its Work Breakdown Coverage lists every work package as done. PARTIAL is reserved for an unfinished package, so the run read the verdict as DONE_WITH_CONCERNS and continued with the simplify, review, and finalize passes._"
+
 // reportCommentMarker is the stable, version- and model-independent prefix of
 // the report comment footer, mirroring planCommentMarker: it stops at the
 // repository link, before reportCommentFooter appends the build version, the
@@ -1135,10 +1152,13 @@ func mostRecentSessionAccount(comments []github.IssueComment) string {
 }
 
 // latestSessionAccount is mostRecentSessionAccount with the comment's index and
-// whether the account is a complete implementation report — one whose terminal
-// STATUS is DONE or DONE_WITH_CONCERNS, so the run that posted it had nothing
-// left to implement when it stopped. A progress note or a PARTIAL / escalated
-// report is never complete. idx is -1 when no comment is an account.
+// whether the account is a complete implementation report — one whose
+// effective STATUS (effectiveImplementStatus) is DONE or DONE_WITH_CONCERNS,
+// so the run that posted it had nothing left to implement when it stopped. A
+// PARTIAL report whose Work Breakdown Coverage lists every package as done
+// therefore counts as complete. A progress note, any other PARTIAL report, or
+// an escalated report is never complete. idx is -1 when no comment is an
+// account.
 func latestSessionAccount(comments []github.IssueComment) (idx int, account string, complete bool) {
 	for i := len(comments) - 1; i >= 0; i-- {
 		body := comments[i].Body
@@ -1147,7 +1167,7 @@ func latestSessionAccount(comments []github.IssueComment) (idx int, account stri
 			return i, stripCommentFooter(body, progressNoteMarker), false
 		case strings.Contains(body, reportHeading) && strings.Contains(body, reportCommentMarker):
 			account = stripCommentFooter(body, reportCommentMarker)
-			status := implementReportStatus(account)
+			status, _ := effectiveImplementStatus(account)
 			return i, account, status == report.StatusDone || status == statusDoneWithConcerns
 		}
 	}
@@ -1192,16 +1212,26 @@ func planEscalation(plan string) string {
 	}
 }
 
-// implementReportStatus returns the implement report's terminal STATUS verdict
-// via the shared report.TerminalStatus parser (see that package for the
-// scanning semantics).
+// effectiveImplementStatus returns the implement report's terminal STATUS
+// verdict via the shared report.TerminalStatus parser (see that package for
+// the scanning semantics), with one contradiction resolved: a PARTIAL report
+// whose Work Breakdown Coverage lists every work package as done. PARTIAL is
+// reserved for an unfinished package, so the report's own coverage list wins
+// and the verdict reads as DONE_WITH_CONCERNS, with reinterpreted true so Run
+// can say so (decision 108). Every other report, including a PARTIAL one whose
+// coverage is mixed, missing, or the single-change sentinel, keeps its own
+// verdict.
 //
-// Run keys the implement guard on it: an empty result means the session
+// Run keys the implement guard on it: an empty status means the session
 // produced no terminal status — what a session that yielded mid-work returns —
 // so the implementation did not finish and the run must abort rather than open
 // a pull request on a half-built branch.
-func implementReportStatus(implReport string) string {
-	return report.TerminalStatus(implReport)
+func effectiveImplementStatus(implReport string) (status string, reinterpreted bool) {
+	status = report.TerminalStatus(implReport)
+	if status == statusPartial && report.WorkBreakdownComplete(implReport) {
+		return statusDoneWithConcerns, true
+	}
+	return status, false
 }
 
 // runVerification runs the independent verification pass against the change set
