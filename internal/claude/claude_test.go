@@ -184,8 +184,9 @@ func TestBuildReviewPrompt_ContainsFindingEnrichment(t *testing.T) {
 		"Code Snippet",
 		"Suggested Fix",
 		"Related Findings",
-		// Classification labels moved into the shared Finding Labels block
-		// (issue #157: transcribe-only structuring decides them upstream).
+		// Classification labels live in the shared Finding Labels block
+		// (issue #157: the labels are decided where the code is read; since
+		// #248 the finder writes them into its own JSON output).
 		"Finding Labels",
 		"**Confidence**",
 		"**Actionability**",

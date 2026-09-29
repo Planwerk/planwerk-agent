@@ -519,10 +519,9 @@ func foldDisciplineRule(baseBranch string) string {
 
 // severityLadderBlock returns the "## Severity Ladder" section that defines the
 // four levels every finding-producing prompt asks for (BLOCKING, CRITICAL,
-// WARNING, INFO). The definitions live with the finders, not in the
-// transcribe-only structure prompt (decision 56); each finder includes this
-// block just above findingLabelsBlock() so the "per the severity guidance
-// above" reference resolves. The two diff-only consequence tails ("— PR must
+// WARNING, INFO). The definitions live with the finders (decision 56); each
+// finder includes this block just above findingLabelsBlock() so the "per the
+// severity guidance above" reference resolves. The two diff-only consequence tails ("— PR must
 // not be merged", "— must be fixed before merge") are emitted only for
 // scopeDiff, where a merge decision exists.
 func severityLadderBlock(scope promptScope) string {
@@ -540,18 +539,18 @@ func severityLadderBlock(scope promptScope) string {
 		"- INFO: style suggestions and minor improvements — optional\n\n"
 }
 
-// findingLabelsBlock returns the "## Finding Labels" section shared by every
-// analysis prompt that feeds structureReview (review, adversarial, specialist,
-// compliance, audit, verify-implementation, simplify-find). Every finding
-// carries its location and three explicit labels the transcribe-only
-// structuring pass copies unchanged (decisions 56 and 98). The severity VALUE
-// guidance stays per-builder, so this block only pins the allowed set; the level
+// findingLabelsBlock returns the "## Finding Labels" section shared by the
+// seven finder prompts (review, adversarial, specialist, compliance, audit,
+// verify-implementation, simplify-find). Every finding carries its location and
+// three explicit labels, which reach the report exactly as the finder writes
+// them into its JSON output (decisions 98 and 109). The severity VALUE guidance
+// stays per-builder, so this block only pins the allowed set; the level
 // definitions come from severityLadderBlock(), which each caller includes just
 // above this block.
 func findingLabelsBlock() string {
 	return `## Finding Labels
 
-Every finding you report carries its location and three explicit labels. The labels are authoritative: the downstream structuring pass transcribes them unchanged and never re-derives them, so a label you omit is a label the report loses.
+Every finding you report carries its location and three explicit labels. The labels are authoritative: they reach the report exactly as you state them, nothing downstream re-derives them, and the output schema rejects a finding that lacks one.
 
 - **Location**: the repo-relative path and the line or line range of the triggering code (e.g. ` + "`internal/store/query.go:42-45`" + `); for something missing, the file and line where it belongs. Later passes merge and verify findings by their location.
 - **Severity**: one of BLOCKING, CRITICAL, WARNING, INFO (per the severity guidance above).
@@ -565,12 +564,79 @@ Every finding you report carries its location and three explicit labels. The lab
 }
 
 // jsonSchemaOnlyLine returns the one-line directive that precedes an inline JSON
-// schema in every structuring builder — the second Claude call that converts a
-// builder's prose output into the strict JSON its decoder expects. The line
-// carries no surrounding newlines so each caller keeps its own spacing around
-// the schema block.
+// schema in every structuring builder (the second Claude call that converts a
+// builder's prose output into the strict JSON its decoder expects) and in
+// findingsOutputBlock. The line carries no surrounding newlines so each caller
+// keeps its own spacing around the schema block.
 func jsonSchemaOnlyLine() string {
 	return "Output ONLY valid JSON matching this exact schema (no markdown fences, no surrounding text):"
+}
+
+// findingsOutputBlock returns the "## Output" section every finder prompt ends
+// with: the JSON shape of schema.FinderOutput, which the finder session emits
+// under --json-schema and finishReview decodes (decision 109), and one rule per
+// field that needs one. The shape names every field the schema defines, each
+// once, and carries no finding id, since assignIDs sets it. Field names in the
+// rules are backtick-quoted, so the block renders each double-quoted key exactly
+// once.
+func findingsOutputBlock() string {
+	return `## Output
+
+` + jsonSchemaOnlyLine() + `
+
+{
+  "findings": [
+    {
+      "severity": "BLOCKING|CRITICAL|WARNING|INFO",
+      "title": "Short title",
+      "file": "path/to/file.go",
+      "line": 42,
+      "line_end": 45,
+      "pattern": "Exact name of the violated review pattern",
+      "actionability": "auto-fix|needs-discussion|architectural",
+      "confidence": "verified|likely|uncertain",
+      "problem": "What is wrong and what goes wrong because of it",
+      "action": "What should be done to fix it",
+      "code_snippet": "The exact triggering lines, verbatim, preserving indentation",
+      "suggested_fix": "The replacement code or the fix approach",
+      "fix_options": [
+        {
+          "id": "A",
+          "approach": "One-sentence summary of the fix approach",
+          "pros": "Short list of benefits",
+          "cons": "Short list of drawbacks",
+          "effort": "LOW|MED|HIGH",
+          "risk_if_skipped": "What goes wrong if this option is NOT chosen"
+        }
+      ],
+      "recommended_option": "A",
+      "recommendation_reasoning": "1-2 sentences",
+      "related_to": ["titles of other findings in this output"]
+    }
+  ],
+  "summary": "The summary this prompt asks for",
+  "recommendation": "The recommendation this prompt asks for, or an empty string"
+}
+
+Field rules:
+- ` + "`severity`, `actionability` and `confidence`" + `: the three labels from the Finding Labels section, exactly one enum value each. The output is rejected when a finding lacks one.
+- ` + "`line_end`" + `: only when the finding spans a line range.
+- ` + "`pattern`" + `: only when the finding violates a review pattern listed in this prompt, by that pattern's exact name.
+- ` + "`code_snippet` and `suggested_fix`" + `: only when this prompt's enrichment rules ask for them. Never invent either.
+- ` + "`fix_options`, `recommended_option` and `recommendation_reasoning`" + `: only for a needs-discussion or architectural finding in a prompt that asks for fix options, never for an auto-fix finding. Each option's ` + "`id`" + ` is its letter (A, B, C), which ` + "`recommended_option`" + ` names.
+- ` + "`related_to`" + `: the titles of the other findings in this output that the finding connects to; ` + "`[]`" + ` when none.
+- ` + "`findings`" + `: ` + "`[]`" + ` when the pass reports nothing.
+- ` + "`summary` and `recommendation`" + `: what this prompt's summary instructions describe. ` + "`recommendation`" + ` is the empty string when the prompt asks for no recommendation.
+- The JSON object is the entire response: no markdown fences, no prose before or after it, and no reasoning or tool output inside it.
+`
+}
+
+// passSummaryLine returns the sentence that fills summary and recommendation
+// for the five finders with no summary section of their own (adversarial,
+// specialist, compliance, simplify-find, verify-implementation). Each places it
+// just above findingsOutputBlock.
+func passSummaryLine() string {
+	return "In `summary`, state in one to three sentences what this pass found, or that it found nothing; leave `recommendation` as the empty string.\n\n"
 }
 
 // commitTrailerBlock returns the "## Commit trailers" section shared by every
@@ -697,7 +763,7 @@ func fixScopeLines(sinceRef string) string {
 }
 
 // emptyIDLine returns the "leave the id field empty" line shared by the
-// structure, propose, gap-analysis, and review-prepared structuring prompts. The
+// propose, gap-analysis, and review-prepared structuring prompts. The
 // line carries no bullet prefix and no surrounding newlines, so a caller whose
 // context is a bullet list prepends "- ".
 func emptyIDLine() string {

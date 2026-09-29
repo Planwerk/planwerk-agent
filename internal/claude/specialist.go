@@ -225,6 +225,8 @@ For EVERY finding, include: a code snippet (the exact problematic lines from the
 	sb.WriteString(severityLadderBlock(scopeDiff))
 	sb.WriteString(findingLabelsBlock())
 	sb.WriteString(planwerkIgnoreLine())
+	sb.WriteString(passSummaryLine())
+	sb.WriteString(findingsOutputBlock())
 
 	return sb.String()
 }

@@ -8,7 +8,7 @@ import (
 )
 
 // buildReviewPrompt constructs the diff-review prompt: scope, persona, patterns,
-// checks, and the output contract the structuring pass transcribes.
+// checks, and the JSON output contract the review session emits.
 func buildReviewPrompt(ctx ReviewContext) string {
 	var sb strings.Builder
 
@@ -239,20 +239,22 @@ Every finding you report includes:
 	// Review Summary instructions
 	sb.WriteString(`## Review Summary
 
-At the end of your review, write a brief overall summary (2-4 sentences) that:
+In the ` + "`summary`" + ` field, write a brief overall summary (2-4 sentences) that:
 1. Highlights the most important issues found
 2. Gives an overall assessment of the PR quality
 Be direct about problems and say nothing about what is fine.
 
-Then end with ONE recommendation line in exactly this form:
+In the ` + "`recommendation`" + ` field, write ONE recommendation in exactly this form, with no ` + "`Recommendation:`" + ` prefix:
 
-Recommendation: <merge | merge after fixes | do not merge> because <name the single most important finding by its title and state the specific reason it drives the decision>.
+<merge | merge after fixes | do not merge> because <name the single most important finding by its title and state the specific reason it drives the decision>.
 
 The reason MUST name a specific finding and what it breaks. Generic justifications — "because it's safer", "to improve quality", "follows best practice", "because it's cleaner" — are not acceptable; if no finding must be fixed before merge, recommend merge.
 
-A zero-finding review is a valid outcome: when the diff is clean after the full checklist, report an empty findings list, say the PR is clean in the summary, and recommend merge — do NOT invent a finding to appear productive.
+A zero-finding review is a valid outcome: when the diff is clean after the full checklist, set ` + "`findings`" + ` to ` + "`[]`" + `, say the PR is clean in the summary, and recommend merge — do NOT invent a finding to appear productive.
 
 `)
+
+	sb.WriteString(findingsOutputBlock())
 
 	return sb.String()
 }

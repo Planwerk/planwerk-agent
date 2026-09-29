@@ -70,7 +70,7 @@ DO NOT comment on:
 
 A clean diff is a valid outcome: if you find no over-engineering, return an empty findings array — do NOT manufacture a finding.
 
-` + planwerkIgnoreLine() + communicationStyleBlock() + outputLanguageBlock() + findingLabelsBlock()
+` + planwerkIgnoreLine() + communicationStyleBlock() + outputLanguageBlock() + findingLabelsBlock() + passSummaryLine() + findingsOutputBlock()
 }
 
 // simplifyReportHeading is the heading every simplification report opens with.
