@@ -1084,14 +1084,6 @@ func TestBuildBareRebasePrompt_Golden(t *testing.T) {
 // snapshot, so the prompt-design audit has a safety net across every builder
 // (see docs/explanation/prompt-design.md).
 
-// TestBuildStructurePrompt_Golden locks the review-structuring prompt: the
-// finding JSON schema, the severity/actionability/confidence enums, and the
-// "extract only findings actually present, invent none" rule.
-func TestBuildStructurePrompt_Golden(t *testing.T) {
-	raw := "## Findings\n\n- W: runner.go:42 — single-implementation interface adds indirection.\n"
-	assertGoldenPrompt(t, "structure", buildStructurePrompt(raw))
-}
-
 // TestBuildDedupFindingsPrompt_Golden locks the structure-tier dedup prompt:
 // the numbered finding list, the index-group output shape, and the "an empty
 // duplicate_groups array is the correct answer" rule that stops force-grouping.

@@ -47,7 +47,7 @@ type streamEvent struct {
 	// StructuredOutput is the schema-validated object carried on the `result`
 	// event when the session ran with --json-schema, the streaming counterpart of
 	// the buffered envelope's structured_output. handleStreamLine prefers it over
-	// Result when present so a structuring pass reads the constrained output; an
+	// Result when present so a finder pass reads the constrained output; an
 	// absent field stays nil and Result is used instead.
 	StructuredOutput json.RawMessage `json:"structured_output,omitempty"`
 	// Usage and TotalCostUSD are carried on the `result` event (the streaming

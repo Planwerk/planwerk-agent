@@ -23,8 +23,12 @@ type sample struct {
 // sends and expects a single finding.
 const emptyTitleFindingJSON = `{"title":"","severity":"WARNING","confidence":"likely"}`
 
-// repairedFindingJSON is the same finding with the violation fixed.
-const repairedFindingJSON = `{"title":"Fixed","severity":"WARNING","confidence":"likely"}`
+// repairedFindingJSON is the same finding with the violation fixed, titled
+// repairedFindingTitle.
+const (
+	repairedFindingTitle = "Fixed"
+	repairedFindingJSON  = `{"title":"` + repairedFindingTitle + `","severity":"WARNING","confidence":"likely"}`
+)
 
 // repairTierModel and repairTierEffort are the structure tier the repair
 // invocation tests configure through WithStructureModel/WithStructureEffort
@@ -326,7 +330,7 @@ func TestRepairInvalidReview_BoundedRounds(t *testing.T) {
 	})
 
 	result := &report.ReviewResult{Findings: []report.Finding{{Title: "", Severity: report.SeverityWarning, Confidence: report.ConfidenceLikely}}}
-	if err := c.repairInvalidReview(result); err == nil {
+	if err := c.repairInvalidReview(result, "review output"); err == nil {
 		t.Error("expected failure after the schema-repair budget is exhausted")
 	}
 	if len(*calls) != maxRepairRounds {
@@ -344,41 +348,44 @@ func TestRepairInvalidReview_SucceedsWithinRounds(t *testing.T) {
 	})
 
 	result := &report.ReviewResult{Findings: []report.Finding{{Title: "", Severity: report.SeverityWarning, Confidence: report.ConfidenceLikely}}}
-	if err := c.repairInvalidReview(result); err != nil {
+	if err := c.repairInvalidReview(result, "review output"); err != nil {
 		t.Fatalf("expected success within the round budget, got %v", err)
 	}
 	if len(*calls) != 2 {
 		t.Errorf("expected 2 rounds, got %d", len(*calls))
 	}
-	if result.Findings[0].Title != "Fixed" {
+	if result.Findings[0].Title != repairedFindingTitle {
 		t.Errorf("result not updated to the repaired finding, got %q", result.Findings[0].Title)
 	}
 }
 
-func TestPersistFailedAnalysis(t *testing.T) {
-	raw := "## Findings\n- an expensive analysis worth keeping"
-	path := persistFailedAnalysis(raw)
+func TestPersistFailedOutput(t *testing.T) {
+	raw := finderOutputJSON
+	path := persistFailedOutput(raw)
 	if path == "" {
-		t.Fatal("expected a persisted-analysis path")
+		t.Fatal("expected a persisted-output path")
 	}
 	t.Cleanup(func() { _ = os.Remove(path) })
+	if !strings.HasSuffix(path, ".json") {
+		t.Errorf("persisted output %s is not a .json file", path)
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("reading persisted analysis: %v", err)
+		t.Fatalf("reading persisted output: %v", err)
 	}
 	if string(data) != raw {
-		t.Errorf("persisted analysis = %q, want %q", data, raw)
+		t.Errorf("persisted output = %q, want %q", data, raw)
 	}
 }
 
-func TestWrapWithPersistedAnalysis(t *testing.T) {
+func TestWrapWithPersistedOutput(t *testing.T) {
 	cause := errors.New("still invalid after 3 rounds")
-	err := wrapWithPersistedAnalysis("raw analysis", cause)
+	err := wrapWithPersistedOutput("raw output", cause)
 	if !errors.Is(err, cause) {
 		t.Error("the underlying cause must be wrapped")
 	}
-	if !strings.Contains(err.Error(), "re-run structuring") {
-		t.Errorf("error must carry the re-structure hint, got %v", err)
+	if !strings.Contains(err.Error(), "raw output was saved to") {
+		t.Errorf("error must name the saved raw output, got %v", err)
 	}
 }
 
@@ -406,36 +413,6 @@ func TestExtractJSONValue(t *testing.T) {
 	}
 }
 
-func TestWarnOnDroppedFindings(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		name        string
-		sourceCount int
-		emitted     int
-		wantWarn    bool
-	}{
-		{"drop is flagged", 5, 4, true},
-		{"exact match is silent", 3, 3, false},
-		{"more emitted than reported is silent", 2, 3, false},
-		{"no reported count is silent", 0, 0, false},
-		{"negative count is silent", -1, 2, false},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			logger, buf := captureLogger()
-			warnOnDroppedFindings(logger, tc.sourceCount, tc.emitted)
-			wantWarns := 0
-			if tc.wantWarn {
-				wantWarns = 1
-			}
-			if got := strings.Count(buf.String(), "level=WARN"); got != wantWarns {
-				t.Errorf("warnOnDroppedFindings(%d, %d) logged %d warnings, want %d:\n%s", tc.sourceCount, tc.emitted, got, wantWarns, buf.String())
-			}
-		})
-	}
-}
-
 // TestValidationRepairPromptUsesValidationRules binds the schema-repair prompt
 // to report.ValidationRules: every rule string must appear verbatim in the
 // prompt, so the two cannot drift.
@@ -445,31 +422,6 @@ func TestValidationRepairPromptUsesValidationRules(t *testing.T) {
 		if !strings.Contains(prompt, rule) {
 			t.Errorf("validation-repair prompt should contain the rule %q verbatim", rule)
 		}
-	}
-}
-
-func TestNormalizeTranscribedLabels(t *testing.T) {
-	t.Parallel()
-	logger, buf := captureLogger()
-
-	result := &report.ReviewResult{Findings: []report.Finding{
-		{Title: "no labels"}, // both empty → defaulted, 2 warns
-		{Title: "labelled", Severity: report.SeverityCritical, Confidence: report.ConfidenceVerified}, // untouched
-		{Title: "sev only", Severity: report.SeverityWarning},                                         // confidence empty → 1 warn
-	}}
-	normalizeTranscribedLabels(logger, result)
-
-	if result.Findings[0].Severity != report.SeverityInfo || result.Findings[0].Confidence != report.ConfidenceUncertain {
-		t.Errorf("empty labels must default to INFO/uncertain, got %q/%q", result.Findings[0].Severity, result.Findings[0].Confidence)
-	}
-	if result.Findings[1].Severity != report.SeverityCritical || result.Findings[1].Confidence != report.ConfidenceVerified {
-		t.Errorf("stated labels must be untouched, got %q/%q", result.Findings[1].Severity, result.Findings[1].Confidence)
-	}
-	if result.Findings[2].Confidence != report.ConfidenceUncertain {
-		t.Errorf("empty confidence must default to uncertain, got %q", result.Findings[2].Confidence)
-	}
-	if warns := strings.Count(buf.String(), "level=WARN"); warns != 3 {
-		t.Errorf("expected 3 warnings (2 for the label-less finding, 1 for the confidence-less one), got %d:\n%s", warns, buf.String())
 	}
 }
 
@@ -491,7 +443,7 @@ func TestRepairInvalidReview_ValidNoRepair(t *testing.T) {
 	})
 
 	result := &report.ReviewResult{Findings: []report.Finding{validFinding()}}
-	if err := c.repairInvalidReview(result); err != nil {
+	if err := c.repairInvalidReview(result, "review output"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(*calls) != 0 {
@@ -512,7 +464,7 @@ func TestRepairInvalidReview_RepairsInvalid(t *testing.T) {
 	}}
 
 	result := &report.ReviewResult{Findings: []report.Finding{bad}}
-	if err := c.repairInvalidReview(result); err != nil {
+	if err := c.repairInvalidReview(result, "review output"); err != nil {
 		t.Fatalf("expected repair to succeed, got: %v", err)
 	}
 	if len(result.Findings) != 1 || result.Findings[0].Title != "Repaired title" {
@@ -530,7 +482,7 @@ func TestRepairInvalidReview_StillInvalid(t *testing.T) {
 	bad := validFinding()
 	bad.Title = ""
 	result := &report.ReviewResult{Findings: []report.Finding{bad}}
-	err := c.repairInvalidReview(result)
+	err := c.repairInvalidReview(result, "review output")
 	if err == nil {
 		t.Fatal("expected an error when the repaired finding is still invalid")
 	}
@@ -548,7 +500,7 @@ func TestRepairInvalidReview_RepairCallFails(t *testing.T) {
 	bad := validFinding()
 	bad.Title = ""
 	result := &report.ReviewResult{Findings: []report.Finding{bad}}
-	err := c.repairInvalidReview(result)
+	err := c.repairInvalidReview(result, "review output")
 	if len(*calls) != 1 {
 		t.Errorf("repair ran %d sessions, want 1 — a failed session ends the repair", len(*calls))
 	}
@@ -584,7 +536,7 @@ func TestRepairInvalidReview_RepairsOnlyTheOffendingFinding(t *testing.T) {
 	last.Title = "last stays"
 	result := &report.ReviewResult{Findings: []report.Finding{first, offender, last}}
 
-	if err := c.repairInvalidReview(result); err != nil {
+	if err := c.repairInvalidReview(result, "review output"); err != nil {
 		t.Fatalf("repairInvalidReview: %v", err)
 	}
 
@@ -611,60 +563,6 @@ func TestRepairInvalidReview_RepairsOnlyTheOffendingFinding(t *testing.T) {
 	}
 }
 
-// TestNormalizeTranscribedLabels_SettlesOffEnumLabels covers the labels a source
-// review can state in words the enum does not have. Settling them here is what
-// leaves the empty title as the only violation a model is ever asked about.
-func TestNormalizeTranscribedLabels_SettlesOffEnumLabels(t *testing.T) {
-	t.Parallel()
-	logger, buf := captureLogger()
-
-	result := &report.ReviewResult{Findings: []report.Finding{
-		{Title: "off-enum", Severity: "HIGH", Confidence: "certain"},
-		// Case is not a violation: ParseSeverity and ParseConfidence fold it.
-		{Title: "lower case", Severity: "warning", Confidence: "VERIFIED"},
-	}}
-	normalizeTranscribedLabels(logger, result)
-
-	if result.Findings[0].Severity != report.SeverityInfo {
-		t.Errorf("severity = %q, want INFO for a label the enum does not have", result.Findings[0].Severity)
-	}
-	if result.Findings[0].Confidence != report.ConfidenceUncertain {
-		t.Errorf("confidence = %q, want uncertain", result.Findings[0].Confidence)
-	}
-	if result.Findings[1].Severity != report.SeverityWarning || result.Findings[1].Confidence != report.ConfidenceVerified {
-		t.Errorf("a differently-cased label is not a violation, got %q/%q",
-			result.Findings[1].Severity, result.Findings[1].Confidence)
-	}
-	warns := strings.Split(strings.TrimSpace(buf.String()), "\n")
-	if got := strings.Count(buf.String(), "level=WARN"); got != 2 || len(warns) != 2 {
-		t.Fatalf("logged %d warnings, want 2 — one per rejected label on the first finding:\n%s", got, buf.String())
-	}
-	// Each warning must name the finding and the label that was rejected, or the
-	// operator cannot tell which finding lost its classification.
-	for _, w := range warns {
-		if !strings.Contains(w, "level=WARN") || !strings.Contains(w, "title=off-enum") {
-			t.Errorf("warning %q does not name the finding's title", w)
-		}
-	}
-	if !strings.Contains(warns[0], "severity=HIGH") || !strings.Contains(warns[1], "confidence=certain") {
-		t.Errorf("warnings do not name the rejected labels:\n%s", buf.String())
-	}
-}
-
-// TestNormalizeTranscribedLabels_EmptyAndNilFindings covers the two shapes that
-// carry nothing to normalize: a review with no findings at all, and a nil slice.
-func TestNormalizeTranscribedLabels_EmptyAndNilFindings(t *testing.T) {
-	t.Parallel()
-	logger, buf := captureLogger()
-
-	normalizeTranscribedLabels(logger, &report.ReviewResult{})
-	normalizeTranscribedLabels(logger, &report.ReviewResult{Findings: nil})
-	normalizeTranscribedLabels(logger, &report.ReviewResult{Findings: []report.Finding{}})
-	if got := buf.String(); got != "" {
-		t.Errorf("nothing to normalize must log nothing, got:\n%s", got)
-	}
-}
-
 // TestRepairInvalidReview_RetriesAnUnparseableRepair covers the other way a
 // round can fail: the repair answer is not JSON at all. The parse error is fed
 // back and the next round still lands, so one malformed answer does not spend
@@ -679,10 +577,10 @@ func TestRepairInvalidReview_RetriesAnUnparseableRepair(t *testing.T) {
 	})
 
 	result := &report.ReviewResult{Findings: []report.Finding{{Title: "", Severity: report.SeverityWarning, Confidence: report.ConfidenceLikely}}}
-	if err := c.repairInvalidReview(result); err != nil {
+	if err := c.repairInvalidReview(result, "review output"); err != nil {
 		t.Fatalf("expected the second round to succeed, got %v", err)
 	}
-	if result.Findings[0].Title != "Fixed" {
+	if result.Findings[0].Title != repairedFindingTitle {
 		t.Errorf("finding was not replaced by the repaired one: %+v", result.Findings[0])
 	}
 	if len(*calls) != 2 {
@@ -709,4 +607,304 @@ func fencedPayload(t *testing.T, prompt, tag string) string {
 		t.Fatalf("prompt has no <%s> fence:\n%s", tag, prompt)
 	}
 	return prompt[start+len(open) : end]
+}
+
+// emptyFinderOutputJSON is the smallest valid finder output: no findings, and
+// an empty summary and recommendation.
+const emptyFinderOutputJSON = `{"findings":[],"summary":"","recommendation":""}`
+
+// finderOutputJSON is a valid finder output carrying one WARNING finding.
+const finderOutputJSON = `{"findings":[{"severity":"WARNING","title":"t","file":"f.go","line":3,"actionability":"auto-fix","confidence":"likely","problem":"p","action":"a"}],"summary":"s","recommendation":""}`
+
+// noSessionClient is a scriptedClient whose every session fails the test: the
+// decode cases that must not reach the repair backstop run on it.
+func noSessionClient(t *testing.T, opts ...Option) (*Client, *[]sessionCall) {
+	t.Helper()
+	return scriptedClient(t, func(_ int, spec runSpec, _ string) (string, string, error) {
+		t.Errorf("unexpected %s session", spec.label)
+		return "", "", errors.New("no session expected")
+	}, opts...)
+}
+
+// savedRawOutput returns the file a finishReview error names as the saved raw
+// output and removes it when the test ends.
+func savedRawOutput(t *testing.T, err error) string {
+	t.Helper()
+	const marker = "raw output was saved to "
+	msg := err.Error()
+	i := strings.LastIndex(msg, marker)
+	if i == -1 {
+		t.Fatalf("error does not name the saved raw output: %v", err)
+	}
+	path := strings.TrimSpace(msg[i+len(marker):])
+	t.Cleanup(func() { _ = os.Remove(path) })
+	return path
+}
+
+// TestFinishReview_ValidObjectRunsNoSession covers the common case: the finder
+// emitted a valid object, so it decodes without a repair session and leaves
+// with its ID, its derived fix class, and the model that produced it.
+func TestFinishReview_ValidObjectRunsNoSession(t *testing.T) {
+	t.Parallel()
+	c, calls := noSessionClient(t)
+
+	result, err := c.finishReview(finderOutputJSON, testResolvedModel, "review output", "")
+	if err != nil {
+		t.Fatalf("finishReview: %v", err)
+	}
+	if len(*calls) != 0 {
+		t.Errorf("ran %d sessions for a valid object, want 0", len(*calls))
+	}
+	if len(result.Findings) != 1 {
+		t.Fatalf("got %d findings, want 1", len(result.Findings))
+	}
+	f := result.Findings[0]
+	if f.ID != "W-001" || f.FixClass != report.FixClassAutoFix {
+		t.Errorf("ID/FixClass = %q/%q, want W-001/%q", f.ID, f.FixClass, report.FixClassAutoFix)
+	}
+	if result.Model != testResolvedModel {
+		t.Errorf("Model = %q, want %q", result.Model, testResolvedModel)
+	}
+}
+
+// TestFinishReview_NullAndEmptyFindings covers a pass that reports nothing:
+// findings encoded as null and as [] both decode to no findings without a
+// session, and the summary survives.
+func TestFinishReview_NullAndEmptyFindings(t *testing.T) {
+	t.Parallel()
+	for name, tc := range map[string]struct{ in, summary string }{
+		"null":  {`{"findings":null,"summary":"clean","recommendation":"merge"}`, "clean"},
+		"empty": {emptyFinderOutputJSON, ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			c, calls := noSessionClient(t)
+			result, err := c.finishReview(tc.in, testResolvedModel, "review output", "")
+			if err != nil {
+				t.Fatalf("finishReview: %v", err)
+			}
+			if len(*calls) != 0 || len(result.Findings) != 0 {
+				t.Errorf("sessions=%d findings=%d, want 0 and 0", len(*calls), len(result.Findings))
+			}
+			if result.Summary != tc.summary {
+				t.Errorf("Summary = %q, want %q", result.Summary, tc.summary)
+			}
+		})
+	}
+}
+
+// TestFinishReview_WrappedPayloadRunsNoSession covers the wrappers a model adds
+// to an object that is valid in itself: a markdown fence, a line of prose
+// before it, and a line of prose after it. None of them costs a repair session.
+func TestFinishReview_WrappedPayloadRunsNoSession(t *testing.T) {
+	t.Parallel()
+	for name, in := range map[string]string{
+		"json fence":     "```json\n" + finderOutputJSON + "\n```",
+		"prose preamble": "Here is the review output:\n" + finderOutputJSON,
+		"trailing prose": finderOutputJSON + "\nThat is every finding.",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			c, calls := noSessionClient(t)
+			result, err := c.finishReview(in, testResolvedModel, "review output", "")
+			if err != nil {
+				t.Fatalf("finishReview: %v", err)
+			}
+			if len(*calls) != 0 || len(result.Findings) != 1 {
+				t.Errorf("sessions=%d findings=%d, want 0 and 1", len(*calls), len(result.Findings))
+			}
+		})
+	}
+}
+
+// TestFinishReview_RepairsTruncatedPayload covers an object cut short: one
+// repair session on the structure tier, labeled after the pass, fixes it.
+func TestFinishReview_RepairsTruncatedPayload(t *testing.T) {
+	t.Parallel()
+	c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
+		return finderOutputJSON, "", nil
+	}, WithStructureModel(repairTierModel))
+
+	result, err := c.finishReview(strings.TrimSuffix(finderOutputJSON, "}"), testResolvedModel, "review output", "")
+	if err != nil {
+		t.Fatalf("finishReview: %v", err)
+	}
+	if len(*calls) != 1 {
+		t.Fatalf("ran %d sessions, want 1 repair", len(*calls))
+	}
+	spec := (*calls)[0].spec
+	if spec.label != "review output-repair" || !spec.noTools || spec.model != repairTierModel {
+		t.Errorf("label=%q noTools=%v model=%q, want review output-repair on the tool-less structure tier %q", spec.label, spec.noTools, spec.model, repairTierModel)
+	}
+	if len(result.Findings) != 1 {
+		t.Errorf("got %d findings, want the repaired one", len(result.Findings))
+	}
+}
+
+// TestFinishReview_EmptyOutputFailsAfterRepairRounds covers a finder that
+// returned nothing usable: the repair budget runs out, and the error names the
+// pass and the file the raw output was saved to.
+func TestFinishReview_EmptyOutputFailsAfterRepairRounds(t *testing.T) {
+	t.Parallel()
+	c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
+		return "not json", "", nil
+	})
+
+	_, err := c.finishReview("", testResolvedModel, "review output", "")
+	if err == nil {
+		t.Fatal("expected an error for an empty output")
+	}
+	if len(*calls) != maxRepairRounds {
+		t.Errorf("ran %d repair sessions, want %d", len(*calls), maxRepairRounds)
+	}
+	if !strings.Contains(err.Error(), "parsing review output as JSON") {
+		t.Errorf("error does not name the pass: %v", err)
+	}
+	data, rerr := os.ReadFile(savedRawOutput(t, err))
+	if rerr != nil {
+		t.Fatalf("reading the saved raw output: %v", rerr)
+	}
+	if len(data) != 0 {
+		t.Errorf("saved raw output = %q, want the empty payload", data)
+	}
+}
+
+// TestFinishReview_RepairSessionErrorWrapsParseError covers a repair session
+// that fails outright: the error reports the finder's own parse error, not the
+// repair session's, and still names the saved raw output.
+func TestFinishReview_RepairSessionErrorWrapsParseError(t *testing.T) {
+	t.Parallel()
+	c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
+		return "", "", errors.New("claude unavailable")
+	})
+
+	_, err := c.finishReview(`{"findings":[`, testResolvedModel, "review output", "")
+	if err == nil {
+		t.Fatal("expected an error when the repair session fails")
+	}
+	if len(*calls) != 1 {
+		t.Errorf("ran %d sessions, want 1", len(*calls))
+	}
+	var syntaxErr *json.SyntaxError
+	if !errors.As(err, &syntaxErr) {
+		t.Errorf("error does not wrap the original parse error: %v", err)
+	}
+	if strings.Contains(err.Error(), "claude unavailable") {
+		t.Errorf("error reports the repair session's failure instead of the parse error: %v", err)
+	}
+	if !strings.Contains(err.Error(), "parsing review output as JSON") {
+		t.Errorf("error does not name the pass: %v", err)
+	}
+	savedRawOutput(t, err)
+}
+
+// TestFinishReview_RepairsEmptyTitle covers the one finding rule a
+// schema-valid output can still break: an empty title goes to the per-finding
+// schema repair and comes back fixed.
+func TestFinishReview_RepairsEmptyTitle(t *testing.T) {
+	t.Parallel()
+	c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
+		return repairedFindingJSON, "", nil
+	})
+
+	result, err := c.finishReview(strings.Replace(finderOutputJSON, `"title":"t"`, `"title":""`, 1), testResolvedModel, "review output", "")
+	if err != nil {
+		t.Fatalf("finishReview: %v", err)
+	}
+	if len(*calls) != 1 || (*calls)[0].spec.label != "review output finding-schema-repair" {
+		t.Fatalf("sessions = %+v, want one review output finding-schema-repair", *calls)
+	}
+	if len(result.Findings) != 1 || result.Findings[0].Title != repairedFindingTitle {
+		t.Errorf("findings = %+v, want the repaired title", result.Findings)
+	}
+}
+
+// TestFinishReview_RepairsUnusableLabel covers the output no CLI validation
+// guards (the result fallback, and a JSON repair's answer): a finding whose
+// severity is missing or off the enum, or whose confidence is off the enum,
+// goes to the per-finding schema repair with the validator's error, and the
+// repaired labels reach the result.
+func TestFinishReview_RepairsUnusableLabel(t *testing.T) {
+	t.Parallel()
+	const repaired = `{"severity":"CRITICAL","title":"t","file":"f.go","line":3,"actionability":"auto-fix","confidence":"verified","problem":"p","action":"a"}`
+	for name, tc := range map[string]struct{ from, to, wantErr string }{
+		"severity missing":        {`"severity":"WARNING",`, ``, `severity "" is not one of`},
+		"severity off the enum":   {`"severity":"WARNING"`, `"severity":"HIGH"`, `severity "HIGH" is not one of`},
+		"confidence off the enum": {`"confidence":"likely"`, `"confidence":"certain"`, `confidence "certain" is not one of`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
+				return repaired, "", nil
+			})
+
+			result, err := c.finishReview(strings.Replace(finderOutputJSON, tc.from, tc.to, 1), testResolvedModel, "review output", "")
+			if err != nil {
+				t.Fatalf("finishReview: %v", err)
+			}
+			if len(*calls) != 1 || (*calls)[0].spec.label != "review output finding-schema-repair" {
+				t.Fatalf("sessions = %+v, want one review output finding-schema-repair", *calls)
+			}
+			if prompt := (*calls)[0].prompt; !strings.Contains(prompt, tc.wantErr) {
+				t.Errorf("schema-repair prompt does not carry the validation error %q:\n%s", tc.wantErr, prompt)
+			}
+			if len(result.Findings) != 1 {
+				t.Fatalf("got %d findings, want the repaired one", len(result.Findings))
+			}
+			if f := result.Findings[0]; f.Severity != report.SeverityCritical || f.Confidence != report.ConfidenceVerified {
+				t.Errorf("labels = %q/%q, want the repaired %q/%q", f.Severity, f.Confidence, report.SeverityCritical, report.ConfidenceVerified)
+			}
+		})
+	}
+}
+
+// TestFinishReview_StillInvalidFindingFails covers a schema repair that never
+// lands, for an empty title and for an off-enum severity: the error names the
+// pass and the exhausted budget, and the raw output is saved.
+func TestFinishReview_StillInvalidFindingFails(t *testing.T) {
+	t.Parallel()
+	for name, tc := range map[string]struct{ from, to, stillInvalid string }{
+		"empty title":           {`"title":"t"`, `"title":""`, emptyTitleFindingJSON},
+		"severity off the enum": {`"severity":"WARNING"`, `"severity":"HIGH"`, `{"title":"t","severity":"HIGH","confidence":"likely"}`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
+				return tc.stillInvalid, "", nil
+			})
+
+			_, err := c.finishReview(strings.Replace(finderOutputJSON, tc.from, tc.to, 1), testResolvedModel, "review output", "")
+			if err == nil {
+				t.Fatal("expected an error when the finding stays invalid")
+			}
+			if len(*calls) != maxRepairRounds {
+				t.Errorf("ran %d schema-repair sessions, want %d", len(*calls), maxRepairRounds)
+			}
+			for _, want := range []string{"review output: ", "still invalid after 3 schema-repair rounds"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error does not contain %q: %v", want, err)
+				}
+			}
+			savedRawOutput(t, err)
+		})
+	}
+}
+
+// TestFinishReview_TagsOnlyEmptyPatterns covers the pass's pattern tag: it
+// fills a finding that names no pattern and leaves a named one alone.
+func TestFinishReview_TagsOnlyEmptyPatterns(t *testing.T) {
+	t.Parallel()
+	c, _ := noSessionClient(t)
+	in := `{"findings":[` +
+		`{"severity":"WARNING","title":"untagged","file":"f.go","actionability":"auto-fix","confidence":"likely","problem":"p","action":"a"},` +
+		`{"severity":"CRITICAL","title":"tagged","file":"f.go","pattern":"Injection","actionability":"needs-discussion","confidence":"verified","problem":"p","action":"a"}` +
+		`],"summary":"","recommendation":""}`
+
+	result, err := c.finishReview(in, testResolvedModel, "adversarial review", "adversarial-review")
+	if err != nil {
+		t.Fatalf("finishReview: %v", err)
+	}
+	if got := []string{result.Findings[0].Pattern, result.Findings[1].Pattern}; !reflect.DeepEqual(got, []string{"adversarial-review", "Injection"}) {
+		t.Errorf("patterns = %q, want the tag only on the untagged finding", got)
+	}
 }

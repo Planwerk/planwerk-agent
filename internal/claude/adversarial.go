@@ -28,7 +28,7 @@ func (c *Client) AdversarialReview(dir, baseBranch, sinceRef string, pats []patt
 }
 
 func (c *Client) runAdversarialReview(dir, baseBranch, sinceRef string, pats []patterns.Pattern, maxPatterns int) (text, model string, err error) {
-	return c.runClaudeFinder(dir, buildAdversarialPrompt(baseBranch, sinceRef, pats, maxPatterns), "adversarial")
+	return c.runClaudeFinderFindings(dir, buildAdversarialPrompt(baseBranch, sinceRef, pats, maxPatterns), "adversarial")
 }
 
 func buildAdversarialPrompt(baseBranch, sinceRef string, pats []patterns.Pattern, maxPatterns int) string {

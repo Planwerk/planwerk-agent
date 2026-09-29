@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/planwerk/planwerk-agent/internal/report"
 	"github.com/planwerk/planwerk-agent/internal/report/schema"
 )
 
@@ -892,6 +893,115 @@ func TestAdapters_OpenTheCatalogDirectory(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestFinders_ConstrainTheOutputSchema pins the finder passes' single session:
+// each adapter runs one read-only session that keeps its tools and carries
+// schema.FinderOutput, and the empty output it returns decodes without a
+// structuring or repair session behind it. The review and the audit run on the
+// main model and effort, the other five on the finder tier.
+func TestFinders_ConstrainTheOutputSchema(t *testing.T) {
+	t.Parallel()
+
+	const finderModel = "haiku"
+	rows := []struct {
+		name, label, model, effort string
+		run                        func(c *Client) (*report.ReviewResult, error)
+	}{
+		{"Review", "review", DefaultClaudeModel, DefaultClaudeEffort, func(c *Client) (*report.ReviewResult, error) {
+			return c.Review("", goldenReviewContext())
+		}},
+		{"Audit", "audit", DefaultClaudeModel, DefaultClaudeEffort, func(c *Client) (*report.ReviewResult, error) {
+			return c.Audit("", goldenAuditContext())
+		}},
+		{"AdversarialReview", "adversarial", finderModel, testWorkerEffort, func(c *Client) (*report.ReviewResult, error) {
+			return c.AdversarialReview("", "develop", "", nil, 0)
+		}},
+		{"SpecialistReview", "specialist-security", finderModel, testWorkerEffort, func(c *Client) (*report.ReviewResult, error) {
+			return c.SpecialistReview("", "develop", specialistByKey(t, "security"), nil, 0)
+		}},
+		{"FeatureCompliance", "compliance", finderModel, testWorkerEffort, func(c *Client) (*report.ReviewResult, error) {
+			return c.FeatureCompliance("", "develop", goldenFeature())
+		}},
+		{"SimplifyFindings", "simplify", finderModel, testWorkerEffort, func(c *Client) (*report.ReviewResult, error) {
+			return c.SimplifyFindings("", "develop")
+		}},
+		{"VerifyImplementation", "verify-implementation", finderModel, testWorkerEffort, func(c *Client) (*report.ReviewResult, error) {
+			return c.VerifyImplementation("", "t", "b")
+		}},
+	}
+	for _, row := range rows {
+		t.Run(row.name, func(t *testing.T) {
+			t.Parallel()
+			c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
+				return emptyFinderOutputJSON, "", nil
+			}, WithFinderModel(finderModel), WithFinderEffort(testWorkerEffort))
+
+			result, err := row.run(c)
+			if err != nil {
+				t.Fatalf("adapter returned error: %v", err)
+			}
+			if len(result.Findings) != 0 {
+				t.Errorf("got %d findings, want 0", len(result.Findings))
+			}
+			if len(*calls) != 1 {
+				t.Fatalf("adapter ran %d sessions, want 1", len(*calls))
+			}
+			spec := (*calls)[0].spec
+			if spec.label != row.label || spec.model != row.model || spec.effort != row.effort {
+				t.Errorf("label/model/effort = %q/%q/%q, want %q/%q/%q", spec.label, spec.model, spec.effort, row.label, row.model, row.effort)
+			}
+			if spec.jsonSchema != string(schema.FinderOutput) {
+				t.Errorf("jsonSchema is not schema.FinderOutput: %.80q", spec.jsonSchema)
+			}
+			if spec.noTools || !spec.readOnly {
+				t.Errorf("noTools=%v readOnly=%v, want a read-only session that keeps its tools", spec.noTools, spec.readOnly)
+			}
+		})
+	}
+}
+
+// TestFinders_SessionErrorIsWrappedAndSkipsDecode covers a finder session that
+// fails: the adapter wraps the error with its pass and neither decodes nor
+// repairs anything.
+func TestFinders_SessionErrorIsWrappedAndSkipsDecode(t *testing.T) {
+	t.Parallel()
+	sessionErr := errors.New("claude exited 1")
+	c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
+		return "", "", sessionErr
+	})
+
+	_, err := c.AdversarialReview("", "develop", "", nil, 0)
+	if !errors.Is(err, sessionErr) || err.Error() != "running adversarial review: claude exited 1" {
+		t.Errorf("err = %v, want running adversarial review: %v", err, sessionErr)
+	}
+	if len(*calls) != 1 {
+		t.Errorf("ran %d sessions, want only the failed finder session", len(*calls))
+	}
+}
+
+// TestRunClaudeStructure_BuildsAToolLessSpecWithoutSchema pins the structure
+// tier's spec now that no structuring call carries a schema: no tools, no
+// --json-schema, and the structure model and effort.
+func TestRunClaudeStructure_BuildsAToolLessSpecWithoutSchema(t *testing.T) {
+	t.Parallel()
+	c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
+		return "{}", "", nil
+	}, WithStructureModel(repairTierModel), WithStructureEffort(repairTierEffort))
+
+	if _, _, err := c.runClaudeStructure("prompt", "elaborate-structure"); err != nil {
+		t.Fatalf("runClaudeStructure: %v", err)
+	}
+	if len(*calls) != 1 {
+		t.Fatalf("ran %d sessions, want 1", len(*calls))
+	}
+	spec := (*calls)[0].spec
+	if !spec.noTools || spec.jsonSchema != "" {
+		t.Errorf("noTools=%v jsonSchema=%q, want a tool-less session without a schema", spec.noTools, spec.jsonSchema)
+	}
+	if spec.model != repairTierModel || spec.effort != repairTierEffort {
+		t.Errorf("model/effort = %q/%q, want the structure tier %q/%q", spec.model, spec.effort, repairTierModel, repairTierEffort)
 	}
 }
 

@@ -212,34 +212,6 @@ func TestBuildReviewPrompt_OmitsMaxFindingsWhenZero(t *testing.T) {
 	}
 }
 
-func TestBuildStructurePrompt_ContainsNewFields(t *testing.T) {
-	prompt := buildStructurePrompt("test review output")
-	checks := []string{
-		`"code_snippet"`,
-		`"suggested_fix"`,
-		`"line_end"`,
-		`"confidence"`,
-		`"related_to"`,
-		`"fix_options"`,
-		`"recommended_option"`,
-		`"recommendation_reasoning"`,
-		`"source_finding_count"`,
-		"Field rules",
-	}
-	for _, check := range checks {
-		if !strings.Contains(prompt, check) {
-			t.Errorf("structure prompt should contain %q", check)
-		}
-	}
-	// Transcribe-only structuring (issue #157): the classification rubric must
-	// be gone so the tier cannot re-classify.
-	for _, absent := range []string{"Severity levels:", "Actionability classification", "Confidence levels:"} {
-		if strings.Contains(prompt, absent) {
-			t.Errorf("structure prompt must not carry the %q rubric after the transcribe-only rewrite", absent)
-		}
-	}
-}
-
 func TestAssignIDs(t *testing.T) {
 	result := &report.ReviewResult{
 		Findings: []report.Finding{

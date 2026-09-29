@@ -18,7 +18,8 @@ const maxRepairRounds = 3
 // repairJSON asks Claude to fix malformed JSON, feeding the parse error (and,
 // when known, the target schema) back so the model can correct it. The call
 // runs on the Client's structure tier (structureModel/structureEffort) via
-// runClaudeStructure, matching the structuring pass it backstops.
+// runClaudeStructure, whether it backstops a structuring pass or the output of
+// a pass that emits findings.
 func (c *Client) repairJSON(malformed string, parseErr error, label, schema string) (string, error) {
 	text, _, err := c.runClaudeStructure(buildRepairPrompt(malformed, parseErr, schema), label+"-repair")
 	return text, err
@@ -28,8 +29,8 @@ func (c *Client) repairJSON(malformed string, parseErr error, label, schema stri
 // schema validation, feeding the validation error back so the model can correct
 // the offending fields. Its payload is one finding, not a whole review: see
 // repairFinding. The call runs on the Client's structure tier
-// (structureModel/structureEffort) via runClaudeStructure, matching the
-// structuring pass it backstops.
+// (structureModel/structureEffort) via runClaudeStructure, like the JSON
+// repair.
 func (c *Client) repairInvalidJSON(invalid string, validationErr error, label string) (string, error) {
 	text, _, err := c.runClaudeStructure(buildValidationRepairPrompt(invalid, validationErr), label+"-schema-repair")
 	return text, err
@@ -37,10 +38,11 @@ func (c *Client) repairInvalidJSON(invalid string, validationErr error, label st
 
 // decodeJSONWithRepair strips markdown fences from text and unmarshals it into
 // v, repairing malformed JSON with up to maxRepairRounds bounded retries. Every
-// structuring step shares this so the repair behavior stays identical across
-// review, audit, elaborate, propose, gap-analysis, and review-prepared. The
-// common case (valid JSON) never triggers a repair call. Callers with a known
-// target schema use decodeJSONWithRepairSchema instead.
+// structuring step and finishReview share this, so the repair behavior stays
+// identical across the passes that emit findings, elaborate, propose,
+// gap-analysis, and review-prepared. The common case (valid JSON) never
+// triggers a repair call. Callers with a known target schema use
+// decodeJSONWithRepairSchema instead.
 func (c *Client) decodeJSONWithRepair(text, label string, v any) error {
 	return c.decodeJSONWithRepairSchema(text, label, "", v)
 }
