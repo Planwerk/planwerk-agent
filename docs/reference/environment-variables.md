@@ -17,6 +17,8 @@ full resolution order.
 | `PLANWERK_CLAUDE_EFFORT` | `--claude-effort` | One of `low`, `medium`, `high`, `xhigh`, `max`. |
 | `PLANWERK_STRUCTURE_MODEL` | `--structure-model` | Model alias or full ID for the JSON-structuring passes. Independent of `PLANWERK_CLAUDE_MODEL`. |
 | `PLANWERK_STRUCTURE_EFFORT` | `--structure-effort` | Reasoning effort for the JSON-structuring passes: one of `low`, `medium`, `high`, `xhigh`, `max`. |
+| `PLANWERK_FINDER_MODEL` | `--finder-model` | Model alias or full ID for the read-only finder passes (the adversarial pass, the domain specialists, the coverage map, the feature-compliance check, the simplify finder, the implementation verifier and claim verification). Empty inherits `PLANWERK_CLAUDE_MODEL`. |
+| `PLANWERK_FINDER_EFFORT` | `--finder-effort` | Reasoning effort for the finder passes: one of `low`, `medium`, `high`, `xhigh`, `max`. Empty inherits `PLANWERK_CLAUDE_EFFORT`. |
 | `PLANWERK_CLAUDE_INHERIT_USER_CONFIG` | `--claude-inherit-user-config` | Truthy values let sessions inherit user-global `~/.claude` config: `1`, `true`, `yes`, `on` (case-insensitive). Off by default (hermetic). |
 | `PLANWERK_PLAN_MODEL` | `--plan-model` (`implement`) | Model for the planning session. |
 | `PLANWERK_PLAN_EFFORT` | `--plan-effort` (`implement`) | Reasoning effort for the planning session. |
