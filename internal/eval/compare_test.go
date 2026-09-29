@@ -281,6 +281,13 @@ func TestCompare(t *testing.T) {
 			wantNilFloors: []string{"precision"},
 		},
 		{
+			name:        "different finder tiers compare and are recorded",
+			base:        withFinderEffort(comparableReport(ratio(0.9), ratio(0.8), ratio(0.7)), "xhigh"),
+			cand:        withFinderEffort(comparableReport(ratio(0.9), ratio(0.8), ratio(0.7)), "high"),
+			wantVerdict: VerdictHeld,
+			wantHeld:    map[string]bool{"recall": true, "precision": true, "severity_accuracy": true},
+		},
+		{
 			name:          "precision undefined on the candidate holds with no floor",
 			base:          comparableReport(ratio(1), ratio(0.9), ratio(1)),
 			cand:          comparableReport(ratio(1), nil, ratio(1)),
@@ -297,6 +304,9 @@ func TestCompare(t *testing.T) {
 			}
 			if got.Verdict != tt.wantVerdict {
 				t.Errorf("Verdict = %s, want %s", got.Verdict, tt.wantVerdict)
+			}
+			if got.BaselineTiers != tt.base.Tiers || got.CandidateTiers != tt.cand.Tiers {
+				t.Errorf("tiers = %v / %v, want each side's %v / %v", got.BaselineTiers, got.CandidateTiers, tt.base.Tiers, tt.cand.Tiers)
 			}
 			if len(got.Checks) != len(tt.wantHeld) {
 				t.Fatalf("Checks = %+v, want %d", got.Checks, len(tt.wantHeld))
@@ -316,6 +326,14 @@ func TestCompare(t *testing.T) {
 			}
 		})
 	}
+}
+
+// withFinderEffort returns rep recorded as run on sampleTiers with the finder
+// effort set to effort.
+func withFinderEffort(rep Report, effort string) Report {
+	rep.Tiers = sampleTiers()
+	rep.Tiers.FinderEffort = effort
+	return rep
 }
 
 func TestCompareFloors(t *testing.T) {
@@ -377,6 +395,7 @@ func TestRenderComparison(t *testing.T) {
 	cmp.Baseline = RunCost{PromptTokens: 1000, OutputTokens: 0, CostUSD: 2}
 	cmp.Candidate = RunCost{PromptTokens: 750, OutputTokens: 10, CostUSD: 2.5}
 	cmp.Passes = []PassDelta{{Pass: "review", Baseline: ratio(0.8), Candidate: ratio(0.75)}}
+	cmp.BaselineTiers = sampleTiers()
 
 	var buf strings.Builder
 	RenderComparison(&buf, cmp)
@@ -388,6 +407,18 @@ func TestRenderComparison(t *testing.T) {
 
 	if !strings.Contains(out, "VERDICT: HELD") {
 		t.Errorf("output lacks VERDICT: HELD:\n%s", out)
+	}
+	// The tier lines sit between the verdict and the METRIC table; a side with
+	// no tiers recorded prints (unrecorded).
+	verdict, base, cand, metric := strings.Index(out, "VERDICT:"), strings.Index(out, "\nBASELINE TIERS "), strings.Index(out, "\nCANDIDATE TIERS "), strings.Index(out, "\nMETRIC ")
+	if verdict < 0 || verdict >= base || base >= cand || cand >= metric {
+		t.Errorf("want VERDICT, BASELINE TIERS, CANDIDATE TIERS, METRIC in that order:\n%s", out)
+	}
+	if !strings.HasSuffix(lineOf("BASELINE TIERS "), "  "+sampleTiersLine) {
+		t.Errorf("baseline tiers line = %q, want it to end in %q", lineOf("BASELINE TIERS "), sampleTiersLine)
+	}
+	if !strings.HasSuffix(lineOf("CANDIDATE TIERS "), "  (unrecorded)") {
+		t.Errorf("candidate tiers line = %q, want it to end in (unrecorded)", lineOf("CANDIDATE TIERS "))
 	}
 	if f := strings.Fields(lineOf("precision ")); f[len(f)-1] != "n/a" {
 		t.Errorf("undefined precision line = %q, want it to end in n/a", lineOf("precision "))
