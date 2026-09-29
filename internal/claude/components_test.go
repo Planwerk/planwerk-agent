@@ -235,6 +235,7 @@ func TestImplementRationalizationsDoNotDuplicateHardRules(t *testing.T) {
 	once := []string{
 		"one commit ≈ one PR",
 		"too large for one session",
+		"the honest verdict is PARTIAL",
 	}
 	for name, prompt := range implementPrompts() {
 		for _, phrase := range once {

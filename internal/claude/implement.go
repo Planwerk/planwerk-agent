@@ -383,8 +383,9 @@ ALWAYS end the session with this report — it is mandatory and is the last thin
    - (List EVERY work package the issue breaks the work into. Write "None — the issue is a single undivided change" when the issue has no multi-part breakdown. STATUS: DONE is only legitimate when every package here is "done".)
    ### Acceptance Criteria
    - <criterion verbatim>
-     - Status: <satisfied | partial | missing>
+     - Status: <satisfied | unproven | partial | missing>
      - Evidence: <file:lines that satisfy it, or the test that exercises it — cite the edge or error test, not a happy-path one, when a new test covers the criterion>
+   - (unproven = the test that proves the criterion is written and committed but cannot run here — it needs a cluster, a credential, or a job that only CI runs; name the test and the CI job that runs it. An unproven criterion is not partial: partial and missing describe code or tests you have not written.)
    ### Commits
    - <sha7> <subject>
    ### Local verification
@@ -398,8 +399,8 @@ ALWAYS end the session with this report — it is mandatory and is the last thin
    - (Write "none" when you saw nothing outside the issue's scope. This section is for observations you deliberately left alone — a bug next door, a stale doc, a refactor the issue never asked for — so a reviewer can tell a disciplined omission from an oversight. NEVER park a work package or an Acceptance Criterion here: anything the issue asks for is in scope and is implemented, not noted.)
    ### Status
    STATUS: <DONE | DONE_WITH_CONCERNS | PARTIAL | BLOCKED | NEEDS_CONTEXT>
-   (DONE = EVERY work package implemented and tested on the feature branch, every Acceptance Criterion satisfied, and every Local verification command passing or failing only in a way shown to be pre-existing on the base — no package left partial or not started; DONE_WITH_CONCERNS = every package likewise complete, but with reservations a reviewer should see; PARTIAL = at least one work package is unfinished because a circuit breaker below genuinely interrupted the work — NEVER a scoping choice; BLOCKED = could not implement, nothing shippable; NEEDS_CONTEXT = the issue is underspecified and a human must clarify.)
-   Next: <on any verdict but DONE only: the single action a human takes next — e.g. on PARTIAL "rerun implement on branch <branch>"; omit this line on DONE>
+   ` + implementVerdictDefinitions() + `
+   Next: <on any verdict but DONE only: the single action a human takes next — e.g. on PARTIAL "rerun implement on branch <branch>"; on DONE_WITH_CONCERNS with unproven criteria, the CI job(s) a reviewer must see green on the pull request; omit this line on DONE>
    Do NOT report DONE or DONE_WITH_CONCERNS when any work package is partial or not started — that is exactly the false "this closes the issue" signal this report exists to prevent. A complete subset of a multi-package issue is PARTIAL, not DONE. On PARTIAL the orchestrator opens NO pull request: it keeps the branch so a follow-up run resumes it and finishes the remaining packages — the single pull request (linking "Closes #` + fmt.Sprintf("%d", ctx.IssueNumber) + `") opens only once every package is done.
 
 ## Circuit breakers — stop instead of thrashing
@@ -434,6 +435,17 @@ When you hit a circuit breaker, halt immediately and emit STATUS: PARTIAL when a
 	}
 
 	return sb.String()
+}
+
+// implementVerdictDefinitions returns the parenthetical that defines each
+// implement report verdict. BuildImplementPrompt renders it under the report's
+// STATUS line, and ImplementSystemPrompt carries it again so the definitions
+// have one source. The bare prompt keeps a hand-edited copy with its
+// push-and-PR wording. An implementation whose every package is done and whose
+// remaining proof only CI can give is DONE_WITH_CONCERNS, never PARTIAL
+// (decision 108).
+func implementVerdictDefinitions() string {
+	return `(DONE = EVERY work package implemented and tested on the feature branch, every Acceptance Criterion satisfied, and every Local verification command passing or failing only in a way shown to be pre-existing on the base — no package left partial or not started; DONE_WITH_CONCERNS = every package likewise complete, but with reservations a reviewer should see — this is also the verdict when every package is done and one or more Acceptance Criteria are "unproven" in the report's Acceptance Criteria section: their tests are written and committed, and only CI on the pull request can run them; PARTIAL = at least one work package is unfinished because a circuit breaker (thrashing, or scope the issue never asked for) genuinely interrupted the work — NEVER a scoping choice, and NEVER the verdict for a complete implementation whose remaining proof is a CI run: PARTIAL opens no pull request, and CI runs only on one; BLOCKED = could not implement, nothing shippable; NEEDS_CONTEXT = the issue is underspecified and a human must clarify.)`
 }
 
 // orchestrationBlock returns the "## Orchestrated implementation" section
@@ -600,8 +612,9 @@ ALWAYS end the session with this report — even if you stopped early or hit a c
    - (List EVERY work package the issue breaks the work into. Write "None — the issue is a single undivided change" when the issue has no multi-part breakdown. STATUS: DONE is only legitimate when every package here is "done".)
    ### Acceptance Criteria
    - <criterion verbatim>
-     - Status: <satisfied | partial | missing>
+     - Status: <satisfied | unproven | partial | missing>
      - Evidence: <file:lines that satisfy it, or the test that exercises it — cite the edge or error test, not a happy-path one, when a new test covers the criterion — or "see PR description">
+   - (unproven = the test that proves the criterion is written and committed but cannot run here — it needs a cluster, a credential, or a job that only CI runs; name the test and the CI job that runs it. An unproven criterion is not partial: partial and missing describe code or tests you have not written.)
    ### Commits
    - <sha7> <subject>
    ### Local verification
@@ -616,8 +629,8 @@ ALWAYS end the session with this report — even if you stopped early or hit a c
    - (Write "none" when you saw nothing outside the issue's scope. This section is for observations you deliberately left alone — a bug next door, a stale doc, a refactor the issue never asked for — so a reviewer can tell a disciplined omission from an oversight. NEVER park a work package or an Acceptance Criterion here: anything the issue asks for is in scope and is implemented, not noted.)
    ### Status
    STATUS: <DONE | DONE_WITH_CONCERNS | PARTIAL | BLOCKED | NEEDS_CONTEXT>
-   (DONE = EVERY work package implemented and tested, every Acceptance Criterion satisfied, every Local verification command passing or failing only in a way shown to be pre-existing on the base, and the PR opened with a "Closes #` + fmt.Sprintf("%d", issueNumber) + `" link; DONE_WITH_CONCERNS = every package likewise complete and the closing PR opened, but with reservations a reviewer should see; PARTIAL = at least one work package is unfinished because a circuit breaker below genuinely interrupted the work — NEVER a scoping choice; the branch is pushed but NO pull request is opened, and a follow-up session on this branch finishes the rest; BLOCKED = could not implement, nothing shippable; NEEDS_CONTEXT = the issue is underspecified and a human must clarify.)
-   Next: <on any verdict but DONE only: the single action a human takes next — e.g. on PARTIAL "rerun implement on branch <branch>"; omit this line on DONE>
+   (DONE = EVERY work package implemented and tested, every Acceptance Criterion satisfied, every Local verification command passing or failing only in a way shown to be pre-existing on the base, and the PR opened with a "Closes #` + fmt.Sprintf("%d", issueNumber) + `" link; DONE_WITH_CONCERNS = every package likewise complete and the closing PR opened, but with reservations a reviewer should see — this is also the verdict when every package is done and one or more Acceptance Criteria are "unproven" above: their tests are written and committed, and only CI on the pull request can run them; PARTIAL = at least one work package is unfinished because a circuit breaker below genuinely interrupted the work — NEVER a scoping choice, and NEVER the verdict for a complete implementation whose remaining proof is a CI run: PARTIAL opens no pull request, and CI runs only on one; the branch is pushed but NO pull request is opened, and a follow-up session on this branch finishes the rest; BLOCKED = could not implement, nothing shippable; NEEDS_CONTEXT = the issue is underspecified and a human must clarify.)
+   Next: <on any verdict but DONE only: the single action a human takes next — e.g. on PARTIAL "rerun implement on branch <branch>"; on DONE_WITH_CONCERNS with unproven criteria, the CI job(s) a reviewer must see green on the pull request; omit this line on DONE>
    Do NOT report DONE or DONE_WITH_CONCERNS when any work package is partial or not started — a complete subset of a multi-package issue is PARTIAL, and PARTIAL opens no pull request.
 
 ## Circuit breakers — stop instead of thrashing
