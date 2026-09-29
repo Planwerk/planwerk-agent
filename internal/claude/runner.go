@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -89,6 +90,23 @@ const (
 	// flush a final envelope without making the failure path drag.
 	claudeWaitDelay = 2 * time.Second
 )
+
+// efforts is the closed set of reasoning-effort levels Claude Code accepts.
+var efforts = []string{"low", "medium", "high", "xhigh", "max"}
+
+// ValidEffort reports whether e is one of the reasoning-effort levels Claude
+// Code accepts (EffortLevels). The root command checks the structuring and
+// finder efforts with it, and the eval every effort it reads, before a session
+// runs.
+func ValidEffort(e string) bool {
+	return slices.Contains(efforts, e)
+}
+
+// EffortLevels lists the levels ValidEffort accepts as "low, medium, high,
+// xhigh, max", for the error that rejects any other effort.
+func EffortLevels() string {
+	return strings.Join(efforts, ", ")
+}
 
 // claudeAllowedTools are pre-approved on every orchestrated `claude -p` session
 // via --allowed-tools so the non-interactive sessions may use them without a
