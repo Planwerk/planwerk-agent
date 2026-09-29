@@ -103,14 +103,15 @@ const envImplementWorkerEffort = "PLANWERK_IMPLEMENT_WORKER_EFFORT"
 
 // envFinderModel overrides the model used by the read-only finder passes (the
 // adversarial pass, the domain specialists, coverage, compliance, the simplify
-// finder, and claim verification) for every subcommand. The --finder-model CLI
-// flag takes precedence when explicitly set. Unset leaves the finders on the
-// main model.
+// finder, the implementation verifier, and claim verification) for every
+// subcommand. The --finder-model CLI flag takes precedence when explicitly set.
+// Unset leaves the compiled-in default (claude.DefaultFinderModel).
 const envFinderModel = "PLANWERK_FINDER_MODEL"
 
 // envFinderEffort overrides the reasoning effort used by the finder passes
 // (low, medium, high, xhigh, max). The --finder-effort CLI flag takes precedence
-// when explicitly set. Unset leaves the finders on the main effort.
+// when explicitly set. Unset leaves the compiled-in default
+// (claude.DefaultFinderEffort).
 const envFinderEffort = "PLANWERK_FINDER_EFFORT"
 
 // envStructureModel overrides the model used by the JSON-structuring passes
@@ -163,9 +164,6 @@ func resolveClaudeTimeout(flagValue time.Duration, flagSet bool) (time.Duration,
 	return claude.DefaultClaudeTimeout, nil
 }
 
-// validEfforts is the closed set of reasoning-effort levels Claude Code accepts.
-var validEfforts = map[string]bool{"low": true, "medium": true, "high": true, "xhigh": true, "max": true}
-
 // resolveString returns the flag value when the flag was set to a non-empty
 // value, else the trimmed value of the environment variable env when that is
 // non-empty, else def. The model and effort resolvers all follow it; the value
@@ -204,8 +202,8 @@ func resolveEffort(flag string, set bool, env, def string, allowEmpty bool, flag
 	if effort == "" && allowEmpty {
 		return "", nil
 	}
-	if !validEfforts[effort] {
-		return "", fmt.Errorf("invalid %s %q: must be one of low, medium, high, xhigh, max (env: %s)", flagName, effort, env)
+	if !claude.ValidEffort(effort) {
+		return "", fmt.Errorf("invalid %s %q: must be one of %s (env: %s)", flagName, effort, claude.EffortLevels(), env)
 	}
 	return effort, nil
 }

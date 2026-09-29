@@ -912,6 +912,37 @@ func TestFinderTierOverridesOnlyTheFinders(t *testing.T) {
 	}
 }
 
+// TestValidEffort locks the closed set of effort levels: the five Claude Code
+// accepts, spelled exactly, and nothing else.
+func TestValidEffort(t *testing.T) {
+	tests := []struct {
+		effort string
+		want   bool
+	}{
+		{"low", true},
+		{"medium", true},
+		{"high", true},
+		{"xhigh", true},
+		{"max", true},
+		{"", false},
+		{"maximum", false},
+		{"High", false},
+	}
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%q", tt.effort), func(t *testing.T) {
+			if got := ValidEffort(tt.effort); got != tt.want {
+				t.Errorf("ValidEffort(%q) = %v, want %v", tt.effort, got, tt.want)
+			}
+		})
+	}
+
+	t.Run("EffortLevels lists the accepted levels", func(t *testing.T) {
+		if got, want := EffortLevels(), "low, medium, high, xhigh, max"; got != want {
+			t.Errorf("EffortLevels() = %q, want %q", got, want)
+		}
+	})
+}
+
 // TestFinderTierIgnoresEmptyOverrides mirrors the other tier options: an empty
 // value is a misconfigured flag, not a request to run with no model.
 func TestFinderTierIgnoresEmptyOverrides(t *testing.T) {
