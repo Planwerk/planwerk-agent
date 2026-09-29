@@ -859,20 +859,28 @@ func TestBuildImplementPrompt_RequiresEdgeOrErrorTest(t *testing.T) {
 	}
 }
 
-// TestFinderTierInheritsMainByDefault locks the compiled-in default: with no
-// --finder-model/--finder-effort the finder passes run on the main tier, exactly
-// as they did before the tier existed.
-func TestFinderTierInheritsMainByDefault(t *testing.T) {
+// TestFinderTierDefaultsToTheCompiledInTier locks that a client built with no
+// finder option runs the finder passes on DefaultFinderModel/DefaultFinderEffort,
+// and on the main tier where those are empty. Written against the constants, it
+// holds whatever the compiled-in finder default is.
+func TestFinderTierDefaultsToTheCompiledInTier(t *testing.T) {
 	c := NewClient(WithModel(testTierOverride), WithEffort(DefaultClaudeEffort))
-	if c.finderModel != "" || c.finderEffort != "" {
-		t.Fatalf("finder tier = %q/%q, want empty (inherit the main tier)", c.finderModel, c.finderEffort)
+	if c.finderModel != DefaultFinderModel || c.finderEffort != DefaultFinderEffort {
+		t.Fatalf("finder tier = %q/%q, want the compiled-in default %q/%q", c.finderModel, c.finderEffort, DefaultFinderModel, DefaultFinderEffort)
 	}
-	if got := firstNonEmpty(c.finderModel, c.model); got != testTierOverride {
-		t.Errorf("resolved finder model = %q, want the main model %q", got, testTierOverride)
+	model, effort := c.FinderTier()
+	if want := firstNonEmpty(DefaultFinderModel, testTierOverride); model != want {
+		t.Errorf("resolved finder model = %q, want %q", model, want)
 	}
-	if got := firstNonEmpty(c.finderEffort, c.effort); got != DefaultClaudeEffort {
-		t.Errorf("resolved finder effort = %q, want the main effort %q", got, DefaultClaudeEffort)
+	if want := firstNonEmpty(DefaultFinderEffort, DefaultClaudeEffort); effort != want {
+		t.Errorf("resolved finder effort = %q, want %q", effort, want)
 	}
+
+	t.Run("NewClient with no options resolves a non-empty tier", func(t *testing.T) {
+		if model, effort := NewClient().FinderTier(); model == "" || effort == "" {
+			t.Errorf("FinderTier() = %q/%q, want a model and an effort", model, effort)
+		}
+	})
 }
 
 // TestFinderTierOverridesOnlyTheFinders proves --finder-model/--finder-effort
@@ -886,11 +894,15 @@ func TestFinderTierOverridesOnlyTheFinders(t *testing.T) {
 		WithFinderModel(testImplementOverride),
 		WithFinderEffort(testWorkerEffort),
 	)
-	if got := firstNonEmpty(c.finderModel, c.model); got != testImplementOverride {
-		t.Errorf("resolved finder model = %q, want %q", got, testImplementOverride)
+	model, effort := c.FinderTier()
+	if model != testImplementOverride {
+		t.Errorf("resolved finder model = %q, want %q", model, testImplementOverride)
 	}
-	if got := firstNonEmpty(c.finderEffort, c.effort); got != testWorkerEffort {
-		t.Errorf("resolved finder effort = %q, want %q", got, testWorkerEffort)
+	if effort != testWorkerEffort {
+		t.Errorf("resolved finder effort = %q, want %q", effort, testWorkerEffort)
+	}
+	if spec := c.finderSpec("", "finder"); spec.model != testImplementOverride || spec.effort != testWorkerEffort {
+		t.Errorf("finderSpec tier = %q/%q, want %q/%q", spec.model, spec.effort, testImplementOverride, testWorkerEffort)
 	}
 	if c.model != testTierOverride || c.effort != DefaultClaudeEffort {
 		t.Errorf("main tier = %q/%q, want the main model and effort — the finder tier must not recolor it", c.model, c.effort)

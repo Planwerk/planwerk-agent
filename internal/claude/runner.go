@@ -310,9 +310,9 @@ type Client struct {
 	implementModel string
 	planModel      string
 	structureModel string
-	// finderModel/finderEffort override model/effort for the read-only finder
-	// passes (see runClaudeFinder). Like implementModel they have no compiled-in
-	// default: empty inherits the main tier (decision 79).
+	// finderModel/finderEffort select the tier of the read-only finder passes
+	// (see FinderTier). NewClient seeds them from DefaultFinderModel and
+	// DefaultFinderEffort; an empty value inherits the main tier (decision 79).
 	finderModel     string
 	finderEffort    string
 	effort          string
@@ -345,7 +345,7 @@ type Client struct {
 type Option func(*Client)
 
 // NewClient returns a Client seeded with the compiled-in defaults
-// (DefaultClaudeTimeout/Model/Effort and the planning and structuring
+// (DefaultClaudeTimeout/Model/Effort and the planning, finder and structuring
 // defaults), then applies opts.
 func NewClient(opts ...Option) *Client {
 	c := &Client{
@@ -353,6 +353,8 @@ func NewClient(opts ...Option) *Client {
 		model:           DefaultClaudeModel,
 		planModel:       DefaultPlanModel,
 		structureModel:  DefaultStructureModel,
+		finderModel:     DefaultFinderModel,
+		finderEffort:    DefaultFinderEffort,
 		effort:          DefaultClaudeEffort,
 		planEffort:      DefaultPlanEffort,
 		structureEffort: DefaultStructureEffort,
@@ -398,9 +400,10 @@ func WithImplementModel(m string) Option {
 
 // WithFinderModel sets the model used by the read-only finder passes (the
 // adversarial pass, the domain specialists, the coverage map, the compliance
-// check, the simplify finder, and claim verification); every other session stays
-// on the main model. An empty m is ignored, which leaves the zero value in place
-// — the finders then inherit the main model (see Client.finderModel).
+// check, the simplify finder, the implementation verifier, and claim
+// verification); every other session stays on the main model. An empty m is
+// ignored, which leaves the seeded default in place (DefaultFinderModel; empty
+// inherits the main model, see FinderTier).
 func WithFinderModel(m string) Option {
 	return func(c *Client) {
 		if m != "" {
@@ -410,7 +413,8 @@ func WithFinderModel(m string) Option {
 }
 
 // WithFinderEffort sets the reasoning effort used by the finder passes. An empty
-// e is ignored, leaving the finders on the main effort.
+// e is ignored, which leaves the seeded default in place (DefaultFinderEffort;
+// empty inherits the main effort, see FinderTier).
 func WithFinderEffort(e string) Option {
 	return func(c *Client) {
 		if e != "" {
@@ -517,15 +521,23 @@ func (c *Client) runClaudeFindings(dir, prompt, label string) (text, model strin
 // the zero Catalog, which opens no directory.
 var noCatalog patterns.Catalog
 
-// finderSpec is the read-only session spec on the finder tier, which both
-// finder runners build on so their tier resolution cannot drift apart. Empty
-// finderModel and finderEffort inherit the main model and effort (decision 79).
+// FinderTier returns the resolved model and effort the finder passes run on:
+// the finder tier's own value where set, the main tier's otherwise (decision
+// 79). finderSpec runs on it.
+func (c *Client) FinderTier() (model, effort string) {
+	return firstNonEmpty(c.finderModel, c.model), firstNonEmpty(c.finderEffort, c.effort)
+}
+
+// finderSpec is the read-only session spec on the finder tier (FinderTier),
+// which both finder runners build on so their tier resolution cannot drift
+// apart.
 func (c *Client) finderSpec(dir, label string) runSpec {
+	model, effort := c.FinderTier()
 	return runSpec{
 		dir:      dir,
 		label:    label,
-		model:    firstNonEmpty(c.finderModel, c.model),
-		effort:   firstNonEmpty(c.finderEffort, c.effort),
+		model:    model,
+		effort:   effort,
 		readOnly: true,
 	}
 }
