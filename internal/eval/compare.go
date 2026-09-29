@@ -29,14 +29,17 @@ const (
 )
 
 // Comparison is a candidate report judged against a baseline: the verdict, one
-// check per judged metric, the recall by pass on both sides, and each side's
-// cost per run. Cost is reported beside the verdict and never decides it.
+// check per judged metric, the recall by pass on both sides, each side's cost
+// per run, and the tiers each side ran on. Cost is reported beside the verdict
+// and never decides it.
 type Comparison struct {
-	Verdict   string      `json:"verdict"`
-	Checks    []Check     `json:"checks"`
-	Passes    []PassDelta `json:"recall_by_pass"`
-	Baseline  RunCost     `json:"baseline"`
-	Candidate RunCost     `json:"candidate"`
+	Verdict        string      `json:"verdict"`
+	Checks         []Check     `json:"checks"`
+	Passes         []PassDelta `json:"recall_by_pass"`
+	Baseline       RunCost     `json:"baseline"`
+	Candidate      RunCost     `json:"candidate"`
+	BaselineTiers  Tiers       `json:"baseline_tiers"`
+	CandidateTiers Tiers       `json:"candidate_tiers"`
 }
 
 // Check is one metric's aggregate ratio on both sides and the floor the
@@ -124,9 +127,11 @@ func Compare(baseline, candidate Report) (Comparison, error) {
 			check("precision", b.Precision, c.Precision, precisionTolerance),
 			check("severity_accuracy", b.SeverityAccuracy, c.SeverityAccuracy, severityTolerance),
 		},
-		Passes:    passDeltas(baseline.Passes, candidate.Passes),
-		Baseline:  runCost(baseline),
-		Candidate: runCost(candidate),
+		Passes:         passDeltas(baseline.Passes, candidate.Passes),
+		Baseline:       runCost(baseline),
+		Candidate:      runCost(candidate),
+		BaselineTiers:  baseline.Tiers,
+		CandidateTiers: candidate.Tiers,
 	}
 	for _, ch := range out.Checks {
 		if !ch.Held {
@@ -200,13 +205,15 @@ func nameSet(names []string) []string {
 	return slices.Compact(slices.Sorted(slices.Values(names)))
 }
 
-// RenderComparison writes the verdict, one row per check, the recall by pass on
-// both sides, and both sides' cost per run with the relative change. Ratios
-// carry one decimal so a candidate a fraction of a point off its floor reads
-// differently from it.
+// RenderComparison writes the verdict, the BASELINE TIERS and CANDIDATE TIERS
+// lines, one row per check, the recall by pass on both sides, and both sides'
+// cost per run with the relative change. Ratios carry one decimal so a
+// candidate a fraction of a point off its floor reads differently from it.
 func RenderComparison(w io.Writer, cmp Comparison) {
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintf(w, "VERDICT: %s\n", cmp.Verdict)
+	_, _ = fmt.Fprintf(w, "%-*s  %s\n", labelWidth, "BASELINE TIERS", cmp.BaselineTiers)
+	_, _ = fmt.Fprintf(w, "%-*s  %s\n", labelWidth, "CANDIDATE TIERS", cmp.CandidateTiers)
 
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintf(w, "%-*s  %9s  %9s  %9s  %s\n", labelWidth, "METRIC", "BASELINE", "CANDIDATE", "FLOOR", "RESULT")
