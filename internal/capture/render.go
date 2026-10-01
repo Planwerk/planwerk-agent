@@ -29,7 +29,19 @@ type Provenance struct {
 // Marker renders the stable provenance marker comment, e.g.
 // "<!-- planwerk-agent: captured from owner/repo#42 -->".
 func (p Provenance) Marker() string {
-	return fmt.Sprintf("%s%s#%d -->", provenanceMarkerPrefix, p.Repo, p.Issue)
+	return MarkerFor(p.source())
+}
+
+// source is the reference the marker names, "owner/repo#42".
+func (p Provenance) source() string {
+	return fmt.Sprintf("%s#%d", p.Repo, p.Issue)
+}
+
+// MarkerFor renders the provenance marker comment for source, the reference
+// the page's knowledge came from: "owner/repo#42" for an issue or a pull
+// request, "owner/repo@<sha>" for a commit, "owner/repo:<path>" for a file.
+func MarkerFor(source string) string {
+	return provenanceMarkerPrefix + source + " -->"
 }
 
 // RenderPage returns the page as it would be written: the stable provenance
@@ -37,8 +49,41 @@ func (p Provenance) Marker() string {
 // rendering the same page twice is byte-identical and a re-run that re-proposes
 // the same stable slug updates the page in place rather than appending.
 func RenderPage(p ProposedPage, prov Provenance) string {
-	body := strings.TrimRight(p.Body, "\n")
-	return prov.Marker() + "\n\n" + body + "\n"
+	return RenderWithSource(p.Body, prov.source())
+}
+
+// RenderWithSource returns body as a wiki page: the provenance marker for
+// source (MarkerFor), a blank line, the body with its trailing newlines
+// trimmed, and one newline.
+func RenderWithSource(body, source string) string {
+	return MarkerFor(source) + "\n\n" + strings.TrimRight(body, "\n") + "\n"
+}
+
+// StripMarker returns page without its provenance marker: a first line that
+// starts with the marker prefix is removed together with one blank line after
+// it. A page that does not start with a marker is returned unchanged.
+func StripMarker(page string) string {
+	_, body := SplitMarker(page)
+	return body
+}
+
+// SplitMarker returns the source the provenance marker of page names and the
+// page without the marker (StripMarker). The source is empty for a page that
+// does not start with a marker.
+func SplitMarker(page string) (source, body string) {
+	if !strings.HasPrefix(page, provenanceMarkerPrefix) {
+		return "", page
+	}
+	first, rest, _ := strings.Cut(page, "\n")
+	// The comment ends at its first terminator, whatever a hand-written or
+	// CRLF marker line holds around it: a source that kept the terminator would
+	// render as a marker with two (MarkerFor).
+	source, _, _ = strings.Cut(strings.TrimPrefix(first, provenanceMarkerPrefix), "-->")
+	// The blank line of a page with CRLF line endings holds a carriage return.
+	if after, ok := strings.CutPrefix(rest, "\r\n"); ok {
+		return strings.TrimSpace(source), after
+	}
+	return strings.TrimSpace(source), strings.TrimPrefix(rest, "\n")
 }
 
 // Renderer writes a CaptureResult as Markdown.
