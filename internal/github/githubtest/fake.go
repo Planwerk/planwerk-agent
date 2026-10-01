@@ -151,6 +151,16 @@ type Fake struct {
 	CommitMessages   map[string]string
 	CommitMessageErr error
 
+	// IssueThread and PRThread are the templates GetIssueThread and
+	// GetPRThread return, each as a copy with Number set from the argument;
+	// nil yields a thread carrying only the number. GetPRThread fills
+	// ReviewThreads from Threads when the template leaves it nil. Their Err
+	// fields fail them.
+	IssueThread    *github.IssueThread
+	IssueThreadErr error
+	PRThread       *github.PRThread
+	PRThreadErr    error
+
 	// Hooks script an operation completely when set.
 	ListChecksFn             func(owner, name, sha string) ([]github.CheckRun, error)
 	FailedRunLogsFn          func(owner, name string, runID int64) (string, error)
@@ -208,6 +218,8 @@ type Fake struct {
 	ListMergedPRsFn          func(owner, name string) ([]github.MergedPR, error)
 	ListClosedIssuesFn       func(owner, name string) ([]github.ClosedIssue, error)
 	CommitMessageFn          func(dir, sha string) (string, error)
+	GetIssueThreadFn         func(owner, name string, number int) (*github.IssueThread, error)
+	GetPRThreadFn            func(owner, name string, number int) (*github.PRThread, error)
 }
 
 // record appends one call and returns its index, so the recorded error can be
@@ -1070,4 +1082,45 @@ func (f *Fake) CommitMessage(dir, sha string) (string, error) {
 		return "", f.CommitMessageErr
 	}
 	return f.CommitMessages[sha], nil
+}
+
+func (f *Fake) GetIssueThread(owner, name string, number int) (*github.IssueThread, error) {
+	i := f.record("GetIssueThread", owner, name, number)
+	if f.GetIssueThreadFn != nil {
+		thread, err := f.GetIssueThreadFn(owner, name, number)
+		f.setErr(i, err)
+		return thread, err
+	}
+	f.setErr(i, f.IssueThreadErr)
+	if f.IssueThreadErr != nil {
+		return nil, f.IssueThreadErr
+	}
+	var thread github.IssueThread
+	if f.IssueThread != nil {
+		thread = *f.IssueThread
+	}
+	thread.Number = number
+	return &thread, nil
+}
+
+func (f *Fake) GetPRThread(owner, name string, number int) (*github.PRThread, error) {
+	i := f.record("GetPRThread", owner, name, number)
+	if f.GetPRThreadFn != nil {
+		thread, err := f.GetPRThreadFn(owner, name, number)
+		f.setErr(i, err)
+		return thread, err
+	}
+	f.setErr(i, f.PRThreadErr)
+	if f.PRThreadErr != nil {
+		return nil, f.PRThreadErr
+	}
+	var thread github.PRThread
+	if f.PRThread != nil {
+		thread = *f.PRThread
+	}
+	thread.Number = number
+	if thread.ReviewThreads == nil {
+		thread.ReviewThreads = f.Threads
+	}
+	return &thread, nil
 }
