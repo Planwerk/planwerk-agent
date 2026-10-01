@@ -17,6 +17,7 @@ import (
 func newAddressCmd(deps *runtimeDeps) *cobra.Command {
 	var addressCfg address.Options
 	var noReply, printBarePrompt bool
+	var wiki wikiFlags
 
 	addressCmd := &cobra.Command{
 		Use:   "address <pr-ref>",
@@ -70,6 +71,7 @@ or short form (owner/repo#123).`,
 			opts := addressCfg
 			opts.Version = deps.version
 			opts.Remote = deps.remoteOpts
+			opts.Wiki = wiki.resolve(cmd.Flags(), deps.fileCfg.Wiki)
 			if printBarePrompt {
 				return address.PrintBarePrompt(cmd.OutOrStdout(), opts, claude.BuildBareAddressPrompt)
 			}
@@ -96,6 +98,7 @@ or short form (owner/repo#123).`,
 	addressFlags.IntVar(&addressCfg.MaxPatterns, "max-patterns", patterns.DefaultMaxPatternsInPrompt, "Max review patterns injected into the prompt (<=0 disables truncation, env: "+envMaxPatterns+")")
 	addressFlags.BoolVar(&addressCfg.Local, "local", false, "Operate on the current working directory instead of cloning into a temp dir")
 	addressFlags.BoolVar(&addressCfg.Force, "force", false, "With --local, skip the confirmation prompt when the working tree is dirty")
+	wiki.register(addressFlags)
 
 	return addressCmd
 }

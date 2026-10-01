@@ -50,6 +50,10 @@ type Context struct {
 	Local bool
 }
 
+// resolveWikiFn resolves the target repo's wiki. It matches patterns.ResolveWiki.
+// Mirrors propose.resolveWikiFn.
+type resolveWikiFn func(owner, name string, wopts patterns.WikiOptions, ropts patterns.RemoteOptions) patterns.ResolvedWiki
+
 // BareContext is the input for the self-contained ("bare") address prompt
 // rendered by --print-bare-prompt. The orchestrator clones the target repo at
 // prompt-build time so it can run technology detection and inline the relevant
