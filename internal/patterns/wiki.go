@@ -30,6 +30,10 @@ const (
 // glossary.maxGlossaryBytes.
 const maxMemoryBytes = 64 * 1024
 
+// MaxMemoryPageBytes is the per-page cap LoadMemoryPages reads under, for a
+// caller that writes a page a later session must be able to read.
+const MaxMemoryPageBytes = maxMemoryBytes
+
 // maxMemoryTotalBytes caps the page bodies LoadMemoryPages keeps for one run.
 // The per-page cap bounds a page, not their number: every kept body is held in
 // memory and written again by MaterializeMemory, so a wiki with tens of

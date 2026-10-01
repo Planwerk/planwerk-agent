@@ -353,6 +353,33 @@ type Usage struct {
 	Passes              []PassUsage `json:"passes,omitempty"`
 }
 
+// Add returns the totals of u plus those of o. The result carries no per-pass
+// breakdown.
+func (u Usage) Add(o Usage) Usage {
+	return Usage{
+		Calls:               u.Calls + o.Calls,
+		InputTokens:         u.InputTokens + o.InputTokens,
+		OutputTokens:        u.OutputTokens + o.OutputTokens,
+		CacheReadTokens:     u.CacheReadTokens + o.CacheReadTokens,
+		CacheCreationTokens: u.CacheCreationTokens + o.CacheCreationTokens,
+		CostUSD:             u.CostUSD + o.CostUSD,
+	}
+}
+
+// Sub returns the totals of u minus those of o: what was spent between the
+// snapshot o and the later snapshot u. The result carries no per-pass
+// breakdown.
+func (u Usage) Sub(o Usage) Usage {
+	return Usage{
+		Calls:               u.Calls - o.Calls,
+		InputTokens:         u.InputTokens - o.InputTokens,
+		OutputTokens:        u.OutputTokens - o.OutputTokens,
+		CacheReadTokens:     u.CacheReadTokens - o.CacheReadTokens,
+		CacheCreationTokens: u.CacheCreationTokens - o.CacheCreationTokens,
+		CostUSD:             u.CostUSD - o.CostUSD,
+	}
+}
+
 // PassUsage is one pass's share of a Run's Usage, named by the label the runner
 // tags its `claude -p` invocation with ("review", "adversarial",
 // "specialist-security", "elaborate-structure", …). The counters mean exactly
