@@ -83,11 +83,9 @@ Every candidate MUST be checked against the existing wiki entries AND the patter
 
 ## Page conventions
 
-- A review pattern's body MUST follow the catalog format exactly: a "# Review Pattern: <name>" header, then the "**Review-Area**:", "**Detection-Hint**:", "**Severity**:", "**Category**:", "**Applies-When**:", and "**Sources**:" metadata lines, then a "## What to check" section and a "## Why it matters" section.
-- A memory page's body is Markdown in this order: a "# <title>" heading that names the decision, a "**Summary**: <one sentence>" line that states the decision itself, then free-form prose with the reasoning. Sessions see only the title and that sentence in an index and open the page when the sentence bears on their task, so state the decision in it, not its background. An update to an existing page that has no "**Summary**:" line adds one.
-- Use a stable, descriptive kebab-case slug in the path (e.g. "review_patterns/escape-untrusted-fences.md", "memory/capture-is-propose-only.md") so a re-run that re-proposes the same knowledge updates the page rather than appending a new one. Do NOT add any provenance marker or timestamp to the body — that is stamped on later.
-
 `)
+	sb.WriteString(pageConventionsBlock())
+	sb.WriteString("\n")
 
 	sb.WriteString("## Review findings\n\n")
 	if len(ctx.Findings) == 0 {
@@ -141,6 +139,18 @@ Every candidate MUST be checked against the existing wiki entries AND the patter
 	sb.WriteString("Now propose the knowledge. Mine the findings for recurring, generalizable patterns and the plan and report for durable decisions, deduplicate every candidate against the entries and catalog above, and author each candidate page's full body. If nothing clears the bar, say so and propose nothing.\n")
 
 	return sb.String()
+}
+
+// pageConventionsBlock returns the three bullets that state how a proposed
+// page is written: the format of a review pattern, the format of a memory
+// page, and the stable slug. The capture prompt and the two bootstrap prompts
+// carry it under their own heading, so a page reads the same whichever pass
+// proposed it.
+func pageConventionsBlock() string {
+	return `- A review pattern's body MUST follow the catalog format exactly: a "# Review Pattern: <name>" header, then the "**Review-Area**:", "**Detection-Hint**:", "**Severity**:", "**Category**:", "**Applies-When**:", and "**Sources**:" metadata lines, then a "## What to check" section and a "## Why it matters" section.
+- A memory page's body is Markdown in this order: a "# <title>" heading that names the decision, a "**Summary**: <one sentence>" line that states the decision itself, then free-form prose with the reasoning. Sessions see only the title and that sentence in an index and open the page when the sentence bears on their task, so state the decision in it, not its background. An update to an existing page that has no "**Summary**:" line adds one.
+- Use a stable, descriptive kebab-case slug in the path (e.g. "review_patterns/escape-untrusted-fences.md", "memory/capture-is-propose-only.md") so a re-run that re-proposes the same knowledge updates the page rather than appending a new one. Do NOT add any provenance marker or timestamp to the body — that is stamped on later.
+`
 }
 
 // formatCaptureFinding renders the salient fields of a review finding for the
