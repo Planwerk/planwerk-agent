@@ -122,3 +122,33 @@ func TestFake_HooksWinOverDefaults(t *testing.T) {
 		t.Errorf("default issue = %+v, %v", iss, err)
 	}
 }
+
+func TestFake_HistoryReadersAnswerFromTheirFields(t *testing.T) {
+	f := &Fake{
+		History:        []github.HistoryCommit{{SHA: "c1"}},
+		MergedPRsErr:   errors.New("rate limited"),
+		CommitMessages: map[string]string{"c1": "Subject"},
+	}
+	if commits, err := f.DefaultBranchHistory("o", "r"); err != nil || len(commits) != 1 || commits[0].SHA != "c1" {
+		t.Errorf("DefaultBranchHistory = %+v, %v", commits, err)
+	}
+	if _, err := f.ListMergedPRs("o", "r"); err == nil || err.Error() != "rate limited" {
+		t.Errorf("ListMergedPRs err = %v, want the scripted error", err)
+	}
+	if issues, err := f.ListClosedIssues("o", "r"); err != nil || issues != nil {
+		t.Errorf("ListClosedIssues = %+v, %v, want an empty listing", issues, err)
+	}
+	if msg, err := f.CommitMessage("d", "c1"); err != nil || msg != "Subject" {
+		t.Errorf("CommitMessage = %q, %v", msg, err)
+	}
+	if msg, err := f.CommitMessage("d", "unknown"); err != nil || msg != "" {
+		t.Errorf("CommitMessage of an unscripted SHA = %q, %v, want \"\"", msg, err)
+	}
+	f.CommitMessageFn = func(_, sha string) (string, error) { return "", errors.New("no commit " + sha) }
+	if _, err := f.CommitMessage("d", "c1"); err == nil || err.Error() != "no commit c1" {
+		t.Errorf("hook not used: %v", err)
+	}
+	if f.Count("CommitMessage") != 3 || f.Calls("ListMergedPRs")[0].Err == nil {
+		t.Errorf("calls not recorded: %d CommitMessage calls, ListMergedPRs err %v", f.Count("CommitMessage"), f.Calls("ListMergedPRs")[0].Err)
+	}
+}
