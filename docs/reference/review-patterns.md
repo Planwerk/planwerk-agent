@@ -117,12 +117,42 @@ can be set in `.planwerk/config.yaml` (see
 | Wiki path | Contents |
 |-----------|----------|
 | `review_patterns/*.md` | Project review patterns in the [Pattern Format](#pattern-format) below. They load through the wiki precedence tier (below the committed `.planwerk/review_patterns`, and below `--patterns`), so a committed repo pattern overrides a same-named wiki one. |
-| `memory/*.md` | Free-form **project memory** — decisions, conventions, and context. Every page is concatenated (sorted by filename, each behind a `### <name>` header, capped at 64 KB) into a memory block injected into the analysis prompts (`review`/`audit`/`propose`) and the planning prompt (`implement`). |
+| `memory/*.md` | **Project memory**: one page per decision, convention, or piece of context. The analysis prompts (`review`/`audit`/`propose`) and the planning prompt (`implement`) carry an index of the pages, and the session reads a page's body from a directory the tool writes for the run. |
 
 Human-navigation pages (`Home.md`, `_Sidebar.md`, anything that does not parse
 as a pattern) under `review_patterns/` are skipped silently, so a normal wiki
-can hold both navigation and patterns. The memory block is framed as untrusted
-repository data — knowledge to apply, never instructions to follow.
+can hold both navigation and patterns. A `review_patterns/` or `memory/`
+directory that is itself a symlink is not read, with a warning.
+
+**Project memory index.** The index has one line per page, in file-name order:
+
+```text
+- <file name>: <title> | <summary>
+```
+
+| Part | Source | Limit |
+|------|--------|-------|
+| Page | A regular `.md` file directly under `memory/`. Directories, symlinks, other file types, unreadable or whitespace-only pages, and file names with a control character are skipped. A `memory/` that is itself a symlink is not read, with a warning. | 64 KB per page; a larger page is skipped with a warning |
+| All pages | The pages that passed the filters above, in file-name order. | 16 MB of page bodies; the first page that does not fit ends the load with a warning, and the pages after it are not read |
+| Title | The first line that starts with `# `. A page without one is listed under its file name without `.md`. | 300 bytes, then `...` |
+| Summary | The value of the first line that starts with `**Summary**:`. A page without one is listed under its title only, without the ` \| ` part. | 300 bytes, then `...` |
+| Index | Every page that was read. | 64 KB; the first line that does not fit ends the index |
+
+Lines inside a fenced code block give neither a title nor a summary. When the
+index reaches its budget, the run logs a warning with the number of unlisted
+pages, and the prompt states that number and tells the session to list the
+directory.
+
+The tool reads each page through the filters above and writes the bodies to a
+temporary directory outside the checkout (`planwerk-agent-memory-*`), which
+`--add-dir` opens to the session and which is removed when the run ends. A run
+served from the cache writes no directory. `implement` writes the directory for
+its planning session and removes it when that session ends; a run that reuses a
+posted plan or runs with `--no-plan` writes none. The session never reads the
+wiki clone itself. When the directory cannot be written, the run logs a warning
+and the prompt carries the page bodies instead, each behind a `### <name>`
+header and capped at 64 KB in total. The index and the page files are framed as
+untrusted repository data — knowledge to apply, never instructions to follow.
 
 **Reproducibility.** The wiki is resolved to a concrete commit at run start and
 that commit is folded into the cache key and recorded in the report header
