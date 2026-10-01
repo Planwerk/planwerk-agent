@@ -61,6 +61,10 @@ type Options struct {
 	// Remote configures how remote pattern URIs (--patterns github:..., git+...)
 	// resolve into local directories; carries the --remote-patterns-ttl value.
 	Remote patterns.RemoteOptions
+	// Wiki configures the target repo's GitHub Wiki as a knowledge source: its
+	// review_patterns/ load as a pattern tier and its memory pages are handed
+	// to every address session as project memory.
+	Wiki patterns.WikiOptions
 }
 
 // Runner glues together the GitHub client, the Claude addresser, and the
@@ -76,6 +80,10 @@ type Runner struct {
 	// IsTTY reports whether the selector should prompt interactively. When it
 	// returns false the run defaults to addressing every selected thread.
 	IsTTY func() bool
+	// ResolveWiki resolves the target repo's wiki. Defaults to
+	// patterns.ResolveWiki; a Runner seam so the project-memory wiring can be
+	// exercised without cloning a real wiki.
+	ResolveWiki resolveWikiFn
 }
 
 // NewRunner builds a Runner with the production GitHub backend, the given Claude
@@ -174,7 +182,6 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		return nil
 	}
 
-	pats := loadPatterns(opts, pr.Dir, "origin/"+pr.BaseBranch)
 	sks := skills.LoadFromRef(pr.Dir, "origin/"+pr.BaseBranch)
 
 	if opts.PrintPrompt {
@@ -183,8 +190,10 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 			unit = selected[:1] // render the first thread's prompt
 		}
 		// A printed prompt outlives the run, so it carries the pattern bodies
-		// (zero Catalog) instead of pointing at a directory removed on exit.
-		prompt := r.BuildPrompt(r.contextFor(opts, pr, unit, pats, patterns.Catalog{}, sks))
+		// (zero Catalog) instead of pointing at a directory removed on exit. It
+		// resolves no wiki and carries no project memory.
+		pats := loadPatterns(opts, pr.Dir, "origin/"+pr.BaseBranch, "")
+		prompt := r.BuildPrompt(r.contextFor(opts, pr, unit, pats, patterns.Catalog{}, patterns.MemoryCatalog{}, sks))
 		if _, err := io.WriteString(w, prompt); err != nil {
 			return fmt.Errorf("writing prompt: %w", err)
 		}
@@ -194,18 +203,25 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		return nil
 	}
 
-	return r.dispatch(w, opts, pr, fullName, selected, pats, sks)
+	// The wiki is resolved only for a run that dispatches a session: a run
+	// with nothing to address, a dry run, and a printed prompt returned above.
+	wiki := r.ResolveWiki(owner, repo, opts.Wiki, opts.Remote)
+	pats := loadPatterns(opts, pr.Dir, "origin/"+pr.BaseBranch, wiki.PatternsDir)
+
+	return r.dispatch(w, opts, pr, fullName, selected, pats, sks, wiki.MemoryPages)
 }
 
 // dispatch drives the address work: aggregate (one session over all threads) or
 // per-thread (one session per thread, bounded by MaxIterations). It collects
 // the per-thread results, posts the aggregate report, and returns an escalation
 // or max-iterations error when the run could not finish cleanly.
-func (r *Runner) dispatch(w io.Writer, opts Options, pr *github.PR, fullName string, selected []github.ReviewThread, pats []patterns.Pattern, sks []skills.Skill) error {
-	// One catalog per address run, shared by every per-thread or aggregate
-	// session and removed when dispatch returns.
+func (r *Runner) dispatch(w io.Writer, opts Options, pr *github.PR, fullName string, selected []github.ReviewThread, pats []patterns.Pattern, sks []skills.Skill, memory []patterns.MemoryPage) error {
+	// One catalog and one memory directory per address run, shared by every
+	// per-thread or aggregate session and removed when dispatch returns.
 	cat, cleanupCatalog := patterns.MaterializeOrWarn(pats)
 	defer cleanupCatalog()
+	mem, cleanupMemory := patterns.MaterializeMemoryOrWarn(memory)
+	defer cleanupMemory()
 
 	var addressed []report.AddressedThread
 	var summaries []string
@@ -220,7 +236,7 @@ func (r *Runner) dispatch(w io.Writer, opts Options, pr *github.PR, fullName str
 			}
 			processed++
 			_, _ = fmt.Fprintf(w, "Addressing thread %s (%s)...\n", t.ID, threadLocation(t))
-			result, err := r.addressUnit(w, opts, pr, []github.ReviewThread{t}, pats, cat, sks)
+			result, err := r.addressUnit(w, opts, pr, []github.ReviewThread{t}, pats, cat, mem, sks)
 			if err != nil {
 				return err
 			}
@@ -236,7 +252,7 @@ func (r *Runner) dispatch(w io.Writer, opts Options, pr *github.PR, fullName str
 		}
 	} else {
 		_, _ = fmt.Fprintf(w, "Addressing %d thread(s) as one aggregate commit...\n", len(selected))
-		result, err := r.addressUnit(w, opts, pr, selected, pats, cat, sks)
+		result, err := r.addressUnit(w, opts, pr, selected, pats, cat, mem, sks)
 		if err != nil {
 			return err
 		}
@@ -271,8 +287,8 @@ func (r *Runner) dispatch(w io.Writer, opts Options, pr *github.PR, fullName str
 // addressUnit runs one Claude address session, publishes the follow-up
 // commit(s) it made, and (gated) replies to and resolves each addressed thread.
 // The push is fatal on failure; replying and resolving are best-effort.
-func (r *Runner) addressUnit(w io.Writer, opts Options, pr *github.PR, threads []github.ReviewThread, pats []patterns.Pattern, cat patterns.Catalog, sks []skills.Skill) (*report.AddressResult, error) {
-	result, err := r.Claude.Address(pr.Dir, r.contextFor(opts, pr, threads, pats, cat, sks))
+func (r *Runner) addressUnit(w io.Writer, opts Options, pr *github.PR, threads []github.ReviewThread, pats []patterns.Pattern, cat patterns.Catalog, mem patterns.MemoryCatalog, sks []skills.Skill) (*report.AddressResult, error) {
+	result, err := r.Claude.Address(pr.Dir, r.contextFor(opts, pr, threads, pats, cat, mem, sks))
 	if err != nil {
 		return nil, fmt.Errorf("claude address: %w", err)
 	}
@@ -365,7 +381,7 @@ func pickByID(w io.Writer, threads []github.ReviewThread, ids []string) []github
 }
 
 // contextFor assembles the Claude prompt context for a unit of work.
-func (r *Runner) contextFor(opts Options, pr *github.PR, threads []github.ReviewThread, pats []patterns.Pattern, cat patterns.Catalog, sks []skills.Skill) Context {
+func (r *Runner) contextFor(opts Options, pr *github.PR, threads []github.ReviewThread, pats []patterns.Pattern, cat patterns.Catalog, mem patterns.MemoryCatalog, sks []skills.Skill) Context {
 	return Context{
 		RepoFullName:       fmt.Sprintf("%s/%s", pr.Owner, pr.Repo),
 		PRNumber:           pr.Number,
@@ -376,6 +392,7 @@ func (r *Runner) contextFor(opts Options, pr *github.PR, threads []github.Review
 		OneCommitPerThread: opts.OneCommitPerThread,
 		Patterns:           pats,
 		Catalog:            cat,
+		Memory:             mem,
 		MaxPatterns:        opts.MaxPatterns,
 		Skills:             sks,
 		StyleGuidePath:     styleguide.Find(pr.Dir),
@@ -398,6 +415,9 @@ func (r *Runner) applyDefaults(opts *Options) {
 	if r.IsTTY == nil {
 		r.IsTTY = workspace.IsStdinTTY
 	}
+	if r.ResolveWiki == nil {
+		r.ResolveWiki = patterns.ResolveWiki
+	}
 }
 
 // anyAddressed reports whether any thread in the result was committed (DONE or
@@ -416,8 +436,10 @@ func anyAddressed(threads []report.AddressedThread) bool {
 // review-pattern catalog filtered by those tags. Mirrors fix.loadPatterns so
 // the address change is grounded in the same pattern set the rest of the tool
 // uses, plus any project-specific patterns under .planwerk/review_patterns/.
-// Failures are non-fatal: the run falls back to no patterns.
-func loadPatterns(opts Options, repoDir, baseRef string) []patterns.Pattern {
+// wikiPatternsDir is the review-pattern directory of the resolved wiki, empty
+// for a run without one. Failures are non-fatal: the run falls back to no
+// patterns.
+func loadPatterns(opts Options, repoDir, baseRef, wikiPatternsDir string) []patterns.Pattern {
 	tags := detect.Technologies(repoDir)
 	if len(tags) > 0 {
 		slog.Info("detected technologies", "technologies", strings.Join(tags, ", "))
@@ -425,6 +447,7 @@ func loadPatterns(opts Options, repoDir, baseRef string) []patterns.Pattern {
 	pats := patterns.LoadForRepoOrWarn(patterns.RepoLoadOptions{
 		RepoDir:    repoDir,
 		RepoRef:    baseRef,
+		Wiki:       wikiPatternsDir,
 		Extra:      opts.PatternDirs,
 		Tags:       tags,
 		NoEmbedded: opts.NoLocalPatterns,
