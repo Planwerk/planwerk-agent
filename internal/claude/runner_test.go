@@ -577,7 +577,7 @@ func TestClaudeRunError_NoOutputAtAll(t *testing.T) {
 // streaming runners to one argv: strip the output-format tail each asks for
 // and the rest must be identical.
 func TestClaudeArgs_RunnersDifferOnlyInOutputFormat(t *testing.T) {
-	full := runSpec{model: "opus", effort: "high", permissionMode: "plan", jsonSchema: `{"type":"object"}`, readOnly: true, agentsJSON: "{}", appendSystemPrompt: "contract", sessionID: "0b6f4a8e-6a4c-4c1e-9a55-3f0d2c1b7e21", addDir: "/tmp/planwerk-agent-patterns-test"}
+	full := runSpec{model: "opus", effort: "high", permissionMode: "plan", jsonSchema: `{"type":"object"}`, readOnly: true, agentsJSON: "{}", appendSystemPrompt: "contract", sessionID: "0b6f4a8e-6a4c-4c1e-9a55-3f0d2c1b7e21", addDirs: []string{"/tmp/planwerk-agent-patterns-test"}}
 	structuring := runSpec{model: "sonnet", effort: "medium", readOnly: true, noTools: true, jsonSchema: `{"type":"object"}`}
 
 	for _, tc := range []struct {
@@ -689,13 +689,14 @@ func TestClaudeArgs_ToolFlagsSurviveWithoutNoTools(t *testing.T) {
 }
 
 // TestClaudeArgs_AddDirFollowsThePermissionMode pins where the pattern catalog
-// directory lands in the argv. --add-dir is variadic, so it must carry exactly
-// one value and be followed by another flag, never by a token the CLI could
-// read as a second directory.
+// directory and the project memory directory land in the argv. --add-dir is
+// variadic, so one flag carries every directory, and the last directory must be
+// followed by another flag, never by a token the CLI could read as one more
+// directory.
 func TestClaudeArgs_AddDirFollowsThePermissionMode(t *testing.T) {
 	t.Parallel()
 
-	args := NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", permissionMode: claudeAutoPermissionMode, addDir: "/x/y"}, "json")
+	args := NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", permissionMode: claudeAutoPermissionMode, addDirs: []string{"/x/y"}}, "json")
 	i := slices.Index(args, "--permission-mode")
 	if i == -1 || i+4 >= len(args) {
 		t.Fatalf("argv lacks --permission-mode followed by --add-dir, its value and a flag; got %v", args)
@@ -704,37 +705,62 @@ func TestClaudeArgs_AddDirFollowsThePermissionMode(t *testing.T) {
 		t.Errorf("want --add-dir /x/y right after the permission mode, then a flag; got %v", args)
 	}
 
+	// Two directories follow the one flag, in order, and a flag follows them.
+	args = NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", permissionMode: claudeAutoPermissionMode, addDirs: []string{"/a", "/b"}}, "json")
+	i = slices.Index(args, "--permission-mode")
+	if i == -1 || i+5 >= len(args) {
+		t.Fatalf("argv lacks --permission-mode followed by --add-dir, two values and a flag; got %v", args)
+	}
+	if !slices.Equal(args[i+2:i+5], []string{"--add-dir", "/a", "/b"}) || !strings.HasPrefix(args[i+5], "--") {
+		t.Errorf("want --add-dir /a /b right after the permission mode, then a flag; got %v", args)
+	}
+	if slices.Contains(args[i+3:], "--add-dir") {
+		t.Errorf("argv carries more than one --add-dir; got %v", args)
+	}
+
 	// A read-only session has no permission mode and still gets the directory.
-	args = NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", readOnly: true, addDir: "/x/y"}, "json")
+	args = NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", readOnly: true, addDirs: []string{"/x/y"}}, "json")
 	j := slices.Index(args, "--add-dir")
-	if j == -1 || j+1 >= len(args) || args[j+1] != "/x/y" {
-		t.Errorf("a read-only spec must carry --add-dir /x/y; got %v", args)
+	if j == -1 || j+2 >= len(args) || args[j+1] != "/x/y" || !strings.HasPrefix(args[j+2], "--") {
+		t.Errorf("a read-only spec must carry --add-dir /x/y and then a flag; got %v", args)
 	}
 }
 
 // TestClaudeArgs_NoAddDirWhenEmpty covers a session without a pattern catalog
-// directory: its argv carries no --add-dir at all.
+// directory and without a project memory directory: its argv carries no
+// --add-dir at all. An empty entry beside a set one is dropped.
 func TestClaudeArgs_NoAddDirWhenEmpty(t *testing.T) {
 	t.Parallel()
 
 	for _, spec := range []runSpec{
 		{model: "opus", effort: "xhigh", readOnly: true},
 		{model: "opus", effort: "xhigh", permissionMode: claudeAutoPermissionMode},
+		{model: "opus", effort: "xhigh", readOnly: true, addDirs: []string{}},
+		{model: "opus", effort: "xhigh", readOnly: true, addDirs: []string{"", ""}},
 	} {
-		if args := NewClient().claudeArgs(spec, "json"); slices.Contains(args, "--add-dir") {
-			t.Errorf("spec %+v without addDir emitted --add-dir; got %v", spec, args)
+		if args := NewClient().claudeArgs(spec, "json"); slices.Contains(args, "--add-dir") || slices.Contains(args, "") {
+			t.Errorf("spec %+v without a directory emitted --add-dir or an empty argument; got %v", spec, args)
 		}
+	}
+
+	args := NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", readOnly: true, addDirs: []string{"", "/b"}}, "json")
+	j := slices.Index(args, "--add-dir")
+	if j == -1 || j+2 >= len(args) || args[j+1] != "/b" || !strings.HasPrefix(args[j+2], "--") {
+		t.Errorf("want --add-dir /b and then a flag; got %v", args)
+	}
+	if slices.Contains(args, "") {
+		t.Errorf("the empty directory must be dropped; got %v", args)
 	}
 }
 
 // TestClaudeArgs_NoToolsNeverOpensADirectory guards the structuring tier's
-// isolation: a noTools spec ignores addDir, so the session is handed no
+// isolation: a noTools spec ignores addDirs, so the session is handed no
 // directory besides structureWorkDir, and --tools "" stays the trailing flag.
 func TestClaudeArgs_NoToolsNeverOpensADirectory(t *testing.T) {
 	t.Parallel()
 
-	args := NewClient().claudeArgs(runSpec{model: "sonnet", effort: "medium", readOnly: true, noTools: true, addDir: "/x/y"}, "json")
-	if slices.Contains(args, "--add-dir") || slices.Contains(args, "/x/y") {
+	args := NewClient().claudeArgs(runSpec{model: "sonnet", effort: "medium", readOnly: true, noTools: true, addDirs: []string{"/x/y", "/z"}}, "json")
+	if slices.Contains(args, "--add-dir") || slices.Contains(args, "/x/y") || slices.Contains(args, "/z") {
 		t.Errorf("a no-tools session must not be handed a directory; got %v", args)
 	}
 	if n := len(args); n < 2 || args[n-2] != "--tools" || args[n-1] != "" {
@@ -750,7 +776,7 @@ func TestClaudeArgs_AppendSystemPromptPrecedesThePermissionMode(t *testing.T) {
 	t.Parallel()
 
 	const catalogDir = "/tmp/catalog"
-	args := NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", permissionMode: claudeAutoPermissionMode, addDir: catalogDir, appendSystemPrompt: "x\ny"}, "json")
+	args := NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", permissionMode: claudeAutoPermissionMode, addDirs: []string{catalogDir}, appendSystemPrompt: "x\ny"}, "json")
 	i := slices.Index(args, "--append-system-prompt")
 	p := slices.Index(args, "--permission-mode")
 	if i == -1 || p == -1 || i+1 >= len(args) {
@@ -797,8 +823,8 @@ func TestAdapters_OpenTheCatalogDirectory(t *testing.T) {
 
 	const catalogDir = "/tmp/planwerk-agent-patterns-test"
 	rows := []struct {
-		name, label, addDir string
-		run                 func(c *Client)
+		name, label, wantDir string // wantDir is the one directory the session opens, "" for none
+		run                  func(c *Client)
 	}{
 		{"Plan", "plan", catalogDir, func(c *Client) {
 			ctx := goldenImplementContext()
@@ -881,15 +907,17 @@ func TestAdapters_OpenTheCatalogDirectory(t *testing.T) {
 				t.Fatal("the adapter ran no session")
 			}
 			first := (*calls)[0].spec
-			if first.label != row.label || first.addDir != row.addDir {
-				t.Errorf("first session has label %q, addDir %q; want label %q, addDir %q", first.label, first.addDir, row.label, row.addDir)
+			firstDirs := nonEmptyDirs(first.addDirs)
+			if first.label != row.label || !slices.Equal(firstDirs, nonEmptyDirs([]string{row.wantDir})) {
+				t.Errorf("first session has label %q, addDirs %q; want label %q, directory %q", first.label, firstDirs, row.label, row.wantDir)
 			}
 			for i, call := range *calls {
+				dirs := nonEmptyDirs(call.spec.addDirs)
 				switch {
-				case call.spec.noTools && call.spec.addDir != "":
-					t.Errorf("call %d (%s) is a structuring session but carries addDir %q", i+1, call.spec.label, call.spec.addDir)
-				case !call.spec.noTools && call.spec.addDir != first.addDir:
-					t.Errorf("call %d (%s) carries addDir %q, want the first session's %q", i+1, call.spec.label, call.spec.addDir, first.addDir)
+				case call.spec.noTools && len(dirs) != 0:
+					t.Errorf("call %d (%s) is a structuring session but carries addDirs %q", i+1, call.spec.label, dirs)
+				case !call.spec.noTools && !slices.Equal(dirs, firstDirs):
+					t.Errorf("call %d (%s) carries addDirs %q, want the first session's %q", i+1, call.spec.label, dirs, firstDirs)
 				}
 			}
 		})
