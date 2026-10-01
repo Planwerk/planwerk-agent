@@ -2,7 +2,7 @@
 name: clarify
 description: Resolves the open questions that block an issue from being implemented — the decisions a planning session raised and could not make for itself — and records the answers in the issue body, where the next planning session reads them. Use when a plan reported NEEDS_CONTEXT, or when an issue carries unresolved decisions an implementer would have to guess at.
 argument-hint: "<issue-ref>"
-allowed-tools: AskUserQuestion Read Grep Glob Write Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue view:*) Bash(gh issue edit:*) Bash(gh issue comment:*) Bash(gh api:*) Bash(git fetch:*) Bash(git status:*) Bash(git rev-parse:*) Bash(git switch:*) Bash(git merge --ff-only:*) Bash(git log:*) Bash(git show:*) Bash(wc:*)
+allowed-tools: AskUserQuestion Read Grep Glob Write Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue view:*) Bash(gh issue edit:*) Bash(gh issue comment:*) Bash(gh api:*) Bash(git fetch:*) Bash(git status:*) Bash(git rev-parse:*) Bash(git switch:*) Bash(git merge --ff-only:*) Bash(git log:*) Bash(git show:*) Bash(wc:*) Bash(planwerk-agent brain memory:*)
 ---
 
 # Clarify an issue
@@ -27,6 +27,7 @@ Read these before you start, in full:
 - `${CLAUDE_SKILL_DIR}/../../shared/house-style.md` — prose, citations, anti-hallucination
 - `${CLAUDE_SKILL_DIR}/../../shared/github.md` — the `gh` commands
 - `${CLAUDE_SKILL_DIR}/../../shared/github-relations.md` — the neighborhood query
+- `${CLAUDE_SKILL_DIR}/../../shared/memory.md` — the project memory, when the repository opted in
 
 You must be inside a checkout of the issue's repository. If the working tree
 belongs to a different repo, say so and stop. Then check the checkout per
@@ -123,7 +124,7 @@ The plan already did repository work, and `### Ground-Truth Notes` records it pa
 by path. Read that section first. Do not redo it wholesale — and do not trust it
 either. Verify each note you are about to lean on, and say which ones you opened.
 
-Then work three sources, in order:
+Then work four sources, in order:
 
 1. **The repository at HEAD.** Open the files. Most questions about how a thing
    works are answered by the thing.
@@ -133,6 +134,8 @@ Then work three sources, in order:
    Issue lives in another repository, which the query reports per issue.
 3. **The issue's own body.** A question the Description already answers means the
    planner missed a sentence, not that the sentence is missing.
+4. **The project memory**, per `memory.md`. A question a recorded decision
+   answers is **Answered**. Cite the page's file name beside the answer.
 
 Sort every question into exactly one bucket:
 

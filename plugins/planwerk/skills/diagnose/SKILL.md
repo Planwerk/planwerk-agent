@@ -24,6 +24,7 @@ Read these before you start, in full:
 - `${CLAUDE_SKILL_DIR}/../../shared/commits.md` — the trailers every commit ends with
 - `${CLAUDE_SKILL_DIR}/../../shared/github.md` — the `gh` commands, the checkout check, and the continuation-comment rule
 - `${CLAUDE_SKILL_DIR}/../../shared/house-style.md` — prose, citations, anti-hallucination
+- `${CLAUDE_SKILL_DIR}/../../shared/memory.md` — the project memory, when the repository opted in
 
 `/planwerk:fix` is the skill for a pull request whose checks are red: the red
 check already is the loop. `/planwerk:implement` is the skill for a prepared
@@ -116,7 +117,8 @@ the catalog this project reviews itself against, and the fix must not introduce
 code it flags. The domain glossary is `CONTEXT.md` in the repository root, or
 `.planwerk/context.md` when the root file is absent; use its terms. When neither
 the patterns nor a glossary exist, proceed without them and say nothing about
-it.
+it. Read the project memory per `memory.md`. A recorded decision can explain
+why the code behaves as reported, and the fix must not contradict one.
 
 Record the reported symptom verbatim: the error text, the wrong output, or the
 timing the report names, quoted as the report wrote it. This is the recorded

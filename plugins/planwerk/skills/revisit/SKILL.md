@@ -2,7 +2,7 @@
 name: revisit
 description: Re-checks a prepared GitHub issue against what has actually landed since it was written, correcting the parts that went stale. For a Sub Issue, that includes its scope against the Meta Issue and against what the closed siblings really delivered. Use before implementing an issue that has been sitting, or when the user asks to revisit, re-check, or re-scope one.
 argument-hint: "<issue-ref>"
-allowed-tools: AskUserQuestion Read Grep Glob Write Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue view:*) Bash(gh issue edit:*) Bash(gh issue comment:*) Bash(gh api:*) Bash(gh pr view:*) Bash(gh pr diff:*) Bash(git fetch:*) Bash(git status:*) Bash(git rev-parse:*) Bash(git switch:*) Bash(git merge --ff-only:*) Bash(git log:*) Bash(git show:*) Bash(wc:*)
+allowed-tools: AskUserQuestion Read Grep Glob Write Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue view:*) Bash(gh issue edit:*) Bash(gh issue comment:*) Bash(gh api:*) Bash(gh pr view:*) Bash(gh pr diff:*) Bash(git fetch:*) Bash(git status:*) Bash(git rev-parse:*) Bash(git switch:*) Bash(git merge --ff-only:*) Bash(git log:*) Bash(git show:*) Bash(wc:*) Bash(planwerk-agent brain memory:*)
 ---
 
 # Revisit an issue
@@ -27,6 +27,7 @@ Read these before you start, in full:
 - `${CLAUDE_SKILL_DIR}/../../shared/house-style.md` — prose, citations, anti-hallucination
 - `${CLAUDE_SKILL_DIR}/../../shared/github.md` — the `gh` commands
 - `${CLAUDE_SKILL_DIR}/../../shared/github-relations.md` — the neighborhood query
+- `${CLAUDE_SKILL_DIR}/../../shared/memory.md` — the project memory, when the repository opted in
 
 You must be inside a checkout of the issue's repository. If the working tree
 belongs to a different repo, say so and stop. Then check the checkout per
@@ -146,6 +147,11 @@ An **elaborated** issue claims a great deal, and all of it is testable:
 6. **Every Non-Goal is still out of scope**, and still true.
 7. **`Scope` still matches the size of what is left.** Small, Medium, or Large,
    measured against what remains after checks 4 and 5, not against the original.
+
+Read the project memory per `memory.md`. A plan that contradicts a decision a
+page records fails this phase like a citation that no longer resolves: correct
+it in Phase 5 and name the page, or put the conflict to the author when the
+issue made the opposite choice on purpose.
 
 ## Phase 4 — Reach a verdict
 

@@ -2,7 +2,7 @@
 name: meta
 description: Decomposes a Meta Issue into the fewest self-contained Sub Issues, filed with native GitHub sub-issue links and blocked-by dependencies. Use when an issue frames a larger body of work as several work packages and the user wants it decomposed.
 argument-hint: "<meta-issue-ref>"
-allowed-tools: AskUserQuestion Read Write Edit Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue view:*) Bash(gh issue create:*) Bash(gh issue edit:*) Bash(gh api:*) Bash(wc:*) Bash(diff:*)
+allowed-tools: AskUserQuestion Read Write Edit Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue view:*) Bash(gh issue create:*) Bash(gh issue edit:*) Bash(gh api:*) Bash(wc:*) Bash(diff:*) Bash(planwerk-agent brain memory:*)
 ---
 
 # Split a Meta Issue
@@ -23,6 +23,7 @@ Read these before you start, in full:
 - `${CLAUDE_SKILL_DIR}/../../shared/github.md` — the `gh` commands
 - `${CLAUDE_SKILL_DIR}/../../shared/github-relations.md` — the neighborhood query, and sub-issue and blocked-by wiring
 - `${CLAUDE_SKILL_DIR}/../../shared/cross-repo.md` — when a package belongs in another repository
+- `${CLAUDE_SKILL_DIR}/../../shared/memory.md` — the project memory, when the repository opted in
 
 **Make the breakdown yourself.** Do not ask the author what to split or how.
 Read the Meta Issue and decide. What you bring to the author in Phase 4 is a
@@ -49,6 +50,10 @@ nothing left to split.
 Read the repository's `.planwerk/related-repos.md`, if it has one. A Meta Issue
 that spans a service and its client is the common case for a counterpart, and
 Phase 2 needs the map to place a package.
+
+Read the project memory per `memory.md`. A recorded decision can settle where a
+package boundary falls or which package comes first. Never carve a split that
+contradicts one, and name no wiki page in a Sub Issue body.
 
 ## Phase 2 — Carve the split
 
