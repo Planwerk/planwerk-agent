@@ -2,6 +2,7 @@ package report
 
 import (
 	"bytes"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -280,6 +281,23 @@ func TestRenderDataBlock_IncludesUsage(t *testing.T) {
 	}
 	if len(findings) != 1 || findings[0].Title != "SQLi" {
 		t.Errorf("findings = %+v, want one SQLi finding", findings)
+	}
+}
+
+// TestUsage_AddAndSub proves the two sum every counter and drop the per-pass
+// breakdown, and that a snapshot difference added back gives the later
+// snapshot's totals.
+func TestUsage_AddAndSub(t *testing.T) {
+	earlier := Usage{Calls: 1, InputTokens: 10, OutputTokens: 20, CacheReadTokens: 30, CacheCreationTokens: 40, CostUSD: 0.5}
+	later := Usage{Calls: 3, InputTokens: 110, OutputTokens: 220, CacheReadTokens: 330, CacheCreationTokens: 440, CostUSD: 2, Passes: []PassUsage{{Pass: "review", Calls: 3}}}
+
+	delta := later.Sub(earlier)
+	if want := (Usage{Calls: 2, InputTokens: 100, OutputTokens: 200, CacheReadTokens: 300, CacheCreationTokens: 400, CostUSD: 1.5}); !reflect.DeepEqual(delta, want) {
+		t.Errorf("Sub = %+v, want %+v", delta, want)
+	}
+	later.Passes = nil
+	if got := earlier.Add(delta); !reflect.DeepEqual(got, later) {
+		t.Errorf("Add = %+v, want %+v", got, later)
 	}
 }
 
