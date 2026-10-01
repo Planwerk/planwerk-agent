@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"time"
 )
 
@@ -136,20 +135,24 @@ var pushWikiAdditions = func(dir string, files []WikiFile, commitMsg, token stri
 	ctx, cancel := context.WithTimeout(context.Background(), wikiPushTimeout)
 	defer cancel()
 
+	// The clone is a checkout of a wiki anyone may be able to edit, so a
+	// directory on a page's path can be a symbolic link that points out of it.
+	// Writing through the root refuses such a path, and a "../" path with it,
+	// where os.WriteFile would follow the link and put the page outside the
+	// clone.
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return fmt.Errorf("opening the wiki clone: %w", err)
+	}
+	defer func() { _ = root.Close() }()
+
 	paths := make([]string, 0, len(files))
 	for _, f := range files {
-		dest := filepath.Join(dir, filepath.FromSlash(f.Path))
-		// Defence in depth against a traversal path the capture write phase should
-		// already have rejected: filepath.Join Cleans the result, so a "../" path
-		// resolves outside dir. Refuse anything not contained by the clone root
-		// before os.WriteFile can put it on disk.
-		if rel, err := filepath.Rel(dir, dest); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
-			return fmt.Errorf("refusing to write wiki page %q outside the clone root", f.Path)
-		}
-		if err := os.MkdirAll(filepath.Dir(dest), 0o750); err != nil {
+		name := filepath.FromSlash(f.Path)
+		if err := root.MkdirAll(filepath.Dir(name), 0o750); err != nil {
 			return fmt.Errorf("creating wiki page directory for %q: %w", f.Path, err)
 		}
-		if err := os.WriteFile(dest, []byte(f.Content), 0o600); err != nil {
+		if err := root.WriteFile(name, []byte(f.Content), 0o600); err != nil {
 			return fmt.Errorf("writing wiki page %q: %w", f.Path, err)
 		}
 		paths = append(paths, f.Path)
