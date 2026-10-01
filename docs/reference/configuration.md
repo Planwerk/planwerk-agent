@@ -48,21 +48,25 @@ audit:
   format: markdown             # markdown | json
   patterns: []
 
-wiki:                          # GitHub Wiki knowledge source (review + audit + propose + implement)
+wiki:                          # GitHub Wiki knowledge source (review + audit + propose + elaborate + implement + fix + address + ship + brain memory)
   enabled: true                # opt the wiki in (default: off); false is the same as --no-wiki
   repo: owner/repo             # override the wiki source; default: the target repo's own wiki
   ref: main                    # pin to a branch/tag/commit; default: the wiki's default branch
 
-capture:                       # capture write-back gate (implement + review + audit)
+capture:                       # capture write-back gate (implement + ship + review + audit)
   wiki: true                   # push accepted capture pages to the wiki (default: off — propose-only)
 ```
 
 The `wiki:` section is top-level (not per-command) because the same wiki backs
-`review`, `audit`, `propose`, and the `implement` plan step. See
+`review`, `audit`, `propose`, `elaborate`, the `implement` plan step, `fix`,
+`address`, and every `implement` and `fix` run `ship` drives. `brain memory`
+reads it too, from the directory it is run in, which is how the `elaborate`,
+`implement`, `fix`, `revisit`, `clarify`, `decide`, `diagnose`, and `meta`
+skills get the project memory. See
 [GitHub Wiki](/reference/review-patterns#github-wiki) for the page convention.
 `enabled` and `ref` are overridden by the `--wiki`/`--no-wiki`/`--wiki-ref`
-flags and the `PLANWERK_WIKI`/`PLANWERK_WIKI_REF` environment variables; `repo`
-is config-only.
+flags and override the `PLANWERK_WIKI`/`PLANWERK_WIKI_REF` environment
+variables ([Precedence](#precedence)); `repo` is config-only.
 
 The separate `capture:` section gates the *write*: `capture.wiki` controls
 whether the capture pass pushes the accepted pages to the wiki (the
@@ -70,8 +74,13 @@ whether the capture pass pushes the accepted pages to the wiki (the
 from a trusted source — `implement` and `audit`; `review` has no such flag and is always
 propose-only, because it analyzes an untrusted pull request. It is kept apart from
 the read-only `wiki:` knobs so read and write config stay distinct, and is
-overridden by the `--capture-wiki` flag and `PLANWERK_CAPTURE_WIKI`
-(flag → env → config → off). Off by default keeps a run propose-only.
+overridden by the `--capture-wiki` flag and overrides `PLANWERK_CAPTURE_WIKI`
+(flag → config → env → off). Off by default keeps a run propose-only.
+
+`ship` reads `capture.wiki` for the `implement` runs it drives. It never shows
+the confirmation prompt, so it pushes only when the write-back is enabled and
+`--yes` is given. Enabled without `--yes`, it logs one warning at start and
+every run stays propose-only.
 
 All keys are optional. Flags beyond `--min-severity`, `--max-patterns`,
 `--max-findings`, `--format`, and `--patterns` (the high-churn ones) remain
