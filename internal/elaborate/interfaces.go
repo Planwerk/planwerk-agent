@@ -52,6 +52,10 @@ type Context struct {
 	Domains string
 }
 
+// resolveWikiFn resolves the target repo's wiki. It matches patterns.ResolveWiki.
+// Mirrors propose.resolveWikiFn.
+type resolveWikiFn func(owner, name string, wopts patterns.WikiOptions, ropts patterns.RemoteOptions) patterns.ResolvedWiki
+
 // ReviewResult is the verdict of the optional reviewer pass over an
 // elaboration draft. Score rates the draft's executability from 0 to 10; Gaps
 // lists the concrete reasons it falls short of a 10; ToReachTen describes what

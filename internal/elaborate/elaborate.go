@@ -53,6 +53,10 @@ type Options struct {
 	// Remote configures how remote pattern URIs (--patterns github:..., git+...)
 	// resolve into local directories; carries the --remote-patterns-ttl value.
 	Remote patterns.RemoteOptions
+	// Wiki configures the target repo's GitHub Wiki as a knowledge source: its
+	// review_patterns/ load as a pattern tier and its memory pages are handed
+	// to the elaboration session as project memory.
+	Wiki patterns.WikiOptions
 }
 
 // defaultMaxReviewIterations bounds the reviewer refine loop so a reviewer and
@@ -74,6 +78,10 @@ type Runner struct {
 	// Reviewer is the optional elaboration reviewer. When nil (or opts.Review
 	// is false) the reviewer gate is skipped entirely.
 	Reviewer ElaborationReviewer
+	// ResolveWiki resolves the target repo's wiki. Defaults to
+	// patterns.ResolveWiki; a Runner seam so the project-memory wiring can be
+	// exercised without cloning a real wiki.
+	ResolveWiki resolveWikiFn
 }
 
 // NewRunner returns a Runner wired with the production GitHub backend, the
@@ -141,8 +149,24 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		headSHA = ""
 	}
 
+	// Resolve the target repo's GitHub Wiki (best-effort) before the cache key,
+	// so the resolved wiki commit folds into the key. An absent, disabled, or
+	// offline wiki returns the zero value and leaves the run unchanged.
+	resolveWiki := r.ResolveWiki
+	if resolveWiki == nil {
+		resolveWiki = patterns.ResolveWiki
+	}
+	wiki := resolveWiki(owner, name, opts.Wiki, opts.Remote)
+	// A wiki that resolved without a commit cannot be keyed: its memory and
+	// patterns reach the prompt, while the key would be that of a run without
+	// a wiki. Such a run neither reads nor writes the cache.
+	if wiki.Dir != "" && wiki.CommitSHA == "" {
+		slog.Warn("the wiki resolved without a commit, caching disabled", "wiki", wiki.Repo)
+		opts.NoCache = true
+	}
+
 	cacheKey := elaborateCacheKey(owner, name, number, issue, relations, headSHA, opts.Review,
-		patterns.Fingerprint(opts.PatternDirs, opts.NoRepoPatterns, opts.NoLocalPatterns, opts.MaxPatterns))
+		patterns.Fingerprint(opts.PatternDirs, opts.NoRepoPatterns, opts.NoLocalPatterns, opts.MaxPatterns), wiki.CommitSHA)
 
 	if !opts.NoCache && headSHA != "" {
 		if data, ok := cache.GetRaw(cacheKey, opts.CacheMaxAge); ok {
@@ -169,6 +193,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 
 	pats, err := patterns.LoadForRepo(patterns.RepoLoadOptions{
 		RepoDir:    repo.Dir,
+		Wiki:       wiki.PatternsDir,
 		Extra:      opts.PatternDirs,
 		Tags:       techTags,
 		NoEmbedded: opts.NoLocalPatterns,
@@ -187,6 +212,10 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// removed when Run returns.
 	cat, cleanupCatalog := patterns.MaterializeOrWarn(pats)
 	defer cleanupCatalog()
+	// The memory directory has the same lifetime. A run served from the cache
+	// returns before this point and writes none.
+	mem, cleanupMemory := patterns.MaterializeMemoryOrWarn(wiki.MemoryPages)
+	defer cleanupMemory()
 
 	// Load the repo's domain glossary (CONTEXT.md / .planwerk/context.md).
 	// Best-effort: an unreadable glossary warns and proceeds.
@@ -196,6 +225,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	baseCtx := Context{
 		Patterns:      pats,
 		Catalog:       cat,
+		Memory:        mem,
 		MaxPatterns:   opts.MaxPatterns,
 		RepoName:      repo.FullName(),
 		Issue:         issue,
@@ -293,8 +323,11 @@ func (r *Runner) finish(w io.Writer, result *Result, owner, name string, number 
 // Issue (or itself a Meta Issue), a fingerprint of the Meta and sibling/child
 // issues is folded in too, so editing the Meta Issue or a sibling re-elaborates.
 // The relations flag is appended only when relations exist, so a plain issue's
-// key stays stable.
-func elaborateCacheKey(owner, name string, number int, issue *github.Issue, relations *github.IssueRelations, headSHA string, review bool, patternsFingerprint string) string {
+// key stays stable. wikiCommit is the resolved wiki commit: the memory and the
+// wiki's review patterns reach the prompt, so a moved wiki re-elaborates. Its
+// flag is appended only when a wiki resolved, so the key of a run without a
+// wiki carries no wiki part.
+func elaborateCacheKey(owner, name string, number int, issue *github.Issue, relations *github.IssueRelations, headSHA string, review bool, patternsFingerprint, wikiCommit string) string {
 	flags := []string{
 		fmt.Sprintf("issue=%d", number),
 		"body=" + issueFingerprint(issue),
@@ -306,6 +339,9 @@ func elaborateCacheKey(owner, name string, number int, issue *github.Issue, rela
 		flags = append(flags, "review")
 	}
 	flags = append(flags, "patterns="+patternsFingerprint)
+	if wikiCommit != "" {
+		flags = append(flags, "wiki="+wikiCommit)
+	}
 	return cache.AuditKey(owner, name, "elaborate@"+headSHA, flags...)
 }
 

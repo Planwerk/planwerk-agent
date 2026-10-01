@@ -3,6 +3,8 @@ package main
 import (
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"github.com/planwerk/planwerk-agent/internal/elaborate"
 	"github.com/planwerk/planwerk-agent/internal/prompt"
 )
@@ -43,5 +45,25 @@ func TestShipCarriesNoSpecialistsSwitch(t *testing.T) {
 	}
 	if cmd.Flags().Lookup("no-review") == nil {
 		t.Error("ship must expose --no-review, its whole-pass switch")
+	}
+}
+
+// TestCommandsRegisterTheWikiFlags pins the wiki opt-in on the commands that
+// read the project memory beside review, audit, propose, and implement, and
+// its absence on a command that reads none.
+func TestCommandsRegisterTheWikiFlags(t *testing.T) {
+	deps := &runtimeDeps{}
+	readers := map[string]*cobra.Command{
+		"elaborate": newElaborateCmd(deps),
+	}
+	for name, cmd := range readers {
+		for _, flag := range []string{"wiki", "no-wiki", "wiki-ref"} {
+			if cmd.Flags().Lookup(flag) == nil {
+				t.Errorf("%s must expose --%s", name, flag)
+			}
+		}
+	}
+	if newRebaseCmd(deps).Flags().Lookup("wiki") != nil {
+		t.Error("rebase reads no project memory and must not expose --wiki")
 	}
 }
