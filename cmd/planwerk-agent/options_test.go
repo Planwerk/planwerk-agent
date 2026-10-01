@@ -55,6 +55,7 @@ func TestCommandsRegisterTheWikiFlags(t *testing.T) {
 	deps := &runtimeDeps{}
 	readers := map[string]*cobra.Command{
 		"elaborate": newElaborateCmd(deps),
+		"fix":       newFixCmd(deps),
 	}
 	for name, cmd := range readers {
 		for _, flag := range []string{"wiki", "no-wiki", "wiki-ref"} {
