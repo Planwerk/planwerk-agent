@@ -19,6 +19,9 @@ planwerk-agent/
 │   ├── audit/
 │   │   ├── auditor.go          # Orchestration: Repo → Patterns → Claude → Findings
 │   │   └── auditor_test.go
+│   ├── brain/
+│   │   ├── memory.go           # brain memory: print the project memory index or one page
+│   │   └── memory_test.go
 │   ├── cache/
 │   │   ├── cache.go            # SHA-based caching (review + propose + audit)
 │   │   └── cache_test.go
@@ -87,6 +90,7 @@ planwerk-agent/
 │   │   ├── pattern.go          # Pattern data structure + parsing
 │   │   ├── pattern_test.go
 │   │   ├── sources.go          # LoadForRepo: the one catalog loader (embedded + wiki + repo + remote)
+│   │   ├── patternstest/       # Shared test helpers for the project memory and the wiki seam (imported by tests only)
 │   │   └── patterns/           # Embedded review-pattern catalog (16 design + 67 technology + review + SOURCES.md)
 │   ├── propose/
 │   │   ├── interactive.go      # Interactive GitHub issue creation flow
@@ -136,6 +140,7 @@ planwerk-agent/
 │       │   ├── house-style.md
 │       │   ├── humanizer.md
 │       │   ├── interaction.md
+│       │   ├── memory.md              # Reading the project memory through brain memory
 │       │   ├── cross-repo.md
 │       │   ├── commits.md             # Trailers and cross-repo references
 │       │   ├── commits-fold.md        # The fold, the push, the SHA repair

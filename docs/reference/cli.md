@@ -377,6 +377,7 @@ the actual repository state.
 planwerk-agent elaborate owner/repo#123
 planwerk-agent elaborate --update-issue owner/repo#123
 planwerk-agent elaborate --post-comment owner/repo#123
+planwerk-agent elaborate --wiki owner/repo#123
 ```
 
 | Flag | Description | Default |
@@ -394,8 +395,18 @@ planwerk-agent elaborate --post-comment owner/repo#123
 | `--max-review-iterations` | Cap on reviewer refine iterations when `--review` is set (`<=0` uses the default of 3) | `0` |
 | `--local` | Ground the elaboration in the current working directory instead of cloning into a temp dir. The issue reference is still required — only the repository checkout is local. | `false` |
 | `--force` | With `--local`, skip the confirmation prompt when the working tree is dirty | `false` |
+| `--wiki` | Use the target repo's GitHub Wiki as a knowledge source (off by default — enabling trusts the wiki's unreviewed editors; review patterns + project memory; env: `PLANWERK_WIKI`). See [GitHub Wiki](/reference/review-patterns#github-wiki). | `false` |
+| `--no-wiki` | Do not use the target repo's GitHub Wiki (overrides `--wiki`) | `false` |
+| `--wiki-ref` | Pin the wiki to a branch, tag, or commit (env: `PLANWERK_WIKI_REF`) | - |
 
 `--update-issue` and `--post-comment` are mutually exclusive.
+
+With the wiki enabled, the elaboration loads the wiki's `review_patterns/` and
+reads the project memory: the prompt carries the memory index, and the session
+reads a page from a directory the run writes and removes when it ends. The
+`--review` reviewer reads neither. The wiki's commit is part of the cache key,
+so a wiki that moved re-elaborates. A run whose wiki loaded while its commit
+could not be resolved logs a warning and neither reads nor writes the cache.
 
 The body is written to a 40,000-character budget: over it, `--review` refines
 the draft to size, and a run without it logs a warning. A body over GitHub's
@@ -461,8 +472,17 @@ planwerk-agent fix --local --force
 | `--local` | Operate on the current working directory instead of cloning into a temp dir | `false` |
 | `--force` | With `--local`, skip the confirmation prompt when the working tree is dirty | `false` |
 | `--no-fixup` | Append the fix as a fresh on-top follow-up commit instead of folding it into the commits it belongs to (`git commit --fixup` + `git rebase --autosquash`, then `push --force-with-lease`) | `false` |
+| `--wiki` | Use the target repo's GitHub Wiki as a knowledge source (off by default — enabling trusts the wiki's unreviewed editors; review patterns + project memory; env: `PLANWERK_WIKI`). See [GitHub Wiki](/reference/review-patterns#github-wiki). | `false` |
+| `--no-wiki` | Do not use the target repo's GitHub Wiki (overrides `--wiki`) | `false` |
+| `--wiki-ref` | Pin the wiki to a branch, tag, or commit (env: `PLANWERK_WIKI_REF`) | - |
 
 `--dry-run`, `--print-prompt`, and `--print-bare-prompt` are mutually exclusive.
+
+With the wiki enabled, each fix session loads the wiki's `review_patterns/` and
+reads the project memory from a directory written for that iteration. The wiki
+is resolved once per run, on the first iteration that dispatches a session, so
+a run whose checks are green and a `--dry-run` never clone it. The printed
+prompts resolve no wiki and carry no memory.
 
 ## `rebase`
 
@@ -710,8 +730,8 @@ in the read-only proposal pass, and this phase performs the push. The write is
 gated like the rest of the wiki surface: it confirms interactively and refuses a
 non-TTY run without `--yes`. The write-back is non-fatal — a refusal or push
 failure degrades back to propose-only without failing the run. The gate is also
-settable via `PLANWERK_CAPTURE_WIKI` or a `capture.wiki` config key (flag → env →
-config → off).
+settable via `PLANWERK_CAPTURE_WIKI` or a `capture.wiki` config key (flag →
+config → env → off).
 
 Once the simplify and review passes are done, a finalize session opens the draft
 pull request last: it resolves the base branch from `origin/HEAD`, pushes the
@@ -755,6 +775,8 @@ planwerk-agent ship --dry-run owner/repo#123
 planwerk-agent ship --no-merge owner/repo#123
 planwerk-agent ship --merge-method squash owner/repo#123
 planwerk-agent ship --start-at 456 owner/repo#123
+planwerk-agent ship --wiki owner/repo#123
+planwerk-agent ship --wiki --capture-wiki --yes owner/repo#123
 ```
 
 | Flag | Description | Default |
@@ -780,6 +802,12 @@ planwerk-agent ship --start-at 456 owner/repo#123
 | `--no-repo-patterns` | Ignore repo-specific patterns under `.planwerk/review_patterns/` in the target repo | `false` |
 | `--no-local-patterns` | Ignore local patterns from the tool | `false` |
 | `--max-patterns` | Max review patterns injected into the prompt (`<=0` disables truncation; env: `PLANWERK_MAX_PATTERNS`) | `0` (unlimited) |
+| `--wiki` | Use the target repo's GitHub Wiki as a knowledge source (off by default — enabling trusts the wiki's unreviewed editors; review patterns + project memory; env: `PLANWERK_WIKI`). See [GitHub Wiki](/reference/review-patterns#github-wiki). | `false` |
+| `--no-wiki` | Do not use the target repo's GitHub Wiki (overrides `--wiki`) | `false` |
+| `--wiki-ref` | Pin the wiki to a branch, tag, or commit (env: `PLANWERK_WIKI_REF`) | - |
+| `--no-capture` | Skip the read-only capture pass in each per–Sub Issue implement run (only runs with `--wiki`; writes nothing) | `false` |
+| `--capture-wiki` | Push the accepted capture pages of each per–Sub Issue implement run to the wiki; `ship` never asks for confirmation, so the push also needs `--yes` (off by default; env: `PLANWERK_CAPTURE_WIKI`) | `false` |
+| `--yes` | Confirm the `--capture-wiki` write for the whole run | `false` |
 
 Autonomy and merge safety: `ship` merges to the default branch unattended, so it
 honors branch protection — it refuses to merge (skipping the Sub Issue) when a
@@ -796,6 +824,17 @@ specialist fan-out, and `--no-review` remains the whole-pass switch — so every
 Issue is checked across the same domains and its self-review findings pass the
 same hygiene before any fix lands. `ship` does not create Sub Issues — that stays
 the job of the [`/planwerk:meta` skill](/how-to/split-a-meta-issue).
+
+Wiki and capture: `ship` resolves the wiki settings once and hands them to
+every `implement` and `fix` run it drives. With the wiki enabled, each of those
+runs reads the wiki's `review_patterns/` and the project memory, and each
+`implement` run ends with the capture pass, which proposes new wiki pages in a
+comment on its Sub Issue. `--no-capture` skips that pass. `ship` never shows
+the confirmation prompt the capture write phase has on `implement`: it pushes
+the accepted pages only when the write-back is enabled (`--capture-wiki`, the
+`capture.wiki` config key, or `PLANWERK_CAPTURE_WIKI`) and `--yes` is given.
+Enabled without `--yes`, `ship` logs one warning at start and every run stays
+propose-only.
 
 ## `address`
 
@@ -841,9 +880,75 @@ planwerk-agent address --local --force
 | `--max-patterns` | Max review patterns injected into the prompt (`<=0` disables truncation; env: `PLANWERK_MAX_PATTERNS`) | `0` (unlimited) |
 | `--local` | Operate on the current working directory instead of cloning into a temp dir | `false` |
 | `--force` | With `--local`, skip the confirmation prompt when the working tree is dirty | `false` |
+| `--wiki` | Use the target repo's GitHub Wiki as a knowledge source (off by default — enabling trusts the wiki's unreviewed editors; review patterns + project memory; env: `PLANWERK_WIKI`). See [GitHub Wiki](/reference/review-patterns#github-wiki). | `false` |
+| `--no-wiki` | Do not use the target repo's GitHub Wiki (overrides `--wiki`) | `false` |
+| `--wiki-ref` | Pin the wiki to a branch, tag, or commit (env: `PLANWERK_WIKI_REF`) | - |
 
 `--dry-run`, `--print-prompt`, and `--print-bare-prompt` are mutually exclusive.
 The address session runs in Claude Code's auto mode.
+
+With the wiki enabled, the run loads the wiki's `review_patterns/` and writes
+the project memory to one directory that every per-thread session reads. A run
+with no thread to address and a `--dry-run` never clone the wiki. The printed
+prompts resolve no wiki and carry no memory.
+
+## `brain`
+
+Read the project memory a repository keeps on its
+[GitHub Wiki](/reference/review-patterns#github-wiki). The command starts no
+Claude session and writes no file. The [skills](/how-to/use-the-skills#project-memory)
+call it, so a skill reads the memory through the same opt-in, authentication,
+and page checks as the commands above.
+
+```bash
+# Print the memory index: a header, a blank line, one line per page
+planwerk-agent brain memory owner/repo
+
+# Print one page, named by its file name in the index
+planwerk-agent brain memory owner/repo pin-dependencies.md
+```
+
+| Subcommand | Arguments | Description |
+|------------|-----------|-------------|
+| `brain memory` | `<repo-ref>` | Print the memory index of the repository's wiki |
+| `brain memory` | `<repo-ref> <page>` | Print the memory page with that file name |
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--wiki` | Use the target repo's GitHub Wiki as a knowledge source (off by default — enabling trusts the wiki's unreviewed editors; review patterns + project memory; env: `PLANWERK_WIKI`). See [GitHub Wiki](/reference/review-patterns#github-wiki). | `false` |
+| `--no-wiki` | Do not use the target repo's GitHub Wiki (overrides `--wiki`) | `false` |
+| `--wiki-ref` | Pin the wiki to a branch, tag, or commit (env: `PLANWERK_WIKI_REF`) | - |
+
+The index opens with a header that names the wiki, its commit, and the number
+of pages. Each following line carries a page's file name, its title, and after
+a `|` the page's summary where it states one:
+
+```text
+Project memory from acme/widgets.wiki @ 1a2b3c4, pages: 2
+
+- conventions.md: conventions
+- pin-dependencies.md: Pin every dependency | Dependencies are pinned to exact versions.
+```
+
+The index has no size budget, unlike the index a prompt carries. Both forms
+see a page only when its file name starts with a letter or a digit and holds
+nothing but letters, digits, `.`, `_`, and `-`, because a caller passes the
+name back on a command line. Any other page is skipped: one warning gives the
+number of skipped pages, and `--verbose` logs their names. A script that takes
+the name from the index puts it after a `--`
+(`planwerk-agent brain memory owner/repo -- "$page"`). A page name is matched by
+its bytes first and then by its Unicode NFC form, so a name the wiki stores in
+decomposed form is found when it is typed precomposed, as long as only one page
+has that name. Control characters other than newline and tab are dropped from
+what the command prints on stdout.
+
+The wiki is off by default. The flag decides first, then the `wiki` section of
+`.planwerk/config.yaml` in the working directory, then `PLANWERK_WIKI`. With the
+wiki off, with a wiki that cannot be resolved, or with a wiki that has no memory
+pages, the index form prints nothing on stdout and exits 0. A page the memory
+does not hold is an error: the command prints nothing on stdout and exits
+non-zero with `no project memory page named "<page>" for <owner>/<repo>`. Log
+lines go to stderr.
 
 ## `cache`
 

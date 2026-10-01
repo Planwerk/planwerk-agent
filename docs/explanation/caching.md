@@ -23,7 +23,11 @@ the cache invalidates automatically when that state changes:
   the clone entirely.
 - **Elaborate** — repository plus HEAD plus issue number plus a fingerprint of
   the issue body, so the cache invalidates when either the repo or the issue is
-  edited.
+  edited. With the wiki enabled, the resolved wiki commit is part of the key
+  too, because the wiki's review patterns and the project memory reach the
+  prompt. A run without a wiki has no wiki part in its key. A run whose wiki
+  loaded while its commit could not be resolved has no key that covers the
+  wiki, so it neither reads nor writes the cache.
 
 Entries are written under the user cache directory. Both `propose` and `audit`
 fetch the default-branch HEAD SHA via `git ls-remote` before cloning, so a hit

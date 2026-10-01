@@ -1,7 +1,11 @@
 # Use the GitHub Wiki
 
 Make your repository's **GitHub Wiki** a source of project review patterns and
-project memory for `review`, `audit`, `propose`, and the `implement` plan step.
+project memory for `review`, `audit`, `propose`, `elaborate`, the `implement`
+plan step, `fix`, and `address`. `ship` hands the wiki to every `implement` and
+`fix` run it drives. The `elaborate`, `implement`, `fix`, `revisit`, `clarify`,
+`decide`, `diagnose`, and `meta` skills read the project memory as well (see
+[Read the memory from the skills](#read-the-memory-from-the-skills)).
 The wiki is human-editable through the web UI and git-versioned, so this
 knowledge evolves independently of code commits and never pollutes a diff.
 
@@ -9,9 +13,9 @@ The wiki is **off by default** and opted into per repo with `--wiki`. A GitHub
 Wiki is a separate permission surface — often editable by any authenticated
 GitHub user (or any collaborator, including triage-only members), and never
 gated by branch protection or PR review. Enabling it feeds its content into the
-agent's prompts, including the `implement` agent that writes code and opens pull
-requests, so turn it on only for repos whose wiki editors you trust as much as
-your committers.
+agent's prompts, including the `implement`, `fix`, and `address` sessions that
+write code and push it, so turn it on only for repos whose wiki editors you
+trust as much as your committers.
 
 ## What the tool reads
 
@@ -20,7 +24,7 @@ The tool reads two directories from the target repo's wiki:
 | Wiki page | Purpose |
 |-----------|---------|
 | `review_patterns/<name>.md` | A project review pattern in the standard [Pattern Format](/reference/review-patterns#pattern-format). It loads through the wiki precedence tier — below the committed `.planwerk/review_patterns` (so a committed pattern overrides a same-named wiki one) and below an explicit `--patterns`. |
-| `memory/<name>.md` | A **project memory** page: one decision, convention, or piece of context. The analysis prompts and the implement plan list every page in an index (file name, title, and the sentence of an optional `**Summary**:` line), and the session opens the pages its task needs. A page larger than 64 KB is skipped. |
+| `memory/<name>.md` | A **project memory** page: one decision, convention, or piece of context. Every prompt that reads the memory lists the pages in an index (file name, title, and the sentence of an optional `**Summary**:` line), and the session opens the pages its task needs. A page larger than 64 KB is skipped. |
 
 Any other page — `Home`, `_Sidebar`, navigation, or prose that does not parse as
 a pattern — is ignored, so a normal wiki can hold both human navigation and
@@ -117,8 +121,45 @@ wiki:
   ref: main                  # pin to a branch/tag/commit
 ```
 
-Precedence is flag → environment variable (`PLANWERK_WIKI`, `PLANWERK_WIKI_REF`)
-→ config file → default-off. `--no-wiki` overrides `--wiki`.
+Precedence is flag → config file → environment variable (`PLANWERK_WIKI`,
+`PLANWERK_WIKI_REF`) → default-off. `--no-wiki` overrides `--wiki`.
+
+The same opt-in applies to `elaborate`, `fix`, `address`, `ship`, and
+`brain memory`: each takes `--wiki`, `--no-wiki`, and `--wiki-ref`. A
+repository that already sets `wiki.enabled` needs no flag.
+
+```bash
+planwerk-agent elaborate --wiki owner/repo#123
+planwerk-agent fix --wiki owner/repo#456
+planwerk-agent address --wiki owner/repo#456
+planwerk-agent ship --wiki owner/repo#100
+```
+
+## Read the memory from the skills
+
+The `elaborate`, `implement`, `fix`, `revisit`, `clarify`, `decide`,
+`diagnose`, and `meta` skills read the project memory through the binary and
+never clone the wiki themselves. A skill runs one command for the index and one
+per page its work touches:
+
+```bash
+planwerk-agent brain memory owner/repo                       # the index
+planwerk-agent brain memory owner/repo pin-dependencies.md   # one page
+```
+
+To let the skills read the memory:
+
+1. Put `planwerk-agent` on the `PATH` of the session that runs the skill. A
+   session with the plugin and no binary reads no memory.
+2. Opt the repository in with `wiki.enabled: true` in `.planwerk/config.yaml`,
+   and start the skill from the checkout's root, where that file is read. As
+   an alternative, export `PLANWERK_WIKI=true`, or pass `--wiki` in the skill's
+   arguments for one run (`/planwerk:elaborate --wiki owner/repo#123`). The
+   flag decides first, then the config file, then the environment variable.
+
+With the wiki off, or with a wiki that has no memory pages, the command prints
+nothing and the skill proceeds without a memory. The `draft`, `humanize`, and
+`cleanup` skills read none. A skill run proposes and pushes no wiki page.
 
 ## Private wikis
 
@@ -152,6 +193,8 @@ a comment on the source issue (`implement`) or PR (`review --post-review`) — a
 **nothing is written to the wiki**. Review them and add the ones worth keeping.
 It is on by default whenever a wiki is resolved; disable it with `--no-capture`.
 It runs on a cache miss only, so a cached `review`/`audit` proposes nothing.
+Under `ship`, every `implement` run it drives ends with this pass and comments
+on its Sub Issue. `ship --no-capture` turns it off.
 
 The proposed `memory/` pages follow a small write convention so they stay easy to
 maintain by hand or by a later automated write-back:
@@ -180,7 +223,7 @@ included) under the pinned `planwerk-agent` identity, and pushes. When the wiki
 has never been initialized, the first page creates its initial commit.
 
 The write-back is available only from a **trusted source** — `implement` (your own
-branch) and `audit` (your own repo). **`review` has no `--capture-wiki` flag and is
+branch), `ship` (the `implement` runs it drives), and `audit` (your own repo). **`review` has no `--capture-wiki` flag and is
 always propose-only**: a review analyzes an untrusted pull request and the proposal
 pass reads attacker-controlled source, so auto-pushing its free-form pages would let
 an external contributor poison the shared knowledge base via indirect prompt
@@ -191,6 +234,7 @@ ones worth keeping by hand.
 planwerk-agent implement --wiki --capture-wiki owner/repo#123          # confirms, then pushes
 planwerk-agent implement --wiki --capture-wiki --yes owner/repo#123    # non-interactive (CI)
 planwerk-agent audit --wiki --capture-wiki owner/repo                  # from a standalone audit
+planwerk-agent ship --wiki --capture-wiki --yes owner/repo#100         # from every Sub Issue's run
 ```
 
 The write is gated to match the rest of the wiki surface. Claude never pushes: it
@@ -198,11 +242,16 @@ authored the page bytes in the read-only proposal pass, and this phase performs
 the push, preserving the read-only-author / write-phase separation. The phase
 confirms interactively first and **refuses a non-TTY run without `--yes`**. The
 gate is also settable per repo via the `PLANWERK_CAPTURE_WIKI` environment
-variable or a `capture.wiki: true` config key (flag → env → config → off). The
+variable or a `capture.wiki: true` config key (flag → config → env → off). The
 write-back is non-fatal: a refusal or push failure degrades back to propose-only
 rather than failing the run. The push authenticates a private wiki exactly as
 [`sync`](/how-to/sync-the-wiki) does — see its write-phase note for the auth
 details.
+
+`ship` runs unattended and never shows the confirmation prompt. It pushes the
+accepted pages only when the write-back is enabled and `--yes` is given.
+Enabled without `--yes`, `ship` logs one warning at start and every run stays
+propose-only.
 
 ## Keep the wiki trustworthy
 

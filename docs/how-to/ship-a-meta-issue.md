@@ -29,6 +29,12 @@ planwerk-agent ship --merge-method squash owner/repo#123
 
 # Resume from a specific Sub Issue
 planwerk-agent ship --start-at 456 owner/repo#123
+
+# Read the wiki's review patterns and project memory in every run
+planwerk-agent ship --wiki owner/repo#123
+
+# Also push the pages each run's capture pass accepts
+planwerk-agent ship --wiki --capture-wiki --yes owner/repo#123
 ```
 
 ## Preview first
@@ -56,6 +62,24 @@ For each eligible Sub Issue, `ship` runs:
 5. **Rebase-merge when green** — once the checks pass and the PR is mergeable,
    `ship` merges it (rebase by default, configurable with `--merge-method`).
 6. **Advance** to the next ready Sub Issue and repeat.
+
+## Use the wiki and capture from each run
+
+With the wiki enabled, every `implement` and `fix` run `ship` drives reads the
+wiki's review patterns and the project memory, and every `implement` run ends
+with the capture pass, which proposes new wiki pages in a comment on its Sub
+Issue. Enable the wiki with `--wiki`, with `wiki.enabled: true` in
+`.planwerk/config.yaml`, or with `PLANWERK_WIKI=true`. The flag decides first,
+then the config file, then the environment variable. Pass `--no-capture` to
+skip the capture pass.
+
+Pushing the accepted pages needs two things, because nobody is there to answer
+a confirmation prompt: the write-back enabled (`--capture-wiki`,
+`capture.wiki: true`, or `PLANWERK_CAPTURE_WIKI=true`) and `--yes`. With the
+write-back enabled and no `--yes`, `ship` logs one warning at start and every
+run stays propose-only. See
+[Use the GitHub Wiki](/how-to/use-the-github-wiki#push-accepted-pages-to-the-wiki-opt-in)
+for what a pushed page looks like.
 
 ## Dependency order
 

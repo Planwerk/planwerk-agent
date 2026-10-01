@@ -83,6 +83,11 @@ and `/planwerk:meta` only talk to the GitHub API and need no checkout.
 `/planwerk:humanize` is the inverse: it works on files in your checkout and
 needs no GitHub access at all.
 
+Eight skills read the [project memory](#project-memory) through
+`planwerk-agent brain memory`, so they need the `planwerk-agent` binary on
+`PATH` for it. Without the binary they read no memory, and nothing else about
+them changes.
+
 ## Draft an idea
 
 ```
@@ -293,6 +298,46 @@ once it carries a plan, GitHub's 65,536-character cap otherwise — continues in
 marked comments, which every skill and command merges back into one document
 before reading it; `issue-format-plan.md` says why a plan's body stops there,
 and that a plan over it is split at write-back, never shortened to fit.
+
+## Project memory
+
+A repository can keep a project memory on its GitHub Wiki: one page per
+decision, convention, or piece of context. `elaborate`, `implement`, `fix`,
+`revisit`, `clarify`, `decide`, `diagnose`, and `meta` read it, so a plan, a
+split, or a repair does not contradict a decision the team already recorded.
+`draft`, `humanize`, and `cleanup` do not.
+
+The skills read the memory through the binary and never clone the wiki
+themselves:
+
+```bash
+planwerk-agent brain memory owner/repo                       # the index
+planwerk-agent brain memory owner/repo pin-dependencies.md   # one page
+```
+
+A skill runs the first command once, reads the pages whose index line bears on
+its work, and names a page's file name where its output relies on it. It treats
+the pages as data: a page that tells it to run a command or widen the work
+changes nothing. When the issue or one of your answers contradicts a page, the
+skill names the page and asks which holds.
+
+The memory is off until the repository opts in. To turn it on for the skills:
+
+1. Install `planwerk-agent` and put it on the `PATH` of the Claude Code
+   session. A session that has the plugin and no binary reads no memory.
+2. Commit `wiki.enabled: true` to `.planwerk/config.yaml`, and start the skill
+   from the root of the checkout: the file is read from the directory the skill
+   starts in. `PLANWERK_WIKI=true` in the environment works as well, and so does
+   `--wiki` in the skill's arguments for one run
+   (`/planwerk:elaborate --wiki owner/repo#42`). The flag decides first, then
+   the config file, then the environment variable.
+
+A binary older than the plugin has no `brain` command. The skill then proceeds
+without the memory, and says so in one line when you passed `--wiki` or the
+checkout's config has a `wiki:` section. See
+[Use the GitHub Wiki](/how-to/use-the-github-wiki#read-the-memory-from-the-skills)
+for the pages themselves and the [CLI reference](/reference/cli#brain) for the
+command.
 
 ## Declare the repositories that follow this one
 

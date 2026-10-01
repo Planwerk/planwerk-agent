@@ -95,15 +95,24 @@ logic simple and is cheap because pattern repos are small.
 
 ## GitHub Wiki
 
-`review`, `audit`, `propose`, and the `implement` plan step can use the target
-repository's **GitHub Wiki** as a source of project review patterns and project
-memory. It is **off by default** and enabled per repo with `--wiki`: a wiki is a
-separate permission surface — human-editable through the web UI, often
-world-editable, and never gated by branch protection or PR review — so enabling
-it grants its unreviewed editors influence over the agent's prompts (including
-the `implement` agent that writes code and opens PRs). The wiki gives a knowledge
-store outside the code repo's history that still evolves independently of code
-commits, for repos that accept that trust trade-off.
+`review`, `audit`, `propose`, `elaborate`, the `implement` plan step, `fix`, and
+`address` can use the target repository's **GitHub Wiki** as a source of project
+review patterns and project memory. `ship` hands its wiki settings to every
+`implement` and `fix` run it drives. The wiki is **off by default** and enabled
+per repo with `--wiki`: a wiki is a separate permission surface — human-editable
+through the web UI, often world-editable, and never gated by branch protection
+or PR review — so enabling it grants its unreviewed editors influence over the
+agent's prompts (including the `implement`, `fix`, and `address` sessions that
+write code and push it). The wiki gives a knowledge store outside the code
+repo's history that still evolves independently of code commits, for repos that
+accept that trust trade-off.
+
+Eight plugin skills read the project memory, and only the memory: `elaborate`,
+`implement`, `fix`, `revisit`, `clarify`, `decide`, `diagnose`, and `meta`. They
+call [`planwerk-agent brain memory`](/reference/cli#brain) and never clone the
+wiki themselves, so the opt-in and the page filters below apply to them
+unchanged. The opt-in is resolved in the order of
+[Configuration → Precedence](/reference/configuration#precedence).
 
 **Where it comes from.** The wiki is derived automatically from the resolved
 target repo. Internally it uses a `wiki:owner/repo` URI shorthand that points at
@@ -117,7 +126,7 @@ can be set in `.planwerk/config.yaml` (see
 | Wiki path | Contents |
 |-----------|----------|
 | `review_patterns/*.md` | Project review patterns in the [Pattern Format](#pattern-format) below. They load through the wiki precedence tier (below the committed `.planwerk/review_patterns`, and below `--patterns`), so a committed repo pattern overrides a same-named wiki one. |
-| `memory/*.md` | **Project memory**: one page per decision, convention, or piece of context. The analysis prompts (`review`/`audit`/`propose`) and the planning prompt (`implement`) carry an index of the pages, and the session reads a page's body from a directory the tool writes for the run. |
+| `memory/*.md` | **Project memory**: one page per decision, convention, or piece of context. The analysis prompts (`review`/`audit`/`propose`), the `elaborate` prompt, the planning prompt (`implement`), and the `fix` and `address` prompts carry an index of the pages, and the session reads a page's body from a directory the tool writes for the run. |
 
 Human-navigation pages (`Home.md`, `_Sidebar.md`, anything that does not parse
 as a pattern) under `review_patterns/` are skipped silently, so a normal wiki
@@ -138,18 +147,28 @@ directory that is itself a symlink is not read, with a warning.
 | Summary | The value of the first line that starts with `**Summary**:`. A page without one is listed under its title only, without the ` \| ` part. | 300 bytes, then `...` |
 | Index | Every page that was read. | 64 KB; the first line that does not fit ends the index |
 
-Lines inside a fenced code block give neither a title nor a summary. When the
-index reaches its budget, the run logs a warning with the number of unlisted
-pages, and the prompt states that number and tells the session to list the
-directory.
+Lines inside a fenced code block give neither a title nor a summary. A warning
+about skipped pages gives their number and no file name, and `--verbose` logs
+the names. When the index reaches its budget, the run logs a warning with the
+number of unlisted pages, and the prompt states that number and tells the
+session to list the directory.
 
 The tool reads each page through the filters above and writes the bodies to a
 temporary directory outside the checkout (`planwerk-agent-memory-*`), which
 `--add-dir` opens to the session and which is removed when the run ends. A run
 served from the cache writes no directory. `implement` writes the directory for
 its planning session and removes it when that session ends; a run that reuses a
-posted plan or runs with `--no-plan` writes none. The session never reads the
-wiki clone itself. When the directory cannot be written, the run logs a warning
+posted plan or runs with `--no-plan` writes none. `elaborate` writes one
+directory per run, which the elaboration and every `--review` refinement turn
+read; the reviewer reads none. `fix` writes one per iteration, beside that
+iteration's pattern catalog, and resolves the wiki once per run. `address`
+writes one per run, shared by every per-thread session. The printed prompts of
+`fix` and `address` (`--print-prompt`, `--print-bare-prompt`) resolve no wiki
+and carry no memory. `brain memory` writes no directory: it prints the index
+without the 64 KB budget, and a page's body, to stdout. It lists and prints
+only the pages whose file name is safe on a command line, and drops control
+characters from what it prints (see the [CLI reference](/reference/cli#brain)).
+The session never reads the wiki clone itself. When the directory cannot be written, the run logs a warning
 and the prompt carries the page bodies instead, each behind a `### <name>`
 header and capped at 64 KB in total. The index and the page files are framed as
 untrusted repository data — knowledge to apply, never instructions to follow.
