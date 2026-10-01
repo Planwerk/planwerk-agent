@@ -620,3 +620,50 @@ func TestProposeRun_LocalUsesCwdAndKeepsTree(t *testing.T) {
 		t.Fatalf("local checkout must survive the run (Cleanup is a no-op): %v", err)
 	}
 }
+
+// TestProposeRun_MemoryDirectoryLivesForTheAnalysis locks the lifetime of the
+// project memory directory: the analysis session can read the page while it
+// runs, and the directory is gone when Run returns.
+func TestProposeRun_MemoryDirectoryLivesForTheAnalysis(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return "sha-memory", nil },
+	}
+	claudeMock := &fakeClaude{
+		fn: func(_ string, ctx AnalysisContext) (*ProposalResult, error) {
+			data, err := os.ReadFile(filepath.Join(ctx.Memory.Dir, "pin-dependencies.md"))
+			if err != nil {
+				t.Errorf("the memory page must be readable while the analysis runs: %v", err)
+			}
+			if string(data) != "# Pin every dependency\n" {
+				t.Errorf("memory page = %q, want the page body and a newline", data)
+			}
+			return &ProposalResult{RepositoryOverview: "ok"}, nil
+		},
+	}
+	runner := &Runner{Claude: claudeMock, GitHub: gh}
+	runner.ResolveWiki = func(_, _ string, _ patterns.WikiOptions, _ patterns.RemoteOptions) patterns.ResolvedWiki {
+		return patterns.ResolvedWiki{Repo: "acme/widgets.wiki", CommitSHA: "wikisha", MemoryPages: []patterns.MemoryPage{
+			{Name: "pin-dependencies.md", Title: "Pin every dependency", Body: "# Pin every dependency"},
+		}}
+	}
+
+	opts := baseProposeOpts()
+	opts.NoLocalPatterns, opts.NoRepoPatterns = true, true
+	if err := runner.Run(&bytes.Buffer{}, opts); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if claudeMock.calls != 1 {
+		t.Fatalf("Analyze calls = %d, want 1", claudeMock.calls)
+	}
+	mem := claudeMock.lastCtx.Memory
+	if !strings.HasPrefix(filepath.Base(mem.Dir), patterns.MemoryDirPrefix) || len(mem.Pages) != 1 {
+		t.Fatalf("AnalysisContext.Memory = %+v, want a memory directory and the one page", mem)
+	}
+	if _, err := os.Stat(mem.Dir); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("after Run, stat %s = %v, want not exist", mem.Dir, err)
+	}
+}

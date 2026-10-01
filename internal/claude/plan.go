@@ -23,7 +23,7 @@ import (
 func (c *Client) Plan(dir string, ctx implement.Context) (string, string, error) {
 	// Returned unwrapped: the sole caller (implement's runPlanning) already
 	// prefixes "claude plan", and runClaudePlan names the model and the reason.
-	out, model, err := c.runClaudePlan(dir, BuildPlanPrompt(ctx), "plan", ctx.Catalog)
+	out, model, err := c.runClaudePlan(dir, BuildPlanPrompt(ctx), "plan", ctx.Catalog, ctx.Memory)
 	if err != nil {
 		return "", "", err
 	}

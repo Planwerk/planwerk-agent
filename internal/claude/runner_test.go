@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
 	"github.com/planwerk/planwerk-agent/internal/report/schema"
 )
@@ -921,6 +922,100 @@ func TestAdapters_OpenTheCatalogDirectory(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// addDirValues returns the directories that follow --add-dir in args, up to
+// the next flag. It returns nil when the flag is absent.
+func addDirValues(args []string) []string {
+	i := slices.Index(args, "--add-dir")
+	if i == -1 {
+		return nil
+	}
+	var dirs []string
+	for _, a := range args[i+1:] {
+		if strings.HasPrefix(a, "--") {
+			break
+		}
+		dirs = append(dirs, a)
+	}
+	return dirs
+}
+
+// TestAdapters_OpenTheMemoryDirectory pins which sessions are handed the
+// project memory directory, on the argv their spec produces. The four adapters
+// whose prompt renders the memory index pass ctx.Memory to their session: the
+// review and the audit open that directory alone, the plan and the propose
+// analysis open it after the pattern catalog directory. Without a memory the
+// argv is what it was: the pattern catalog directory where the session has
+// one, and no --add-dir for the review and the audit.
+func TestAdapters_OpenTheMemoryDirectory(t *testing.T) {
+	t.Parallel()
+
+	const catalogDir, memoryDir = "/p", "/m"
+	rows := []struct {
+		name, label string
+		catalogDirs []string // what the session opens without a memory
+		run         func(c *Client, mem patterns.MemoryCatalog)
+	}{
+		{"Review", "review", nil, func(c *Client, mem patterns.MemoryCatalog) {
+			ctx := goldenReviewContext()
+			ctx.Memory = mem
+			_, _ = c.Review("", ctx)
+		}},
+		{"Audit", "audit", nil, func(c *Client, mem patterns.MemoryCatalog) {
+			ctx := goldenAuditContext()
+			ctx.Memory = mem
+			_, _ = c.Audit("", ctx)
+		}},
+		{"Plan", "plan", []string{catalogDir}, func(c *Client, mem patterns.MemoryCatalog) {
+			ctx := goldenImplementContext()
+			ctx.Catalog.Dir = catalogDir
+			ctx.Memory = mem
+			_, _, _ = c.Plan("", ctx)
+		}},
+		{"Propose", "analysis", []string{catalogDir}, func(c *Client, mem patterns.MemoryCatalog) {
+			ctx := goldenAnalysisContext()
+			ctx.Catalog.Dir = catalogDir
+			ctx.Memory = mem
+			_, _ = c.Propose("", ctx)
+		}},
+	}
+	for _, row := range rows {
+		for _, tc := range []struct {
+			name string
+			mem  patterns.MemoryCatalog
+			want []string
+		}{
+			{"with a memory directory", patterns.MemoryCatalog{Dir: memoryDir, Pages: goldenMemory().Pages}, append(slices.Clone(row.catalogDirs), memoryDir)},
+			{"without a memory", patterns.MemoryCatalog{}, row.catalogDirs},
+		} {
+			t.Run(row.name+"/"+tc.name, func(t *testing.T) {
+				t.Parallel()
+				c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
+					return "", "", nil
+				})
+				row.run(c, tc.mem)
+
+				if len(*calls) == 0 {
+					t.Fatal("the adapter ran no session")
+				}
+				first := (*calls)[0].spec
+				if first.label != row.label {
+					t.Fatalf("first session has label %q, want %q", first.label, row.label)
+				}
+				args := c.claudeArgs(first, "json")
+				if got := addDirValues(args); !slices.Equal(got, tc.want) {
+					t.Errorf("--add-dir carries %q, want %q; argv %v", got, tc.want, args)
+				}
+				if len(tc.want) == 0 && slices.Contains(args, "--add-dir") {
+					t.Errorf("a session without a directory must carry no --add-dir; argv %v", args)
+				}
+				if tc.mem.Dir == "" && slices.Contains(args, memoryDir) {
+					t.Errorf("a session without a memory must not name %s; argv %v", memoryDir, args)
+				}
+			})
+		}
 	}
 }
 

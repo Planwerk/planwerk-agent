@@ -444,15 +444,28 @@ func TestBuildAnalysisPrompt_Glossary(t *testing.T) {
 	assertGoldenPrompt(t, "analysis_glossary", buildAnalysisPrompt(ctx))
 }
 
-// goldenMemory returns a representative project-memory block — the shape
-// patterns.LoadMemory produces from a wiki's memory/ pages — so the
-// project-memory block snapshots cover the rendered shape, including the
-// untrusted-data framing and the <project-memory> wrapper.
-func goldenMemory() string {
-	return "### Decisions\n\n" +
-		"We pin every dependency and never float a version range.\n\n" +
-		"### Conventions\n\n" +
-		"All HTTP errors use the Problem Details format.\n"
+// goldenMemory returns a representative project memory, the shape
+// patterns.MaterializeMemory produces from a wiki's memory/ pages: a directory
+// and two pages, one with a summary and one without. The project-memory block
+// snapshots therefore cover the index form, including the untrusted-data
+// framing and the <project-memory-index> wrapper.
+func goldenMemory() patterns.MemoryCatalog {
+	return patterns.MemoryCatalog{
+		Dir: "/tmp/planwerk-agent-memory-golden",
+		Pages: []patterns.MemoryPage{
+			{
+				Name:  "conventions.md",
+				Title: "conventions",
+				Body:  "All HTTP errors use the Problem Details format.",
+			},
+			{
+				Name:    "pin-every-dependency.md",
+				Title:   "Pin every dependency",
+				Summary: "Dependencies are pinned to exact versions and never float a version range.",
+				Body:    "# Pin every dependency\n\n**Summary**: Dependencies are pinned to exact versions and never float a version range.\n\nA floating range broke the release build twice.",
+			},
+		},
+	}
 }
 
 // TestBuildReviewPrompt_Memory locks the "## Project Memory" block injected into
@@ -462,6 +475,16 @@ func TestBuildReviewPrompt_Memory(t *testing.T) {
 	ctx := goldenReviewContext()
 	ctx.Memory = goldenMemory()
 	assertGoldenPrompt(t, "review_memory", buildReviewPrompt(ctx))
+}
+
+// TestBuildReviewPrompt_MemoryBodies locks the fallback form of the
+// project-memory block: a memory whose directory could not be written is
+// carried as page bodies in <project-memory> tags. The block is shared, so the
+// review prompt stands in for the other three readers.
+func TestBuildReviewPrompt_MemoryBodies(t *testing.T) {
+	ctx := goldenReviewContext()
+	ctx.Memory = patterns.MemoryCatalog{Pages: goldenMemory().Pages}
+	assertGoldenPrompt(t, "review_memory_bodies", buildReviewPrompt(ctx))
 }
 
 // TestBuildAuditPrompt_Memory locks the project-memory block in the audit

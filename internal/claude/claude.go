@@ -27,7 +27,7 @@ type ReviewContext struct {
 	NewFeatures []doccheck.NewFeatureHint // new files that may need documentation
 	TodoContent string                    // content of TODOS.md if present
 	Glossary    string                    // repo domain glossary from CONTEXT.md / .planwerk/context.md; empty when absent
-	Memory      string                    // project memory from the repo's GitHub Wiki; empty when absent
+	Memory      patterns.MemoryCatalog    // wiki project memory: the pages and the directory a session reads them from; zero when absent
 }
 
 // Review runs the diff-review session in the given directory and returns its
@@ -45,7 +45,7 @@ func (c *Client) Review(dir string, ctx ReviewContext) (*report.ReviewResult, er
 // runReview invokes `claude -p` with the review prompt, returning the review's
 // JSON output and the resolved model id.
 func (c *Client) runReview(dir string, rctx ReviewContext) (text, model string, err error) {
-	return c.runClaudeFindings(dir, buildReviewPrompt(rctx), "review")
+	return c.runClaudeFindings(dir, buildReviewPrompt(rctx), "review", rctx.Memory)
 }
 
 // tokenUsage is a tolerant view over the per-call token counts Claude Code

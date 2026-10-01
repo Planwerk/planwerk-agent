@@ -845,7 +845,7 @@ func TestRun_WikiDisabledLeavesRunUnchanged(t *testing.T) {
 	t.Cleanup(restore)
 
 	pr := fakePR(t, "acme", "widgets", 77, "sha-wiki-off")
-	var gotMemory string
+	gotMemory := patterns.MemoryCatalog{Dir: "unset"}
 	claudeMock := &configurableClaude{
 		review: func(dir string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
 			gotMemory = ctx.Memory
@@ -859,11 +859,134 @@ func TestRun_WikiDisabledLeavesRunUnchanged(t *testing.T) {
 	if err := runner.Run(&out, baseOpts()); err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
-	if gotMemory != "" {
-		t.Errorf("a disabled wiki must leave ReviewContext.Memory empty, got %q", gotMemory)
+	if gotMemory.Dir != "" || gotMemory.Pages != nil {
+		t.Errorf("a disabled wiki must leave ReviewContext.Memory the zero MemoryCatalog, got %+v", gotMemory)
 	}
 	if strings.Contains(out.String(), "Wiki:") {
 		t.Errorf("a wiki-disabled review must not render a Wiki provenance line, got:\n%s", out.String())
+	}
+}
+
+// memoryWiki is a ResolveWiki seam for a wiki that carries one memory page and
+// no clone directory, so the capture pass stays off.
+func memoryWiki(_, _ string, _ patterns.WikiOptions, _ patterns.RemoteOptions) patterns.ResolvedWiki {
+	return patterns.ResolvedWiki{
+		Repo:      "acme/widgets.wiki",
+		CommitSHA: "wikisha",
+		MemoryPages: []patterns.MemoryPage{
+			{Name: "pin-dependencies.md", Title: "Pin every dependency", Summary: "Dependencies are pinned.", Body: "# Pin every dependency"},
+		},
+	}
+}
+
+// memoryDirsIn returns the entries of dir whose name starts with
+// patterns.MemoryDirPrefix.
+func memoryDirsIn(t *testing.T, dir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("reading %s: %v", dir, err)
+	}
+	var found []string
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), patterns.MemoryDirPrefix) {
+			found = append(found, e.Name())
+		}
+	}
+	return found
+}
+
+// TestRun_MemoryDirectoryLivesForTheReview locks the lifetime of the project
+// memory directory: the review session can read the page while it runs, and
+// the directory is gone when Run returns.
+func TestRun_MemoryDirectoryLivesForTheReview(t *testing.T) {
+	// Not t.Parallel(): cache.SetDir mutates a package-level variable.
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+
+	pr := fakePR(t, "acme", "widgets", 78, "sha-wiki-memory")
+	var gotMemory patterns.MemoryCatalog
+	claudeMock := &configurableClaude{
+		review: func(dir string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
+			gotMemory = ctx.Memory
+			data, err := os.ReadFile(filepath.Join(ctx.Memory.Dir, "pin-dependencies.md"))
+			if err != nil {
+				t.Errorf("the memory page must be readable while the review runs: %v", err)
+			}
+			if string(data) != "# Pin every dependency\n" {
+				t.Errorf("memory page = %q, want the page body and a newline", data)
+			}
+			return &report.ReviewResult{Summary: "ok"}, nil
+		},
+	}
+	gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
+	runner := &Runner{Claude: claudeMock, GitHub: gh, ResolveWiki: memoryWiki}
+
+	if err := runner.Run(&bytes.Buffer{}, baseOpts()); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if claudeMock.reviewCalls != 1 {
+		t.Fatalf("Review calls = %d, want 1", claudeMock.reviewCalls)
+	}
+	if !strings.HasPrefix(filepath.Base(gotMemory.Dir), patterns.MemoryDirPrefix) || len(gotMemory.Pages) != 1 {
+		t.Fatalf("ReviewContext.Memory = %+v, want a memory directory and the one page", gotMemory)
+	}
+	if _, err := os.Stat(gotMemory.Dir); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("after Run, stat %s = %v, want not exist", gotMemory.Dir, err)
+	}
+	if left := memoryDirsIn(t, tmp); len(left) != 0 {
+		t.Errorf("TMPDIR holds %v after Run, want no memory directory", left)
+	}
+}
+
+// TestRun_CacheHitWritesNoMemoryDirectory locks that the memory is written
+// after the cache check: a review served from the cache creates no directory.
+func TestRun_CacheHitWritesNoMemoryDirectory(t *testing.T) {
+	// Not t.Parallel(): cache.SetDir mutates a package-level variable.
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	gh := &githubtest.Fake{
+		FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return fakePR(t, "acme", "widgets", 79, "sha-wiki-cached"), nil },
+	}
+	first := &configurableClaude{
+		review: func(dir string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
+			return &report.ReviewResult{Summary: "Primary"}, nil
+		},
+	}
+	if err := (&Runner{Claude: first, GitHub: gh, ResolveWiki: memoryWiki}).Run(&bytes.Buffer{}, baseOpts()); err != nil {
+		t.Fatalf("first Run returned error: %v", err)
+	}
+
+	// The second run gets a temp dir of its own, and its log is captured:
+	// MaterializeMemoryOrWarn logs every directory it writes.
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	var logBuf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logBuf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	second := &configurableClaude{
+		review: func(dir string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
+			t.Error("Review must not be called on a cache hit")
+			return nil, nil
+		},
+	}
+	var out bytes.Buffer
+	if err := (&Runner{Claude: second, GitHub: gh, ResolveWiki: memoryWiki}).Run(&out, baseOpts()); err != nil {
+		t.Fatalf("second Run returned error: %v", err)
+	}
+	if !strings.Contains(logBuf.String(), "using cached review result") {
+		t.Fatalf("the second run must be served from the cache, got log:\n%s", logBuf.String())
+	}
+	if strings.Contains(logBuf.String(), "project memory") {
+		t.Errorf("a cached review must not write the project memory, got log:\n%s", logBuf.String())
+	}
+	if left := memoryDirsIn(t, tmp); len(left) != 0 {
+		t.Errorf("TMPDIR holds %v, want no memory directory on a cache hit", left)
 	}
 }
 
