@@ -1,0 +1,21 @@
+Convert the following page review into structured JSON. Include one entry per page the review gives a verdict for; invent nothing.
+
+Output ONLY valid JSON matching this exact schema (no markdown fences, no surrounding text):
+
+{
+  "pages": [
+    {
+      "path": "memory/example-slug.md",
+      "verdict": "accept|revise|reject",
+      "body": "<for a revise only: the full corrected page exactly as the review wrote it>",
+      "reason": "Why the review revised or rejected the page."
+    }
+  ]
+}
+
+Use the exact page path from the review (slash form, e.g. "memory/pin-every-dependency.md"). Set "body" only for a "revise" verdict, to the full corrected page exactly as the review wrote it; leave it "" for "accept" and "reject". Copy the reason the review states; when it states none, use "". If the review names no page, emit {"pages": []}.
+
+<analysis-output>
+memory/capture-is-propose-only.md: accept.
+
+</analysis-output>

@@ -10,6 +10,7 @@ import (
 
 	"github.com/planwerk/planwerk-agent/internal/address"
 	"github.com/planwerk/planwerk-agent/internal/audit"
+	"github.com/planwerk/planwerk-agent/internal/brain"
 	"github.com/planwerk/planwerk-agent/internal/capture"
 	"github.com/planwerk/planwerk-agent/internal/doccheck"
 	"github.com/planwerk/planwerk-agent/internal/elaborate"
@@ -379,6 +380,74 @@ func TestBuildCapturePrompt_Golden(t *testing.T) {
 func TestBuildCaptureStructurePrompt_Golden(t *testing.T) {
 	raw := "Propose review_patterns/escape-untrusted-fences.md: the fence-escaping fix recurs.\n"
 	assertGoldenPrompt(t, "capture_structure", buildCaptureStructurePrompt(raw))
+}
+
+func goldenBootstrapUnitContext() brain.UnitContext {
+	return brain.UnitContext{
+		RepoName: "planwerk/planwerk-agent",
+		Unit: brain.Unit{
+			Key:    "issue-138",
+			Kind:   brain.KindIssue,
+			Title:  "Capture knowledge after an implement run",
+			Source: "planwerk/planwerk-agent#138",
+			Issue:  138,
+			PRs:    []int{141},
+		},
+		Items: []brain.Item{
+			{Kind: brain.ItemIssue, Ref: "#138", Author: "maintainer", Body: "Title: Capture knowledge after an implement run\n\nAn implement run ends with findings nobody keeps."},
+			{Kind: brain.ItemIssueComment, Ref: "#138", Author: "contributor", Date: "2026-06-01T10:00:00Z", Body: "The pass must never push on its own."},
+			{Kind: brain.ItemPullRequest, Ref: "#141", Author: "contributor", Body: "Title: Add the capture pass\n\nCloses #138"},
+			{Kind: brain.ItemReviewThread, Ref: "#141 internal/claude/capture.go:60", Body: "internal/claude/capture.go:60\n\nmaintainer (2026-06-02T09:00:00Z):\nEscape the fence before injecting the finding."},
+			{Kind: brain.ItemCommit, Ref: "0123456789ab", Body: "Add the capture pass\n\nThe pass proposes pages and writes nothing."},
+		},
+		Omitted:  2,
+		PagesDir: "/work/.planwerk-brain-sync/pages",
+		Index:    "- memory/decisions.md: Pin every dependency | Dependencies are pinned and never float.\n- review_patterns/escape-untrusted-fences.md: Review Pattern: Escape untrusted fences\n",
+		Patterns: goldenPatterns(),
+	}
+}
+
+func goldenBootstrapReviewContext() brain.ReviewContext {
+	return brain.ReviewContext{
+		UnitContext: goldenBootstrapUnitContext(),
+		Proposed: []capture.ProposedPage{
+			{
+				Path:  "memory/capture-is-propose-only.md",
+				Kind:  capture.KindMemory,
+				Title: "Capture is propose-only",
+				Body:  "# Capture is propose-only\n\n**Summary**: The capture pass proposes wiki pages and never pushes them.\n\nA gated step writes them.",
+			},
+			{
+				Path:     "review_patterns/escape-untrusted-fences.md",
+				Kind:     capture.KindPattern,
+				Title:    "Escape untrusted fences",
+				Body:     "# Review Pattern: Escape untrusted fences\n\n**Review-Area**: security",
+				IsUpdate: true,
+			},
+		},
+	}
+}
+
+// TestBuildBootstrapUnitPrompt_Golden locks the analysis prompt of `brain
+// bootstrap`: the propose-only role, the check against the code, the
+// correction and deduplication rules, the page conventions, and the unit's
+// items, the working-set index, and the pattern index as fenced data.
+func TestBuildBootstrapUnitPrompt_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "bootstrap_unit", buildBootstrapUnitPrompt(goldenBootstrapUnitContext()))
+}
+
+// TestBuildBootstrapReviewPrompt_Golden locks the page review prompt: the
+// three verdicts, the six checks, and the proposed pages beside the unit's
+// items.
+func TestBuildBootstrapReviewPrompt_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "bootstrap_review", buildBootstrapReviewPrompt(goldenBootstrapReviewContext()))
+}
+
+// TestBuildBootstrapReviewStructurePrompt_Golden locks the review-structuring
+// prompt: the pages JSON schema and the review fence.
+func TestBuildBootstrapReviewStructurePrompt_Golden(t *testing.T) {
+	raw := "memory/capture-is-propose-only.md: accept.\n"
+	assertGoldenPrompt(t, "bootstrap_review_structure", buildBootstrapReviewStructurePrompt(raw))
 }
 
 // TestBuildAnalysisPrompt_NoPatterns locks the fallback shape used when no
