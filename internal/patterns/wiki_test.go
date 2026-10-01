@@ -1,14 +1,18 @@
 package patterns
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/planwerk/planwerk-agent/internal/logging"
 )
 
 // gitInitWithCommit makes dir a git repo with one (possibly empty) commit so
@@ -214,6 +218,32 @@ func pageNames(pages []MemoryPage) []string {
 	return names
 }
 
+// captureConsoleLogs routes the default logger through the console handler, at
+// debug level, into the returned buffer for the rest of the test. That handler
+// writes an attribute value as it is, which is what a terminal and a skill
+// session read.
+func captureConsoleLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var logBuf bytes.Buffer
+	prev := slog.Default()
+	if err := logging.Init(logging.Options{Writer: &logBuf, Verbose: true}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	return &logBuf
+}
+
+// logLines returns the lines of log that start with prefix.
+func logLines(log, prefix string) []string {
+	var lines []string
+	for _, line := range strings.Split(log, "\n") {
+		if strings.HasPrefix(line, prefix) {
+			lines = append(lines, line)
+		}
+	}
+	return lines
+}
+
 // TestLoadMemoryPages covers the page filters, the warnings, and the title
 // and summary an index line shows. Its subtests capture the default logger, so
 // none of them runs in parallel.
@@ -255,12 +285,16 @@ func TestLoadMemoryPages(t *testing.T) {
 	})
 
 	t.Run("an oversized page is skipped without suppressing later pages", func(t *testing.T) {
-		logBuf := captureLogs(t)
+		logBuf := captureConsoleLogs(t)
 		dir := t.TempDir()
-		// 000-huge.md sorts first and exceeds the per-file cap on its own. It must
-		// be skipped (not read whole into memory, and not allowed to suppress the
-		// legitimate page that sorts after it).
-		mustWrite(t, filepath.Join(dir, "000-huge.md"), strings.Repeat("x", maxMemoryBytes+1))
+		// Both oversized pages sort first and exceed the per-file cap on their
+		// own. They must be skipped (not read whole into memory, and not allowed
+		// to suppress the legitimate page that sorts after them). One warning
+		// counts them and names neither: a skill session reads the log, and the
+		// second name would run in a shell and forge a log attribute.
+		huge := strings.Repeat("x", maxMemoryBytes+1)
+		mustWrite(t, filepath.Join(dir, "000-huge.md"), huge)
+		mustWrite(t, filepath.Join(dir, "$(id) forged=1.md"), huge)
 		mustWrite(t, filepath.Join(dir, "001-real.md"), "Legitimate memory page.")
 
 		got := LoadMemoryPages(dir)
@@ -268,8 +302,20 @@ func TestLoadMemoryPages(t *testing.T) {
 			t.Errorf("pages = %v, want only 001-real.md", names)
 		}
 		log := logBuf.String()
-		if !strings.Contains(log, "project memory page exceeds size cap; skipping") || !strings.Contains(log, "page=000-huge.md") || !strings.Contains(log, "cap=65536") {
-			t.Errorf("expected the oversized-page warning naming the page and the cap, got:\n%s", log)
+		warnings := logLines(log, "warning: ")
+		if len(warnings) != 1 || !strings.Contains(warnings[0], "skipped project memory pages that exceed the size cap") || !strings.Contains(warnings[0], "pages=2") || !strings.Contains(warnings[0], "cap=65536") {
+			t.Fatalf("warnings = %q, want one with the number of oversized pages and the cap", warnings)
+		}
+		for _, part := range []string{"000-huge", "$(id)", "forged=1"} {
+			if strings.Contains(warnings[0], part) {
+				t.Errorf("the warning carries %q of a skipped page's file name, want it to name none:\n%s", part, warnings[0])
+			}
+		}
+		debugs := strings.Join(logLines(log, "debug: "), "\n")
+		for _, want := range []string{`page="000-huge.md"`, `page="$(id) forged=1.md"`} {
+			if !strings.Contains(debugs, want) {
+				t.Errorf("expected a debug line with %s, got:\n%s", want, log)
+			}
 		}
 	})
 
@@ -357,8 +403,9 @@ func TestLoadMemoryPages(t *testing.T) {
 		}
 	})
 
-	t.Run("a page name with a control character is skipped with a warning", func(t *testing.T) {
-		logBuf := captureLogs(t)
+	t.Run("a page name with a control character is skipped, counted in the warning, and quoted at debug level", func(t *testing.T) {
+		// A raw name would drive the terminal the log is printed to.
+		logBuf := captureConsoleLogs(t)
 		dir := t.TempDir()
 		if err := os.WriteFile(filepath.Join(dir, "bad\x01.md"), []byte("An injected index line."), 0o600); err != nil {
 			t.Skipf("the file system refuses a control character in a file name: %v", err)
@@ -369,8 +416,19 @@ func TestLoadMemoryPages(t *testing.T) {
 		if names := pageNames(got); !reflect.DeepEqual(names, []string{"good.md"}) {
 			t.Errorf("pages = %q, want only good.md", names)
 		}
-		if !strings.Contains(logBuf.String(), "project memory page name contains a control character; skipping") {
-			t.Errorf("expected the control-character warning, got:\n%s", logBuf.String())
+		log := logBuf.String()
+		warnings := logLines(log, "warning: ")
+		if len(warnings) != 1 || !strings.Contains(warnings[0], "skipped project memory pages whose file name contains a control character") || !strings.Contains(warnings[0], "pages=1") {
+			t.Fatalf("warnings = %q, want one with the number of skipped pages", warnings)
+		}
+		if strings.Contains(warnings[0], "bad") {
+			t.Errorf("the warning names the skipped page, want it to name none:\n%q", warnings[0])
+		}
+		if !strings.Contains(strings.Join(logLines(log, "debug: "), "\n"), `page="bad\x01.md"`) {
+			t.Errorf("expected a debug line with the quoted page name, got:\n%q", log)
+		}
+		if strings.ContainsRune(log, '\x01') {
+			t.Errorf("the log carries the control character itself:\n%q", log)
 		}
 	})
 

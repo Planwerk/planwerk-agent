@@ -3,7 +3,10 @@ package main
 import (
 	"testing"
 
+	"github.com/spf13/pflag"
+
 	"github.com/planwerk/planwerk-agent/internal/cli"
+	"github.com/planwerk/planwerk-agent/internal/patterns"
 )
 
 func boolPtr(b bool) *bool    { return &b }
@@ -137,6 +140,39 @@ func TestLookupBoolEnv(t *testing.T) {
 			t.Setenv("PLANWERK_WIKI_TEST_BOOL", raw)
 			if _, ok := lookupBoolEnv("PLANWERK_WIKI_TEST_BOOL"); ok {
 				t.Errorf("%q should report ok=false so the caller falls through", raw)
+			}
+		})
+	}
+}
+
+// TestWikiFlags_ResolveReadsTheFlagsItRegistered locks the pairing of the two
+// methods: the names resolve asks the flag set about are the names register
+// bound, so a flag given on the command line reaches the WikiOptions.
+func TestWikiFlags_ResolveReadsTheFlagsItRegistered(t *testing.T) {
+	t.Setenv(envWiki, "")
+	t.Setenv(envWikiRef, "")
+
+	cases := []struct {
+		name string
+		args []string
+		fc   cli.WikiFileConfig
+		want patterns.WikiOptions
+	}{
+		{"no flag leaves the wiki off", nil, cli.WikiFileConfig{}, patterns.WikiOptions{}},
+		{"--wiki and --wiki-ref reach the options", []string{"--wiki", "--wiki-ref", "v1"}, cli.WikiFileConfig{}, patterns.WikiOptions{Enabled: true, Ref: "v1"}},
+		{"--no-wiki beats the config file", []string{"--no-wiki"}, cli.WikiFileConfig{Enabled: boolPtr(true)}, patterns.WikiOptions{}},
+		{"--wiki-ref beats the config file", []string{"--wiki-ref", "v2"}, cli.WikiFileConfig{Enabled: boolPtr(true), Ref: strPtr("cfg-ref")}, patterns.WikiOptions{Enabled: true, Ref: "v2"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var wiki wikiFlags
+			flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+			wiki.register(flags)
+			if err := flags.Parse(tc.args); err != nil {
+				t.Fatalf("parsing %v: %v", tc.args, err)
+			}
+			if got := wiki.resolve(flags, tc.fc); got != tc.want {
+				t.Errorf("resolve = %+v, want %+v", got, tc.want)
 			}
 		})
 	}
