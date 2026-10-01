@@ -248,10 +248,21 @@ rather than failing the run. The push authenticates a private wiki exactly as
 [`sync`](/how-to/sync-the-wiki) does — see its write-phase note for the auth
 details.
 
+The write phase never replaces a page the run did not read: a new page whose
+path the wiki already holds is skipped with a `Skipped` line.
+
 `ship` runs unattended and never shows the confirmation prompt. It pushes the
 accepted pages only when the write-back is enabled and `--yes` is given.
 Enabled without `--yes`, `ship` logs one warning at start and every run stays
 propose-only.
+
+## Start from the repository's history
+
+A repository that turns the wiki on starts with an empty memory, while its
+earlier decisions sit in closed issues, review threads, and commit messages.
+`brain bootstrap` distills that history into memory pages and review patterns,
+has a second model review each page, and pushes them after you confirm. See
+[Bootstrap the project memory](/how-to/bootstrap-the-project-memory).
 
 ## Keep the wiki trustworthy
 

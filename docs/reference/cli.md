@@ -894,11 +894,21 @@ prompts resolve no wiki and carry no memory.
 
 ## `brain`
 
-Read the project memory a repository keeps on its
-[GitHub Wiki](/reference/review-patterns#github-wiki). The command starts no
-Claude session and writes no file. The [skills](/how-to/use-the-skills#project-memory)
-call it, so a skill reads the memory through the same opt-in, authentication,
-and page checks as the commands above.
+Read and build the project memory a repository keeps on its
+[GitHub Wiki](/reference/review-patterns#github-wiki).
+
+| Subcommand | Arguments | Description |
+|------------|-----------|-------------|
+| `brain memory` | `<repo-ref>` | Print the memory index of the repository's wiki |
+| `brain memory` | `<repo-ref> <page>` | Print the memory page with that file name |
+| `brain bootstrap` | `<repo-ref>` | Build the memory from the repository's history |
+
+### `brain memory`
+
+Print the project memory. The command starts no Claude session and writes no
+file. The [skills](/how-to/use-the-skills#project-memory) call it, so a skill
+reads the memory through the same opt-in, authentication, and page checks as
+the commands above.
 
 ```bash
 # Print the memory index: a header, a blank line, one line per page
@@ -907,11 +917,6 @@ planwerk-agent brain memory owner/repo
 # Print one page, named by its file name in the index
 planwerk-agent brain memory owner/repo pin-dependencies.md
 ```
-
-| Subcommand | Arguments | Description |
-|------------|-----------|-------------|
-| `brain memory` | `<repo-ref>` | Print the memory index of the repository's wiki |
-| `brain memory` | `<repo-ref> <page>` | Print the memory page with that file name |
 
 | Flag | Description | Default |
 |------|-------------|---------|
@@ -949,6 +954,220 @@ pages, the index form prints nothing on stdout and exits 0. A page the memory
 does not hold is an error: the command prints nothing on stdout and exits
 non-zero with `no project memory page named "<page>" for <owner>/<repo>`. Log
 lines go to stderr.
+
+### `brain bootstrap`
+
+Distill the history of a repository into project memory pages and review
+patterns. The command reads the history unit by unit, runs one analysis session
+per unit and one review session per unit that proposes a page, and keeps the
+pages in a state directory. It writes to the wiki only under `--write-wiki` and
+after a confirmation at a terminal. See
+[Bootstrap the project memory](/how-to/bootstrap-the-project-memory) for the
+workflow.
+
+```bash
+planwerk-agent brain bootstrap owner/repo --dry-run        # list the units, no session
+planwerk-agent brain bootstrap owner/repo --max-units 5    # process five units and stop
+planwerk-agent brain bootstrap owner/repo                  # process every remaining unit
+planwerk-agent brain bootstrap owner/repo --write-wiki     # push the pages after a y
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--dry-run` | Clone the repository, list the units, and stop: no Claude session, no wiki clone, no state write | `false` |
+| `--max-units` | Stop after this many units in this run; `0` processes every remaining unit | `0` |
+| `--write-wiki` | Once no unit remains, push the changed pages after a confirmation at a terminal | `false` |
+| `--wiki-ref` | Pin the wiki to a branch, tag, or commit (env: `PLANWERK_WIKI_REF`) | - |
+| `--review-model` | Model of the page review (env: `PLANWERK_BRAIN_REVIEW_MODEL`) | `fable` |
+| `--review-effort` | Reasoning effort of the page review: one of `low`, `medium`, `high`, `xhigh`, `max` (env: `PLANWERK_BRAIN_REVIEW_EFFORT`) | `high` |
+| `--decision-docs` | Repository-relative paths of the decision documents to read, comma-separated or repeated; replaces discovery | - |
+| `--no-decision-docs` | Read no decision document | `false` |
+
+`--dry-run` and `--write-wiki` are mutually exclusive, and so are
+`--decision-docs` and `--no-decision-docs`. `--max-units` must not be negative.
+An unknown `--review-effort` is rejected before any session runs.
+
+The command always reads the wiki, so it has `--wiki-ref` and neither `--wiki`
+nor `--no-wiki`. It reads `wiki.repo` and `wiki.ref` from
+`.planwerk/config.yaml` and ignores `wiki.enabled`. It has no `--yes`.
+
+#### Units
+
+The history is read from the GitHub API and grouped into units:
+
+| Kind | Key | Content |
+|------|-----|---------|
+| Issue | `issue-<n>` | A closed issue with its comments, the merged pull requests that closed it (comments, reviews, review threads, commits), and the commit that closed it when no pull request did |
+| Pull request | `pr-<n>` | A merged pull request that closed no closed issue. A pull request opened by a bot is skipped and counted |
+| Commit range | `commits-<first12>-<last12>` | Up to 25 adjacent commits of the default branch that belong to no merged pull request and closed no issue |
+| Document | `doc-<path>@<hash12>` | One chunk of a decision document, cut at line boundaries into chunks of at most 16 KiB |
+
+Units follow the default branch. A unit sorts by the newest commit it holds on
+the default branch. A unit without such a commit (an issue closed by hand, a
+pull request whose commits are no longer on the default branch) sorts by the
+time it was closed or merged, after the units of the commits up to that time.
+Document units come last, in path order.
+
+A Markdown file is a decision document when a directory on its path is named
+`adr`, `adrs`, or `decisions`, or when its name is `design-decisions.md`,
+`decisions.md`, `decision-log.md`, or `adr.md` (compared without case). A
+symlink, a file over 2 MiB, and a path that holds `--` or a character outside
+letters, digits, `.`, `_`, `/`, and `-` are skipped with a warning. A path given
+with `--decision-docs` must be a regular file inside the repository, or the run
+fails with `decision document "<path>" not found in the repository`.
+
+Every piece of a unit's text is scrubbed of known secret patterns. A piece over
+32 KiB is cut and ends with `[truncated: <n> bytes omitted]`. A unit carries at
+most 384 KiB into a session; the pieces past that are left out, and the prompt
+says how many.
+
+#### Sessions
+
+The analysis runs on `--claude-model` and `--claude-effort`. It proposes memory
+pages and review patterns, or nothing. A new page must be
+`memory/<name>.md` or `review_patterns/<name>.md` with a name of lowercase
+letters, digits, `.`, `_`, and `-` that starts with a letter or a digit; a
+proposal for the path of an existing page is an update. Any other path is
+rejected as `invalid path`, and a second proposal for one path as
+`duplicate path`.
+
+The review runs on `--review-model` and `--review-effort`, and only for a unit
+with at least one valid proposal. It gives each page one verdict: `accept`
+keeps the proposed page, `revise` replaces it with the reviewer's page, and
+`reject` drops it. A page without a verdict is rejected as
+`no review verdict`, a `reject` without a reason is recorded as
+`rejected without a reason`, and a `revise` without a page as
+`revise verdict without a page`. A page that is over 64 KiB with its provenance
+marker is rejected as `page exceeds 64 KiB`.
+
+Both sessions are read-only, run in a clone of the repository at the default
+branch's HEAD, and may read the pages of the state directory.
+
+#### State directory
+
+The state lives in `.planwerk-brain-sync` in the directory the command runs in:
+
+```text
+.planwerk-brain-sync/
+├── .gitignore        # one line, "*", so git never tracks the directory
+├── state.json        # processed units, one entry per page, usage of all runs
+├── pages/
+│   ├── memory/<name>.md
+│   └── review_patterns/<name>.md
+└── orphans/          # files found under pages/ that state.json has no entry for
+```
+
+A page file holds the page without its provenance marker. `state.json` records
+for each page the source its marker names (`source`: the unit that last wrote
+the page, or the source the wiki page's marker named), the hash of the wiki
+version it is based on (`base_sha256`), and whether it diverged. A page is dirty
+when its file differs from that wiki version; dirty pages are what
+`--write-wiki` pushes.
+
+A file under `pages/` that `state.json` has no entry for is not a page of the
+working set. Every run except a dry run moves it to `orphans/`, under the same
+relative path, and logs a warning that names both paths. When `orphans/` already
+holds something under that path, the file is moved to the first free name
+`<path>.1`, `<path>.2`, and so on, and what was there stays. A directory of the
+path whose name `orphans/` holds as a file takes the first free name the same
+way. A `state.json` that names a page outside `memory/` and `review_patterns/`
+fails the run with `<file> names the page "<path>", which is not a file in
+memory/ or review_patterns/; delete the directory to start over`.
+
+Every run except a dry run starts by cloning the wiki and refreshing the pages:
+
+| Local page | Wiki page | Result |
+|------------|-----------|--------|
+| Absent | Present | The page is added |
+| Unchanged | Changed | The page takes the wiki's text |
+| Changed | Unchanged | Nothing changes |
+| Changed | Changed to the same text | The page counts as unchanged |
+| Changed | Changed to another text | The page is marked diverged |
+| Unchanged | Removed | The page is deleted |
+| Changed | Removed | The page becomes a new page |
+
+A wiki file in `memory/` or `review_patterns/` whose name is only `.md` is not
+added: the run logs a warning that names it and skips it.
+
+A diverged page is never pushed. Every run reports it until the local file and
+the wiki page hold the same text. When the wiki cannot be cloned (a wiki without
+a first page cannot), the run logs a warning and continues with the pages it
+has.
+
+#### Output
+
+The run prints to stdout:
+
+```text
+Units: 196 total, 2 processed, 194 remaining
+  103 issues, 66 pull requests, 16 commit ranges, 11 decision document chunks; 18 bot-authored pull requests skipped
+[3/196] issue-6: 2 proposed, 1 accepted, 1 rejected
+Pages: 4 new, 1 updated, 3 unchanged, 0 diverged
+- `memory/pin-dependencies.md` (new) from owner/repo#6
+- `memory/one-off.md` (issue-6): a one-off, not a decision
+Models: analysis claude-opus-5-5, review claude-fable-5-1
+Usage this run: 48211 input tokens, 9120 output tokens, 4 calls, est. $1.84
+Usage all runs: 131004 input tokens, 26377 output tokens, 12 calls, est. $5.02
+Propose-only: nothing was written to the wiki. The pages are under .planwerk-brain-sync/pages; run again with --write-wiki to push them.
+```
+
+- The two `Units:` lines count the units by state and by kind. A dry run then
+  prints one line per remaining unit, `<key>  <title>`, and stops.
+- One `[<position>/<total>]` line per processed unit.
+- The `Pages:` line, then one line per dirty page (`new` or `update`, and the
+  source of the page, or `a local edit` for a hand-edited page that had no
+  provenance marker on the wiki), one line per proposal rejected in this run
+  with its unit and the reason, and one line per diverged page.
+- The `Models:` line names the model each kind of session reported, `-` for a
+  kind that did not run.
+- The two `Usage` lines, for this run and summed over all runs.
+
+Control characters other than newline and tab are dropped from what the command
+prints. Log lines and the usage summary go to stderr.
+
+#### Stop and resume
+
+The state is saved after every unit. A unit that fails ends the run: the run
+prints `Stopped at unit <key>. The state is saved in <dir>; run the same command
+again to continue.` and exits non-zero with `unit <key>: <step>: <cause>`, where
+the step is `content`, `analysis`, `review`, or `apply`. A Claude usage limit, a
+session timeout, and a GitHub rate limit all arrive this way.
+
+The next run lists the history again and skips every unit in the state. It
+continues with the first unit that is not processed, and a later run processes
+only what was closed, merged, or committed since. A commit range that grew gets
+a new key and is processed again. An issue keeps its key: its unit is processed
+again when it holds a pull request or a closer commit that its record in
+`state.json` does not name, for example after the issue was reopened and closed
+by a later pull request. Deleting `.planwerk-brain-sync` starts over.
+
+#### Wiki write
+
+With `--write-wiki`, and once no unit remains, the run lists every dirty page
+that is not diverged and asks `Write <n> pages to the <owner/repo> wiki and
+push? (y/N):`. On `y` it clones the wiki fresh and pushes the pages as one
+commit. Each page carries the provenance marker of its unit. A page that came
+from the wiki and that you edited by hand keeps the marker it had there, and is
+pushed without one when it had none.
+
+- With units remaining, the run prints `<n> units remain; the wiki write runs
+  once every unit is processed.` and pushes nothing.
+- With no dirty page, it prints `Nothing to write: every page matches the wiki.`
+- When stdin is not a terminal, it fails with `refusing to write to the wiki:
+  brain bootstrap pushes only after a confirmation at a terminal, and stdin is
+  not a TTY`.
+- When the wiki moved since the refresh, updates are skipped and new pages are
+  still written.
+- A new page whose path the wiki already holds is skipped.
+- When `state.json` was last refreshed from another wiki than the one the run
+  writes to, it fails with `the pages in <dir> were last refreshed from the
+  "<owner/repo>" wiki, and this run writes to the <owner/repo> wiki; run again
+  once that wiki can be cloned, or delete the directory to start over`.
+- When the wiki holds `memory` or `review_patterns` as a symbolic link, it fails
+  with `the <owner/repo> wiki holds <directory> as a symbolic link; refusing to
+  write through it`.
+
+The command never deletes a wiki page; [`sync --prune`](#sync) does.
 
 ## `cache`
 

@@ -105,6 +105,10 @@ export default defineConfig({
               link: '/how-to/use-the-github-wiki',
             },
             {
+              text: 'Bootstrap the project memory',
+              link: '/how-to/bootstrap-the-project-memory',
+            },
+            {
               text: 'Extract review patterns',
               link: '/how-to/extract-review-patterns',
             },
