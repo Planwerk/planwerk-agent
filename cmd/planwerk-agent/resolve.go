@@ -16,12 +16,12 @@ import (
 
 // addWikiFlags registers the --wiki / --no-wiki / --wiki-ref flags on a
 // subcommand's flag set, binding them to the given variables. It is shared by
-// the review, audit, propose, and implement commands so the flag names, default
-// (wiki off), and help text cannot drift between them. The wiki is off by
-// default and requires an explicit per-repo opt-in: a GitHub Wiki is a separate
-// permission surface (often world-editable, never gated by branch protection or
-// PR review), so enabling it grants its unreviewed editors influence over the
-// agent's prompts.
+// the review, audit, propose, implement, elaborate, fix, address, ship, and
+// brain memory commands so the flag names, default (wiki off), and help text
+// cannot drift between them. The wiki is off by default and requires an
+// explicit per-repo opt-in: a GitHub Wiki is a separate permission surface
+// (often world-editable, never gated by branch protection or PR review), so
+// enabling it grants its unreviewed editors influence over the agent's prompts.
 func addWikiFlags(flags *pflag.FlagSet, enable, disable *bool, ref *string) {
 	flags.BoolVar(enable, "wiki", false, "Use the target repo's GitHub Wiki as a knowledge source (review patterns + project memory; off by default — enabling trusts the wiki's unreviewed editors; env: "+envWiki+")")
 	flags.BoolVar(disable, "no-wiki", false, "Do not use the target repo's GitHub Wiki (overrides --wiki)")
@@ -65,9 +65,10 @@ const envWiki = "PLANWERK_WIKI"
 const envWikiRef = "PLANWERK_WIKI_REF"
 
 // envCaptureWiki gates the capture write-back shared by the implement, review,
-// and audit commands: whether the accepted proposal pages are pushed to the
-// wiki. Any truthy value (1, true, yes, on) enables it and any falsy value (0,
-// false, no, off) disables it; the --capture-wiki CLI flag takes precedence.
+// audit, and ship commands: whether the accepted proposal pages are pushed to
+// the wiki. Any truthy value (1, true, yes, on) enables it and any falsy value
+// (0, false, no, off) disables it; the --capture-wiki CLI flag takes
+// precedence. ship pushes only when --yes is given as well (shipCaptureWrite).
 const envCaptureWiki = "PLANWERK_CAPTURE_WIKI"
 
 // envShowClaudeOutput toggles live streaming of Claude Code output. Any
@@ -311,7 +312,8 @@ func resolveWikiOptions(enable, disable, enableChanged, disableChanged bool, ref
 }
 
 // resolveCaptureWiki returns whether a command's capture pass should push the
-// accepted proposal pages to the wiki. Shared by implement, review, and audit.
+// accepted proposal pages to the wiki. Shared by implement, review, audit, and
+// ship, which also requires --yes (shipCaptureWrite).
 // Precedence (highest first): an explicit --capture-wiki flag, the config
 // file's capture.wiki, PLANWERK_CAPTURE_WIKI, then the default-off behavior —
 // the order the configuration reference documents. Default off keeps a run propose-only: the
