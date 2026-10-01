@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"log/slog"
 
 	"github.com/spf13/cobra"
 
@@ -23,9 +24,11 @@ import (
 func newShipCmd(deps *runtimeDeps) *cobra.Command {
 	var shipOpts ship.Options
 	// implOpts and fixOpts carry the per-Sub Issue implement and fix options; the
-	// pattern flags bind onto implOpts and are copied into fixOpts per run.
+	// pattern, wiki, and capture flags bind onto implOpts, and the pattern and
+	// wiki settings are copied into fixOpts per run.
 	var implOpts implement.Options
 	var fixOpts fix.Options
+	var wiki wikiFlags
 	var planModel string
 	var planEffort string
 	var implementModel string
@@ -65,6 +68,15 @@ merges. Use --no-merge to run the whole pipeline but stop at green CI, leaving
 the merges to a human, and --dry-run to report the planned order without cloning
 or calling Claude.
 
+With the wiki enabled (--wiki, the wiki section of .planwerk/config.yaml, or
+PLANWERK_WIKI, in that order of precedence), every implement and fix run ship
+drives reads the wiki's review patterns and project memory, and every implement
+run proposes new wiki pages in a comment on its Sub Issue (--no-capture skips
+that). ship never asks for confirmation, so it pushes the accepted pages only
+when the write-back is enabled (--capture-wiki, capture.wiki, or
+PLANWERK_CAPTURE_WIKI) and --yes confirms it for the whole run. Enabled without
+--yes, ship logs one warning at start and every run stays propose-only.
+
 Issue reference can be a URL (https://github.com/owner/repo/issues/123)
 or short form (owner/repo#123).`,
 		Args: cobra.ExactArgs(1),
@@ -89,6 +101,8 @@ or short form (owner/repo#123).`,
 				return err
 			}
 			implOpts.MaxPatterns = maxPatterns
+			implOpts = shipWikiAndCapture(implOpts, wiki.resolve(cmd.Flags(), deps.fileCfg.Wiki),
+				resolveCaptureWiki(implOpts.CaptureWiki, cmd.Flags().Changed("capture-wiki"), deps.fileCfg.Capture))
 
 			// The per–Sub Issue implement run plans on the dedicated planning
 			// model/effort — and implements on its optional model override — so
@@ -106,25 +120,13 @@ or short form (owner/repo#123).`,
 			defer client.LogUsageSummary(cmd.ErrOrStderr())
 
 			implementFn := func(w io.Writer, issueRef string) error {
-				iopts := implOpts
-				iopts.Version = deps.version
-				iopts.IssueRef = issueRef
-				// ship runs unattended over Sub Issues that meta files at draft
-				// depth, so nobody is there to answer the unelaborated-issue
-				// question; the planning session carries them as before.
-				iopts.AllowUnelaborated = true
-				iopts.Remote = deps.remoteOpts
-				iopts.WorkerModel = resolveString(implementWorkerModel, cmd.Flags().Changed("implement-worker-model"), envImplementWorkerModel, "")
-				iopts.WorkerEffort = resolveString(implementWorkerEffort, cmd.Flags().Changed("implement-worker-effort"), envImplementWorkerEffort, claude.DefaultImplementWorkerEffort)
+				iopts := shipImplementOptions(implOpts, deps, issueRef,
+					resolveString(implementWorkerModel, cmd.Flags().Changed("implement-worker-model"), envImplementWorkerModel, ""),
+					resolveString(implementWorkerEffort, cmd.Flags().Changed("implement-worker-effort"), envImplementWorkerEffort, claude.DefaultImplementWorkerEffort))
 				return implement.Run(w, iopts, client.Plan, claude.BuildPlanPrompt, client.Implement, claude.BuildImplementPrompt, client.VerifyImplementation, client.AdversarialReview, client.SpecialistReviews, client.SimplifyFindings, client.ApplySimplifications, client.ApplyReview, client.DedupFindings, client.VerifyFindingClaims, client.Capture, client.FinalizePR)
 			}
 			fixFn := func(w io.Writer, prRef string) error {
-				fopts := fixOpts
-				fopts.Version = deps.version
-				fopts.PatternDirs, fopts.NoRepoPatterns, fopts.NoLocalPatterns, fopts.MaxPatterns = implOpts.PatternDirs, implOpts.NoRepoPatterns, implOpts.NoLocalPatterns, implOpts.MaxPatterns
-				fopts.PRRef = prRef
-				fopts.Remote = deps.remoteOpts
-				return fix.Run(w, fopts, client.Fix, claude.BuildFixPrompt)
+				return fix.Run(w, shipFixOptions(fixOpts, implOpts, deps, prRef), client.Fix, claude.BuildFixPrompt)
 			}
 			return ship.Run(cmd.OutOrStdout(), shipOpts, implementFn, fixFn)
 		},
@@ -152,6 +154,56 @@ or short form (owner/repo#123).`,
 	shipFlags.BoolVar(&implOpts.NoRepoPatterns, "no-repo-patterns", false, "Ignore repo-specific patterns under .planwerk/review_patterns/ in the target repo")
 	shipFlags.BoolVar(&implOpts.NoLocalPatterns, "no-local-patterns", false, "Ignore local patterns from the tool")
 	shipFlags.IntVar(&implOpts.MaxPatterns, "max-patterns", patterns.DefaultMaxPatternsInPrompt, "Max review patterns injected into the prompt (<=0 disables truncation, env: "+envMaxPatterns+")")
+	wiki.register(shipFlags)
+	shipFlags.BoolVar(&implOpts.NoCapture, "no-capture", false, "Skip the read-only capture pass in each per–Sub Issue implement run (only runs with --wiki; writes nothing)")
+	shipFlags.BoolVar(&implOpts.CaptureWiki, "capture-wiki", false, "Push the accepted capture pages of each per–Sub Issue implement run to the wiki; ship never asks for confirmation, so the push also needs --yes (off by default; env: "+envCaptureWiki+")")
+	shipFlags.BoolVar(&implOpts.Yes, "yes", false, "Confirm the --capture-wiki write for the whole run")
 
 	return shipCmd
+}
+
+// shipWikiAndCapture returns base with the wiki and capture settings of a ship
+// run. The wiki is set before the capture gate reads it: shipCaptureWrite
+// warns only for a run whose wiki is enabled.
+func shipWikiAndCapture(base implement.Options, wiki patterns.WikiOptions, captureEnabled bool) implement.Options {
+	base.Wiki = wiki
+	base.CaptureWiki = shipCaptureWrite(base, captureEnabled)
+	return base
+}
+
+// shipCaptureWrite reports whether a ship run may push capture pages:
+// only when the write-back is enabled and --yes confirmed it.
+func shipCaptureWrite(opts implement.Options, enabled bool) bool {
+	if enabled && !opts.Yes && opts.Wiki.Enabled && !opts.NoCapture {
+		slog.Warn("the capture write-back is enabled, but ship runs unattended and cannot confirm a wiki write; every run stays propose-only (pass --yes to push)")
+	}
+	return enabled && opts.Yes
+}
+
+// shipImplementOptions returns the options of one per–Sub Issue implement run:
+// base, which carries the flags bound on the ship command (among them the wiki
+// and capture settings), with the run's own values on top.
+func shipImplementOptions(base implement.Options, deps *runtimeDeps, issueRef, workerModel, workerEffort string) implement.Options {
+	base.Version = deps.version
+	base.IssueRef = issueRef
+	// ship runs unattended over Sub Issues that meta files at draft depth, so
+	// nobody is there to answer the unelaborated-issue question; the planning
+	// session carries them as before.
+	base.AllowUnelaborated = true
+	base.Remote = deps.remoteOpts
+	base.WorkerModel = workerModel
+	base.WorkerEffort = workerEffort
+	return base
+}
+
+// shipFixOptions returns the options of one CI self-heal loop: base with the
+// pattern and wiki settings of the implement runs, so a fix session is held to
+// the same catalog and reads the same project memory as the run it repairs.
+func shipFixOptions(base fix.Options, impl implement.Options, deps *runtimeDeps, prRef string) fix.Options {
+	base.Version = deps.version
+	base.PatternDirs, base.NoRepoPatterns, base.NoLocalPatterns, base.MaxPatterns = impl.PatternDirs, impl.NoRepoPatterns, impl.NoLocalPatterns, impl.MaxPatterns
+	base.Wiki = impl.Wiki
+	base.PRRef = prRef
+	base.Remote = deps.remoteOpts
+	return base
 }
