@@ -372,3 +372,41 @@ func TestFormatMemoryIndex(t *testing.T) {
 		}
 	})
 }
+
+func TestFormatMemoryIndexLines(t *testing.T) {
+	t.Run("one line per page, the summary after a bar", func(t *testing.T) {
+		got := FormatMemoryIndexLines([]MemoryPage{
+			{Name: "a.md", Title: "Pin every dependency", Summary: "Dependencies are pinned."},
+			{Name: "b.md", Title: "Conventions"},
+		})
+		const want = "- a.md: Pin every dependency | Dependencies are pinned.\n- b.md: Conventions\n"
+		if got != want {
+			t.Errorf("FormatMemoryIndexLines = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("no pages render the empty string", func(t *testing.T) {
+		for _, pages := range [][]MemoryPage{nil, {}} {
+			if got := FormatMemoryIndexLines(pages); got != "" {
+				t.Errorf("FormatMemoryIndexLines(%v) = %q, want empty", pages, got)
+			}
+		}
+	})
+
+	t.Run("an index past the prompt budget still lists every page", func(t *testing.T) {
+		pages := overBudgetPages(400)
+		got := FormatMemoryIndexLines(pages)
+		if len(got) <= maxMemoryIndexBytes {
+			t.Fatalf("fixture renders %d bytes, want more than %d", len(got), maxMemoryIndexBytes)
+		}
+		lines := strings.Split(strings.TrimSuffix(got, "\n"), "\n")
+		if len(lines) != len(pages) {
+			t.Fatalf("rendered %d lines, want %d", len(lines), len(pages))
+		}
+		for i, line := range lines {
+			if !strings.HasPrefix(line, "- "+pages[i].Name+": ") {
+				t.Fatalf("line %d = %.40q, want the page %s", i, line, pages[i].Name)
+			}
+		}
+	})
+}
