@@ -21,7 +21,12 @@ planwerk-agent/
 │   │   └── auditor_test.go
 │   ├── brain/
 │   │   ├── memory.go           # brain memory: print the project memory index or one page
-│   │   └── memory_test.go
+│   │   ├── memory_test.go
+│   │   ├── bootstrap.go        # brain bootstrap: the run, its reports, stop and resume, the gated wiki write
+│   │   ├── units.go            # Group the history into ordered units (BuildUnits)
+│   │   ├── docs.go             # Discover decision documents and cut them into chunks
+│   │   ├── state.go            # .planwerk-brain-sync: state.json, page files, the wiki refresh
+│   │   └── source.go           # Source seam, APISource, a unit's items, the working-set index
 │   ├── cache/
 │   │   ├── cache.go            # SHA-based caching (review + propose + audit)
 │   │   └── cache_test.go
@@ -46,6 +51,7 @@ planwerk-agent/
 │   │   ├── audit.go            # Full-codebase audit against review patterns
 │   │   ├── audit_test.go
 │   │   ├── coverage.go         # Test coverage map generation (--coverage-map)
+│   │   ├── bootstrap.go        # brain bootstrap: unit analysis and page review sessions
 │   │   ├── elaborate.go        # Issue → detailed engineering plan
 │   │   ├── propose.go          # Codebase analysis for proposals
 │   │   └── propose_test.go
@@ -68,6 +74,8 @@ planwerk-agent/
 │   │   ├── continuation.go     # Split an oversized issue body into continuation comments, and merge them back
 │   │   ├── comments_test.go
 │   │   ├── diff.go             # Fetch and parse PR diffs (DiffMap)
+│   │   ├── history.go          # List the default-branch commits, merged PRs, and closed issues (gh GraphQL)
+│   │   ├── thread.go           # Read an issue or PR with every comment, review, and commit
 │   │   ├── diff_test.go
 │   │   ├── issues.go           # Create/search GitHub issues (gh CLI)
 │   │   ├── pr.go               # Fetch PR data, checkout (gh CLI)
