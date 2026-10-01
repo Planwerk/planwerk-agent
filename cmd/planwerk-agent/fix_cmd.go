@@ -17,6 +17,7 @@ import (
 func newFixCmd(deps *runtimeDeps) *cobra.Command {
 	var fixCfg fix.Options
 	var printBarePrompt bool
+	var wiki wikiFlags
 
 	fixCmd := &cobra.Command{
 		Use:   "fix <pr-ref>",
@@ -76,6 +77,7 @@ or short form (owner/repo#123).`,
 			opts := fixCfg
 			opts.Version = deps.version
 			opts.Remote = deps.remoteOpts
+			opts.Wiki = wiki.resolve(cmd.Flags(), deps.fileCfg.Wiki)
 			if printBarePrompt {
 				return fix.PrintBarePrompt(cmd.OutOrStdout(), opts, claude.BuildBareFixPrompt)
 			}
@@ -97,6 +99,7 @@ or short form (owner/repo#123).`,
 	fixFlags.IntVar(&fixCfg.MaxPatterns, "max-patterns", patterns.DefaultMaxPatternsInPrompt, "Max review patterns injected into the prompt (<=0 disables truncation, env: "+envMaxPatterns+")")
 	fixFlags.BoolVar(&fixCfg.Local, "local", false, "Operate on the current working directory instead of cloning into a temp dir")
 	fixFlags.BoolVar(&fixCfg.Force, "force", false, "With --local, skip the confirmation prompt when the working tree is dirty")
+	wiki.register(fixFlags)
 	fixFlags.BoolVar(&fixCfg.NoFixup, "no-fixup", false, "Append the fix as a fresh on-top follow-up commit instead of folding it into the commits it belongs to (git commit --fixup + git rebase --autosquash, then push --force-with-lease)")
 
 	return fixCmd

@@ -55,6 +55,10 @@ type Options struct {
 	// Remote configures how remote pattern URIs (--patterns github:..., git+...)
 	// resolve into local directories; carries the --remote-patterns-ttl value.
 	Remote patterns.RemoteOptions
+	// Wiki configures the target repo's GitHub Wiki as a knowledge source: its
+	// review_patterns/ load as a pattern tier and its memory pages are handed
+	// to each fix session as project memory.
+	Wiki patterns.WikiOptions
 }
 
 // Runner glues together the GitHub status query, the Claude fixer, and the
@@ -68,6 +72,10 @@ type Runner struct {
 	BuildPrompt PromptBuildFn
 	// Sleep is overridable so tests don't actually sleep between polls.
 	Sleep func(time.Duration)
+	// ResolveWiki resolves the target repo's wiki. Defaults to
+	// patterns.ResolveWiki; a Runner seam so the project-memory wiring can be
+	// exercised without cloning a real wiki.
+	ResolveWiki resolveWikiFn
 }
 
 // NewRunner builds a Runner with the production GitHub backend, the given
@@ -231,6 +239,12 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 
 	currentSHA := pr.HeadSHA
 
+	// The wiki is resolved once per run, on the first iteration that dispatches
+	// a session: a run whose checks are green, a dry run, and a printed prompt
+	// never pay for the clone.
+	var wiki patterns.ResolvedWiki
+	wikiResolved := false
+
 	for iteration := 1; iteration <= opts.MaxIterations; iteration++ {
 		_, _ = fmt.Fprintf(statusW, "\n=== Iteration %d/%d for %s#%d (head %s) ===\n",
 			iteration, opts.MaxIterations, fullName, number, report.ShortSHA(currentSHA))
@@ -323,11 +337,17 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 			}
 		}
 
-		pats := loadPatterns(opts, fresh.Dir, "origin/"+pr.BaseBranch)
+		if !wikiResolved {
+			wiki = r.ResolveWiki(owner, repo, opts.Wiki, opts.Remote)
+			wikiResolved = true
+		}
+
+		pats := loadPatterns(opts, fresh.Dir, "origin/"+pr.BaseBranch, wiki.PatternsDir)
 		// Each iteration writes its own catalog from the base-ref patterns of
 		// its fresh checkout and removes it with that checkout, so none
-		// outlives its iteration.
+		// outlives its iteration. The memory directory has the same lifetime.
 		cat, cleanupCatalog := patterns.MaterializeOrWarn(pats)
+		mem, cleanupMemory := patterns.MaterializeMemoryOrWarn(wiki.MemoryPages)
 
 		fixReport, model, fixErr := r.Claude.Fix(fresh.Dir, Context{
 			RepoFullName:   fullName,
@@ -340,6 +360,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 			FailedChecks:   failed,
 			Patterns:       pats,
 			Catalog:        cat,
+			Memory:         mem,
 			MaxPatterns:    opts.MaxPatterns,
 			Skills:         skills.LoadFromRef(fresh.Dir, "origin/"+pr.BaseBranch),
 			StyleGuidePath: styleguide.Find(fresh.Dir),
@@ -349,6 +370,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		})
 		fresh.Cleanup()
 		cleanupCatalog()
+		cleanupMemory()
 		if fixErr != nil {
 			return fmt.Errorf("claude fix iteration %d: %w", iteration, fixErr)
 		}
@@ -400,6 +422,9 @@ func (r *Runner) applyDefaults(opts *Options) {
 	}
 	if r.Prompter == nil {
 		r.Prompter = stdinPrompter{In: os.Stdin, Out: os.Stderr}
+	}
+	if r.ResolveWiki == nil {
+		r.ResolveWiki = patterns.ResolveWiki
 	}
 }
 
@@ -570,11 +595,12 @@ type stdinPrompter = workspace.StdinPrompter
 // the review-pattern catalog filtered by those tags. Mirrors the
 // audit/elaborate/propose helpers so the fix prompt is grounded in the same
 // pattern set the rest of the tool uses, plus any project-specific patterns
-// under .planwerk/review_patterns/ in the target repo.
+// under .planwerk/review_patterns/ in the target repo. wikiPatternsDir is the
+// review-pattern directory of the resolved wiki, empty for a run without one.
 //
 // Failures are non-fatal: the loop falls back to running without patterns
 // rather than blocking a CI fix on a corrupt pattern source.
-func loadPatterns(opts Options, repoDir, baseRef string) []patterns.Pattern {
+func loadPatterns(opts Options, repoDir, baseRef, wikiPatternsDir string) []patterns.Pattern {
 	tags := detect.Technologies(repoDir)
 	if len(tags) > 0 {
 		slog.Info("detected technologies", "technologies", strings.Join(tags, ", "))
@@ -582,6 +608,7 @@ func loadPatterns(opts Options, repoDir, baseRef string) []patterns.Pattern {
 	pats := patterns.LoadForRepoOrWarn(patterns.RepoLoadOptions{
 		RepoDir:    repoDir,
 		RepoRef:    baseRef,
+		Wiki:       wikiPatternsDir,
 		Extra:      opts.PatternDirs,
 		Tags:       tags,
 		NoEmbedded: opts.NoLocalPatterns,

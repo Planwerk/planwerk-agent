@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -15,6 +16,8 @@ import (
 
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/github/githubtest"
+	"github.com/planwerk/planwerk-agent/internal/patterns"
+	"github.com/planwerk/planwerk-agent/internal/patterns/patternstest"
 )
 
 type fakeClaude struct {
@@ -637,10 +640,12 @@ func TestRun_PassesPatternsToClaude(t *testing.T) {
 }
 
 // TestRun_FixErrorRemovesTheCatalog locks that a failed fix session still
-// removes its iteration's catalog: the loop removes it explicitly rather than
-// by defer, so the removal must come before the error return.
+// removes its iteration's catalog and its memory directory: the loop removes
+// them explicitly rather than by defer, so the removal must come before the
+// error return.
 func TestRun_FixErrorRemovesTheCatalog(t *testing.T) {
 	patternsDir := writeSamplePattern(t)
+	tmp := patternstest.IsolateTempDir(t)
 
 	gh := &githubtest.Fake{
 		PR:     github.PR{Title: "demo", HeadBranch: "feat/x", HeadSHA: "old"},
@@ -649,7 +654,9 @@ func TestRun_FixErrorRemovesTheCatalog(t *testing.T) {
 	}
 	boom := errors.New("boom")
 	cl := &fakeClaude{err: boom}
+	cl.onFix = func(ctx Context) { patternstest.AssertMemoryPageReadable(t, ctx.Memory) }
 	r := newRunner(gh, cl, &fakePrompter{})
+	r.ResolveWiki = (&patternstest.WikiSeam{Wiki: patternstest.MemoryWiki()}).Resolve
 
 	err := r.Run(io.Discard, samplePatternOptions("owner/repo#7", patternsDir))
 	if !errors.Is(err, boom) {
@@ -661,6 +668,171 @@ func TestRun_FixErrorRemovesTheCatalog(t *testing.T) {
 	if _, err := os.Stat(cl.ctx.Catalog.Dir); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("stat %s after the failed iteration: %v, want fs.ErrNotExist", cl.ctx.Catalog.Dir, err)
 	}
+	patternstest.AssertNoMemoryDir(t, tmp)
+}
+
+// TestRun_ResolvesTheWikiOncePerRun locks the two lifetimes of the wiki in a
+// fix run: the wiki is resolved once, and every iteration writes its own
+// memory directory, which its session can read and which is gone afterwards.
+func TestRun_ResolvesTheWikiOncePerRun(t *testing.T) {
+	tmp := patternstest.IsolateTempDir(t)
+	failures := []github.CheckRun{failing(1, "test")}
+	gh := &githubtest.Fake{
+		PR:       github.PR{Title: "demo", HeadBranch: "b", HeadSHA: "sha0"},
+		Checks:   [][]github.CheckRun{failures, failures, failures},
+		HeadSHAs: []string{"sha1", "sha2"},
+	}
+	cl := &fakeClaude{report: "tried"}
+	cl.onFix = func(ctx Context) { patternstest.AssertMemoryPageReadable(t, ctx.Memory) }
+	seam := &patternstest.WikiSeam{Wiki: patternstest.MemoryWiki()}
+	r := newRunner(gh, cl, &fakePrompter{})
+	r.ResolveWiki = seam.Resolve
+
+	opts := samplePatternOptions("o/r#1", writeSamplePattern(t))
+	opts.MaxIterations = 2
+	if err := r.Run(io.Discard, opts); !errors.Is(err, ErrMaxIterations) {
+		t.Fatalf("Run err = %v, want ErrMaxIterations", err)
+	}
+	if got := len(cl.ctxs); got != 2 {
+		t.Fatalf("Claude.Fix called %d times, want 2", got)
+	}
+	if seam.Calls != 1 {
+		t.Errorf("the wiki was resolved %d times, want once for the whole run", seam.Calls)
+	}
+	first, second := cl.ctxs[0].Memory.Dir, cl.ctxs[1].Memory.Dir
+	if first == "" || second == "" || first == second {
+		t.Errorf("memory directories = %q, %q, want a fresh one per iteration", first, second)
+	}
+	patternstest.AssertNoMemoryDir(t, tmp)
+}
+
+// TestRun_NoWikiResolveWithoutAFixSession locks the lazy resolve: a run that
+// dispatches no session never pays for the wiki, and a printed prompt, which
+// outlives the run, carries no project memory.
+func TestRun_NoWikiResolveWithoutAFixSession(t *testing.T) {
+	cases := []struct {
+		name   string
+		checks []github.CheckRun
+		opts   Options
+	}{
+		{"the checks pass at the first poll", []github.CheckRun{passing("test")}, Options{}},
+		{"a dry run", []github.CheckRun{failing(1, "test")}, Options{DryRun: true}},
+		{"a printed prompt", []github.CheckRun{failing(1, "test")}, Options{PrintPrompt: true}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			gh := &githubtest.Fake{
+				PR:       github.PR{Title: "demo", HeadBranch: "b", HeadSHA: "sha0"},
+				Checks:   [][]github.CheckRun{tc.checks},
+				HeadSHAs: []string{"sha0"},
+			}
+			cl := &fakeClaude{}
+			seam := &patternstest.WikiSeam{Wiki: patternstest.MemoryWiki()}
+			r := newRunner(gh, cl, &fakePrompter{})
+			r.ResolveWiki = seam.Resolve
+			// Stands in for claude.BuildFixPrompt, which renders the section
+			// exactly when the context carries memory pages.
+			r.BuildPrompt = func(ctx Context) string {
+				if len(ctx.Memory.Pages) > 0 {
+					return "PROMPT\n## Project Memory\n"
+				}
+				return "PROMPT\n"
+			}
+
+			opts := tc.opts
+			opts.PRRef = "o/r#1"
+			opts.Wiki = patterns.WikiOptions{Enabled: true}
+			var out bytes.Buffer
+			if err := r.Run(&out, opts); err != nil {
+				t.Fatalf("Run returned %v, want nil", err)
+			}
+			if seam.Calls != 0 {
+				t.Errorf("the wiki was resolved %d times, want 0", seam.Calls)
+			}
+			if cl.called.Load() != 0 {
+				t.Errorf("Claude.Fix called %d times, want 0", cl.called.Load())
+			}
+			if tc.opts.PrintPrompt && !strings.Contains(out.String(), "PROMPT") {
+				t.Fatalf("the prompt was not printed: %q", out.String())
+			}
+			if strings.Contains(out.String(), "## Project Memory") {
+				t.Errorf("the output carries the project memory: %q", out.String())
+			}
+		})
+	}
+}
+
+// TestRun_PassesWikiOptionsToTheSeam locks the wiring of the wiki opt-in: the
+// resolver sees the pull request's repository and the options the command
+// resolved.
+func TestRun_PassesWikiOptionsToTheSeam(t *testing.T) {
+	gh := &githubtest.Fake{
+		PR:       github.PR{Title: "demo", HeadBranch: "feat/x", HeadSHA: "old"},
+		Checks:   [][]github.CheckRun{{failing(1, "test")}, {passing("test")}},
+		HeadSHAs: []string{"new"},
+	}
+	seam := &patternstest.WikiSeam{}
+	r := newRunner(gh, &fakeClaude{report: "fixed"}, &fakePrompter{})
+	r.ResolveWiki = seam.Resolve
+
+	opts := Options{PRRef: "owner/repo#7", NoLocalPatterns: true, NoRepoPatterns: true}
+	opts.Wiki = patterns.WikiOptions{Enabled: true, Repo: "acme/handbook", Ref: "v1"}
+	opts.Remote = patterns.RemoteOptions{TTL: time.Hour}
+	if err := r.Run(io.Discard, opts); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if seam.Repo != "owner/repo" || seam.Opts != opts.Wiki || seam.Remote.TTL != time.Hour {
+		t.Errorf("resolver got %s, %+v, %+v; want owner/repo and the run's options", seam.Repo, seam.Opts, seam.Remote)
+	}
+}
+
+// TestRun_WikiPatternsReachTheContext locks the wiki tier of the pattern
+// load: a pattern file under the resolved wiki's review_patterns/ is part of
+// the catalog the fix is held to.
+func TestRun_WikiPatternsReachTheContext(t *testing.T) {
+	gh := &githubtest.Fake{
+		PR:       github.PR{Title: "demo", HeadBranch: "feat/x", HeadSHA: "old"},
+		Checks:   [][]github.CheckRun{{failing(1, "test")}, {passing("test")}},
+		HeadSHAs: []string{"new"},
+	}
+	cl := &fakeClaude{report: "fixed"}
+	r := newRunner(gh, cl, &fakePrompter{})
+	// writeSamplePattern stands in for the wiki's review_patterns/ directory.
+	r.ResolveWiki = (&patternstest.WikiSeam{Wiki: patterns.ResolvedWiki{Repo: "owner/repo", CommitSHA: "wikisha", PatternsDir: writeSamplePattern(t)}}).Resolve
+
+	opts := Options{PRRef: "owner/repo#7", NoLocalPatterns: true, NoRepoPatterns: true}
+	if err := r.Run(io.Discard, opts); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if len(cl.ctx.Patterns) != 1 || cl.ctx.Patterns[0].Name != "Sample wiring check" {
+		t.Errorf("Context.Patterns = %+v, want the one wiki pattern", cl.ctx.Patterns)
+	}
+}
+
+// TestRun_DisabledWikiLeavesMemoryZero covers the run without a wiki: the
+// zero ResolvedWiki (disabled, uninitialized, or unresolvable) hands the fix
+// session no memory and writes no directory.
+func TestRun_DisabledWikiLeavesMemoryZero(t *testing.T) {
+	tmp := patternstest.IsolateTempDir(t)
+	gh := &githubtest.Fake{
+		PR:       github.PR{Title: "demo", HeadBranch: "feat/x", HeadSHA: "old"},
+		Checks:   [][]github.CheckRun{{failing(1, "test")}, {passing("test")}},
+		HeadSHAs: []string{"new"},
+	}
+	cl := &fakeClaude{report: "fixed"}
+	r := newRunner(gh, cl, &fakePrompter{})
+	r.ResolveWiki = (&patternstest.WikiSeam{}).Resolve
+
+	if err := r.Run(io.Discard, samplePatternOptions("owner/repo#7", writeSamplePattern(t))); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if cl.called.Load() != 1 {
+		t.Fatalf("Claude.Fix called %d times, want 1", cl.called.Load())
+	}
+	if !reflect.DeepEqual(cl.ctx.Memory, patterns.MemoryCatalog{}) {
+		t.Errorf("Context.Memory = %+v, want the zero MemoryCatalog", cl.ctx.Memory)
+	}
+	patternstest.AssertNoMemoryDir(t, tmp)
 }
 
 // TestRun_EachFixIterationGetsItsOwnCatalog locks that every iteration writes

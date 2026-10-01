@@ -1,7 +1,7 @@
 // Package patternstest holds the helpers shared by the tests of the commands
-// that hand a wiki's project memory to a session: the page a wiki seam
-// returns, and the checks on the directory patterns.MaterializeMemory writes
-// for a run.
+// that hand a wiki's project memory to a session: the wiki seam and the page
+// it returns, and the checks on the directory patterns.MaterializeMemory
+// writes for a run.
 package patternstest
 
 import (

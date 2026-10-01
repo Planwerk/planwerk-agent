@@ -73,6 +73,10 @@ type Context struct {
 	BaseBranch string
 }
 
+// resolveWikiFn resolves the target repo's wiki. It matches patterns.ResolveWiki.
+// Mirrors propose.resolveWikiFn.
+type resolveWikiFn func(owner, name string, wopts patterns.WikiOptions, ropts patterns.RemoteOptions) patterns.ResolvedWiki
+
 // FixFn is the bare-function shape the CLI passes in to wire Claude into the
 // orchestrator. Returns a short human-readable summary of what Claude did
 // (already trimmed) — the orchestrator logs/prints this verbatim — and the
