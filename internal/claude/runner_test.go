@@ -1262,3 +1262,82 @@ func TestStructureWorkDir_IsAnEmptyDirectoryOfOurOwn(t *testing.T) {
 		t.Errorf("second call returned (%q, %v), want the same directory", again, err)
 	}
 }
+
+// TestBrainReviewTier locks the page review's tier: fable and high without an
+// option, the option's value with one, and the default again for an empty
+// option, so a misconfigured flag cannot select an empty model or effort.
+func TestBrainReviewTier(t *testing.T) {
+	t.Parallel()
+	const reviewModel, reviewEffort = "review-tier-model", "low"
+
+	if DefaultBrainReviewModel != "fable" || DefaultBrainReviewEffort != "high" {
+		t.Errorf("compiled-in tier = %q/%q, want fable/high", DefaultBrainReviewModel, DefaultBrainReviewEffort)
+	}
+	if model, effort := NewClient().BrainReviewTier(); model != DefaultBrainReviewModel || effort != DefaultBrainReviewEffort {
+		t.Errorf("default tier = %q/%q, want the compiled-in one", model, effort)
+	}
+	c := NewClient(WithModel(testTierOverride), WithBrainReviewModel(reviewModel), WithBrainReviewEffort(reviewEffort))
+	if model, effort := c.BrainReviewTier(); model != reviewModel || effort != reviewEffort {
+		t.Errorf("tier = %q/%q, want %q/%q", model, effort, reviewModel, reviewEffort)
+	}
+	if c.model != testTierOverride || c.effort != DefaultClaudeEffort {
+		t.Errorf("the review options changed the main tier: %q/%q", c.model, c.effort)
+	}
+	c = NewClient(WithBrainReviewModel(""), WithBrainReviewEffort(""))
+	if model, effort := c.BrainReviewTier(); model != DefaultBrainReviewModel || effort != DefaultBrainReviewEffort {
+		t.Errorf("empty options gave %q/%q, want the defaults", model, effort)
+	}
+}
+
+// TestRunClaudeBrainReview_Spec proves the page review runs read-only on its
+// own tier with the pages directory readable, and that the CLI is told so.
+func TestRunClaudeBrainReview_Spec(t *testing.T) {
+	t.Parallel()
+	const reviewModel, reviewEffort, pagesDir = "review-tier-model", "low", "/state/pages"
+	c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
+		return "verdicts", testResolvedModel, nil
+	}, WithModel(testTierOverride), WithBrainReviewModel(reviewModel), WithBrainReviewEffort(reviewEffort))
+
+	text, model, err := c.runClaudeBrainReview("/clone", "review this", "bootstrap-review", patterns.MemoryCatalog{Dir: pagesDir})
+	if err != nil || text != "verdicts" || model != testResolvedModel {
+		t.Fatalf("runClaudeBrainReview = %q, %q, %v", text, model, err)
+	}
+	if len(*calls) != 1 {
+		t.Fatalf("ran %d sessions, want 1", len(*calls))
+	}
+	spec := (*calls)[0].spec
+	if spec.model != reviewModel || spec.effort != reviewEffort {
+		t.Errorf("tier = %q/%q, want the review tier %q/%q", spec.model, spec.effort, reviewModel, reviewEffort)
+	}
+	if !spec.readOnly || spec.noTools || spec.permissionMode != "" {
+		t.Errorf("spec = %+v, want a read-only session on the default permission mode", spec)
+	}
+	if spec.dir != "/clone" || spec.label != "bootstrap-review" || !slices.Equal(spec.addDirs, []string{pagesDir}) {
+		t.Errorf("dir %q, label %q, addDirs %v", spec.dir, spec.label, spec.addDirs)
+	}
+
+	args := c.claudeArgs(spec, "json")
+	i := slices.Index(args, "--disallowed-tools")
+	if i == -1 || i+3 >= len(args) || !slices.Equal(args[i+1:i+4], []string{"Edit", "Write", "NotebookEdit"}) {
+		t.Errorf("argv must deny the write tools; got %v", args)
+	}
+	if j := slices.Index(args, "--add-dir"); j == -1 || args[j+1] != pagesDir {
+		t.Errorf("argv must carry --add-dir %s; got %v", pagesDir, args)
+	}
+	if m := slices.Index(args, "--model"); m == -1 || args[m+1] != reviewModel {
+		t.Errorf("argv must carry --model %s; got %v", reviewModel, args)
+	}
+}
+
+// TestRunClaudeBrainReview_SessionErrorSurfaces proves a failed review session
+// returns its error and no text.
+func TestRunClaudeBrainReview_SessionErrorSurfaces(t *testing.T) {
+	t.Parallel()
+	boom := errors.New("api error 429")
+	c, _ := scriptedClient(t, func(int, runSpec, string) (string, string, error) { return "", "", boom })
+
+	text, _, err := c.runClaudeBrainReview("/clone", "review this", "bootstrap-review", patterns.MemoryCatalog{})
+	if !errors.Is(err, boom) || text != "" {
+		t.Errorf("runClaudeBrainReview = %q, %v, want the session's error", text, err)
+	}
+}

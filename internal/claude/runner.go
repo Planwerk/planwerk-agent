@@ -65,6 +65,15 @@ const (
 	// structuring tier; override it with WithStructureEffort (--structure-effort
 	// / PLANWERK_STRUCTURE_EFFORT) (decisions 56 and 101).
 	DefaultStructureEffort = "xhigh"
+	// DefaultBrainReviewModel is the compiled-in model for the page review of
+	// `brain bootstrap`, the second model that judges every page the analysis
+	// proposes; override it with WithBrainReviewModel (--review-model /
+	// PLANWERK_BRAIN_REVIEW_MODEL) (decision 112).
+	DefaultBrainReviewModel = "fable"
+	// DefaultBrainReviewEffort is the compiled-in reasoning effort for the page
+	// review of `brain bootstrap`; override it with WithBrainReviewEffort
+	// (--review-effort / PLANWERK_BRAIN_REVIEW_EFFORT) (decision 112).
+	DefaultBrainReviewEffort = "high"
 	// claudeAutoPermissionMode is the --permission-mode value the implement
 	// command passes to its orchestrated `claude -p` session so tool calls
 	// run without an interactive confirmation. "auto" is Claude Code's auto
@@ -205,8 +214,9 @@ type runSpec struct {
 	// addDirs holds the directories the session may read besides its working
 	// directory: the on-disk pattern catalog directory (patterns.Materialize)
 	// and the project memory directory (patterns.MaterializeMemory), which
-	// runClaudeMemory, runClaudeFindings, runClaudePlan, and autoMemorySpec
-	// add. The non-empty entries follow one --add-dir, in order. A noTools
+	// runClaudeMemory, runClaudeFindings, runClaudePlan, runClaudeBrainReview,
+	// and autoMemorySpec add. The non-empty entries follow one --add-dir, in
+	// order. A noTools
 	// spec never honors it, because a structuring session runs in
 	// structureWorkDir with no tools and must not be handed any other
 	// directory.
@@ -347,7 +357,12 @@ type Client struct {
 	effort          string
 	planEffort      string
 	structureEffort string
-	showOutput      bool
+	// brainReviewModel/brainReviewEffort select the tier of the page review of
+	// `brain bootstrap` (see BrainReviewTier). NewClient seeds them from
+	// DefaultBrainReviewModel and DefaultBrainReviewEffort (decision 112).
+	brainReviewModel  string
+	brainReviewEffort string
+	showOutput        bool
 
 	// inheritUserConfig, when true, lets sessions load the invoking user's
 	// global ~/.claude settings and MCP servers instead of running hermetically
@@ -374,19 +389,21 @@ type Client struct {
 type Option func(*Client)
 
 // NewClient returns a Client seeded with the compiled-in defaults
-// (DefaultClaudeTimeout/Model/Effort and the planning, finder and structuring
-// defaults), then applies opts.
+// (DefaultClaudeTimeout/Model/Effort and the planning, finder, structuring,
+// and brain review defaults), then applies opts.
 func NewClient(opts ...Option) *Client {
 	c := &Client{
-		timeout:         DefaultClaudeTimeout,
-		model:           DefaultClaudeModel,
-		planModel:       DefaultPlanModel,
-		structureModel:  DefaultStructureModel,
-		finderModel:     DefaultFinderModel,
-		finderEffort:    DefaultFinderEffort,
-		effort:          DefaultClaudeEffort,
-		planEffort:      DefaultPlanEffort,
-		structureEffort: DefaultStructureEffort,
+		timeout:           DefaultClaudeTimeout,
+		model:             DefaultClaudeModel,
+		planModel:         DefaultPlanModel,
+		structureModel:    DefaultStructureModel,
+		finderModel:       DefaultFinderModel,
+		finderEffort:      DefaultFinderEffort,
+		effort:            DefaultClaudeEffort,
+		planEffort:        DefaultPlanEffort,
+		structureEffort:   DefaultStructureEffort,
+		brainReviewModel:  DefaultBrainReviewModel,
+		brainReviewEffort: DefaultBrainReviewEffort,
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -506,6 +523,28 @@ func WithStructureEffort(e string) Option {
 	}
 }
 
+// WithBrainReviewModel sets the model used by the page review of `brain
+// bootstrap`. An empty m is ignored, which leaves the seeded default in place
+// (DefaultBrainReviewModel).
+func WithBrainReviewModel(m string) Option {
+	return func(c *Client) {
+		if m != "" {
+			c.brainReviewModel = m
+		}
+	}
+}
+
+// WithBrainReviewEffort sets the reasoning effort used by the page review of
+// `brain bootstrap`. An empty e is ignored, which leaves the seeded default in
+// place (DefaultBrainReviewEffort).
+func WithBrainReviewEffort(e string) Option {
+	return func(c *Client) {
+		if e != "" {
+			c.brainReviewEffort = e
+		}
+	}
+}
+
 // WithShowOutput toggles live streaming of Claude Code output. When false (the
 // default), runClaude buffers the result via --output-format json. When true,
 // runClaude delegates to runClaudeStream which uses
@@ -540,7 +579,8 @@ func (c *Client) runClaude(dir, prompt, label string, cat patterns.Catalog) (tex
 // runClaudeMemory is runClaude for a session whose prompt carries the project
 // memory: mem is the memory catalog whose directory the session may read
 // beside the pattern catalog's, the zero MemoryCatalog for a run without one.
-// The propose analysis and the elaboration call it.
+// The propose analysis, the elaboration, and the bootstrap analysis
+// (BootstrapUnit) call it.
 func (c *Client) runClaudeMemory(dir, prompt, label string, cat patterns.Catalog, mem patterns.MemoryCatalog) (text, model string, err error) {
 	return c.runSession(runSpec{dir: dir, label: label, model: c.model, effort: c.effort, readOnly: true, addDirs: []string{cat.Dir, mem.Dir}}, prompt)
 }
@@ -620,6 +660,20 @@ func firstNonEmpty(override, fallback string) string {
 // the zero MemoryCatalog for a session without one.
 func (c *Client) runClaudePlan(dir, prompt, label string, cat patterns.Catalog, mem patterns.MemoryCatalog) (text, model string, err error) {
 	return c.runSession(runSpec{dir: dir, label: label, model: c.planModel, effort: c.planEffort, readOnly: true, addDirs: []string{cat.Dir, mem.Dir}}, prompt)
+}
+
+// runClaudeBrainReview is runClaude on the brain review tier (BrainReviewTier)
+// for the page review of `brain bootstrap` (decision 112). mem is the memory
+// catalog whose directory the session may read (--add-dir): the pages of the
+// working set the review checks a proposal against.
+func (c *Client) runClaudeBrainReview(dir, prompt, label string, mem patterns.MemoryCatalog) (text, model string, err error) {
+	return c.runSession(runSpec{dir: dir, label: label, model: c.brainReviewModel, effort: c.brainReviewEffort, readOnly: true, addDirs: []string{mem.Dir}}, prompt)
+}
+
+// BrainReviewTier returns the model and effort runClaudeBrainReview runs the
+// page review of `brain bootstrap` on.
+func (c *Client) BrainReviewTier() (model, effort string) {
+	return c.brainReviewModel, c.brainReviewEffort
 }
 
 // runClaudeStructure is runClaude on the dedicated structuring tier
