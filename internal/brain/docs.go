@@ -1,8 +1,6 @@
 package brain
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -40,8 +38,7 @@ type DocChunk struct {
 // and not its index, so appending to a document changes the key of its last
 // chunk only and the earlier chunks are not processed again.
 func (c DocChunk) key() string {
-	sum := sha256.Sum256([]byte(c.Text))
-	return "doc-" + c.Path + "@" + hex.EncodeToString(sum[:])[:keyHashLen]
+	return "doc-" + c.Path + "@" + hashPage(c.Text)[:keyHashLen]
 }
 
 // decisionDirs are the directory names, and decisionFiles the file names, that
