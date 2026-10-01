@@ -204,10 +204,12 @@ type runSpec struct {
 	appendSystemPrompt string
 	// addDirs holds the directories the session may read besides its working
 	// directory: the on-disk pattern catalog directory (patterns.Materialize)
-	// and the project memory directory (patterns.MaterializeMemory). The
-	// non-empty entries follow one --add-dir, in order. A noTools spec never
-	// honors it, because a structuring session runs in structureWorkDir with no
-	// tools and must not be handed any other directory.
+	// and the project memory directory (patterns.MaterializeMemory), which
+	// runClaudeMemory, runClaudeFindings, runClaudePlan, and autoMemorySpec
+	// add. The non-empty entries follow one --add-dir, in order. A noTools
+	// spec never honors it, because a structuring session runs in
+	// structureWorkDir with no tools and must not be handed any other
+	// directory.
 	addDirs []string
 	// sessionID pins the CLI session's id (--session-id) and resume continues
 	// that session (--resume). Both are zero for a one-shot call; set by the
@@ -538,7 +540,7 @@ func (c *Client) runClaude(dir, prompt, label string, cat patterns.Catalog) (tex
 // runClaudeMemory is runClaude for a session whose prompt carries the project
 // memory: mem is the memory catalog whose directory the session may read
 // beside the pattern catalog's, the zero MemoryCatalog for a run without one.
-// The propose analysis calls it.
+// The propose analysis and the elaboration call it.
 func (c *Client) runClaudeMemory(dir, prompt, label string, cat patterns.Catalog, mem patterns.MemoryCatalog) (text, model string, err error) {
 	return c.runSession(runSpec{dir: dir, label: label, model: c.model, effort: c.effort, readOnly: true, addDirs: []string{cat.Dir, mem.Dir}}, prompt)
 }
@@ -658,10 +660,11 @@ func structureWorkDir() (string, error) {
 
 // runClaudeAuto is runClaude with claudeAutoPermissionMode and the write tools
 // kept, for the one-shot sessions that edit, commit, and push unattended. The
-// sessions without a terminal-report contract (address, the rebase sessions)
-// call it directly; the report-bearing ones go through runClaudeAutoReport
-// (decision 78). cat is the pattern catalog whose directory the session may
-// read (--add-dir), noCatalog for a session without one.
+// rebase sessions, which have no terminal-report contract, call it directly;
+// the report-bearing ones go through runClaudeAutoReport (decision 78), and
+// fix and address build their spec with autoMemorySpec. cat is the pattern
+// catalog whose directory the session may read (--add-dir), noCatalog for a
+// session without one.
 func (c *Client) runClaudeAuto(dir, prompt, label string, cat patterns.Catalog) (text, model string, err error) {
 	return c.runSession(c.autoSpec(dir, label, cat), prompt)
 }
@@ -674,6 +677,14 @@ func (c *Client) runClaudeAuto(dir, prompt, label string, cat patterns.Catalog) 
 // without one.
 func (c *Client) autoSpec(dir, label string, cat patterns.Catalog) runSpec {
 	return runSpec{dir: dir, label: label, permissionMode: claudeAutoPermissionMode, model: c.model, effort: c.effort, addDirs: []string{cat.Dir}}
+}
+
+// autoMemorySpec is autoSpec for a mutating session whose prompt carries the
+// project memory: the session may also read mem.Dir. fix and address use it.
+func (c *Client) autoMemorySpec(dir, label string, cat patterns.Catalog, mem patterns.MemoryCatalog) runSpec {
+	spec := c.autoSpec(dir, label, cat)
+	spec.addDirs = append(spec.addDirs, mem.Dir)
+	return spec
 }
 
 // runClaudeImplement runs the implement session: runClaudeAuto on

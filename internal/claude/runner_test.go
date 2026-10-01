@@ -943,12 +943,13 @@ func addDirValues(args []string) []string {
 }
 
 // TestAdapters_OpenTheMemoryDirectory pins which sessions are handed the
-// project memory directory, on the argv their spec produces. The four adapters
+// project memory directory, on the argv their spec produces. The seven adapters
 // whose prompt renders the memory index pass ctx.Memory to their session: the
-// review and the audit open that directory alone, the plan and the propose
-// analysis open it after the pattern catalog directory. Without a memory the
-// argv is what it was: the pattern catalog directory where the session has
-// one, and no --add-dir for the review and the audit.
+// review and the audit open that directory alone; the plan, the propose
+// analysis, the elaboration, the fix, and the address session open it after
+// the pattern catalog directory. Without a memory the argv is what it was: the
+// pattern catalog directory where the session has one, and no --add-dir for
+// the review and the audit. The elaboration reviewer is handed neither.
 func TestAdapters_OpenTheMemoryDirectory(t *testing.T) {
 	t.Parallel()
 
@@ -979,6 +980,24 @@ func TestAdapters_OpenTheMemoryDirectory(t *testing.T) {
 			ctx.Catalog.Dir = catalogDir
 			ctx.Memory = mem
 			_, _ = c.Propose("", ctx)
+		}},
+		{"Elaborate", "elaborate", []string{catalogDir}, func(c *Client, mem patterns.MemoryCatalog) {
+			ctx := goldenElaborateContext()
+			ctx.Catalog.Dir = catalogDir
+			ctx.Memory = mem
+			_, _ = c.Elaborate("", ctx)
+		}},
+		{"Fix", "fix", []string{catalogDir}, func(c *Client, mem patterns.MemoryCatalog) {
+			ctx := goldenFixContext()
+			ctx.Catalog.Dir = catalogDir
+			ctx.Memory = mem
+			_, _, _ = c.Fix("", ctx)
+		}},
+		{"Address", "address", []string{catalogDir}, func(c *Client, mem patterns.MemoryCatalog) {
+			ctx := goldenAddressContext()
+			ctx.Catalog.Dir = catalogDir
+			ctx.Memory = mem
+			_, _ = c.Address("", ctx)
 		}},
 	}
 	for _, row := range rows {
@@ -1017,6 +1036,88 @@ func TestAdapters_OpenTheMemoryDirectory(t *testing.T) {
 			})
 		}
 	}
+
+	// The reviewer scores executability: a context that carries a memory
+	// directory still yields an argv that names neither it nor the pattern
+	// catalog directory.
+	t.Run("ReviewElaboration/opens no directory", func(t *testing.T) {
+		t.Parallel()
+		c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
+			return `{"score": 9, "gaps": [], "to_reach_ten": ""}`, "", nil
+		})
+		ctx := goldenElaborateContext()
+		ctx.Catalog.Dir = catalogDir
+		ctx.Memory = patterns.MemoryCatalog{Dir: memoryDir, Pages: goldenMemory().Pages}
+		if _, err := c.ReviewElaboration("", ctx, "## Description\n\nA draft.\n"); err != nil {
+			t.Fatalf("ReviewElaboration returned error: %v", err)
+		}
+
+		if len(*calls) == 0 {
+			t.Fatal("the reviewer ran no session")
+		}
+		first := (*calls)[0].spec
+		if first.label != "elaborate-review" {
+			t.Fatalf("first session has label %q, want elaborate-review", first.label)
+		}
+		args := c.claudeArgs(first, "json")
+		if slices.Contains(args, "--add-dir") || slices.Contains(args, memoryDir) || slices.Contains(args, catalogDir) {
+			t.Errorf("the reviewer session must open no directory; argv %v", args)
+		}
+	})
+}
+
+// TestFixAndAddress_KeepTheirSessionModeWithTheMemory pins what the fix and
+// address adapters kept when their spec gained the memory directory
+// (autoMemorySpec): both still run in auto permission mode with the write
+// tools, and the fix session still runs under the completion nudge, which
+// resumes the same session with the same directories when it ends without its
+// report.
+func TestFixAndAddress_KeepTheirSessionModeWithTheMemory(t *testing.T) {
+	t.Parallel()
+	mem := patterns.MemoryCatalog{Dir: "/tmp/planwerk-agent-memory-test", Pages: goldenMemory().Pages}
+
+	t.Run("fix resumes under the completion nudge", func(t *testing.T) {
+		t.Parallel()
+		c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
+			return "prose without a report", "", nil
+		})
+		ctx := goldenFixContext()
+		ctx.Memory = mem
+		_, _, _ = c.Fix("", ctx)
+
+		if len(*calls) < 2 {
+			t.Fatalf("fix ran %d session(s), want the initial one and a nudge", len(*calls))
+		}
+		first, second := (*calls)[0].spec, (*calls)[1].spec
+		if first.permissionMode != claudeAutoPermissionMode || first.readOnly || first.sessionID == "" {
+			t.Errorf("fix spec = %+v, want auto mode, the write tools, and a pinned session", first)
+		}
+		if !slices.Contains(first.addDirs, mem.Dir) {
+			t.Errorf("fix spec opens %q, want the memory directory %q among them", first.addDirs, mem.Dir)
+		}
+		if !second.resume || second.sessionID != first.sessionID || !slices.Equal(second.addDirs, first.addDirs) {
+			t.Errorf("nudge spec = %+v, want a resume of session %q that keeps the directories %q", second, first.sessionID, first.addDirs)
+		}
+	})
+
+	t.Run("address keeps auto mode and the write tools", func(t *testing.T) {
+		t.Parallel()
+		c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) { return "", "", nil })
+		ctx := goldenAddressContext()
+		ctx.Memory = mem
+		_, _ = c.Address("", ctx)
+
+		if len(*calls) == 0 {
+			t.Fatal("address ran no session")
+		}
+		first := (*calls)[0].spec
+		if first.label != "address" {
+			t.Fatalf("first session has label %q, want address", first.label)
+		}
+		if first.permissionMode != claudeAutoPermissionMode || first.readOnly {
+			t.Errorf("address spec = %+v, want auto mode with the write tools", first)
+		}
+	})
 }
 
 // TestFinders_ConstrainTheOutputSchema pins the finder passes' single session:
