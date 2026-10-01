@@ -480,7 +480,7 @@ func TestBuildReviewPrompt_Memory(t *testing.T) {
 // TestBuildReviewPrompt_MemoryBodies locks the fallback form of the
 // project-memory block: a memory whose directory could not be written is
 // carried as page bodies in <project-memory> tags. The block is shared, so the
-// review prompt stands in for the other three readers.
+// review prompt stands in for the other readers.
 func TestBuildReviewPrompt_MemoryBodies(t *testing.T) {
 	ctx := goldenReviewContext()
 	ctx.Memory = patterns.MemoryCatalog{Pages: goldenMemory().Pages}
@@ -509,6 +509,65 @@ func TestBuildPlanPrompt_Memory(t *testing.T) {
 	ctx := goldenImplementContext()
 	ctx.Memory = goldenMemory()
 	assertGoldenPrompt(t, "plan_memory", BuildPlanPrompt(ctx))
+}
+
+// TestBuildElaboratePrompt_Memory locks the project-memory block in the
+// elaboration prompt, directly after the review-pattern section. The empty
+// branch stays covered by elaborate.golden.
+func TestBuildElaboratePrompt_Memory(t *testing.T) {
+	ctx := goldenElaborateContext()
+	ctx.Memory = goldenMemory()
+	assertGoldenPrompt(t, "elaborate_memory", buildElaboratePrompt(ctx))
+}
+
+// TestBuildElaborateReviewPrompt_CarriesNoMemory locks the reviewer prompt as
+// the one elaborate prompt without the project memory: the reviewer scores
+// executability and reads neither the pattern catalog nor the memory.
+func TestBuildElaborateReviewPrompt_CarriesNoMemory(t *testing.T) {
+	ctx := goldenElaborateContext()
+	ctx.Memory = goldenMemory()
+	got := buildElaborateReviewPrompt(ctx, "## Description\n\nA draft.\n")
+	for _, absent := range []string{"## Project Memory", "<project-memory", ctx.Memory.Dir} {
+		if strings.Contains(got, absent) {
+			t.Errorf("the reviewer prompt must not carry %q", absent)
+		}
+	}
+}
+
+// TestBuildFixPrompt_Memory locks the project-memory block in the fix prompt,
+// directly after the review-pattern section. The empty branch stays covered by
+// fix.golden.
+func TestBuildFixPrompt_Memory(t *testing.T) {
+	ctx := goldenFixContext()
+	ctx.Memory = goldenMemory()
+	assertGoldenPrompt(t, "fix_memory", BuildFixPrompt(ctx))
+}
+
+// TestBuildFixPrompt_MemoryBodies covers a fix iteration whose memory
+// directory could not be written (MaterializeMemory failed with "creating the
+// project memory directory"): the prompt carries the page bodies in
+// <project-memory> tags and names no directory.
+func TestBuildFixPrompt_MemoryBodies(t *testing.T) {
+	ctx := goldenFixContext()
+	ctx.Memory = patterns.MemoryCatalog{Pages: goldenMemory().Pages}
+	got := BuildFixPrompt(ctx)
+	for _, want := range []string{"## Project Memory", "<project-memory>\n", "A floating range broke the release build twice."} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the fix prompt must carry %q in the bodies form", want)
+		}
+	}
+	if strings.Contains(got, "<project-memory-index>") {
+		t.Error("a memory without a directory must not render the index form")
+	}
+}
+
+// TestBuildAddressPrompt_Memory locks the project-memory block in the address
+// prompt, directly after the review-pattern section. The empty branch stays
+// covered by address.golden.
+func TestBuildAddressPrompt_Memory(t *testing.T) {
+	ctx := goldenAddressContext()
+	ctx.Memory = goldenMemory()
+	assertGoldenPrompt(t, "address_memory", BuildAddressPrompt(ctx))
 }
 
 // goldenDomains is a deterministic .planwerk/domains.md override, deliberately

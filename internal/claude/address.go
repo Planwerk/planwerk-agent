@@ -19,7 +19,7 @@ import (
 // confirmation. The decode shares decodeJSONWithRepair so a one-character JSON
 // glitch does not fail the run.
 func (c *Client) Address(dir string, ctx address.Context) (*report.AddressResult, error) {
-	out, model, err := c.runClaudeAuto(dir, BuildAddressPrompt(ctx), "address", ctx.Catalog)
+	out, model, err := c.runSession(c.autoMemorySpec(dir, "address", ctx.Catalog, ctx.Memory), BuildAddressPrompt(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("running address: %w", err)
 	}
@@ -70,6 +70,7 @@ func BuildAddressPrompt(ctx address.Context) string {
 	sb.WriteString(patternCatalogBlock(honorPatternsHeading,
 		"These patterns are the catalog the project's review/audit tools share. Your change MUST stay consistent with them: do not address a comment in a way that would itself be flagged by a pattern below.",
 		ctx.Catalog, ctx.Patterns, ctx.MaxPatterns))
+	sb.WriteString(projectMemoryBlock(ctx.Memory))
 
 	sb.WriteString(projectSkillsBlock(ctx.Skills))
 	sb.WriteString(docProseBlock())

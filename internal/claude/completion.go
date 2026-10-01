@@ -104,11 +104,12 @@ func (c *Client) runWithCompletionNudge(spec runSpec, prompt, heading, statuses 
 // runClaudeAutoReport is runClaudeAuto for a mutating session whose contract
 // is a terminal report: same auto permission mode and main model, plus the
 // completion nudge that resumes the session when it ends without the report.
-// The simplify-apply, review-apply, finalize, and fix sessions run through it;
-// the implement session builds its own spec (model override, --agents) and
-// calls runWithCompletionNudge directly. Sessions without a heading + STATUS
-// contract (address returns schema-validated JSON with its own repair
-// recovery, the rebase sessions return free-form text) stay on runClaudeAuto.
+// The simplify-apply, review-apply, and finalize sessions run through it; the
+// implement session builds its own spec (model override, --agents) and the fix
+// session its own (autoMemorySpec), and both call runWithCompletionNudge
+// directly. Sessions without a heading + STATUS contract run without the
+// nudge: address returns schema-validated JSON with its own repair recovery,
+// and the rebase sessions return free-form text.
 // cat is the pattern catalog whose directory the session may read
 // (--add-dir), noCatalog for a session without one.
 func (c *Client) runClaudeAutoReport(dir, prompt, label, heading, statuses string, cat patterns.Catalog) (string, string, error) {

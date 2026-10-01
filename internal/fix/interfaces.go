@@ -37,7 +37,11 @@ type Context struct {
 	Patterns      []patterns.Pattern
 	// Catalog is the on-disk form of Patterns the session reads (written by
 	// patterns.Materialize); a zero Catalog puts the bodies in the prompt.
-	Catalog     patterns.Catalog
+	Catalog patterns.Catalog
+	// Memory is the target repo's project memory from its GitHub Wiki: the
+	// pages, listed in the fix prompt, and the directory a session reads them
+	// from. Zero for a run without a wiki, and for a printed prompt.
+	Memory      patterns.MemoryCatalog
 	MaxPatterns int
 	// Skills lists the Agent Skills the target repo ships under .claude/skills/
 	// (loaded by skills.Load from the checkout), rendered into the fix prompt so

@@ -18,17 +18,18 @@ import (
 // which only controls whether the session runs in the user's own checkout or a
 // throw-away temp-dir clone.
 //
-// runClaudeAuto already creates a fresh `claude -p` invocation per call, so each
-// iteration of the fix loop runs in a brand-new Claude session by construction.
-// It runs in auto mode (--permission-mode auto) so the session can edit files,
-// run tests, commit, and push the repaired branch without an interactive
-// confirmation — the same requirement the implement command has — while the
-// auto-mode classifier still vets each action. The session runs under the
-// completion nudge (runClaudeAutoReport): when it ends without its report, the
-// same session is resumed to finish and report instead of the iteration losing
-// its work.
+// Every call creates a fresh `claude -p` invocation, so each iteration of the
+// fix loop runs in a brand-new Claude session by construction. It runs in auto
+// mode (--permission-mode auto) so the session can edit files, run tests,
+// commit, and push the repaired branch without an interactive confirmation —
+// the same requirement the implement command has — while the auto-mode
+// classifier still vets each action. Its spec (autoMemorySpec) opens the
+// pattern catalog directory and the project memory directory. The session runs
+// under the completion nudge (runWithCompletionNudge): when it ends without
+// its report, the same session is resumed to finish and report instead of the
+// iteration losing its work.
 func (c *Client) Fix(dir string, ctx fix.Context) (string, string, error) {
-	out, model, err := c.runClaudeAutoReport(dir, BuildFixPrompt(ctx), "fix", fixReportHeading, reportStatusChoices, ctx.Catalog)
+	out, model, err := c.runWithCompletionNudge(c.autoMemorySpec(dir, "fix", ctx.Catalog, ctx.Memory), BuildFixPrompt(ctx), fixReportHeading, reportStatusChoices)
 	if err != nil {
 		return "", "", fmt.Errorf("running fix: %w", err)
 	}
@@ -75,6 +76,7 @@ func BuildFixPrompt(ctx fix.Context) string {
 	sb.WriteString(patternCatalogBlock(honorPatternsHeading,
 		"These patterns are the catalog the project's review/audit/elaborate tools share — including any project-specific patterns shipped under `.planwerk/review_patterns/` in this repository. The fix you push MUST stay consistent with them: do not introduce code or test changes that would itself be flagged by a pattern below. When the fix touches an area covered by a pattern, prefer the resolution the pattern endorses.",
 		ctx.Catalog, ctx.Patterns, ctx.MaxPatterns))
+	sb.WriteString(projectMemoryBlock(ctx.Memory))
 
 	sb.WriteString(projectSkillsBlock(ctx.Skills))
 	sb.WriteString(docProseBlock())
