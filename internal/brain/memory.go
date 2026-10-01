@@ -1,11 +1,18 @@
-// Package brain reads a repository's project memory for a caller outside a
-// run: the `brain memory` subcommand, which the plugin skills call. It prints
-// the memory index or one page and starts no Claude session. The wiki opt-in,
-// the clone, and the page guards stay in the patterns package, so a skill
-// reads the same pages through the same checks as a headless command. Its
-// reader is a shell and a terminal, so on top of those checks it keeps only
-// the pages whose file name is safe on a command line and drops control
-// characters from what it prints.
+// Package brain reads and builds a repository's project memory.
+//
+// `brain memory`, which the plugin skills call, reads it for a caller outside
+// a run. It prints the memory index or one page, starts no Claude session, and
+// writes no file. The wiki opt-in, the clone, and the page guards stay in the
+// patterns package, so a skill reads the same pages through the same checks as
+// a headless command. Its reader is a shell and a terminal, so on top of those
+// checks it keeps only the pages whose file name is safe on a command line and
+// drops control characters from what it prints.
+//
+// `brain bootstrap` builds the memory from a repository's history. It groups
+// the closed issues, merged pull requests, commits, and decision documents
+// into units, runs an analysis session and a review session per unit, and
+// keeps the resulting pages in a state directory until the operator pushes
+// them to the wiki.
 package brain
 
 import (
