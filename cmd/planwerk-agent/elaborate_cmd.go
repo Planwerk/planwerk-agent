@@ -17,6 +17,7 @@ import (
 func newElaborateCmd(deps *runtimeDeps) *cobra.Command {
 	var elaborateCfg elaborate.Options
 	var updateIssue, postComment bool
+	var wiki wikiFlags
 
 	elaborateCmd := &cobra.Command{
 		Use:   "elaborate <issue-ref>",
@@ -52,6 +53,7 @@ or short form (owner/repo#123).`,
 			opts := elaborateCfg
 			opts.Version = deps.version
 			opts.Remote = deps.remoteOpts
+			opts.Wiki = wiki.resolve(cmd.Flags(), deps.fileCfg.Wiki)
 			return elaborate.Run(os.Stdout, opts, deps.claude.Elaborate, deps.claude.ReviewElaboration)
 		},
 	}
@@ -70,6 +72,7 @@ or short form (owner/repo#123).`,
 	elaborateFlags.IntVar(&elaborateCfg.MaxReviewIterations, "max-review-iterations", 0, "Cap on reviewer refine iterations when --review is set (<=0 uses the default of 3)")
 	elaborateFlags.BoolVar(&elaborateCfg.Local, "local", false, "Operate on the current working directory instead of cloning into a temp dir")
 	elaborateFlags.BoolVar(&elaborateCfg.Force, "force", false, "With --local, skip the confirmation prompt when the working tree is dirty")
+	wiki.register(elaborateFlags)
 
 	return elaborateCmd
 }

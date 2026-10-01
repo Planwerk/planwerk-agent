@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -14,6 +15,8 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/cache"
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/github/githubtest"
+	"github.com/planwerk/planwerk-agent/internal/patterns"
+	"github.com/planwerk/planwerk-agent/internal/patterns/patternstest"
 )
 
 type fakeClaude struct {
@@ -1160,4 +1163,292 @@ func TestRun_UpdateComment_RefusesOversizedRunOnContinuedBody(t *testing.T) {
 			t.Errorf("a comment within the cap is posted once, got %d", gh.Count("AddIssueComment"))
 		}
 	})
+}
+
+// wikiSeam returns a ResolveWiki seam that yields wiki on every call.
+func wikiSeam(wiki patterns.ResolvedWiki) resolveWikiFn {
+	return func(_, _ string, _ patterns.WikiOptions, _ patterns.RemoteOptions) patterns.ResolvedWiki {
+		return wiki
+	}
+}
+
+// TestRun_MemoryDirectoryLivesForTheElaboration locks the lifetime of the
+// project memory directory: the elaboration session can read the page while it
+// runs, and the directory is gone when Run returns.
+func TestRun_MemoryDirectoryLivesForTheElaboration(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+	gh := reviewLoopGitHub(t, fakeRepo(t, "acme", "widgets"))
+
+	var mem patterns.MemoryCatalog
+	cl := &fakeClaude{fn: func(_ string, ctx Context) (*Result, error) {
+		mem = ctx.Memory
+		patternstest.AssertMemoryPageReadable(t, ctx.Memory)
+		return &Result{Title: "Title", Description: "d", AcceptanceCriteria: []string{"ac"}}, nil
+	}}
+	r := &Runner{Claude: cl, GitHub: gh, ResolveWiki: wikiSeam(patterns.ResolvedWiki{
+		Repo: "acme/widgets", CommitSHA: "wikisha", MemoryPages: []patterns.MemoryPage{patternstest.MemoryPage()},
+	})}
+
+	if err := r.Run(&bytes.Buffer{}, baseOpts(seedPatternDir(t))); err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+	if cl.calls != 1 {
+		t.Fatalf("Elaborate calls = %d, want 1", cl.calls)
+	}
+	if !strings.HasPrefix(filepath.Base(mem.Dir), patterns.MemoryDirPrefix) || len(mem.Pages) != 1 {
+		t.Fatalf("Context.Memory = %+v, want a memory directory and the one page", mem)
+	}
+	if _, err := os.Stat(mem.Dir); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("after Run, stat %s = %v, want not exist", mem.Dir, err)
+	}
+}
+
+// TestRun_RefinementSharesTheMemoryDirectory locks one memory directory per
+// run: the refinement turn that follows a failing review reads the pages from
+// the directory the first elaboration was handed.
+func TestRun_RefinementSharesTheMemoryDirectory(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+	gh := reviewLoopGitHub(t, fakeRepo(t, "acme", "widgets"))
+
+	var dirs []string
+	cl := &fakeClaude{fn: func(_ string, ctx Context) (*Result, error) {
+		dirs = append(dirs, ctx.Memory.Dir)
+		patternstest.AssertMemoryPageReadable(t, ctx.Memory)
+		return &Result{Title: "Title", Description: fmt.Sprintf("draft %d", len(dirs)), AcceptanceCriteria: []string{"ac"}}, nil
+	}}
+	rv := &fakeReviewer{}
+	rv.fn = func(string, Context, string) (*ReviewResult, error) {
+		if atomic.LoadInt32(&rv.calls) == 1 {
+			return &ReviewResult{Score: 4, Gaps: []string{"close gap X"}}, nil
+		}
+		return &ReviewResult{Score: 9}, nil
+	}
+	r := &Runner{Claude: cl, GitHub: gh, Reviewer: rv, ResolveWiki: wikiSeam(patterns.ResolvedWiki{
+		Repo: "acme/widgets", CommitSHA: "wikisha", MemoryPages: []patterns.MemoryPage{patternstest.MemoryPage()},
+	})}
+
+	opts := baseOpts(seedPatternDir(t))
+	opts.Review = true
+	if err := r.Run(&bytes.Buffer{}, opts); err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+	if len(dirs) != 2 {
+		t.Fatalf("Elaborate calls = %d, want 2 (initial + one refine)", len(dirs))
+	}
+	if dirs[0] == "" || dirs[1] != dirs[0] {
+		t.Errorf("refine call got memory directory %q, want the first call's %q", dirs[1], dirs[0])
+	}
+}
+
+// TestRun_CacheHitWritesNoMemoryDirectory covers the cache-hit path with a
+// resolved wiki: the second run returns before the pages are written, so it
+// neither calls Claude nor leaves a memory directory.
+func TestRun_CacheHitWritesNoMemoryDirectory(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+	patternDir := seedPatternDir(t)
+	gh := reviewLoopGitHub(t, fakeRepo(t, "acme", "widgets"))
+	tmp := patternstest.IsolateTempDir(t)
+
+	cl := &fakeClaude{}
+	r := &Runner{Claude: cl, GitHub: gh, ResolveWiki: wikiSeam(patterns.ResolvedWiki{
+		Repo: "acme/widgets", CommitSHA: "wikisha", MemoryPages: []patterns.MemoryPage{patternstest.MemoryPage()},
+	})}
+
+	for i := 1; i <= 2; i++ {
+		if err := r.Run(&bytes.Buffer{}, baseOpts(patternDir)); err != nil {
+			t.Fatalf("Run %d error: %v", i, err)
+		}
+	}
+	if cl.calls != 1 {
+		t.Errorf("Elaborate calls = %d, want 1 (the second run is a cache hit)", cl.calls)
+	}
+	patternstest.AssertNoMemoryDir(t, tmp)
+}
+
+// TestRun_WikiCommitBustsCache locks the cache-key contribution of the wiki
+// commit: the memory and the wiki patterns reach the prompt, so a wiki that
+// moved between two otherwise identical runs must re-elaborate.
+func TestRun_WikiCommitBustsCache(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+	patternDir := seedPatternDir(t)
+	gh := reviewLoopGitHub(t, fakeRepo(t, "acme", "widgets"))
+
+	commit := "wikisha-1"
+	cl := &fakeClaude{}
+	r := &Runner{Claude: cl, GitHub: gh}
+	r.ResolveWiki = func(_, _ string, _ patterns.WikiOptions, _ patterns.RemoteOptions) patterns.ResolvedWiki {
+		return patterns.ResolvedWiki{Repo: "acme/widgets", CommitSHA: commit, MemoryPages: []patterns.MemoryPage{patternstest.MemoryPage()}}
+	}
+
+	if err := r.Run(&bytes.Buffer{}, baseOpts(patternDir)); err != nil {
+		t.Fatalf("first Run error: %v", err)
+	}
+	commit = "wikisha-2"
+	if err := r.Run(&bytes.Buffer{}, baseOpts(patternDir)); err != nil {
+		t.Fatalf("second Run error: %v", err)
+	}
+	if cl.calls != 2 {
+		t.Errorf("Elaborate calls = %d, want 2 (a moved wiki misses the cache)", cl.calls)
+	}
+}
+
+// TestRun_WikiWithoutACommitBypassesTheCache covers a wiki that loaded while
+// its commit did not resolve. Its memory reaches the prompt, but the cache key
+// would carry no wiki part, so the run neither stores its result under the key
+// of a run without a wiki nor is served from that key.
+func TestRun_WikiWithoutACommitBypassesTheCache(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+	patternDir := seedPatternDir(t)
+	gh := reviewLoopGitHub(t, fakeRepo(t, "acme", "widgets"))
+
+	cl := &fakeClaude{}
+	unpinned := &Runner{Claude: cl, GitHub: gh, ResolveWiki: wikiSeam(patterns.ResolvedWiki{
+		Repo: "acme/widgets", Dir: t.TempDir(), MemoryPages: []patterns.MemoryPage{patternstest.MemoryPage()},
+	})}
+	plain := &Runner{Claude: cl, GitHub: gh, ResolveWiki: wikiSeam(patterns.ResolvedWiki{})}
+
+	steps := []struct {
+		runner *Runner
+		why    string
+	}{
+		{unpinned, "the first run elaborates"},
+		{plain, "the unpinned run stored nothing under the key of a run without a wiki"},
+		{unpinned, "an unpinned run is not served the plan of the run without a wiki"},
+	}
+	for i, step := range steps {
+		if err := step.runner.Run(&bytes.Buffer{}, baseOpts(patternDir)); err != nil {
+			t.Fatalf("Run %d error: %v", i+1, err)
+		}
+		if got := int(atomic.LoadInt32(&cl.calls)); got != i+1 {
+			t.Fatalf("Elaborate calls after run %d = %d, want %d: %s", i+1, got, i+1, step.why)
+		}
+	}
+}
+
+// TestElaborateCacheKey_EmptyWikiCommitKeepsTheKey pins the key of a run
+// without a wiki to the flag list it had before the wiki commit joined the
+// key, so no existing cache entry is orphaned.
+func TestElaborateCacheKey_EmptyWikiCommitKeepsTheKey(t *testing.T) {
+	issue := &github.Issue{Number: 42, Title: "Title", Body: "Body"}
+	want := cache.AuditKey("acme", "widgets", "elaborate@head-sha",
+		"issue=42", "body="+issueFingerprint(issue), "review", "patterns=fp")
+
+	if got := elaborateCacheKey("acme", "widgets", 42, issue, nil, "head-sha", true, "fp", ""); got != want {
+		t.Errorf("key without a wiki commit = %s, want %s", got, want)
+	}
+	if got := elaborateCacheKey("acme", "widgets", 42, issue, nil, "head-sha", true, "fp", "wikisha"); got == want {
+		t.Error("a wiki commit must change the key")
+	}
+}
+
+// TestRun_WikiPatternsReachTheContext locks the wiki tier of the pattern
+// load: a pattern file under the resolved wiki's review_patterns/ is part of
+// the catalog the elaboration is grounded in.
+func TestRun_WikiPatternsReachTheContext(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+	gh := reviewLoopGitHub(t, fakeRepo(t, "acme", "widgets"))
+
+	wikiPatterns := t.TempDir()
+	body := "# Review Pattern: Wiki only rule\n\n**Review-Area**: meta\n\n## Rule\nA wiki pattern reaches the elaborate Context.\n"
+	if err := os.WriteFile(filepath.Join(wikiPatterns, "wiki-only.md"), []byte(body), 0o600); err != nil {
+		t.Fatalf("writing wiki pattern: %v", err)
+	}
+
+	var got []patterns.Pattern
+	cl := &fakeClaude{fn: func(_ string, ctx Context) (*Result, error) {
+		got = ctx.Patterns
+		return &Result{Title: "Title", Description: "d", AcceptanceCriteria: []string{"ac"}}, nil
+	}}
+	r := &Runner{Claude: cl, GitHub: gh, ResolveWiki: wikiSeam(patterns.ResolvedWiki{
+		Repo: "acme/widgets", CommitSHA: "wikisha", PatternsDir: wikiPatterns,
+	})}
+
+	opts := baseOpts("")
+	opts.PatternDirs = nil
+	if err := r.Run(&bytes.Buffer{}, opts); err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+	if len(got) != 1 || got[0].Name != "Wiki only rule" {
+		t.Errorf("Context.Patterns = %+v, want the one wiki pattern", got)
+	}
+}
+
+// TestRun_DisabledWikiLeavesMemoryZero covers the run without a wiki: the
+// zero ResolvedWiki (disabled, uninitialized, or unresolvable) hands the
+// session no memory, and the run succeeds.
+func TestRun_DisabledWikiLeavesMemoryZero(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+	gh := reviewLoopGitHub(t, fakeRepo(t, "acme", "widgets"))
+	tmp := patternstest.IsolateTempDir(t)
+
+	mem := patterns.MemoryCatalog{Dir: "unset"}
+	cl := &fakeClaude{fn: func(_ string, ctx Context) (*Result, error) {
+		mem = ctx.Memory
+		return &Result{Title: "Title", Description: "d", AcceptanceCriteria: []string{"ac"}}, nil
+	}}
+	r := &Runner{Claude: cl, GitHub: gh, ResolveWiki: wikiSeam(patterns.ResolvedWiki{})}
+
+	if err := r.Run(&bytes.Buffer{}, baseOpts(seedPatternDir(t))); err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+	if !reflect.DeepEqual(mem, patterns.MemoryCatalog{}) {
+		t.Errorf("Context.Memory = %+v, want the zero MemoryCatalog", mem)
+	}
+	patternstest.AssertNoMemoryDir(t, tmp)
+}
+
+// TestRun_ElaborateErrorRemovesTheMemoryDirectory covers the failing
+// elaboration: Run wraps the error and still removes the memory directory.
+func TestRun_ElaborateErrorRemovesTheMemoryDirectory(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+	gh := reviewLoopGitHub(t, fakeRepo(t, "acme", "widgets"))
+	tmp := patternstest.IsolateTempDir(t)
+
+	boom := errors.New("claude exploded")
+	cl := &fakeClaude{fn: func(_ string, ctx Context) (*Result, error) {
+		patternstest.AssertMemoryPageReadable(t, ctx.Memory)
+		return nil, boom
+	}}
+	r := &Runner{Claude: cl, GitHub: gh, ResolveWiki: wikiSeam(patterns.ResolvedWiki{
+		Repo: "acme/widgets", CommitSHA: "wikisha", MemoryPages: []patterns.MemoryPage{patternstest.MemoryPage()},
+	})}
+
+	err := r.Run(&bytes.Buffer{}, baseOpts(seedPatternDir(t)))
+	if !errors.Is(err, boom) || !strings.HasPrefix(err.Error(), "claude elaborate:") {
+		t.Fatalf("Run error = %v, want \"claude elaborate:\" wrapping the session error", err)
+	}
+	patternstest.AssertNoMemoryDir(t, tmp)
+}
+
+// TestRun_PassesWikiOptionsToTheSeam locks the wiring of the wiki opt-in: the
+// resolver sees the issue's repository and the options the command resolved.
+func TestRun_PassesWikiOptionsToTheSeam(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+	gh := reviewLoopGitHub(t, fakeRepo(t, "acme", "widgets"))
+
+	var gotRepo string
+	var gotWiki patterns.WikiOptions
+	r := &Runner{Claude: &fakeClaude{}, GitHub: gh}
+	r.ResolveWiki = func(owner, name string, wopts patterns.WikiOptions, _ patterns.RemoteOptions) patterns.ResolvedWiki {
+		gotRepo, gotWiki = owner+"/"+name, wopts
+		return patterns.ResolvedWiki{}
+	}
+
+	opts := baseOpts(seedPatternDir(t))
+	opts.Wiki = patterns.WikiOptions{Enabled: true, Repo: "acme/handbook", Ref: "v1"}
+	if err := r.Run(&bytes.Buffer{}, opts); err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+	if gotRepo != "acme/widgets" || gotWiki != opts.Wiki {
+		t.Errorf("resolver got %s and %+v, want acme/widgets and %+v", gotRepo, gotWiki, opts.Wiki)
+	}
 }
