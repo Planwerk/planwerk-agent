@@ -108,17 +108,34 @@ func FormatMemoryIndex(cat MemoryCatalog) (index string, unlisted int) {
 	}
 	var sb strings.Builder
 	for i, p := range cat.Pages {
-		line := "- " + p.Name + ": " + memoryIndexField(p.Title)
-		if summary := memoryIndexField(p.Summary); summary != "" {
-			line += " | " + summary
-		}
-		line += "\n"
+		line := memoryIndexLine(p)
 		if sb.Len()+len(line) > maxMemoryIndexBytes {
 			return sb.String(), len(cat.Pages) - i
 		}
 		sb.WriteString(line)
 	}
 	return sb.String(), 0
+}
+
+// FormatMemoryIndexLines renders one index line per page, in order, for a
+// reader that has no memory directory. It applies no size budget.
+func FormatMemoryIndexLines(pages []MemoryPage) string {
+	var sb strings.Builder
+	for _, p := range pages {
+		sb.WriteString(memoryIndexLine(p))
+	}
+	return sb.String()
+}
+
+// memoryIndexLine renders the index line of p, newline included: the file
+// name and the title and, after a " | ", the summary when the page has one.
+// Title and summary each pass through memoryIndexField.
+func memoryIndexLine(p MemoryPage) string {
+	line := "- " + p.Name + ": " + memoryIndexField(p.Title)
+	if summary := memoryIndexField(p.Summary); summary != "" {
+		line += " | " + summary
+	}
+	return line + "\n"
 }
 
 // memoryIndexField folds s to one line and cuts it to maxMemoryIndexFieldBytes
