@@ -367,3 +367,43 @@ func gitOut(t *testing.T, dir string, args ...string) string {
 	}
 	return string(out)
 }
+
+// TestPushWikiAdditions_RefusesASymlinkOutOfTheClone covers a wiki that holds
+// a symbolic link where a page is written: a page directory that points out
+// of the clone, and a page file that does. Neither write may reach the
+// link's target.
+func TestPushWikiAdditions_RefusesASymlinkOutOfTheClone(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		// link is the wiki-relative path of the symbolic link, and target what
+		// it points at, relative to a directory outside the clone.
+		link, target string
+	}{
+		{"page directory", "memory", "."},
+		{"page file", "memory/page.md", "page.md"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			clone, outside := t.TempDir(), t.TempDir()
+			mustWrite(t, filepath.Join(outside, "page.md"), "the operator's file\n")
+			link := filepath.Join(clone, filepath.FromSlash(tc.link))
+			if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(filepath.Join(outside, tc.target), link); err != nil {
+				t.Fatal(err)
+			}
+
+			files := []WikiFile{{Path: "memory/page.md", Content: "a page from the wiki write\n"}, {Path: "memory/other.md", Content: "x\n"}}
+			if err := pushWikiAdditions(clone, files, "capture", ""); err == nil {
+				t.Fatal("pushWikiAdditions wrote through a symbolic link out of the clone, want a refusal")
+			}
+			got, err := os.ReadFile(filepath.Join(outside, "page.md"))
+			if err != nil || string(got) != "the operator's file\n" {
+				t.Errorf("the file outside the clone = %q, %v, want it untouched", got, err)
+			}
+			if _, err := os.Lstat(filepath.Join(outside, "other.md")); err == nil {
+				t.Error("a page was created outside the clone")
+			}
+		})
+	}
+}
