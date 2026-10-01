@@ -507,7 +507,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	defer cleanupCatalog()
 	ctx.Skills = skills.Load(repo.Dir)
 	ctx.StyleGuidePath = styleguide.Find(repo.Dir)
-	ctx.Memory = wiki.Memory
+	ctx.Memory = patterns.FormatMemoryBodies(wiki.MemoryPages)
 	ctx.Domains = domains.Load(repo.Dir)
 
 	if planEnabled {

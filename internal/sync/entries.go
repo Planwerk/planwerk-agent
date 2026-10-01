@@ -50,15 +50,24 @@ type Entry struct {
 // ReadWikiEntries enumerates the wiki's review_patterns/ and memory/ pages from
 // the clone root and returns one Entry per page, sorted by path for a stable
 // order. An absent subdirectory is skipped (a wiki may carry only patterns or
-// only memory). Directories, symlinks, non-markdown files, the standard wiki
-// navigation pages (Home, _Sidebar, _Footer), and the SOURCES catalog are
-// skipped, so a normal wiki holding both navigation and knowledge enumerates only
-// the knowledge. It is exported so the capture pass can deduplicate its
-// proposals against the same enumerated entries the sync pass reconciles.
+// only memory), and so is one that is itself a symlink. Directories, symlinks,
+// non-markdown files, the standard wiki navigation pages (Home, _Sidebar,
+// _Footer), and the SOURCES catalog are skipped, so a normal wiki holding both
+// navigation and knowledge enumerates only the knowledge. It is exported so the
+// capture pass can deduplicate its proposals against the same enumerated entries
+// the sync pass reconciles.
 func ReadWikiEntries(wikiDir string) ([]Entry, error) {
 	var entries []Entry
 	for _, sub := range wikiSubdirs {
 		dir := filepath.Join(wikiDir, sub.name)
+		// The subdirectory can be a symlink committed to the wiki, and os.ReadDir
+		// would list its target: the regular *.md files behind the link pass the
+		// per-entry guard below. os.Lstat reports the entry's own type. Mirrors
+		// patterns.LoadMemoryPages.
+		if info, err := os.Lstat(dir); err == nil && info.Mode()&os.ModeSymlink != 0 {
+			slog.Warn("skipping symlinked wiki directory", "dir", dir)
+			continue
+		}
 		files, err := os.ReadDir(dir)
 		if err != nil {
 			continue // absent or unreadable subdir: nothing to enumerate here
@@ -69,7 +78,8 @@ func ReadWikiEntries(wikiDir string) ([]Entry, error) {
 			// pointing at e.g. ~/.ssh/id_ed25519 would otherwise be followed by the
 			// read below and its target fed into the prompt (and, under --prune,
 			// proposed for deletion). os.DirEntry reports the entry's own type
-			// without following it. Mirrors patterns.LoadMemory / extract.readEntries.
+			// without following it. Mirrors patterns.LoadMemoryPages /
+			// extract.readEntries.
 			if f.IsDir() || f.Type()&os.ModeSymlink != 0 || !strings.HasSuffix(f.Name(), mdExt) {
 				continue
 			}

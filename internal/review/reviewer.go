@@ -266,7 +266,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		NewFeatures: newFeatures,
 		TodoContent: todoContent,
 		Glossary:    glossaryBody,
-		Memory:      wiki.Memory,
+		Memory:      patterns.FormatMemoryBodies(wiki.MemoryPages),
 	}
 
 	var (

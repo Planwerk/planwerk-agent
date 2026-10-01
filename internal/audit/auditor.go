@@ -226,7 +226,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		MaxPatterns: opts.MaxPatterns,
 		MaxFindings: opts.MaxFindings,
 		RepoName:    repo.FullName(),
-		Memory:      wiki.Memory,
+		Memory:      patterns.FormatMemoryBodies(wiki.MemoryPages),
 	})
 	if err != nil {
 		return fmt.Errorf("claude audit: %w", err)
