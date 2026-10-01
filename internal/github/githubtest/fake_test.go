@@ -152,3 +152,28 @@ func TestFake_HistoryReadersAnswerFromTheirFields(t *testing.T) {
 		t.Errorf("calls not recorded: %d CommitMessage calls, ListMergedPRs err %v", f.Count("CommitMessage"), f.Calls("ListMergedPRs")[0].Err)
 	}
 }
+
+func TestFake_ThreadReadersFillTheNumber(t *testing.T) {
+	f := &Fake{
+		IssueThread: &github.IssueThread{Title: "issue"},
+		Threads:     []github.ReviewThread{{ID: "RT_1"}},
+	}
+	iss, err := f.GetIssueThread("o", "r", 4)
+	if err != nil || iss.Number != 4 || iss.Title != "issue" {
+		t.Errorf("GetIssueThread = %+v, %v", iss, err)
+	}
+	// No template: the pull request carries its number and the scripted
+	// review threads.
+	pr, err := f.GetPRThread("o", "r", 5)
+	if err != nil || pr.Number != 5 || len(pr.ReviewThreads) != 1 {
+		t.Errorf("GetPRThread = %+v, %v", pr, err)
+	}
+	f.PRThreadErr = errors.New("gone")
+	if _, err := f.GetPRThread("o", "r", 5); err == nil || err.Error() != "gone" {
+		t.Errorf("GetPRThread err = %v, want the scripted error", err)
+	}
+	f.GetIssueThreadFn = func(_, _ string, _ int) (*github.IssueThread, error) { return nil, errors.New("scripted") }
+	if _, err := f.GetIssueThread("o", "r", 4); err == nil || err.Error() != "scripted" {
+		t.Errorf("hook not used: %v", err)
+	}
+}
