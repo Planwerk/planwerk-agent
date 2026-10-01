@@ -136,6 +136,21 @@ type Fake struct {
 	// DefaultHead is what DefaultBranchHEAD returns; empty yields "head-sha".
 	DefaultHead string
 
+	// History, MergedPRs and ClosedIssues are what DefaultBranchHistory,
+	// ListMergedPRs and ListClosedIssues return; nil means an empty listing.
+	// Their Err fields fail them.
+	History         []github.HistoryCommit
+	HistoryErr      error
+	MergedPRs       []github.MergedPR
+	MergedPRsErr    error
+	ClosedIssues    []github.ClosedIssue
+	ClosedIssuesErr error
+
+	// CommitMessages maps a commit SHA to the message CommitMessage returns; a
+	// SHA without an entry yields "". CommitMessageErr fails it.
+	CommitMessages   map[string]string
+	CommitMessageErr error
+
 	// Hooks script an operation completely when set.
 	ListChecksFn             func(owner, name, sha string) ([]github.CheckRun, error)
 	FailedRunLogsFn          func(owner, name string, runID int64) (string, error)
@@ -189,6 +204,10 @@ type Fake struct {
 	FetchReviewThreadsFn     func(owner, repo string, number int) ([]github.ReviewThread, error)
 	SubmitPRReviewFn         func(owner, repo string, number int, commitSHA, body string, comments []github.ReviewComment) (string, error)
 	AddSubIssueFn            func(owner, name string, parentNumber, childNumber int) error
+	DefaultBranchHistoryFn   func(owner, name string) ([]github.HistoryCommit, error)
+	ListMergedPRsFn          func(owner, name string) ([]github.MergedPR, error)
+	ListClosedIssuesFn       func(owner, name string) ([]github.ClosedIssue, error)
+	CommitMessageFn          func(dir, sha string) (string, error)
 }
 
 // record appends one call and returns its index, so the recorded error can be
@@ -993,4 +1012,62 @@ func (f *Fake) CurrentFeatureProgress(dir string) (*github.ResumeState, error) {
 	}
 	f.setErr(i, f.ProgressErr)
 	return f.ProgressState, f.ProgressErr
+}
+
+// --- history ---------------------------------------------------------------
+
+func (f *Fake) DefaultBranchHistory(owner, name string) ([]github.HistoryCommit, error) {
+	i := f.record("DefaultBranchHistory", owner, name)
+	if f.DefaultBranchHistoryFn != nil {
+		commits, err := f.DefaultBranchHistoryFn(owner, name)
+		f.setErr(i, err)
+		return commits, err
+	}
+	f.setErr(i, f.HistoryErr)
+	if f.HistoryErr != nil {
+		return nil, f.HistoryErr
+	}
+	return f.History, nil
+}
+
+func (f *Fake) ListMergedPRs(owner, name string) ([]github.MergedPR, error) {
+	i := f.record("ListMergedPRs", owner, name)
+	if f.ListMergedPRsFn != nil {
+		prs, err := f.ListMergedPRsFn(owner, name)
+		f.setErr(i, err)
+		return prs, err
+	}
+	f.setErr(i, f.MergedPRsErr)
+	if f.MergedPRsErr != nil {
+		return nil, f.MergedPRsErr
+	}
+	return f.MergedPRs, nil
+}
+
+func (f *Fake) ListClosedIssues(owner, name string) ([]github.ClosedIssue, error) {
+	i := f.record("ListClosedIssues", owner, name)
+	if f.ListClosedIssuesFn != nil {
+		issues, err := f.ListClosedIssuesFn(owner, name)
+		f.setErr(i, err)
+		return issues, err
+	}
+	f.setErr(i, f.ClosedIssuesErr)
+	if f.ClosedIssuesErr != nil {
+		return nil, f.ClosedIssuesErr
+	}
+	return f.ClosedIssues, nil
+}
+
+func (f *Fake) CommitMessage(dir, sha string) (string, error) {
+	i := f.record("CommitMessage", dir, sha)
+	if f.CommitMessageFn != nil {
+		msg, err := f.CommitMessageFn(dir, sha)
+		f.setErr(i, err)
+		return msg, err
+	}
+	f.setErr(i, f.CommitMessageErr)
+	if f.CommitMessageErr != nil {
+		return "", f.CommitMessageErr
+	}
+	return f.CommitMessages[sha], nil
 }
