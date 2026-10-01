@@ -3,10 +3,13 @@ package main
 import (
 	"bytes"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/spf13/pflag"
+
+	"github.com/planwerk/planwerk-agent/internal/claude"
 )
 
 // runBrainCmd executes the brain command hermetically: with the wiki off,
@@ -111,4 +114,130 @@ func TestSharedMemoryDocMatchesCommand(t *testing.T) {
 			t.Errorf("%s does not mention %q", sharedMemoryDoc, w)
 		}
 	}
+}
+
+// The compiled-in review tier, pinned by value so a changed default fails here.
+const (
+	wantReviewModel  = "fable"
+	wantReviewEffort = "high"
+)
+
+func TestBrainBootstrapCmd_RegistersItsFlags(t *testing.T) {
+	bootstrapCmd, _, err := newBrainCmd(&runtimeDeps{}).Find([]string{"bootstrap"})
+	if err != nil {
+		t.Fatalf("finding the bootstrap command: %v", err)
+	}
+	for _, name := range []string{"dry-run", "max-units", "write-wiki", "wiki-ref", "review-model", "review-effort", "decision-docs", "no-decision-docs"} {
+		if bootstrapCmd.Flags().Lookup(name) == nil {
+			t.Errorf("brain bootstrap must expose --%s", name)
+		}
+	}
+	// Running the command is the wiki opt-in, and the push has no flag that
+	// skips its confirmation.
+	for _, name := range []string{"wiki", "no-wiki", "yes"} {
+		if bootstrapCmd.Flags().Lookup(name) != nil {
+			t.Errorf("brain bootstrap must not expose --%s", name)
+		}
+	}
+	if got := bootstrapCmd.Flags().Lookup("review-model").DefValue; got != wantReviewModel {
+		t.Errorf("--review-model defaults to %q, want %s", got, wantReviewModel)
+	}
+	if got := bootstrapCmd.Flags().Lookup("review-effort").DefValue; got != wantReviewEffort {
+		t.Errorf("--review-effort defaults to %q, want %s", got, wantReviewEffort)
+	}
+}
+
+func TestBrainBootstrapCmd_ArgCount(t *testing.T) {
+	if _, err := runBrainCmd(t, "bootstrap"); err == nil {
+		t.Error("expected an error when no repository reference is given")
+	}
+	if _, err := runBrainCmd(t, "bootstrap", testRepoRef, "other/repo"); err == nil {
+		t.Error("expected an error when two arguments are given")
+	}
+}
+
+// TestBrainBootstrapCmd_RejectsBadFlagsBeforeAnyWork proves each flag error is
+// returned before the command reaches GitHub, git, or Claude: every tool the
+// run would call is replaced by a script that leaves a mark.
+func TestBrainBootstrapCmd_RejectsBadFlagsBeforeAnyWork(t *testing.T) {
+	bin := t.TempDir()
+	mark := filepath.Join(bin, "called")
+	for _, tool := range []string{"gh", "git", "claude"} {
+		script := "#!/bin/sh\necho " + tool + " >> " + mark + "\nexit 1\n"
+		if err := os.WriteFile(filepath.Join(bin, tool), []byte(script), 0o755); err != nil {
+			t.Fatalf("writing fake %s: %v", tool, err)
+		}
+	}
+	t.Setenv("PATH", bin)
+	t.Setenv(envBrainReviewEffort, "")
+	t.Chdir(t.TempDir())
+
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"dry run with write", []string{"--dry-run", "--write-wiki"}, "--dry-run and --write-wiki are mutually exclusive"},
+		{"documents with none", []string{"--decision-docs", "a.md", "--no-decision-docs"}, "--decision-docs and --no-decision-docs are mutually exclusive"},
+		{"negative unit count", []string{"--max-units", "-1"}, "--max-units must be >= 0, got -1"},
+		{"unknown effort", []string{"--review-effort", "huge"}, `invalid --review-effort "huge": must be one of low, medium, high, xhigh, max (env: PLANWERK_BRAIN_REVIEW_EFFORT)`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := runBrainCmd(t, append([]string{"bootstrap", testRepoRef}, tc.args...)...)
+			if err == nil || err.Error() != tc.want {
+				t.Errorf("err = %v, want %q", err, tc.want)
+			}
+			if len(out) != 0 {
+				t.Errorf("stdout = %q, want nothing beside the error", out)
+			}
+		})
+	}
+	if called, err := os.ReadFile(mark); err == nil {
+		t.Errorf("a flag error must come before any tool runs; ran: %s", called)
+	}
+	if _, err := os.Stat(".planwerk-brain-sync"); err == nil {
+		t.Error("a flag error must not create the state directory")
+	}
+}
+
+func TestResolveBrainReviewTier(t *testing.T) {
+	t.Run("defaults without a flag or a variable", func(t *testing.T) {
+		t.Setenv(envBrainReviewModel, "")
+		t.Setenv(envBrainReviewEffort, "")
+		m, e, err := resolveBrainReviewTier(wantReviewModel, false, wantReviewEffort, false)
+		if err != nil || m != wantReviewModel || e != wantReviewEffort {
+			t.Errorf("tier = %q/%q, %v, want %s/%s", m, e, err, wantReviewModel, wantReviewEffort)
+		}
+	})
+
+	t.Run("the variables replace the defaults", func(t *testing.T) {
+		t.Setenv(envBrainReviewModel, " opus ")
+		t.Setenv(envBrainReviewEffort, "max")
+		m, e, err := resolveBrainReviewTier(wantReviewModel, false, wantReviewEffort, false)
+		if err != nil || m != "opus" || e != "max" {
+			t.Errorf("tier = %q/%q, %v, want opus/max", m, e, err)
+		}
+	})
+
+	t.Run("a flag wins over its variable", func(t *testing.T) {
+		t.Setenv(envBrainReviewModel, "opus")
+		t.Setenv(envBrainReviewEffort, "max")
+		const flagModel, flagEffort = "sonnet", "low"
+		m, e, err := resolveBrainReviewTier(flagModel, true, flagEffort, true)
+		if err != nil || m != flagModel || e != flagEffort {
+			t.Fatalf("tier = %q/%q, %v, want %s/%s", m, e, err, flagModel, flagEffort)
+		}
+		client := claude.NewClient(claude.WithBrainReviewModel(m), claude.WithBrainReviewEffort(e))
+		if gotModel, gotEffort := client.BrainReviewTier(); gotModel != flagModel || gotEffort != flagEffort {
+			t.Errorf("client tier = %q/%q, want %s/%s", gotModel, gotEffort, flagModel, flagEffort)
+		}
+	})
+
+	t.Run("an unknown effort from the variable is rejected", func(t *testing.T) {
+		t.Setenv(envBrainReviewEffort, "huge")
+		_, _, err := resolveBrainReviewTier(wantReviewModel, false, wantReviewEffort, false)
+		if err == nil || !strings.Contains(err.Error(), "--review-effort") || !strings.Contains(err.Error(), "PLANWERK_BRAIN_REVIEW_EFFORT") {
+			t.Errorf("err = %v, want it to name the flag and the variable", err)
+		}
+	})
 }

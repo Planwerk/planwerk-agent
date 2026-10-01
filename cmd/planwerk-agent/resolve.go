@@ -102,6 +102,16 @@ const envPlanModel = "PLANWERK_PLAN_MODEL"
 // --plan-effort CLI flag takes precedence when explicitly set.
 const envPlanEffort = "PLANWERK_PLAN_EFFORT"
 
+// envBrainReviewModel overrides the model used by the page review of `brain
+// bootstrap` (e.g. "fable", "opus"). The --review-model CLI flag takes
+// precedence when explicitly set.
+const envBrainReviewModel = "PLANWERK_BRAIN_REVIEW_MODEL"
+
+// envBrainReviewEffort overrides the reasoning effort used by the page review
+// of `brain bootstrap` (low, medium, high, xhigh, max). The --review-effort CLI
+// flag takes precedence when explicitly set.
+const envBrainReviewEffort = "PLANWERK_BRAIN_REVIEW_EFFORT"
+
 // envImplementModel overrides the model used by the implement session only —
 // the code-writing phase of the implement and ship commands (e.g. "fable",
 // "sonnet"). Empty or unset inherits --claude-model. The --implement-model
