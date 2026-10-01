@@ -28,7 +28,7 @@ Every candidate MUST be checked against the existing wiki entries AND the patter
 ## Page conventions
 
 - A review pattern's body MUST follow the catalog format exactly: a "# Review Pattern: <name>" header, then the "**Review-Area**:", "**Detection-Hint**:", "**Severity**:", "**Category**:", "**Applies-When**:", and "**Sources**:" metadata lines, then a "## What to check" section and a "## Why it matters" section.
-- A memory page's body is free-form Markdown: one durable decision, stated plainly.
+- A memory page's body is Markdown in this order: a "# <title>" heading that names the decision, a "**Summary**: <one sentence>" line that states the decision itself, then free-form prose with the reasoning. Sessions see only the title and that sentence in an index and open the page when the sentence bears on their task, so state the decision in it, not its background. An update to an existing page that has no "**Summary**:" line adds one.
 - Use a stable, descriptive kebab-case slug in the path (e.g. "review_patterns/escape-untrusted-fences.md", "memory/capture-is-propose-only.md") so a re-run that re-proposes the same knowledge updates the page rather than appending a new one. Do NOT add any provenance marker or timestamp to the body — that is stamped on later.
 
 ## Review findings

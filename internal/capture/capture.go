@@ -22,6 +22,7 @@ import "github.com/planwerk/planwerk-agent/internal/sync"
 const (
 	// KindPattern is a proposed wiki review pattern under review_patterns/.
 	KindPattern = sync.KindPattern
-	// KindMemory is a proposed free-form project-memory page under memory/.
+	// KindMemory is a proposed project-memory page under memory/: a title, a
+	// Summary line, then free-form prose.
 	KindMemory = sync.KindMemory
 )

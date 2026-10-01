@@ -16,8 +16,10 @@ type ProposedPage struct {
 	// Title is the human-readable page title shown in the report.
 	Title string `json:"title"`
 	// Body is the authored page content. For a pattern it is the
-	// "# Review Pattern: ..." format; for memory it is free-form Markdown. It does
-	// NOT carry the provenance marker — RenderPage prepends that at render time.
+	// "# Review Pattern: ..." format; for memory it is a "# <title>" heading, a
+	// "**Summary**: <one sentence>" line, then free-form Markdown (the two lines
+	// the memory index shows). It does NOT carry the provenance marker —
+	// RenderPage prepends that at render time.
 	Body string `json:"body"`
 	// Rationale is why this is worth capturing (the recurring/generalizable
 	// justification for a pattern, the durable-decision justification for memory).
