@@ -138,3 +138,70 @@ func TestRenderPage_Idempotent(t *testing.T) {
 		t.Errorf("RenderPage is not deterministic:\nfirst:\n%s\nsecond:\n%s", first, second)
 	}
 }
+
+// TestRenderWithSource proves the page form: the marker for the source, a blank
+// line, and the body with its trailing newlines folded into one.
+func TestRenderWithSource(t *testing.T) {
+	got := RenderWithSource("body\n\n", "o/r#4")
+	want := "<!-- planwerk-agent: captured from o/r#4 -->\n\nbody\n"
+	if got != want {
+		t.Errorf("RenderWithSource = %q, want %q", got, want)
+	}
+	if got := RenderWithSource("", "o/r@abc"); got != "<!-- planwerk-agent: captured from o/r@abc -->\n\n\n" {
+		t.Errorf("RenderWithSource of an empty body = %q", got)
+	}
+}
+
+// TestMarkerFor_MatchesProvenance proves an issue's marker has one form,
+// whichever of the two renders it.
+func TestMarkerFor_MatchesProvenance(t *testing.T) {
+	if got, want := (Provenance{Repo: "o/r", Issue: 4}).Marker(), MarkerFor("o/r#4"); got != want {
+		t.Errorf("Provenance.Marker() = %q, MarkerFor = %q", got, want)
+	}
+}
+
+// TestStripMarker covers both readers of a marker: StripMarker returns the
+// page without it, and SplitMarker the source it names as well.
+func TestStripMarker(t *testing.T) {
+	marker := MarkerFor("o/r#4")
+	for _, tc := range []struct {
+		name, page, wantSource, want string
+	}{
+		{"rendered page", RenderWithSource("body\n\n", "o/r#4"), "o/r#4", "body\n"},
+		{"no marker", "# Title\n\nbody\n", "", "# Title\n\nbody\n"},
+		{"marker without a blank line", marker + "\nbody\n", "o/r#4", "body\n"},
+		{"only one blank line is removed", marker + "\n\n\nbody\n", "o/r#4", "\nbody\n"},
+		{"marker only", marker, "o/r#4", ""},
+		{"marker of a commit", RenderWithSource("body", "o/r@abc"), "o/r@abc", "body\n"},
+		{"marker line that ends in a carriage return", marker + "\r\nbody\n", "o/r#4", "body\n"},
+		{"page with CRLF line endings", marker + "\r\n\r\nbody\r\n", "o/r#4", "body\r\n"},
+		{"marker line with a trailing space", marker + " \nbody\n", "o/r#4", "body\n"},
+		{"marker without the space before the terminator", "<!-- planwerk-agent: captured from o/r#4-->\nbody\n", "o/r#4", "body\n"},
+		{"text after the terminator", marker + " -->\nbody\n", "o/r#4", "body\n"},
+		{"marker on a later line", "body\n" + marker + "\n", "", "body\n" + marker + "\n"},
+		{"empty", "", "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := StripMarker(tc.page); got != tc.want {
+				t.Errorf("StripMarker(%q) = %q, want %q", tc.page, got, tc.want)
+			}
+			if source, body := SplitMarker(tc.page); source != tc.wantSource || body != tc.want {
+				t.Errorf("SplitMarker(%q) = %q, %q, want %q, %q", tc.page, source, body, tc.wantSource, tc.want)
+			}
+		})
+	}
+}
+
+// FuzzStripMarker checks that stripping a rendered page gives back the body
+// RenderWithSource wrote, whatever the body holds.
+func FuzzStripMarker(f *testing.F) {
+	for _, seed := range []string{"", "body", "body\n\n", "\n\nbody", "<!-- planwerk-agent: captured from x -->\n\nbody"} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, body string) {
+		want := strings.TrimRight(body, "\n") + "\n"
+		if got := StripMarker(RenderWithSource(body, "o/r#4")); got != want {
+			t.Errorf("StripMarker(RenderWithSource(%q)) = %q, want %q", body, got, want)
+		}
+	})
+}
