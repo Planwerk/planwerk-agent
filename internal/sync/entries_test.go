@@ -104,6 +104,34 @@ func TestReadWikiEntries_SymlinkNotFollowed(t *testing.T) {
 	}
 }
 
+func TestReadWikiEntries_SymlinkedDirNotFollowed(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink semantics differ on Windows")
+	}
+	for _, sub := range wikiSubdirs {
+		t.Run(sub.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeWikiFile(t, root, "Home.md", "# Home\n")
+
+			// The subdirectory itself is a symlink to a directory outside the wiki,
+			// whose pages are regular files.
+			target := t.TempDir()
+			writeWikiFile(t, target, "notes.md", "PRIVATE NOTES\n")
+			if err := os.Symlink(target, filepath.Join(root, sub.name)); err != nil {
+				t.Fatalf("symlink: %v", err)
+			}
+
+			entries, err := ReadWikiEntries(root)
+			if err != nil {
+				t.Fatalf("ReadWikiEntries: %v", err)
+			}
+			if len(entries) != 0 {
+				t.Fatalf("symlinked directory was followed and its target listed: %+v", entries)
+			}
+		})
+	}
+}
+
 func TestReadWikiEntries_OversizedPageSkipped(t *testing.T) {
 	root := t.TempDir()
 	writeWikiFile(t, root, "memory/ok.md", "small\n")

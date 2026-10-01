@@ -169,7 +169,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		RepoName:    repo.FullName(),
 		OutOfScope:  outOfScope,
 		Glossary:    glossaryBody,
-		Memory:      wiki.Memory,
+		Memory:      patterns.FormatMemoryBodies(wiki.MemoryPages),
 	})
 	if err != nil {
 		return fmt.Errorf("claude analysis: %w", err)

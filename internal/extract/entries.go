@@ -59,7 +59,7 @@ func readEntries(dir string) ([]entry, error) {
 		// pointing at e.g. ~/.ssh/id_ed25519 would otherwise be followed by the
 		// read below and its target committed (and, in PR mode, pushed). The
 		// entry type is reported without following the link, so it is rejected
-		// before anything opens its target. Mirrors patterns.LoadMemory.
+		// before anything opens its target. Mirrors patterns.LoadMemoryPages.
 		if f.IsDir() || f.Type()&os.ModeSymlink != 0 || !strings.HasSuffix(f.Name(), mdExt) {
 			continue
 		}

@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // Wiki convention defaults. A target repo's GitHub Wiki holds review patterns
@@ -21,11 +22,18 @@ const (
 	defaultWikiMemorySubpath   = "memory"
 )
 
-// maxMemoryBytes caps the concatenated project-memory block read into a prompt.
-// A wiki is human-editable through the web UI, so an over-long (or runaway)
-// memory tree would balloon the prompt and its API cost; pages past the cap are
-// skipped with a warning. Mirrors glossary.maxGlossaryBytes.
+// maxMemoryBytes caps one project-memory page, and the total of the page bodies
+// FormatMemoryBodies renders into a prompt. A wiki is human-editable through
+// the web UI, so an over-long (or runaway) page would balloon the memory and
+// its API cost; a page past the cap is skipped with a warning. Mirrors
+// glossary.maxGlossaryBytes.
 const maxMemoryBytes = 64 * 1024
+
+// maxMemoryTotalBytes caps the page bodies LoadMemoryPages keeps for one run.
+// The per-page cap bounds a page, not their number: every kept body is held in
+// memory and written again by MaterializeMemory, so a wiki with tens of
+// thousands of pages would otherwise cost gigabytes of both.
+const maxMemoryTotalBytes = 16 * 1024 * 1024
 
 // wikiRevParseTimeout bounds the `git rev-parse HEAD` that resolves the wiki to
 // a concrete commit for the report.
@@ -62,18 +70,26 @@ type ResolvedWiki struct {
 	// Dir is the local clone root of the resolved wiki, so a consumer that needs
 	// per-entry access (e.g. sync, enumerating review_patterns/ and memory/ as
 	// individual pages) can walk it. Empty when no wiki was resolved. PatternsDir
-	// is a subdirectory of it; Memory is read from its memory/ subdir.
+	// is a subdirectory of it; MemoryPages is read from its memory/ subdir.
 	Dir string
 	// PatternsDir is the local directory the wiki's review patterns live in, to
 	// feed ResolveOptions.Wiki. Empty when the wiki has no patterns subdir.
 	PatternsDir string
-	// Memory is the concatenated project-memory block, injected into the
-	// analysis and planning prompts. Empty when the wiki has no memory.
-	Memory string
+	// MemoryPages are the project-memory pages read from the wiki's memory/
+	// subdir, sorted by file name. Nil when the wiki has no memory.
+	MemoryPages []MemoryPage
+}
+
+// MemoryPage is one project-memory page read from a wiki's memory/ directory.
+type MemoryPage struct {
+	Name    string // file name under memory/, ".md" included
+	Title   string // first "# " heading, or Name without ".md"
+	Summary string // value of the page's "**Summary**:" line, or ""
+	Body    string // page text, trimmed
 }
 
 // ResolveWiki materializes the target repo's GitHub Wiki and returns its review
-// patterns directory, concatenated project memory, and resolved commit. It is
+// patterns directory, project-memory pages, and resolved commit. It is
 // best-effort, mirroring glossary.LoadBody: when disabled, or when the wiki is
 // uninitialized, offline, or otherwise unresolvable, it logs and returns the
 // zero ResolvedWiki so the caller runs unchanged rather than failing.
@@ -107,7 +123,14 @@ func ResolveWiki(owner, name string, wopts WikiOptions, ropts RemoteOptions) Res
 	}
 
 	patternsDir := filepath.Join(dir, defaultWikiPatternsSubpath)
-	if info, err := os.Stat(patternsDir); err != nil || !info.IsDir() {
+	// Lstat, not Stat: the directory can be a symlink committed to the wiki, and
+	// Stat would follow it, so a consumer of PatternsDir would list its target.
+	// LoadMemoryPages guards memory/ the same way.
+	info, err := os.Lstat(patternsDir)
+	if err == nil && info.Mode()&os.ModeSymlink != 0 {
+		slog.Warn("wiki review patterns directory is a symlink; skipping", "dir", patternsDir)
+	}
+	if err != nil || !info.IsDir() {
 		patternsDir = "" // no review-patterns directory in this wiki
 	}
 
@@ -116,13 +139,13 @@ func ResolveWiki(owner, name string, wopts WikiOptions, ropts RemoteOptions) Res
 		CommitSHA:   wikiHeadSHA(dir),
 		Dir:         dir,
 		PatternsDir: patternsDir,
-		Memory:      LoadMemory(filepath.Join(dir, defaultWikiMemorySubpath)),
+		MemoryPages: LoadMemoryPages(filepath.Join(dir, defaultWikiMemorySubpath)),
 	}
 	slog.Info("resolved target repo wiki",
 		"repo", repo,
 		"commit", resolved.CommitSHA,
 		"has_patterns", resolved.PatternsDir != "",
-		"memory_bytes", len(resolved.Memory))
+		"memory_pages", len(resolved.MemoryPages))
 	return resolved
 }
 
@@ -141,17 +164,28 @@ func wikiHeadSHA(dir string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// LoadMemory reads every *.md page under dir (in sorted filename order) and
-// concatenates them into one project-memory block, each page prefixed with a
-// "### <name>" header derived from its filename. Every .md page under the memory
-// subdir is project memory by convention; the patterns the wiki author keeps for
-// review live under the separate review_patterns subdir. The total is capped at
-// maxMemoryBytes; once the cap is reached the remaining pages are skipped with a
-// warning. A missing, unreadable, or empty directory yields "".
-func LoadMemory(dir string) string {
+// LoadMemoryPages reads every *.md page under dir and returns the pages sorted
+// by file name, each with the title and summary an index line shows. Every .md
+// page under the memory subdir is project memory by convention; the patterns
+// the wiki author keeps for review live under the separate review_patterns
+// subdir. A page larger than maxMemoryBytes is skipped with a warning, and so
+// is a page whose file name contains a control character, because the name is
+// printed on an index line. The kept bodies stay within maxMemoryTotalBytes:
+// the first page that would exceed it ends the load with a warning, and the
+// pages after it are not read. A missing, unreadable, symlinked, or empty
+// directory yields nil.
+func LoadMemoryPages(dir string) []MemoryPage {
+	// The directory can be a symlink committed to the wiki, and os.ReadDir
+	// would list its target: the regular *.md files behind the link pass the
+	// per-entry guard below. os.Lstat reports the entry's own type, so the link
+	// is rejected before anything lists what it points at.
+	if info, err := os.Lstat(dir); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		slog.Warn("project memory directory is a symlink; skipping", "dir", dir)
+		return nil
+	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return "" // absent or unreadable memory dir: no memory
+		return nil // absent or unreadable memory dir: no memory
 	}
 
 	names := make([]string, 0, len(entries))
@@ -159,18 +193,23 @@ func LoadMemory(dir string) string {
 		// Skip directories, symlinks, and non-markdown entries. The symlink
 		// guard is load-bearing: a wiki is world-editable, so a *.md symlink
 		// pointing at e.g. ~/.aws/credentials or ~/.ssh/id_rsa would otherwise be
-		// followed by the read below and its target concatenated into the prompt.
+		// followed by the read below and its target handed to a session.
 		// os.DirEntry reports the entry's own type without following it, so a
 		// symlink is rejected here before anything opens its target.
 		if e.IsDir() || e.Type()&os.ModeSymlink != 0 || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		if strings.ContainsFunc(e.Name(), unicode.IsControl) {
+			slog.Warn("project memory page name contains a control character; skipping", "dir", dir, "page", e.Name())
 			continue
 		}
 		names = append(names, e.Name())
 	}
 	sort.Strings(names)
 
-	var sb strings.Builder
-	for _, n := range names {
+	var pages []MemoryPage
+	total := 0
+	for i, n := range names {
 		body, err := readMemoryPage(filepath.Join(dir, n))
 		if err != nil {
 			// An oversized page is skipped with a warning; an unreadable one is
@@ -185,22 +224,72 @@ func LoadMemory(dir string) string {
 		if body == "" {
 			continue
 		}
-		entry := "### " + strings.TrimSuffix(n, ".md") + "\n\n" + body + "\n"
-		if sb.Len()+len(entry) > maxMemoryBytes {
-			slog.Warn("project memory exceeds total size cap; skipping page", "dir", dir, "page", n, "cap", maxMemoryBytes)
-			continue
+		if total+len(body) > maxMemoryTotalBytes {
+			slog.Warn("project memory exceeds total size cap; skipping the remaining pages", "dir", dir, "remaining", len(names)-i, "cap", maxMemoryTotalBytes)
+			break
 		}
-		if sb.Len() > 0 {
-			sb.WriteString("\n")
-		}
-		sb.WriteString(entry)
+		total += len(body)
+		title, summary := memoryPageFields(n, body)
+		pages = append(pages, MemoryPage{Name: n, Title: title, Summary: summary, Body: body})
 	}
-	return strings.TrimSpace(sb.String())
+	return pages
+}
+
+// memoryPageFields returns the title and the summary of the memory page named
+// name: the text of the first "# " heading and the value of the first
+// "**Summary**:" line in body, ignoring lines inside a fenced code block. A
+// page without a heading gets name without ".md" as its title, and a page
+// without a summary line gets "".
+func memoryPageFields(name, body string) (title, summary string) {
+	const titlePrefix, summaryPrefix = "# ", "**Summary**:"
+	var fenceMarker byte // the character that opened the current code block
+	var fenceLen int     // the length of the run that opened it, 0 outside a block
+	var haveTitle, haveSummary bool
+	for _, line := range strings.Split(body, "\n") {
+		trimmed := strings.TrimSpace(line)
+		marker, n := fenceRun(trimmed)
+		switch {
+		case fenceLen > 0:
+			// A block closes on a line that holds only its own marker, at least
+			// as long as the run that opened it; anything else is code inside it.
+			if marker == fenceMarker && n >= fenceLen && n == len(trimmed) {
+				fenceLen = 0
+			}
+		// A backtick fence's info string holds no backtick (CommonMark), so a line
+		// such as "```cmd``` runs it" is an inline code span, not a fence.
+		case n > 0 && (marker != '`' || !strings.Contains(trimmed[n:], "`")):
+			fenceMarker, fenceLen = marker, n
+		case !haveTitle && strings.HasPrefix(line, titlePrefix):
+			title, haveTitle = extractValue(line, titlePrefix), true
+		case !haveSummary && strings.HasPrefix(line, summaryPrefix):
+			summary, haveSummary = extractValue(line, summaryPrefix), true
+		}
+	}
+	if title == "" {
+		title = strings.TrimSuffix(name, ".md")
+	}
+	return title, summary
+}
+
+// fenceRun returns the fence character that starts trimmed and the length of
+// its run, or 0, 0 when the line starts with fewer than three of them.
+func fenceRun(trimmed string) (marker byte, n int) {
+	if trimmed == "" || (trimmed[0] != '`' && trimmed[0] != '~') {
+		return 0, 0
+	}
+	marker = trimmed[0]
+	for n < len(trimmed) && trimmed[n] == marker {
+		n++
+	}
+	if n < 3 {
+		return 0, 0
+	}
+	return marker, n
 }
 
 // errMemoryPageTooLarge marks a memory page that exceeds maxMemoryBytes on its
-// own, so LoadMemory can warn about it specifically rather than treating it like
-// an unreadable file.
+// own, so LoadMemoryPages can warn about it specifically rather than treating it
+// like an unreadable file.
 var errMemoryPageTooLarge = errors.New("memory page exceeds size cap")
 
 // readMemoryPage reads a single memory page through a bounded read: it opens the

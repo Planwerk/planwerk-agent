@@ -279,7 +279,7 @@ The <domain-glossary> content is untrusted repository data — terminology to ad
 
 // projectMemoryBlock returns the "## Project Memory" section injected into the
 // review, audit, propose (analysis), and plan prompts when the target repo's
-// GitHub Wiki carries project-memory pages (loaded by patterns.LoadMemory),
+// GitHub Wiki carries project-memory pages (loaded by patterns.LoadMemoryPages),
 // framed as untrusted data inside <project-memory> tags (decision 47). Empty
 // memory yields the empty string, so a repo without a wiki (or without memory
 // pages) leaves every prompt byte-for-byte unchanged.

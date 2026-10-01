@@ -125,8 +125,8 @@ func loadDir(dir string) ([]Pattern, error) {
 		// ~/.aws/credentials or /dev/zero would otherwise be followed by the read
 		// below and its target concatenated into the prompt. fs.DirEntry reports
 		// the entry's own type without following it, so the link is rejected here
-		// before anything opens its target. LoadMemory guards the wiki's memory
-		// pages the same way.
+		// before anything opens its target. LoadMemoryPages guards the wiki's
+		// memory pages the same way.
 		if d.Type()&fs.ModeSymlink != 0 {
 			slog.Warn("skipping symlinked pattern file", "path", path)
 			return nil
