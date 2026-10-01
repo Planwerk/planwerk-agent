@@ -46,6 +46,7 @@ func main() {
 		newAddressCmd(deps),
 		newImplementCmd(deps),
 		newShipCmd(deps),
+		newBrainCmd(deps),
 		newCacheCmd(deps),
 		newSchemaCmd(deps),
 		newGenManCmd(deps),

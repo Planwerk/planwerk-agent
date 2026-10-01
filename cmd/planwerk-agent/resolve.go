@@ -28,6 +28,25 @@ func addWikiFlags(flags *pflag.FlagSet, enable, disable *bool, ref *string) {
 	flags.StringVar(ref, "wiki-ref", "", "Pin the wiki to a branch, tag, or commit (env: "+envWikiRef+"; empty uses the wiki's default branch)")
 }
 
+// wikiFlags holds the --wiki / --no-wiki / --wiki-ref values of one command,
+// so a command registers and resolves the three flags without naming them.
+type wikiFlags struct {
+	enable, disable bool
+	ref             string
+}
+
+// register binds the three wiki flags onto flags (addWikiFlags).
+func (f *wikiFlags) register(flags *pflag.FlagSet) {
+	addWikiFlags(flags, &f.enable, &f.disable, &f.ref)
+}
+
+// resolve returns the effective WikiOptions for the flag set register bound
+// the flags onto, with fc as the config file's wiki section
+// (resolveWikiOptions).
+func (f *wikiFlags) resolve(flags *pflag.FlagSet, fc cli.WikiFileConfig) patterns.WikiOptions {
+	return resolveWikiOptions(f.enable, f.disable, flags.Changed("wiki"), flags.Changed("no-wiki"), f.ref, flags.Changed("wiki-ref"), fc)
+}
+
 // envMaxPatterns is the environment variable used to override the default
 // maximum number of review patterns injected into the prompt.
 const envMaxPatterns = "PLANWERK_MAX_PATTERNS"

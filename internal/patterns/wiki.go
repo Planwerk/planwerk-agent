@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -170,7 +171,10 @@ func wikiHeadSHA(dir string) string {
 // the wiki author keeps for review live under the separate review_patterns
 // subdir. A page larger than maxMemoryBytes is skipped with a warning, and so
 // is a page whose file name contains a control character, because the name is
-// printed on an index line. The kept bodies stay within maxMemoryTotalBytes:
+// printed on an index line. Each of the two warnings counts its pages and
+// names none: a skill session reads the log of `brain memory`, and a file name
+// is wiki content. The names are logged at debug level, quoted. The kept
+// bodies stay within maxMemoryTotalBytes:
 // the first page that would exceed it ends the load with a warning, and the
 // pages after it are not read. A missing, unreadable, symlinked, or empty
 // directory yields nil.
@@ -189,6 +193,7 @@ func LoadMemoryPages(dir string) []MemoryPage {
 	}
 
 	names := make([]string, 0, len(entries))
+	controlNamed := 0
 	for _, e := range entries {
 		// Skip directories, symlinks, and non-markdown entries. The symlink
 		// guard is load-bearing: a wiki is world-editable, so a *.md symlink
@@ -200,23 +205,30 @@ func LoadMemoryPages(dir string) []MemoryPage {
 			continue
 		}
 		if strings.ContainsFunc(e.Name(), unicode.IsControl) {
-			slog.Warn("project memory page name contains a control character; skipping", "dir", dir, "page", e.Name())
+			// Quoted: the console log writes a value as it is, and the raw name
+			// would drive the terminal it is printed to.
+			slog.Debug("project memory page name contains a control character; skipping", "dir", dir, "page", strconv.Quote(e.Name()))
+			controlNamed++
 			continue
 		}
 		names = append(names, e.Name())
 	}
+	if controlNamed > 0 {
+		slog.Warn("skipped project memory pages whose file name contains a control character; rerun with --verbose for the names", "dir", dir, "pages", controlNamed)
+	}
 	sort.Strings(names)
 
 	var pages []MemoryPage
-	total := 0
+	total, oversized := 0, 0
 	for i, n := range names {
 		body, err := readMemoryPage(filepath.Join(dir, n))
 		if err != nil {
-			// An oversized page is skipped with a warning; an unreadable one is
-			// skipped silently. Either way a single bad page must not suppress the
-			// legitimate pages after it (hence continue, not break).
+			// An oversized page is counted for the warning below; an unreadable
+			// one is skipped silently. Either way a single bad page must not
+			// suppress the legitimate pages after it (hence continue, not break).
 			if errors.Is(err, errMemoryPageTooLarge) {
-				slog.Warn("project memory page exceeds size cap; skipping", "dir", dir, "page", n, "cap", maxMemoryBytes)
+				slog.Debug("project memory page exceeds size cap; skipping", "dir", dir, "page", strconv.Quote(n), "cap", maxMemoryBytes)
+				oversized++
 			}
 			continue
 		}
@@ -231,6 +243,9 @@ func LoadMemoryPages(dir string) []MemoryPage {
 		total += len(body)
 		title, summary := memoryPageFields(n, body)
 		pages = append(pages, MemoryPage{Name: n, Title: title, Summary: summary, Body: body})
+	}
+	if oversized > 0 {
+		slog.Warn("skipped project memory pages that exceed the size cap; rerun with --verbose for the names", "dir", dir, "pages", oversized, "cap", maxMemoryBytes)
 	}
 	return pages
 }
