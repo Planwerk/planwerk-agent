@@ -507,11 +507,10 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	defer cleanupCatalog()
 	ctx.Skills = skills.Load(repo.Dir)
 	ctx.StyleGuidePath = styleguide.Find(repo.Dir)
-	ctx.Memory = patterns.FormatMemoryBodies(wiki.MemoryPages)
 	ctx.Domains = domains.Load(repo.Dir)
 
 	if planEnabled {
-		if err := r.preparePlan(w, opts, owner, name, repo.Dir, &ctx); err != nil {
+		if err := r.preparePlan(w, opts, owner, name, repo.Dir, &ctx, wiki.MemoryPages); err != nil {
 			return err
 		}
 	}
@@ -888,7 +887,7 @@ func (r *Runner) confirmUnelaborated(w io.Writer, fullName string, number int) e
 // lookup fails we abort rather than silently paying for a fresh planning pass
 // the operator may not expect. --no-plan-reuse (skip the lookup) and --no-plan
 // (skip planning) are the escape hatches when GitHub is unreachable.
-func (r *Runner) preparePlan(w io.Writer, opts Options, owner, name, dir string, ctx *Context) error {
+func (r *Runner) preparePlan(w io.Writer, opts Options, owner, name, dir string, ctx *Context, memory []patterns.MemoryPage) error {
 	if !opts.NoPlanReuse {
 		comments, err := r.GitHub.ListIssueComments(owner, name, ctx.IssueNumber)
 		if err != nil {
@@ -905,7 +904,7 @@ func (r *Runner) preparePlan(w io.Writer, opts Options, owner, name, dir string,
 		}
 		slog.Info("no reusable plan on issue; planning fresh", "issue", ctx.IssueNumber)
 	}
-	return r.runPlanning(w, opts, owner, name, dir, ctx)
+	return r.runPlanning(w, opts, owner, name, dir, ctx, memory)
 }
 
 // planComplete reports whether a fresh planning result is a plan at all: it
@@ -981,9 +980,18 @@ func stripCommentFooter(body, marker string) string {
 // source issue as a comment (unless --no-plan-comment) before the escalation
 // check, so an escalated plan still lands where the human who must clarify the
 // issue will see it.
-func (r *Runner) runPlanning(w io.Writer, opts Options, owner, name, dir string, ctx *Context) error {
+//
+// The planning session is the only reader of the project memory, so the memory
+// pages are written here and removed when the session is over: a run that
+// reuses a posted plan, or skips planning, writes nothing.
+func (r *Runner) runPlanning(w io.Writer, opts Options, owner, name, dir string, ctx *Context, memory []patterns.MemoryPage) error {
+	planCtx := *ctx
+	var cleanupMemory func()
+	planCtx.Memory, cleanupMemory = patterns.MaterializeMemoryOrWarn(memory)
+	defer cleanupMemory()
+
 	slog.Info("running planning session", "issue", ctx.IssueNumber)
-	plan, model, err := r.Planner.Plan(dir, *ctx)
+	plan, model, err := r.Planner.Plan(dir, planCtx)
 	if err != nil {
 		return fmt.Errorf("claude plan: %w (use --plan-model to plan on a different model, or --no-plan to skip the planning phase)", err)
 	}

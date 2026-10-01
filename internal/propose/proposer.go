@@ -45,7 +45,15 @@ type Options struct {
 type Runner struct {
 	Claude ClaudeAnalyzer
 	GitHub GitHubClient
+	// ResolveWiki resolves the target repo's wiki. Defaults to
+	// patterns.ResolveWiki; a Runner seam so the project-memory wiring can be
+	// exercised without cloning a real wiki.
+	ResolveWiki resolveWikiFn
 }
+
+// resolveWikiFn resolves the target repo's wiki. It matches patterns.ResolveWiki.
+// Mirrors audit.resolveWikiFn.
+type resolveWikiFn func(owner, name string, wopts patterns.WikiOptions, ropts patterns.RemoteOptions) patterns.ResolvedWiki
 
 // NewRunner returns a Runner wired with the production GitHub (git/gh CLI)
 // backend and the given Claude analyze function.
@@ -85,7 +93,11 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// so the resolved wiki commit folds into the key and can be recorded in the
 	// report header. An absent, disabled, or offline wiki returns the zero value
 	// and leaves the run unchanged.
-	wiki := patterns.ResolveWiki(owner, name, opts.Wiki, opts.Remote)
+	resolveWiki := r.ResolveWiki
+	if resolveWiki == nil {
+		resolveWiki = patterns.ResolveWiki
+	}
+	wiki := resolveWiki(owner, name, opts.Wiki, opts.Remote)
 
 	var repoKeyFlags []string
 	if wiki.CommitSHA != "" {
@@ -142,6 +154,8 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	}
 	cat, cleanupCatalog := patterns.MaterializeOrWarn(pats)
 	defer cleanupCatalog()
+	mem, cleanupMemory := patterns.MaterializeMemoryOrWarn(wiki.MemoryPages)
+	defer cleanupMemory()
 
 	// Load the rejected-idea knowledge base from the checkout. It needs no
 	// cache-key change: propose only ever sees committed files, so editing
@@ -169,7 +183,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		RepoName:    repo.FullName(),
 		OutOfScope:  outOfScope,
 		Glossary:    glossaryBody,
-		Memory:      patterns.FormatMemoryBodies(wiki.MemoryPages),
+		Memory:      mem,
 	})
 	if err != nil {
 		return fmt.Errorf("claude analysis: %w", err)

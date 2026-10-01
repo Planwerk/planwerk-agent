@@ -14,7 +14,7 @@ import (
 // --json-schema with schema.FinderOutput, and finishReview decodes that output
 // (decision 109).
 func (c *Client) Audit(dir string, ctx audit.AuditContext) (*report.ReviewResult, error) {
-	rawAudit, model, err := c.runClaudeFindings(dir, buildAuditPrompt(ctx), "audit")
+	rawAudit, model, err := c.runClaudeFindings(dir, buildAuditPrompt(ctx), "audit", ctx.Memory)
 	if err != nil {
 		return nil, fmt.Errorf("running audit: %w", err)
 	}

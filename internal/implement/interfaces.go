@@ -46,11 +46,12 @@ type Context struct {
 	// implement prompt; empty means the implement session plans for
 	// itself (--no-plan, or no planner wired).
 	Plan string
-	// Memory is the target repo's project memory from its GitHub Wiki. It is
-	// injected into the planning prompt (the implement prompt itself stays
-	// unchanged — the plan carries any memory-derived context forward). Empty
-	// when the repo has no wiki memory.
-	Memory string
+	// Memory is the target repo's project memory from its GitHub Wiki: the
+	// pages and the directory a session reads them from. It is set only on the
+	// context the planning session receives: the planning prompt lists the
+	// pages (the implement prompt itself stays unchanged — the plan carries any
+	// memory-derived context forward). Zero when the repo has no wiki memory.
+	Memory patterns.MemoryCatalog
 	// Domains is the domain list the planning session sweeps before committing
 	// to a change set, loaded by domains.Load from the target repo's
 	// .planwerk/domains.md. Like Memory it feeds BuildPlanPrompt only — the

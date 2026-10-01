@@ -68,9 +68,10 @@ type AuditContext struct {
 	MaxPatterns int
 	MaxFindings int
 	RepoName    string // "owner/repo" for context in the prompt
-	// Memory is the target repo's project memory from its GitHub Wiki; empty
-	// when the repo has no wiki memory.
-	Memory string
+	// Memory is the target repo's project memory from its GitHub Wiki: the
+	// pages and the directory a session reads them from. Zero when the repo has
+	// no wiki memory.
+	Memory patterns.MemoryCatalog
 }
 
 // Runner executes the audit pipeline using injected Claude and GitHub
@@ -219,6 +220,8 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		return fmt.Errorf("no review patterns loaded — nothing to audit against")
 	}
 	slog.Info("loaded review patterns", "count", len(pats))
+	mem, cleanupMemory := patterns.MaterializeMemoryOrWarn(wiki.MemoryPages)
+	defer cleanupMemory()
 
 	slog.Info("auditing codebase with Claude")
 	result, err := r.Claude.Audit(repo.Dir, AuditContext{
@@ -226,7 +229,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		MaxPatterns: opts.MaxPatterns,
 		MaxFindings: opts.MaxFindings,
 		RepoName:    repo.FullName(),
-		Memory:      patterns.FormatMemoryBodies(wiki.MemoryPages),
+		Memory:      mem,
 	})
 	if err != nil {
 		return fmt.Errorf("claude audit: %w", err)

@@ -588,6 +588,54 @@ func TestAuditRun_CaptureSkippedWithoutWiki(t *testing.T) {
 	}
 }
 
+// TestAuditRun_MemoryDirectoryLivesForTheAudit locks the lifetime of the
+// project memory directory: the audit session can read the page while it runs,
+// and the directory is gone when Run returns.
+func TestAuditRun_MemoryDirectoryLivesForTheAudit(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	patternDir := seedPatternDir(t)
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return "sha-memory", nil },
+	}
+	var gotMemory patterns.MemoryCatalog
+	cl := &fakeClaude{
+		fn: func(dir string, ctx AuditContext) (*report.ReviewResult, error) {
+			gotMemory = ctx.Memory
+			data, err := os.ReadFile(filepath.Join(ctx.Memory.Dir, "pin-dependencies.md"))
+			if err != nil {
+				t.Errorf("the memory page must be readable while the audit runs: %v", err)
+			}
+			if string(data) != "# Pin every dependency\n" {
+				t.Errorf("memory page = %q, want the page body and a newline", data)
+			}
+			return &report.ReviewResult{Summary: "s"}, nil
+		},
+	}
+	runner := &Runner{Claude: cl, GitHub: gh}
+	// A wiki with one memory page and no clone directory, so capture stays off.
+	runner.ResolveWiki = func(_, _ string, _ patterns.WikiOptions, _ patterns.RemoteOptions) patterns.ResolvedWiki {
+		return patterns.ResolvedWiki{Repo: "acme/widgets.wiki", CommitSHA: "wikisha", MemoryPages: []patterns.MemoryPage{
+			{Name: "pin-dependencies.md", Title: "Pin every dependency", Body: "# Pin every dependency"},
+		}}
+	}
+
+	if err := runner.Run(&bytes.Buffer{}, baseAuditOpts(patternDir)); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if atomic.LoadInt32(&cl.calls) != 1 {
+		t.Fatalf("Audit calls = %d, want 1", cl.calls)
+	}
+	if !strings.HasPrefix(filepath.Base(gotMemory.Dir), patterns.MemoryDirPrefix) || len(gotMemory.Pages) != 1 {
+		t.Fatalf("AuditContext.Memory = %+v, want a memory directory and the one page", gotMemory)
+	}
+	if _, err := os.Stat(gotMemory.Dir); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("after Run, stat %s = %v, want not exist", gotMemory.Dir, err)
+	}
+}
+
 func TestAuditRun_CaptureSkippedByNoCapture(t *testing.T) {
 	restore := cache.SetDir(t.TempDir())
 	t.Cleanup(restore)

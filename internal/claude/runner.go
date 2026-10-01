@@ -532,16 +532,27 @@ func WithInheritUserConfig(b bool) Option {
 // instead. cat is the pattern catalog whose directory the session may
 // read (--add-dir), noCatalog for a session without one.
 func (c *Client) runClaude(dir, prompt, label string, cat patterns.Catalog) (text, model string, err error) {
-	return c.runSession(runSpec{dir: dir, label: label, model: c.model, effort: c.effort, readOnly: true, addDirs: []string{cat.Dir}}, prompt)
+	return c.runClaudeMemory(dir, prompt, label, cat, patterns.MemoryCatalog{})
+}
+
+// runClaudeMemory is runClaude for a session whose prompt carries the project
+// memory: mem is the memory catalog whose directory the session may read
+// beside the pattern catalog's, the zero MemoryCatalog for a run without one.
+// The propose analysis calls it.
+func (c *Client) runClaudeMemory(dir, prompt, label string, cat patterns.Catalog, mem patterns.MemoryCatalog) (text, model string, err error) {
+	return c.runSession(runSpec{dir: dir, label: label, model: c.model, effort: c.effort, readOnly: true, addDirs: []string{cat.Dir, mem.Dir}}, prompt)
 }
 
 // runClaudeFindings is runClaude, on the main --claude-model tier, that also
 // passes schema.FinderOutput to the CLI via --json-schema, so the session emits
 // its findings as JSON itself. The review and the audit call it; the other five
 // passes that emit findings run on the finder tier through
-// runClaudeFinderFindings (decision 109).
-func (c *Client) runClaudeFindings(dir, prompt, label string) (text, model string, err error) {
-	return c.runSession(runSpec{dir: dir, label: label, model: c.model, effort: c.effort, readOnly: true, jsonSchema: string(schema.FinderOutput)}, prompt)
+// runClaudeFinderFindings (decision 109). mem is the project memory catalog
+// whose directory the session may read (--add-dir), the zero MemoryCatalog for
+// a run without one. The session is handed no pattern catalog directory: the
+// finder prompts carry the pattern bodies.
+func (c *Client) runClaudeFindings(dir, prompt, label string, mem patterns.MemoryCatalog) (text, model string, err error) {
+	return c.runSession(runSpec{dir: dir, label: label, model: c.model, effort: c.effort, readOnly: true, jsonSchema: string(schema.FinderOutput), addDirs: []string{mem.Dir}}, prompt)
 }
 
 // noCatalog is what a session without a pattern catalog passes to its runner:
@@ -602,10 +613,11 @@ func firstNonEmpty(override, fallback string) string {
 
 // runClaudePlan is runClaude on the dedicated planning tier (planModel,
 // planEffort) for the implement command's read-only planning session
-// (decision 101). cat is the pattern catalog whose directory the session may
-// read (--add-dir), noCatalog for a session without one.
-func (c *Client) runClaudePlan(dir, prompt, label string, cat patterns.Catalog) (text, model string, err error) {
-	return c.runSession(runSpec{dir: dir, label: label, model: c.planModel, effort: c.planEffort, readOnly: true, addDirs: []string{cat.Dir}}, prompt)
+// (decision 101). cat is the pattern catalog and mem the project memory
+// catalog whose directories the session may read (--add-dir), noCatalog and
+// the zero MemoryCatalog for a session without one.
+func (c *Client) runClaudePlan(dir, prompt, label string, cat patterns.Catalog, mem patterns.MemoryCatalog) (text, model string, err error) {
+	return c.runSession(runSpec{dir: dir, label: label, model: c.planModel, effort: c.planEffort, readOnly: true, addDirs: []string{cat.Dir, mem.Dir}}, prompt)
 }
 
 // runClaudeStructure is runClaude on the dedicated structuring tier

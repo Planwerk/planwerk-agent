@@ -211,12 +211,18 @@ type fakePlanner struct {
 	plan   string
 	model  string
 	err    error
+	// onPlan, when set, runs inside Plan after the call is recorded, so a test
+	// can observe on-disk state while the session "runs".
+	onPlan func(Context)
 }
 
 func (f *fakePlanner) Plan(dir string, ctx Context) (string, string, error) {
 	f.called.Add(1)
 	f.dir = dir
 	f.ctx = ctx
+	if f.onPlan != nil {
+		f.onPlan(ctx)
+	}
 	return f.plan, f.model, f.err
 }
 
@@ -3233,6 +3239,120 @@ func TestRun_NoPatternsWritesNoCatalog(t *testing.T) {
 		if strings.HasPrefix(e.Name(), patterns.CatalogDirPrefix) {
 			t.Errorf("TMPDIR holds %s, want no catalog directory without patterns", e.Name())
 		}
+		if strings.HasPrefix(e.Name(), patterns.MemoryDirPrefix) {
+			t.Errorf("TMPDIR holds %s, want no memory directory without a wiki", e.Name())
+		}
+	}
+	if cl.ctx.Memory.Dir != "" || cl.ctx.Memory.Pages != nil {
+		t.Errorf("Claude got memory %+v, want the zero MemoryCatalog without a wiki", cl.ctx.Memory)
+	}
+}
+
+// TestRun_PlanReadsTheMemoryCatalog locks the lifetime of the project memory
+// directory: the planning session gets the materialized catalog and can read
+// the page while it runs, and no memory directory is left in TMPDIR after Run.
+func TestRun_PlanReadsTheMemoryCatalog(t *testing.T) {
+	cloneDir := t.TempDir()
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: cloneDir}
+	cl := &fakeClaude{report: validImplReport}
+	fp := &fakePlanner{plan: "## Implementation Plan (issue #42)\n\nSTATUS: PLAN_READY"}
+	fp.onPlan = func(ctx Context) {
+		data, err := os.ReadFile(filepath.Join(ctx.Memory.Dir, "pin-dependencies.md"))
+		if err != nil {
+			t.Errorf("the memory page must be readable while the plan runs: %v", err)
+		}
+		if string(data) != "# Pin every dependency\n" {
+			t.Errorf("memory page = %q, want the page body and a newline", data)
+		}
+	}
+	r := newRunner(gh, cl)
+	r.Planner = fp
+	r.ResolveWiki = func(_, _ string, _ patterns.WikiOptions, _ patterns.RemoteOptions) patterns.ResolvedWiki {
+		return patterns.ResolvedWiki{MemoryPages: []patterns.MemoryPage{
+			{Name: "pin-dependencies.md", Title: "Pin every dependency", Body: "# Pin every dependency"},
+		}}
+	}
+
+	opts := Options{IssueRef: "owner/repo#42", NoLocalPatterns: true, NoRepoPatterns: true}
+	if err := r.Run(io.Discard, opts); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if fp.called.Load() != 1 {
+		t.Fatalf("planner called %d times, want 1", fp.called.Load())
+	}
+	mem := fp.ctx.Memory
+	if !strings.HasPrefix(filepath.Base(mem.Dir), patterns.MemoryDirPrefix) || len(mem.Pages) != 1 {
+		t.Fatalf("plan context memory = %+v, want a memory directory and the one page", mem)
+	}
+	if _, err := os.Stat(mem.Dir); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("after Run, stat %s = %v, want not exist", mem.Dir, err)
+	}
+	entries, err := os.ReadDir(tmp)
+	if err != nil {
+		t.Fatalf("reading TMPDIR: %v", err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), patterns.MemoryDirPrefix) {
+			t.Errorf("TMPDIR holds %s after Run, want no memory directory", e.Name())
+		}
+	}
+}
+
+// TestRun_NoPlanningSessionWritesNoMemory locks who the project memory is
+// written for: the planning session is its only reader, so a run that starts
+// none holds no memory directory while the implement session runs.
+func TestRun_NoPlanningSessionWritesNoMemory(t *testing.T) {
+	const plan = "## Implementation Plan (issue #42)\n\nSTATUS: PLAN_READY"
+	tests := []struct {
+		name     string
+		noPlan   bool
+		comments []github.IssueComment
+	}{
+		{name: "planning is skipped with --no-plan", noPlan: true},
+		{name: "a plan posted on the issue is reused", comments: []github.IssueComment{{Body: formatPlanComment(plan, "")}}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cloneDir := t.TempDir()
+			tmp := t.TempDir()
+			t.Setenv("TMPDIR", tmp)
+
+			gh := &githubtest.Fake{Issue: sampleIssue(), Dir: cloneDir, IssueComments: tc.comments}
+			cl := &fakeClaude{report: validImplReport}
+			cl.onImplement = func(Context) {
+				entries, err := os.ReadDir(tmp)
+				if err != nil {
+					t.Errorf("reading TMPDIR: %v", err)
+				}
+				for _, e := range entries {
+					if strings.HasPrefix(e.Name(), patterns.MemoryDirPrefix) {
+						t.Errorf("TMPDIR holds %s while the implement session runs, want no memory directory without a planning session", e.Name())
+					}
+				}
+			}
+			fp := &fakePlanner{plan: plan}
+			r := newRunner(gh, cl)
+			r.Planner = fp
+			r.ResolveWiki = func(_, _ string, _ patterns.WikiOptions, _ patterns.RemoteOptions) patterns.ResolvedWiki {
+				return patterns.ResolvedWiki{MemoryPages: []patterns.MemoryPage{
+					{Name: "pin-dependencies.md", Title: "Pin every dependency", Body: "# Pin every dependency"},
+				}}
+			}
+
+			opts := Options{IssueRef: "owner/repo#42", NoLocalPatterns: true, NoRepoPatterns: true, NoPlan: tc.noPlan}
+			if err := r.Run(io.Discard, opts); err != nil {
+				t.Fatalf("Run returned %v, want nil", err)
+			}
+			if fp.called.Load() != 0 {
+				t.Fatalf("planner called %d times, want 0", fp.called.Load())
+			}
+			if cl.called.Load() != 1 {
+				t.Fatalf("Implement called %d times, want 1", cl.called.Load())
+			}
+		})
 	}
 }
 

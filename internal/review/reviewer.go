@@ -253,6 +253,11 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	warnRedaction("PR body", redactedBody)
 	warnRedaction("commit log", redactedCommitLog)
 
+	// The project memory is written once here, after the cache check, and
+	// removed when Run returns.
+	mem, cleanupMemory := patterns.MaterializeMemoryOrWarn(wiki.MemoryPages)
+	defer cleanupMemory()
+
 	reviewCtx := claude.ReviewContext{
 		Patterns:    pats,
 		MaxPatterns: opts.MaxPatterns,
@@ -266,7 +271,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		NewFeatures: newFeatures,
 		TodoContent: todoContent,
 		Glossary:    glossaryBody,
-		Memory:      patterns.FormatMemoryBodies(wiki.MemoryPages),
+		Memory:      mem,
 	}
 
 	var (
