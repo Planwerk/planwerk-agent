@@ -202,11 +202,13 @@ type runSpec struct {
 	// appendSystemPrompt is passed as --append-system-prompt when non-empty;
 	// only the implement session sets it (decision 108).
 	appendSystemPrompt string
-	// addDir is passed via --add-dir when non-empty: the on-disk pattern catalog
-	// directory (patterns.Materialize) the session may read pattern bodies from.
-	// A noTools spec never honors it, because a structuring session runs in
-	// structureWorkDir with no tools and must not be handed any other directory.
-	addDir string
+	// addDirs holds the directories the session may read besides its working
+	// directory: the on-disk pattern catalog directory (patterns.Materialize)
+	// and the project memory directory (patterns.MaterializeMemory). The
+	// non-empty entries follow one --add-dir, in order. A noTools spec never
+	// honors it, because a structuring session runs in structureWorkDir with no
+	// tools and must not be handed any other directory.
+	addDirs []string
 	// sessionID pins the CLI session's id (--session-id) and resume continues
 	// that session (--resume). Both are zero for a one-shot call; set by the
 	// completion nudge (decision 78).
@@ -264,6 +266,13 @@ func withAppendSystemPrompt(args []string, text string) []string {
 		return args
 	}
 	return append(args, "--append-system-prompt", text)
+}
+
+// nonEmptyDirs returns the non-empty entries of dirs, in order, in a slice of
+// its own. A session without a pattern catalog or without a project memory
+// passes the empty string for that directory.
+func nonEmptyDirs(dirs []string) []string {
+	return slices.DeleteFunc(slices.Clone(dirs), func(d string) bool { return d == "" })
 }
 
 // cliJSONSchema prepares a schema document for the CLI's --json-schema flag by
@@ -523,7 +532,7 @@ func WithInheritUserConfig(b bool) Option {
 // instead. cat is the pattern catalog whose directory the session may
 // read (--add-dir), noCatalog for a session without one.
 func (c *Client) runClaude(dir, prompt, label string, cat patterns.Catalog) (text, model string, err error) {
-	return c.runSession(runSpec{dir: dir, label: label, model: c.model, effort: c.effort, readOnly: true, addDir: cat.Dir}, prompt)
+	return c.runSession(runSpec{dir: dir, label: label, model: c.model, effort: c.effort, readOnly: true, addDirs: []string{cat.Dir}}, prompt)
 }
 
 // runClaudeFindings is runClaude, on the main --claude-model tier, that also
@@ -596,7 +605,7 @@ func firstNonEmpty(override, fallback string) string {
 // (decision 101). cat is the pattern catalog whose directory the session may
 // read (--add-dir), noCatalog for a session without one.
 func (c *Client) runClaudePlan(dir, prompt, label string, cat patterns.Catalog) (text, model string, err error) {
-	return c.runSession(runSpec{dir: dir, label: label, model: c.planModel, effort: c.planEffort, readOnly: true, addDir: cat.Dir}, prompt)
+	return c.runSession(runSpec{dir: dir, label: label, model: c.planModel, effort: c.planEffort, readOnly: true, addDirs: []string{cat.Dir}}, prompt)
 }
 
 // runClaudeStructure is runClaude on the dedicated structuring tier
@@ -652,7 +661,7 @@ func (c *Client) runClaudeAuto(dir, prompt, label string, cat patterns.Catalog) 
 // whose directory the session may read (--add-dir), noCatalog for a session
 // without one.
 func (c *Client) autoSpec(dir, label string, cat patterns.Catalog) runSpec {
-	return runSpec{dir: dir, label: label, permissionMode: claudeAutoPermissionMode, model: c.model, effort: c.effort, addDir: cat.Dir}
+	return runSpec{dir: dir, label: label, permissionMode: claudeAutoPermissionMode, model: c.model, effort: c.effort, addDirs: []string{cat.Dir}}
 }
 
 // runClaudeImplement runs the implement session: runClaudeAuto on
@@ -697,8 +706,8 @@ func (c *Client) claudeArgs(spec runSpec, outputFormat string, extra ...string) 
 	if spec.permissionMode != "" {
 		args = append(args, "--permission-mode", spec.permissionMode)
 	}
-	if spec.addDir != "" && !spec.noTools {
-		args = append(args, "--add-dir", spec.addDir)
+	if dirs := nonEmptyDirs(spec.addDirs); len(dirs) > 0 && !spec.noTools {
+		args = append(append(args, "--add-dir"), dirs...)
 	}
 	if spec.jsonSchema != "" {
 		args = append(args, "--json-schema", spec.jsonSchema)
