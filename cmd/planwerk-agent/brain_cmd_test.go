@@ -2,8 +2,11 @@ package main
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
+
+	"github.com/spf13/pflag"
 )
 
 // runBrainCmd executes the brain command hermetically: with the wiki off,
@@ -69,5 +72,43 @@ func TestBrainMemoryCmd_UnknownPageOfADisabledWikiFails(t *testing.T) {
 	}
 	if len(out) != 0 {
 		t.Errorf("stdout = %q, want nothing beside the error", out)
+	}
+}
+
+// sharedMemoryDoc is the plugin document that tells the skills how to call
+// `brain memory`.
+const sharedMemoryDoc = "../../plugins/planwerk/shared/memory.md"
+
+// TestSharedMemoryDocMatchesCommand keeps the skills' instructions and the
+// command they describe together: the document names the invocation, the page
+// form that keeps a file name from being read as a flag or by the shell, the
+// header the index opens with, and every flag the command registers. A flag
+// added to the command, or a renamed header, otherwise leaves the skills
+// following a description of a command that no longer exists.
+func TestSharedMemoryDocMatchesCommand(t *testing.T) {
+	raw, err := os.ReadFile(sharedMemoryDoc)
+	if err != nil {
+		t.Fatalf("reading %s: %v", sharedMemoryDoc, err)
+	}
+	doc := string(raw)
+
+	want := []string{"planwerk-agent brain memory <owner/repo>", "planwerk-agent brain memory <owner/repo> -- '<file name>'", "Project memory from "}
+	memoryCmd, _, err := newBrainCmd(&runtimeDeps{}).Find([]string{"memory"})
+	if err != nil {
+		t.Fatalf("finding the memory command: %v", err)
+	}
+	flags := 0
+	memoryCmd.Flags().VisitAll(func(f *pflag.Flag) {
+		flags++
+		want = append(want, "--"+f.Name)
+	})
+	if flags == 0 {
+		t.Fatal("the memory command registers no flag; the document describes three")
+	}
+
+	for _, w := range want {
+		if !strings.Contains(doc, w) {
+			t.Errorf("%s does not mention %q", sharedMemoryDoc, w)
+		}
 	}
 }

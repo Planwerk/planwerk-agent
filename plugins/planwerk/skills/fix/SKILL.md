@@ -26,6 +26,7 @@ Read these before you start, in full:
 - `${CLAUDE_SKILL_DIR}/../../shared/github.md` — the `gh` commands
 - `${CLAUDE_SKILL_DIR}/../../shared/github-checks.md` — a pull request, its checks, and the logs behind a failed one
 - `${CLAUDE_SKILL_DIR}/../../shared/house-style.md` — prose, citations, anti-hallucination
+- `${CLAUDE_SKILL_DIR}/../../shared/memory.md` — the project memory, when the repository opted in
 
 `planwerk-agent fix <pr-ref>` is the same work unattended, in a loop, in a
 throw-away clone. Reach for the command when nobody is watching and for this
@@ -75,6 +76,10 @@ Stop, and let the author decide, when any of these holds:
 When the repository carries `.planwerk/review_patterns/`, read those patterns.
 They are the catalog this project reviews itself against, and a fix that
 introduces code its own patterns flag has traded one finding for another.
+
+Read the project memory per `memory.md`. A repair that contradicts a recorded
+decision trades one finding for another, the same as one a review pattern
+flags.
 
 ## Phase 2 — Enumerate what is red, and read every log to the bottom
 

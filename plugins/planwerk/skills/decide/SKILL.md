@@ -2,7 +2,7 @@
 name: decide
 description: Settles the decisions a Meta Issue deferred when it was split — open items whose unverified recommendations its Sub Issues already assume — and records the outcomes in the Meta Issue and the Sub Issues that assumed them. Use when a Meta Issue carries a decisions or spike section with items nobody has confirmed yet, or when a Sub Issue exists solely to verify and record them.
 argument-hint: "<issue-ref>"
-allowed-tools: AskUserQuestion Read Grep Glob Write Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue view:*) Bash(gh issue edit:*) Bash(gh issue comment:*) Bash(gh api:*) Bash(git fetch:*) Bash(git status:*) Bash(git rev-parse:*) Bash(git switch:*) Bash(git merge --ff-only:*) Bash(git log:*) Bash(git show:*) Bash(wc:*)
+allowed-tools: AskUserQuestion Read Grep Glob Write Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue view:*) Bash(gh issue edit:*) Bash(gh issue comment:*) Bash(gh api:*) Bash(git fetch:*) Bash(git status:*) Bash(git rev-parse:*) Bash(git switch:*) Bash(git merge --ff-only:*) Bash(git log:*) Bash(git show:*) Bash(wc:*) Bash(planwerk-agent brain memory:*)
 ---
 
 # Settle a Meta Issue's decisions
@@ -29,6 +29,7 @@ Read these before you start, in full:
 - `${CLAUDE_SKILL_DIR}/../../shared/house-style.md` — prose, citations, anti-hallucination
 - `${CLAUDE_SKILL_DIR}/../../shared/github.md` — the `gh` commands
 - `${CLAUDE_SKILL_DIR}/../../shared/github-relations.md` — the neighborhood query
+- `${CLAUDE_SKILL_DIR}/../../shared/memory.md` — the project memory, when the repository opted in
 
 You must be inside a checkout of the Meta Issue's repository. Verifying a
 decision means opening the files it turns on, and a verification run from the
@@ -106,6 +107,8 @@ names, in this order:
    reachable from the checkout.
 4. **A related decision a closed sibling already settled** — the neighborhood
    query surfaces it; do not re-decide what a merged Sub Issue already proved.
+5. **The project memory**, per `memory.md`. A page that records the decision
+   confirms or contradicts an item the way a committed document does.
 
 Anything reachable only outside the checkout — a live API, an un-vendored
 upstream repository, infrastructure, cost, policy — is out of reach. Say

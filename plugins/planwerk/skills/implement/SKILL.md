@@ -27,6 +27,7 @@ Read these before you start, in full:
 - `${CLAUDE_SKILL_DIR}/../../shared/github.md` — the `gh` commands
 - `${CLAUDE_SKILL_DIR}/../../shared/github-relations.md` — the neighborhood query
 - `${CLAUDE_SKILL_DIR}/../../shared/house-style.md` — prose, citations, anti-hallucination
+- `${CLAUDE_SKILL_DIR}/../../shared/memory.md` — the project memory, when the repository opted in
 
 `planwerk-agent implement <issue-ref>` is the same delivery unattended: a
 hermetic clone, a dedicated planning session, and simplify, review, and
@@ -106,6 +107,10 @@ this issue already landed out of order; treat it like any closed sibling.
 When the repository carries `.planwerk/review_patterns/`, read those patterns.
 No review pass will check your diff against them, so you are the one who must
 not introduce code the project's own catalog flags.
+
+Read the project memory per `memory.md`. The plan you build in Phase 2 honors
+every decision a page records, and names the page in the step that relies on
+it.
 
 ## Phase 2 — Plan, in plan mode
 

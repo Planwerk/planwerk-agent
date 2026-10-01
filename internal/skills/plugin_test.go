@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -190,4 +191,74 @@ func TestSharedDocsAreReferenced(t *testing.T) {
 			t.Errorf("shared/%s is loaded by no skill: either a skill should read it, or it should not exist", base)
 		}
 	}
+}
+
+// memorySkills are the skills that read the project memory through
+// `planwerk-agent brain memory`, per shared/memory.md. The other skills never
+// need it: draft describes an idea without planning it, humanize edits form
+// only, and cleanup surveys code.
+var memorySkills = []string{"clarify", "decide", "diagnose", "elaborate", "fix", "implement", "meta", "revisit"}
+
+// brainMemoryRule is the allowed-tools entry that lets a skill whose
+// allowed-tools name each Bash command it may run call
+// `planwerk-agent brain memory` and nothing else of the binary. Without it the
+// skill's memory read stops at a permission prompt.
+const brainMemoryRule = "Bash(planwerk-agent brain memory:*)"
+
+// TestPluginSkillsReadTheProjectMemory pins which skills read the project
+// memory: the eight that plan or change code load shared/memory.md, the three
+// others do not, and each of the eight may run the command that document
+// gives it, through a bare Bash entry or through brainMemoryRule.
+func TestPluginSkillsReadTheProjectMemory(t *testing.T) {
+	isMemorySkill := map[string]bool{}
+	for _, name := range memorySkills {
+		isMemorySkill[name] = true
+	}
+	const memoryDoc = "${CLAUDE_SKILL_DIR}/../../shared/memory.md"
+
+	for _, name := range wantSkills {
+		body := readSkill(t, name)
+		if got := strings.Contains(body, memoryDoc); got != isMemorySkill[name] {
+			t.Errorf("skill %q: references shared/memory.md = %v, want %v", name, got, isMemorySkill[name])
+		}
+	}
+
+	for _, name := range memorySkills {
+		fm, ok := extractFrontmatter(readSkill(t, name))
+		if !ok {
+			t.Errorf("skill %q: no frontmatter to read allowed-tools from", name)
+			continue
+		}
+		tools := frontmatterLine(fm, "allowed-tools:")
+		// A bare Bash entry allows every command. "Bash(gh" and the like are
+		// other fields, so only an unrestricted list matches.
+		if slices.Contains(strings.Fields(tools), "Bash") {
+			continue
+		}
+		if !strings.Contains(tools, brainMemoryRule) {
+			t.Errorf("skill %q: allowed-tools lacks %s, so its memory read stops at a permission prompt; got %q", name, brainMemoryRule, tools)
+		}
+	}
+}
+
+// readSkill returns the SKILL.md of the named plugin skill.
+func readSkill(t *testing.T, name string) string {
+	t.Helper()
+	path := filepath.Join(pluginRoot, "skills", name, "SKILL.md")
+	body, err := os.ReadFile(filepath.Clean(path))
+	if err != nil {
+		t.Fatalf("reading skill %q: %v", name, err)
+	}
+	return string(body)
+}
+
+// frontmatterLine returns the line of fm that starts with key, "" when fm has
+// none.
+func frontmatterLine(fm, key string) string {
+	for _, line := range strings.Split(fm, "\n") {
+		if strings.HasPrefix(line, key) {
+			return line
+		}
+	}
+	return ""
 }

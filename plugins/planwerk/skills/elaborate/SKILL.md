@@ -2,7 +2,7 @@
 name: elaborate
 description: Expands a high-level GitHub issue into a deeply detailed engineering plan grounded in the actual repository, with the open decisions resolved by its author. Use when an issue needs a plan before it can be implemented, or when the user asks to elaborate, deepen, or flesh out an issue.
 argument-hint: "<issue-ref>"
-allowed-tools: AskUserQuestion Read Grep Glob Write Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue view:*) Bash(gh issue edit:*) Bash(gh issue comment:*) Bash(gh issue create:*) Bash(gh api:*) Bash(wc:*)
+allowed-tools: AskUserQuestion Read Grep Glob Write Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue view:*) Bash(gh issue edit:*) Bash(gh issue comment:*) Bash(gh issue create:*) Bash(gh api:*) Bash(wc:*) Bash(planwerk-agent brain memory:*)
 ---
 
 # Elaborate an issue
@@ -28,6 +28,7 @@ Read these before you start, in full:
 - `${CLAUDE_SKILL_DIR}/../../shared/github-relations.md` — the neighborhood query
 - `${CLAUDE_SKILL_DIR}/../../shared/cross-repo.md` — when the plan implies work in another repository
 - `${CLAUDE_SKILL_DIR}/../../shared/domains.md` — the domain sweep, when the repository commits no `.planwerk/domains.md` of its own
+- `${CLAUDE_SKILL_DIR}/../../shared/memory.md` — the project memory, when the repository opted in
 
 You must be inside a checkout of the issue's repository. If the working tree
 belongs to a different repo, say so and stop.
@@ -91,6 +92,11 @@ names a repository whose `When:` condition this plan meets, and no counterpart
 issue is linked yet, note it: Phase 3 offers to file one at draft depth, as its
 own question, gated like any other write. Filing it is catching what the draft
 missed, so if one already exists, say so and move on.
+
+Read the project memory per `memory.md` before this phase ends. A decision
+recorded there bounds the plan the way a Meta Issue's shared decisions do, and
+Phase 3 never asks a question a memory page answers. List every page the plan
+relies on under References, as `wiki memory: <file name>`.
 
 ## Phase 3 — Resolve the decisions the plan cannot make
 
