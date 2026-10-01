@@ -81,6 +81,7 @@ planwerk-agent/
 │   │   └── claims.go           # Claim verification demotion (VerifyClaims, ClaimVerdict)
 │   ├── patterns/
 │   │   ├── catalog.go          # Materialize: the loaded catalog on disk, plus its index
+│   │   ├── memory.go           # MaterializeMemory: the wiki's project memory on disk, plus its index
 │   │   ├── embedded.go         # //go:embed all:patterns + loadEmbedded()
 │   │   ├── loader.go           # Load patterns from directories
 │   │   ├── pattern.go          # Pattern data structure + parsing

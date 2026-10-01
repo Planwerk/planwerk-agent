@@ -20,7 +20,7 @@ The tool reads two directories from the target repo's wiki:
 | Wiki page | Purpose |
 |-----------|---------|
 | `review_patterns/<name>.md` | A project review pattern in the standard [Pattern Format](/reference/review-patterns#pattern-format). It loads through the wiki precedence tier — below the committed `.planwerk/review_patterns` (so a committed pattern overrides a same-named wiki one) and below an explicit `--patterns`. |
-| `memory/<name>.md` | A free-form **project memory** page: decisions, conventions, and context. Every page is concatenated (sorted by filename, capped at 64 KB) into a memory block injected into the analysis prompts and the implement plan. |
+| `memory/<name>.md` | A **project memory** page: one decision, convention, or piece of context. The analysis prompts and the implement plan list every page in an index (file name, title, and the sentence of an optional `**Summary**:` line), and the session opens the pages its task needs. A page larger than 64 KB is skipped. |
 
 Any other page — `Home`, `_Sidebar`, navigation, or prose that does not parse as
 a pattern — is ignored, so a normal wiki can hold both human navigation and
@@ -51,10 +51,13 @@ All database access must go through the QueryBuilder, never raw SQL strings.
 Raw SQL bypasses the query allow-list and parameterization the QueryBuilder
 enforces.
 MD
-# a project-memory page
-cat > memory/decisions.md <<'MD'
-We pin every dependency and never float a version range.
-Errors are returned as Problem Details (RFC 9457), never bare strings.
+# a project-memory page: a title, a one-sentence summary, then the reasoning
+cat > memory/pin-dependencies.md <<'MD'
+# Pin every dependency
+
+**Summary**: Dependencies are pinned to exact versions and never float a version range.
+
+A floating range broke the release build twice. Renovate proposes the bumps.
 MD
 git add -A && git commit -m "Add review patterns and memory" && git push
 ```
@@ -63,6 +66,32 @@ The wiki must be **initialized** first: create at least one page through the
 repository's Wiki tab on github.com before the `.wiki.git` clone exists. A wiki
 that was never initialized is treated as "no wiki" — the run proceeds with the
 other pattern tiers and no project memory.
+
+## Write memory pages a session can find
+
+A session does not receive the page bodies. It receives one index line per page
+and opens the pages its task needs, so the line decides whether a page is read:
+
+```text
+- conventions.md: conventions
+- pin-dependencies.md: Pin every dependency | Dependencies are pinned to exact versions and never float a version range.
+```
+
+To write a page that is found:
+
+1. Start the page with a `# <title>` heading that names the decision. A page
+   without a heading is listed under its file name without `.md`.
+2. Add a `**Summary**: <one sentence>` line that states the decision itself,
+   not its background. A page without the line stays valid and is listed under
+   its title only.
+3. Keep one decision per page, and keep the page under 64 KB. A larger page is
+   skipped with a warning in the run's log.
+
+The index has a budget of 64 KB, which holds about 250 pages of typical length.
+When a wiki exceeds it, the run's log warns with the number of pages that are
+not listed. The listed pages are the first ones in file-name order, and the
+session is told to list the directory for the rest. See
+[the reference](/reference/review-patterns#github-wiki) for the exact limits.
 
 ## Enable, disable, and pin
 
@@ -133,6 +162,10 @@ maintain by hand or by a later automated write-back:
 - **A stable, descriptive slug.** Re-running capture on the same decision reuses
   the same `memory/<slug>.md` path, so it **updates the page in place** rather
   than appending a near-duplicate.
+- **A title and a summary line.** The page has a `# <title>` heading that names
+  the decision and, below it, a `**Summary**: <one sentence>` line that states
+  it. Those two are what a session sees in the memory index. A proposed update
+  to a page that has no summary line adds one.
 - **A provenance marker.** Each proposed page begins with an HTML comment —
   `<!-- planwerk-agent: captured from owner/repo#123 -->` — that marks it as
   tool-authored (rather than hand-authored) and names the issue it came from. The
