@@ -9,6 +9,9 @@
 package redact
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"regexp"
 	"sort"
 	"strings"
@@ -47,6 +50,25 @@ func Redact(text string) Result {
 		text = p.apply(text, counts)
 	}
 	return Result{Text: text, Counts: counts}
+}
+
+// behaviorRevision is raised with every change to a filter, to apply, or to
+// the marker: none of them shows in a pattern's fields.
+const behaviorRevision = 1
+
+// Fingerprint identifies the redaction rules: the hex SHA-256 over
+// behaviorRevision and every pattern's name, expression, value group, and
+// whether it has a filter, in order. A reader that stores redacted text
+// compares it to know when the rules changed.
+func Fingerprint() string {
+	h := sha256.New()
+	_, _ = fmt.Fprintf(h, "%d\n", behaviorRevision)
+	for _, p := range patterns {
+		// A NUL ends a field and a line feed an entry. A name holds neither,
+		// and an expression is written with escapes.
+		_, _ = fmt.Fprintf(h, "%s\x00%s\x00%d\x00%t\n", p.name, p.re.String(), p.valueGroup, p.filter != nil)
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // pattern describes a single redaction rule.

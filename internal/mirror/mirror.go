@@ -88,6 +88,17 @@ func ItemPath(dir, kind string, number int) string {
 	return filepath.Join(itemsDir(dir, kind), strconv.Itoa(number)+itemFileExt)
 }
 
+// WikiDir returns the directory of the wiki clone in the mirror directory dir.
+func WikiDir(dir string) string {
+	return filepath.Join(dir, wikiDirName)
+}
+
+// WikiPagePath returns the path of a wiki page in the clone from file, its
+// path relative to the mirror directory, with "/".
+func WikiPagePath(file string) string {
+	return strings.TrimPrefix(file, wikiDirName+"/")
+}
+
 // ItemFiles returns the paths of the item files of kind in the mirror
 // directory dir, in name order. A missing directory holds none. An entry that
 // is no item file is left out: a directory, or a file of another extension,
@@ -135,6 +146,12 @@ type State struct {
 	Wiki     WikiState  `json:"wiki"`
 }
 
+// Revision names what the mirror holds: the items cursor, "@", and the wiki
+// commit. It changes when a sync fetched an item or the wiki moved.
+func (s *State) Revision() string {
+	return s.Items.Cursor + "@" + s.Wiki.Commit
+}
+
 // LoadState reads the state of the mirror of repo ("owner/name") in dir. It
 // writes nothing. Without a state file it returns a fresh state and exists ==
 // false. A state file of another version or of another repository is an
@@ -159,6 +176,23 @@ func LoadState(dir, repo string) (st *State, exists bool, err error) {
 		return nil, false, fmt.Errorf("%s holds the mirror of %s, not %s", dir, st.Repo, repo)
 	}
 	return st, true, nil
+}
+
+// LoadFinishedState is LoadState for a reader that needs a finished mirror. A
+// mirror that is missing, or in which no sync has finished, is an error that
+// names the command to run.
+func LoadFinishedState(dir, repo string) (*State, error) {
+	st, exists, err := LoadState(dir, repo)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, fmt.Errorf("no mirror of %s at %s; run \"planwerk-agent brain sync %s\" first", repo, dir, repo)
+	}
+	if st.SyncedAt == "" {
+		return nil, fmt.Errorf("the mirror of %s at %s has never finished a sync; run \"planwerk-agent brain sync %s\" again", repo, dir, repo)
+	}
+	return st, nil
 }
 
 // Save writes the state to state.json in dir, which must exist.

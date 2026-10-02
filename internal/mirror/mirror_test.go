@@ -245,6 +245,43 @@ func TestItemPath(t *testing.T) {
 	}
 }
 
+func TestWikiDir(t *testing.T) {
+	dir := filepath.Join("m", "acme", "widgets")
+	if got, want := WikiDir(dir), filepath.Join(dir, "wiki"); got != want {
+		t.Errorf("WikiDir = %q, want %q", got, want)
+	}
+}
+
+func TestWikiPagePath(t *testing.T) {
+	for file, want := range map[string]string{
+		"wiki/Home.md":              "Home.md",
+		"wiki/memory/one-cursor.md": "memory/one-cursor.md",
+		"wiki/wiki/Home.md":         "wiki/Home.md",
+		// A file outside the clone has no path in it.
+		"issues/7.md": "issues/7.md",
+	} {
+		if got := WikiPagePath(file); got != want {
+			t.Errorf("WikiPagePath(%q) = %q, want %q", file, got, want)
+		}
+	}
+}
+
+func TestState_Revision(t *testing.T) {
+	st := &State{Items: ItemsState{Cursor: openIssueUpdated}, Wiki: WikiState{Commit: testWikiHead}}
+	if got, want := st.Revision(), openIssueUpdated+"@"+testWikiHead; got != want {
+		t.Errorf("Revision = %q, want %q", got, want)
+	}
+
+	// A mirror that has not synced yet has no cursor and no wiki commit.
+	fresh, exists, err := LoadState(t.TempDir(), "acme/widgets")
+	if err != nil || exists {
+		t.Fatalf("LoadState = %v, %v, want a fresh state", exists, err)
+	}
+	if got := fresh.Revision(); got != "@" {
+		t.Errorf("Revision of a fresh state = %q, want %q", got, "@")
+	}
+}
+
 func TestItemFiles(t *testing.T) {
 	dir := t.TempDir()
 	if files, err := ItemFiles(dir, github.ItemKindIssue); files != nil || err != nil {
@@ -367,6 +404,52 @@ func TestLoadState(t *testing.T) {
 		_, _, err := LoadState(writeState(t, `{"version": 2}`), testRepo)
 		if err == nil || !strings.HasSuffix(err.Error(), "; run brain sync --full to rebuild") {
 			t.Errorf("err = %v, want it to name brain sync --full", err)
+		}
+	})
+}
+
+func TestLoadFinishedState(t *testing.T) {
+	t.Run("a finished mirror", func(t *testing.T) {
+		dir := t.TempDir()
+		want := State{Version: 1, Repo: testRepo, SyncedAt: "2026-10-02T09:00:00Z"}
+		if err := want.Save(dir); err != nil {
+			t.Fatalf("Save: %v", err)
+		}
+		st, err := LoadFinishedState(dir, testRepo)
+		if err != nil || *st != want {
+			t.Errorf("LoadFinishedState = %+v, %v, want %+v", st, err, want)
+		}
+	})
+
+	t.Run("no mirror", func(t *testing.T) {
+		dir := filepath.Join(t.TempDir(), "acme", "widgets")
+		st, err := LoadFinishedState(dir, testRepo)
+		want := "no mirror of acme/widgets at " + dir + `; run "planwerk-agent brain sync acme/widgets" first`
+		if err == nil || err.Error() != want || st != nil {
+			t.Errorf("LoadFinishedState = %+v, %v, want the error %q", st, err, want)
+		}
+	})
+
+	t.Run("a mirror whose first sync never finished", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := (&State{Version: 1, Repo: testRepo}).Save(dir); err != nil {
+			t.Fatalf("Save: %v", err)
+		}
+		st, err := LoadFinishedState(dir, testRepo)
+		want := "the mirror of acme/widgets at " + dir + ` has never finished a sync; run "planwerk-agent brain sync acme/widgets" again`
+		if err == nil || err.Error() != want || st != nil {
+			t.Errorf("LoadFinishedState = %+v, %v, want the error %q", st, err, want)
+		}
+	})
+
+	t.Run("a state file of another repository", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := (&State{Version: 1, Repo: "acme/gadgets", SyncedAt: "2026-10-02T09:00:00Z"}).Save(dir); err != nil {
+			t.Fatalf("Save: %v", err)
+		}
+		st, err := LoadFinishedState(dir, testRepo)
+		if err == nil || !strings.Contains(err.Error(), "holds the mirror of acme/gadgets, not acme/widgets") || st != nil {
+			t.Errorf("LoadFinishedState = %+v, %v, want the error of LoadState", st, err)
 		}
 	})
 }

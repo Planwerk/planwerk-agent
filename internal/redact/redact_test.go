@@ -1,6 +1,8 @@
 package redact
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"strings"
 	"testing"
 )
@@ -247,5 +249,98 @@ func TestResult_Names_Sorted(t *testing.T) {
 		if names[i-1] > names[i] {
 			t.Fatalf("names not sorted: %v", names)
 		}
+	}
+}
+
+func TestFingerprint(t *testing.T) {
+	got := Fingerprint()
+	if len(got) != 64 || strings.Trim(got, "0123456789abcdef") != "" {
+		t.Fatalf("Fingerprint = %q, want 64 hex characters", got)
+	}
+	if again := Fingerprint(); again != got {
+		t.Errorf("Fingerprint changed between two calls: %q, then %q", got, again)
+	}
+
+	// A changed rule changes the fingerprint, and an empty rule set still has
+	// one.
+	saved := patterns
+	t.Cleanup(func() { patterns = saved })
+	patterns = saved[:len(saved)-1]
+	if fewer := Fingerprint(); fewer == got {
+		t.Error("Fingerprint did not change when a rule was removed")
+	}
+	patterns = nil
+	if none := Fingerprint(); len(none) != 64 || none == got {
+		t.Errorf("Fingerprint of no rule = %q, want 64 hex characters that differ from %q", none, got)
+	}
+}
+
+// behaviorCorpus is text whose redaction shows what the fields of a pattern
+// do not: what a filter lets through, how a match is replaced, and how the
+// marker reads. It holds one value per pattern, one per placeholder word, and
+// one per case of the character-class rule.
+func behaviorCorpus() []string {
+	// A value of four character classes, which the filter takes for a secret
+	// unless a placeholder word is part of it.
+	const mixed = "Qw7-Rt9_Zx4+Lm2/Vb6="
+	corpus := []string{
+		"before\n-----BEGIN RSA PRIVATE KEY-----\nbody\n-----END RSA PRIVATE KEY-----\nafter",
+		"credentials: AKIAIOSFODNN7EXAMPLE used for S3",
+		"ghp_" + strings.Repeat("a", 36),
+		"github_pat_" + strings.Repeat("A", 82),
+		"xoxb-1234567890-abcdefghij",
+		"AIza" + strings.Repeat("a", 35),
+		"sk_live_" + strings.Repeat("a", 24),
+		"sk-" + strings.Repeat("A1", 25),
+		"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",
+		`api_key = "` + mixed + `" and token: ` + mixed,
+	}
+	for _, word := range []string{
+		"xxxxx", "your-", "your_", "-here", "_here", "example", "placeholder",
+		"changeme", "redacted", "todo", "fixme", "abcdef", "123456",
+	} {
+		corpus = append(corpus, "token = "+word+mixed, "token = "+strings.ToUpper(word)+mixed)
+	}
+	for _, value := range []string{
+		strings.Repeat("a", 24),    // one character
+		"qwertzuiopasdfghjklyxcvb", // lowercase only
+		"QWERTZUIOPASDFGHJKLYXCVB", // uppercase only
+		"918273645546372819009182", // digits only
+		"-_+/=-_+/=-_+/=-_+/=-_+/", // symbols only
+		"qwertzuiopasQWERTZUIOPAS", // lowercase and uppercase
+		"qwertzuiopas918273645546", // lowercase and digits
+		"qwertzuiopas-_+/=-_+/=-_", // lowercase and symbols
+		"QWERTZUIOPAS918273645546", // uppercase and digits
+		"QWERTZUIOPAS-_+/=-_+/=-_", // uppercase and symbols
+		"918273645546-_+/=-_+/=-_", // digits and symbols
+	} {
+		corpus = append(corpus, "secret: "+value)
+	}
+	return corpus
+}
+
+// TestFingerprint_CoversWhatRedactReturns pins the fingerprint together with a
+// hash of what Redact returns for behaviorCorpus. An index of redacted text is
+// rebuilt only when the fingerprint changes, so a change to a filter, to apply,
+// or to the marker that leaves the fingerprint alone would leave text in the
+// index as the old rules redacted it.
+func TestFingerprint_CoversWhatRedactReturns(t *testing.T) {
+	const (
+		wantFingerprint = "c0e19e22ad3d7613553d3a2c99ac776ed8f0c2ad452ef7dd5ccef48d325abb8c"
+		wantCorpus      = "0d262697e31ba9a07a9032c5c9898734f788663cdffaeee46808f675a70f970e"
+	)
+	h := sha256.New()
+	for _, text := range behaviorCorpus() {
+		// A NUL ends an entry: no text of the corpus holds one.
+		_, _ = h.Write([]byte(Redact(text).Text + "\x00"))
+	}
+	corpus := hex.EncodeToString(h.Sum(nil))
+
+	switch fingerprint := Fingerprint(); {
+	case fingerprint == wantFingerprint && corpus == wantCorpus:
+	case fingerprint == wantFingerprint:
+		t.Errorf("Redact returns other text for the corpus (hash %s) and Fingerprint is unchanged: raise behaviorRevision, then pin the new values here", corpus)
+	default:
+		t.Errorf("the redaction rules changed: pin the fingerprint %s and the corpus hash %s here", fingerprint, corpus)
 	}
 }
