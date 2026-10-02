@@ -48,7 +48,7 @@ audit:
   format: markdown             # markdown | json
   patterns: []
 
-wiki:                          # GitHub Wiki knowledge source (review + audit + propose + elaborate + implement + fix + address + ship + brain memory + brain bootstrap)
+wiki:                          # GitHub Wiki knowledge source (review + audit + propose + elaborate + implement + fix + address + ship + brain memory + brain bootstrap + brain sync)
   enabled: true                # opt the wiki in (default: off); false is the same as --no-wiki
   repo: owner/repo             # override the wiki source; default: the target repo's own wiki
   ref: main                    # pin to a branch/tag/commit; default: the wiki's default branch
@@ -68,8 +68,9 @@ skills get the project memory. See
 flags and override the `PLANWERK_WIKI`/`PLANWERK_WIKI_REF` environment
 variables ([Precedence](#precedence)); `repo` is config-only.
 
-`brain bootstrap` reads `wiki.repo` and `wiki.ref` and, like `sync`, ignores
-`wiki.enabled`: running either command is the opt-in. The review tier of
+`brain bootstrap` and `brain sync` read `wiki.repo` and `wiki.ref` and, like
+`sync`, ignore `wiki.enabled`: running one of these commands is the opt-in. The
+mirror directory of `brain sync` has no config key. The review tier of
 `brain bootstrap` has no config key; it is set with `--review-model` and
 `--review-effort` or their environment variables.
 

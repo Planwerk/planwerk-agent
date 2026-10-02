@@ -26,7 +26,8 @@ planwerk-agent/
 │   │   ├── units.go            # Group the history into ordered units (BuildUnits)
 │   │   ├── docs.go             # Discover decision documents and cut them into chunks
 │   │   ├── state.go            # .planwerk-brain-sync: state.json, page files, the wiki refresh
-│   │   └── source.go           # Source seam, APISource, a unit's items, the working-set index
+│   │   ├── source.go           # Source seam, APISource, a unit's items, the working-set index
+│   │   └── mirror_source.go    # MirrorSource: the history read from the local mirror (brain bootstrap --source mirror)
 │   ├── cache/
 │   │   ├── cache.go            # SHA-based caching (review + propose + audit)
 │   │   └── cache_test.go
@@ -75,6 +76,7 @@ planwerk-agent/
 │   │   ├── comments_test.go
 │   │   ├── diff.go             # Fetch and parse PR diffs (DiffMap)
 │   │   ├── history.go          # List the default-branch commits, merged PRs, and closed issues (gh GraphQL)
+│   │   ├── item.go             # List items by update time, read one issue or PR with its whole conversation
 │   │   ├── thread.go           # Read an issue or PR with every comment, review, and commit
 │   │   ├── diff_test.go
 │   │   ├── issues.go           # Create/search GitHub issues (gh CLI)
@@ -90,6 +92,13 @@ planwerk-agent/
 │   │   ├── dedup.go            # File-less duplicate fold (DedupFileless)
 │   │   ├── snippets.go         # Quote-or-demote snippet gate (VerifySnippets)
 │   │   └── claims.go           # Claim verification demotion (VerifyClaims, ClaimVerdict)
+│   ├── mirror/                 # brain sync: the local mirror of a repository's knowledge on GitHub
+│   │   ├── mirror.go           # The mirror directory, state.json, the adapter seam, the run (Syncer)
+│   │   ├── format.go           # The item file: frontmatter and blocks (Render, Parse, ReadFrontmatter)
+│   │   ├── items.go            # ItemsAdapter: issues and pull requests, fetched by update time
+│   │   ├── history.go          # HistoryAdapter: history.jsonl, the default branch's commit list
+│   │   ├── wiki.go             # WikiAdapter: a full clone of the wiki
+│   │   └── testdata/           # One rendered issue and one rendered pull request (golden files)
 │   ├── patterns/
 │   │   ├── catalog.go          # Materialize: the loaded catalog on disk, plus its index
 │   │   ├── memory.go           # MaterializeMemory: the wiki's project memory on disk, plus its index

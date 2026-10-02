@@ -100,6 +100,23 @@ chunks of a decision document that changed:
 planwerk-agent brain bootstrap owner/repo --write-wiki
 ```
 
+## Read the history from the mirror
+
+Every run lists the history from the GitHub API and fetches each issue and pull
+request as its unit is processed. When you keep a
+[local mirror](/how-to/mirror-a-repository) of the repository, the run can read
+both from disk:
+
+```bash
+planwerk-agent brain sync owner/repo
+planwerk-agent brain bootstrap owner/repo --source mirror
+```
+
+The run reads the mirror as it is and does not sync it, so it sees the history
+up to the last `brain sync`. Run `brain sync` before each bootstrap run that
+should pick up new history. Without a mirror the run stops and names the
+command to run.
+
 ## Start over
 
 Delete the state directory. The next run processes every unit again:
@@ -123,6 +140,8 @@ the page.
 
 - [CLI reference: `brain bootstrap`](/reference/cli#brain-bootstrap) for every
   flag, the unit kinds, the state directory, and the output lines.
+- [Mirror a repository](/how-to/mirror-a-repository) for the local mirror that
+  `--source mirror` reads.
 - [Use the GitHub Wiki](/how-to/use-the-github-wiki) for how sessions read the
   pages.
 - [Sync the wiki](/how-to/sync-the-wiki) to prune pages that went stale later.
