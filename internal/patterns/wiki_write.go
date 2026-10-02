@@ -35,12 +35,6 @@ const (
 // write phase mutates and pushes: a shared cache entry could be refreshed or read
 // concurrently mid-write. cleanup is always non-nil and safe to call on error.
 func CloneWikiAuthenticated(repo, ref string) (dir, headSHA string, cleanup func(), err error) {
-	p, err := parseWikiURI(prefixWiki + repo)
-	if err != nil {
-		return "", "", func() {}, fmt.Errorf("deriving wiki clone URL for %q: %w", repo, err)
-	}
-	p.ref = ref
-
 	tmp, err := os.MkdirTemp("", "planwerk-wiki-write-")
 	if err != nil {
 		return "", "", func() {}, fmt.Errorf("creating wiki write workspace: %w", err)
@@ -48,11 +42,30 @@ func CloneWikiAuthenticated(repo, ref string) (dir, headSHA string, cleanup func
 	cleanup = func() { _ = os.RemoveAll(tmp) }
 
 	dest := filepath.Join(tmp, "repo")
-	if err := fetchRemote(p, dest); err != nil {
+	headSHA, err = MirrorWiki(repo, ref, dest)
+	if err != nil {
 		cleanup()
-		return "", "", func() {}, fmt.Errorf("cloning wiki %s: %w", repo, err)
+		return "", "", func() {}, err
 	}
-	return dest, wikiHeadSHA(dest), cleanup, nil
+	return dest, headSHA, cleanup, nil
+}
+
+// MirrorWiki makes a full clone of the wiki of repo ("owner/name") at dest and
+// returns its HEAD commit, or "" when the HEAD cannot be resolved (an empty
+// wiki). ref pins a branch, tag, or commit; empty uses the wiki's default
+// branch. The clone authenticates like CloneWikiAuthenticated. An existing
+// dest is replaced only after the clone and the checkout of ref succeeded, so
+// a failed call leaves it as it was.
+func MirrorWiki(repo, ref, dest string) (headSHA string, err error) {
+	p, err := parseWikiURI(prefixWiki + repo)
+	if err != nil {
+		return "", fmt.Errorf("deriving wiki clone URL for %q: %w", repo, err)
+	}
+	p.ref = ref
+	if err := fetchRemote(p, dest); err != nil {
+		return "", fmt.Errorf("cloning wiki %s: %w", repo, err)
+	}
+	return wikiHeadSHA(dest), nil
 }
 
 // PushWikiDeletions removes relPaths (wiki-relative, slash form) from the clone at
