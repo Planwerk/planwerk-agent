@@ -103,12 +103,6 @@ type Bootstrapper struct {
 	Now     func() time.Time    // nil means time.Now
 }
 
-// Bootstrap is a package-level convenience that runs a Bootstrapper with the
-// production seams and the given sessions.
-func Bootstrap(w io.Writer, opts BootstrapOptions, analyze AnalyzeFn, review ReviewFn, usage func() report.Usage) error {
-	return (&Bootstrapper{Analyze: analyze, Review: review, Usage: usage}).Run(w, opts)
-}
-
 // withDefaults returns a copy of b with every nil seam set to its default.
 func (b *Bootstrapper) withDefaults() *Bootstrapper {
 	c := *b

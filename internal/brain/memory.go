@@ -13,6 +13,11 @@
 // into units, runs an analysis session and a review session per unit, and
 // keeps the resulting pages in a state directory until the operator pushes
 // them to the wiki.
+//
+// `brain sync` keeps a local mirror of a repository's issues, pull requests,
+// commit list, and wiki. It lives in the mirror package; MirrorSource reads
+// that mirror for `brain bootstrap --source mirror`, in place of the GitHub
+// API.
 package brain
 
 import (
