@@ -18,6 +18,12 @@
 // commit list, and wiki. It lives in the mirror package; MirrorSource reads
 // that mirror for `brain bootstrap --source mirror`, in place of the GitHub
 // API.
+//
+// `brain search` answers a keyword query over that mirror. Search prints the
+// best-matching issues, pull requests, and wiki pages, or one block of them in
+// full. The index and the ranking are in the search package. Its reader can be
+// a spawned session, so what it prints is redacted, never names the mirror
+// directory, and never holds the query.
 package brain
 
 import (
