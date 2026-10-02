@@ -14,6 +14,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/glossary"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
+	"github.com/planwerk/planwerk-agent/internal/search"
 )
 
 // CommandElaborate is the cache scope identifier for elaboration entries.
@@ -57,6 +58,10 @@ type Options struct {
 	// review_patterns/ load as a pattern tier and its memory pages are handed
 	// to the elaboration session as project memory.
 	Wiki patterns.WikiOptions
+	// Brain lets the elaboration session search the local mirror of the repository's
+	// issues, pull requests, and wiki (`brain search`); carries the
+	// --brain/--no-brain value. Off by default.
+	Brain bool
 }
 
 // defaultMaxReviewIterations bounds the reviewer refine loop so a reviewer and
@@ -82,6 +87,10 @@ type Runner struct {
 	// patterns.ResolveWiki; a Runner seam so the project-memory wiring can be
 	// exercised without cloning a real wiki.
 	ResolveWiki resolveWikiFn
+	// ResolveBrain resolves the search surface the elaboration session is handed when
+	// opts.Brain is set. Defaults to search.ResolveSurface; a Runner seam so the
+	// wiring can be exercised without a mirror.
+	ResolveBrain func(owner, name string) search.Surface
 }
 
 // NewRunner returns a Runner wired with the production GitHub backend, the
@@ -165,8 +174,12 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		opts.NoCache = true
 	}
 
+	// The search of the local mirror is resolved before the cache key: the
+	// mirror's revision is part of it (search.Surface.CacheFlag).
+	surface := search.SurfaceFor(opts.Brain, r.ResolveBrain, owner, name)
+
 	cacheKey := elaborateCacheKey(owner, name, number, issue, relations, headSHA, opts.Review,
-		patterns.Fingerprint(opts.PatternDirs, opts.NoRepoPatterns, opts.NoLocalPatterns, opts.MaxPatterns), wiki.CommitSHA)
+		patterns.Fingerprint(opts.PatternDirs, opts.NoRepoPatterns, opts.NoLocalPatterns, opts.MaxPatterns), wiki.CommitSHA, surface.CacheFlag())
 
 	if !opts.NoCache && headSHA != "" {
 		if data, ok := cache.GetRaw(cacheKey, opts.CacheMaxAge); ok {
@@ -226,6 +239,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		Patterns:      pats,
 		Catalog:       cat,
 		Memory:        mem,
+		Brain:         surface,
 		MaxPatterns:   opts.MaxPatterns,
 		RepoName:      repo.FullName(),
 		Issue:         issue,
@@ -326,8 +340,11 @@ func (r *Runner) finish(w io.Writer, result *Result, owner, name string, number 
 // key stays stable. wikiCommit is the resolved wiki commit: the memory and the
 // wiki's review patterns reach the prompt, so a moved wiki re-elaborates. Its
 // flag is appended only when a wiki resolved, so the key of a run without a
-// wiki carries no wiki part.
-func elaborateCacheKey(owner, name string, number int, issue *github.Issue, relations *github.IssueRelations, headSHA string, review bool, patternsFingerprint, wikiCommit string) string {
+// wiki carries no wiki part. brainFlag names the revision of the mirror the
+// session could search (search.Surface.CacheFlag), empty for a run without the
+// search: it is appended only when it is not empty, so such a run keeps its
+// key.
+func elaborateCacheKey(owner, name string, number int, issue *github.Issue, relations *github.IssueRelations, headSHA string, review bool, patternsFingerprint, wikiCommit, brainFlag string) string {
 	flags := []string{
 		fmt.Sprintf("issue=%d", number),
 		"body=" + issueFingerprint(issue),
@@ -341,6 +358,9 @@ func elaborateCacheKey(owner, name string, number int, issue *github.Issue, rela
 	flags = append(flags, "patterns="+patternsFingerprint)
 	if wikiCommit != "" {
 		flags = append(flags, "wiki="+wikiCommit)
+	}
+	if brainFlag != "" {
+		flags = append(flags, brainFlag)
 	}
 	return cache.AuditKey(owner, name, "elaborate@"+headSHA, flags...)
 }

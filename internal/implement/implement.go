@@ -28,6 +28,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/hygiene"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
+	"github.com/planwerk/planwerk-agent/internal/search"
 	"github.com/planwerk/planwerk-agent/internal/skills"
 	"github.com/planwerk/planwerk-agent/internal/styleguide"
 	"github.com/planwerk/planwerk-agent/internal/workspace"
@@ -126,6 +127,10 @@ type Options struct {
 	// (review patterns + project memory); carries the --wiki/--no-wiki/--wiki-ref
 	// values.
 	Wiki patterns.WikiOptions
+	// Brain lets the planning session search the local mirror of the repository's
+	// issues, pull requests, and wiki (`brain search`); carries the
+	// --brain/--no-brain value. Off by default.
+	Brain bool
 }
 
 // defaultMaxReviewIterations bounds the review-and-fix loop so a finder and
@@ -199,6 +204,10 @@ type Runner struct {
 	// patterns.ResolveWiki; a Runner seam so the capture pass can be exercised
 	// against a temp wiki without cloning a real one.
 	ResolveWiki resolveWikiFn
+	// ResolveBrain resolves the search surface the planning session is handed when
+	// opts.Brain is set. Defaults to search.ResolveSurface; a Runner seam so the
+	// wiring can be exercised without a mirror.
+	ResolveBrain func(owner, name string) search.Surface
 	// CaptureWriter performs the gated capture write-back: a fresh authenticated
 	// clone of the wiki and the addition+push of the accepted pages. Defaults to
 	// capture.DefaultWikiWriter; a Runner seam so the write-back can be exercised
@@ -983,12 +992,16 @@ func stripCommentFooter(body, marker string) string {
 //
 // The planning session is the only reader of the project memory, so the memory
 // pages are written here and removed when the session is over: a run that
-// reuses a posted plan, or skips planning, writes nothing.
+// reuses a posted plan, or skips planning, writes nothing. It is also the only
+// session of the run that may search the local mirror, so the search surface
+// is resolved here, and only when the run opted in: a run that reuses a posted
+// plan, or skips planning, resolves nothing either.
 func (r *Runner) runPlanning(w io.Writer, opts Options, owner, name, dir string, ctx *Context, memory []patterns.MemoryPage) error {
 	planCtx := *ctx
 	var cleanupMemory func()
 	planCtx.Memory, cleanupMemory = patterns.MaterializeMemoryOrWarn(memory)
 	defer cleanupMemory()
+	planCtx.Brain = search.SurfaceFor(opts.Brain, r.ResolveBrain, owner, name)
 
 	slog.Info("running planning session", "issue", ctx.IssueNumber)
 	plan, model, err := r.Planner.Plan(dir, planCtx)

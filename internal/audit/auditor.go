@@ -56,6 +56,10 @@ type Options struct {
 	// Yes skips the capture write-back's interactive confirmation, for a
 	// non-interactive (CI) --capture-wiki run.
 	Yes bool
+	// Brain lets the audit session search the local mirror of the repository's
+	// issues, pull requests, and wiki (`brain search`); carries the
+	// --brain/--no-brain value. Off by default.
+	Brain bool
 }
 
 // AuditFn performs the Claude-backed codebase audit for a cloned repo.
@@ -93,6 +97,10 @@ type Runner struct {
 	// patterns.ResolveWiki; a Runner seam so the capture pass can be exercised
 	// against a temp wiki without cloning a real one.
 	ResolveWiki resolveWikiFn
+	// ResolveBrain resolves the search surface the audit session is handed when
+	// opts.Brain is set. Defaults to search.ResolveSurface; a Runner seam so the
+	// wiring can be exercised without a mirror.
+	ResolveBrain func(owner, name string) search.Surface
 	// CaptureWriter performs the gated capture write-back. Defaults to
 	// capture.DefaultWikiWriter; a Runner seam so the write-back can be exercised
 	// without cloning or pushing a real wiki.
@@ -160,6 +168,10 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	}
 	wiki := resolveWiki(owner, name, opts.Wiki, opts.Remote)
 
+	// The search of the local mirror is resolved before the cache key: the
+	// mirror's revision is part of it (search.Surface.CacheFlag).
+	surface := search.SurfaceFor(opts.Brain, r.ResolveBrain, owner, name)
+
 	// Build the cache key from the state that decides what the audit says. The
 	// severity and confidence thresholds are deliberately not part of it: the
 	// payload stored below is the unfiltered result and renderAudit applies the
@@ -168,6 +180,9 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	var cacheFlags []string
 	if wiki.CommitSHA != "" {
 		cacheFlags = append(cacheFlags, "wiki="+wiki.CommitSHA)
+	}
+	if flag := surface.CacheFlag(); flag != "" {
+		cacheFlags = append(cacheFlags, flag)
 	}
 	cacheFlags = append(cacheFlags, "patterns="+patterns.Fingerprint(
 		opts.PatternDirs, opts.NoRepoPatterns, opts.NoLocalPatterns, opts.MaxPatterns))
@@ -234,6 +249,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		MaxFindings: opts.MaxFindings,
 		RepoName:    repo.FullName(),
 		Memory:      mem,
+		Brain:       surface,
 	})
 	if err != nil {
 		return fmt.Errorf("claude audit: %w", err)

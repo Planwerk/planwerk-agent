@@ -21,6 +21,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/hygiene"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
+	"github.com/planwerk/planwerk-agent/internal/search"
 )
 
 type fakeVerifier struct {
@@ -4265,5 +4266,68 @@ func TestLatestSessionAccount_Complete(t *testing.T) {
 	}
 	if idx, _, complete := latestSessionAccount([]github.IssueComment{{Body: formatProgressNoteComment("n", 42, "m")}}); idx != 0 || complete {
 		t.Errorf("progress note: idx=%d complete=%t, want 0/false", idx, complete)
+	}
+}
+
+// TestRun_BrainSurfaceIsResolvedForThePlanningSessionOnly locks who gets the
+// search of the local mirror: the planning session of a run that opted in.
+// The surface is resolved only when that session runs, so a run that skips
+// planning, reuses a posted plan, or left the brain off resolves nothing, and
+// the implement session, which edits and commits, never receives it.
+func TestRun_BrainSurfaceIsResolvedForThePlanningSessionOnly(t *testing.T) {
+	const plan = "## Implementation Plan (issue #42)\n\nSTATUS: PLAN_READY"
+	surface := search.Surface{
+		Command:  "/usr/local/bin/planwerk-agent brain search owner/repo",
+		SyncedAt: "2026-10-02T09:00:00Z",
+		Revision: "rev-1",
+	}
+
+	for _, tc := range []struct {
+		name         string
+		opts         Options
+		posted       bool // a plan is already posted on the issue
+		seam         search.Surface
+		wantResolved int
+		wantPlanned  int
+		wantSurface  search.Surface // what the planning session is handed
+	}{
+		{"a planning session with the brain on", Options{Brain: true}, false, surface, 1, 1, surface},
+		{"a planning session without a finished mirror", Options{Brain: true}, false, search.Surface{}, 1, 1, search.Surface{}},
+		{"a planning session with the brain off", Options{}, false, surface, 0, 1, search.Surface{}},
+		{"no planning session", Options{Brain: true, NoPlan: true}, false, surface, 0, 0, search.Surface{}},
+		{"a posted plan is reused", Options{Brain: true}, true, surface, 0, 0, search.Surface{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
+			if tc.posted {
+				gh.IssueComments = []github.IssueComment{{Body: formatPlanComment(plan, "")}}
+			}
+			cl := &fakeClaude{report: validImplReport}
+			fp := &fakePlanner{plan: plan}
+			r := newRunner(gh, cl)
+			r.Planner = fp
+			resolved := 0
+			r.ResolveBrain = func(owner, name string) search.Surface {
+				resolved++
+				if owner != "owner" || name != "repo" {
+					t.Errorf("ResolveBrain(%q, %q), want owner and repo", owner, name)
+				}
+				return tc.seam
+			}
+
+			tc.opts.IssueRef = "owner/repo#42"
+			if err := r.Run(&bytes.Buffer{}, tc.opts); err != nil {
+				t.Fatalf("Run returned %v, want nil", err)
+			}
+			if resolved != tc.wantResolved || int(fp.called.Load()) != tc.wantPlanned {
+				t.Errorf("%d resolves and %d planning sessions, want %d and %d", resolved, fp.called.Load(), tc.wantResolved, tc.wantPlanned)
+			}
+			if fp.ctx.Brain != tc.wantSurface {
+				t.Errorf("the planning session was handed %+v, want %+v", fp.ctx.Brain, tc.wantSurface)
+			}
+			if cl.called.Load() != 1 || cl.ctx.Brain.Enabled() {
+				t.Errorf("the implement session ran %d times with the surface %+v, want once and without a search", cl.called.Load(), cl.ctx.Brain)
+			}
+		})
 	}
 }
