@@ -37,15 +37,9 @@ var _ Source = MirrorSource{}
 // in which no sync has finished, is an error that names the command to run.
 func (s MirrorSource) List(owner, name string) (Listing, error) {
 	repo := owner + "/" + name
-	st, exists, err := mirror.LoadState(s.Dir, repo)
+	st, err := mirror.LoadFinishedState(s.Dir, repo)
 	if err != nil {
 		return Listing{}, err
-	}
-	if !exists {
-		return Listing{}, fmt.Errorf("no mirror of %s at %s; run \"planwerk-agent brain sync %s\" first", repo, s.Dir, repo)
-	}
-	if st.SyncedAt == "" {
-		return Listing{}, fmt.Errorf("the mirror of %s at %s has never finished a sync; run \"planwerk-agent brain sync %s\" again", repo, s.Dir, repo)
 	}
 	slog.Info("reading the history from the local mirror", "dir", s.Dir, "synced_at", st.SyncedAt)
 
