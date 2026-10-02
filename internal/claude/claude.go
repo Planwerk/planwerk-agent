@@ -8,6 +8,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/doccheck"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
+	"github.com/planwerk/planwerk-agent/internal/search"
 )
 
 // DefaultBaseBranch is the fallback base branch name when none is specified.
@@ -28,6 +29,7 @@ type ReviewContext struct {
 	TodoContent string                    // content of TODOS.md if present
 	Glossary    string                    // repo domain glossary from CONTEXT.md / .planwerk/context.md; empty when absent
 	Memory      patterns.MemoryCatalog    // wiki project memory: the pages and the directory a session reads them from; zero when absent
+	Brain       search.Surface            // the search of the local mirror the session may run; zero means no search
 }
 
 // Review runs the diff-review session in the given directory and returns its
@@ -45,7 +47,7 @@ func (c *Client) Review(dir string, ctx ReviewContext) (*report.ReviewResult, er
 // runReview invokes `claude -p` with the review prompt, returning the review's
 // JSON output and the resolved model id.
 func (c *Client) runReview(dir string, rctx ReviewContext) (text, model string, err error) {
-	return c.runClaudeFindings(dir, buildReviewPrompt(rctx), "review", rctx.Memory)
+	return c.runClaudeFindings(dir, buildReviewPrompt(rctx), "review", rctx.Memory, rctx.Brain)
 }
 
 // tokenUsage is a tolerant view over the per-call token counts Claude Code

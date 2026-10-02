@@ -15,6 +15,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
+	"github.com/planwerk/planwerk-agent/internal/search"
 )
 
 // Options configures the audit pipeline.
@@ -72,6 +73,9 @@ type AuditContext struct {
 	// pages and the directory a session reads them from. Zero when the repo has
 	// no wiki memory.
 	Memory patterns.MemoryCatalog
+	// Brain is the search of the local mirror the audit session may run. The
+	// zero Surface means no search.
+	Brain search.Surface
 }
 
 // Runner executes the audit pipeline using injected Claude and GitHub

@@ -3,6 +3,7 @@ package elaborate
 import (
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
+	"github.com/planwerk/planwerk-agent/internal/search"
 )
 
 // Context is the input for the Claude elaboration prompt. Patterns are
@@ -17,7 +18,11 @@ type Context struct {
 	// pages, listed in the elaboration prompt, and the directory a session
 	// reads them from. Zero for a run without a wiki. The reviewer prompt does
 	// not render it.
-	Memory      patterns.MemoryCatalog
+	Memory patterns.MemoryCatalog
+	// Brain is the search of the local mirror the elaboration session and
+	// every refinement turn may run. The zero Surface means no search. The
+	// reviewer prompt does not render it.
+	Brain       search.Surface
 	MaxPatterns int
 	RepoName    string
 	Issue       *github.Issue

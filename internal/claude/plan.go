@@ -23,7 +23,7 @@ import (
 func (c *Client) Plan(dir string, ctx implement.Context) (string, string, error) {
 	// Returned unwrapped: the sole caller (implement's runPlanning) already
 	// prefixes "claude plan", and runClaudePlan names the model and the reason.
-	out, model, err := c.runClaudePlan(dir, BuildPlanPrompt(ctx), "plan", ctx.Catalog, ctx.Memory)
+	out, model, err := c.runClaudePlan(dir, BuildPlanPrompt(ctx), "plan", ctx.Catalog, ctx.Memory, ctx.Brain)
 	if err != nil {
 		return "", "", err
 	}
@@ -89,6 +89,7 @@ This session is autonomous and one-shot: nobody reads it until the plan is poste
 	// Project memory from the repo's GitHub Wiki (no-op when the wiki carries
 	// no memory pages)
 	sb.WriteString(projectMemoryBlock(ctx.Memory))
+	sb.WriteString(brainSearchBlock(ctx.Brain))
 
 	sb.WriteString(domainSweepBlock(ctx.Domains, `Report the sweep in the "### Domain Sweep" section of the plan: one bullet per domain the change touches, naming the concrete consequence and the Change Set, Commit Sequence, Test Plan, or Documentation Plan entry that carries it, then a single "Not touched:" line naming every remaining domain. Every domain above appears exactly once, on its own bullet or in that line — a domain you can place in neither is a domain you have not swept. Sweeping a domain never widens the change: a consequence you find is either already required by an Acceptance Criterion, or it is over-scope and belongs under Risks & Open Questions.`))
 

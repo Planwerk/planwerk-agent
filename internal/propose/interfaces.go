@@ -3,6 +3,7 @@ package propose
 import (
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
+	"github.com/planwerk/planwerk-agent/internal/search"
 )
 
 // AnalysisContext carries the inputs the analysis prompt grounds itself in.
@@ -29,6 +30,9 @@ type AnalysisContext struct {
 	// them from. Populated only by propose; the other commands sharing
 	// AnalysisContext leave it zero, so their prompts are unaffected.
 	Memory patterns.MemoryCatalog
+	// Brain is the search of the local mirror the analysis session may run.
+	// The zero Surface means no search. Populated only by propose.
+	Brain search.Surface
 }
 
 // ClaudeAnalyzer performs the Claude-backed codebase analysis that produces

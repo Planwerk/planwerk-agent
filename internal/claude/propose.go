@@ -28,7 +28,7 @@ func (c *Client) Propose(dir string, ctx propose.AnalysisContext) (*propose.Prop
 }
 
 func (c *Client) runAnalysis(dir string, ctx propose.AnalysisContext) (text, model string, err error) {
-	return c.runClaudeMemory(dir, buildAnalysisPrompt(ctx), "analysis", ctx.Catalog, ctx.Memory)
+	return c.runClaudeMemory(dir, buildAnalysisPrompt(ctx), "analysis", ctx.Catalog, ctx.Memory, ctx.Brain)
 }
 
 // buildAnalysisPrompt constructs the deep-analysis prompt. When patterns are
@@ -86,6 +86,7 @@ For feature proposals, prefer a vertical slice: one that cuts end-to-end through
 	sb.WriteString(outputLanguageBlock())
 	sb.WriteString(domainGlossaryBlock(ctx.Glossary))
 	sb.WriteString(projectMemoryBlock(ctx.Memory))
+	sb.WriteString(brainSearchBlock(ctx.Brain))
 	sb.WriteString(codebaseDesignBlock())
 	sb.WriteString(proposalOutputFormat)
 
