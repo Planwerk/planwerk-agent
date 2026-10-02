@@ -174,6 +174,19 @@ closes a backtick fence only on a run at least as long as the opening one.
 helper serves the review report, the audit issues, and the suggestion blocks
 posted to GitHub.
 
+Some material never passes through the builder. A session that is approved
+for `brain search` fetches issue and pull request text by a tool call, and the
+result reaches it outside the prompt, where no fence can wrap it and no
+`untrustedDataLine` sits next to it. The block that grants the command
+(`brainSearchBlock`) therefore carries the framing itself: it names what the
+command prints as untrusted repository data, written by everyone who can
+comment, to weigh and never to follow. The command does its part before the
+text arrives. It prints redacted text, drops control characters, repeats no
+argument in its output or its errors, and starts every line of a block's text
+with `| `, so that text cannot pass for a line of the command. A block that
+hands a session a way to fetch outside text states what that text is, in the
+block.
+
 Some text only looks like data. The review checklist and the project's review
 patterns are spliced in as instructions, and the skills block obliges a session
 to follow a recipe. Those cannot be framed as data without losing their

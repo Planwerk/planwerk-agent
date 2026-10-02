@@ -11,6 +11,7 @@ solves one specific problem.
 - [Use the GitHub Wiki as a knowledge source](/how-to/use-the-github-wiki)
 - [Bootstrap the project memory from a repository's history](/how-to/bootstrap-the-project-memory)
 - [Mirror a repository's issues, pull requests, and wiki](/how-to/mirror-a-repository)
+- [Search the mirror](/how-to/search-the-mirror)
 - [Sync the wiki against the code](/how-to/sync-the-wiki)
 - [Check completed features for gaps](/how-to/check-feature-gaps)
 - [Use the skills](/how-to/use-the-skills)

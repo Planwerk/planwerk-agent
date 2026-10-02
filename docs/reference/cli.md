@@ -79,6 +79,8 @@ planwerk-agent owner/repo#123 > review.md
 | `--wiki` | Use the target repo's GitHub Wiki as a knowledge source (off by default — enabling trusts the wiki's unreviewed editors; review patterns + project memory; env: `PLANWERK_WIKI`). See [GitHub Wiki](/reference/review-patterns#github-wiki). | `false` |
 | `--no-wiki` | Do not use the target repo's GitHub Wiki (overrides `--wiki`) | `false` |
 | `--wiki-ref` | Pin the wiki to a branch, tag, or commit (env: `PLANWERK_WIKI_REF`) | - |
+| `--brain` | Let the read-only session search the local mirror of the repository's issues, pull requests, and wiki with [`brain search`](#brain-search) (off by default: everyone who can comment on the repository wrote the mirrored text; env: `PLANWERK_BRAIN`). See [Sessions that search the mirror](#sessions-that-search-the-mirror). | `false` |
+| `--no-brain` | Do not let the sessions search the local mirror (overrides `--brain`) | `false` |
 | `--clear-cache` | Clear cached reviews and exit (honors `--clear-cache-scope`) | `false` |
 | `--clear-cache-scope` | Restrict `--clear-cache` to a single command (`review`, `propose`, `audit`, `glossary`, `elaborate`, `gap-analysis`, `review-prepared`) | - |
 | `--cache-stats` | Show cache size, age distribution, and per-command breakdown, then exit | `false` |
@@ -96,6 +98,24 @@ planwerk-agent owner/repo#123 > review.md
 | `--force` | With `--local`, skip the confirmation prompt when the working tree is dirty | `false` |
 | `--no-capture` | Skip the read-only capture pass that proposes new wiki review patterns from the review findings (only runs with `--wiki`; writes nothing) | `false` |
 | `--version` | Show version information and exit | `false` |
+
+### Sessions that search the mirror
+
+With `--brain`, the session that plans or judges may run
+[`brain search`](#brain-search) for the repository of the run: the review
+session of `review`, the audit session of `audit`, the analysis session of
+`propose`, the elaboration session of `elaborate` with its refinement turns, and
+the planning session of `implement` and of every `implement` run that `ship`
+drives. The other sessions of these commands, and the `fix` and `address`
+sessions, get no search. The run needs a mirror that a
+[`brain sync`](#brain-sync) finished, and it does not sync the mirror itself.
+Without one the run logs the warning
+`the brain is enabled, but this repository has no finished mirror; the sessions get no search`
+with the command to run, and continues as a run without `--brain`. A run also
+continues without the search, with a warning of its own, when the path of the
+`planwerk-agent` binary holds a character other than letters, digits, and
+`_ . / + @ -` (every Windows path does), and when the search index cannot be
+built.
 
 When the review uses `--wiki`, a read-only **capture pass** then proposes new
 project knowledge for the wiki: generalizable review findings become candidate
@@ -132,6 +152,8 @@ planwerk-agent propose --create-issues owner/repo
 | `--wiki` | Use the target repo's GitHub Wiki as a knowledge source (off by default — enabling trusts the wiki's unreviewed editors; review patterns + project memory; env: `PLANWERK_WIKI`). See [GitHub Wiki](/reference/review-patterns#github-wiki). | `false` |
 | `--no-wiki` | Do not use the target repo's GitHub Wiki (overrides `--wiki`) | `false` |
 | `--wiki-ref` | Pin the wiki to a branch, tag, or commit (env: `PLANWERK_WIKI_REF`) | - |
+| `--brain` | Let the read-only session search the local mirror of the repository's issues, pull requests, and wiki with [`brain search`](#brain-search) (off by default: everyone who can comment on the repository wrote the mirrored text; env: `PLANWERK_BRAIN`). See [Sessions that search the mirror](#sessions-that-search-the-mirror). | `false` |
+| `--no-brain` | Do not let the sessions search the local mirror (overrides `--brain`) | `false` |
 | `--cache-max-age` | Reject cached entries older than this duration (`0` disables the TTL) | `720h` |
 | `--format` | Output format (`markdown`, `json`, `issues`) | `markdown` |
 | `--max-patterns` | Max review patterns injected into the prompt (`<=0` disables truncation; env: `PLANWERK_MAX_PATTERNS`) | `0` (unlimited) |
@@ -161,6 +183,8 @@ planwerk-agent audit --format json owner/repo
 | `--wiki` | Use the target repo's GitHub Wiki as a knowledge source (off by default — enabling trusts the wiki's unreviewed editors; review patterns + project memory; env: `PLANWERK_WIKI`). See [GitHub Wiki](/reference/review-patterns#github-wiki). | `false` |
 | `--no-wiki` | Do not use the target repo's GitHub Wiki (overrides `--wiki`) | `false` |
 | `--wiki-ref` | Pin the wiki to a branch, tag, or commit (env: `PLANWERK_WIKI_REF`) | - |
+| `--brain` | Let the read-only session search the local mirror of the repository's issues, pull requests, and wiki with [`brain search`](#brain-search) (off by default: everyone who can comment on the repository wrote the mirrored text; env: `PLANWERK_BRAIN`). See [Sessions that search the mirror](#sessions-that-search-the-mirror). | `false` |
+| `--no-brain` | Do not let the sessions search the local mirror (overrides `--brain`) | `false` |
 | `--cache-max-age` | Reject cached entries older than this duration (`0` disables the TTL) | `720h` |
 | `--format` | Output format (`markdown`, `json`) | `markdown` |
 | `--max-patterns` | Max review patterns injected into the prompt (`<=0` disables truncation; env: `PLANWERK_MAX_PATTERNS`) | `0` (unlimited) |
@@ -398,6 +422,8 @@ planwerk-agent elaborate --wiki owner/repo#123
 | `--wiki` | Use the target repo's GitHub Wiki as a knowledge source (off by default — enabling trusts the wiki's unreviewed editors; review patterns + project memory; env: `PLANWERK_WIKI`). See [GitHub Wiki](/reference/review-patterns#github-wiki). | `false` |
 | `--no-wiki` | Do not use the target repo's GitHub Wiki (overrides `--wiki`) | `false` |
 | `--wiki-ref` | Pin the wiki to a branch, tag, or commit (env: `PLANWERK_WIKI_REF`) | - |
+| `--brain` | Let the read-only session search the local mirror of the repository's issues, pull requests, and wiki with [`brain search`](#brain-search) (off by default: everyone who can comment on the repository wrote the mirrored text; env: `PLANWERK_BRAIN`). See [Sessions that search the mirror](#sessions-that-search-the-mirror). | `false` |
+| `--no-brain` | Do not let the sessions search the local mirror (overrides `--brain`) | `false` |
 
 `--update-issue` and `--post-comment` are mutually exclusive.
 
@@ -588,6 +614,8 @@ planwerk-agent implement --wiki --capture-wiki --yes owner/repo#123
 | `--wiki` | Use the target repo's GitHub Wiki as a knowledge source (off by default — enabling trusts the wiki's unreviewed editors; review patterns flow into the plan step's pattern catalog + project memory into the planning prompt; env: `PLANWERK_WIKI`). See [GitHub Wiki](/reference/review-patterns#github-wiki). | `false` |
 | `--no-wiki` | Do not use the target repo's GitHub Wiki (overrides `--wiki`) | `false` |
 | `--wiki-ref` | Pin the wiki to a branch, tag, or commit (env: `PLANWERK_WIKI_REF`) | - |
+| `--brain` | Let the read-only session search the local mirror of the repository's issues, pull requests, and wiki with [`brain search`](#brain-search) (off by default: everyone who can comment on the repository wrote the mirrored text; env: `PLANWERK_BRAIN`). See [Sessions that search the mirror](#sessions-that-search-the-mirror). | `false` |
+| `--no-brain` | Do not let the sessions search the local mirror (overrides `--brain`) | `false` |
 | `--local` | Operate on the current working directory instead of cloning into a temp dir | `false` |
 | `--force` | With `--local`, skip the confirmation prompt when the working tree is dirty | `false` |
 | `--allow-unelaborated` | Implement an issue that has not been elaborated (no Acceptance Criteria) without asking first; without it such a run asks, and a non-TTY run refuses | `false` |
@@ -805,6 +833,8 @@ planwerk-agent ship --wiki --capture-wiki --yes owner/repo#123
 | `--wiki` | Use the target repo's GitHub Wiki as a knowledge source (off by default — enabling trusts the wiki's unreviewed editors; review patterns + project memory; env: `PLANWERK_WIKI`). See [GitHub Wiki](/reference/review-patterns#github-wiki). | `false` |
 | `--no-wiki` | Do not use the target repo's GitHub Wiki (overrides `--wiki`) | `false` |
 | `--wiki-ref` | Pin the wiki to a branch, tag, or commit (env: `PLANWERK_WIKI_REF`) | - |
+| `--brain` | Let the read-only session search the local mirror of the repository's issues, pull requests, and wiki with [`brain search`](#brain-search) (off by default: everyone who can comment on the repository wrote the mirrored text; env: `PLANWERK_BRAIN`). See [Sessions that search the mirror](#sessions-that-search-the-mirror). | `false` |
+| `--no-brain` | Do not let the sessions search the local mirror (overrides `--brain`) | `false` |
 | `--no-capture` | Skip the read-only capture pass in each per–Sub Issue implement run (only runs with `--wiki`; writes nothing) | `false` |
 | `--capture-wiki` | Push the accepted capture pages of each per–Sub Issue implement run to the wiki; `ship` never asks for confirmation, so the push also needs `--yes` (off by default; env: `PLANWERK_CAPTURE_WIKI`) | `false` |
 | `--yes` | Confirm the `--capture-wiki` write for the whole run | `false` |
@@ -895,8 +925,8 @@ prompts resolve no wiki and carry no memory.
 ## `brain`
 
 Read and build the project memory a repository keeps on its
-[GitHub Wiki](/reference/review-patterns#github-wiki), and mirror what the
-repository knows on GitHub to local files.
+[GitHub Wiki](/reference/review-patterns#github-wiki), mirror what the
+repository knows on GitHub to local files, and search that mirror.
 
 | Subcommand | Arguments | Description |
 |------------|-----------|-------------|
@@ -904,6 +934,8 @@ repository knows on GitHub to local files.
 | `brain memory` | `<repo-ref> <page>` | Print the memory page with that file name |
 | `brain bootstrap` | `<repo-ref>` | Build the memory from the repository's history |
 | `brain sync` | `<repo-ref>` | Mirror the issues, pull requests, commit list, and wiki to local markdown |
+| `brain search` | `<repo-ref> <query>` | Print the best-matching issues, pull requests, and wiki pages of the mirror |
+| `brain search` | `<repo-ref> --show <id>` | Print one block of the mirror in full |
 
 ### `brain memory`
 
@@ -1198,9 +1230,11 @@ The command never deletes a wiki page; [`sync --prune`](#sync) does.
 Keep a local mirror of a repository's knowledge on GitHub: one markdown file
 per issue and per pull request with the whole conversation, the commit list of
 the default branch, and a clone of the wiki. The command starts no Claude
-session, and no session is given the mirror. It is not the [`sync`](#sync)
-command, which reconciles the wiki's pages against the code. See
-[Mirror a repository](/how-to/mirror-a-repository) for the workflow.
+session, and no session is given the mirror directory. With `--brain`, a
+read-only session reaches the mirrored text only through
+[`brain search`](#brain-search), redacted. `brain sync` is not the
+[`sync`](#sync) command, which reconciles the wiki's pages against the code.
+See [Mirror a repository](/how-to/mirror-a-repository) for the workflow.
 
 ```bash
 planwerk-agent brain sync owner/repo           # fetch what changed since the last run
@@ -1231,6 +1265,7 @@ set) stops with an error: the mirror is never written to the temp directory.
 ├── issues/<number>.md
 ├── pulls/<number>.md
 ├── history.jsonl       # one line per commit of the default branch, oldest first
+├── index.sqlite        # the search index of brain search, created by its first run
 └── wiki/               # a full git clone of <repo>.wiki.git
 ```
 
@@ -1243,7 +1278,9 @@ than one hour old. The files hold the text as GitHub returns it, with any secret
 someone pasted into a comment.
 
 The mirror is a copy: deleting it loses nothing, and the next run builds it
-again. `--clear-cache` leaves it in place.
+again. `--clear-cache` leaves it in place. `index.sqlite` belongs to
+[`brain search`](#index-file). `brain sync` does not write it, and `--full`
+removes it with the rest of the directory.
 
 `state.json` has this form:
 
@@ -1371,6 +1408,206 @@ A `state.json` of another version stops the run with `unsupported mirror state
 version <n> in <file>; run brain sync --full to rebuild`. An item file of
 another format stops its reader with
 `unsupported mirror format <n>; run brain sync --full to rebuild`.
+
+### `brain search`
+
+Search the local mirror that [`brain sync`](#brain-sync) keeps: the issues and
+pull requests with their comments, reviews, review threads, and commit
+messages, and the pages of the wiki. The command ranks by keyword (BM25),
+prints the best matches first, starts no Claude session, and calls no GitHub
+API. See [Search the mirror](/how-to/search-the-mirror) for the workflow.
+
+```bash
+planwerk-agent brain search owner/repo one cursor
+planwerk-agent brain search owner/repo '"items cursor" curs*' --type pull --state merged
+planwerk-agent brain search owner/repo --show issues/186.md:4
+```
+
+The first argument is the repository. Every argument after it is part of the
+query, joined with one space. An argument that starts with `-` is read as a
+flag. To search for such a word, put `--` before the query and every flag
+before the `--`: `brain search owner/repo --type pull -- --no-cache`.
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--type` | Keep only hits of this type: `issue`, `pull`, or `wiki`. Repeatable | - |
+| `--state` | Keep only items in this state: `open`, `closed`, or `merged` | - |
+| `--label` | Keep only items that carry this label, compared without case. Repeatable; every given label must match | - |
+| `--limit` | The largest number of hits, `1` to `100` | `10` |
+| `--json` | Print JSON | `false` |
+| `--show` | Print the block with this id in full, in place of a search | - |
+
+A wiki page has no state and no label, so `--state` and `--label` leave every
+wiki page out. The command has no wiki flag and does not load
+`.planwerk/config.yaml`: it runs the same beside a file with a key this release
+does not know, as it does for a session in the checkout under review.
+
+The command checks its arguments before it reads the mirror:
+
+| Arguments | Error |
+|-----------|-------|
+| `--show` with a query | `--show takes no query` |
+| `--show` with `--type`, `--state`, `--label`, or `--limit` | `--show takes no filter` |
+| Neither a query nor `--show` | `a query is required, or --show <id>` |
+| Another `--type` | `--type must be one of issue, pull, wiki` |
+| Another `--state` | `--state must be one of open, closed, merged` |
+| A `--limit` below 1 or above 100 | `--limit must be between 1 and 100` |
+| An unknown flag, or a flag value of the wrong kind | `invalid flag or flag value; see brain search --help` |
+
+No error of the command repeats an argument. A session runs the command through
+a shell, which can expand a variable or a file name into an argument, and the
+session reads the error.
+
+#### Query
+
+| Form | Matches |
+|------|---------|
+| `cursor` | The word, whole, without regard to case and to diacritics: `anderungen` finds `Änderungen` |
+| `curs*` | Every word that begins with `curs` |
+| `"items cursor"` | The two words next to each other, in this order |
+
+A block matches when it holds at least one of the terms. A block that holds
+more of them, and rarer ones, ranks higher. A term without a letter or a digit
+is dropped, and a query without a term stops with
+`the query holds no word to search for`. Every other character is searched for
+as text: the query has no operators, so `AND`, `NOT`, and parentheses are words
+like any other. Words are not stemmed (`cursor` does not find `cursors`; use
+`cursor*`), and `ß` is not folded to `ss`.
+
+#### Blocks
+
+The index holds one block per text of a mirrored file. A hit is one issue, pull
+request, or wiki page with the block of it that ranks best, so a long thread
+appears once.
+
+| Kind | Text | Author, association, URL, time |
+|------|------|--------------------------------|
+| `title` | The item's title | The item's |
+| `body` | The item's body | The item's |
+| `comment` | A conversation comment | The comment's |
+| `review` | A review's summary | The review's, with the time it was submitted |
+| `thread` | The path and the diff hunk of a review thread | None |
+| `thread-comment` | One comment of a review thread | The comment's |
+| `commit` | The headline and the body of a commit of a pull request | Only the commit time |
+| `section` | One section of a wiki page, cut before every line that starts with `# ` or `## ` | None |
+
+An empty text is no block. The blocks of a file are numbered from 1 in the order
+of the file, and the id of a block is `<file>:<number>`, with the file relative
+to the mirror directory: `issues/186.md:4`, `wiki/memory/one-cursor.md:2`. The
+title of a wiki page is its first `# ` heading, or its path in the clone when it
+has none. `history.jsonl` is not indexed: the commit messages of a pull request
+are indexed with the pull request.
+
+#### Output of a search
+
+```text
+Search of acme/widgets, mirror synced 2026-10-02T09:00:00Z: 2 hits
+
+1. issue #186 [closed] Add a brain sync subcommand
+   labels: brain, feature
+   comment by alice (MEMBER) on 2026-10-01T08:00:00Z, block 4 of 17
+   https://github.com/acme/widgets/issues/186#issuecomment-1
+   id: issues/186.md:4
+   ...one cursor for issues and pull requests, because updated_at rises...
+
+2. wiki memory/one-cursor.md: One cursor
+   section, block 2 of 3
+   id: wiki/memory/one-cursor.md:2
+   Items share one cursor...
+```
+
+- The first line names the repository, the end of the last finished sync, and
+  the number of hits (`1 hit`, `0 hits`). A search without a hit prints only
+  this line and exits 0.
+- The head of an issue or a pull request is its type, number, state, and title.
+  The head of a wiki page is its path in the clone and its title.
+- The `labels:` line is printed for an item with labels, in lowercase.
+- The next line is the kind of the block, its author, the author's association,
+  and its time where the block has them, and its position among the blocks of
+  its file.
+- The URL is the block's, or the item's when the block has none. A wiki page has
+  none.
+- The last line is an excerpt of at most 40 words on one line, with `...` where
+  the block's text goes on.
+
+The output never holds the query, and control characters other than newline and
+tab are dropped from it.
+
+With `--json`, the command prints one object on one line:
+
+```json
+{"repo":"acme/widgets","synced_at":"2026-10-02T09:00:00Z","hits":[{"id":"issues/186.md:4","file":"issues/186.md","type":"issue","number":186,"title":"Add a brain sync subcommand","state":"closed","labels":["brain","feature"],"url":"https://github.com/acme/widgets/issues/186","updated_at":"2026-10-01T09:00:00Z","block":{"ordinal":4,"count":17,"kind":"comment","author":"alice","association":"MEMBER","url":"https://github.com/acme/widgets/issues/186#issuecomment-1","created_at":"2026-10-01T08:00:00Z"},"excerpt":"...one cursor for issues and pull requests, because updated_at rises...","score":7.4}]}
+```
+
+`hits` is an empty list for a search without a hit, and `labels` an empty list
+for an item without labels. `score` is higher for a better hit. It compares the
+hits of one search and nothing else.
+
+#### Output of `--show`
+
+`--show <id>` prints one block: the head of its item, the line that describes
+the block, its URL, a blank line, a line that counts the lines of the text, and
+the whole text with `| ` before every line.
+
+```text
+issue #186 [closed] Add a brain sync subcommand
+comment by alice (MEMBER) on 2026-10-01T08:00:00Z, block 4 of 17
+https://github.com/acme/widgets/issues/186#issuecomment-1
+
+text, 2 lines, each after "| ":
+| We keep one cursor for issues and pull requests, because updated_at rises
+| when a comment is edited and when a review is submitted.
+```
+
+The text is what its author wrote, and it can hold lines that read like the head
+of another block. A line that starts with `| ` is the block's text, and every
+other line is the command's. Line feeds at the end of the text are not printed.
+
+With `--json`, the object holds `block` in place of `hits`: the fields of a hit
+with `text`, unchanged and without the prefix, and without `excerpt` and
+`score`. An id of another form stops with
+`invalid block id: want <file>:<number>, as a hit prints it`, and an id that
+names no block with `no such block in the mirror`.
+
+#### Redaction
+
+The mirror files hold GitHub's text unchanged. The index holds the text after
+redaction, with the secret patterns `review` applies to a pull request's title,
+body, and commit log. An excerpt, a block, and a title print a marker such as
+`[REDACTED:github-token]` in place of a recognized secret, and a search for the
+secret finds nothing. The text is still what everyone who can comment on the
+repository wrote.
+
+#### Index file
+
+The index is `index.sqlite` in the mirror directory, a SQLite database with an
+FTS5 table, created with mode `0600` by the first search or the first run with
+`--brain`. Every run compares
+the files of the mirror with the index by size and modification time before it
+searches, indexes the new and changed ones, and removes the ones that are gone.
+A wiki page is indexed when it is a regular file whose name ends in `.md`,
+outside `.git`, of at most 1 MiB, with no control character in its path. A file
+that cannot be parsed is skipped with a warning and tried again by the next run.
+
+The index is rebuilt from the files when it is missing, when it is no SQLite
+database or a damaged one, when a release changed the index format, and when a
+release changed the redaction patterns. Deleting the file loses nothing, and
+`brain sync --full` removes it with the mirror.
+
+Two runs can use the index at once. A run waits up to 10 seconds for a run that
+is writing it, and then stops with an error that starts with
+`opening the search index` or `updating the search index`. It leaves the file
+in place.
+
+#### When the command stops
+
+The command never syncs. It reads the mirror as the last `brain sync` left it,
+and it stops when there is none to read:
+
+| Condition | Error |
+|-----------|-------|
+| The repository has no mirror | `no mirror of <repo> at <dir>; run "planwerk-agent brain sync <repo>" first` |
+| No sync of the mirror has finished | `the mirror of <repo> at <dir> has never finished a sync; run "planwerk-agent brain sync <repo>" again` |
 
 ## `cache`
 

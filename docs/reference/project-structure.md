@@ -27,7 +27,8 @@ planwerk-agent/
 │   │   ├── docs.go             # Discover decision documents and cut them into chunks
 │   │   ├── state.go            # .planwerk-brain-sync: state.json, page files, the wiki refresh
 │   │   ├── source.go           # Source seam, APISource, a unit's items, the working-set index
-│   │   └── mirror_source.go    # MirrorSource: the history read from the local mirror (brain bootstrap --source mirror)
+│   │   ├── mirror_source.go    # MirrorSource: the history read from the local mirror (brain bootstrap --source mirror)
+│   │   └── search.go           # brain search: the run and its text and JSON output
 │   ├── cache/
 │   │   ├── cache.go            # SHA-based caching (review + propose + audit)
 │   │   └── cache_test.go
@@ -141,6 +142,10 @@ planwerk-agent/
 │   │   ├── reviewer_test.go
 │   │   ├── merge.go            # Merge results from multiple review passes
 │   │   └── merge_test.go
+│   ├── search/                 # brain search: the full-text index of a mirror directory
+│   │   ├── index.go            # index.sqlite: the schema, the version check, the refresh, the block cutting (Open)
+│   │   ├── query.go            # The ranked query and the block read (Search, Block)
+│   │   └── surface.go          # Surface: the command and the permission rule a run hands a read-only session
 │   └── todocheck/
 │       ├── todocheck.go        # Load TODOS.md for cross-reference
 │       └── todocheck_test.go

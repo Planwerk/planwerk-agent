@@ -55,6 +55,9 @@ wiki:                          # GitHub Wiki knowledge source (review + audit + 
 
 capture:                       # capture write-back gate (implement + ship + review + audit)
   wiki: true                   # push accepted capture pages to the wiki (default: off — propose-only)
+
+brain:                         # search of the local mirror by the read-only sessions (review + audit + propose + elaborate + implement + ship)
+  enabled: true                # let the sessions run brain search (default: off); false is the same as --no-brain
 ```
 
 The `wiki:` section is top-level (not per-command) because the same wiki backs
@@ -87,6 +90,16 @@ overridden by the `--capture-wiki` flag and overrides `PLANWERK_CAPTURE_WIKI`
 the confirmation prompt, so it pushes only when the write-back is enabled and
 `--yes` is given. Enabled without `--yes`, it logs one warning at start and
 every run stays propose-only.
+
+The `brain:` section has one key. `brain.enabled` lets the read-only sessions
+of `review`, `audit`, `propose`, `elaborate`, and `implement`, and of the
+`implement` runs `ship` drives, search the local mirror of the repository
+([Sessions that search the mirror](/reference/cli#sessions-that-search-the-mirror)).
+It is resolved in this order: `--no-brain`, `--brain`, `brain.enabled`,
+`PLANWERK_BRAIN`, off. The [`brain search`](/reference/cli#brain-search) command
+itself does not load the file: it has no opt-in, nothing moves the mirror or its
+index, and a session runs it in the checkout under review, whose file must not
+be able to stop the search.
 
 All keys are optional. Flags beyond `--min-severity`, `--max-patterns`,
 `--max-findings`, `--format`, and `--patterns` (the high-churn ones) remain

@@ -29,6 +29,12 @@ the cache invalidates automatically when that state changes:
   loaded while its commit could not be resolved has no key that covers the
   wiki, so it neither reads nor writes the cache.
 
+A `review`, `audit`, `propose`, or `elaborate` run whose session may search the
+local mirror (`--brain`) carries the mirror's revision in its key, the items
+cursor and the wiki commit, because the result came from a session that could
+search the mirror in that state. A run without the search has no such part in
+its key.
+
 Entries are written under the user cache directory. Both `propose` and `audit`
 fetch the default-branch HEAD SHA via `git ls-remote` before cloning, so a hit
 avoids the clone.
@@ -37,7 +43,9 @@ The same directory holds one thing that is not a cache entry: the mirror that
 [`brain sync`](/reference/cli#brain-sync) keeps of a repository's issues, pull
 requests, commit list, and wiki, under `brain/<owner>/<name>`. It has no key
 and no age. `--clear-cache` removes cache entries only and leaves the mirror;
-`brain sync --full` rebuilds it, and deleting the directory removes it.
+`brain sync --full` rebuilds it, and deleting the directory removes it. The
+search index of [`brain search`](/reference/cli#index-file) is a file in that
+directory.
 
 ## What every key is scoped to
 
