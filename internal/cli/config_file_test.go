@@ -159,6 +159,40 @@ func TestLoadFileConfigCaptureUnknownKey(t *testing.T) {
 	}
 }
 
+func TestLoadFileConfigBrain(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("brain:\n  enabled: true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, present, err := LoadFileConfig(path)
+	if err != nil || !present {
+		t.Fatalf("LoadFileConfig = present %v, %v, want a loaded file", present, err)
+	}
+	if cfg.Brain.Enabled == nil || !*cfg.Brain.Enabled {
+		t.Fatalf("brain.enabled = %v, want explicit true", cfg.Brain.Enabled)
+	}
+
+	// Without the section the pointer stays nil, so the resolver can tell
+	// "absent" from an explicit false.
+	if err := os.WriteFile(path, []byte("wiki:\n  enabled: true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, _, err = LoadFileConfig(path)
+	if err != nil || cfg.Brain.Enabled != nil {
+		t.Fatalf("brain.enabled = %v, %v, want nil when the section is absent", cfg.Brain.Enabled, err)
+	}
+}
+
+func TestLoadFileConfigBrainUnknownKey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("brain:\n  enable: true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := LoadFileConfig(path); err == nil {
+		t.Fatalf("expected error for the unknown brain key \"enable\", got nil")
+	}
+}
+
 func TestLoadFileConfigWikiUnknownKey(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(path, []byte("wiki:\n  bogus-field: 1\n"), 0o600); err != nil {

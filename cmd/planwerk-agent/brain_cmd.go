@@ -116,7 +116,8 @@ a deleted or transferred issue or pull request leaves it on --full.
 
 The files hold the text as GitHub returns it, with every secret someone
 pasted into a comment. The command starts no Claude session, and no session is
-given the mirror.
+given the mirror directory. With --brain, a read-only session reaches the
+mirrored text only through "brain search", redacted.
 
 This is not the "sync" command, which reconciles the wiki's knowledge pages
 with the code.

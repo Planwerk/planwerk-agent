@@ -29,6 +29,7 @@ func newShipCmd(deps *runtimeDeps) *cobra.Command {
 	var implOpts implement.Options
 	var fixOpts fix.Options
 	var wiki wikiFlags
+	var brain brainFlags
 	var planModel string
 	var planEffort string
 	var implementModel string
@@ -103,6 +104,9 @@ or short form (owner/repo#123).`,
 			implOpts.MaxPatterns = maxPatterns
 			implOpts = shipWikiAndCapture(implOpts, wiki.resolve(cmd.Flags(), deps.fileCfg.Wiki),
 				resolveCaptureWiki(implOpts.CaptureWiki, cmd.Flags().Changed("capture-wiki"), deps.fileCfg.Capture))
+			// Every implement run plans with the search. The fix runs get none:
+			// shipFixOptions copies no brain setting.
+			implOpts.Brain = brain.resolve(cmd.Flags(), deps.fileCfg.Brain)
 
 			// The per–Sub Issue implement run plans on the dedicated planning
 			// model/effort — and implements on its optional model override — so
@@ -155,6 +159,7 @@ or short form (owner/repo#123).`,
 	shipFlags.BoolVar(&implOpts.NoLocalPatterns, "no-local-patterns", false, "Ignore local patterns from the tool")
 	shipFlags.IntVar(&implOpts.MaxPatterns, "max-patterns", patterns.DefaultMaxPatternsInPrompt, "Max review patterns injected into the prompt (<=0 disables truncation, env: "+envMaxPatterns+")")
 	wiki.register(shipFlags)
+	brain.register(shipFlags)
 	shipFlags.BoolVar(&implOpts.NoCapture, "no-capture", false, "Skip the read-only capture pass in each per–Sub Issue implement run (only runs with --wiki; writes nothing)")
 	shipFlags.BoolVar(&implOpts.CaptureWiki, "capture-wiki", false, "Push the accepted capture pages of each per–Sub Issue implement run to the wiki; ship never asks for confirmation, so the push also needs --yes (off by default; env: "+envCaptureWiki+")")
 	shipFlags.BoolVar(&implOpts.Yes, "yes", false, "Confirm the --capture-wiki write for the whole run")

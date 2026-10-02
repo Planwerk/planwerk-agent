@@ -22,6 +22,7 @@ func newAuditCmd(deps *runtimeDeps) *cobra.Command {
 	var auditIssueMinSeverity string
 	var wikiEnable, wikiDisable bool
 	var wikiRef string
+	var brain brainFlags
 
 	auditCmd := &cobra.Command{
 		Use:   "audit <repo-ref>",
@@ -103,6 +104,7 @@ or short form (owner/repo).`,
 			opts.Version = deps.version
 			opts.Remote = deps.remoteOpts
 			opts.Wiki = resolveWikiOptions(wikiEnable, wikiDisable, cmd.Flags().Changed("wiki"), cmd.Flags().Changed("no-wiki"), wikiRef, cmd.Flags().Changed("wiki-ref"), deps.fileCfg.Wiki)
+			opts.Brain = brain.resolve(cmd.Flags(), deps.fileCfg.Brain)
 			return audit.Run(os.Stdout, opts, deps.claude.Audit, deps.claude)
 		},
 	}
@@ -127,6 +129,7 @@ or short form (owner/repo).`,
 	auditFlags.BoolVar(&auditCfg.CaptureWiki, "capture-wiki", false, "Push the accepted capture pages to the wiki instead of only proposing them (off by default — a normal run is propose-only; confirms first, refuses a non-TTY run without --yes; env: "+envCaptureWiki+")")
 	auditFlags.BoolVar(&auditCfg.Yes, "yes", false, "Skip the --capture-wiki write confirmation prompt (for a non-interactive write)")
 	addWikiFlags(auditFlags, &wikiEnable, &wikiDisable, &wikiRef)
+	brain.register(auditFlags)
 
 	return auditCmd
 }

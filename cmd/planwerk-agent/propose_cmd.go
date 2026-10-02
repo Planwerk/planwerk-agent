@@ -18,6 +18,7 @@ func newProposeCmd(deps *runtimeDeps) *cobra.Command {
 	var proposeCfg propose.Options
 	var wikiEnable, wikiDisable bool
 	var wikiRef string
+	var brain brainFlags
 
 	proposeCmd := &cobra.Command{
 		Use:   "propose <repo-ref>",
@@ -53,6 +54,7 @@ or short form (owner/repo).`,
 			opts.Version = deps.version
 			opts.Remote = deps.remoteOpts
 			opts.Wiki = resolveWikiOptions(wikiEnable, wikiDisable, cmd.Flags().Changed("wiki"), cmd.Flags().Changed("no-wiki"), wikiRef, cmd.Flags().Changed("wiki-ref"), deps.fileCfg.Wiki)
+			opts.Brain = brain.resolve(cmd.Flags(), deps.fileCfg.Brain)
 			return propose.Run(os.Stdout, opts, deps.claude.Propose)
 		},
 	}
@@ -70,6 +72,7 @@ or short form (owner/repo).`,
 	proposeFlags.BoolVar(&proposeCfg.Local, "local", false, "Operate on the current working directory instead of cloning into a temp dir")
 	proposeFlags.BoolVar(&proposeCfg.Force, "force", false, "With --local, skip the confirmation prompt when the working tree is dirty")
 	addWikiFlags(proposeFlags, &wikiEnable, &wikiDisable, &wikiRef)
+	brain.register(proposeFlags)
 
 	return proposeCmd
 }

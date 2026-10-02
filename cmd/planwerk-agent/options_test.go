@@ -69,3 +69,39 @@ func TestCommandsRegisterTheWikiFlags(t *testing.T) {
 		t.Error("rebase reads no project memory and must not expose --wiki")
 	}
 }
+
+// TestCommandsRegisterTheBrainFlags pins the search opt-in on the commands
+// whose read-only sessions plan and judge, and its absence on the commands
+// whose sessions edit, commit, and push.
+func TestCommandsRegisterTheBrainFlags(t *testing.T) {
+	deps := &runtimeDeps{}
+	searchers := map[string]*cobra.Command{
+		"review":    newRootCmd(deps),
+		"audit":     newAuditCmd(deps),
+		"propose":   newProposeCmd(deps),
+		"implement": newImplementCmd(deps),
+		"elaborate": newElaborateCmd(deps),
+		"ship":      newShipCmd(deps),
+	}
+	for name, cmd := range searchers {
+		for _, flag := range []string{"brain", "no-brain"} {
+			// The flags are the command's own, not persistent ones a
+			// subcommand would inherit.
+			if cmd.Flags().Lookup(flag) == nil || cmd.PersistentFlags().Lookup(flag) != nil {
+				t.Errorf("%s must expose --%s as a flag of its own", name, flag)
+			}
+		}
+	}
+	others := map[string]*cobra.Command{
+		"fix":     newFixCmd(deps),
+		"address": newAddressCmd(deps),
+		"rebase":  newRebaseCmd(deps),
+	}
+	for name, cmd := range others {
+		for _, flag := range []string{"brain", "no-brain"} {
+			if cmd.Flags().Lookup(flag) != nil || cmd.InheritedFlags().Lookup(flag) != nil {
+				t.Errorf("%s must not expose --%s: its session gets no search", name, flag)
+			}
+		}
+	}
+}

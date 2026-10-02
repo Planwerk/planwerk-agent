@@ -27,6 +27,7 @@ func newImplementCmd(deps *runtimeDeps) *cobra.Command {
 	var implementWorkerEffort string
 	var wikiEnable, wikiDisable bool
 	var wikiRef string
+	var brain brainFlags
 
 	implementCmd := &cobra.Command{
 		Use:   "implement <issue-ref>",
@@ -208,6 +209,7 @@ or short form (owner/repo#123).`,
 			opts.WorkerModel = resolveString(implementWorkerModel, cmd.Flags().Changed("implement-worker-model"), envImplementWorkerModel, "")
 			opts.WorkerEffort = resolveString(implementWorkerEffort, cmd.Flags().Changed("implement-worker-effort"), envImplementWorkerEffort, claude.DefaultImplementWorkerEffort)
 			opts.Wiki = resolveWikiOptions(wikiEnable, wikiDisable, cmd.Flags().Changed("wiki"), cmd.Flags().Changed("no-wiki"), wikiRef, cmd.Flags().Changed("wiki-ref"), deps.fileCfg.Wiki)
+			opts.Brain = brain.resolve(cmd.Flags(), deps.fileCfg.Brain)
 			if implementCfg.PrintBarePrompt {
 				return implement.PrintBarePrompt(cmd.OutOrStdout(), opts, claude.BuildBareImplementPrompt)
 			}
@@ -246,6 +248,7 @@ or short form (owner/repo#123).`,
 	implementFlags.BoolVar(&implementCfg.AllowUnelaborated, "allow-unelaborated", false, "Implement an issue that has not been elaborated (no Acceptance Criteria) without asking first; without it such a run asks, and a non-TTY run refuses")
 	implementFlags.BoolVar(&implementCfg.NoResume, "no-resume", false, "Start a fresh feature branch instead of resuming the commits an earlier aborted run for this issue left on its branch; also disables pushing partial progress after an abort")
 	addWikiFlags(implementFlags, &wikiEnable, &wikiDisable, &wikiRef)
+	brain.register(implementFlags)
 
 	return implementCmd
 }

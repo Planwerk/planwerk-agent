@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/planwerk/planwerk-agent/internal/cli"
 	"github.com/planwerk/planwerk-agent/internal/fix"
 	"github.com/planwerk/planwerk-agent/internal/implement"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
@@ -70,6 +71,43 @@ func TestShipCmd_RegistersWikiAndCaptureFlags(t *testing.T) {
 		if cmd.Flags().Lookup(name) == nil {
 			t.Errorf("ship must expose --%s", name)
 		}
+	}
+}
+
+// TestShipCmd_BrainFlagsResolveIntoTheImplementOptions follows --brain from the
+// flag set of the ship command to the options of an implement run: the flags
+// ship registered resolve to the setting, and shipImplementOptions carries the
+// setting into every run. shipFixOptions has no such setting to carry: a fix
+// run gets no search.
+func TestShipCmd_BrainFlagsResolveIntoTheImplementOptions(t *testing.T) {
+	t.Setenv(envBrain, "")
+	for _, tc := range []struct {
+		name string
+		args []string
+		want bool
+	}{
+		{"--brain", []string{"--brain"}, true},
+		{"--brain with --no-brain", []string{"--brain", "--no-brain"}, false},
+		{"no flag", nil, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			flags := newShipCmd(&runtimeDeps{}).Flags()
+			if err := flags.Parse(tc.args); err != nil {
+				t.Fatalf("parsing %v: %v", tc.args, err)
+			}
+			enable, err := flags.GetBool("brain")
+			if err != nil {
+				t.Fatal(err)
+			}
+			disable, err := flags.GetBool("no-brain")
+			if err != nil {
+				t.Fatal(err)
+			}
+			base := implement.Options{Brain: resolveBrain(enable, disable, flags.Changed("brain"), flags.Changed("no-brain"), cli.BrainFileConfig{})}
+			if got := shipImplementOptions(base, &runtimeDeps{}, "acme/widgets#7", "", ""); got.Brain != tc.want {
+				t.Errorf("implement options carry Brain = %v, want %v", got.Brain, tc.want)
+			}
+		})
 	}
 }
 
@@ -161,10 +199,17 @@ func TestShipImplementOptions(t *testing.T) {
 		Yes:         true,
 		NoSimplify:  true,
 		PatternDirs: []string{"extra"},
+		Brain:       true,
 	}
 	deps := &runtimeDeps{version: "v9", remoteOpts: patterns.RemoteOptions{TTL: time.Hour}}
 
 	got := shipImplementOptions(base, deps, "acme/widgets#7", "opus", "high")
+
+	// The brain setting ship resolved from --brain reaches every implement run
+	// it drives.
+	if !got.Brain {
+		t.Error("a ship run with the brain on must plan every implement run with the search")
+	}
 
 	if got.Wiki != base.Wiki || !got.CaptureWiki || !got.NoCapture || !got.Yes {
 		t.Errorf("wiki and capture settings = %+v, %v, %v, %v; want them unchanged from the base", got.Wiki, got.CaptureWiki, got.NoCapture, got.Yes)
@@ -188,8 +233,8 @@ func TestShipImplementOptions(t *testing.T) {
 // wiki stays off.
 func TestShipImplementOptions_ZeroBase(t *testing.T) {
 	got := shipImplementOptions(implement.Options{}, &runtimeDeps{}, "acme/widgets#7", "", "")
-	if got.Wiki.Enabled || got.CaptureWiki || got.NoCapture || got.Yes {
-		t.Errorf("a zero base must leave the wiki and capture settings off: %+v", got)
+	if got.Wiki.Enabled || got.CaptureWiki || got.NoCapture || got.Yes || got.Brain {
+		t.Errorf("a zero base must leave the wiki, capture, and brain settings off: %+v", got)
 	}
 	if !got.AllowUnelaborated || got.IssueRef != "acme/widgets#7" {
 		t.Errorf("AllowUnelaborated, IssueRef = %v, %q; want true and the given reference", got.AllowUnelaborated, got.IssueRef)

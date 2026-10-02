@@ -47,6 +47,31 @@ func (f *wikiFlags) resolve(flags *pflag.FlagSet, fc cli.WikiFileConfig) pattern
 	return resolveWikiOptions(f.enable, f.disable, flags.Changed("wiki"), flags.Changed("no-wiki"), f.ref, flags.Changed("wiki-ref"), fc)
 }
 
+// brainFlags holds the --brain / --no-brain values of one command, so a command
+// registers and resolves the two flags without naming them. The review, audit,
+// propose, implement, elaborate, and ship commands share it, so the flag names,
+// the default (off), and the help text cannot drift between them. fix and
+// address register neither flag: their sessions edit, commit, and push, and
+// get no search.
+type brainFlags struct {
+	enable, disable bool
+}
+
+// register binds the two brain flags onto flags. The search is off by default
+// and must be opted into: the mirror holds what everyone who can comment on
+// the repository wrote, and enabling it lets that text reach a session.
+func (f *brainFlags) register(flags *pflag.FlagSet) {
+	flags.BoolVar(&f.enable, "brain", false, "Let the read-only sessions search the local mirror of the repository's issues, pull requests, and wiki (see brain sync; off by default: everyone who can comment on the repository wrote the mirrored text; env: "+envBrain+")")
+	flags.BoolVar(&f.disable, "no-brain", false, "Do not let the sessions search the local mirror (overrides --brain)")
+}
+
+// resolve returns whether the search is enabled for the flag set register
+// bound the flags onto, with fc as the config file's brain section
+// (resolveBrain).
+func (f *brainFlags) resolve(flags *pflag.FlagSet, fc cli.BrainFileConfig) bool {
+	return resolveBrain(f.enable, f.disable, flags.Changed("brain"), flags.Changed("no-brain"), fc)
+}
+
 // envMaxPatterns is the environment variable used to override the default
 // maximum number of review patterns injected into the prompt.
 const envMaxPatterns = "PLANWERK_MAX_PATTERNS"
@@ -63,6 +88,12 @@ const envWiki = "PLANWERK_WIKI"
 // envWikiRef pins the wiki to a branch, tag, or commit. The --wiki-ref CLI flag
 // takes precedence when explicitly set.
 const envWikiRef = "PLANWERK_WIKI_REF"
+
+// envBrain toggles the search of the local mirror for the read-only sessions.
+// Any truthy value (1, true, yes, on) enables it and any falsy value (0, false,
+// no, off) disables it; the --brain/--no-brain CLI flags and the config file
+// take precedence.
+const envBrain = "PLANWERK_BRAIN"
 
 // envCaptureWiki gates the capture write-back shared by the implement, review,
 // audit, and ship commands: whether the accepted proposal pages are pushed to
@@ -319,6 +350,24 @@ func resolveWikiOptions(enable, disable, enableChanged, disableChanged bool, ref
 		opts.Repo = *fc.Repo
 	}
 	return opts
+}
+
+// resolveBrain returns whether a run lets its read-only sessions search the
+// local mirror. Precedence (highest first): --no-brain (overrides --brain), an
+// explicit --brain, the config file's brain.enabled, PLANWERK_BRAIN, then the
+// default-off behavior. It is the order of the Enabled branch of
+// resolveWikiOptions.
+func resolveBrain(enable, disable, enableChanged, disableChanged bool, fc cli.BrainFileConfig) bool {
+	switch {
+	case disableChanged && disable:
+		return false
+	case enableChanged:
+		return enable
+	case fc.Enabled != nil:
+		return *fc.Enabled
+	}
+	v, _ := lookupBoolEnv(envBrain)
+	return v
 }
 
 // resolveCaptureWiki returns whether a command's capture pass should push the
