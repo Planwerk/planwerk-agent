@@ -3,7 +3,8 @@
 `brain sync` copies what a repository knows on GitHub to your machine: every
 issue and pull request as one Markdown file with its whole conversation, the
 commit list of the default branch, and a clone of the wiki. You can then search
-the project's decisions with `grep`, offline.
+the project's decisions offline, with [`brain search`](/how-to/search-the-mirror)
+or with `grep`.
 
 This guide is for a maintainer with `gh` authenticated. The command starts no
 Claude session. It is not the [`sync`](/how-to/sync-the-wiki) command, which
@@ -45,6 +46,10 @@ appends the new commits, and clones the wiki again. A run right after another
 one prints `items: 1 listed, 0 fetched`.
 
 ## Search the files
+
+For a keyword search that ranks its results, run `brain search`: see
+[Search the mirror](/how-to/search-the-mirror). The files are also plain
+Markdown, which you can search with the tools you know.
 
 The files are in the directory the first output line names:
 

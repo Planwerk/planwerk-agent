@@ -113,6 +113,10 @@ export default defineConfig({
               link: '/how-to/mirror-a-repository',
             },
             {
+              text: 'Search the mirror',
+              link: '/how-to/search-the-mirror',
+            },
+            {
               text: 'Extract review patterns',
               link: '/how-to/extract-review-patterns',
             },
