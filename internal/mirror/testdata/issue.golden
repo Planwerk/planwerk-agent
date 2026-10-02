@@ -1,0 +1,41 @@
+---
+format: 1
+kind: issue
+repo: acme/widgets
+number: 7
+id: I_kwDOA7
+url: https://github.com/acme/widgets/issues/7
+title: Pin the base image
+state: closed
+state_reason: completed
+author: octocat
+author_is_bot: false
+author_association: MEMBER
+labels:
+    - bug
+    - docker
+created_at: "2026-03-01T09:00:00Z"
+updated_at: "2026-03-03T10:00:00Z"
+closed_at: "2026-03-03T10:00:00Z"
+merged_at: ""
+base_branch: ""
+closed_by_prs:
+    - 9
+closer_commit: ""
+closes_issues: []
+---
+
+# Pin the base image
+
+<!-- planwerk-agent:mirror body {"lines":3} -->
+The tag moved twice last month.
+
+Pin it to a digest.
+
+<!-- planwerk-agent:mirror comment {"id":"IC_x","url":"https://github.com/acme/widgets/issues/7#issuecomment-1","author":"octocat","association":"MEMBER","created":"2026-03-01T10:00:00Z","updated":"2026-03-01T10:05:00Z","lines":2} -->
+First line of the comment.
+Second line.
+
+<!-- planwerk-agent:mirror comment {"id":"IC_y","url":"https://github.com/acme/widgets/issues/7#issuecomment-2","author":"passerby","association":"NONE","created":"2026-03-02T10:00:00Z","updated":"2026-03-02T10:00:00Z","lines":1} -->
+Same here.
+

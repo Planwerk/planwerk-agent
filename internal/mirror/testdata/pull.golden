@@ -1,0 +1,57 @@
+---
+format: 1
+kind: pull
+repo: acme/widgets
+number: 9
+id: PR_kwDOA9
+url: https://github.com/acme/widgets/pull/9
+title: Pin the base image to a digest
+state: merged
+state_reason: ""
+author: renovate
+author_is_bot: true
+author_association: NONE
+labels: []
+created_at: "2026-03-02T09:00:00Z"
+updated_at: "2026-03-03T10:00:00Z"
+closed_at: "2026-03-03T10:00:00Z"
+merged_at: "2026-03-03T10:00:00Z"
+base_branch: main
+closed_by_prs: []
+closer_commit: ""
+closes_issues:
+    - 7
+---
+
+# Pin the base image to a digest
+
+<!-- planwerk-agent:mirror body {"lines":1} -->
+Closes #7
+
+<!-- planwerk-agent:mirror comment {"id":"IC_z","url":"https://github.com/acme/widgets/pull/9#issuecomment-3","author":"octocat","association":"MEMBER","created":"2026-03-02T10:00:00Z","updated":"2026-03-02T10:00:00Z","lines":1} -->
+Thanks.
+
+<!-- planwerk-agent:mirror review {"id":"PRR_a","url":"https://github.com/acme/widgets/pull/9#pullrequestreview-1","author":"octocat","association":"MEMBER","state":"CHANGES_REQUESTED","submitted":"2026-03-02T11:00:00Z","updated":"2026-03-02T11:30:00Z","lines":1} -->
+Pin the digest, not the tag.
+
+<!-- planwerk-agent:mirror review {"id":"PRR_b","url":"https://github.com/acme/widgets/pull/9#pullrequestreview-2","author":"octocat","association":"MEMBER","state":"APPROVED","submitted":"2026-03-03T09:00:00Z","updated":"2026-03-03T09:00:00Z","lines":0} -->
+
+<!-- planwerk-agent:mirror thread {"id":"PRRT_a","path":"Dockerfile","line":1,"resolved":true,"outdated":false,"lines":3} -->
+@@ -1 +1 @@
+-FROM alpine:3
++FROM alpine:3.21
+
+<!-- planwerk-agent:mirror thread-comment {"id":"PRRC_a","url":"https://github.com/acme/widgets/pull/9#discussion_r1","author":"octocat","association":"MEMBER","created":"2026-03-02T11:00:00Z","updated":"2026-03-02T11:00:00Z","lines":2} -->
+A tag can move.
+Use the digest.
+
+<!-- planwerk-agent:mirror thread-comment {"id":"PRRC_b","url":"https://github.com/acme/widgets/pull/9#discussion_r2","author":"renovate","association":"NONE","created":"2026-03-02T12:00:00Z","updated":"2026-03-02T12:00:00Z","lines":1} -->
+Done.
+
+<!-- planwerk-agent:mirror thread {"id":"PRRT_b","path":"","line":0,"resolved":false,"outdated":true,"lines":0} -->
+
+<!-- planwerk-agent:mirror commit {"sha":"1111111111111111111111111111111111111111","committed":"2026-03-02T08:55:00Z","headline":"Pin the base image","lines":1} -->
+The tag moved twice last month.
+
+<!-- planwerk-agent:mirror commit {"sha":"2222222222222222222222222222222222222222","committed":"2026-03-02T12:30:00Z","headline":"Use the digest","lines":0} -->
+
