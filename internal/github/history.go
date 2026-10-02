@@ -64,6 +64,7 @@ const historyQuery = `query($owner: String!, $name: String!, $cursor: String) {
       target {
         ... on Commit {
           history(first: 100, after: $cursor) {
+            totalCount
             pageInfo { hasNextPage endCursor }
             nodes {
               oid
@@ -118,8 +119,36 @@ const closedIssuesQuery = `query($owner: String!, $name: String!, $cursor: Strin
 // DefaultBranchHistory returns every commit on the repository's default
 // branch, oldest first, following pagination. A repository without a default
 // branch (an empty repository) yields no commit and no error.
-func (Client) DefaultBranchHistory(owner, name string) ([]HistoryCommit, error) {
-	commits, err := listAll(listingHistory, historyQuery, owner, name, parseHistoryPage)
+func (c Client) DefaultBranchHistory(owner, name string) ([]HistoryCommit, error) {
+	return c.DefaultBranchHistoryUntil(owner, name, func([]HistoryCommit, int) bool { return false })
+}
+
+// DefaultBranchHistoryUntil pages the history of the repository's default
+// branch newest first and returns the commits of the pages it read, oldest
+// first. After each page it calls done with the commits of that page, in
+// GitHub's order, and the number of commits on the branch, and it stops at the
+// page for which done returns true, or at the end of the history.
+//
+// GitHub lists the history by commit date, so a merge can place commits behind
+// a commit the caller already holds: a caller has every commit of the branch
+// only when the ones it holds and the ones it was handed add up to that
+// number.
+func (Client) DefaultBranchHistoryUntil(owner, name string, done func(page []HistoryCommit, total int) bool) ([]HistoryCommit, error) {
+	total, first := 0, true
+	commits, err := listAll(listingHistory, historyQuery, owner, name, func(raw []byte) ([]HistoryCommit, bool, string, error) {
+		page, pageTotal, hasNext, endCursor, err := parseHistoryPage(raw)
+		if err != nil {
+			return nil, false, "", err
+		}
+		// The count belongs to the head the first page was read at.
+		if first {
+			total, first = pageTotal, false
+		}
+		if done(page, total) {
+			return page, false, "", nil
+		}
+		return page, hasNext, endCursor, nil
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -207,18 +236,19 @@ func fetchListingPage(listing, query, owner, name, cursor string) ([]byte, error
 	return out, nil
 }
 
-// parseHistoryPage decodes one page of the history response. A null
-// defaultBranchRef decodes to an empty page. It is pure so the mapping is
-// unit-testable without gh.
-func parseHistoryPage(raw []byte) (commits []HistoryCommit, hasNextPage bool, endCursor string, err error) {
+// parseHistoryPage decodes one page of the history response. total is the
+// number of commits on the branch. A null defaultBranchRef decodes to an empty
+// page. It is pure so the mapping is unit-testable without gh.
+func parseHistoryPage(raw []byte) (commits []HistoryCommit, total int, hasNextPage bool, endCursor string, err error) {
 	var resp struct {
 		Data struct {
 			Repository struct {
 				DefaultBranchRef struct {
 					Target struct {
 						History struct {
-							PageInfo pageInfo `json:"pageInfo"`
-							Nodes    []struct {
+							TotalCount int      `json:"totalCount"`
+							PageInfo   pageInfo `json:"pageInfo"`
+							Nodes      []struct {
 								OID                    string    `json:"oid"`
 								CommittedDate          time.Time `json:"committedDate"`
 								AssociatedPullRequests struct {
@@ -235,7 +265,7 @@ func parseHistoryPage(raw []byte) (commits []HistoryCommit, hasNextPage bool, en
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(raw, &resp); err != nil {
-		return nil, false, "", fmt.Errorf("decoding history response: %w", err)
+		return nil, 0, false, "", fmt.Errorf("decoding history response: %w", err)
 	}
 	history := resp.Data.Repository.DefaultBranchRef.Target.History
 	for _, n := range history.Nodes {
@@ -247,7 +277,7 @@ func parseHistoryPage(raw []byte) (commits []HistoryCommit, hasNextPage bool, en
 		}
 		commits = append(commits, c)
 	}
-	return commits, history.PageInfo.HasNextPage, history.PageInfo.EndCursor, nil
+	return commits, history.TotalCount, history.PageInfo.HasNextPage, history.PageInfo.EndCursor, nil
 }
 
 // parseMergedPRsPage decodes one page of the merged-pull-requests response.
@@ -280,11 +310,7 @@ func parseMergedPRsPage(raw []byte, repo string) (prs []MergedPR, hasNextPage bo
 	page := resp.Data.Repository.PullRequests
 	for _, n := range page.Nodes {
 		pr := MergedPR{Number: n.Number, Title: n.Title, MergedAt: n.MergedAt, AuthorIsBot: n.Author.Typename == "Bot"}
-		for _, ref := range n.ClosingIssuesReferences.Nodes {
-			if ref.in(repo) {
-				pr.ClosesIssues = append(pr.ClosesIssues, ref.Number)
-			}
-		}
+		pr.ClosesIssues = issuesIn(n.ClosingIssuesReferences.Nodes, repo)
 		prs = append(prs, pr)
 	}
 	return prs, page.PageInfo.HasNextPage, page.PageInfo.EndCursor, nil
@@ -308,12 +334,7 @@ func parseClosedIssuesPage(raw []byte, repo string) (issues []ClosedIssue, hasNe
 							Nodes []repoRef `json:"nodes"`
 						} `json:"closedByPullRequestsReferences"`
 						TimelineItems struct {
-							Nodes []struct {
-								Closer struct {
-									Typename string `json:"__typename"`
-									OID      string `json:"oid"`
-								} `json:"closer"`
-							} `json:"nodes"`
+							Nodes []closedEvent `json:"nodes"`
 						} `json:"timelineItems"`
 					} `json:"nodes"`
 				} `json:"issues"`
@@ -326,16 +347,8 @@ func parseClosedIssuesPage(raw []byte, repo string) (issues []ClosedIssue, hasNe
 	page := resp.Data.Repository.Issues
 	for _, n := range page.Nodes {
 		iss := ClosedIssue{Number: n.Number, Title: n.Title, ClosedAt: n.ClosedAt}
-		for _, ref := range n.ClosedByPullRequestsReferences.Nodes {
-			if ref.State == "MERGED" && ref.in(repo) {
-				iss.ClosedByPRs = append(iss.ClosedByPRs, ref.Number)
-			}
-		}
-		for _, ev := range n.TimelineItems.Nodes {
-			if ev.Closer.Typename == "Commit" {
-				iss.CloserSHA = ev.Closer.OID
-			}
-		}
+		iss.ClosedByPRs = mergedPRsIn(n.ClosedByPullRequestsReferences.Nodes, repo)
+		iss.CloserSHA = closerSHA(n.TimelineItems.Nodes)
 		issues = append(issues, iss)
 	}
 	return issues, page.PageInfo.HasNextPage, page.PageInfo.EndCursor, nil
@@ -355,4 +368,48 @@ type repoRef struct {
 // compares owner and repository names without case.
 func (r repoRef) in(repo string) bool {
 	return strings.EqualFold(r.Repository.NameWithOwner, repo)
+}
+
+// mergedPRsIn returns the numbers of the merged pull requests among refs that
+// live in repo ("owner/name"), or nil when there is none.
+func mergedPRsIn(refs []repoRef, repo string) []int {
+	var out []int
+	for _, ref := range refs {
+		if ref.State == "MERGED" && ref.in(repo) {
+			out = append(out, ref.Number)
+		}
+	}
+	return out
+}
+
+// issuesIn returns the numbers of the issues among refs that live in repo
+// ("owner/name"), or nil when there is none.
+func issuesIn(refs []repoRef, repo string) []int {
+	var out []int
+	for _, ref := range refs {
+		if ref.in(repo) {
+			out = append(out, ref.Number)
+		}
+	}
+	return out
+}
+
+// closedEvent is one CLOSED_EVENT node of an issue's timeline.
+type closedEvent struct {
+	Closer struct {
+		Typename string `json:"__typename"`
+		OID      string `json:"oid"`
+	} `json:"closer"`
+}
+
+// closerSHA returns the commit that closed the issue, or "" when a pull
+// request or a person closed it.
+func closerSHA(events []closedEvent) string {
+	sha := ""
+	for _, ev := range events {
+		if ev.Closer.Typename == "Commit" {
+			sha = ev.Closer.OID
+		}
+	}
+	return sha
 }

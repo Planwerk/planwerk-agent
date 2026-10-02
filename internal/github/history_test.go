@@ -15,6 +15,7 @@ import (
 // with a lower number, and one whose only pull request was never merged.
 const historyPage = `{
   "data": { "repository": { "defaultBranchRef": { "target": { "history": {
+    "totalCount": 250,
     "pageInfo": { "hasNextPage": true, "endCursor": "abc 2" },
     "nodes": [
       { "oid": "c3", "committedDate": "2026-03-03T10:00:00Z",
@@ -29,12 +30,15 @@ const historyPage = `{
 }`
 
 func TestParseHistoryPage(t *testing.T) {
-	commits, hasNext, cursor, err := parseHistoryPage([]byte(historyPage))
+	commits, total, hasNext, cursor, err := parseHistoryPage([]byte(historyPage))
 	if err != nil {
 		t.Fatalf("parseHistoryPage: %v", err)
 	}
 	if !hasNext || cursor != "abc 2" {
 		t.Errorf("pagination = %v, %q, want true, \"abc 2\"", hasNext, cursor)
+	}
+	if total != 250 {
+		t.Errorf("total = %d, want the branch's 250 commits", total)
 	}
 	want := []HistoryCommit{
 		{SHA: "c3", CommittedAt: time.Date(2026, 3, 3, 10, 0, 0, 0, time.UTC), PRNumber: 9},
@@ -50,12 +54,12 @@ func TestParseHistoryPage(t *testing.T) {
 // answers with a null defaultBranchRef, which is an empty history, not an
 // error.
 func TestParseHistoryPage_NoDefaultBranch(t *testing.T) {
-	commits, hasNext, cursor, err := parseHistoryPage([]byte(`{"data":{"repository":{"defaultBranchRef":null}}}`))
+	commits, total, hasNext, cursor, err := parseHistoryPage([]byte(`{"data":{"repository":{"defaultBranchRef":null}}}`))
 	if err != nil {
 		t.Fatalf("parseHistoryPage: %v", err)
 	}
-	if len(commits) != 0 || hasNext || cursor != "" {
-		t.Errorf("got %v, %v, %q, want an empty last page", commits, hasNext, cursor)
+	if len(commits) != 0 || total != 0 || hasNext || cursor != "" {
+		t.Errorf("got %v, %d, %v, %q, want an empty last page", commits, total, hasNext, cursor)
 	}
 }
 
@@ -140,7 +144,7 @@ func TestParseClosedIssuesPage(t *testing.T) {
 }
 
 func TestParseListingPages_MalformedJSON(t *testing.T) {
-	if _, _, _, err := parseHistoryPage([]byte("not json")); err == nil {
+	if _, _, _, _, err := parseHistoryPage([]byte("not json")); err == nil {
 		t.Error("parseHistoryPage accepted malformed JSON")
 	}
 	if _, _, _, err := parseMergedPRsPage([]byte("{"), "o/r"); err == nil {
@@ -216,6 +220,112 @@ echo '`+page([2]string{"c4", "c3"}, "true", "page-2")+`'
 	}
 }
 
+// historyPages is a fake gh script that records its argv and answers the
+// history in two pages, newest first: c4 and c3, then c2 and c1. The first
+// page counts the four commits of the branch; the second one counts five, as
+// after a push between the two reads.
+func historyPages(argvFile string) string {
+	page := func(oids [2]string, total, hasNext, cursor string) string {
+		return `{"data":{"repository":{"defaultBranchRef":{"target":{"history":{"totalCount":` + total + `,"pageInfo":{"hasNextPage":` + hasNext + `,"endCursor":"` + cursor + `"},"nodes":[` +
+			`{"oid":"` + oids[0] + `","committedDate":"2026-03-04T10:00:00Z","associatedPullRequests":{"nodes":[]}},` +
+			`{"oid":"` + oids[1] + `","committedDate":"2026-03-03T10:00:00Z","associatedPullRequests":{"nodes":[]}}]}}}}}}`
+	}
+	return recordArgv(argvFile) + `for a in "$@"; do
+  case "$a" in cursor=*) echo '` + page([2]string{"c2", "c1"}, "5", "false", "") + `'; exit 0;; esac
+done
+echo '` + page([2]string{"c4", "c3"}, "4", "true", "page-2") + `'
+`
+}
+
+// shas returns the SHAs of commits in order.
+func shas(commits []HistoryCommit) []string {
+	var out []string
+	for _, c := range commits {
+		out = append(out, c.SHA)
+	}
+	return out
+}
+
+// TestDefaultBranchHistoryUntil_StopsAtThePageDoneAccepts proves the read asks
+// for no page after the one done accepts and returns the pages it read, oldest
+// first, and that done is handed each page in GitHub's order with the commit
+// count of the first page.
+func TestDefaultBranchHistoryUntil_StopsAtThePageDoneAccepts(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		doneAt    string
+		want      []string
+		wantPages [][]string
+	}{
+		{"done at the first page", "c3", []string{"c3", "c4"}, [][]string{{"c4", "c3"}}},
+		{"done at the last page", "c1", []string{"c1", "c2", "c3", "c4"}, [][]string{{"c4", "c3"}, {"c2", "c1"}}},
+		{"never done reads every page", "", []string{"c1", "c2", "c3", "c4"}, [][]string{{"c4", "c3"}, {"c2", "c1"}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			argvFile := filepath.Join(t.TempDir(), "argv")
+			fakeGH(t, historyPages(argvFile))
+
+			var pages [][]string
+			commits, err := client.DefaultBranchHistoryUntil("acme", "widgets", func(page []HistoryCommit, total int) bool {
+				if total != 4 {
+					t.Errorf("total = %d, want the 4 commits the first page counts", total)
+				}
+				pages = append(pages, shas(page))
+				return slices.Contains(shas(page), tc.doneAt)
+			})
+			if err != nil {
+				t.Fatalf("DefaultBranchHistoryUntil: %v", err)
+			}
+			if got := shas(commits); !slices.Equal(got, tc.want) {
+				t.Errorf("commits = %v, want %v", got, tc.want)
+			}
+			if !slices.EqualFunc(pages, tc.wantPages, slices.Equal[[]string]) {
+				t.Errorf("done was handed %v, want %v", pages, tc.wantPages)
+			}
+			calls := recordedCalls(t, argvFile)
+			if len(calls) != len(tc.wantPages) {
+				t.Errorf("gh ran %d times, want one run per page handed to done", len(calls))
+			}
+			if !strings.Contains(strings.Join(calls[0], "\n"), "totalCount") {
+				t.Errorf("the query must ask for the commit count:\n%s", calls[0])
+			}
+		})
+	}
+}
+
+// TestDefaultBranchHistoryUntil_NoDefaultBranch covers an empty repository:
+// done is handed one empty page of a branch without a commit.
+func TestDefaultBranchHistoryUntil_NoDefaultBranch(t *testing.T) {
+	fakeGH(t, `echo '{"data":{"repository":{"defaultBranchRef":null}}}'`+"\n")
+	asked := 0
+	commits, err := client.DefaultBranchHistoryUntil("acme", "widgets", func(page []HistoryCommit, total int) bool {
+		asked++
+		if len(page) != 0 || total != 0 {
+			t.Errorf("done was handed %v, %d, want an empty page of 0 commits", page, total)
+		}
+		return false
+	})
+	if err != nil || len(commits) != 0 || asked != 1 {
+		t.Errorf("an empty repository = %v, %v after %d pages, want no commit, nil, 1", commits, err, asked)
+	}
+}
+
+func TestDefaultBranchHistoryUntil_GhFailureNamesTheListing(t *testing.T) {
+	fakeGH(t, "echo 'API rate limit exceeded' >&2\nexit 1\n")
+	commits, err := client.DefaultBranchHistoryUntil("acme", "widgets", func([]HistoryCommit, int) bool {
+		t.Error("done must not be asked about a page that was not read")
+		return false
+	})
+	if err == nil || commits != nil {
+		t.Fatalf("a failing gh = %v, %v, want an error alone", commits, err)
+	}
+	for _, want := range []string{"gh api graphql (default-branch history): ", "API rate limit exceeded"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q lacks %q", err, want)
+		}
+	}
+}
+
 // TestListings_GhFailureNamesTheListing proves a failing gh call names the
 // listing it belonged to and carries what gh wrote to stderr (a rate limit, a
 // missing scope).
@@ -269,7 +379,7 @@ func FuzzParseListingPages(f *testing.F) {
 	f.Add(`{"data":{"repository":{"pullRequests":{"nodes":[{"author":null}]}}}}`)
 	f.Add("")
 	f.Fuzz(func(_ *testing.T, raw string) {
-		_, _, _, _ = parseHistoryPage([]byte(raw))
+		_, _, _, _, _ = parseHistoryPage([]byte(raw))
 		_, _, _, _ = parseMergedPRsPage([]byte(raw), "o/r")
 		_, _, _, _ = parseClosedIssuesPage([]byte(raw), "o/r")
 	})
