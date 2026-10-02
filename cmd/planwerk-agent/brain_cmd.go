@@ -7,21 +7,23 @@ import (
 
 	"github.com/planwerk/planwerk-agent/internal/brain"
 	"github.com/planwerk/planwerk-agent/internal/claude"
+	"github.com/planwerk/planwerk-agent/internal/mirror"
 )
 
-// newBrainCmd builds the "brain" command group, which reads and builds what a
-// repository keeps for its agents. Its child "memory" prints the project
+// newBrainCmd builds the "brain" command group, which reads, builds, and
+// mirrors what a repository knows. Its child "memory" prints the project
 // memory of a repository's GitHub Wiki: the index, or one page. The plugin
 // skills call it, so a skill reads the memory through the same opt-in,
 // authentication, clone cache, and page guards as the headless commands. Its
 // child "bootstrap" (newBrainBootstrapCmd) builds that memory from the
-// repository's history.
+// repository's history. Its child "sync" (newBrainSyncCmd) keeps a local
+// mirror of the repository's issues, pull requests, commit list, and wiki.
 func newBrainCmd(deps *runtimeDeps) *cobra.Command {
 	var wiki wikiFlags
 
 	brainCmd := &cobra.Command{
 		Use:   "brain",
-		Short: "Read and build the project memory of a repository",
+		Short: "Read, build, and mirror what a repository knows",
 	}
 
 	memoryCmd := &cobra.Command{
@@ -66,8 +68,63 @@ or short form (owner/repo).`,
 	}
 	wiki.register(memoryCmd.Flags())
 
-	brainCmd.AddCommand(memoryCmd, newBrainBootstrapCmd(deps))
+	brainCmd.AddCommand(memoryCmd, newBrainBootstrapCmd(deps), newBrainSyncCmd(deps))
 	return brainCmd
+}
+
+// newBrainSyncCmd builds "brain sync": mirror a repository's issues, pull
+// requests, commit list, and wiki to local markdown. Like sync and brain
+// bootstrap, the command registers --wiki-ref only: running it is the wiki
+// opt-in, so it has no --wiki and no --no-wiki.
+func newBrainSyncCmd(deps *runtimeDeps) *cobra.Command {
+	var full bool
+	var wikiRef string
+
+	syncCmd := &cobra.Command{
+		Use:   "sync <repo-ref>",
+		Short: "Mirror the issues, pull requests, and wiki of a repository to local markdown",
+		Long: `Keep a local mirror of what a repository knows on GitHub.
+
+The mirror holds one markdown file per issue and per pull request with the
+whole conversation (the body, the comments, and for a pull request the
+reviews, the review threads, and the commits), the commit list of the default
+branch, and a full clone of the wiki. It lives in the user cache directory,
+under planwerk-agent/brain/<owner>/<name>, and the command prints the path.
+
+A run lists the issues and pull requests updated since the last run and
+fetches only those, reads the commits the default branch gained, and clones
+the wiki again. A run right after another one fetches no item. A run that
+fails continues where it stopped when the same command runs again.
+
+--full deletes this repository's mirror first and builds it again from
+GitHub. The mirror is a copy: deleting it loses nothing. A comment deleted on
+GitHub leaves the mirror when its issue or pull request is fetched again, and
+a deleted or transferred issue or pull request leaves it on --full.
+
+The files hold the text as GitHub returns it, with every secret someone
+pasted into a comment. The command starts no Claude session, and no session is
+given the mirror.
+
+This is not the "sync" command, which reconciles the wiki's knowledge pages
+with the code.
+
+Repository reference can be a URL (https://github.com/owner/repo)
+or short form (owner/repo).`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return (&mirror.Syncer{}).Run(cmd.OutOrStdout(), mirror.Options{
+				RepoRef: args[0],
+				Full:    full,
+				Wiki:    resolveSyncWiki(wikiRef, cmd.Flags().Changed("wiki-ref"), deps.fileCfg.Wiki),
+			})
+		},
+	}
+
+	flags := syncCmd.Flags()
+	flags.BoolVar(&full, "full", false, "Delete this repository's mirror first, then sync")
+	flags.StringVar(&wikiRef, "wiki-ref", "", "Pin the wiki to a branch, tag, or commit (env: "+envWikiRef+"; empty uses the wiki's default branch)")
+
+	return syncCmd
 }
 
 // newBrainBootstrapCmd builds "brain bootstrap": distill a repository's
