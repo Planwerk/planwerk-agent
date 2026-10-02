@@ -18,6 +18,7 @@ func newElaborateCmd(deps *runtimeDeps) *cobra.Command {
 	var elaborateCfg elaborate.Options
 	var updateIssue, postComment bool
 	var wiki wikiFlags
+	var brain brainFlags
 
 	elaborateCmd := &cobra.Command{
 		Use:   "elaborate <issue-ref>",
@@ -54,6 +55,7 @@ or short form (owner/repo#123).`,
 			opts.Version = deps.version
 			opts.Remote = deps.remoteOpts
 			opts.Wiki = wiki.resolve(cmd.Flags(), deps.fileCfg.Wiki)
+			opts.Brain = brain.resolve(cmd.Flags(), deps.fileCfg.Brain)
 			return elaborate.Run(os.Stdout, opts, deps.claude.Elaborate, deps.claude.ReviewElaboration)
 		},
 	}
@@ -73,6 +75,7 @@ or short form (owner/repo#123).`,
 	elaborateFlags.BoolVar(&elaborateCfg.Local, "local", false, "Operate on the current working directory instead of cloning into a temp dir")
 	elaborateFlags.BoolVar(&elaborateCfg.Force, "force", false, "With --local, skip the confirmation prompt when the working tree is dirty")
 	wiki.register(elaborateFlags)
+	brain.register(elaborateFlags)
 
 	return elaborateCmd
 }

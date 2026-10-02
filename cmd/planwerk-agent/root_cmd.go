@@ -52,6 +52,7 @@ func newRootCmd(deps *runtimeDeps) *cobra.Command {
 	var claudeInheritUserConfig bool
 	var wikiEnable, wikiDisable bool
 	var wikiRef string
+	var brain brainFlags
 
 	rootCmd := &cobra.Command{
 		Use:   "planwerk-agent <pr-ref>",
@@ -227,6 +228,7 @@ or short form (owner/repo#123).`,
 			opts.Version = deps.version
 			opts.Remote = deps.remoteOpts
 			opts.Wiki = resolveWikiOptions(wikiEnable, wikiDisable, cmd.Flags().Changed("wiki"), cmd.Flags().Changed("no-wiki"), wikiRef, cmd.Flags().Changed("wiki-ref"), deps.fileCfg.Wiki)
+			opts.Brain = brain.resolve(cmd.Flags(), deps.fileCfg.Brain)
 			return review.Run(os.Stdout, opts, deps.claude)
 		},
 	}
@@ -269,6 +271,7 @@ or short form (owner/repo#123).`,
 	flags.BoolVar(&cfg.Force, "force", false, "With --local, skip the confirmation prompt when the working tree is dirty")
 	flags.BoolVar(&cfg.NoCapture, "no-capture", false, "Skip the read-only capture pass that proposes new wiki review patterns from the review findings (only runs with --wiki; writes nothing)")
 	addWikiFlags(flags, &wikiEnable, &wikiDisable, &wikiRef)
+	brain.register(flags)
 	flags.BoolVar(&showVersion, "version", false, "Show version information and exit")
 
 	return rootCmd

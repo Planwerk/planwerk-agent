@@ -28,6 +28,16 @@ type FileConfig struct {
 	Audit   AuditFileConfig   `yaml:"audit"`
 	Wiki    WikiFileConfig    `yaml:"wiki"`
 	Capture CaptureFileConfig `yaml:"capture"`
+	Brain   BrainFileConfig   `yaml:"brain"`
+}
+
+// BrainFileConfig is the top-level `brain:` section of .planwerk/config.yaml.
+// Enabled lets the read-only sessions of review, audit, propose, implement,
+// elaborate, and ship search the local mirror of the repository. It is a
+// pointer so the resolver can distinguish "absent" (nil) from an explicit true
+// or false over the default-off behavior.
+type BrainFileConfig struct {
+	Enabled *bool `yaml:"enabled"`
 }
 
 // WikiFileConfig is the top-level `wiki:` section of .planwerk/config.yaml. It
