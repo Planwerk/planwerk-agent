@@ -8,8 +8,14 @@
 //
 // The files hold GitHub's text unchanged. That text is written by everyone who
 // can open an issue or comment, and it can hold a secret someone pasted. No
-// spawned session is given the mirror directory, and a reader that hands
-// mirrored text to a session redacts it and frames it as data first.
+// spawned session is given the mirror directory. Two readers hand mirrored
+// text to a session, and each redacts it first: `brain bootstrap --source
+// mirror` puts it into a prompt, framed as data, and `brain search` prints it
+// to a read-only session that runs the command.
+//
+// The mirror directory also holds index.sqlite, the search index of
+// `brain search`. The search package owns that file. `brain sync --full`
+// removes the mirror directory, and the index with it.
 package mirror
 
 import (
