@@ -25,6 +25,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/rebase"
 	"github.com/planwerk/planwerk-agent/internal/report"
 	"github.com/planwerk/planwerk-agent/internal/reviewprepared"
+	"github.com/planwerk/planwerk-agent/internal/search"
 	"github.com/planwerk/planwerk-agent/internal/skills"
 	"github.com/planwerk/planwerk-agent/internal/sync"
 )
@@ -637,6 +638,93 @@ func TestBuildAddressPrompt_Memory(t *testing.T) {
 	ctx := goldenAddressContext()
 	ctx.Memory = goldenMemory()
 	assertGoldenPrompt(t, "address_memory", BuildAddressPrompt(ctx))
+}
+
+// goldenBrain returns the search surface of a run with the brain on: the
+// command of an installed binary for acme/widgets, the end of the last sync,
+// and the mirror's revision.
+func goldenBrain() search.Surface {
+	return search.Surface{
+		Command:  "/usr/local/bin/planwerk-agent brain search acme/widgets",
+		SyncedAt: "2026-10-02T09:00:00Z",
+		Revision: "2026-10-01T08:00:00Z@1a2b3c4d5e6f70819293a4b5c6d7e8f901234567",
+	}
+}
+
+// assertBrainFollowsMemory checks that the search block of goldenBrain stands
+// directly after the project memory block of goldenMemory in prompt.
+func assertBrainFollowsMemory(t *testing.T, prompt string) {
+	t.Helper()
+	if !strings.Contains(prompt, projectMemoryBlock(goldenMemory())+brainSearchBlock(goldenBrain())) {
+		t.Error("the Project History Search block must directly follow the Project Memory block")
+	}
+}
+
+// TestBuildReviewPrompt_Brain locks the "## Project History Search" block in
+// the review prompt of a run with the brain on. The branch without the block
+// stays covered by review.golden and review_memory.golden.
+func TestBuildReviewPrompt_Brain(t *testing.T) {
+	ctx := goldenReviewContext()
+	ctx.Memory, ctx.Brain = goldenMemory(), goldenBrain()
+	got := buildReviewPrompt(ctx)
+	assertGoldenPrompt(t, "review_brain", got)
+	assertBrainFollowsMemory(t, got)
+}
+
+// TestBuildAuditPrompt_Brain locks the search block in the audit prompt.
+func TestBuildAuditPrompt_Brain(t *testing.T) {
+	ctx := goldenAuditContext()
+	ctx.Memory, ctx.Brain = goldenMemory(), goldenBrain()
+	got := buildAuditPrompt(ctx)
+	assertGoldenPrompt(t, "audit_brain", got)
+	assertBrainFollowsMemory(t, got)
+}
+
+// TestBuildAnalysisPrompt_Brain locks the search block in the propose analysis
+// prompt.
+func TestBuildAnalysisPrompt_Brain(t *testing.T) {
+	ctx := goldenAnalysisContext()
+	ctx.Memory, ctx.Brain = goldenMemory(), goldenBrain()
+	got := buildAnalysisPrompt(ctx)
+	assertGoldenPrompt(t, "analysis_brain", got)
+	assertBrainFollowsMemory(t, got)
+}
+
+// TestBuildPlanPrompt_Brain locks the search block in the planning prompt.
+func TestBuildPlanPrompt_Brain(t *testing.T) {
+	ctx := goldenImplementContext()
+	ctx.Memory, ctx.Brain = goldenMemory(), goldenBrain()
+	got := BuildPlanPrompt(ctx)
+	assertGoldenPrompt(t, "plan_brain", got)
+	assertBrainFollowsMemory(t, got)
+}
+
+// TestBuildElaboratePrompt_Brain locks the search block in the elaboration
+// prompt.
+func TestBuildElaboratePrompt_Brain(t *testing.T) {
+	ctx := goldenElaborateContext()
+	ctx.Memory, ctx.Brain = goldenMemory(), goldenBrain()
+	got := buildElaboratePrompt(ctx)
+	assertGoldenPrompt(t, "elaborate_brain", got)
+	assertBrainFollowsMemory(t, got)
+}
+
+// TestBrainSearchBlock_OnlyInThePromptsOfTheSessionsThatSearch locks the two
+// prompts a context with a surface must leave alone: the implement prompt,
+// whose session edits and receives the plan, and the elaboration reviewer's,
+// which scores a draft.
+func TestBrainSearchBlock_OnlyInThePromptsOfTheSessionsThatSearch(t *testing.T) {
+	const heading = "## Project History Search"
+	implCtx := goldenImplementContext()
+	implCtx.Brain = goldenBrain()
+	if got := BuildImplementPrompt(implCtx); strings.Contains(got, heading) || strings.Contains(got, implCtx.Brain.Command) {
+		t.Error("the implement prompt must not carry the search block")
+	}
+	elabCtx := goldenElaborateContext()
+	elabCtx.Brain = goldenBrain()
+	if got := buildElaborateReviewPrompt(elabCtx, "## Description\n\nA draft.\n"); strings.Contains(got, heading) || strings.Contains(got, elabCtx.Brain.Command) {
+		t.Error("the elaboration reviewer prompt must not carry the search block")
+	}
 }
 
 // goldenDomains is a deterministic .planwerk/domains.md override, deliberately

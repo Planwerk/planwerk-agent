@@ -205,6 +205,7 @@ When the diff introduces a new dependency, check its freshness and maintenance s
 	// Project memory from the repo's GitHub Wiki (no-op when the wiki carries
 	// no memory pages)
 	sb.WriteString(projectMemoryBlock(ctx.Memory))
+	sb.WriteString(brainSearchBlock(ctx.Brain))
 
 	// Finding enrichment for machine processing
 	sb.WriteString(`## Finding Enrichment

@@ -5,6 +5,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
+	"github.com/planwerk/planwerk-agent/internal/search"
 	"github.com/planwerk/planwerk-agent/internal/skills"
 )
 
@@ -52,6 +53,10 @@ type Context struct {
 	// pages (the implement prompt itself stays unchanged — the plan carries any
 	// memory-derived context forward). Zero when the repo has no wiki memory.
 	Memory patterns.MemoryCatalog
+	// Brain is the search of the local mirror the planning session may run.
+	// Like Memory it is set only on the context the planning session receives.
+	// The zero Surface means no search.
+	Brain search.Surface
 	// Domains is the domain list the planning session sweeps before committing
 	// to a change set, loaded by domains.Load from the target repo's
 	// .planwerk/domains.md. Like Memory it feeds BuildPlanPrompt only — the

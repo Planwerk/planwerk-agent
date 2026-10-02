@@ -9,6 +9,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/brain"
 	"github.com/planwerk/planwerk-agent/internal/capture"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
+	"github.com/planwerk/planwerk-agent/internal/search"
 )
 
 // The fences of the two bootstrap prompts.
@@ -30,7 +31,7 @@ const (
 // working set (ctx.PagesDir). It proposes; the review (BootstrapReview) and
 // the caller decide what is kept.
 func (c *Client) BootstrapUnit(dir string, ctx brain.UnitContext) (*capture.CaptureResult, error) {
-	rawAnalysis, model, err := c.runClaudeMemory(dir, buildBootstrapUnitPrompt(ctx), "bootstrap-unit", noCatalog, patterns.MemoryCatalog{Dir: ctx.PagesDir})
+	rawAnalysis, model, err := c.runClaudeMemory(dir, buildBootstrapUnitPrompt(ctx), "bootstrap-unit", noCatalog, patterns.MemoryCatalog{Dir: ctx.PagesDir}, search.Surface{})
 	if err != nil {
 		return nil, fmt.Errorf("running bootstrap analysis: %w", err)
 	}

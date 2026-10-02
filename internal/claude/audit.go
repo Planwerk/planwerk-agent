@@ -14,7 +14,7 @@ import (
 // --json-schema with schema.FinderOutput, and finishReview decodes that output
 // (decision 109).
 func (c *Client) Audit(dir string, ctx audit.AuditContext) (*report.ReviewResult, error) {
-	rawAudit, model, err := c.runClaudeFindings(dir, buildAuditPrompt(ctx), "audit", ctx.Memory)
+	rawAudit, model, err := c.runClaudeFindings(dir, buildAuditPrompt(ctx), "audit", ctx.Memory, ctx.Brain)
 	if err != nil {
 		return nil, fmt.Errorf("running audit: %w", err)
 	}
@@ -54,6 +54,7 @@ func buildAuditPrompt(ctx audit.AuditContext) string {
 	// Project memory from the repo's GitHub Wiki (no-op when the wiki carries
 	// no memory pages)
 	sb.WriteString(projectMemoryBlock(ctx.Memory))
+	sb.WriteString(brainSearchBlock(ctx.Brain))
 
 	// Audit methodology
 	sb.WriteString(`## Audit Methodology

@@ -18,6 +18,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
 	"github.com/planwerk/planwerk-agent/internal/report/schema"
+	"github.com/planwerk/planwerk-agent/internal/search"
 )
 
 const (
@@ -137,12 +138,14 @@ func EffortLevels() string {
 var claudeAllowedTools = []string{"WebSearch", "WebFetch"}
 
 // withAllowedTools appends the --allowed-tools flag followed by every entry in
-// claudeAllowedTools. The prompt is fed on stdin, never as a positional
+// claudeAllowedTools and then every rule in rules, the permission rules of
+// this one session. The prompt is fed on stdin, never as a positional
 // argument, so a trailing variadic flag is safe — there is no positional for
 // the flag to swallow.
-func withAllowedTools(args []string) []string {
+func withAllowedTools(args []string, rules ...string) []string {
 	args = append(args, "--allowed-tools")
-	return append(args, claudeAllowedTools...)
+	args = append(args, claudeAllowedTools...)
+	return append(args, rules...)
 }
 
 // claudeReadOnlyDeniedTools are the write tools --disallowed-tools removes from
@@ -221,6 +224,12 @@ type runSpec struct {
 	// structureWorkDir with no tools and must not be handed any other
 	// directory.
 	addDirs []string
+	// searchRule is the permission rule that pre-approves `brain search` for
+	// the repository of the run (search.Surface.AllowRule), "" for a session
+	// without the search. It follows claudeAllowedTools, and only a readOnly
+	// spec honors it: the sessions that edit, commit, and push get no search.
+	// runClaudeMemory, runClaudeFindings, and runClaudePlan set it.
+	searchRule string
 	// sessionID pins the CLI session's id (--session-id) and resume continues
 	// that session (--resume). Both are zero for a one-shot call; set by the
 	// completion nudge (decision 78).
@@ -573,16 +582,17 @@ func WithInheritUserConfig(b bool) Option {
 // instead. cat is the pattern catalog whose directory the session may
 // read (--add-dir), noCatalog for a session without one.
 func (c *Client) runClaude(dir, prompt, label string, cat patterns.Catalog) (text, model string, err error) {
-	return c.runClaudeMemory(dir, prompt, label, cat, patterns.MemoryCatalog{})
+	return c.runClaudeMemory(dir, prompt, label, cat, patterns.MemoryCatalog{}, search.Surface{})
 }
 
 // runClaudeMemory is runClaude for a session whose prompt carries the project
 // memory: mem is the memory catalog whose directory the session may read
 // beside the pattern catalog's, the zero MemoryCatalog for a run without one.
-// The propose analysis, the elaboration, and the bootstrap analysis
-// (BootstrapUnit) call it.
-func (c *Client) runClaudeMemory(dir, prompt, label string, cat patterns.Catalog, mem patterns.MemoryCatalog) (text, model string, err error) {
-	return c.runSession(runSpec{dir: dir, label: label, model: c.model, effort: c.effort, readOnly: true, addDirs: []string{cat.Dir, mem.Dir}}, prompt)
+// surface pre-approves `brain search` for the session, the zero Surface for a
+// session without the search. The propose analysis, the elaboration, and the
+// bootstrap analysis (BootstrapUnit) call it.
+func (c *Client) runClaudeMemory(dir, prompt, label string, cat patterns.Catalog, mem patterns.MemoryCatalog, surface search.Surface) (text, model string, err error) {
+	return c.runSession(runSpec{dir: dir, label: label, model: c.model, effort: c.effort, readOnly: true, addDirs: []string{cat.Dir, mem.Dir}, searchRule: surface.AllowRule()}, prompt)
 }
 
 // runClaudeFindings is runClaude, on the main --claude-model tier, that also
@@ -592,9 +602,10 @@ func (c *Client) runClaudeMemory(dir, prompt, label string, cat patterns.Catalog
 // runClaudeFinderFindings (decision 109). mem is the project memory catalog
 // whose directory the session may read (--add-dir), the zero MemoryCatalog for
 // a run without one. The session is handed no pattern catalog directory: the
-// finder prompts carry the pattern bodies.
-func (c *Client) runClaudeFindings(dir, prompt, label string, mem patterns.MemoryCatalog) (text, model string, err error) {
-	return c.runSession(runSpec{dir: dir, label: label, model: c.model, effort: c.effort, readOnly: true, jsonSchema: string(schema.FinderOutput), addDirs: []string{mem.Dir}}, prompt)
+// finder prompts carry the pattern bodies. surface pre-approves `brain search`
+// for the session, the zero Surface for a session without the search.
+func (c *Client) runClaudeFindings(dir, prompt, label string, mem patterns.MemoryCatalog, surface search.Surface) (text, model string, err error) {
+	return c.runSession(runSpec{dir: dir, label: label, model: c.model, effort: c.effort, readOnly: true, jsonSchema: string(schema.FinderOutput), addDirs: []string{mem.Dir}, searchRule: surface.AllowRule()}, prompt)
 }
 
 // noCatalog is what a session without a pattern catalog passes to its runner:
@@ -657,9 +668,11 @@ func firstNonEmpty(override, fallback string) string {
 // planEffort) for the implement command's read-only planning session
 // (decision 101). cat is the pattern catalog and mem the project memory
 // catalog whose directories the session may read (--add-dir), noCatalog and
-// the zero MemoryCatalog for a session without one.
-func (c *Client) runClaudePlan(dir, prompt, label string, cat patterns.Catalog, mem patterns.MemoryCatalog) (text, model string, err error) {
-	return c.runSession(runSpec{dir: dir, label: label, model: c.planModel, effort: c.planEffort, readOnly: true, addDirs: []string{cat.Dir, mem.Dir}}, prompt)
+// the zero MemoryCatalog for a session without one. surface pre-approves
+// `brain search` for the session, the zero Surface for a session without the
+// search.
+func (c *Client) runClaudePlan(dir, prompt, label string, cat patterns.Catalog, mem patterns.MemoryCatalog, surface search.Surface) (text, model string, err error) {
+	return c.runSession(runSpec{dir: dir, label: label, model: c.planModel, effort: c.planEffort, readOnly: true, addDirs: []string{cat.Dir, mem.Dir}, searchRule: surface.AllowRule()}, prompt)
 }
 
 // runClaudeBrainReview is runClaude on the brain review tier (BrainReviewTier)
@@ -797,8 +810,11 @@ func (c *Client) claudeArgs(spec runSpec, outputFormat string, extra ...string) 
 		return withNoTools(args)
 	}
 	args = withReadOnlyDenied(args, spec.readOnly)
-	args = withAllowedTools(args)
-	return args
+	var rules []string
+	if spec.readOnly && spec.searchRule != "" {
+		rules = append(rules, spec.searchRule)
+	}
+	return withAllowedTools(args, rules...)
 }
 
 // claudeCommand builds the claude subprocess for spec: claudeArgs for the

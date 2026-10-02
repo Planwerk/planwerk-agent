@@ -15,7 +15,7 @@ import (
 //  1. Read the issue + walk the repo, producing a freeform elaboration.
 //  2. Structure the elaboration into JSON matching elaborate.Result.
 func (c *Client) Elaborate(dir string, ctx elaborate.Context) (*elaborate.Result, error) {
-	rawElaboration, model, err := c.runClaudeMemory(dir, buildElaboratePrompt(ctx), "elaborate", ctx.Catalog, ctx.Memory)
+	rawElaboration, model, err := c.runClaudeMemory(dir, buildElaboratePrompt(ctx), "elaborate", ctx.Catalog, ctx.Memory, ctx.Brain)
 	if err != nil {
 		return nil, fmt.Errorf("running elaboration: %w", err)
 	}
@@ -69,6 +69,7 @@ Calibrate the detail to the reader: an engineer who can open every file in this 
 		"These patterns are the catalog the project's review/audit/propose tools share. When the elaboration touches an area covered by a pattern, reference the pattern by name in the description or motivation so reviewers can trace the rationale.",
 		ctx.Catalog, ctx.Patterns, ctx.MaxPatterns))
 	sb.WriteString(projectMemoryBlock(ctx.Memory))
+	sb.WriteString(brainSearchBlock(ctx.Brain))
 
 	if ctx.PriorDraft != "" {
 		sb.WriteString("## Revising a Prior Draft\n\n")

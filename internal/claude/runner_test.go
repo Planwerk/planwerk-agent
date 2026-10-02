@@ -13,6 +13,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
 	"github.com/planwerk/planwerk-agent/internal/report/schema"
+	"github.com/planwerk/planwerk-agent/internal/search"
 )
 
 // TestWithAllowedTools_PreApprovesWebTools locks in the contract the read-only
@@ -687,6 +688,135 @@ func TestClaudeArgs_ToolFlagsSurviveWithoutNoTools(t *testing.T) {
 	if !slices.Equal(args[denyIdx+1:allowIdx], claudeReadOnlyDeniedTools) {
 		t.Errorf("denied tools = %v, want %v", args[denyIdx+1:allowIdx], claudeReadOnlyDeniedTools)
 	}
+}
+
+// TestClaudeArgs_SearchRuleFollowsTheWebTools pins the permission rule of
+// `brain search`: a read-only session carries it as the last allowed tool, a
+// read-only session without one ends its argv with the two web tools, and a
+// session that edits, or one without tools, never carries it.
+func TestClaudeArgs_SearchRuleFollowsTheWebTools(t *testing.T) {
+	t.Parallel()
+
+	rule := goldenBrain().AllowRule()
+	c := NewClient()
+	readOnly := runSpec{model: "opus", effort: "xhigh", readOnly: true}
+
+	without := c.claudeArgs(readOnly, "json")
+	if tail := []string{"--allowed-tools", "WebSearch", "WebFetch"}; len(without) < len(tail) || !slices.Equal(without[len(without)-len(tail):], tail) {
+		t.Fatalf("a read-only session without a rule must end in %v; got %v", tail, without)
+	}
+
+	withRule := readOnly
+	withRule.searchRule = rule
+	if got, want := c.claudeArgs(withRule, "json"), append(slices.Clone(without), rule); !slices.Equal(got, want) {
+		t.Errorf("a read-only session with a rule: argv %v, want %v", got, want)
+	}
+
+	for name, spec := range map[string]runSpec{
+		"a session that edits":     {model: "opus", effort: "xhigh", permissionMode: claudeAutoPermissionMode, searchRule: rule},
+		"a session without a mode": {model: "opus", effort: "xhigh", searchRule: rule},
+		"a session without tools":  {model: "sonnet", effort: "xhigh", readOnly: true, noTools: true, searchRule: rule},
+	} {
+		noRule := spec
+		noRule.searchRule = ""
+		if got, want := c.claudeArgs(spec, "json"), c.claudeArgs(noRule, "json"); !slices.Equal(got, want) || slices.Contains(got, rule) {
+			t.Errorf("%s must not carry the rule: argv %v, want %v", name, got, want)
+		}
+	}
+}
+
+// TestAdapters_HandTheSearchRuleToTheSessionsThatSearch proves the five
+// read-only sessions that plan and judge carry the rule of their context's
+// surface, and carry none without one. The bootstrap analysis and a session
+// that runs through runClaude never carry one, whatever their context holds.
+func TestAdapters_HandTheSearchRuleToTheSessionsThatSearch(t *testing.T) {
+	t.Parallel()
+
+	rows := []struct {
+		name, label string
+		run         func(c *Client, surface search.Surface)
+	}{
+		{"Review", "review", func(c *Client, surface search.Surface) {
+			ctx := goldenReviewContext()
+			ctx.Brain = surface
+			_, _ = c.Review("", ctx)
+		}},
+		{"Audit", "audit", func(c *Client, surface search.Surface) {
+			ctx := goldenAuditContext()
+			ctx.Brain = surface
+			_, _ = c.Audit("", ctx)
+		}},
+		{"Plan", "plan", func(c *Client, surface search.Surface) {
+			ctx := goldenImplementContext()
+			ctx.Brain = surface
+			_, _, _ = c.Plan("", ctx)
+		}},
+		{"Propose", "analysis", func(c *Client, surface search.Surface) {
+			ctx := goldenAnalysisContext()
+			ctx.Brain = surface
+			_, _ = c.Propose("", ctx)
+		}},
+		{"Elaborate", "elaborate", func(c *Client, surface search.Surface) {
+			ctx := goldenElaborateContext()
+			ctx.Brain = surface
+			_, _ = c.Elaborate("", ctx)
+		}},
+	}
+	// firstArgs runs an adapter and returns the argv of its first session.
+	firstArgs := func(t *testing.T, label string, run func(c *Client)) []string {
+		t.Helper()
+		c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
+			return "", "", nil
+		})
+		run(c)
+		if len(*calls) == 0 {
+			t.Fatal("the adapter ran no session")
+		}
+		first := (*calls)[0].spec
+		if first.label != label {
+			t.Fatalf("first session has label %q, want %q", first.label, label)
+		}
+		return c.claudeArgs(first, "json")
+	}
+	hasBashRule := func(args []string) bool {
+		return slices.ContainsFunc(args, func(a string) bool { return strings.HasPrefix(a, "Bash(") })
+	}
+
+	for _, row := range rows {
+		t.Run(row.name+"/with a surface", func(t *testing.T) {
+			t.Parallel()
+			args := firstArgs(t, row.label, func(c *Client) { row.run(c, goldenBrain()) })
+			if args[len(args)-1] != goldenBrain().AllowRule() {
+				t.Errorf("the session must end its allowed tools with the rule; argv %v", args)
+			}
+		})
+		t.Run(row.name+"/without a surface", func(t *testing.T) {
+			t.Parallel()
+			if args := firstArgs(t, row.label, func(c *Client) { row.run(c, search.Surface{}) }); hasBashRule(args) {
+				t.Errorf("a session without a surface must carry no Bash rule; argv %v", args)
+			}
+		})
+	}
+
+	t.Run("BootstrapUnit/carries no rule", func(t *testing.T) {
+		t.Parallel()
+		args := firstArgs(t, "bootstrap-unit", func(c *Client) { _, _ = c.BootstrapUnit("", goldenBootstrapUnitContext()) })
+		if hasBashRule(args) {
+			t.Errorf("the bootstrap analysis must carry no Bash rule; argv %v", args)
+		}
+	})
+
+	// The reviewer runs through runClaude, which hands every session the zero
+	// surface.
+	t.Run("ReviewElaboration/carries no rule", func(t *testing.T) {
+		t.Parallel()
+		ctx := goldenElaborateContext()
+		ctx.Brain = goldenBrain()
+		args := firstArgs(t, "elaborate-review", func(c *Client) { _, _ = c.ReviewElaboration("", ctx, "## Description\n\nA draft.\n") })
+		if hasBashRule(args) {
+			t.Errorf("the reviewer session must carry no Bash rule; argv %v", args)
+		}
+	})
 }
 
 // TestClaudeArgs_AddDirFollowsThePermissionMode pins where the pattern catalog
