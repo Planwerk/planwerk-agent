@@ -1,6 +1,7 @@
 package patterns
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -77,6 +78,67 @@ func TestCloneWikiAuthenticated_FetchFailureCleansUp(t *testing.T) {
 		t.Fatal("cleanup must never be nil, even on error")
 	}
 	cleanup() // must be safe to call
+}
+
+func TestMirrorWiki_ClonesToDestAndReturnsHead(t *testing.T) {
+	var gotScheme, gotURL, gotRef, gotDest string
+	restore := stubFetch(func(p parsedURI, dest string) error {
+		gotScheme, gotURL, gotRef, gotDest = p.scheme, p.cloneURL, p.ref, dest
+		mustWrite(t, filepath.Join(dest, "Home.md"), "# Home\n")
+		gitInitWithCommit(t, dest)
+		return nil
+	})
+	defer restore()
+
+	dest := filepath.Join(t.TempDir(), "wiki")
+	head, err := MirrorWiki("acme/widgets", "v1", dest)
+	if err != nil {
+		t.Fatalf("MirrorWiki: %v", err)
+	}
+	if gotScheme != schemeWiki || gotURL != "https://github.com/acme/widgets.wiki.git" || gotRef != "v1" || gotDest != dest {
+		t.Errorf("clone = %q %q at %q into %q, want the wiki of acme/widgets at v1 into %q", gotScheme, gotURL, gotRef, gotDest, dest)
+	}
+	out, err := exec.Command("git", "-C", dest, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatalf("resolving the HEAD of the clone: %v", err)
+	}
+	if want := strings.TrimSpace(string(out)); head == "" || head != want {
+		t.Errorf("head = %q, want the HEAD of the clone %q", head, want)
+	}
+}
+
+// TestMirrorWiki_FailedFetchKeepsTheDestination covers the refresh of an
+// existing clone that fails: the clone on disk stays, and the error names the
+// wiki.
+func TestMirrorWiki_FailedFetchKeepsTheDestination(t *testing.T) {
+	restore := stubFetch(func(parsedURI, string) error { return os.ErrPermission })
+	defer restore()
+
+	dest := filepath.Join(t.TempDir(), "wiki")
+	mustWrite(t, filepath.Join(dest, "Home.md"), "kept")
+
+	head, err := MirrorWiki("acme/widgets", "", dest)
+	if err == nil || !strings.HasPrefix(err.Error(), "cloning wiki acme/widgets: ") || !errors.Is(err, os.ErrPermission) {
+		t.Errorf("err = %v, want it to name the wiki and wrap the fetch error", err)
+	}
+	if head != "" {
+		t.Errorf("head = %q, want none for a failed clone", head)
+	}
+	if got, readErr := os.ReadFile(filepath.Join(dest, "Home.md")); readErr != nil || string(got) != "kept" {
+		t.Errorf("the existing clone must stay: %q, %v", got, readErr)
+	}
+}
+
+func TestMirrorWiki_InvalidRepoIsError(t *testing.T) {
+	restore := stubFetch(func(parsedURI, string) error {
+		t.Error("an invalid repository must not reach the clone")
+		return nil
+	})
+	defer restore()
+
+	if _, err := MirrorWiki("not-a-repo", "", t.TempDir()); err == nil || !strings.HasPrefix(err.Error(), `deriving wiki clone URL for "not-a-repo": `) {
+		t.Errorf("err = %v, want the clone URL error", err)
+	}
 }
 
 func TestPushWikiDeletions_ForwardsToSeam(t *testing.T) {
