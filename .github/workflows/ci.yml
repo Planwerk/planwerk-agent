@@ -69,6 +69,7 @@ jobs:
       - run: go test -run=^$ -fuzz=FuzzParseDiff -fuzztime=30s ./internal/github/
       - run: go test -run=^$ -fuzz=FuzzParse -fuzztime=30s ./internal/patterns/
       - run: go test -run=^$ -fuzz=FuzzStripMarkdownFences -fuzztime=30s ./internal/claude/
+      - run: go test -run=^$ -fuzz=FuzzMatchExpr -fuzztime=30s ./internal/search/
 
   vet:
     if: github.event_name == 'pull_request'
