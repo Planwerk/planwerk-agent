@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/planwerk/planwerk-agent/internal/claude"
+	"github.com/planwerk/planwerk-agent/internal/mirror"
 )
 
 // runBrainCmd executes the brain command hermetically: with the wiki off,
@@ -113,6 +114,168 @@ func TestSharedMemoryDocMatchesCommand(t *testing.T) {
 		if !strings.Contains(doc, w) {
 			t.Errorf("%s does not mention %q", sharedMemoryDoc, w)
 		}
+	}
+}
+
+func TestBrainSyncCmd_ArgCount(t *testing.T) {
+	if _, err := runBrainCmd(t, "sync"); err == nil {
+		t.Error("expected an error when no repository reference is given")
+	}
+	if _, err := runBrainCmd(t, "sync", testRepoRef, "other/repo"); err == nil {
+		t.Error("expected an error when two arguments are given")
+	}
+}
+
+func TestBrainSyncCmd_RegistersItsFlags(t *testing.T) {
+	syncCmd, _, err := newBrainCmd(&runtimeDeps{}).Find([]string{"sync"})
+	if err != nil {
+		t.Fatalf("finding the sync command: %v", err)
+	}
+	for _, name := range []string{"full", "wiki-ref"} {
+		if syncCmd.Flags().Lookup(name) == nil {
+			t.Errorf("brain sync must expose --%s", name)
+		}
+	}
+	// Running the command is the wiki opt-in.
+	for _, name := range []string{"wiki", "no-wiki"} {
+		if syncCmd.Flags().Lookup(name) != nil {
+			t.Errorf("brain sync must not expose --%s", name)
+		}
+	}
+	if got := syncCmd.Flags().Lookup("full").DefValue; got != "false" {
+		t.Errorf("--full defaults to %q, want false", got)
+	}
+}
+
+// TestBrainSyncCmd_RejectsABadReferenceBeforeAnyWork proves a reference that
+// does not name a repository fails before gh or git runs.
+func TestBrainSyncCmd_RejectsABadReferenceBeforeAnyWork(t *testing.T) {
+	bin := t.TempDir()
+	mark := filepath.Join(bin, "called")
+	for _, tool := range []string{"gh", "git"} {
+		script := "#!/bin/sh\necho " + tool + " >> " + mark + "\nexit 1\n"
+		if err := os.WriteFile(filepath.Join(bin, tool), []byte(script), 0o755); err != nil {
+			t.Fatalf("writing fake %s: %v", tool, err)
+		}
+	}
+	t.Setenv("PATH", bin)
+
+	for _, tc := range []struct{ ref, want string }{
+		{"x", "parsing repo ref: "},
+		{"../x", "invalid repository ../x for a mirror directory"},
+	} {
+		out, err := runBrainCmd(t, "sync", tc.ref)
+		if err == nil || !strings.HasPrefix(err.Error(), tc.want) {
+			t.Errorf("brain sync %s: err = %v, want it to start with %q", tc.ref, err, tc.want)
+		}
+		if len(out) != 0 {
+			t.Errorf("brain sync %s: stdout = %q, want nothing beside the error", tc.ref, out)
+		}
+	}
+	if called, err := os.ReadFile(mark); err == nil {
+		t.Errorf("a bad reference must fail before any tool runs; ran: %s", called)
+	}
+}
+
+// testMirrorDir points the user cache directory at a fresh directory for the
+// test and returns the mirror directory of acme/widgets under it.
+func testMirrorDir(t *testing.T) string {
+	t.Helper()
+	cache := t.TempDir()
+	t.Setenv("HOME", cache)
+	t.Setenv("XDG_CACHE_HOME", cache)
+	root, err := mirror.DefaultRoot()
+	if err != nil {
+		t.Fatalf("mirror.DefaultRoot: %v", err)
+	}
+	dir, err := mirror.Dir(root, "acme", "widgets")
+	if err != nil {
+		t.Fatalf("mirror.Dir: %v", err)
+	}
+	return dir
+}
+
+// fakeTools puts the given shell scripts, keyed by tool name, first on PATH
+// for the test.
+func fakeTools(t *testing.T, scripts map[string]string) {
+	t.Helper()
+	bin := t.TempDir()
+	for tool, script := range scripts {
+		if err := os.WriteFile(filepath.Join(bin, tool), []byte("#!/bin/sh\n"+script), 0o755); err != nil {
+			t.Fatalf("writing fake %s: %v", tool, err)
+		}
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+// emptyRepositoryGH is a fake gh that answers an empty item listing, a
+// repository without a default branch, and no token.
+const emptyRepositoryGH = `case "$*" in *graphql*) echo '{"data":{"repository":{"defaultBranchRef":null}}}';; esac
+exit 0
+`
+
+// TestBrainSyncCmd_SyncsIntoTheCacheDirectoryAndFullRebuildsIt runs the
+// command: without a root of its own the mirror lands under the user cache
+// directory, and --full reaches the run, which deletes what the mirror held.
+func TestBrainSyncCmd_SyncsIntoTheCacheDirectoryAndFullRebuildsIt(t *testing.T) {
+	dir := testMirrorDir(t)
+	t.Setenv(envWikiRef, "")
+	// git fails, so the wiki is reported as not mirrored.
+	fakeTools(t, map[string]string{"gh": emptyRepositoryGH, "git": "exit 1\n"})
+
+	want := "Mirror of acme/widgets at " + dir + "\n" +
+		"items: 0 listed, 0 fetched, 0 in the mirror (0 issues, 0 pull requests)\n" +
+		"history: 0 new commits, 0 in the mirror\n" +
+		"wiki: acme/widgets.wiki not mirrored\n"
+	out, err := runBrainCmd(t, "sync", testRepoRef)
+	if err != nil || string(out) != want {
+		t.Fatalf("brain sync = %q, %v\nwant %q", out, err, want)
+	}
+
+	stale := filepath.Join(dir, "issues", "999.md")
+	if err := os.MkdirAll(filepath.Dir(stale), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stale, []byte("stale"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runBrainCmd(t, "sync", testRepoRef); err != nil {
+		t.Fatalf("brain sync: %v", err)
+	}
+	if _, err := os.Stat(stale); err != nil {
+		t.Errorf("a run without --full must delete nothing: %v", err)
+	}
+	if _, err := runBrainCmd(t, "sync", testRepoRef, "--full"); err != nil {
+		t.Fatalf("brain sync --full: %v", err)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Errorf("--full must delete the mirror first: %v", err)
+	}
+}
+
+// TestBrainSyncCmd_WikiRefPinsTheClone proves --wiki-ref reaches the clone:
+// the fake git records the checkout of the reference.
+func TestBrainSyncCmd_WikiRefPinsTheClone(t *testing.T) {
+	testMirrorDir(t)
+	t.Setenv(envWikiRef, "")
+	argvFile := filepath.Join(t.TempDir(), "argv")
+	// The clone creates its destination, and rev-parse answers the head.
+	fakeTools(t, map[string]string{"gh": emptyRepositoryGH, "git": `echo "$*" >> ` + argvFile + `
+case "$1" in clone) mkdir -p "$3";; esac
+case "$*" in *rev-parse*) echo 1a2b3c4d5e6f70819293a4b5c6d7e8f901234567;; esac
+exit 0
+`})
+
+	out, err := runBrainCmd(t, "sync", testRepoRef, "--wiki-ref", "v1")
+	if err != nil || !strings.HasSuffix(string(out), "wiki: acme/widgets.wiki at 1a2b3c4\n") {
+		t.Fatalf("brain sync --wiki-ref = %q, %v, want the wiki mirrored", out, err)
+	}
+	argv, err := os.ReadFile(argvFile)
+	if err != nil {
+		t.Fatalf("reading the recorded git calls: %v", err)
+	}
+	if want := " checkout --end-of-options v1\n"; !strings.Contains(string(argv), want) {
+		t.Errorf("git ran\n%swant a call that ends in %q", argv, want)
 	}
 }
 
