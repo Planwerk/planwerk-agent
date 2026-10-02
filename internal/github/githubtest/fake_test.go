@@ -3,6 +3,7 @@ package githubtest
 import (
 	"errors"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/planwerk/planwerk-agent/internal/github"
@@ -150,6 +151,100 @@ func TestFake_HistoryReadersAnswerFromTheirFields(t *testing.T) {
 	}
 	if f.Count("CommitMessage") != 3 || f.Calls("ListMergedPRs")[0].Err == nil {
 		t.Errorf("calls not recorded: %d CommitMessage calls, ListMergedPRs err %v", f.Count("CommitMessage"), f.Calls("ListMergedPRs")[0].Err)
+	}
+}
+
+func TestFake_ItemReadersAnswerFromTheirFields(t *testing.T) {
+	f := &Fake{
+		UpdatedItems: []github.UpdatedItem{{Number: 7, UpdatedAt: "2026-03-01T10:00:00Z"}},
+		Items:        map[int]*github.Item{9: {Kind: github.ItemKindPull, Title: "Add a flag"}},
+		History:      []github.HistoryCommit{{SHA: "c1"}, {SHA: "c2"}, {SHA: "c3"}},
+	}
+
+	// The scripted listing is returned whatever since is.
+	if items, err := f.ListUpdatedItems("o", "r", "2026-01-01T00:00:00Z"); err != nil || len(items) != 1 || items[0].Number != 7 {
+		t.Errorf("ListUpdatedItems = %+v, %v", items, err)
+	}
+	if it, err := f.GetItem("o", "r", 9); err != nil || it.Number != 9 || it.Kind != github.ItemKindPull || it.Title != "Add a flag" {
+		t.Errorf("GetItem = %+v, %v", it, err)
+	}
+	// A number without a template is an issue carrying only the number.
+	if it, err := f.GetItem("o", "r", 4); err != nil || it.Number != 4 || it.Kind != github.ItemKindIssue || it.Title != "" {
+		t.Errorf("GetItem of an unscripted number = %+v, %v", it, err)
+	}
+	if f.Items[9].Number != 0 {
+		t.Error("GetItem must return a copy and leave the template alone")
+	}
+	// One page holds the whole history, newest first, until a page size is set.
+	var pages [][]string
+	collect := func(stopAt string) func(page []github.HistoryCommit, total int) bool {
+		pages = nil
+		return func(page []github.HistoryCommit, total int) bool {
+			if total != 3 {
+				t.Errorf("total = %d, want the 3 commits of History", total)
+			}
+			var shas []string
+			for _, c := range page {
+				shas = append(shas, c.SHA)
+			}
+			pages = append(pages, shas)
+			return slices.Contains(shas, stopAt)
+		}
+	}
+	if commits, err := f.DefaultBranchHistoryUntil("o", "r", collect("")); err != nil || len(commits) != 3 || commits[0].SHA != "c1" ||
+		!slices.EqualFunc(pages, [][]string{{"c3", "c2", "c1"}}, slices.Equal[[]string]) {
+		t.Errorf("DefaultBranchHistoryUntil = %+v, %v over the pages %v, want the whole history in one page", commits, err, pages)
+	}
+	f.HistoryPageSize = 2
+	if commits, err := f.DefaultBranchHistoryUntil("o", "r", collect("")); err != nil || len(commits) != 3 || commits[0].SHA != "c1" ||
+		!slices.EqualFunc(pages, [][]string{{"c3", "c2"}, {"c1"}}, slices.Equal[[]string]) {
+		t.Errorf("DefaultBranchHistoryUntil = %+v, %v over the pages %v, want the whole history in two pages", commits, err, pages)
+	}
+	// The read ends at the page done accepts and returns the pages it read.
+	if commits, err := f.DefaultBranchHistoryUntil("o", "r", collect("c2")); err != nil || len(commits) != 2 || commits[0].SHA != "c2" || len(pages) != 1 {
+		t.Errorf("DefaultBranchHistoryUntil = %+v, %v over the pages %v, want c2 and c3 from the first page", commits, err, pages)
+	}
+
+	f.UpdatedItemsErr = errors.New("rate limited")
+	f.ItemErr = errors.New("gone")
+	f.HistoryErr = errors.New("down")
+	if _, err := f.ListUpdatedItems("o", "r", ""); err == nil || err.Error() != "rate limited" {
+		t.Errorf("ListUpdatedItems err = %v, want the scripted error", err)
+	}
+	if _, err := f.GetItem("o", "r", 9); err == nil || err.Error() != "gone" {
+		t.Errorf("GetItem err = %v, want the scripted error", err)
+	}
+	if _, err := f.DefaultBranchHistoryUntil("o", "r", collect("")); err == nil || err.Error() != "down" || len(pages) != 0 {
+		t.Errorf("DefaultBranchHistoryUntil err = %v after %d pages, want the scripted error and no page", err, len(pages))
+	}
+
+	f.ListUpdatedItemsFn = func(_, _, since string) ([]github.UpdatedItem, error) {
+		return []github.UpdatedItem{{Number: 1, UpdatedAt: since}}, nil
+	}
+	f.GetItemFn = func(_, _ string, number int) (*github.Item, error) {
+		return &github.Item{Number: number, Title: "hook"}, nil
+	}
+	f.DefaultBranchHistoryUntilFn = func(_, name string, _ func([]github.HistoryCommit, int) bool) ([]github.HistoryCommit, error) {
+		return []github.HistoryCommit{{SHA: "head-of-" + name}}, nil
+	}
+	if items, err := f.ListUpdatedItems("o", "r", "t0"); err != nil || len(items) != 1 || items[0].UpdatedAt != "t0" {
+		t.Errorf("ListUpdatedItems hook not used: %+v, %v", items, err)
+	}
+	if it, err := f.GetItem("o", "r", 5); err != nil || it.Title != "hook" {
+		t.Errorf("GetItem hook not used: %+v, %v", it, err)
+	}
+	if commits, err := f.DefaultBranchHistoryUntil("o", "r", collect("")); err != nil || len(commits) != 1 || commits[0].SHA != "head-of-r" {
+		t.Errorf("DefaultBranchHistoryUntil hook not used: %+v, %v", commits, err)
+	}
+
+	if f.Count("ListUpdatedItems") != 3 || f.Count("GetItem") != 4 || f.Count("DefaultBranchHistoryUntil") != 5 {
+		t.Errorf("calls not recorded: %d listings, %d items, %d histories", f.Count("ListUpdatedItems"), f.Count("GetItem"), f.Count("DefaultBranchHistoryUntil"))
+	}
+	if got := f.Calls("GetItem")[0].Args; len(got) != 3 || got[2] != 9 {
+		t.Errorf("GetItem args = %v, want owner, name, and the number", got)
+	}
+	if f.Calls("ListUpdatedItems")[1].Err == nil {
+		t.Error("a failed call must record its error")
 	}
 }
 

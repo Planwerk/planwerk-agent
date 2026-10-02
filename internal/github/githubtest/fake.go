@@ -12,6 +12,7 @@ package githubtest
 
 import (
 	"fmt"
+	"slices"
 	"sync"
 
 	"github.com/planwerk/planwerk-agent/internal/github"
@@ -138,8 +139,12 @@ type Fake struct {
 
 	// History, MergedPRs and ClosedIssues are what DefaultBranchHistory,
 	// ListMergedPRs and ListClosedIssues return; nil means an empty listing.
-	// Their Err fields fail them.
+	// Their Err fields fail them. DefaultBranchHistoryUntil answers from
+	// History and HistoryErr too: it hands done the commits newest first in
+	// pages of HistoryPageSize (0 means one page for all of them), with the
+	// length of History as the total, and returns the pages it read.
 	History         []github.HistoryCommit
+	HistoryPageSize int
 	HistoryErr      error
 	MergedPRs       []github.MergedPR
 	MergedPRsErr    error
@@ -160,6 +165,17 @@ type Fake struct {
 	IssueThreadErr error
 	PRThread       *github.PRThread
 	PRThreadErr    error
+
+	// UpdatedItems is what ListUpdatedItems returns, whatever since is; nil
+	// means an empty listing. UpdatedItemsErr fails it.
+	UpdatedItems    []github.UpdatedItem
+	UpdatedItemsErr error
+
+	// Items maps a number to the template GetItem returns, as a copy with
+	// Number set; a number without an entry yields an issue carrying only the
+	// number. ItemErr fails it.
+	Items   map[int]*github.Item
+	ItemErr error
 
 	// Hooks script an operation completely when set.
 	ListChecksFn             func(owner, name, sha string) ([]github.CheckRun, error)
@@ -220,6 +236,10 @@ type Fake struct {
 	CommitMessageFn          func(dir, sha string) (string, error)
 	GetIssueThreadFn         func(owner, name string, number int) (*github.IssueThread, error)
 	GetPRThreadFn            func(owner, name string, number int) (*github.PRThread, error)
+	ListUpdatedItemsFn       func(owner, name, since string) ([]github.UpdatedItem, error)
+	GetItemFn                func(owner, name string, number int) (*github.Item, error)
+
+	DefaultBranchHistoryUntilFn func(owner, name string, done func(page []github.HistoryCommit, total int) bool) ([]github.HistoryCommit, error)
 }
 
 // record appends one call and returns its index, so the recorded error can be
@@ -1123,4 +1143,68 @@ func (f *Fake) GetPRThread(owner, name string, number int) (*github.PRThread, er
 		thread.ReviewThreads = f.Threads
 	}
 	return &thread, nil
+}
+
+// --- items -----------------------------------------------------------------
+
+func (f *Fake) ListUpdatedItems(owner, name, since string) ([]github.UpdatedItem, error) {
+	i := f.record("ListUpdatedItems", owner, name, since)
+	if f.ListUpdatedItemsFn != nil {
+		items, err := f.ListUpdatedItemsFn(owner, name, since)
+		f.setErr(i, err)
+		return items, err
+	}
+	f.setErr(i, f.UpdatedItemsErr)
+	if f.UpdatedItemsErr != nil {
+		return nil, f.UpdatedItemsErr
+	}
+	return f.UpdatedItems, nil
+}
+
+func (f *Fake) GetItem(owner, name string, number int) (*github.Item, error) {
+	i := f.record("GetItem", owner, name, number)
+	if f.GetItemFn != nil {
+		item, err := f.GetItemFn(owner, name, number)
+		f.setErr(i, err)
+		return item, err
+	}
+	f.setErr(i, f.ItemErr)
+	if f.ItemErr != nil {
+		return nil, f.ItemErr
+	}
+	item := github.Item{Kind: github.ItemKindIssue}
+	if tmpl, ok := f.Items[number]; ok {
+		item = *tmpl
+	}
+	item.Number = number
+	return &item, nil
+}
+
+func (f *Fake) DefaultBranchHistoryUntil(owner, name string, done func(page []github.HistoryCommit, total int) bool) ([]github.HistoryCommit, error) {
+	i := f.record("DefaultBranchHistoryUntil", owner, name)
+	if f.DefaultBranchHistoryUntilFn != nil {
+		commits, err := f.DefaultBranchHistoryUntilFn(owner, name, done)
+		f.setErr(i, err)
+		return commits, err
+	}
+	f.setErr(i, f.HistoryErr)
+	if f.HistoryErr != nil {
+		return nil, f.HistoryErr
+	}
+	size := f.HistoryPageSize
+	if size <= 0 {
+		size = len(f.History)
+	}
+	// The pages run from the newest commit down. An empty history is one
+	// empty page, as GitHub answers it.
+	start := len(f.History)
+	for {
+		end := start
+		start = max(end-size, 0)
+		page := slices.Clone(f.History[start:end])
+		slices.Reverse(page)
+		if done(page, len(f.History)) || start == 0 {
+			return f.History[start:], nil
+		}
+	}
 }
