@@ -33,6 +33,12 @@ Entries are written under the user cache directory. Both `propose` and `audit`
 fetch the default-branch HEAD SHA via `git ls-remote` before cloning, so a hit
 avoids the clone.
 
+The same directory holds one thing that is not a cache entry: the mirror that
+[`brain sync`](/reference/cli#brain-sync) keeps of a repository's issues, pull
+requests, commit list, and wiki, under `brain/<owner>/<name>`. It has no key
+and no age. `--clear-cache` removes cache entries only and leaves the mirror;
+`brain sync --full` rebuilds it, and deleting the directory removes it.
+
 ## What every key is scoped to
 
 On top of the per-command state above, every key carries the configuration that

@@ -895,13 +895,15 @@ prompts resolve no wiki and carry no memory.
 ## `brain`
 
 Read and build the project memory a repository keeps on its
-[GitHub Wiki](/reference/review-patterns#github-wiki).
+[GitHub Wiki](/reference/review-patterns#github-wiki), and mirror what the
+repository knows on GitHub to local files.
 
 | Subcommand | Arguments | Description |
 |------------|-----------|-------------|
 | `brain memory` | `<repo-ref>` | Print the memory index of the repository's wiki |
 | `brain memory` | `<repo-ref> <page>` | Print the memory page with that file name |
 | `brain bootstrap` | `<repo-ref>` | Build the memory from the repository's history |
+| `brain sync` | `<repo-ref>` | Mirror the issues, pull requests, commit list, and wiki to local markdown |
 
 ### `brain memory`
 
@@ -982,10 +984,12 @@ planwerk-agent brain bootstrap owner/repo --write-wiki     # push the pages afte
 | `--review-effort` | Reasoning effort of the page review: one of `low`, `medium`, `high`, `xhigh`, `max` (env: `PLANWERK_BRAIN_REVIEW_EFFORT`) | `high` |
 | `--decision-docs` | Repository-relative paths of the decision documents to read, comma-separated or repeated; replaces discovery | - |
 | `--no-decision-docs` | Read no decision document | `false` |
+| `--source` | Where the history is read from: `api` (the GitHub API) or `mirror` (the local mirror of [`brain sync`](#brain-sync)) | `api` |
 
 `--dry-run` and `--write-wiki` are mutually exclusive, and so are
 `--decision-docs` and `--no-decision-docs`. `--max-units` must not be negative.
-An unknown `--review-effort` is rejected before any session runs.
+An unknown `--review-effort` and an unknown `--source` are rejected before any
+session runs.
 
 The command always reads the wiki, so it has `--wiki-ref` and neither `--wiki`
 nor `--no-wiki`. It reads `wiki.repo` and `wiki.ref` from
@@ -993,7 +997,8 @@ nor `--no-wiki`. It reads `wiki.repo` and `wiki.ref` from
 
 #### Units
 
-The history is read from the GitHub API and grouped into units:
+The history is read from the GitHub API, or from the local mirror with
+`--source mirror`, and grouped into units:
 
 | Kind | Key | Content |
 |------|-----|---------|
@@ -1007,6 +1012,25 @@ the default branch. A unit without such a commit (an issue closed by hand, a
 pull request whose commits are no longer on the default branch) sorts by the
 time it was closed or merged, after the units of the commits up to that time.
 Document units come last, in path order.
+
+With `--source mirror` the listing and every issue and pull request thread come
+from the files [`brain sync`](#brain-sync) wrote, and the run calls no GitHub
+API for them. The mirror is read as it is: the run does not sync it, so the
+history ends where the last `brain sync` ended. The repository is still cloned,
+and commit messages are read from that clone. A mirror that cannot be used
+fails the run:
+
+- Without a mirror, the listing fails with `no mirror of <owner/repo> at <dir>;
+  run "planwerk-agent brain sync <owner/repo>" first`.
+- With a mirror in which no sync has finished, it fails with `the mirror of
+  <owner/repo> at <dir> has never finished a sync; run "planwerk-agent brain
+  sync <owner/repo>" again`.
+- With an item file that cannot be read, it fails with
+  `reading <file>: <cause>`. A file is not skipped, because a skipped file
+  would shorten the history without notice.
+- When a unit names an issue or a pull request the mirror does not hold, the
+  unit fails with `<owner/repo>#<n> is not in the mirror at <dir>; run
+  "planwerk-agent brain sync <owner/repo>"`.
 
 A Markdown file is a decision document when a directory on its path is named
 `adr`, `adrs`, or `decisions`, or when its name is `design-decisions.md`,
@@ -1168,6 +1192,185 @@ pushed without one when it had none.
   write through it`.
 
 The command never deletes a wiki page; [`sync --prune`](#sync) does.
+
+### `brain sync`
+
+Keep a local mirror of a repository's knowledge on GitHub: one markdown file
+per issue and per pull request with the whole conversation, the commit list of
+the default branch, and a clone of the wiki. The command starts no Claude
+session, and no session is given the mirror. It is not the [`sync`](#sync)
+command, which reconciles the wiki's pages against the code. See
+[Mirror a repository](/how-to/mirror-a-repository) for the workflow.
+
+```bash
+planwerk-agent brain sync owner/repo           # fetch what changed since the last run
+planwerk-agent brain sync owner/repo --full    # delete the mirror and build it again
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--full` | Delete this repository's mirror first, then sync | `false` |
+| `--wiki-ref` | Pin the wiki to a branch, tag, or commit (env: `PLANWERK_WIKI_REF`) | - |
+
+The command always mirrors the wiki, so it has `--wiki-ref` and neither `--wiki`
+nor `--no-wiki`. It reads `wiki.repo` and `wiki.ref` from
+`.planwerk/config.yaml` and ignores `wiki.enabled`.
+
+#### Mirror directory
+
+The mirror lives in the user cache directory, keyed by owner and repository in
+lowercase: `<user cache dir>/planwerk-agent/brain/<owner>/<name>` (on Linux
+`~/.cache/planwerk-agent/brain/<owner>/<name>`). The first output line prints
+the path. No flag, config key, or environment variable moves it. A run that
+cannot resolve a user cache directory (neither `HOME` nor `XDG_CACHE_HOME` is
+set) stops with an error: the mirror is never written to the temp directory.
+
+```text
+<owner>/<name>/
+├── state.json          # the items cursor, the mirrored wiki and its commit, the end of the last finished sync
+├── issues/<number>.md
+├── pulls/<number>.md
+├── history.jsonl       # one line per commit of the default branch, oldest first
+└── wiki/               # a full git clone of <repo>.wiki.git
+```
+
+The mirror directory, `issues/`, and `pulls/` have mode `0700`, and the files
+the command writes have mode `0600`. The wiki clone keeps git's own modes
+inside that directory. Every file is written through a temporary file and a
+rename. A run that is interrupted can leave its temporary file (`*.tmp`) in the
+mirror directory, `issues/`, or `pulls/`. A later run removes it once it is more
+than one hour old. The files hold the text as GitHub returns it, with any secret
+someone pasted into a comment.
+
+The mirror is a copy: deleting it loses nothing, and the next run builds it
+again. `--clear-cache` leaves it in place.
+
+`state.json` has this form:
+
+```json
+{
+  "version": 1,
+  "repo": "owner/name",
+  "synced_at": "2026-10-02T09:00:00Z",
+  "items": { "cursor": "2026-10-02T08:17:02Z" },
+  "wiki": { "repo": "owner/name", "commit": "<40 hex>" }
+}
+```
+
+`synced_at` is the end of the last run in which every part succeeded, in UTC.
+`items.cursor` is the newest update time a run has handled. A line of
+`history.jsonl` is `{"sha":"<40 hex>","committed_at":"2026-03-01T10:00:00Z","pr":9}`,
+where `pr` is the merged pull request GitHub associates with the commit, or `0`.
+
+#### Item file
+
+A file is a YAML frontmatter between two `---` lines, a blank line, the title as
+a `# ` heading, a blank line, and the blocks. The frontmatter always holds
+these keys, in this order:
+
+| Key | Value |
+|-----|-------|
+| `format` | `1` |
+| `kind` | `issue` or `pull` |
+| `repo` | `<owner>/<name>` |
+| `number`, `id`, `url`, `title` | The item's number, GraphQL node id, URL, and title |
+| `state` | `open`, `closed`, or `merged` |
+| `state_reason` | An issue's close reason in lowercase (`completed`, `not_planned`), or `""` |
+| `author`, `author_is_bot`, `author_association` | The author's login (`""` for a deleted account), whether GitHub types the author as a bot, and the author's relation to the repository |
+| `labels` | The label names |
+| `created_at`, `updated_at`, `closed_at`, `merged_at` | Timestamps as GitHub prints them, `""` where there is none |
+| `base_branch` | A pull request's base branch |
+| `closed_by_prs` | An issue's merged closing pull requests of the same repository |
+| `closer_commit` | The commit that closed an issue |
+| `closes_issues` | The issues of the same repository a pull request closes |
+
+A block is a marker line, the lines of its text, and one blank line:
+
+```markdown
+<!-- planwerk-agent:mirror comment {"id":"IC_x","url":"https://github.com/acme/widgets/issues/7#issuecomment-1","author":"octocat","association":"MEMBER","created":"2026-03-01T10:00:00Z","updated":"2026-03-01T10:05:00Z","lines":2} -->
+First line of the comment.
+Second line.
+
+```
+
+The marker is `<!-- planwerk-agent:mirror <kind> <json> -->`. `lines` is the
+number of lines of the text, `0` for an empty text. The text is written
+unchanged. A reader takes `lines` lines after a marker and never scans a text
+for markers, so a comment that holds a marker line or a `---` line opens no
+block. In the JSON, `<`, `>`, and `&` are written as `\u003c`, `\u003e`, and
+`\u0026`, so no value closes the HTML comment. The blocks come in this order:
+
+| Kind | JSON keys, in order | Text |
+|------|---------------------|------|
+| `body` | `lines` | The item's body |
+| `comment` | `id`, `url`, `author`, `association`, `created`, `updated`, `lines` | A conversation comment, in GitHub's order |
+| `review` | `id`, `url`, `author`, `association`, `state`, `submitted`, `updated`, `lines` | A review's summary (pull requests); `state` as GitHub prints it, for example `APPROVED` |
+| `thread` | `id`, `path`, `line`, `resolved`, `outdated`, `lines` | The diff hunk of a review thread |
+| `thread-comment` | The keys of `comment` | One comment of the thread opened by the last `thread` block |
+| `commit` | `sha`, `committed`, `headline`, `lines` | The commit message body |
+
+A review thread with more than 100 comments keeps the first 100, and the run
+logs a warning that names the pull request and the thread.
+
+#### Output of a sync
+
+The run prints to stdout:
+
+```text
+Mirror of acme/widgets at /home/u/.cache/planwerk-agent/brain/acme/widgets
+items: 262 listed, 262 fetched, 262 in the mirror (116 issues, 146 pull requests)
+history: 563 new commits, 563 in the mirror
+wiki: acme/widgets.wiki at 1a2b3c4
+```
+
+- The `items:` line counts the issues and pull requests GitHub listed, the ones
+  the run fetched, and the files the mirror holds.
+- The `history:` line counts the commits the run added. When the default branch
+  no longer holds the last mirrored commit (after a force push), the run
+  replaces the file and prints `history: replaced, <n> commits in the mirror`.
+  GitHub lists the history by commit date, so a merge can place commits behind
+  the last mirrored one. The run reads past that commit until the commits it
+  read and the mirrored ones add up to the commit count of the branch, and
+  counts those commits as new.
+- The `wiki:` line names the wiki and its commit, with `, unchanged` when the
+  commit is the one the last run stored. When the wiki cannot be cloned (a
+  repository without a wiki cannot), the run logs a warning, keeps the clone it
+  has, and prints `wiki: <owner/repo>.wiki not mirrored`.
+
+Log lines go to stderr. A run logs `mirroring items` after every 50 fetched
+items.
+
+#### What a run does
+
+A run asks GitHub for the issues and pull requests updated since
+`items.cursor`, oldest update first, and fetches each one whose file is missing
+or older than the listing says. Issues and pull requests share the cursor: an
+item's update time rises when a comment on it is edited and when a review is
+submitted. The listing includes the cursor's own time, so a run right after
+another one lists the newest item again and prints `items: 1 listed, 0 fetched`.
+
+The three parts (items, history, wiki) run in that order, and the state is
+saved after each. A part that fails does not stop the next one. The run then
+exits non-zero with every failure under its part's name, for example
+`items: fetching acme/widgets#42: <cause>`, and leaves `synced_at` as it was. A
+failed wiki clone is a warning, not a failure. After a failed fetch the cursor
+stays at the last item the run handled, so the next run continues there. A
+GitHub rate limit arrives this way: the run does not wait it out.
+
+A run does not remove what was deleted on GitHub, because no listing reports a
+deletion. A deleted comment leaves the mirror when its issue or pull request is
+updated and fetched again. A deleted or transferred issue or pull request
+leaves it on `--full`.
+
+`--full` deletes the mirror directory of this repository, and no other, before
+it syncs. It asks GitHub for one listing first, so a run that cannot reach
+GitHub or authenticate deletes nothing. Two full runs over the same state of
+GitHub write the same `issues/`, `pulls/`, and `history.jsonl`, byte for byte.
+
+A `state.json` of another version stops the run with `unsupported mirror state
+version <n> in <file>; run brain sync --full to rebuild`. An item file of
+another format stops its reader with
+`unsupported mirror format <n>; run brain sync --full to rebuild`.
 
 ## `cache`
 

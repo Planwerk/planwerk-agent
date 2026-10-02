@@ -109,6 +109,10 @@ export default defineConfig({
               link: '/how-to/bootstrap-the-project-memory',
             },
             {
+              text: 'Mirror a repository',
+              link: '/how-to/mirror-a-repository',
+            },
+            {
               text: 'Extract review patterns',
               link: '/how-to/extract-review-patterns',
             },
