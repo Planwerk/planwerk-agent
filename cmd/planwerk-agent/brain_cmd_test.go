@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/pflag"
 
+	"github.com/planwerk/planwerk-agent/internal/brain"
 	"github.com/planwerk/planwerk-agent/internal/claude"
 	"github.com/planwerk/planwerk-agent/internal/mirror"
 )
@@ -290,7 +291,7 @@ func TestBrainBootstrapCmd_RegistersItsFlags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("finding the bootstrap command: %v", err)
 	}
-	for _, name := range []string{"dry-run", "max-units", "write-wiki", "wiki-ref", "review-model", "review-effort", "decision-docs", "no-decision-docs"} {
+	for _, name := range []string{"dry-run", "max-units", "write-wiki", "wiki-ref", "review-model", "review-effort", "decision-docs", "no-decision-docs", "source"} {
 		if bootstrapCmd.Flags().Lookup(name) == nil {
 			t.Errorf("brain bootstrap must expose --%s", name)
 		}
@@ -307,6 +308,10 @@ func TestBrainBootstrapCmd_RegistersItsFlags(t *testing.T) {
 	}
 	if got := bootstrapCmd.Flags().Lookup("review-effort").DefValue; got != wantReviewEffort {
 		t.Errorf("--review-effort defaults to %q, want %s", got, wantReviewEffort)
+	}
+	// The mirror is read only on request.
+	if got := bootstrapCmd.Flags().Lookup("source").DefValue; got != "api" {
+		t.Errorf("--source defaults to %q, want api", got)
 	}
 }
 
@@ -344,6 +349,7 @@ func TestBrainBootstrapCmd_RejectsBadFlagsBeforeAnyWork(t *testing.T) {
 		{"documents with none", []string{"--decision-docs", "a.md", "--no-decision-docs"}, "--decision-docs and --no-decision-docs are mutually exclusive"},
 		{"negative unit count", []string{"--max-units", "-1"}, "--max-units must be >= 0, got -1"},
 		{"unknown effort", []string{"--review-effort", "huge"}, `invalid --review-effort "huge": must be one of low, medium, high, xhigh, max (env: PLANWERK_BRAIN_REVIEW_EFFORT)`},
+		{"unknown source", []string{"--source", "x"}, `--source must be "api" or "mirror", got "x"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			out, err := runBrainCmd(t, append([]string{"bootstrap", testRepoRef}, tc.args...)...)
@@ -360,6 +366,80 @@ func TestBrainBootstrapCmd_RejectsBadFlagsBeforeAnyWork(t *testing.T) {
 	}
 	if _, err := os.Stat(".planwerk-brain-sync"); err == nil {
 		t.Error("a flag error must not create the state directory")
+	}
+}
+
+// TestBrainBootstrapCmd_SourceMirrorReadsTheMirrorAndNotTheAPI runs the
+// command with --source mirror and no mirror on disk. The run lists the
+// history before it clones, so it ends at the missing mirror: the error proves
+// the mirror source reached the run, and no tool ran for the listing.
+func TestBrainBootstrapCmd_SourceMirrorReadsTheMirrorAndNotTheAPI(t *testing.T) {
+	dir := testMirrorDir(t)
+	t.Chdir(t.TempDir())
+	mark := filepath.Join(t.TempDir(), "called")
+	fakeTools(t, map[string]string{
+		"gh":  "echo gh >> " + mark + "\nexit 1\n",
+		"git": "echo git >> " + mark + "\nexit 1\n",
+	})
+
+	_, err := runBrainCmd(t, "bootstrap", testRepoRef, "--source", "mirror", "--dry-run")
+	want := "listing the history of acme/widgets: no mirror of acme/widgets at " + dir + `; run "planwerk-agent brain sync acme/widgets" first`
+	if err == nil || err.Error() != want {
+		t.Errorf("err = %v\nwant %s", err, want)
+	}
+	if called, readErr := os.ReadFile(mark); readErr == nil {
+		t.Errorf("--source mirror must not reach the GitHub API; ran: %s", called)
+	}
+}
+
+func TestBrainBootstrapSource(t *testing.T) {
+	t.Run("api is the default reader", func(t *testing.T) {
+		// A nil Source is what the run takes as the GitHub API.
+		src, err := brainBootstrapSource("api", testRepoRef)
+		if err != nil || src != nil {
+			t.Errorf("source = %#v, %v, want nil, nil", src, err)
+		}
+	})
+
+	t.Run("mirror reads the repository's mirror", func(t *testing.T) {
+		src, err := brainBootstrapSource("mirror", "Acme/Widgets")
+		if err != nil {
+			t.Fatalf("brainBootstrapSource: %v", err)
+		}
+		ms, ok := src.(brain.MirrorSource)
+		if !ok {
+			t.Fatalf("source = %#v, want a brain.MirrorSource", src)
+		}
+		if want := filepath.Join("brain", "acme", "widgets"); !strings.HasSuffix(ms.Dir, want) {
+			t.Errorf("mirror directory = %q, want it to end in %q", ms.Dir, want)
+		}
+	})
+
+	// The mirror never falls back to the temp directory.
+	t.Run("mirror without a user cache directory", func(t *testing.T) {
+		t.Setenv("HOME", "")
+		t.Setenv("XDG_CACHE_HOME", "")
+		if _, err := os.UserCacheDir(); err == nil {
+			t.Skip("the platform resolves a cache directory without HOME")
+		}
+		src, err := brainBootstrapSource("mirror", testRepoRef)
+		if err == nil || src != nil || !strings.HasPrefix(err.Error(), "resolving the user cache directory for the mirror: ") {
+			t.Errorf("source = %#v, %v, want the cache directory's error", src, err)
+		}
+	})
+
+	for _, tc := range []struct{ name, source, ref, want string }{
+		{"mirror with a reference that names no repository", "mirror", "x", "parsing repo ref: "},
+		{"mirror with a repository that leaves the root", "mirror", "../x", "invalid repository ../x for a mirror directory"},
+		{"an unknown source", "x", testRepoRef, `--source must be "api" or "mirror", got "x"`},
+		{"an empty source", "", testRepoRef, `--source must be "api" or "mirror", got ""`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			src, err := brainBootstrapSource(tc.source, tc.ref)
+			if err == nil || !strings.HasPrefix(err.Error(), tc.want) || src != nil {
+				t.Errorf("source = %#v, %v, want the error %q", src, err, tc.want)
+			}
+		})
 	}
 }
 

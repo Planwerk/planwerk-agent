@@ -7,7 +7,14 @@ import (
 
 	"github.com/planwerk/planwerk-agent/internal/brain"
 	"github.com/planwerk/planwerk-agent/internal/claude"
+	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/mirror"
+)
+
+// The values of --source of `brain bootstrap`.
+const (
+	brainSourceAPI    = "api"
+	brainSourceMirror = "mirror"
 )
 
 // newBrainCmd builds the "brain" command group, which reads, builds, and
@@ -132,10 +139,11 @@ or short form (owner/repo).`,
 // them in a state directory, and push them to the wiki only under --write-wiki
 // and after a confirmation at a terminal. Like sync, the command registers
 // --wiki-ref only: running it is the wiki opt-in, so it has no --wiki and no
-// --no-wiki. It has no --yes either.
+// --no-wiki. It has no --yes either. --source selects where the history is
+// read from (brainBootstrapSource).
 func newBrainBootstrapCmd(deps *runtimeDeps) *cobra.Command {
 	var opts brain.BootstrapOptions
-	var wikiRef, reviewModel, reviewEffort string
+	var wikiRef, reviewModel, reviewEffort, source string
 
 	bootstrapCmd := &cobra.Command{
 		Use:   "bootstrap <repo-ref>",
@@ -163,6 +171,12 @@ there is no flag that skips the question, and a run whose stdin is not a
 terminal never pushes. --dry-run clones the repository, lists the units, and
 stops without a Claude session.
 
+The history is read from the GitHub API. With --source mirror it is read from
+the local mirror that "brain sync" keeps, and the run calls no GitHub API for
+it. The mirror is read as it is: the run does not sync it, so it sees the
+history up to the last "brain sync", and it stops when the mirror is missing
+or no sync of it has finished. The repository is still cloned.
+
 The analysis runs on --claude-model and --claude-effort, the page review on
 --review-model and --review-effort.
 
@@ -179,6 +193,10 @@ or short form (owner/repo).`,
 			}
 			if opts.MaxUnits < 0 {
 				return fmt.Errorf("--max-units must be >= 0, got %d", opts.MaxUnits)
+			}
+			src, err := brainBootstrapSource(source, args[0])
+			if err != nil {
+				return err
 			}
 			model, effort, err := resolveBrainReviewTier(reviewModel, flags.Changed("review-model"), reviewEffort, flags.Changed("review-effort"))
 			if err != nil {
@@ -198,7 +216,12 @@ or short form (owner/repo).`,
 			run.RepoRef = args[0]
 			run.Wiki = resolveSyncWiki(wikiRef, flags.Changed("wiki-ref"), deps.fileCfg.Wiki)
 			run.Remote = deps.remoteOpts
-			return brain.Bootstrap(cmd.OutOrStdout(), run, client.BootstrapUnit, client.BootstrapReview, client.UsageTotals)
+			return (&brain.Bootstrapper{
+				Source:  src,
+				Analyze: client.BootstrapUnit,
+				Review:  client.BootstrapReview,
+				Usage:   client.UsageTotals,
+			}).Run(cmd.OutOrStdout(), run)
 		},
 	}
 
@@ -211,8 +234,36 @@ or short form (owner/repo).`,
 	flags.StringVar(&reviewEffort, "review-effort", claude.DefaultBrainReviewEffort, "Reasoning effort of the page review: low, medium, high, xhigh, or max (env: "+envBrainReviewEffort+")")
 	flags.StringSliceVar(&opts.DecisionDocs, "decision-docs", nil, "Repository-relative paths of the decision documents to read, in place of the discovered ones")
 	flags.BoolVar(&opts.NoDecisionDocs, "no-decision-docs", false, "Read no decision document")
+	flags.StringVar(&source, "source", brainSourceAPI, "Where the history is read from: api (the GitHub API) or mirror (the local mirror of brain sync)")
 
 	return bootstrapCmd
+}
+
+// brainBootstrapSource resolves --source of `brain bootstrap` for the
+// repository repoRef names. "api" yields nil, which the run takes as the
+// GitHub API. "mirror" yields the reader of the repository's mirror under the
+// default root; the mirror itself is checked when the run lists the history.
+func brainBootstrapSource(source, repoRef string) (brain.Source, error) {
+	switch source {
+	case brainSourceAPI:
+		return nil, nil
+	case brainSourceMirror:
+		owner, name, err := github.ParseRepoRef(repoRef)
+		if err != nil {
+			return nil, fmt.Errorf("parsing repo ref: %w", err)
+		}
+		root, err := mirror.DefaultRoot()
+		if err != nil {
+			return nil, err
+		}
+		dir, err := mirror.Dir(root, owner, name)
+		if err != nil {
+			return nil, err
+		}
+		return brain.MirrorSource{Dir: dir}, nil
+	default:
+		return nil, fmt.Errorf("--source must be %q or %q, got %q", brainSourceAPI, brainSourceMirror, source)
+	}
 }
 
 // resolveBrainReviewTier resolves the model and the effort of the page review
