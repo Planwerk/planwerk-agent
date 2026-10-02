@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -16,6 +17,15 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/report"
 	"github.com/planwerk/planwerk-agent/internal/review"
 )
+
+// mirrorOnlyAnnotation marks a command that reads a local mirror and nothing
+// else. The root command's PersistentPreRunE sets up logging for it and stops
+// there: it loads no config file, resolves no setting, and builds no Claude
+// client. `brain search` carries it, because a session runs that command in
+// the checkout under review, whose .planwerk/config.yaml the author of the
+// reviewed change wrote: a key this binary does not know would fail every
+// search of the session.
+const mirrorOnlyAnnotation = "planwerk-agent/mirror-only"
 
 // newRootCmd builds the root command. The root command is the review command:
 // it analyzes a single GitHub PR (or the local working tree with --local). It
@@ -59,6 +69,10 @@ or short form (owner/repo#123).`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			format, err := logging.ParseFormat(logFormat)
 			if err != nil {
+				if cmd.Annotations[mirrorOnlyAnnotation] != "" {
+					// A session reads this error: it holds no argument.
+					return errors.New("--log-format must be one of text, json")
+				}
 				return err
 			}
 			if err := logging.Init(logging.Options{
@@ -67,6 +81,9 @@ or short form (owner/repo#123).`,
 				Verbose: verbose,
 			}); err != nil {
 				return err
+			}
+			if cmd.Annotations[mirrorOnlyAnnotation] != "" {
+				return nil
 			}
 			loaded, _, err := cli.LoadFileConfig(cli.DefaultConfigPath)
 			if err != nil {

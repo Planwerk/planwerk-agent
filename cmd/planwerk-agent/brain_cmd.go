@@ -1,7 +1,10 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"slices"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -9,6 +12,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/claude"
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/mirror"
+	"github.com/planwerk/planwerk-agent/internal/search"
 )
 
 // The values of --source of `brain bootstrap`.
@@ -17,20 +21,22 @@ const (
 	brainSourceMirror = "mirror"
 )
 
-// newBrainCmd builds the "brain" command group, which reads, builds, and
-// mirrors what a repository knows. Its child "memory" prints the project
+// newBrainCmd builds the "brain" command group, which reads, builds, mirrors,
+// and searches what a repository knows. Its child "memory" prints the project
 // memory of a repository's GitHub Wiki: the index, or one page. The plugin
 // skills call it, so a skill reads the memory through the same opt-in,
 // authentication, clone cache, and page guards as the headless commands. Its
 // child "bootstrap" (newBrainBootstrapCmd) builds that memory from the
 // repository's history. Its child "sync" (newBrainSyncCmd) keeps a local
 // mirror of the repository's issues, pull requests, commit list, and wiki.
+// Its child "search" (newBrainSearchCmd) answers a keyword query over that
+// mirror.
 func newBrainCmd(deps *runtimeDeps) *cobra.Command {
 	var wiki wikiFlags
 
 	brainCmd := &cobra.Command{
 		Use:   "brain",
-		Short: "Read, build, and mirror what a repository knows",
+		Short: "Read, build, mirror, and search what a repository knows",
 	}
 
 	memoryCmd := &cobra.Command{
@@ -75,7 +81,7 @@ or short form (owner/repo).`,
 	}
 	wiki.register(memoryCmd.Flags())
 
-	brainCmd.AddCommand(memoryCmd, newBrainBootstrapCmd(deps), newBrainSyncCmd(deps))
+	brainCmd.AddCommand(memoryCmd, newBrainBootstrapCmd(deps), newBrainSyncCmd(deps), newBrainSearchCmd(deps))
 	return brainCmd
 }
 
@@ -132,6 +138,121 @@ or short form (owner/repo).`,
 	flags.StringVar(&wikiRef, "wiki-ref", "", "Pin the wiki to a branch, tag, or commit (env: "+envWikiRef+"; empty uses the wiki's default branch)")
 
 	return syncCmd
+}
+
+// The values of --type and --state of `brain search`.
+var (
+	brainSearchTypes  = []string{github.ItemKindIssue, github.ItemKindPull, search.TypeWiki}
+	brainSearchStates = []string{"open", "closed", "merged"}
+)
+
+// The bounds of --limit of `brain search`.
+const (
+	brainSearchMinLimit = 1
+	brainSearchMaxLimit = 100
+)
+
+// newBrainSearchCmd builds "brain search": rank the issues, pull requests,
+// and wiki pages of the local mirror against a keyword query, or print one
+// block of them in full. The arguments after the repository are the query.
+// The command registers no wiki flag and reads no config file: it reads the
+// mirror `brain sync` wrote and nothing else.
+//
+// A session runs the command in the checkout under review, with whatever its
+// shell expands into the arguments. So the command carries
+// mirrorOnlyAnnotation, which keeps the root command from loading the
+// checkout's .planwerk/config.yaml, and no error it returns holds an argument:
+// an error is printed back to the session.
+func newBrainSearchCmd(_ *runtimeDeps) *cobra.Command {
+	var opts brain.SearchOptions
+
+	searchCmd := &cobra.Command{
+		Use:   "search <repo-ref> [query...]",
+		Short: "Search the local mirror of a repository by keyword",
+		Long: `Search the local mirror that "brain sync" keeps of a repository: its issues
+and pull requests with their comments, reviews, review threads, and commit
+messages, and the pages of its wiki.
+
+The result lists the best matches first. A hit is one issue, pull request, or
+wiki page with the block of it that matched best: a title, a body, a comment,
+a review, the diff hunk of a review thread, a thread comment, a commit
+message, or a section of a wiki page. Each hit prints an excerpt of that block
+and its id.
+
+The arguments after the repository are the query. A block matches when it
+holds at least one of the words, matched whole and without regard to case or
+accents, and a block that holds more of the words, and rarer ones, ranks
+higher. "*" after a word matches every word that begins with it, and double
+quotes hold an exact phrase. Every other character is searched for as text:
+the query has no operators. A word that starts with "-" is read as a flag:
+put "--" before the query, and every flag before the "--", to search for it.
+
+--type, --state, and --label keep only the hits that match, and --limit sets
+how many are printed. A wiki page has no state and no label. --json prints the
+result as one JSON object.
+
+--show <id> prints the block with the id of a hit in full, in place of a
+search. Every line of the block's text follows "| ", so a line without it is
+the command's own.
+
+The text is redacted: a recognized secret is printed as a marker. The output
+names a file relative to the mirror directory and never holds the query, and
+no error message holds an argument.
+
+The command never syncs. It reads the mirror as the last "brain sync" left it
+and prints the time of that sync, and it stops when the mirror is missing or
+no sync of it has finished. It keeps its index in the file index.sqlite in the
+mirror directory and brings it up to date before it searches. It starts no
+Claude session and calls no GitHub API.
+
+Repository reference can be a URL (https://github.com/owner/repo)
+or short form (owner/repo).`,
+		Args:        cobra.MinimumNArgs(1),
+		Annotations: map[string]string{mirrorOnlyAnnotation: "true"},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			flags := cmd.Flags()
+			switch {
+			case opts.Show != "" && len(args) > 1:
+				return fmt.Errorf("--show takes no query")
+			case opts.Show != "" && (flags.Changed("type") || flags.Changed("state") || flags.Changed("label") || flags.Changed("limit")):
+				return fmt.Errorf("--show takes no filter")
+			case opts.Show == "" && len(args) == 1:
+				return fmt.Errorf("a query is required, or --show <id>")
+			}
+			for _, t := range opts.Types {
+				if !slices.Contains(brainSearchTypes, t) {
+					return fmt.Errorf("--type must be one of %s", strings.Join(brainSearchTypes, ", "))
+				}
+			}
+			if flags.Changed("state") && !slices.Contains(brainSearchStates, opts.State) {
+				return fmt.Errorf("--state must be one of %s", strings.Join(brainSearchStates, ", "))
+			}
+			if opts.Limit < brainSearchMinLimit || opts.Limit > brainSearchMaxLimit {
+				return fmt.Errorf("--limit must be between %d and %d", brainSearchMinLimit, brainSearchMaxLimit)
+			}
+
+			run := opts
+			run.RepoRef = args[0]
+			run.Query = strings.Join(args[1:], " ")
+			return brain.Search(cmd.OutOrStdout(), run)
+		},
+	}
+
+	flags := searchCmd.Flags()
+	// A label can hold a comma, so the two repeatable flags take one value per
+	// occurrence.
+	flags.StringArrayVar(&opts.Types, "type", nil, "Keep only hits of this type: "+strings.Join(brainSearchTypes, ", ")+" (repeatable)")
+	flags.StringVar(&opts.State, "state", "", "Keep only items in this state: "+strings.Join(brainSearchStates, ", "))
+	flags.StringArrayVar(&opts.Labels, "label", nil, "Keep only items that carry this label, compared without case (repeatable; every given label must match)")
+	flags.IntVar(&opts.Limit, "limit", search.DefaultLimit, fmt.Sprintf("The largest number of hits, %d to %d", brainSearchMinLimit, brainSearchMaxLimit))
+	flags.BoolVar(&opts.JSON, "json", false, "Print JSON")
+	flags.StringVar(&opts.Show, "show", "", "Print the block with this id in full, in place of a search")
+	// The error of the flag parser quotes the flag and its value.
+	searchCmd.SetFlagErrorFunc(func(*cobra.Command, error) error {
+		return errors.New("invalid flag or flag value; see brain search --help")
+	})
+
+	return searchCmd
 }
 
 // newBrainBootstrapCmd builds "brain bootstrap": distill a repository's
