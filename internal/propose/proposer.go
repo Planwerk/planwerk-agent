@@ -13,6 +13,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/glossary"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
+	"github.com/planwerk/planwerk-agent/internal/search"
 )
 
 // Options configures the proposal pipeline.
@@ -37,6 +38,10 @@ type Options struct {
 	// (review patterns + project memory); carries the --wiki/--no-wiki/--wiki-ref
 	// values.
 	Wiki patterns.WikiOptions
+	// Brain lets the analysis session search the local mirror of the repository's
+	// issues, pull requests, and wiki (`brain search`); carries the
+	// --brain/--no-brain value. Off by default.
+	Brain bool
 }
 
 // Runner executes the propose pipeline using injected Claude and GitHub
@@ -49,6 +54,10 @@ type Runner struct {
 	// patterns.ResolveWiki; a Runner seam so the project-memory wiring can be
 	// exercised without cloning a real wiki.
 	ResolveWiki resolveWikiFn
+	// ResolveBrain resolves the search surface the analysis session is handed when
+	// opts.Brain is set. Defaults to search.ResolveSurface; a Runner seam so the
+	// wiring can be exercised without a mirror.
+	ResolveBrain func(owner, name string) search.Surface
 }
 
 // resolveWikiFn resolves the target repo's wiki. It matches patterns.ResolveWiki.
@@ -99,9 +108,16 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	}
 	wiki := resolveWiki(owner, name, opts.Wiki, opts.Remote)
 
+	// The search of the local mirror is resolved before the cache key: the
+	// mirror's revision is part of it (search.Surface.CacheFlag).
+	surface := search.SurfaceFor(opts.Brain, r.ResolveBrain, owner, name)
+
 	var repoKeyFlags []string
 	if wiki.CommitSHA != "" {
 		repoKeyFlags = append(repoKeyFlags, "wiki="+wiki.CommitSHA)
+	}
+	if flag := surface.CacheFlag(); flag != "" {
+		repoKeyFlags = append(repoKeyFlags, flag)
 	}
 	// The loaded catalog decides what the analysis looks for, so it belongs in
 	// the key alongside the wiki commit.
@@ -184,6 +200,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		OutOfScope:  outOfScope,
 		Glossary:    glossaryBody,
 		Memory:      mem,
+		Brain:       surface,
 	})
 	if err != nil {
 		return fmt.Errorf("claude analysis: %w", err)

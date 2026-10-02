@@ -26,6 +26,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/planwerk"
 	"github.com/planwerk/planwerk-agent/internal/redact"
 	"github.com/planwerk/planwerk-agent/internal/report"
+	"github.com/planwerk/planwerk-agent/internal/search"
 	"github.com/planwerk/planwerk-agent/internal/todocheck"
 	"github.com/planwerk/planwerk-agent/internal/workspace"
 )
@@ -62,6 +63,10 @@ type Options struct {
 	// nothing. On by default but only when a wiki is resolved (i.e. with --wiki);
 	// without one it is a no-op regardless of this flag.
 	NoCapture bool
+	// Brain lets the review session search the local mirror of the repository's
+	// issues, pull requests, and wiki (`brain search`); carries the
+	// --brain/--no-brain value. Off by default.
+	Brain bool
 }
 
 // Runner executes the review pipeline using injected Claude and GitHub
@@ -79,6 +84,10 @@ type Runner struct {
 	// patterns.ResolveWiki; a Runner seam so the capture pass can be exercised
 	// against a temp wiki without cloning a real one.
 	ResolveWiki resolveWikiFn
+	// ResolveBrain resolves the search surface the review session is handed when
+	// opts.Brain is set. Defaults to search.ResolveSurface; a Runner seam so the
+	// wiring can be exercised without a mirror.
+	ResolveBrain func(owner, name string) search.Surface
 }
 
 // resolveWikiFn resolves the target repo's wiki. A Runner seam so the capture
@@ -141,6 +150,10 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	}
 	wiki := resolveWiki(pr.Owner, pr.Repo, opts.Wiki, opts.Remote)
 
+	// The search of the local mirror is resolved before the cache key: the
+	// mirror's revision is part of it (search.Surface.CacheFlag).
+	surface := search.SurfaceFor(opts.Brain, r.ResolveBrain, pr.Owner, pr.Repo)
+
 	// 2. Check cache (include flags that affect output in the cache key)
 	var cacheFlags []string
 	if opts.Thorough {
@@ -154,6 +167,9 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	}
 	if wiki.CommitSHA != "" {
 		cacheFlags = append(cacheFlags, "wiki="+wiki.CommitSHA)
+	}
+	if flag := surface.CacheFlag(); flag != "" {
+		cacheFlags = append(cacheFlags, flag)
 	}
 	// The loaded catalog decides what the review looks for, so it belongs in
 	// the key: --patterns ./new-rules must not be served a result from a run
@@ -272,6 +288,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		TodoContent: todoContent,
 		Glossary:    glossaryBody,
 		Memory:      mem,
+		Brain:       surface,
 	}
 
 	var (

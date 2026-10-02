@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -15,6 +16,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/github/githubtest"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
+	"github.com/planwerk/planwerk-agent/internal/search"
 )
 
 // fakeClaude is a test ClaudeAnalyzer tracking call count so cache-hit tests
@@ -665,5 +667,88 @@ func TestProposeRun_MemoryDirectoryLivesForTheAnalysis(t *testing.T) {
 	}
 	if _, err := os.Stat(mem.Dir); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("after Run, stat %s = %v, want not exist", mem.Dir, err)
+	}
+}
+
+// brainSurface returns an enabled search surface whose mirror stands at
+// revision.
+func brainSurface(revision string) search.Surface {
+	return search.Surface{
+		Command:  "/usr/local/bin/planwerk-agent brain search acme/widgets",
+		SyncedAt: "2026-10-02T09:00:00Z",
+		Revision: revision,
+	}
+}
+
+// TestProposeRun_BrainSurfaceReachesTheAnalysisAndTheCacheKey runs propose
+// with and without the brain. The surface is resolved only for a run that
+// opted in and reaches the analysis session. The mirror's revision is part of
+// the cache key, and a run with the brain off, or without a finished mirror,
+// keeps the key an analysis has without the brain.
+func TestProposeRun_BrainSurfaceReachesTheAnalysisAndTheCacheKey(t *testing.T) {
+	// Not t.Parallel(): cache.SetDir mutates a package-level variable.
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	const headSHA = "sha-propose-brain"
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "owner", "repo"), nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return headSHA, nil },
+	}
+	var sessions []search.Surface // the surface of every analysis session, in order
+	claudeMock := &fakeClaude{fn: func(dir string, ctx AnalysisContext) (*ProposalResult, error) {
+		sessions = append(sessions, ctx.Brain)
+		return &ProposalResult{RepositoryOverview: "ok"}, nil
+	}}
+	var surface search.Surface
+	resolved := 0
+	runner := &Runner{Claude: claudeMock, GitHub: gh, ResolveBrain: func(owner, name string) search.Surface {
+		resolved++
+		if owner != "owner" || name != "repo" {
+			t.Errorf("ResolveBrain(%q, %q), want owner and repo", owner, name)
+		}
+		return surface
+	}}
+
+	off := baseProposeOpts()
+	on := off
+	on.Brain = true
+	onNoCache := on
+	onNoCache.NoCache = true
+	plainKeyHolds := func() bool {
+		_, ok := cache.GetRaw(cache.RepoKey("owner", "repo", headSHA, proposePatternFlag(off)), 0)
+		return ok
+	}
+	rev1, rev2 := brainSurface("rev-1"), brainSurface("rev-2")
+	steps := []struct {
+		why          string
+		opts         Options
+		surface      search.Surface // what the seam answers
+		wantSessions int
+		wantResolved int
+		wantPlainKey bool // the key of a run without the brain holds a result
+	}{
+		{"the first run with the brain starts a session", on, rev1, 1, 1, false},
+		{"the same revision is served from the cache", on, rev1, 1, 2, false},
+		{"another revision starts a session again", on, rev2, 2, 3, false},
+		{"a run with the brain off starts a session and resolves nothing", off, rev2, 3, 3, true},
+		{"a run with the brain off is served from its own entry", off, rev2, 3, 3, true},
+		{"a run without a finished mirror has the key of a run with the brain off", on, search.Surface{}, 3, 4, true},
+		{"without the cache, that run hands its session no search", onNoCache, search.Surface{}, 4, 5, true},
+	}
+	for _, step := range steps {
+		surface = step.surface
+		if err := runner.Run(&bytes.Buffer{}, step.opts); err != nil {
+			t.Fatalf("%s: Run returned error: %v", step.why, err)
+		}
+		if len(sessions) != step.wantSessions || resolved != step.wantResolved {
+			t.Fatalf("%s: %d sessions and %d resolves, want %d and %d", step.why, len(sessions), resolved, step.wantSessions, step.wantResolved)
+		}
+		if got := plainKeyHolds(); got != step.wantPlainKey {
+			t.Fatalf("%s: the key of a run without the brain holds a result = %v, want %v", step.why, got, step.wantPlainKey)
+		}
+	}
+	if want := []search.Surface{rev1, rev2, {}, {}}; !slices.Equal(sessions, want) {
+		t.Errorf("the sessions were handed %+v, want %+v", sessions, want)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -17,6 +18,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/github/githubtest"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/patterns/patternstest"
+	"github.com/planwerk/planwerk-agent/internal/search"
 )
 
 type fakeClaude struct {
@@ -1338,11 +1340,157 @@ func TestElaborateCacheKey_EmptyWikiCommitKeepsTheKey(t *testing.T) {
 	want := cache.AuditKey("acme", "widgets", "elaborate@head-sha",
 		"issue=42", "body="+issueFingerprint(issue), "review", "patterns=fp")
 
-	if got := elaborateCacheKey("acme", "widgets", 42, issue, nil, "head-sha", true, "fp", ""); got != want {
+	if got := elaborateCacheKey("acme", "widgets", 42, issue, nil, "head-sha", true, "fp", "", ""); got != want {
 		t.Errorf("key without a wiki commit = %s, want %s", got, want)
 	}
-	if got := elaborateCacheKey("acme", "widgets", 42, issue, nil, "head-sha", true, "fp", "wikisha"); got == want {
+	if got := elaborateCacheKey("acme", "widgets", 42, issue, nil, "head-sha", true, "fp", "wikisha", ""); got == want {
 		t.Error("a wiki commit must change the key")
+	}
+}
+
+// TestElaborateCacheKey_EmptyBrainRevisionKeepsTheKey pins the key of a run
+// without the search to a flag list without a mirror part, with and without a
+// wiki, so a cache entry written by a release without the search is still
+// found. The flag of a revision changes the key, and so does another one.
+func TestElaborateCacheKey_EmptyBrainFlagKeepsTheKey(t *testing.T) {
+	issue := &github.Issue{Number: 42, Title: "Title", Body: "Body"}
+	plain := cache.AuditKey("acme", "widgets", "elaborate@head-sha",
+		"issue=42", "body="+issueFingerprint(issue), "patterns=fp")
+	withWiki := cache.AuditKey("acme", "widgets", "elaborate@head-sha",
+		"issue=42", "body="+issueFingerprint(issue), "patterns=fp", "wiki=wikisha")
+
+	if got := elaborateCacheKey("acme", "widgets", 42, issue, nil, "head-sha", false, "fp", "", ""); got != plain {
+		t.Errorf("key without a mirror revision = %s, want %s", got, plain)
+	}
+	if got := elaborateCacheKey("acme", "widgets", 42, issue, nil, "head-sha", false, "fp", "wikisha", ""); got != withWiki {
+		t.Errorf("key with a wiki and without a mirror revision = %s, want %s", got, withWiki)
+	}
+	rev1 := elaborateCacheKey("acme", "widgets", 42, issue, nil, "head-sha", false, "fp", "", brainSurface("rev-1").CacheFlag())
+	rev2 := elaborateCacheKey("acme", "widgets", 42, issue, nil, "head-sha", false, "fp", "", brainSurface("rev-2").CacheFlag())
+	if rev1 == plain || rev2 == plain || rev1 == rev2 {
+		t.Errorf("keys = %s, %s, and %s without a revision, want three different keys", rev1, rev2, plain)
+	}
+	// The flag is the last part of the key, as it is for the other commands.
+	if want := cache.AuditKey("acme", "widgets", "elaborate@head-sha",
+		"issue=42", "body="+issueFingerprint(issue), "patterns=fp", "brain=rev-1"); rev1 != want {
+		t.Errorf("key with a mirror revision = %s, want %s", rev1, want)
+	}
+}
+
+// brainSurface returns an enabled search surface whose mirror stands at
+// revision.
+func brainSurface(revision string) search.Surface {
+	return search.Surface{
+		Command:  "/usr/local/bin/planwerk-agent brain search acme/widgets",
+		SyncedAt: "2026-10-02T09:00:00Z",
+		Revision: revision,
+	}
+}
+
+// TestRun_BrainSurfaceReachesTheElaborationAndTheCacheKey runs the elaboration
+// with and without the brain. The surface is resolved only for a run that
+// opted in and reaches the elaboration session. The mirror's revision is part
+// of the cache key, and a run with the brain off, or without a finished
+// mirror, keeps the key an elaboration has without the brain.
+func TestRun_BrainSurfaceReachesTheElaborationAndTheCacheKey(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+	patternDir := seedPatternDir(t)
+	gh := reviewLoopGitHub(t, fakeRepo(t, "acme", "widgets"))
+	gh.DefaultHead = "sha-elaborate-brain"
+
+	var sessions []search.Surface // the surface of every elaboration session, in order
+	cl := &fakeClaude{fn: func(dir string, ctx Context) (*Result, error) {
+		sessions = append(sessions, ctx.Brain)
+		return &Result{Description: "desc", Motivation: "motiv", AcceptanceCriteria: []string{"ac"}}, nil
+	}}
+	var surface search.Surface
+	resolved := 0
+	runner := &Runner{Claude: cl, GitHub: gh, ResolveBrain: func(owner, name string) search.Surface {
+		resolved++
+		if owner != "acme" || name != "widgets" {
+			t.Errorf("ResolveBrain(%q, %q), want acme and widgets", owner, name)
+		}
+		return surface
+	}}
+
+	off := baseOpts(patternDir)
+	on := off
+	on.Brain = true
+	onNoCache := on
+	onNoCache.NoCache = true
+	plainKey := elaborateCacheKey("acme", "widgets", 42, &github.Issue{Title: "Title", Body: "Body"}, nil, gh.DefaultHead, false,
+		patterns.Fingerprint(off.PatternDirs, off.NoRepoPatterns, off.NoLocalPatterns, off.MaxPatterns), "", "")
+	plainKeyHolds := func() bool {
+		_, ok := cache.GetRaw(plainKey, 0)
+		return ok
+	}
+
+	rev1, rev2 := brainSurface("rev-1"), brainSurface("rev-2")
+	steps := []struct {
+		why          string
+		opts         Options
+		surface      search.Surface // what the seam answers
+		wantSessions int
+		wantResolved int
+		wantPlainKey bool // the key of a run without the brain holds a result
+	}{
+		{"the first run with the brain starts a session", on, rev1, 1, 1, false},
+		{"the same revision is served from the cache", on, rev1, 1, 2, false},
+		{"another revision starts a session again", on, rev2, 2, 3, false},
+		{"a run with the brain off starts a session and resolves nothing", off, rev2, 3, 3, true},
+		{"a run with the brain off is served from its own entry", off, rev2, 3, 3, true},
+		{"a run without a finished mirror has the key of a run with the brain off", on, search.Surface{}, 3, 4, true},
+		{"without the cache, that run hands its session no search", onNoCache, search.Surface{}, 4, 5, true},
+	}
+	for _, step := range steps {
+		surface = step.surface
+		if err := runner.Run(&bytes.Buffer{}, step.opts); err != nil {
+			t.Fatalf("%s: Run returned error: %v", step.why, err)
+		}
+		if len(sessions) != step.wantSessions || resolved != step.wantResolved {
+			t.Fatalf("%s: %d sessions and %d resolves, want %d and %d", step.why, len(sessions), resolved, step.wantSessions, step.wantResolved)
+		}
+		if got := plainKeyHolds(); got != step.wantPlainKey {
+			t.Fatalf("%s: the key of a run without the brain holds a result = %v, want %v", step.why, got, step.wantPlainKey)
+		}
+	}
+	if want := []search.Surface{rev1, rev2, {}, {}}; !slices.Equal(sessions, want) {
+		t.Errorf("the sessions were handed %+v, want %+v", sessions, want)
+	}
+}
+
+// TestRun_BrainSurfaceReachesEveryRefinementTurn locks that the elaboration
+// and the refinement turns of the reviewer loop share the surface.
+func TestRun_BrainSurfaceReachesEveryRefinementTurn(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+	patternDir := seedPatternDir(t)
+	gh := reviewLoopGitHub(t, fakeRepo(t, "acme", "widgets"))
+
+	var sessions []search.Surface
+	cl := &fakeClaude{fn: func(dir string, ctx Context) (*Result, error) {
+		sessions = append(sessions, ctx.Brain)
+		return &Result{Description: fmt.Sprintf("draft %d", len(sessions)), Motivation: "motiv", AcceptanceCriteria: []string{"ac"}}, nil
+	}}
+	reviews := 0
+	rv := &fakeReviewer{fn: func(dir string, ctx Context, draft string) (*ReviewResult, error) {
+		reviews++
+		if reviews == 1 {
+			return &ReviewResult{Score: 5, Gaps: []string{"name the files"}}, nil
+		}
+		return &ReviewResult{Score: 9}, nil
+	}}
+	surface := brainSurface("rev-1")
+	runner := &Runner{Claude: cl, GitHub: gh, Reviewer: rv, ResolveBrain: func(_, _ string) search.Surface { return surface }}
+
+	opts := baseOpts(patternDir)
+	opts.Brain, opts.Review = true, true
+	if err := runner.Run(&bytes.Buffer{}, opts); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if want := []search.Surface{surface, surface}; !slices.Equal(sessions, want) {
+		t.Errorf("the elaboration and its refinement were handed %+v, want %+v", sessions, want)
 	}
 }
 
