@@ -16,7 +16,9 @@ import (
 )
 
 // formatVersion is the version of the item file format, written to the
-// frontmatter as "format".
+// frontmatter as "format". A sync rewrites only the items GitHub lists as
+// updated, so a change to it must come with a change to stateVersion: LoadState
+// then stops every run on an older mirror with the command that rebuilds it.
 const formatVersion = 1
 
 // A block marker is the line "<!-- planwerk-agent:mirror <kind> <json> -->".
