@@ -146,15 +146,19 @@ vet:
 lint:
 	golangci-lint run
 
-# Validate the Claude Code plugin marketplace this repo ships (the clarify /
-# draft / elaborate / fix / meta / revisit skills). `go test ./internal/skills` already
-# checks that the skills parse and their shared references resolve; this adds the
-# manifest schema check that only the claude CLI can do. Skipped when claude is
-# absent.
+# Validate the Claude Code plugin marketplace this repo ships, the plugin
+# manifest, the plugin's skill components, and the repo's own skills under
+# .claude/skills. `go test ./internal/skills` already checks that the plugin
+# skills parse and their shared references resolve; this adds the schema
+# checks that only the claude CLI can do. A plugin directory validates its
+# manifest alone, so the skills directories get their own calls. Skipped when
+# claude is absent.
 plugin-validate:
 	@command -v claude >/dev/null 2>&1 || { echo "claude CLI not found; skipping plugin validation"; exit 0; }
 	claude plugin validate --strict .
 	claude plugin validate --strict plugins/planwerk
+	claude plugin validate --strict plugins/planwerk/skills
+	claude plugin validate --strict .claude/skills
 
 fmt:
 	gofmt -s -w .
