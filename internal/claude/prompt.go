@@ -154,6 +154,7 @@ When the diff introduces a new dependency, check its freshness and maintenance s
 3. **Deprecation Status**: Has the project been officially deprecated or superseded by a replacement? Check for deprecation notices in the repository README, GitHub archive status, or well-known replacements (e.g. actions/create-release is deprecated in favor of softprops/action-gh-release).
 
 ### Severity guidance
+These apply the Severity Ladder to dependencies, and the ladder governs where they differ: a deprecated or unmaintained dependency is CRITICAL because it receives no fixes, so a defect in it is one the project cannot patch; an outdated version is WARNING because the fixes it lacks sit on paths the project may not use.
 - Using a deprecated dependency: flag as CRITICAL with title "Deprecated Dependency: <name>"
 - Using an unmaintained dependency (archived/abandoned): flag as CRITICAL with title "Unmaintained Dependency: <name>"
 - Using a significantly outdated version when a current version exists: flag as WARNING with title "Outdated Dependency: <name> uses <version>, latest is <latest>"
