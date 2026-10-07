@@ -103,18 +103,23 @@ The catalog is on disk. Every line below names a file under `/tmp/planwerk-agent
       resolved a conflict, run the tests again: the tree changed after you
       verified it.
 
-4. Output a report in this exact shape:
+4. Output the report below as the last thing in this session, whatever happened:
+
+   ## Rebase Adjustments Report
 
    ### Applied
    - <adjustment> — folded into <sha> <subject>
    ### Skipped
    - <adjustment> — <why: false positive, already handled, or no longer applies>
+   ### Status
+   STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT>
+   (DONE = every listed adjustment applied or skipped with its reason, the fold complete, no fixup left unfolded, and no rebase in progress; DONE_WITH_CONCERNS = the branch is consistent but carries a reservation a human must see, such as fixups left unfolded after a conflict you could not resolve; BLOCKED = the branch is not in a state to publish; NEEDS_CONTEXT = an adjustment turns on a decision only a human can make. planwerk-agent publishes the branch under --push only on DONE.)
 
 ## Hard rules
 
 - Apply ONLY the adjustments listed above.
-- Do NOT push. Do NOT force-push. The orchestrator publishes the branch separately, only when --push is given.
+- Do NOT push. Do NOT force-push. planwerk-agent publishes the branch separately, only when --push is given and your report says DONE.
 - NEVER rebase, reorder, drop, or rewrite commits that already exist on origin/main — only this branch's own commits (origin/main..HEAD) may be folded.
 - If an adjustment is a false positive or no longer applies, SKIP it and record why — do not invent a change to satisfy it.
-- If there is nothing to apply, do NOT create an empty commit; say so and stop.
+- If there is nothing to apply, do NOT create an empty commit; output the report with empty Applied and Skipped lists and STATUS: DONE.
 - NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).

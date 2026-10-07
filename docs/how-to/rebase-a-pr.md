@@ -55,10 +55,17 @@ request body the rewrite left stale.
    skip the analysis entirely).
 6. **Apply adjustments (opt-in).** With `--apply-adjustments`, the reported
    adjustments are applied as fixup commits folded into the commits they belong
-   to, instead of only being reported.
+   to, instead of only being reported. An analysis that lists no adjustment
+   starts no session. The apply session ends on a report with a terminal
+   `STATUS:` line (`DONE`, `DONE_WITH_CONCERNS`, `BLOCKED`, or
+   `NEEDS_CONTEXT`); a session that ends without one is resumed to finish and
+   report, and a report with no status counts as `BLOCKED`.
 7. **Publish (opt-in).** A rebase rewrites commit SHAs, so publishing requires a
    force-push. This happens **only** with `--push`, which uses
    `git push --force-with-lease` — history is never force-pushed implicitly.
+   The push is refused, and the branch left in the checkout, when the apply
+   session reported anything but `DONE`, when a rebase is still in progress,
+   or when a `fixup!` commit the fold never folded is left on the branch.
 
 ## Render the prompt instead of running
 

@@ -130,6 +130,7 @@ type GitClient interface {
 	StartRebase(dir, onto string) (github.RebaseState, error)
 	RebaseContinue(dir string) (github.RebaseState, error)
 	RebaseAbort(dir string) error
+	RebaseInProgress(dir string) (bool, error)
 	ResetHard(dir, ref string) error
 	ForceWithLeasePush(dir, branch string) error
 	AddPRComment(owner, repo string, number int, body string) (string, error)
