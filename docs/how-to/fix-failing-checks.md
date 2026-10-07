@@ -140,8 +140,8 @@ so a pull request carries one report format whichever repaired it.
 
 ## Next steps
 
-- [Rebase a PR](/how-to/rebase-a-pr) when the checks are red because the base
-  moved, not because the code is wrong.
+- [Rebase a PR interactively](/how-to/rebase-a-pr-interactively) when the
+  checks are red because the base moved, not because the code is wrong.
 - [Address review comments](/how-to/address-review-comments) once the checks are
   green and a human has read the diff.
 - [`fix` command reference](/reference/cli#fix) for the unattended loop.

@@ -25,6 +25,7 @@ solves one specific problem.
 - [Diagnose a reported bug](/how-to/diagnose-a-bug)
 - [Fix failing checks](/how-to/fix-failing-checks)
 - [Rebase a PR](/how-to/rebase-a-pr)
+- [Rebase a PR interactively](/how-to/rebase-a-pr-interactively)
 - [Address review comments](/how-to/address-review-comments)
 - [Use local mode](/how-to/use-local-mode)
 - [Wire it up as a GitHub Action](/how-to/use-the-github-action)

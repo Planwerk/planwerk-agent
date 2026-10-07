@@ -83,6 +83,10 @@ export default defineConfig({
             { text: 'Fix failing checks', link: '/how-to/fix-failing-checks' },
             { text: 'Rebase a PR', link: '/how-to/rebase-a-pr' },
             {
+              text: 'Rebase a PR interactively',
+              link: '/how-to/rebase-a-pr-interactively',
+            },
+            {
               text: 'Address review comments',
               link: '/how-to/address-review-comments',
             },

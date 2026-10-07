@@ -38,6 +38,7 @@ than subcommands:
 - **`/planwerk:implement`** implements a prepared issue in your checkout — a plan you approve in plan mode, one complete pull request behind your yes, none of the pipeline's passes
 - **`/planwerk:diagnose`** reproduces a reported bug with a feedback loop that goes red before any theory, and fixes the root cause behind a regression test
 - **`/planwerk:fix`** repairs a pull request's failing CI checks, asking you whether the code or the test is the wrong one
+- **`/planwerk:rebase`** rebases a pull request onto its base, resolves each conflict so both sides survive, settles the review threads the base already answered, and corrects what the rewrite made false in the PR body
 - **`/planwerk:humanize`** rewrites existing prose to remove the signs of AI writing, preserving every fact
 
 ## Quick start
