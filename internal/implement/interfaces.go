@@ -213,18 +213,18 @@ func (a planFnAdapter) Plan(dir string, ctx Context) (string, string, error) {
 // the issue's Acceptance Criteria, deliberately ignoring the implementation's
 // own report. Optional: wired only when --verify is set.
 type ImplementationVerifier interface {
-	VerifyImplementation(dir, issueTitle, issueBody string) (*report.ReviewResult, error)
+	VerifyImplementation(dir, issueTitle, issueBody, baseBranch string) (*report.ReviewResult, error)
 }
 
 // VerifyFn is the bare-function form of ImplementationVerifier.
-type VerifyFn func(dir, issueTitle, issueBody string) (*report.ReviewResult, error)
+type VerifyFn func(dir, issueTitle, issueBody, baseBranch string) (*report.ReviewResult, error)
 
 type verifyFnAdapter struct {
 	fn VerifyFn
 }
 
-func (a verifyFnAdapter) VerifyImplementation(dir, issueTitle, issueBody string) (*report.ReviewResult, error) {
-	return a.fn(dir, issueTitle, issueBody)
+func (a verifyFnAdapter) VerifyImplementation(dir, issueTitle, issueBody, baseBranch string) (*report.ReviewResult, error) {
+	return a.fn(dir, issueTitle, issueBody, baseBranch)
 }
 
 // AdversarialVerifier red-teams a produced change set for the bugs it

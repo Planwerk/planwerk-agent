@@ -1282,7 +1282,7 @@ func TestFinders_ConstrainTheOutputSchema(t *testing.T) {
 			return c.SimplifyFindings("", "develop")
 		}},
 		{"VerifyImplementation", "verify-implementation", finderModel, testWorkerEffort, func(c *Client) (*report.ReviewResult, error) {
-			return c.VerifyImplementation("", "t", "b")
+			return c.VerifyImplementation("", "t", "b", "develop")
 		}},
 	}
 	for _, row := range rows {

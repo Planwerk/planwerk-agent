@@ -14,15 +14,18 @@ import (
 // Acceptance Criteria. It deliberately does NOT trust any implementation
 // report: it diffs the feature branch and reads the actual committed code.
 // Findings are returned for every criterion that is not fully satisfied.
-func (c *Client) VerifyImplementation(dir, issueTitle, issueBody string) (*report.ReviewResult, error) {
-	raw, model, err := c.runClaudeFinderFindings(dir, buildVerifyImplementationPrompt(issueTitle, issueBody), "verify-implementation")
+func (c *Client) VerifyImplementation(dir, issueTitle, issueBody, baseBranch string) (*report.ReviewResult, error) {
+	raw, model, err := c.runClaudeFinderFindings(dir, buildVerifyImplementationPrompt(issueTitle, issueBody, baseBranch), "verify-implementation")
 	if err != nil {
 		return nil, fmt.Errorf("running implementation verification: %w", err)
 	}
 	return c.finishReview(raw, model, "implementation verification", "implementation-verification")
 }
 
-func buildVerifyImplementationPrompt(issueTitle, issueBody string) string {
+func buildVerifyImplementationPrompt(issueTitle, issueBody, baseBranch string) string {
+	if baseBranch == "" {
+		baseBranch = DefaultBaseBranch
+	}
 	var sb strings.Builder
 
 	sb.WriteString(`You are a Senior Engineer independently verifying that a just-completed implementation satisfies its issue's Acceptance Criteria.
@@ -32,9 +35,7 @@ Commit messages say what the implementing session meant to do; verify each crite
 
 ## Determine the change set
 You are inside a checkout currently on the implementation's feature branch.
-- Find the base branch: run ` + "`git symbolic-ref refs/remotes/origin/HEAD`" + ` (fall back to origin/main, then origin/master).
-- Run ` + "`git diff <base>...HEAD --stat`" + ` and ` + "`git log <base>..HEAD --oneline`" + ` to see what changed.
-- Read the actual changed files. Do NOT judge from commit messages alone.
+` + diffScopeLines(baseBranch) + `Then read the changed files; ` + "`git log origin/" + baseBranch + "..HEAD --oneline`" + ` lists the commits, and every criterion is judged against the files, not the messages.
 
 `)
 

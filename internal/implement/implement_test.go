@@ -30,7 +30,7 @@ type fakeVerifier struct {
 	err    error
 }
 
-func (f *fakeVerifier) VerifyImplementation(dir, issueTitle, issueBody string) (*report.ReviewResult, error) {
+func (f *fakeVerifier) VerifyImplementation(dir, issueTitle, issueBody, baseBranch string) (*report.ReviewResult, error) {
 	f.called.Add(1)
 	return f.result, f.err
 }

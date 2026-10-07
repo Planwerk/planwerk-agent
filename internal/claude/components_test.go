@@ -477,7 +477,7 @@ func TestFinderPromptsEndWithTheOutputBlock(t *testing.T) {
 		"specialist":            buildSpecialistPrompt("develop", specialistByKey(t, "security"), nil, 0),
 		"compliance":            buildCompliancePrompt("develop", goldenFeature()),
 		"simplify":              buildSimplifyFindPrompt("develop"),
-		"verify-implementation": buildVerifyImplementationPrompt(ictx.IssueTitle, ictx.IssueBody),
+		"verify-implementation": buildVerifyImplementationPrompt(ictx.IssueTitle, ictx.IssueBody, "develop"),
 	} {
 		t.Run(name, func(t *testing.T) {
 			if !strings.HasSuffix(prompt, findingsOutputBlock()) {
