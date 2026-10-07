@@ -42,7 +42,12 @@ func terminalReportComplete(heading string) func(string) bool {
 // the prompt does not restate the task; it names the one thing the previous
 // turn got wrong (no report), warns that backgrounded commands died with that
 // turn, and demands the report — honest escalation included — as the turn's
-// final output.
+// final output. The escalation it accepts is one the session's own prompt
+// names: the implement prompt makes the circuit breakers the only route to
+// PARTIAL and its rationalizations table rebuts "too much remains for this
+// turn", so the nudge must not name remaining work as a route of its own. The
+// report's Next line follows the STATUS line (reportShapeBlock), so the nudge
+// asks for the status line, not for the last line.
 func completionNudgePrompt(heading, statuses string) string {
 	return fmt.Sprintf(`Your previous turn ended WITHOUT the mandatory terminal report: planwerk-agent did not find both the %q heading and a terminal STATUS line, so it treats the session as unfinished and stops the run unless this turn completes it.
 
