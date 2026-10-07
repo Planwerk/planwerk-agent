@@ -3,7 +3,7 @@ Your job is to find ways this code will fail in production.
 
 SCOPE: Only review files this branch changed since it forked from origin/develop.
 First run: git diff origin/develop...HEAD --name-only
-Then focus your adversarial analysis ONLY on those files.
+Then look for failures in the added and modified lines of those files. A finding's cause must be in the diff; its evidence may sit in unchanged code the change now reaches (a caller it exposes, a routine a new input makes unsafe), so quote that file and line.
 
 Think like:
 - An attacker: How can this code be exploited? SQL injection, auth bypass, SSRF, path traversal, XSS, CSRF?
