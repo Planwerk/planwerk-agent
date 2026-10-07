@@ -103,7 +103,7 @@ Run these steps for EACH failing check before editing any code:
    - type-check error (mypy, basedpyright, tsc, golangci-lint typecheck)
    - dependency / SBOM / security scan finding
    - infra / transient flake (network timeout, expired token, runner OOM)
-   Call a failure a flake only on evidence: the failing step is infrastructure (network, runner, token) outside the code this PR touches, or the exact failing command passes locally on an unchanged tree. A timeout or panic in a test that runs this PR's code is a test failure until shown otherwise.
+   Call a failure a flake only on evidence: the failing step is infrastructure (network, runner, token) outside the code this PR touches, or the exact failing command passes locally on an unchanged tree and the log shows no environmental difference (a version, an environment variable, the OS) that explains it; a difference it does show is the cause to fix (step 7). A timeout or panic in a test that runs this PR's code is a test failure until shown otherwise.
 2. LOCATE the offending code by opening the file at the cited path:line. Do not work from memory of what the log says — open the file.
 3. UNDERSTAND THE INTENT: read surrounding code, the relevant test, and the PR title/body. Decide what the code SHOULD do.
 4. CHOOSE A FIX STRATEGY:
@@ -111,9 +111,9 @@ Run these steps for EACH failing check before editing any code:
    - Test encodes outdated behavior → only when this PR deliberately changed that behavior. Cite the line of the PR title or body, or the commit, that changed it, then update the test. If you cannot cite one, the production code is wrong. If both readings are plausible, change nothing and report NEEDS_CONTEXT, quoting the assertion and the code it tests.
    - Lint/format/type-check finding → apply the real fix (formatter, missing annotation, narrowed type). Suppression comments are forbidden unless they were already idiomatic in this file before this PR.
    - Flake / infra / unreachable secret → STOP and report. Do not commit a placebo fix.
-5. APPLY the minimal change. If two failing checks share a single root cause, fix it once.
-6. VERIFY LOCALLY: re-run the exact command that failed in CI (or the closest local equivalent — e.g. `go test ./internal/foo`, `pytest tests/test_x.py::test_y`, `golangci-lint run`, `tsc --noEmit`). Capture the command and pass/fail in your final report. If the command cannot run in this environment, say so explicitly. If it passes locally before you change anything, find the environmental difference in the log (a version, an environment variable, the OS) and fix that, or report BLOCKED: never push a change you cannot connect to the failure.
-7. ADD A REGRESSION TEST when the fix is in production code and the existing suite did not catch the bug. Skip this step ONLY for: lint/format-only fixes, fixes inside test code itself, or fixes for failures that no unit/integration test could plausibly catch (e.g. SBOM signature, runtime infra config).
+5. ADD A REGRESSION TEST when the fix is in production code and the existing suite did not catch the bug: write it before the fix and run it to see it fail. Skip this step ONLY for: lint/format-only fixes, fixes inside test code itself, or fixes for failures that no unit/integration test could plausibly catch (e.g. SBOM signature, runtime infra config).
+6. APPLY the minimal change. If two failing checks share a single root cause, fix it once.
+7. VERIFY LOCALLY: re-run the exact command that failed in CI (or the closest local equivalent — e.g. `go test ./internal/foo`, `pytest tests/test_x.py::test_y`, `golangci-lint run`, `tsc --noEmit`) and the test from step 5. Capture the command and pass/fail in your final report. If the command cannot run in this environment, say so explicitly. If it passes locally before you change anything, find the environmental difference in the log (a version, an environment variable, the OS) and fix that, or report BLOCKED: never push a change you cannot connect to the failure.
 
 ## What to do
 
@@ -181,7 +181,7 @@ EVERY commit you create MUST end with exactly these two trailers, in this order 
 - NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).
 - NEVER bump dependencies that the failure log does not directly implicate.
 - NEVER fabricate file paths, line numbers, or error messages — open the file before claiming.
-- NEVER claim "fixed" without either local verification (Diagnosis Workflow step 6) or an explicit "not reproducible locally" note in the report.
+- NEVER claim "fixed" without either local verification (Diagnosis Workflow step 7) or an explicit "not reproducible locally" note in the report.
 - If you cannot diagnose a failure from the logs (truncation, infra flake, expired secret, third-party check without logs), STOP and explain — do not invent a fix.
 - If there is nothing to commit after the fix attempt, do NOT create an empty commit; output the report and stop.
 - It is OK to stop and report BLOCKED or NEEDS_CONTEXT. Bad work is worse than no work; escalating is not penalized. Emit the matching STATUS and do not push a placebo fix.

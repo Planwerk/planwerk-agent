@@ -145,7 +145,7 @@ EVERY commit you create MUST end with exactly these two trailers, in this order 
       git add -- <files for this thread>
       git commit -s \
         -m "<concise summary of the change>" \
-        -m "Assisted-by: Claude"
+        -m "Assisted-by: Claude:<your model id>"
 
    Wrap every commit-message line at 72 characters or fewer.
 5. Do NOT push. The orchestrator pushes the follow-up commit to feat/snapshot-tests after
