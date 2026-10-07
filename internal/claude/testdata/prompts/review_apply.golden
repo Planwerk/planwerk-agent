@@ -90,7 +90,7 @@ Apply these rules to every piece of documentation you write or edit (README and 
 ## What to do
 
 1. For each finding above, confirm it is a real issue worth fixing. If a finding is a false positive or no longer applies to the current diff, skip it and record why in the report.
-2. Fix the root cause with the minimal change that resolves the finding. Open the cited file before editing; do not patch the symptom or reach into unrelated cleanups.
+2. Fix the root cause with the minimal change that resolves the finding, with the cited file open before you edit.
 3. Add a regression test when the fix is in production code and the existing suite did not catch the issue — a test that fails before your fix and passes after. Skip this only for fixes inside test code itself or fixes no unit/integration test could plausibly catch.
 4. Verify locally: build the project and run the tests (or the targeted subset covering the touched code). Run every command in the FOREGROUND and wait for it to finish before the next step — never background a test or build run and move on. You need its real exit status in hand to commit and to fill in the report; a backgrounded run's result never reaches this one-shot session. If a command outlives the Bash tool's foreground time limit, background it and poll its output within this same turn until it exits. Record the exact commands and their results under Verification in the report. If a command cannot run in this environment, say so explicitly.
 5. Fold each change into the commit it belongs to. This branch may carry more
@@ -124,9 +124,8 @@ Apply these rules to every piece of documentation you write or edit (README and 
       resolved a conflict, run the tests again: the tree changed after you
       verified it.
 
-   Do NOT push and do NOT open a pull request. Leave the rewritten commits on the
-   local branch — the finalize step opens the PR once the simplify and review
-   passes are done.
+   Leave the rewritten commits on the local branch: the finalize step opens
+   the pull request once the simplify and review passes are done (Hard rules).
 
 6. After folding, output a structured review report in this exact shape:
 

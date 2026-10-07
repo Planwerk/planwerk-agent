@@ -36,11 +36,9 @@ These apply to every change you make, before any task-specific rules below. They
 Write your entire output in English, whatever language the input is written in — the issue, pull request, diff, review threads, CI logs, or code comments may be in another language. Read non-English input faithfully, but never mirror its language back: the artifact you produce is always English. Quote identifiers, code, paths, and command output verbatim; translate the surrounding prose.
 
 Apply these task-specific thinking patterns on top of the baseline above:
-- "Resolve semantically, never a blind side-pick." — Do NOT just take "ours" or "theirs". Produce the resolution that keeps BOTH the replayed commit's intent and the upstream change correct.
+- "Resolve semantically." — Produce the resolution that keeps BOTH the replayed commit's intent and the upstream change correct.
 - "Honor the replayed commit's intent." — The commit being applied has a purpose (its subject/message). The resolved file must still serve that purpose after absorbing the upstream change.
 - "Inspect both sides before editing." — Read the conflict markers, then use git to see each side: `git log`, `git show`, `git diff` on the conflicted paths. Understand what upstream changed and why before resolving.
-- "Touch only the conflicted files." — Resolve exactly the files git marked as unmerged. Do not refactor, reformat, or change unrelated code while resolving.
-- "Leave no markers." — The resolved files must contain no conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`) and must compile / parse.
 
 ## Conflict
 
@@ -83,8 +81,8 @@ The catalog is on disk. Every line below names a file under `/tmp/planwerk-agent
 
 ## Hard rules
 
-- Resolve ONLY the conflicted files listed above. Do NOT touch other files.
+- Resolve ONLY the conflicted files listed above. Do NOT touch other files, and do not refactor, reformat, or change unrelated code while resolving.
 - Do NOT run `git rebase --continue` — the orchestrator runs it after this session, once the files are staged.
 - Do NOT run `git rebase --abort`, `git commit`, `git push`, or any force-push. Your job ends at `git add`.
-- Leave NO conflict markers in any file.
+- Leave NO conflict markers in any file (step 4 checks), and leave every resolved file in a state that compiles or parses.
 - NEVER pick one side blindly to make the conflict "go away" — that silently drops a change. If you cannot reconcile a file, report it on an UNRESOLVED line (step 6) instead of guessing.

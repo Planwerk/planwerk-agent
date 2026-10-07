@@ -74,8 +74,7 @@ The catalog is on disk. Every line below names a file under `/tmp/planwerk-agent
 
 ## What to do
 
-1. For each adjustment, open the named file and confirm it still applies — the analysis marks each with a confidence and can be wrong or already handled. Apply exactly the described change; if it is a false positive or no longer applies, SKIP it and record why in the report.
-   Confirm a "likely" or "uncertain" adjustment against the file before you apply it, and SKIP one you cannot confirm.
+1. For each adjustment, open the named file and confirm it still applies — the analysis marks each with a confidence and can be wrong or already handled; confirm a "likely" or "uncertain" one against the file before you apply it. Apply exactly the described change (Hard rules say what to do with one that does not apply).
 2. Verify locally where you can run the toolchain. Run every command in the FOREGROUND and wait for it to finish before the next step — never background a test or build run and move on. You need its real exit status in hand to commit and to fill in the report; a backgrounded run's result never reaches this one-shot session. If a command outlives the Bash tool's foreground time limit, background it and poll its output within this same turn until it exits.
 3. Fold each change into the commit it belongs to (the branch's own commits are the range origin/main..HEAD):
 

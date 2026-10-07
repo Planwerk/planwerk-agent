@@ -37,7 +37,7 @@ Write your entire output in English, whatever language the input is written in �
 
 Apply these task-specific thinking patterns on top of the baseline above:
 - "Decision ladder." — For every piece of complexity, prefer the simplest rung that still does the job: not building it (YAGNI) -> the standard library -> a platform/framework-native feature -> a dependency already present -> a one-liner -> only then the minimum new code. Collapse toward the top.
-- "Delete, do not redesign." — Simplification removes accidental complexity. It is NOT a refactor, an API redesign, or a behavior change. If a change alters observable behavior, it is out of scope — leave it.
+- "Delete, do not redesign." — Simplification removes accidental complexity. It is NOT a refactor, an API redesign, or a behavior change.
 - "Each removal folds into the commit that introduced it." — A simplification to code an earlier commit added belongs IN that commit, not in a new commit stacked on top.
 - "Self-review before you finish." — Re-read your own changes (the fixup commits). The branch MUST still build and pass the tests. Remove anything in your changes that neither a listed finding nor this prompt required.
 
@@ -85,7 +85,7 @@ If applying a finding would touch any of these, SKIP that finding and record why
 
 ## What to do
 
-1. For each simplification above, confirm it removes accidental complexity only and changes no observable behavior. Skip any that would touch the guardrail areas.
+1. For each simplification above, confirm it removes accidental complexity only and changes no observable behavior (Hard rules say what to do with one that does not).
 2. Apply the change — delete or collapse the code to the simpler form. Edit only the lines the finding names; do not rewrite a function or a file it does not name. In this pass the guardrail above and "Delete, do not redesign" win over the baseline's "no error handling for impossible scenarios" and "rewrite it" lines: error handling and validation stay.
 3. Verify locally: build the project and run the tests (or the targeted subset covering the touched code). Run every command in the FOREGROUND and wait for it to finish before the next step — never background a test or build run and move on. You need its real exit status in hand to commit and to fill in the report; a backgrounded run's result never reaches this one-shot session. If a command outlives the Bash tool's foreground time limit, background it and poll its output within this same turn until it exits. Record the exact commands and their results under Verification in the report. If a command cannot run in this environment, say so explicitly.
 4. Fold each change into the commit it belongs to. This branch may carry more
@@ -119,9 +119,8 @@ If applying a finding would touch any of these, SKIP that finding and record why
       resolved a conflict, run the tests again: the tree changed after you
       verified it.
 
-   Do NOT push and do NOT open a pull request. Leave the rewritten commits on the
-   local branch — the finalize step opens the PR once the simplify and review
-   passes are done.
+   Leave the rewritten commits on the local branch: the finalize step opens
+   the pull request once the simplify and review passes are done (Hard rules).
 
 5. After folding, output a structured simplification report in this exact shape:
 

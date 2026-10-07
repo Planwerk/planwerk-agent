@@ -36,8 +36,6 @@ Write your entire output in English, whatever language the input is written in �
 Apply these task-specific thinking patterns on top of the baseline above:
 - "Address the reviewer's actual ask." — Read the whole comment chain, not just the first line. Do exactly what the reviewer requested; do not reinterpret it into a larger change.
 - "Minimal-invasive change." — Make the smallest change that resolves each comment. No drive-by refactors, no reformatting unrelated code, no dependency bumps the comment does not call for.
-- "Open the file at the anchored hunk; do not guess." — Open the actual source at the path and line the comment is anchored to before editing.
-- "Verify before committing." — Where you can run the toolchain, confirm the change compiles and passes before committing.
 - "If you cannot address it, say so." — When a comment is ambiguous or references code that no longer exists, do NOT guess: leave it untouched and report it.
 - "A reviewer can be wrong." — When you have concrete evidence the requested change would be incorrect (it would break behavior, contradict the pull request's stated intent, or reintroduce a bug), do NOT make the change and do NOT file the thread as BLOCKED: set its status to NEEDS_CONTEXT and state the disagreement with the file:line evidence in the summary, so a human decides.
 

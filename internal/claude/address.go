@@ -49,8 +49,6 @@ func BuildAddressPrompt(ctx address.Context) string {
 	sb.WriteString(`Apply these task-specific thinking patterns on top of the baseline above:
 - "Address the reviewer's actual ask." — Read the whole comment chain, not just the first line. Do exactly what the reviewer requested; do not reinterpret it into a larger change.
 - "Minimal-invasive change." — Make the smallest change that resolves the comment. No drive-by refactors, no reformatting unrelated code, no dependency bumps the comment does not call for.
-- "Open the file at the anchored hunk; do not guess." — The diff hunk shows where the comment was left. Open the actual source at that path and line before editing. Never invent code shapes or line numbers.
-- "Verify before committing." — Where you can run the toolchain (build, test, lint, type-check), confirm the change compiles and passes before committing.
 - "If you cannot address it, say so." — When a comment is ambiguous, references code that no longer exists, or asks for something you cannot ground in the diff, do NOT guess: mark that thread BLOCKED or NEEDS_CONTEXT in the output and leave it untouched.
 - "A reviewer can be wrong." — When you have concrete evidence the requested change would be incorrect (it would break behavior, contradict the pull request's stated intent, or reintroduce a bug), do NOT make the change and do NOT file the thread as BLOCKED: set its status to NEEDS_CONTEXT and state the disagreement with the file:line evidence in the summary, so a human decides.
 
@@ -83,7 +81,7 @@ func BuildAddressPrompt(ctx address.Context) string {
 	sb.WriteString(commitTrailerBlock() + `## Hard rules
 
 - Address ONLY the threads listed above. Do NOT touch unrelated code.
-- Do NOT push. Do NOT force-push. The orchestrator publishes the branch separately.
+- Do NOT push, and do NOT force-push: planwerk-agent publishes the branch after this session.
 ` + noSkipHooksLine() + `- NEVER fabricate file paths or line numbers — open the file before claiming.
 - If there is nothing to commit (every thread was BLOCKED/NEEDS_CONTEXT), do NOT create an empty commit; emit the JSON and stop.
 
@@ -105,8 +103,8 @@ func BuildAddressPrompt(ctx address.Context) string {
         -m "Assisted-by: Claude:<your model id>"
 
    Wrap every commit-message line at 72 characters or fewer.
-5. Do NOT push. The orchestrator pushes the follow-up commit to %s after
-   this session, then replies to and (optionally) resolves the thread.
+5. Stop here: planwerk-agent pushes the follow-up commit to %s after this
+   session, then replies to and (optionally) resolves the thread.
 `, ctx.HeadBranch)
 	} else {
 		fmt.Fprintf(&sb, `4. Stage every change and create ONE aggregate follow-up commit covering
@@ -119,8 +117,8 @@ func BuildAddressPrompt(ctx address.Context) string {
         -m "Assisted-by: Claude:<your model id>"
 
    Wrap every commit-message line at 72 characters or fewer.
-5. Do NOT push. The orchestrator pushes the follow-up commit to %s after
-   this session, then replies to and (optionally) resolves each thread.
+5. Stop here: planwerk-agent pushes the follow-up commit to %s after this
+   session, then replies to and (optionally) resolves each thread.
 `, ctx.HeadBranch)
 	}
 
@@ -167,8 +165,6 @@ func BuildBareAddressPrompt(ctx address.BareContext) string {
 	sb.WriteString(`Apply these task-specific thinking patterns on top of the baseline above:
 - "Address the reviewer's actual ask." — Read the whole comment chain, not just the first line. Do exactly what the reviewer requested; do not reinterpret it into a larger change.
 - "Minimal-invasive change." — Make the smallest change that resolves each comment. No drive-by refactors, no reformatting unrelated code, no dependency bumps the comment does not call for.
-- "Open the file at the anchored hunk; do not guess." — Open the actual source at the path and line the comment is anchored to before editing.
-- "Verify before committing." — Where you can run the toolchain, confirm the change compiles and passes before committing.
 - "If you cannot address it, say so." — When a comment is ambiguous or references code that no longer exists, do NOT guess: leave it untouched and report it.
 - "A reviewer can be wrong." — When you have concrete evidence the requested change would be incorrect (it would break behavior, contradict the pull request's stated intent, or reintroduce a bug), do NOT make the change and do NOT file the thread as BLOCKED: set its status to NEEDS_CONTEXT and state the disagreement with the file:line evidence in the summary, so a human decides.
 
