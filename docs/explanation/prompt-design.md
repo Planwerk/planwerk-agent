@@ -257,10 +257,14 @@ Every autonomous prompt says so, and every result the orchestrator acts on is
 checked for its contract (a plan heading and a verdict, a report heading and a
 STATUS line) before it is posted or acted on.
 
-These habits are relative to a model. Each new model release is the prompt to
-re-read the builders against the vendor's migration guidance, with the
-prompt-auditor agent (`.claude/agents/prompt-auditor.md`), before assuming what
-worked on the last model still does.
+These habits are relative to a model, and the model is named by alias. The
+orchestrator passes `opus`, `sonnet`, and `fable` to Claude Code, which
+resolves each to the current release, so a model release changes every
+prompt's reader without a commit to this repository. Each release is therefore
+the prompt to re-read the builders against the vendor's migration guidance
+before assuming what worked on the last model still does. That re-reading is
+the `/iterate-prompts` skill, described under
+[enforcement](#how-the-doctrine-is-enforced).
 
 ## The named failure modes
 
@@ -388,6 +392,24 @@ tokens of prompt injected into eight of them before the specialists were scoped
 to their own areas ([decision 79](./design-decisions.md)), and that is the shape
 of finding sprawl at the resolution of a *pass* — text a prompt tells the model
 to ignore, paid for once per session that carries it.
+
+The golden tests hold a prompt still; they cannot say whether it still fits
+its reader. That check runs as an iteration, not as a build step, because it
+needs a model to read the prompts and a person to judge the findings. The
+repository's own `/iterate-prompts` skill (`.claude/skills/iterate-prompts/`)
+runs one: it probes which model each alias resolves to today, compares that
+and the commits since the last iteration with the ledger under
+`.claude/prompt-audits/`, hands every prompt surface to the two audit agents
+(`prompt-auditor` for the builders, `skill-auditor` for the skills and the
+shared documents) in seven fixed slices, applies the wording-only findings on
+a branch with the golden regeneration as the artifact, puts each behavioral
+change to the author with the evidence it needs, and writes the next ledger
+entry. The ledger is what makes the iterations cumulative: it records the
+model ids and the vendor guidance an audit read, the findings it applied, and
+the ones it deferred, so the next iteration starts from those instead of
+re-finding them. `check.sh` under the skill's `scripts/` answers "is an
+iteration due" for about a tenth of a dollar, which is the form a scheduled
+job can run ([decision 116](./design-decisions.md)).
 
 ## Attribution
 
