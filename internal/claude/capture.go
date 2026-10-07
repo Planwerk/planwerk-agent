@@ -133,7 +133,7 @@ Every candidate MUST be checked against the existing wiki entries AND the patter
 		sb.WriteString("</review-patterns-index>\n\n")
 	}
 
-	sb.WriteString(communicationStyleBlock())
+	sb.WriteString(proseStyleBlock())
 	sb.WriteString(outputLanguageBlock())
 
 	sb.WriteString(unattendedSessionLine("", "the complete proposal: every page body, or the statement that nothing clears the bar"))
