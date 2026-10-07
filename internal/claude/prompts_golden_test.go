@@ -1036,6 +1036,7 @@ func goldenFixContext() fix.Context {
 		HeadSHA:       "abc1234def5678",
 		Iteration:     2,
 		MaxIterations: 5,
+		PriorReport:   "## Fix Report (iteration 1)\n\nDONE_WITH_CONCERNS — widened the retry window; the test still fails in CI.\n\n### Status\nSTATUS: DONE_WITH_CONCERNS",
 		FailedChecks: []fix.FailedCheck{
 			{
 				Name:          "test",

@@ -33,8 +33,13 @@ type Context struct {
 	HeadSHA       string
 	Iteration     int
 	MaxIterations int
-	FailedChecks  []FailedCheck
-	Patterns      []patterns.Pattern
+	// PriorReport is the fix report the previous iteration ended on, so a
+	// session told that its predecessor's approach did not work can read what
+	// that approach was: each iteration is a fresh clone with no history of
+	// its own. Empty on the first iteration.
+	PriorReport  string
+	FailedChecks []FailedCheck
+	Patterns     []patterns.Pattern
 	// Catalog is the on-disk form of Patterns the session reads (written by
 	// patterns.Materialize); a zero Catalog puts the bodies in the prompt.
 	Catalog patterns.Catalog
