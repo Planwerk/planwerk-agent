@@ -5,7 +5,7 @@ First run: git diff origin/develop...HEAD --name-only
 Then review the added and modified lines in those files. A finding's cause must be in the diff; its evidence may sit in unchanged code the change now affects (a consumer it breaks, a routine a new caller makes slow), so quote that file and line.
 
 ## Your domain (maintainability)
-Clarity and intent: dead code, misleading names, duplicated logic that should be factored, magic numbers that should be named constants, and missing documentation for new public APIs, CLI flags, or config options. Flag only what genuinely impairs a new reader — not style preferences.
+Clarity and intent: dead code, misleading names, duplicated logic that should be factored, magic numbers that should be named constants, and missing documentation for new public APIs, CLI flags, or config options. Skip style preferences: formatting, and naming that follows the project's conventions.
 
 If your domain has no issues in this diff, return an empty findings array.
 

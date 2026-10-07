@@ -117,7 +117,7 @@ var Specialists = []Specialist{
 		// quality, factoring on architecture, and missing docs for a new public
 		// API on documentation. Only security, testing and reliability drop out.
 		Areas: []string{"quality", "architecture", "documentation"},
-		Focus: `Clarity and intent: dead code, misleading names, duplicated logic that should be factored, magic numbers that should be named constants, and missing documentation for new public APIs, CLI flags, or config options. Flag only what genuinely impairs a new reader — not style preferences.`,
+		Focus: `Clarity and intent: dead code, misleading names, duplicated logic that should be factored, magic numbers that should be named constants, and missing documentation for new public APIs, CLI flags, or config options. Skip style preferences: formatting, and naming that follows the project's conventions.`,
 	},
 }
 
