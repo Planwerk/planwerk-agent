@@ -98,10 +98,7 @@ Calibrate the detail to the reader: an engineer who can open every file in this 
 
 	sb.WriteString(`## Methodology
 
-1. **Walk the repository first.** Open README, top-level layout, the package(s) the issue mentions, the migration directory if present, the test conventions (unit / integration / E2E), the documentation structure. Do NOT skip this — the elaboration must be grounded in concrete files and symbols, not generic advice.
-2. **Identify what already exists.** For every claim like "the X service is in place", cite the exact file path. Distinguish "already exists" from "this issue adds" with concrete boundaries.
-3. **Plan the smallest change that satisfies the issue.** Do not invent scope. If the issue is ambiguous, list the ambiguity in Non-Goals or as a clarifying note in Description.
-4. **Enumerate every affected area.** Source files, test files, docs, schema/migrations, generated artifacts, CI configuration. Be exhaustive — surprise files in a PR are a process smell.
+Ground the elaboration in the repository before you write: open the README, the packages the issue names, and the migrations, tests, and documentation conventions it touches, and cite the exact file path for every claim that something already exists, so each boundary pairs what exists against what this issue adds. Plan the smallest change that satisfies the issue, never invented scope; an ambiguity the issue leaves goes under Non-Goals or as a clarifying note in the Description. Every area the change touches is listed under Affected Areas (source, tests, docs, schema and migrations, generated artifacts, CI configuration): a file that surprises a reviewer in the pull request is a gap here.
 
 ## Output Sections (in this order)
 

@@ -141,7 +141,7 @@ func TestBuildImplementPrompt_OrchestrationOnlyWithWorkerModel(t *testing.T) {
 		"## Orchestrated implementation",
 		"Delegate ONE work package at a time",
 		"SELF-CONTAINED",
-		"5. IMPLEMENT the change set package by package",
+		"2. IMPLEMENT the change set package by package",
 		"- NEVER create or edit a file yourself in this orchestrated session",
 	} {
 		if !strings.Contains(orch, want) {
