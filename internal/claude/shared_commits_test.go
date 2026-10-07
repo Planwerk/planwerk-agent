@@ -71,6 +71,7 @@ func TestSharedCommitsDocMatchesFoldDiscipline(t *testing.T) {
 		{"the target commit is found by blame or pickaxe", "git log -S<symbol>"},
 		{"a published fold repairs the SHA references it invalidated", "gh pr edit"},
 		{"a surviving SHA is told from a replaced one by reachability", "git merge-base --is-ancestor"},
+		{"an unresolvable fold conflict aborts and is reported", "git rebase --abort"},
 	} {
 		if !strings.Contains(prose(doc), prose(tc.marker)) {
 			t.Errorf("%s: %s does not mention %q", tc.rule, sharedCommitsFoldDoc, tc.marker)

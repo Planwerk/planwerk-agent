@@ -50,9 +50,9 @@ with you standing in for them.
   report's "Noticed but not touching" list, not into this diff.
 - It never edits the issue body. The plan lives in the conversation, and the
   pull request closes the issue with `Closes #N` when it merges.
-- It never makes a test pass by weakening it. No skipped or deleted test, no
-  relaxed assertion, no suppression directive, no `--no-verify` — the forbidden
-  list `/planwerk:fix` enforces on a repair applies to a fresh diff too.
+- It never makes a test pass by weakening it: nothing in the list under "What
+  never makes a check green" in `commits.md` is a fix, in a fresh diff as in a
+  repair.
 - It never pushes, and never opens a pull request, without an explicit yes. And
   it never merges one.
 
@@ -156,10 +156,9 @@ is unambiguously this issue's implementation and an unattended run can later
 find it. Never commit on the default branch.
 
 Execute the plan: code, tests, documentation, in small reviewable commits per
-`commits.md` — every commit ends with `Assisted-by` and then `Signed-off-by`,
-and never carries `Co-authored-by`. When the repository commits a documentation
-style guide (`STYLE_GUIDE.md` at the root, or under `.planwerk/`, `docs/`, or
-`.github/`), follow it for every line of documentation prose.
+`commits.md`. When the repository commits a documentation style guide
+(`house-style.md`, Repository style guide), follow it for every line of
+documentation prose.
 
 Hold the plan's line while you work:
 
@@ -232,7 +231,7 @@ or, on `BLOCKED`, the single thing that unblocks the work.
 - Every changed file is warranted by the issue or the approved plan. Nothing
   widened, nothing "while I was in here".
 - No test was skipped, weakened, or deleted to get green. Re-read the diff
-  against the forbidden list, hunk by hunk.
+  against the list in `commits.md`, hunk by hunk.
 - The work is complete: no follow-up issue invented, no second pull request, no
   remainder quietly dropped.
 - Every commit ends with `Assisted-by` and then `Signed-off-by`, and carries no

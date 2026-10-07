@@ -43,12 +43,11 @@ then only their comments and docstrings are touched.
 
 Read `humanizer.md` in full; it is the catalog you edit against.
 
-Then check the checkout for a committed style guide, in this order:
-`STYLE_GUIDE.md`, `.planwerk/STYLE_GUIDE.md`, `docs/STYLE_GUIDE.md`,
-`.github/STYLE_GUIDE.md` — first hit wins. If one exists, read it: **the repo's
-guide outranks the catalog.** Note every conflict (the guide mandates em
-dashes, title-cased headings, emoji) and suspend those catalog rules for this
-run. Say which rules you suspended.
+Then check the checkout for a committed style guide (`house-style.md`,
+Repository style guide). If one exists, read it: **the repo's guide outranks the
+catalog.** Note every conflict (the guide mandates em dashes, title-cased
+headings, emoji) and suspend those catalog rules for this run. Say which rules
+you suspended.
 
 ## Phase 3 — Rewrite, file by file
 
