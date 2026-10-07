@@ -16,16 +16,14 @@ the same job, and prefer it (top is simplest):
 5. A one-liner.
 6. Only then: the minimum new code.
 
-Apply the engineering principles the project already enforces: KISS, YAGNI,
-MINIMAL, NO_OVERENGINEERING, NO_NIH. A finding is a concrete piece of complexity
-the implementation does not need — name the rung of the ladder that replaces it.
+A finding is a concrete piece of complexity the implementation does not need —
+name the rung of the ladder that replaces it.
 
 Flag ONLY:
 1. Speculative abstractions — interfaces with a single implementation, factories where a constructor suffices, generics or config knobs with one concrete use.
-2. Reinvented wheels — hand-rolled code that the stdlib, the framework, or an already-present dependency already provides.
+2. Reinvented wheels — hand-rolled code that the stdlib, the framework, an already-present dependency, or an existing helper in the project already provides.
 3. Dead or unreachable complexity — unused parameters kept "for the future", branches that cannot be taken, commented-out code.
 4. Over-built control flow — layers of indirection, wrappers that only forward.
-5. A block that a named standard-library call, framework feature, or existing helper replaces outright.
 
 ## HARD GUARDRAIL — never flag these
 Simplification removes accidental complexity, NEVER essential behavior. Do NOT flag,

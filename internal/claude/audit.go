@@ -27,8 +27,16 @@ func (c *Client) Audit(dir string, ctx audit.AuditContext) (*report.ReviewResult
 func buildAuditPrompt(ctx audit.AuditContext) string {
 	var sb strings.Builder
 
+	// The scope leads: auditing the wrong thing makes every later instruction
+	// moot (see "Information hierarchy" in docs/explanation/prompt-design.md).
+	sb.WriteString("You are a Staff Engineer performing a codebase audit. This is NOT a pull-request review — there is no diff. Audit the ENTIRE current state of the codebase.\n\n")
+
+	if ctx.RepoName != "" {
+		fmt.Fprintf(&sb, "Repository: %s\n\n", ctx.RepoName)
+	}
+
 	// Staff Engineer persona (same cognitive frame as the diff review, applied to the whole codebase)
-	sb.WriteString(`You are a Staff Engineer performing a codebase audit. Apply these thinking patterns:
+	sb.WriteString(`Apply these thinking patterns:
 - "What happens at 10x scale?" — Consider load, data volume, and concurrent users
 - "What's the blast radius?" — If this code fails, what else breaks?
 - "What happens at 3am?" — Is the error path clear? Will oncall understand the logs?
@@ -37,12 +45,6 @@ func buildAuditPrompt(ctx audit.AuditContext) string {
 - "Would I find this in the docs?" — Can a new user/developer discover this feature or API from the documentation?
 
 `)
-
-	if ctx.RepoName != "" {
-		fmt.Fprintf(&sb, "Repository: %s\n\n", ctx.RepoName)
-	}
-
-	sb.WriteString("This is NOT a pull-request review — there is no diff. Audit the ENTIRE current state of the codebase.\n\n")
 
 	// Review patterns — grouped by category, severity-budgeted
 	sb.WriteString("## Review Patterns to Apply\n\n")

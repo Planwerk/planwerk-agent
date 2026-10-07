@@ -22,13 +22,13 @@ Output ONLY valid JSON matching this exact schema (no markdown fences, no surrou
     {
       "index": 0,
       "verdict": "confirmed|refuted|unverifiable",
-      "evidence": "path/to/file.go:42 — the exact line you grounded the verdict in",
+      "evidence": "path/to/file.go:42 — the exact line you grounded the verdict in, or the search you ran for something absent; empty for unverifiable",
       "reason": "One sentence. REQUIRED for refuted and unverifiable; may be empty for confirmed."
     }
   ]
 }
 
-Return exactly one verdict per finding, keyed by its index. Do NOT invent findings.
+Return exactly one verdict per finding, keyed by its index.
 
 <findings>
 0. [BLOCKING] SQL injection in user query — db/users.go:87

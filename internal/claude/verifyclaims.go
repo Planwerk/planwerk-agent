@@ -57,8 +57,8 @@ func buildClaimVerificationPrompt(findings []report.Finding) string {
 	b.WriteString("Only a refutation demotes a finding, so refute only on evidence you can quote or a search you can name. Never refute on a hunch, and never confirm a claim you did not check: say unverifiable instead.\n\n")
 	b.WriteString("This is a read-only check: do NOT edit any file.\n\n")
 	b.WriteString(jsonSchemaOnlyLine())
-	b.WriteString("\n\n{\n  \"verdicts\": [\n    {\n      \"index\": 0,\n      \"verdict\": \"confirmed|refuted|unverifiable\",\n      \"evidence\": \"path/to/file.go:42 — the exact line you grounded the verdict in\",\n      \"reason\": \"One sentence. REQUIRED for refuted and unverifiable; may be empty for confirmed.\"\n    }\n  ]\n}\n\n")
-	b.WriteString("Return exactly one verdict per finding, keyed by its index. Do NOT invent findings.\n\n")
+	b.WriteString("\n\n{\n  \"verdicts\": [\n    {\n      \"index\": 0,\n      \"verdict\": \"confirmed|refuted|unverifiable\",\n      \"evidence\": \"path/to/file.go:42 — the exact line you grounded the verdict in, or the search you ran for something absent; empty for unverifiable\",\n      \"reason\": \"One sentence. REQUIRED for refuted and unverifiable; may be empty for confirmed.\"\n    }\n  ]\n}\n\n")
+	b.WriteString("Return exactly one verdict per finding, keyed by its index.\n\n")
 	b.WriteString("<findings>\n")
 	for i, f := range findings {
 		loc := f.File

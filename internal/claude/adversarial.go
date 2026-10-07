@@ -64,7 +64,6 @@ DO NOT comment on:
 - General best practices without a concrete exploit or failure scenario
 - Anything that is merely "not ideal" but has no realistic failure mode
 
-For every finding, describe the SPECIFIC attack vector or failure scenario.
 Rate each finding by its impact on the severity ladder below; hardening with no concrete failure path is INFO.
 A finding whose confidence is "uncertain" is never BLOCKING or CRITICAL: a theoretical exploit you cannot ground in a quoted line caps at WARNING.
 
