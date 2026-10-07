@@ -583,9 +583,10 @@ func escalationOKLine(qualifier, tail string) string {
 
 // noSkipHooksLine returns the single "## Hard rules" bullet that forbids
 // bypassing pre-commit / CI hooks, shared by every builder whose session
-// commits (implement, fix, address, finalize, simplify, review_apply, rebase,
-// and their variants). The bullet carries its own trailing newline so callers
-// splice it between two other bullets without juggling separators.
+// commits (implement, fix, address, finalize, simplify, review_apply, rebase
+// apply, and their variants; the rebase conflict session stops at git add
+// and does not carry it). The bullet carries its own trailing newline so
+// callers splice it between two other bullets without juggling separators.
 func noSkipHooksLine() string {
 	return "- NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).\n"
 }
