@@ -36,6 +36,13 @@ top. `<base>` below is the branch the pull request targets.
    Rebasing onto the branch tip silently advances your work onto a base that
    moved since you branched, mixing an unrequested rebase into a repair.
 
+5. If the rebase stops on a conflict, resolve the file to the content your
+   change intended, `git add` it, and run `git rebase --continue`. If you cannot
+   resolve it, run `git rebase --abort`, leave the fixups unfolded on the
+   branch, and report `DONE_WITH_CONCERNS` naming them. Before you publish,
+   `git status` shows no rebase in progress; if you resolved a conflict, run
+   the tests again, because the tree changed after you verified it.
+
 A new standalone commit is the rare exception, for a change that genuinely
 belongs to no existing commit on this branch — a new file unrelated to any of
 them. Only then:

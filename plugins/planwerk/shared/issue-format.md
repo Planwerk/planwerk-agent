@@ -1,8 +1,8 @@
 # The house issue format
 
-Every issue the planwerk skills author uses this format. `planwerk-agent plan`,
-`implement`, and `ship` read these issues, so the section names and their order
-are a contract, not a style preference.
+Every issue the planwerk skills author uses this format. `planwerk-agent
+implement` (its planning session), `ship`, and `prompt` read these issues, so
+the section names and their order are a contract, not a style preference.
 
 Issues come at exactly two depths. A draft-depth issue describes work. An
 elaborated issue plans it. Nothing in between.

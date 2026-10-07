@@ -161,15 +161,8 @@ why.
 
 ## Phase 5 — Score it, then close the gaps
 
-Review your own draft as a skeptic who did not write it, and score it 0-10 for
-**executability by an implementer with zero context**:
-
-- 10: they execute it correctly without asking a single question.
-- 8-9: solid; at most cosmetic gaps that would not change what gets built.
-- 4-7: real gaps — they would build the wrong thing or get stuck on a decision
-  the plan should have made.
-- 0-3: not executable. Missing coverage, placeholders, or citations that do not
-  exist.
+Review your own draft as a skeptic who did not write it, and score it 0-10 on
+the executability rubric in `issue-format-plan.md`.
 
 Check, in order:
 

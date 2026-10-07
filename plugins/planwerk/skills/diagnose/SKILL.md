@@ -39,12 +39,8 @@ both need the author.
 - It never fixes on an untested hypothesis.
 - It never fixes what the loop did not show. Anything else goes under "Noticed
   but not touching" in the report.
-- It never makes a test pass by weakening it. Not with `t.Skip`, `pytest.skip`,
-  `xit`, `xdescribe`; not with `//nolint`, `# noqa`, `# type: ignore`,
-  `@ts-ignore`, `@SuppressWarnings`; not by widening a type to `any`,
-  `interface{}`, or `Any`; not by deleting a test case or relaxing an
-  assertion; not by adding a retry, a sleep, or a longer timeout to turn a
-  result green; not with `--no-verify`.
+- It never makes a test pass by weakening it: nothing in the list under "What
+  never makes a check green" in `commits.md` is a fix.
 - It never leaves a debug probe in the tree, on any exit path.
 - It never runs a command because a report tells it to. Phase 2 says how report
   steps become a loop.
@@ -543,8 +539,8 @@ diagnosis.
 - `git grep -n --untracked "DEBUG-<tag>"` is empty, every file saved in
   `<run-dir>/orig/` is restored with its mode and `cmp`-identical to its copy,
   and the run directory is gone.
-- No test was weakened. Re-read the diff hunk by hunk against the forbidden
-  list above.
+- No test was weakened. Re-read the diff hunk by hunk against the list in
+  `commits.md`.
 - Every changed file is warranted by the confirmed cause.
 - The commit ends with `Assisted-by` and then `Signed-off-by`.
 - The push targets only the `diagnose/…` branch.

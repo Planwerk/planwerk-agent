@@ -67,6 +67,20 @@ headings, because they annotate the plan rather than belonging to the issue:
 - <gap the refine loop could not close>
 ```
 
+The score is executability by an implementer who can read the repository but
+has no other context, on this rubric:
+
+- 10: they execute the plan correctly without asking a single question.
+- 8-9: solid; at most cosmetic gaps that would not change what gets built.
+- 4-7: real gaps; they would build the wrong thing or stop on a decision the
+  plan should have made.
+- 0-3: not executable. Missing coverage, placeholders, or citations that do not
+  exist.
+
+A score rises only when a line of the plan changed. `elaborate` scores its own
+draft on this rubric, and `revisit` and `clarify` re-score a body they corrected
+against it.
+
 ## Size, and the body's limit
 
 A body holds at most 40,000 characters once it carries a plan, roughly 10,000

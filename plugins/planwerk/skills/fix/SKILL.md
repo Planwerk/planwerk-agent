@@ -35,12 +35,9 @@ you can ask.
 
 ## What fix does not do
 
-- It never silences a check. Not with `t.Skip`, `pytest.skip`, `xit`,
-  `xdescribe`; not with `//nolint`, `# noqa`, `# type: ignore`, `@ts-ignore`,
-  `@SuppressWarnings`; not by widening a type to `any`, `interface{}`, or
-  `Any`; not by deleting a test case, relaxing an assertion, or pinning a
-  dependency backwards to dodge a security finding; not with `--no-verify`. A
-  suppression is never one of the options you offer the author.
+- It never silences a check: nothing in the list under "What never makes a
+  check green" in `commits.md` is a repair. A suppression is never one of the
+  options you offer the author.
 - It never fixes what no check flagged. A failing check is the entire mandate.
   "While I was in here I noticed…" is a new issue, not a line in this diff.
 - It never pushes a placebo. A flake, an expired secret, a runner that ran out
@@ -251,7 +248,7 @@ the author, or to `planwerk-agent fix <pr-ref>` for the unattended loop.
 - Every file you changed was named by a failing check, or is an out-of-scope
   reach the author approved by name.
 - Nothing was skipped, suppressed, silenced, or deleted to make a check pass.
-  Re-read the diff against the forbidden list above, hunk by hunk.
+  Re-read the diff against the list in `commits.md`, hunk by hunk.
 - The command from Phase 3 was re-run and passes, or the report says in words
   why it could not run here.
 - The fold is bounded by `git merge-base`, and no commit that already exists on
