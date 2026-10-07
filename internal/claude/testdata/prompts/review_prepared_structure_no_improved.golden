@@ -10,7 +10,7 @@ Output ONLY valid JSON matching this exact schema (no markdown fences, no surrou
       "feature_id": "PX-0028",
       "feature_file": "PX-0028-...json",
       "title": "Feature title from the spec",
-      "summary": "1-3 sentence verdict for this specific feature.",
+      "summary": "The feature's verdict, copied from the report.",
       "findings": [
         {
           "id": "",
@@ -19,7 +19,7 @@ Output ONLY valid JSON matching this exact schema (no markdown fences, no surrou
           "category": "stories|requirements|tasks|tests|review_criteria|implementation_notes|other",
           "severity": "CRITICAL|WARNING|INFO",
           "title": "Short, specific finding title (no severity prefix, no brackets)",
-          "description": "What is wrong and why it matters. 1-3 sentences.",
+          "description": "What is wrong and why it matters, copied from the report.",
           "suggestion": "Concrete edit text. Copy-paste-ready when possible.",
           "spec_pointer": "JSON-pointer-ish path inside the spec, e.g. stories[2].criteria[1] or requirements[REQ-005].scenarios[0]",
           "confidence": "verified|likely|uncertain"

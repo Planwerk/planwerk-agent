@@ -146,7 +146,7 @@ Name the actual error or exception value, never a vague "handle the error case".
 
 An implementer acts on every name the plan gives, so each one has to exist:
 
-- Every file path you cite MUST exist in the repository. If you are not sure, walk the directory before naming the file.
+- Every file path you cite as existing exists in the repository; if you are not sure, walk the directory before naming the file. A file this issue creates is named as new.
 - Every line-number citation must be verifiable. Prefer file-only citations when you cannot verify the line.
 - NEVER invent symbol names, function signatures, or migration numbers — open the file and read them.
 - If the issue references something the repo does not yet have ("S006", "S009", "PX-0011"), preserve the reference exactly as written but mark it as "per the issue" so reviewers know it is an assumption.

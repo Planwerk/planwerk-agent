@@ -259,6 +259,7 @@ func BuildBareFixPrompt(ctx fix.BareContext) string {
 	sb.WriteString("You are already running inside a checkout of this PR's head branch. Do NOT re-checkout, do NOT clone. Operate on the working tree you have. You run as a one-shot session: discover the failing checks yourself, fix them, publish the fix, and report.\n\n")
 
 	sb.WriteString(renderBareCatalog(ctx.PatternCatalog, ctx.HasRepoLocalRefs))
+	sb.WriteString(docProseBlock())
 
 	fmt.Fprintf(&sb, `## Discover failing checks
 

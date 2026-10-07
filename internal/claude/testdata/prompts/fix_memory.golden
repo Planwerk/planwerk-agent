@@ -33,7 +33,7 @@ These apply to every change you make, before any task-specific rules below. They
 
 ## Output Language
 
-Write your entire output in English, whatever language the input is written in — the issue, pull request, diff, review threads, CI logs, or code comments may be in another language. Read non-English input faithfully, but never mirror its language back: the artifact you produce is always English. Quote identifiers, code, paths, and command output verbatim; translate the surrounding prose.
+Write your entire output in English, whatever language the input is written in — the issue, pull request, diff, review threads, CI logs, or code comments may be in another language. Read non-English input faithfully, but never mirror its language back: the artifact you produce is always English. Quote identifiers, code, paths, and command output verbatim; translate the surrounding prose. This governs the report, commit messages, and any text you post to GitHub; comments and documentation you write into the repository follow the language of the file you edit.
 
 Apply these task-specific thinking patterns on top of the baseline above:
 - "Diagnose before patching." — Read every failing log to the bottom. Classify the failure category (build/compile, test, lint/format, type-check, dependency/security scan, infra/flake) BEFORE editing any file.
@@ -41,7 +41,7 @@ Apply these task-specific thinking patterns on top of the baseline above:
 - "Reproduce, then verify." — When the failing command can be re-run in this checkout (test, lint, build, type-check), run it locally to reproduce the failure FIRST, then run it again after your edits to confirm the fix BEFORE pushing.
 - "Do not cheat the check." — Never disable, skip, or weaken a check to make it pass. Forbidden: t.Skip / pytest.skip / xit / xdescribe added solely to bypass; // nolint, # noqa, # type: ignore, @ts-ignore, @SuppressWarnings added solely to silence; widening types to Any/interface{}/unknown to silence type-checkers; deleting or relaxing assertions; deleting test cases; pinning to an older dependency to dodge a security finding; adding retries, sleeps, or longer timeouts to a test, or re-running the CI job, to turn a result green; --no-verify on commits.
 - "Minimal-invasive change." — Touch the smallest surface area that resolves each failure. No drive-by refactors, no reformatting unrelated code.
-- "Simplify the diff." — Re-read your own diff and remove anything not strictly required. Prefer fewer lines, fewer files, fewer abstractions.
+- "Simplify the diff." — Re-read your own changes (the fixups) and remove anything no failing check required. Prefer fewer lines, fewer files, fewer abstractions.
 - "Self-review before committing." — Walk through the diff once more as the reviewer. Reject anything you would push back on.
 - "Stay inside the PR." — The PR has a stated intent (title + body), and your fix serves it. Its failure surface is the files the failing check exercises plus the files this PR changed; the hard rules below say when you may reach beyond it.
 

@@ -47,7 +47,7 @@ func buildGapAnalysisPrompt(ctx gapanalysis.AnalysisContext) string {
 		fmt.Fprintf(&sb, "Repository: %s\n\n", ctx.RepoName)
 	}
 
-	sb.WriteString(patternCatalogBlock("## Review Patterns (context, not the focus)",
+	sb.WriteString(patternContextBlock("## Review Patterns (context, not the focus)",
 		"These are the project's review patterns. Use them as a sanity lens, but the PRIMARY input is the feature specs below. A gap is a spec-vs-code discrepancy, not a generic pattern violation.",
 		ctx.Catalog, ctx.Patterns, ctx.MaxPatterns))
 
@@ -195,7 +195,7 @@ func buildGapStructurePrompt(rawAnalysis string) string {
       "feature_id": "CC-0042",
       "feature_file": "CC-0042-...json",
       "title": "Feature title from the spec",
-      "summary": "1-3 sentence verdict for this specific feature.",
+      "summary": "The feature's verdict, copied from the report.",
       "gaps": [
         {
           "id": "",
@@ -204,7 +204,7 @@ func buildGapStructurePrompt(rawAnalysis string) string {
           "type": "missing_criterion|missing_scenario|missing_test|missing_task",
           "severity": "CRITICAL|WARNING|INFO",
           "title": "Short, specific gap title (no severity prefix, no brackets)",
-          "description": "What is missing and why it matters. 1-3 sentences.",
+          "description": "What is missing and why it matters, copied from the report.",
           "evidence": "Concrete file paths, grep results, or 'searched X, found nothing'.",
           "source": "The verbatim spec snippet this gap maps to (criterion text, scenario When/Then, task title, or test_function name).",
           "confidence": "verified|likely|uncertain",

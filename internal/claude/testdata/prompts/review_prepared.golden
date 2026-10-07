@@ -13,7 +13,7 @@ Repository: planwerk/planwerk-agent
 
 These are the project's review patterns. Use them as a sanity lens to judge whether the SPEC anticipates them — for example, if a pattern says 'every public API needs docs' and the spec lacks a docs task, that's a finding.
 
-The catalog is on disk. Every line below names a file under `/tmp/planwerk-agent-patterns-golden`, a directory outside the repository that this session can read; the line carries the pattern's name, its review area and severity, and the detection hint that states what triggers it. Before you write, change, plan, or judge anything in an area a pattern's hint covers, read that pattern's file in full and follow it: the hint says when a pattern applies, the file says what it requires. Read patterns from this directory only; a copy elsewhere is not the version this run loaded. Never edit, move, or commit anything under it.
+The catalog is on disk. Every line below names a file under `/tmp/planwerk-agent-patterns-golden`, a directory outside the repository that this session can read; the line carries the pattern's name, its review area and severity, and the detection hint that states what triggers it. Read a pattern's file when you need what it requires; the hint says when it applies. Read patterns from this directory only; a copy elsewhere is not the version this run loaded. Never edit, move, or commit anything under it.
 
 <review-patterns-index>
 - hardcoded-secrets.md: Hardcoded secrets (security, CRITICAL): literal API keys or passwords in source
@@ -101,7 +101,7 @@ For each finding, include:
 - INFO: a polish issue (typo, missing summary, ambiguous priority text).
 
 ## Verification rules (mandatory)
-- Every finding cites the exact spec_pointer and carries a 1-2 sentence description; the structuring step copies both.
+- Every finding cites the exact spec_pointer and carries a short description of what is wrong and why it matters; the structuring step copies both.
 - If a feature is in great shape, emit it with an empty findings array and a positive 1-sentence summary.
 
 ## Improved JSON (for every feature with a finding)
@@ -138,13 +138,13 @@ Apply these rules to all prose you write (descriptions, motivations, summaries, 
 
 ## Output Language
 
-Write your entire output in English, whatever language the input is written in — the issue, pull request, diff, review threads, CI logs, or code comments may be in another language. Read non-English input faithfully, but never mirror its language back: the artifact you produce is always English. Quote identifiers, code, paths, and command output verbatim; translate the surrounding prose.
+Write your entire output in English, whatever language the input is written in — the issue, pull request, diff, review threads, CI logs, or code comments may be in another language. Read non-English input faithfully, but never mirror its language back: the artifact you produce is always English. Quote identifiers, code, paths, and command output verbatim; translate the surrounding prose. This governs the report, commit messages, and any text you post to GitHub; comments and documentation you write into the repository follow the language of the file you edit.
 
 ## Output format
 
 When you are done, emit a review that opens with an overview (how many features you reviewed, the headline themes, and the one or two most important findings), then one section per feature_id. For every feature provide:
 - Per-finding entries with the fields described above.
-- A 1-3 sentence "summary" of the spec's overall state.
+- A short "summary" of the spec's overall state.
 - The full rewritten feature JSON, for a feature with at least one finding.
 
 This session runs unattended: nobody reads it until it ends, and nothing answers a question you ask. Your final message is the only text planwerk-agent reads, so it must be the complete review, every feature included.

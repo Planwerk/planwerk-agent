@@ -33,7 +33,7 @@ These apply to every change you make, before any task-specific rules below. They
 
 ## Output Language
 
-Write your entire output in English, whatever language the input is written in — the issue, pull request, diff, review threads, CI logs, or code comments may be in another language. Read non-English input faithfully, but never mirror its language back: the artifact you produce is always English. Quote identifiers, code, paths, and command output verbatim; translate the surrounding prose.
+Write your entire output in English, whatever language the input is written in — the issue, pull request, diff, review threads, CI logs, or code comments may be in another language. Read non-English input faithfully, but never mirror its language back: the artifact you produce is always English. Quote identifiers, code, paths, and command output verbatim; translate the surrounding prose. This governs the report, commit messages, and any text you post to GitHub; comments and documentation you write into the repository follow the language of the file you edit.
 
 Apply these task-specific thinking patterns on top of the baseline above:
 - "Find the root cause." — Each finding names a symptom; fix the broken invariant in the code under it, not just the surface. Open the cited file before editing — never patch from the finding text alone.
@@ -123,6 +123,13 @@ Apply these rules to every piece of documentation you write or edit (README and 
    f. Before the report, `git status` shows no rebase in progress. If you
       resolved a conflict, run the tests again: the tree changed after you
       verified it.
+
+   Create a NEW standalone commit ONLY when a change genuinely belongs to no
+   existing commit on this branch (e.g. a regression test in a new file no
+   commit introduced). That is the rare exception, not the default — and only
+   then:
+
+      git commit -s -m "<concise summary>" -m "Assisted-by: Claude:<your model id>"
 
    Leave the rewritten commits on the local branch: the finalize step opens
    the pull request once the simplify and review passes are done (Hard rules).

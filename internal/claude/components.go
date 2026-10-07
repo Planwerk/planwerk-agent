@@ -45,9 +45,16 @@ const honorPatternsHeading = "## Project Review Patterns to Honor"
 // patternCatalogDirLine is the instruction the index form of
 // patternCatalogBlock carries: every index line names a file under dir, and the
 // session reads a pattern's file in full before it works in the area the
-// pattern's hint covers.
-func patternCatalogDirLine(dir string) string {
-	return "The catalog is on disk. Every line below names a file under `" + dir + "`, a directory outside the repository that this session can read; the line carries the pattern's name, its review area and severity, and the detection hint that states what triggers it. Before you write, change, plan, or judge anything in an area a pattern's hint covers, read that pattern's file in full and follow it: the hint says when a pattern applies, the file says what it requires. Read patterns from this directory only; a copy elsewhere is not the version this run loaded. Never edit, move, or commit anything under it."
+// pattern's hint covers. contextOnly selects the form for the prompts whose
+// patterns are a lens rather than a rule (gap analysis, review-prepared,
+// propose): the session opens a pattern when it needs what it requires, and is
+// not told to follow it.
+func patternCatalogDirLine(dir string, contextOnly bool) string {
+	read := "Before you write, change, plan, or judge anything in an area a pattern's hint covers, read that pattern's file in full and follow it: the hint says when a pattern applies, the file says what it requires."
+	if contextOnly {
+		read = "Read a pattern's file when you need what it requires; the hint says when it applies."
+	}
+	return "The catalog is on disk. Every line below names a file under `" + dir + "`, a directory outside the repository that this session can read; the line carries the pattern's name, its review area and severity, and the detection hint that states what triggers it. " + read + " Read patterns from this directory only; a copy elsewhere is not the version this run loaded. Never edit, move, or commit anything under it."
 }
 
 // patternCatalogBlock renders a prompt's review-pattern section: heading, then
@@ -63,6 +70,18 @@ func patternCatalogDirLine(dir string) string {
 // adversarial pass and the specialists render them through
 // finderPatternCatalog, the review and audit prompts inline them.
 func patternCatalogBlock(heading, leadIn string, cat patterns.Catalog, pats []patterns.Pattern, maxPatterns int) string {
+	return patternCatalogSection(heading, leadIn, cat, pats, maxPatterns, false)
+}
+
+// patternContextBlock is patternCatalogBlock for a prompt whose patterns are
+// context rather than rules to follow (gap analysis, review-prepared,
+// propose): the on-disk line tells the session to open a pattern when it
+// needs what it requires, not to follow it before it judges.
+func patternContextBlock(heading, leadIn string, cat patterns.Catalog, pats []patterns.Pattern, maxPatterns int) string {
+	return patternCatalogSection(heading, leadIn, cat, pats, maxPatterns, true)
+}
+
+func patternCatalogSection(heading, leadIn string, cat patterns.Catalog, pats []patterns.Pattern, maxPatterns int, contextOnly bool) string {
 	if len(pats) == 0 {
 		return ""
 	}
@@ -72,7 +91,7 @@ func patternCatalogBlock(heading, leadIn string, cat patterns.Catalog, pats []pa
 			patterns.FormatGroupedForPrompt(pats, maxPatterns) +
 			"</review-patterns>\n\n"
 	}
-	return heading + "\n\n" + leadIn + "\n\n" + patternCatalogDirLine(cat.Dir) +
+	return heading + "\n\n" + leadIn + "\n\n" + patternCatalogDirLine(cat.Dir, contextOnly) +
 		"\n\n<review-patterns-index>\n" + index + "</review-patterns-index>\n\n"
 }
 
@@ -265,11 +284,14 @@ A human reads the report top-down and may read only its first and last lines. Sh
 // outputLanguageBlock returns the "## Output Language" section that pins every
 // generated artifact — implementation plan, fix report, implementation report,
 // review, audit, analysis, elaborated issue, … — to English, whatever language
-// the input is written in (decision 26).
+// the input is written in (decision 26). What a session writes into the
+// repository (comments, documentation) follows the file it edits, which the
+// editing sessions' "match the file" rules already say; the block draws that
+// line so the two rules do not compete in a non-English repository.
 func outputLanguageBlock() string {
 	return `## Output Language
 
-Write your entire output in English, whatever language the input is written in — the issue, pull request, diff, review threads, CI logs, or code comments may be in another language. Read non-English input faithfully, but never mirror its language back: the artifact you produce is always English. Quote identifiers, code, paths, and command output verbatim; translate the surrounding prose.
+Write your entire output in English, whatever language the input is written in — the issue, pull request, diff, review threads, CI logs, or code comments may be in another language. Read non-English input faithfully, but never mirror its language back: the artifact you produce is always English. Quote identifiers, code, paths, and command output verbatim; translate the surrounding prose. This governs the report, commit messages, and any text you post to GitHub; comments and documentation you write into the repository follow the language of the file you edit.
 
 `
 }
@@ -985,8 +1007,17 @@ func foldSteps(baseBranch string, foldStep int, noun, verb, before, tail string)
 }
 
 // foldLocalTail closes foldSteps for the two passes that fold on the local
-// feature branch before any pull request exists (simplify-apply, review-apply).
-const foldLocalTail = `   Leave the rewritten commits on the local branch: the finalize step opens
+// feature branch before any pull request exists (simplify-apply, review-apply):
+// the one case in which a change becomes a commit of its own, and where the
+// rewritten commits stay.
+const foldLocalTail = `   Create a NEW standalone commit ONLY when a change genuinely belongs to no
+   existing commit on this branch (e.g. a regression test in a new file no
+   commit introduced). That is the rare exception, not the default — and only
+   then:
+
+      git commit -s -m "<concise summary>" -m "Assisted-by: Claude:<your model id>"
+
+   Leave the rewritten commits on the local branch: the finalize step opens
    the pull request once the simplify and review passes are done (Hard rules).
 
 `
@@ -1029,7 +1060,7 @@ func fixThinkingPatterns() string {
 - "Reproduce, then verify." — When the failing command can be re-run in this checkout (test, lint, build, type-check), run it locally to reproduce the failure FIRST, then run it again after your edits to confirm the fix BEFORE pushing.
 - "Do not cheat the check." — Never disable, skip, or weaken a check to make it pass. Forbidden: t.Skip / pytest.skip / xit / xdescribe added solely to bypass; // nolint, # noqa, # type: ignore, @ts-ignore, @SuppressWarnings added solely to silence; widening types to Any/interface{}/unknown to silence type-checkers; deleting or relaxing assertions; deleting test cases; pinning to an older dependency to dodge a security finding; adding retries, sleeps, or longer timeouts to a test, or re-running the CI job, to turn a result green; --no-verify on commits.
 - "Minimal-invasive change." — Touch the smallest surface area that resolves each failure. No drive-by refactors, no reformatting unrelated code.
-- "Simplify the diff." — Re-read your own diff and remove anything not strictly required. Prefer fewer lines, fewer files, fewer abstractions.
+- "Simplify the diff." — Re-read your own changes (the fixups) and remove anything no failing check required. Prefer fewer lines, fewer files, fewer abstractions.
 - "Self-review before committing." — Walk through the diff once more as the reviewer. Reject anything you would push back on.
 - "Stay inside the PR." — The PR has a stated intent (title + body), and your fix serves it. Its failure surface is the files the failing check exercises plus the files this PR changed; the hard rules below say when you may reach beyond it.
 

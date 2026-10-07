@@ -46,7 +46,7 @@ func buildAnalysisPrompt(ctx propose.AnalysisContext) string {
 		fmt.Fprintf(&sb, "Repository: %s\n\n", ctx.RepoName)
 	}
 
-	sb.WriteString(patternCatalogBlock("## Review Patterns to Ground Proposals In",
+	sb.WriteString(patternContextBlock("## Review Patterns to Ground Proposals In",
 		"The patterns below are the same catalog the review and audit commands apply. Use them as a lens when proposing features or improvements: when a proposal addresses a pattern (closes a gap, hardens against a violation, or extends coverage) reference the pattern by name in the proposal description so reviewers can trace the rationale back to the catalog.",
 		ctx.Catalog, ctx.Patterns, ctx.MaxPatterns))
 
