@@ -245,6 +245,9 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	var wiki patterns.ResolvedWiki
 	wikiResolved := false
 
+	// priorReport carries each iteration's report into the next one's prompt.
+	priorReport := ""
+
 	for iteration := 1; iteration <= opts.MaxIterations; iteration++ {
 		_, _ = fmt.Fprintf(statusW, "\n=== Iteration %d/%d for %s#%d (head %s) ===\n",
 			iteration, opts.MaxIterations, fullName, number, report.ShortSHA(currentSHA))
@@ -357,6 +360,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 			HeadSHA:        fresh.HeadSHA,
 			Iteration:      iteration,
 			MaxIterations:  opts.MaxIterations,
+			PriorReport:    priorReport,
 			FailedChecks:   failed,
 			Patterns:       pats,
 			Catalog:        cat,
@@ -374,6 +378,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		if fixErr != nil {
 			return fmt.Errorf("claude fix iteration %d: %w", iteration, fixErr)
 		}
+		priorReport = fixReport
 		if fixReport != "" {
 			_, _ = fmt.Fprintf(w, "\nClaude fix report:\n%s\n", fixReport)
 			// Record what this iteration changed on the PR itself — posted

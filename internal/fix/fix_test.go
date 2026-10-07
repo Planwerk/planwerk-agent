@@ -838,6 +838,32 @@ func TestRun_DisabledWikiLeavesMemoryZero(t *testing.T) {
 // TestRun_EachFixIterationGetsItsOwnCatalog locks that every iteration writes
 // a fresh catalog and removes it before the next iteration's session runs, so
 // no catalog outlives the checkout its patterns were loaded from.
+// TestRun_SecondIterationCarriesThePriorReport: the prompt of iteration 2 is
+// told its predecessor's approach did not work, and each iteration is a fresh
+// clone, so the runner hands it the report the predecessor ended on.
+func TestRun_SecondIterationCarriesThePriorReport(t *testing.T) {
+	failures := []github.CheckRun{failing(1, "test")}
+	gh := &githubtest.Fake{
+		PR:       github.PR{Title: "demo", HeadBranch: "b", HeadSHA: "sha0"},
+		Checks:   [][]github.CheckRun{failures, failures, failures},
+		HeadSHAs: []string{"sha1", "sha2"},
+	}
+	cl := &fakeClaude{report: "## Fix Report\n\n### Status\nSTATUS: DONE"}
+	r := newRunner(gh, cl, &fakePrompter{})
+	if err := r.Run(io.Discard, Options{PRRef: "o/r#1", MaxIterations: 2}); !errors.Is(err, ErrMaxIterations) {
+		t.Fatalf("Run err = %v, want ErrMaxIterations", err)
+	}
+	if got := len(cl.ctxs); got != 2 {
+		t.Fatalf("Claude.Fix called %d times, want 2", got)
+	}
+	if cl.ctxs[0].PriorReport != "" {
+		t.Errorf("iteration 1 carried a prior report: %q", cl.ctxs[0].PriorReport)
+	}
+	if cl.ctxs[1].PriorReport != cl.report {
+		t.Errorf("iteration 2 prior report = %q, want iteration 1's report", cl.ctxs[1].PriorReport)
+	}
+}
+
 func TestRun_EachFixIterationGetsItsOwnCatalog(t *testing.T) {
 	patternsDir := writeSamplePattern(t)
 

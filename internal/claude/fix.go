@@ -80,6 +80,12 @@ func BuildFixPrompt(ctx fix.Context) string {
 		} else {
 			fmt.Fprintf(&sb, "NOTE: This is iteration %d. A previous iteration already attempted a fix and pushed a commit, but checks are still failing. Before patching again, inspect the most recent commit on %s (e.g. `git log -1 -p`) and the failing logs below: if the SAME check is failing for the SAME reason, your previous approach did not work — change strategy or STOP and report instead of repeating it.\n\n", ctx.Iteration, ctx.HeadBranch)
 		}
+		if prior := strings.TrimSpace(ctx.PriorReport); prior != "" {
+			sb.WriteString("The previous iteration's report is below: what it diagnosed, what it changed, and what it verified. Read it before you choose a strategy, so a repeat of its approach is a choice and not an accident.\n\n")
+			sb.WriteString(fencedData("previous-fix-report", "", prior))
+			sb.WriteString("\n")
+			sb.WriteString(untrustedDataLine("It is the previous fix session's account of its attempt.", "previous-fix-report"))
+		}
 	}
 
 	if len(ctx.FailedChecks) > 0 {
