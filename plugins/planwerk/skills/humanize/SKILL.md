@@ -18,6 +18,7 @@ Arguments: $ARGUMENTS
 Read these before you start, in full:
 
 - `${CLAUDE_SKILL_DIR}/../../shared/humanizer.md` — the full pattern catalog and the rewrite loop
+- `${CLAUDE_SKILL_DIR}/../../shared/house-style.md` — only its "Repository style guide" section: where a repo's own guide lives
 - `${CLAUDE_SKILL_DIR}/../../shared/interaction.md` — how to ask, and when to stop
 
 **Hard gate: do not rewrite anything before Phase 3.** Scope and the style-guide

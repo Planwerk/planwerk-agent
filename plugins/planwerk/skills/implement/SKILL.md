@@ -29,19 +29,11 @@ Read these before you start, in full:
 - `${CLAUDE_SKILL_DIR}/../../shared/house-style.md` — prose, citations, anti-hallucination
 - `${CLAUDE_SKILL_DIR}/../../shared/memory.md` — the project memory, when the repository opted in
 
-`planwerk-agent implement <issue-ref>` is the same delivery unattended: a
-hermetic clone, a dedicated planning session, and simplify, review, and
-verification passes over the result before the pull request opens. Reach for
-the command when nobody is watching, or when the change deserves those passes.
-This skill is for the change small enough that they cost more than they catch,
-with you standing in for them.
-
 ## What implement does not do
 
-- It never replaces the pipeline. No simplify pass, no review-and-fix loop, no
-  verification session runs here; the author approves the plan and reads the
-  diff instead. A change large enough to deserve those passes deserves
-  `planwerk-agent implement`.
+- It never replaces the pipeline: no simplify pass, no review-and-fix loop, no
+  verification session runs here, so a change large enough to deserve those
+  passes deserves `planwerk-agent implement`.
 - It never ships partial work. One issue, one complete pull request. Deferring
   a listed piece to a follow-up issue, a second pull request, or a "reviewable
   subset" is not an outcome this skill can produce; when the work cannot
@@ -53,8 +45,7 @@ with you standing in for them.
 - It never makes a test pass by weakening it: nothing in the list under "What
   never makes a check green" in `commits.md` is a fix, in a fresh diff as in a
   repair.
-- It never pushes, and never opens a pull request, without an explicit yes. And
-  it never merges one.
+- It never merges a pull request.
 
 ## Phase 1 — Establish the issue, and the checkout under you
 
@@ -68,20 +59,9 @@ criteria count wherever they sit. A closed issue is not implemented again; say
 so and stop.
 
 You must be inside a checkout of the issue's repository, because the plan and
-the implementation are both computed against the tree under you:
-
-```bash
-git fetch origin
-git status -sb
-```
-
-Stop, and let the author decide, when any of these holds:
-
-- The checkout belongs to a different repository than the issue.
-- The working tree is dirty. Uncommitted changes would be swept into the
-  implementation's commits.
-- The default branch is behind `origin`. Offer to fast-forward it; a plan built
-  on a stale base is a plan for code that no longer exists.
+the implementation are both computed against the tree under you. Run the
+checkout check in `github.md`, The checkout; stop as well when the checkout
+belongs to a different repository than the issue.
 
 Then read what the issue gives you. It arrives at one of two depths:
 
@@ -180,20 +160,25 @@ carries the verification, and the pull request carries the closure.
 
 ## Phase 4 — Show the result, then publish behind a yes
 
-Show the author the criteria walk, the commit list, and the diff. Then ask
-where the work lands, with one `AskUserQuestion`, and recommend the first:
+Show the author the criteria walk, the commit list, and the diff. Show the PR
+title and body with the diff, so the yes covers the text that reaches GitHub.
+Then ask where the work lands, with one `AskUserQuestion`, and recommend the
+first:
 
 - **Draft pull request** — push the branch and open a draft PR whose
   description walks the commits in order and links the issue with
   `Closes #N`. This is what the command's finalize step produces.
 - **Ready pull request** — the same, not draft, when the author wants review
   to start immediately.
-- **Leave the branch local** — nothing is pushed.
+- **Leave the branch local** — nothing is pushed. The verdict is then at most
+  `DONE_WITH_CONCERNS`, because no check ran against it.
 
-Write the PR body through a file, never inline, and qualify every reference
-that leaves this repository per `github.md`. Push only the feature branch,
-never the default branch. Write only on an explicit yes. If there is nothing
-to commit, create no empty commit — report and stop.
+The push and the pull request are the two commands under `github.md`, Writing
+(`git push -u origin <branch>`, then `gh pr create`): the body goes through a
+file, and every reference that leaves this repository is qualified per
+`github.md`. Push only the feature branch, never the default branch. Write
+only on an explicit yes. If there is nothing to commit, create no empty
+commit — report and stop.
 
 ## Phase 5 — Report
 

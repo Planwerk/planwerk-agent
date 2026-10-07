@@ -30,11 +30,9 @@ Read these before you start, in full:
 - `${CLAUDE_SKILL_DIR}/../../shared/house-style.md` — prose, citations, anti-hallucination
 
 `planwerk-agent rebase <pr-ref>` is the same work unattended, in a throw-away
-clone: it resolves each conflict in its own session, aborts when one cannot be
-reconciled, and posts a per-commit analysis of the upstream range. Reach for
-the command when nobody is watching and for this skill when someone is: a
-conflict the two sides genuinely disagree on is the author's to settle, and the
-command can only abort.
+clone; this skill is for when someone is watching, because a conflict the two
+sides genuinely disagree on is the author's to settle, and the command can only
+abort.
 
 ## What rebase does not do
 
@@ -51,8 +49,7 @@ command can only abort.
   old tip for a reason the rebase did not introduce is `/planwerk:fix`'s.
 - It never rewrites a commit that already exists on the base branch, and never
   pushes with plain `--force`.
-- It never pushes without an explicit yes, and never edits the pull request
-  body beyond what the rewrite made false.
+- It never edits the pull request body beyond what the rewrite made false.
 - It never resolves a review thread the upstream range does not explain. A
   thread only the branch's own code can answer is not settled by a rebase, and
   stays open for the author or `planwerk-agent address`.
@@ -167,13 +164,13 @@ GIT_EDITOR=true git rebase --continue
 A `DU` or `UD` path, deleted on one side and modified on the other, is resolved
 by what the surviving side needs: when upstream removed a file this commit
 edits, the commit's change goes where upstream moved that code, or the commit
-no longer has a change to make. When a replayed commit becomes empty because
-upstream already carries it, `git rebase --skip` is the right action, and the
-report names the dropped commit.
+no longer has a change to make. When a replayed commit becomes empty by git's
+own measure (the replay stops with nothing to commit) because upstream already
+carries it, `git rebase --skip` is the right action, and the report names the
+dropped commit.
 
-Two conflicts are the author's, under `interaction.md`, one `AskUserQuestion`
-each with a recommendation on exactly one option and a sentence on what breaks
-if the choice is wrong:
+Two conflicts are the author's, one `AskUserQuestion` each, in the option shape
+`interaction.md` gives under "One decision, one question":
 
 1. **The two sides want different behavior.** The replayed commit changes what
    a function does, and upstream changed it the other way; or upstream removed
@@ -207,13 +204,7 @@ Say what you ran, and what it said. A failure you could not run here is
 written in those words, never as a pass.
 
 Repair only what the rebase introduced. Each repair is a fixup of the commit
-whose change no longer holds on the new base, folded in per `commits-fold.md`:
-
-```bash
-git add -- <files for this change>
-git commit --fixup=<target-sha>
-GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash "$(git merge-base origin/<base> HEAD)"
-```
+whose change no longer holds on the new base, folded in per `commits-fold.md`.
 
 A fold here rewrites the SHAs the replay just produced, so the mapping Phase 6
 shows is taken from the branch after the fold, not after the replay.
@@ -254,11 +245,11 @@ range and nowhere else:
 
 - **The thread names an issue, and the upstream range closed it.** The thread
   or a reply in it says the work moved to `#N`. Read that issue
-  (`gh issue view N --json state,closedByPullRequestsReferences`); when it is
-  closed and the pull request that closed it merged into the upstream range
-  (`git log "$fork"..origin/<base> --grep='(#<pr-number>)'`, or the merge
-  commit `gh pr view <pr-number> --json mergeCommit` names), that commit is
-  the evidence.
+  (`gh issue view <N> --repo <owner/repo> --json state,closedByPullRequestsReferences`);
+  when it is closed and the pull request that closed it merged into the
+  upstream range (`git log "$fork"..origin/<base> --grep='(#<pr-number>)'`,
+  or the merge commit `gh pr view <pr-number> --repo <owner/repo> --json mergeCommit`
+  names), that commit is the evidence.
 - **The upstream range changed the lines the thread sits on, the way the
   thread asked.** `git log -p "$fork"..origin/<base> -- <path>` shows the
   change; read it against the comment's words. Matching the path is not
@@ -328,14 +319,9 @@ Two things in the body can be stale after the push, and only these two are
 yours to touch.
 
 **The SHA references.** Every commit on the branch has a new SHA, so every
-reference to one of them now points at nothing. Repair them exactly as
-`commits-fold.md` describes: a hex token of seven or more characters, bare, in
-`owner/repo@<sha>` form, or at the end of a `.../commit/<sha>` URL, is tested
-with `git merge-base --is-ancestor <sha> HEAD`; the ones that no longer reach
-the branch are mapped to their successor by subject through the Phase 2 list,
-written at the abbreviation the body used. A token that is no commit of this
-repository is left alone. A dropped commit has no successor: leave its
-reference where it is and say so in the report.
+reference to one of them now points at nothing. Repair them as
+`commits-fold.md` describes, except that the successor of a replaced SHA is
+read from the Phase 2 list, not from `git log -1 <old-sha>`.
 
 **The sentences the rebase changed the truth of.** A body that walks the
 change set in commit order describes each commit. Where a resolution in
@@ -362,6 +348,9 @@ gh pr edit <number> --repo <owner/repo> --base <branch>
 
 So do the thread replies and resolves of Phase 5, in that order per thread:
 the reply first, so the thread carries its evidence before it closes.
+
+A write that fails after the push is quoted in the report; the Pull request
+and Review threads lines carry what did and did not land.
 
 ## Phase 8 — Report
 
@@ -398,7 +387,8 @@ Next: <on any verdict but DONE only: the single action a human takes next; omit 
 every thread the upstream range settled resolved with its evidence.
 `DONE_WITH_CONCERNS` means the rebase is complete with a reservation a human
 must see: a gate that could not run here, a dropped commit, a pre-existing
-failure handed to `/planwerk:fix`, or a push the author declined; say which.
+failure handed to `/planwerk:fix`, a push the author declined, or a fork the
+author declined to answer; say which.
 `BLOCKED` means a conflict could not be reconciled and the branch is as it was.
 `NEEDS_CONTEXT` means only a human holds the missing fact.
 
