@@ -53,7 +53,10 @@ Phase 2 needs the map to place a package.
 
 Read the project memory per `memory.md`. A recorded decision can settle where a
 package boundary falls or which package comes first. Never carve a split that
-contradicts one, and name no wiki page in a Sub Issue body.
+contradicts one. A Sub Issue body names no wiki page: it is draft depth and
+cites nothing the implementer cannot verify in a checkout. Name the page in
+your Phase 7 report instead, which is where `memory.md`'s citation rule lands
+for this skill.
 
 ## Phase 2 — Carve the split
 
@@ -95,8 +98,7 @@ lands.
 
 Keep `blockedBy` minimal, so packages with no real dependency stay grabbable in
 parallel. Record the dependency as structured data, never as prose in the
-Description: it becomes a real GitHub relationship that `planwerk-agent ship`
-reads back, and prose is invisible to it.
+Description (`github-relations.md`, Sub-issues and dependencies).
 
 ## Phase 3 — Verify the split, before the author sees it
 
@@ -219,17 +221,16 @@ same way in that comment's text and written back with the `PATCH` call in
 
 ## Phase 7 — Report
 
-Open with one line: how many Sub Issues were filed and whether every link,
-dependency, and body sync landed. Then state what was created, what was linked,
-which dependencies were set, and whether the Meta body was synced. Name every
-failure explicitly.
+The outcome line (`house-style.md`, First line, last line) says how many Sub
+Issues were filed and whether every link, dependency, and body sync landed.
+Then state what was created, what was linked, which dependencies were set, and
+whether the Meta body was synced. Name every failure explicitly.
 
-When any Sub Issue landed in another repository, say so plainly and say that
-`ship` will report it rather than drive it: `ship` works one repository per run,
-and an author who expects otherwise will wait for a delivery that never comes.
+When any Sub Issue landed in another repository, say so, and that `ship`
+reports it rather than drives it (`cross-repo.md`, Wiring the two together).
 
-End with the next step as the last line, nothing after it — no closers, no
-recap: each Sub Issue is at draft depth, so `/planwerk:elaborate <sub-issue-ref>`
-plans one when the author is ready, and `planwerk-agent ship <meta-issue-ref>`
-drives them all in dependency order. `meta` stops at creating and linking. It
-does not elaborate, implement, or close anything.
+End with the next step as the last line: each Sub Issue is at draft depth, so
+`/planwerk:elaborate <sub-issue-ref>` plans one when the author is ready, and
+`planwerk-agent ship <meta-issue-ref>` drives them all in dependency order.
+`meta` stops at creating and linking. It does not elaborate, implement, or
+close anything.
