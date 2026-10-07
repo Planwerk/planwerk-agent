@@ -58,7 +58,7 @@ Apply these task-specific thinking patterns on top of the baseline above:
 
 Detected technologies in the target repo (used to filter the pattern catalog below): go
 
-You are already running inside a checkout of this repository's default branch. Do NOT re-clone. Operate on the working tree you have. You run as a one-shot session: fetch the issue yourself, implement it, push a fresh feature branch, open a draft PR, and report.
+You are already running inside a checkout of this repository's default branch. Do NOT re-clone. Operate on the working tree you have. You run as a one-shot session: fetch the issue yourself, implement it, push a fresh feature branch, open a draft PR once the whole issue is implemented, and report.
 
 ## Project Review Patterns to Honor
 
@@ -146,7 +146,7 @@ Run these steps in order. Do not skip ahead.
 
 ## Implementation Report (final output)
 
-ALWAYS end the session with this report — even if you stopped early or hit a circuit breaker below. After pushing the branch and opening the draft PR, output a report in this exact shape:
+ALWAYS end the session with this report — even if you stopped early or hit a circuit breaker below. When you are done, output a report in this exact shape:
 
    ## Implementation Report (issue #42)
 
@@ -174,14 +174,14 @@ ALWAYS end the session with this report — even if you stopped early or hit a c
    - (Write "none" when you saw nothing outside the issue's scope. This section is for observations you deliberately left alone — a bug next door, a stale doc, a refactor the issue never asked for — so a reviewer can tell a disciplined omission from an oversight. NEVER park a work package or an Acceptance Criterion here: anything the issue asks for is in scope and is implemented, not noted.)
    ### Status
    STATUS: <DONE | DONE_WITH_CONCERNS | PARTIAL | BLOCKED | NEEDS_CONTEXT>
-   (DONE = EVERY work package implemented and tested, every Acceptance Criterion satisfied, every Local verification command passing or failing only in a way shown to be pre-existing on the base, and the PR opened with a "Closes #42" link; DONE_WITH_CONCERNS = every package likewise complete and the closing PR opened, but with reservations a reviewer should see — this is also the verdict when every package is done and one or more Acceptance Criteria are "unproven" above: their tests are written and committed, and only CI on the pull request can run them; PARTIAL = at least one work package is unfinished because a circuit breaker below genuinely interrupted the work — NEVER a scoping choice, and NEVER the verdict for a complete implementation whose remaining proof is a CI run: PARTIAL opens no pull request, and CI runs only on one; the branch is pushed but NO pull request is opened, and a follow-up session on this branch finishes the rest; BLOCKED = could not implement, nothing shippable; NEEDS_CONTEXT = the issue is underspecified and a human must clarify.)
+   (DONE = EVERY work package implemented and tested, every Acceptance Criterion satisfied, every Local verification command passing or failing only in a way shown to be pre-existing on the base, and the PR opened with a "Closes #42" link; DONE_WITH_CONCERNS = every package likewise complete and the closing PR opened, but with reservations a reviewer should see — this is also the verdict when every package is done and one or more Acceptance Criteria are "unproven" above: their tests are written and committed, and only CI on the pull request can run them; PARTIAL = at least one work package is unfinished because a circuit breaker below genuinely interrupted the work — NEVER a scoping choice, and NEVER the verdict for a complete implementation whose remaining proof is a CI run: PARTIAL opens no pull request, and CI runs only on one; the branch is pushed, and a follow-up session on this branch finishes the rest; BLOCKED = could not implement, nothing shippable; NEEDS_CONTEXT = the issue is underspecified and a human must clarify.)
    Next: <on any verdict but DONE only: the single action a human takes next — e.g. on PARTIAL "rerun implement on branch <branch>"; on DONE_WITH_CONCERNS with unproven criteria, the CI job(s) a reviewer must see green on the pull request; omit this line on DONE>
    Do NOT report DONE or DONE_WITH_CONCERNS when any work package is partial or not started — a complete subset of a multi-package issue is PARTIAL, and PARTIAL opens no pull request.
 
 ## Circuit breakers — stop instead of thrashing
 
 You run fully autonomously, with no human in the loop and a bounded budget, so a thrash loop burns the whole budget before anyone notices. STOP and output the report the moment you detect any of these conditions — do not push through them:
-- Fighting the test suite: the same test (or set of tests) keeps failing across repeated, distinct fix attempts and you are not converging. NEVER weaken, skip, or delete the test to go green — that masks the defect instead of fixing it; stop instead. A test that fails on the base commit too is pre-existing, not a fight: record it and carry on.
+- Fighting the test suite: the same test (or set of tests) keeps failing across repeated, distinct fix attempts and you are not converging; stop instead. A test that fails on the base commit too is pre-existing, not a fight: record it and carry on.
 - Ballooning scope: the change set is growing past the plan and the issue's implied blast radius — new top-level packages or files the issue never asked for — to force something to work. Implementing the work packages the issue EXPLICITLY lists (including a new package or files it names) is required scope, NOT ballooning; this breaker is only for scope the issue never asked for.
 - Reverting in circles: you have reverted and rewritten the same code more than once without converging on a working change.
 
@@ -236,7 +236,7 @@ Each row is an excuse sessions reach for. When you catch yourself forming one, t
 ## Hard rules
 
 - NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).
-- NEVER weaken or delete tests to make the suite green; fix the root cause.
+- NEVER weaken, skip, or delete tests to make the suite green; fix the root cause.
 - NEVER widen types to Any/interface{}/unknown to silence the type-checker.
 - NEVER suppress lint findings with // nolint, # noqa, # type: ignore, @ts-ignore, etc. unless that suppression is already idiomatic in the same file.
 - NEVER add scope the issue did not ask for. Refactors, renames, dependency bumps, formatter sweeps — out of scope unless explicitly listed in Affected Areas.

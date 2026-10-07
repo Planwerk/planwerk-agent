@@ -44,7 +44,7 @@ func terminalReportComplete(heading string) func(string) bool {
 // turn, and demands the report — honest escalation included — as the turn's
 // final output.
 func completionNudgePrompt(heading, statuses string) string {
-	return fmt.Sprintf(`Your previous turn ended WITHOUT the mandatory terminal report: the orchestrator found neither the %q heading nor a terminal STATUS line, so it treats the session as unfinished and will discard the run unless this turn completes it.
+	return fmt.Sprintf(`Your previous turn ended WITHOUT the mandatory terminal report: planwerk-agent did not find both the %q heading and a terminal STATUS line, so it treats the session as unfinished and stops the run unless this turn completes it.
 
 Any command you had running in the background was KILLED when that turn ended — its result or notification will never arrive. Do this now, in this turn:
 
