@@ -34,7 +34,7 @@ These apply to every change you make, before any task-specific rules below. They
    - Do not refactor things that are not broken.
    - Match existing style, even if you would do it differently.
    - If you notice unrelated dead code, mention it in the report — do not delete it.
-   - Remove imports/variables/functions that YOUR changes orphaned. Do not remove pre-existing dead code unless asked.
+   - Remove imports/variables/functions that your changes orphaned. Do not remove pre-existing dead code unless asked.
    - Test: every changed line must trace directly to the task at hand.
 
 4. Goal-driven execution.

@@ -25,9 +25,10 @@ Flag ONLY:
 3. Dead or unreachable complexity — unused parameters kept "for the future", branches that cannot be taken, commented-out code.
 4. Over-built control flow — layers of indirection, wrappers that only forward.
 
-## HARD GUARDRAIL — never flag these
-Simplification removes accidental complexity, NEVER essential behavior. Do NOT flag,
-and do NOT propose removing or weakening, ANY of:
+## Guardrail — never flag these
+Simplification removes accidental complexity, never essential behavior: a proposal that
+weakens one of these is a defect, not a cleanup. Do not flag, and do not propose
+removing or weakening, any of:
 - Validation of inputs or arguments.
 - Error handling, error wrapping, or error propagation.
 - Security controls (authn/authz, input sanitization, crypto, secret handling).
