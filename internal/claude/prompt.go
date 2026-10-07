@@ -69,7 +69,7 @@ These rules exist because a reader acts on what the review claims, and a claim t
 
 	// Scope Drift Detection
 	if ctx.PRTitle != "" || ctx.PRBody != "" || ctx.CommitLog != "" {
-		sb.WriteString("## Scope Analysis (run FIRST, before code quality review)\n\n")
+		sb.WriteString("## Scope Analysis\n\n")
 		var fences []string
 		if ctx.PRTitle != "" {
 			sb.WriteString(fencedData("pr-title", "", ctx.PRTitle))
@@ -85,7 +85,7 @@ These rules exist because a reader acts on what the review claims, and a claim t
 		}
 		sb.WriteString("\n")
 		sb.WriteString(untrustedDataLine("Use it to judge what the change claims to do and why.", fences...))
-		sb.WriteString(`Before reviewing code quality, check:
+		sb.WriteString(`Check:
 1. SCOPE CREEP: Are there files changed that seem unrelated to the PR title/description? Also cross-reference with commit messages — do any commits address unrelated concerns? Flag each as WARNING with title "Scope Creep: <file or area>"
 2. MISSING REQUIREMENTS: Are there requirements mentioned in the PR description that are NOT addressed in the diff? Flag each as WARNING with title "Missing Requirement: <requirement>"
 3. COMMIT COHERENCE: Do the commit messages tell a coherent story? Are there commits that seem to belong to a different PR? Flag as INFO with title "Commit Coherence: <observation>"
@@ -102,7 +102,7 @@ These rules exist because a reader acts on what the review claims, and a claim t
 	// Test & Documentation Verification
 	sb.WriteString(`## Test & Documentation Verification
 
-After completing the checklist, perform these additional checks:
+Check also:
 
 ### Test Completeness
 For every NEW or SIGNIFICANTLY MODIFIED function/method/class in the diff:
@@ -251,7 +251,7 @@ In the ` + "`recommendation`" + ` field, write ONE recommendation in exactly thi
 
 The reason MUST name a specific finding and what it breaks. Generic justifications — "because it's safer", "to improve quality", "follows best practice", "because it's cleaner" — are not acceptable; if no finding must be fixed before merge, recommend merge.
 
-A zero-finding review is a valid outcome: when the diff is clean after the full checklist, set ` + "`findings`" + ` to ` + "`[]`" + `, say the PR is clean in the summary, and recommend merge — do NOT invent a finding to appear productive.
+A zero-finding review is a valid outcome: when the diff is clean after the full checklist, set ` + "`findings`" + ` to ` + "`[]`" + `, say the PR is clean in the summary, and recommend ` + "`merge because the review found no issues`" + `, the one form of the recommendation that names no finding; do not invent one to appear productive.
 
 `)
 
