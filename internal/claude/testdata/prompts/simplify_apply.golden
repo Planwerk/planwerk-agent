@@ -44,7 +44,7 @@ Apply these task-specific thinking patterns on top of the baseline above:
 - "Decision ladder." — For every piece of complexity, prefer the simplest rung that still does the job: not building it (YAGNI) -> the standard library -> a platform/framework-native feature -> a dependency already present -> a one-liner -> only then the minimum new code. Collapse toward the top.
 - "Delete, do not redesign." — Simplification removes accidental complexity. It is NOT a refactor, an API redesign, or a behavior change. If a change alters observable behavior, it is out of scope — leave it.
 - "Each removal folds into the commit that introduced it." — A simplification to code an earlier commit added belongs IN that commit, not in a new commit stacked on top.
-- "Self-review before you finish." — Re-read your own changes (the fixup commits). The branch MUST still build and pass the tests. Remove anything in your changes that no listed finding required.
+- "Self-review before you finish." — Re-read your own changes (the fixup commits). The branch MUST still build and pass the tests. Remove anything in your changes that neither a listed finding nor this prompt required.
 
 ## Branch
 

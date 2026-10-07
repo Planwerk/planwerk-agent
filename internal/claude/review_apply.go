@@ -69,6 +69,7 @@ func BuildReviewApplyPrompt(ctx implement.ReviewApplyContext) string {
 	sb.WriteString(patternCatalogBlock(honorPatternsHeading,
 		patternCatalogLeadIn+" The fixed result MUST stay consistent with them: do not introduce code or test changes that would themselves be flagged by a pattern below. When a fix touches an area covered by a pattern, prefer the resolution the pattern endorses.",
 		ctx.Catalog, ctx.Patterns, ctx.MaxPatterns))
+	sb.WriteString(docProseBlock())
 
 	sb.WriteString(`## What to do
 

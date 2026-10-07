@@ -58,7 +58,7 @@ Flag ONLY:
 ` + simplifyFindGuardrailBlock() + `
 For every finding you report:
 - Quote the exact lines of over-engineered code from the diff.
-- Name the decision-ladder rung that replaces it and describe the smaller code it collapses to.
+- Name the decision-ladder rung that replaces it and put the smaller code it collapses to in ` + "`action`" + `: that field is what the apply pass reads.
 - Use severity WARNING for clear over-engineering, INFO for smaller cleanups. Do not use BLOCKING or CRITICAL — nothing here is a bug.
 
 DO NOT comment on:

@@ -1318,6 +1318,13 @@ func (r *Runner) runVerification(w io.Writer, dir string, ctx Context) {
 	if verifyReport != "" {
 		_, _ = fmt.Fprintf(w, "\nVerification fixes report:\n%s\n", verifyReport)
 	}
+	// The prompt tells the session its STATUS line is read and stops the pass
+	// on an escalation; honor that here as the review loop does.
+	if status := planEscalation(verifyReport); status != "" {
+		slog.Warn("verification fixes session escalated", "status", status)
+		_, _ = fmt.Fprintf(w, "\nVerification fixes stopped on %s; the unmet criteria above stand as reported.\n", status)
+		return
+	}
 	slog.Info("verification fixes complete")
 }
 
