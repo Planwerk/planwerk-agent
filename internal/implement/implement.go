@@ -2041,11 +2041,16 @@ func (r *Runner) runFinalize(w io.Writer, dir string, ctx Context, implReport st
 	}
 	// The session ran, but it may have reported that the push or the PR failed
 	// (its prompt routes both to BLOCKED). That is the same outcome as an error
-	// above: no pull request, the branch unshipped.
+	// above: no pull request, the branch unshipped. A session that ended
+	// without its STATUS line vouched for nothing; the prompt makes the report
+	// its contract, so no report is the same outcome too.
 	switch status := report.TerminalStatus(finalizeReport); status {
 	case report.StatusBlocked, report.StatusNeedsContext:
 		slog.Warn("finalize session reported it could not open the pull request", "issue", ctx.IssueNumber, "status", status)
 		return fmt.Errorf("opening the pull request: the finalize session reported %s", status)
+	case "":
+		slog.Warn("finalize session ended without its terminal STATUS line", "issue", ctx.IssueNumber)
+		return fmt.Errorf("opening the pull request: the finalize session ended without its report")
 	}
 	slog.Info("finalize pass complete", "issue", ctx.IssueNumber)
 	return nil
