@@ -94,9 +94,6 @@ Calibrate the detail to the reader: an engineer who can open every file in this 
 2. **Identify what already exists.** For every claim like "the X service is in place", cite the exact file path. Distinguish "already exists" from "this issue adds" with concrete boundaries.
 3. **Plan the smallest change that satisfies the issue.** Do not invent scope. If the issue is ambiguous, list the ambiguity in Non-Goals or as a clarifying note in Description.
 4. **Enumerate every affected area.** Source files, test files, docs, schema/migrations, generated artifacts, CI configuration. Be exhaustive — surprise files in a PR are a process smell.
-5. **Write acceptance criteria as observable behavior.** Each item should be a check a reviewer can run (a test passes, a CLI invocation produces X, a doc page exists, an invariant test still passes).
-6. **Call out what is explicitly out of scope.** Non-Goals is what stops the issue from accidentally absorbing adjacent work.
-7. **List references.** Existing files/sections of the README the elaboration relies on, related issues, external specs.
 
 ## Output Sections (in this order)
 
@@ -104,7 +101,7 @@ Calibrate the detail to the reader: an engineer who can open every file in this 
 - **Motivation**: 2-4 paragraphs. Open on the concrete problem and its impact — never on background ("Background: the system has many components…" is throat-clearing; cut it). Structure it as a short arc: the current state → the gap this issue addresses (the "however") → what this change does about it. Why does this matter NOW? What downstream work depends on it? What goes wrong if we skip it?
 - **User Stories** (optional): Group the acceptance criteria under user stories, each written as "As a {role}, I want {want}, so that {so_that}" followed by the acceptance criteria that serve it, so the work is anchored to who benefits and why. Proportionality is the rule: generate exactly as many stories as the issue REQUIRES — never pad with redundant stories to reach a minimum, and never omit a needed one. Not every change has a user to name: for purely mechanical or infrastructure work (dependency bumps, formatter sweeps, CI fixes, rebases, refactors) emit ZERO stories and omit the section entirely. Never invent a synthetic persona to fill it — "As a developer, I want clean code" is noise, not a story.
 - **Affected Areas**: Bullet list of every file, package, or directory that will be touched, with a parenthetical describing what changes there.
-- **Acceptance Criteria**: Bullet checklist (each item starts with a verb and describes an observable check).
+- **Acceptance Criteria**: Bullet checklist (each item starts with a verb and describes an observable check a reviewer can run: a test passes, a CLI invocation produces X, a doc page exists, an invariant test still passes).
 - **Non-Goals**: Bullet list of explicitly-out-of-scope items, each with one sentence explaining why.
 - **References**: Bullet list of READMEs, existing files, related issues, external specs.
 
@@ -123,7 +120,7 @@ Every Acceptance Criterion must map to a concrete, named change somewhere in Des
 
 	fmt.Fprintf(&sb, `## Size
 
-The finished body has a budget of %d characters, roughly 10,000 tokens. It is injected whole into every planning, implementation, and verification prompt that reads the issue, and GitHub rejects a body over %d characters outright. Length is not detail: a plan that runs over is restating itself. When a draft runs over, tighten it without dropping a decision, a criterion, a citation, or an edge case:
+The finished body has a budget of %d characters, roughly 10,000 tokens. It is injected whole into every planning, implementation, and verification prompt that reads the issue, and a body over GitHub's %d-character cap is split into continuation comments every reader has to reassemble. Length is not detail: a plan that runs over is restating itself. When a draft runs over, tighten it without dropping a decision, a criterion, a citation, or an edge case:
 - State each fact once, in the section that owns it. The Description says what changes and why; a criterion says how to observe it. Do not restate a criterion's check in the Description, or a boundary's design in the criterion.
 - Cite path:line instead of quoting code the implementer will open anyway. Quote only what the plan changes: a signature, a schema, a message.
 - A boundary that only narrates code nothing changes is context the implementer can read for themselves; cut it to the one sentence the plan needs.
@@ -204,14 +201,12 @@ func buildElaborateStructurePrompt(rawElaboration string, ctx elaborate.Context)
 
 Field rules:
 - "title": If the elaboration does not change the title, copy this exact source title: ` + jsonString(title) + `.
-- "description" and "motivation": Preserve the Markdown structure (bold subheadings, bullet lists, numbered items, inline code) so the issue body renders the same way the example does.
+- "description" and "motivation": Preserve the Markdown structure (bold subheadings, bullet lists, numbered items, inline code) so the issue body renders the way the elaboration wrote it.
 - "user_stories": Populate ONLY if the elaboration emitted a User Stories section; each entry needs role/want/so_that and at least one criterion. Emit [] when the elaboration has none (purely mechanical or infrastructure work) — never synthesize a story the elaboration did not write.
 - "affected_areas", "acceptance_criteria", "non_goals", "references": Plain strings, one per array entry, with no leading bullet or checkbox marker ("- ", "- [ ] ") — the renderer adds them.
 - Do NOT invent fields beyond the schema.
 
-<elaboration-output>
-` + rawElaboration + `
-</elaboration-output>`
+` + fencedData("elaboration-output", "", rawElaboration)
 }
 
 // ReviewElaboration runs the optional reviewer gate: it scores a rendered
@@ -290,13 +285,13 @@ Score executability on this scale — the number is what the refine loop optimiz
 - 10: no gaps. An implementer who can read the repository but has no other context executes the plan correctly without asking a single question.
 - 8-9: every gap is one the implementer would resolve correctly from the repository alone. List each one.
 - 4-7: at least one gap would make the implementer build the wrong thing or stop to ask about a decision the plan should have made.
-- 0-3: not executable — most criteria have no mapped change, the plan is mostly placeholders, or most of its citations do not exist. A single citation that does not exist is a gap at any score.
+- 0-3: not executable — most criteria have no mapped change, the plan is mostly placeholders, or most of its citations do not exist.
 
-Minor wording and stylistic preferences are NOT gaps.
+A single citation that does not exist is a gap at any score. Minor wording and stylistic preferences are NOT gaps.
 
 ## Output
 
-Output ONLY valid JSON (no markdown fences, no surrounding text):
+` + jsonSchemaOnlyLine() + `
 
 {
   "score": <integer 0-10>,

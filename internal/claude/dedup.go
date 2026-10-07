@@ -48,7 +48,6 @@ func buildDedupFindingsPrompt(findings []report.Finding) string {
 	b.WriteString("Each inner array lists the 0-based indices of findings that describe the same issue. Rules:\n")
 	b.WriteString("- Group two findings only when fixing one would fix the other: the same defect, or the same root cause. A shared location or file is not evidence on its own.\n")
 	b.WriteString("- Every index appears in at most one group, and a group has at least two indices.\n")
-	b.WriteString("- Do NOT group findings that merely touch the same file or area but describe different problems.\n")
 	b.WriteString("- An empty \"duplicate_groups\" array is the correct answer when nothing is duplicated. Do NOT invent groups.\n\n")
 	b.WriteString("<findings>\n")
 	for i, f := range findings {
@@ -59,7 +58,7 @@ func buildDedupFindingsPrompt(findings []report.Finding) string {
 		if f.Line > 0 {
 			loc = fmt.Sprintf("%s:%d", loc, f.Line)
 		}
-		fmt.Fprintf(&b, "%d. [%s] %s — %s\n   %s\n", i, f.Severity, f.Title, loc, f.Problem)
+		fmt.Fprintf(&b, "%d. [%s] %s — %s\n   %s\n", i, f.Severity, escapeFence("findings", f.Title), loc, escapeFence("findings", f.Problem))
 	}
 	b.WriteString("</findings>")
 	return b.String()

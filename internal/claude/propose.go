@@ -69,8 +69,6 @@ For each area, think about:
 
 Reference actual files, functions, and code patterns you observe.
 
-IMPORTANT: Do NOT just list generic software improvements. Your proposals must be specific to THIS codebase and grounded in what you actually observe in the code.
-
 For feature proposals, prefer a vertical slice: one that cuts end-to-end through the layers it touches and is demoable on its own, not a horizontal layer that delivers nothing until a later proposal lands. When a feature proposal depends on another, state an honest "Blocked by" note naming that proposal so independent proposals stay grabbable in parallel. This applies to feature work — a refactoring, testing, or documentation proposal need not be demoable end-to-end.`)
 
 	if len(ctx.OutOfScope) > 0 {
@@ -151,9 +149,7 @@ Field rules:
 - When the analysis says a feature proposal is blocked by another, keep that "Blocked by" note in the proposal's "description"; the schema has no separate field for it.
 - If the analysis proposes nothing, return an empty proposals array.
 
-<analysis-output>
-` + rawAnalysis + `
-</analysis-output>`
+` + fencedData("analysis-output", "", rawAnalysis)
 }
 
 func assignProposalIDs(result *propose.ProposalResult) {

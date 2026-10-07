@@ -64,7 +64,7 @@ For each feature you receive BOTH a structured rendering (the same prompt format
 
 	for _, pf := range ctx.Features {
 		base := filepath.Base(pf.Feature.FilePath)
-		fmt.Fprintf(&sb, "<feature id=%q file=%q>\n", pf.Feature.FeatureID, base)
+		sb.WriteString("<feature" + fenceAttr("feature", "id", pf.Feature.FeatureID) + fenceAttr("feature", "file", base) + ">\n")
 		sb.WriteString(escapeFences(pf.Feature.FormatForPrompt(), "feature", "raw-json"))
 		sb.WriteString("\n<raw-json>\n")
 		sb.WriteString(escapeFences(string(pf.Raw), "feature", "raw-json"))
@@ -257,7 +257,5 @@ Field rules:
 - Do NOT include an "improved_json" field — it is not requested for this run.`
 		}() + `
 
-<review-report>
-` + rawAnalysis + `
-</review-report>`
+` + fencedData("review-report", "", rawAnalysis)
 }
