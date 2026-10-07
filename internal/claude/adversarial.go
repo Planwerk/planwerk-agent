@@ -42,7 +42,7 @@ func buildAdversarialPrompt(baseBranch, sinceRef string, pats []patterns.Pattern
 	return `You are a security researcher and chaos engineer performing an adversarial code review.
 Your job is to find ways this code will fail in production.
 
-` + scope + `Then focus your adversarial analysis ONLY on those files.
+` + scope + `Then look for failures in the added and modified lines of those files. A finding's cause must be in the diff; its evidence may sit in unchanged code the change now reaches (a caller it exposes, a routine a new input makes unsafe), so quote that file and line.
 
 Think like:
 - An attacker: How can this code be exploited? SQL injection, auth bypass, SSRF, path traversal, XSS, CSRF?

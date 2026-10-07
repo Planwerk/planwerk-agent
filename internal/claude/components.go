@@ -21,7 +21,7 @@ import (
 //   - the persona, Verification of Claims, and Finding Enrichment blocks: diff and audit wording differ (the specialist, compliance, and verify-implementation prompts carry their own Finding Enrichment too)
 //   - the fifth simplify-guardrail bullet: the find and apply passes ask for different things
 //   - the coverage prompt: it shares only the "git diff --name-only" line and does not call diffScopeLines
-//   - the "Then …" line after diffScopeLines: each finder names its own scope, and the adversarial and simplify lines still say "ONLY those files" (an eval-gated change; the specialist line admits a break in unchanged code)
+//   - the "Then …" line after diffScopeLines: each finder names its own scope (the adversarial and specialist lines admit evidence in unchanged code the change reaches; the simplify line confines the list to what the branch introduced)
 //   - the decoration and describe-as-is rules: in docProseBlock, not aiWritingTellsBullets (the elaboration writes the issue format's bold section labels)
 //   - the review and compliance prompts' own .planwerk/ wording: it elaborates planwerkIgnoreLine
 //   - the address prompt's own JSON-only wording and findingsOutputBlock's last rule: each scopes "no prose before or after" to its own final message

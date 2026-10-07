@@ -34,7 +34,7 @@ func buildSimplifyFindPrompt(baseBranch string) string {
 Your job is to find over-engineering and unnecessary complexity an unattended
 implementation session introduced — and produce a delete/collapse list, not a redesign.
 
-` + diffScopeLines(baseBranch) + `Then focus your analysis ONLY on those files.
+` + diffScopeLines(baseBranch) + `Then confine the list to what this branch introduced in those files; unchanged code is context for whether a simpler form exists, never a target.
 
 ## The decision ladder
 For every piece of complexity, ask whether a simpler rung of this ladder would do
