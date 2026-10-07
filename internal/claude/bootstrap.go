@@ -110,7 +110,7 @@ Check every candidate against the working set and, where this prompt lists one, 
 	sb.WriteString(proseStyleBlock())
 	sb.WriteString(outputLanguageBlock())
 
-	sb.WriteString("Now distill the unit. For each page you propose, give its path, whether it is a review pattern or a memory page, a title, why it is worth keeping, your confidence (verified, likely, or uncertain), and the full page body. If the unit records nothing durable, say that you propose nothing.\n")
+	sb.WriteString("Now distill the unit. For each page you propose, " + proposedPageFields + ". If the unit records nothing durable, say that you propose nothing.\n")
 
 	return sb.String()
 }

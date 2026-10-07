@@ -3,8 +3,8 @@ Convert the following gap-analysis report into structured JSON. Extract every ga
 Output ONLY valid JSON matching this exact schema (no markdown fences, no surrounding text):
 
 {
-  "repo": "owner/name",
-  "overview": "2-4 sentence overall summary of the gap analysis: how many features were checked, headline themes, and the 1-2 most important gaps to fix first.",
+  "repo": "",
+  "overview": "The report's opening overview, copied; an empty string when the report gives none.",
   "features": [
     {
       "feature_id": "CC-0042",
@@ -34,6 +34,7 @@ Output ONLY valid JSON matching this exact schema (no markdown fences, no surrou
 }
 
 Field rules:
+- "repo": leave as empty string — it is filled in automatically.
 - "id": leave as empty string — it is assigned automatically.
 - "type": one of the four values above, copied from the gap type the analysis states.
 - "severity": uppercase, never BLOCKING (gap analysis runs on already-merged work).

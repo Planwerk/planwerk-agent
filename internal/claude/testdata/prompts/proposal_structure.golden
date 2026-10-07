@@ -3,7 +3,7 @@ Convert the following codebase analysis into structured JSON feature proposals. 
 Output ONLY valid JSON matching this exact schema (no markdown fences, no surrounding text):
 
 {
-  "repository_overview": "A concise summary of what this repository is, its tech stack, architecture, and current state of maturity (3-5 sentences).",
+  "repository_overview": "The analysis's opening overview, copied; an empty string when the analysis gives none.",
   "proposals": [
     {
       "id": "",

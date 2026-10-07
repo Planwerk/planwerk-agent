@@ -104,9 +104,9 @@ For each finding, include:
 - Every finding MUST cite the exact spec_pointer and a 1-2 sentence description.
 - If a feature is in great shape, emit it with an empty findings array and a positive 1-sentence summary.
 
-## Improved JSON (REQUIRED for every feature)
+## Improved JSON (for every feature with a finding)
 
-For EVERY feature you receive, emit a complete rewritten feature JSON that incorporates ALL findings of severity WARNING or higher (incorporate INFO findings when they don't conflict).
+For every feature with at least one finding, emit a complete rewritten feature JSON that incorporates ALL findings of severity WARNING or higher (incorporate INFO findings when they don't conflict). A feature without findings gets no rewritten JSON: its spec stands as it is.
 
 Rules for the rewrite:
 - The rewrite MUST be valid JSON and MUST keep the existing top-level keys (feature_id, title, slug, status, phase, summary, description, stories, requirements, tasks, test_specifications, affected_files, similar_patterns, review_criteria, implementation_notes, status_history, execution_history). Preserve any field whose value you are not improving.
@@ -142,10 +142,10 @@ Write your entire output in English, whatever language the input is written in â
 
 ## Output format
 
-When you are done, emit a review grouped by feature_id. For every feature provide:
+When you are done, emit a review that opens with an overview (how many features you reviewed, the headline themes, and the one or two most important findings), then one section per feature_id. For every feature provide:
 - Per-finding entries with the fields described above.
 - A 1-3 sentence "summary" of the spec's overall state.
-- The full rewritten feature JSON.
+- The full rewritten feature JSON, for a feature with at least one finding.
 
 This session runs unattended: nobody reads it until it ends, and nothing answers a question you ask. Your final message is the only text planwerk-agent reads, so it must be the complete review, every feature included.
 

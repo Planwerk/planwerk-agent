@@ -100,7 +100,7 @@ For feature proposals, prefer a vertical slice: one that cuts end-to-end through
 // filled them in.
 const proposalOutputFormat = `## Output format
 
-Write each proposal as its own section with these fields, so the structuring step copies them instead of guessing:
+Open with a repository overview: what this repository is, its tech stack, its architecture, and its state of maturity, in a few sentences the structuring step copies. Then write each proposal as its own section with these fields, so the structuring step copies them instead of guessing:
 - Title: short, usable as a GitHub issue title.
 - Priority: HIGH (production readiness, security, or core functionality), MEDIUM (quality, developer experience, or capability for the next iterations), or LOW (nice to have).
 - Category: feature, improvement, refactoring, testing, documentation, security, or performance.
@@ -128,7 +128,7 @@ func buildProposalStructurePrompt(rawAnalysis string) string {
 ` + jsonSchemaOnlyLine() + `
 
 {
-  "repository_overview": "A concise summary of what this repository is, its tech stack, architecture, and current state of maturity (3-5 sentences).",
+  "repository_overview": "The analysis's opening overview, copied; an empty string when the analysis gives none.",
   "proposals": [
     {
       "id": "",

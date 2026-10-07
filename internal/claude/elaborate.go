@@ -38,6 +38,14 @@ func elaborateIssueNumber(ctx elaborate.Context) int {
 	return ctx.Issue.Number
 }
 
+// siblingScopingLine is the one sentence the elaboration and its reviewer
+// share on the line between deferral, which the single-delivery contract
+// forbids, and scoping, which a Sub Issue of a Meta Issue needs: the writer
+// is told to record what a sibling carries (renderIssueRelations), and without
+// this sentence its own rule against "defer X to a follow-up" read that
+// cross-reference as a plan failure.
+const siblingScopingLine = "A Non-Goal that hands part of a shared task to a sibling Sub Issue listed in the Meta / Sub-Issue context, or work in another repository to a counterpart issue (`owner/repo#N`), is scoping, not deferral."
+
 func buildElaboratePrompt(ctx elaborate.Context) string {
 	var sb strings.Builder
 
@@ -112,7 +120,7 @@ The plan must be executable, not merely readable. These are plan failures — ne
 - Vague hand-waves: "add error handling", "handle edge cases", "add appropriate validation", "etc." — name the SPECIFIC errors, edge cases, and validations instead.
 - Cross-references in place of content: "similar to the X section", "same as above", "see Task N" — repeat the actual content; the engineer may read sections out of order.
 - A reference to a type, function, file, flag, or migration that no section of the plan defines or cites by its real name.
-- Delivery-splitting notes: "one commit ≈ one PR", "split this into separate PRs", "defer X to a follow-up issue/PR", "phase 2 can land later". The elaborated issue is implemented by ONE session and lands as exactly ONE pull request — never prescribe any other delivery structure, and never move work the Description requires into Non-Goals to shrink that delivery.
+- Delivery-splitting notes: "one commit ≈ one PR", "split this into separate PRs", "defer X to a follow-up issue/PR", "phase 2 can land later". The elaborated issue is implemented by ONE session and lands as exactly ONE pull request — never prescribe any other delivery structure, and never move work the Description requires into Non-Goals to shrink that delivery. ` + siblingScopingLine + `
 
 Every Acceptance Criterion must map to a concrete, named change somewhere in Description or Affected Areas.
 
@@ -275,7 +283,7 @@ Do NOT rewrite the plan. Do NOT assume it is correct because it looks thorough �
 4. Name consistency — a symbol must be named identically throughout. Two names for one thing is a gap.
 5. Executable acceptance criteria — each criterion is an observable check, not a vague goal.
 6. Edge-case coverage — every data-flow acceptance criterion enumerates its empty/zero-length, nil/absent, and upstream-error shadow paths as separate entries, each naming the concrete error (e.g. io.EOF, sql.ErrNoRows, a wrapped fmt.Errorf). A data-flow criterion that covers only the happy path is a gap.
-7. Single-delivery contract — the issue is implemented by ONE session and lands as exactly ONE pull request. Any note prescribing a different delivery structure — "one commit ≈ one PR", "split into separate PRs", deferring described work to a follow-up issue or PR — is a gap, as is a Non-Goal that defers work the Description requires. A Non-Goal that hands part of a shared task to a sibling Sub Issue listed above, or work in another repository to a counterpart issue (` + "`owner/repo#N`" + `), is scoping, not deferral, and never a gap.
+7. Single-delivery contract — the issue is implemented by ONE session and lands as exactly ONE pull request. Any note prescribing a different delivery structure — "one commit ≈ one PR", "split into separate PRs", deferring described work to a follow-up issue or PR — is a gap, as is a Non-Goal that defers work the Description requires. ` + siblingScopingLine + ` Such a Non-Goal is never a gap.
 8. Domain coverage — for each domain of the sweep above, decide from the repository whether this change touches it. When it does, an Acceptance Criterion or an Affected Areas entry must carry its consequence; when it does not, the draft owes it nothing. An uncovered touched domain is a gap: name the domain and the specific consequence that has no home. A domain the change does not touch is never a gap — do NOT report one to look thorough, and do NOT ask for a Domain Sweep section in the body, which the house format has no room for.
 9. Density — length is not detail. A section that restates what another section owns, or a boundary that narrates code the change does not touch, is a gap: name the section to tighten. The implementer re-reads this body in every later prompt, so padding costs on every run.
 

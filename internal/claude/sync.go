@@ -55,7 +55,7 @@ You are running inside a fresh checkout of the repository. For EACH wiki entry b
 
 - **stale** — it references concrete code (a file path, package, type, function, method, symbol, CLI command, or flag) that no longer exists in this checkout. You MUST confirm the reference is gone by searching the codebase (grep/glob, then read the file) — do not guess. An entry that states a general principle and names no concrete code reference is NOT stale.
 - **redundant** — it is duplicated or wholly superseded by ANOTHER entry in the list below. Name the superseding entry's exact path in superseded_by. Two entries expressing the same rule are redundant; two entries covering different rules are not. Of a group of duplicates, keep one and flag only the others: never flag an entry that another flagged entry names as its superseding entry.
-- **current** — leave it unflagged. Most entries are current; flag only the ones you can justify with a concrete citation.
+- **current** — every entry you flag as neither stale nor redundant. Leave it out of the report.
 
 ## Verification rules
 

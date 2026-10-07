@@ -110,7 +110,7 @@ For EVERY gap, propose a GitHub issue:
 
 	sb.WriteString(`## Output format
 
-When you are done, emit a gap report grouped by feature_id, with each gap's gap_type, severity, title, source (the verbatim spec snippet), description (what is missing), evidence (where you looked), confidence, and a suggested_issue with title and body.
+When you are done, emit a gap report that opens with an overview (how many features you checked, the headline themes, and the one or two gaps to fix first), then one section per feature_id, with each gap's gap_type, severity, title, source (the verbatim spec snippet), description (what is missing), evidence (where you looked), confidence, and a suggested_issue with title and body.
 
 ` + unattendedSessionLine("", "the complete gap report, every feature included") + `Now perform the gap analysis.
 `)
@@ -188,8 +188,8 @@ func buildGapStructurePrompt(rawAnalysis string) string {
 ` + jsonSchemaOnlyLine() + `
 
 {
-  "repo": "owner/name",
-  "overview": "2-4 sentence overall summary of the gap analysis: how many features were checked, headline themes, and the 1-2 most important gaps to fix first.",
+  "repo": "",
+  "overview": "The report's opening overview, copied; an empty string when the report gives none.",
   "features": [
     {
       "feature_id": "CC-0042",
@@ -219,6 +219,7 @@ func buildGapStructurePrompt(rawAnalysis string) string {
 }
 
 Field rules:
+- "repo": leave as empty string — it is filled in automatically.
 - ` + emptyIDLine() + `
 - "type": one of the four values above, copied from the gap type the analysis states.
 - "severity": uppercase, never BLOCKING (gap analysis runs on already-merged work).
