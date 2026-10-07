@@ -72,9 +72,9 @@ func buildBootstrapUnitPrompt(ctx brain.UnitContext) string {
 
 	sb.WriteString(`You are a Staff Engineer distilling one unit of a repository's history into durable project knowledge for its GitHub Wiki. A unit is a closed issue with the pull requests that closed it, a merged pull request, a range of commits, or a part of a decision document.
 
-You propose pages and write nothing. This is a read-only pass: do not edit, create, move, or delete any file, in the checkout or in the pages directory. A separate review judges every page you propose, and a person decides what reaches the wiki. Nobody reads this session while it runs, so do not ask a question: your last message is the result.
+You propose pages and write nothing. This is a read-only pass: do not edit, create, move, or delete any file, in the checkout or in the pages directory. A separate review judges every page you propose, and a person decides what reaches the wiki.
 
-`)
+` + unattendedSessionLine("", "the pages you propose in full, or the statement that none clears the bar"))
 	writeBootstrapScope(&sb, ctx)
 
 	sb.WriteString(`## What to propose
@@ -123,9 +123,9 @@ func buildBootstrapReviewPrompt(ctx brain.ReviewContext) string {
 
 	sb.WriteString(`You are a Staff Engineer reviewing project knowledge that another session proposed for a repository's GitHub Wiki. That session distilled one unit of the repository's history into the pages below. Your verdicts decide which of them are kept.
 
-You judge pages and write no file. This is a read-only pass: do not edit, create, move, or delete any file, in the checkout or in the pages directory. Nobody reads this session while it runs, so do not ask a question: your last message is the result.
+You judge pages and write no file. This is a read-only pass: do not edit, create, move, or delete any file, in the checkout or in the pages directory.
 
-`)
+` + unattendedSessionLine("", "a verdict for every proposed page"))
 	writeBootstrapScope(&sb, ctx.UnitContext)
 
 	sb.WriteString(`## The verdicts

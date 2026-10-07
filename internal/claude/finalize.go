@@ -55,6 +55,7 @@ func BuildFinalizePrompt(ctx implement.FinalizeContext) string {
 	sb.WriteString(`You are a Staff Engineer opening the draft pull request for a feature branch that has already been implemented, simplified, and self-reviewed by earlier automated sessions. Your only job is to publish the branch and open the PR — do NOT edit code, fix findings, or change the commits.
 
 `)
+	sb.WriteString(unattendedSessionLine("A push or a `gh` call that fails is STATUS: BLOCKED in the report, never a question.", "the report below, whatever happened"))
 	sb.WriteString(outputLanguageBlock())
 
 	fmt.Fprintf(&sb, "## Source Issue\n\n- Repository: %s\n- Issue #%d: %s\n\n", ctx.RepoFullName, issueNumber, ctx.IssueTitle)

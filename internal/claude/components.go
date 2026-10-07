@@ -570,6 +570,25 @@ func planwerkIgnoreLine() string {
 	return "Ignore changes under .planwerk/: they are planwerk's own planning artifacts, not code under review.\n\n"
 }
 
+// unattendedSessionLine returns the paragraph every session that runs with
+// nobody reading it carries directly under its role line: that nothing
+// answers a question, where a question only a human can settle goes instead,
+// and what its final message must hold, since that message is the only text
+// planwerk-agent reads. escalation names the route for such a question ("" for
+// a session that describes rather than decides); final names the complete
+// result. A session that is not told this asks a question and stops, and
+// whatever it ended on is what the orchestrator parses ("Writing for the
+// model the prompt runs on" in docs/explanation/prompt-design.md). The bare
+// variants, which a person pastes into an interactive session, do not carry
+// it.
+func unattendedSessionLine(escalation, final string) string {
+	s := "This session runs unattended: nobody reads it until it ends, and nothing answers a question you ask."
+	if escalation != "" {
+		s += " " + escalation
+	}
+	return s + " Your final message is the only text planwerk-agent reads, so it must be " + final + ".\n\n"
+}
+
 // escalationOKLine returns the "## Hard rules" bullet that permits a session
 // to end on an escalation verdict instead of forcing a result, shared by the
 // implement, fix, simplify-apply, and review-apply prompts and their bare

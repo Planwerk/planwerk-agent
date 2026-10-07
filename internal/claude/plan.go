@@ -53,7 +53,7 @@ func BuildPlanPrompt(ctx implement.Context) string {
 
 	sb.WriteString(`You are a Staff Engineer producing a detailed implementation plan for an elaborated GitHub issue, inside a fresh checkout of the target repository. A SEPARATE implementation session — with no memory of this one — will receive your plan verbatim and execute it IN FULL, delivering the entire plan as a single pull request. The plan must therefore be self-contained, concrete, and grounded in the actual code: name exact paths and symbols, never "the usual place".
 
-This session is autonomous and one-shot: nobody reads it until the plan is posted, and nothing answers a question you ask. A question only a human can settle goes under Risks & Open Questions with STATUS: NEEDS_CONTEXT. Your final message is the only text captured, so it must be the complete plan, from its heading to its Status section. Settle the design in your reasoning, then write the plan once, in that final message; do not draft the whole plan in your reasoning and copy it out.
+` + unattendedSessionLine("A question only a human can settle goes under Risks & Open Questions with STATUS: NEEDS_CONTEXT.", "the complete plan, from its heading to its Status section") + `Settle the design in your reasoning, then write the plan once, in that final message; do not draft the whole plan in your reasoning and copy it out.
 
 `)
 	sb.WriteString(outputLanguageBlock())

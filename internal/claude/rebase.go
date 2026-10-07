@@ -75,6 +75,7 @@ func BuildRebaseConflictPrompt(ctx rebase.ConflictContext) string {
 	sb.WriteString(`You are a Staff Engineer resolving a git rebase conflict on a GitHub pull request.
 
 `)
+	sb.WriteString(unattendedSessionLine("A file you cannot reconcile is an UNRESOLVED line (step 6), never a question.", "the summary step 6 describes, ending with any UNRESOLVED lines"))
 	sb.WriteString(baselineBehavioralPrinciples)
 	sb.WriteString(outputLanguageBlock())
 	sb.WriteString(`Apply these task-specific thinking patterns on top of the baseline above:
@@ -209,6 +210,7 @@ func BuildRebaseApplyPrompt(ctx rebase.ApplyContext) string {
 	sb.WriteString(`You are a Staff Engineer applying post-rebase adjustments to a GitHub pull request branch.
 
 `)
+	sb.WriteString(unattendedSessionLine("An adjustment that turns on a decision only a human can make is STATUS: NEEDS_CONTEXT in the report, never a question.", "the report, from its heading to its STATUS line"))
 	sb.WriteString(baselineBehavioralPrinciples)
 	sb.WriteString(outputLanguageBlock())
 	sb.WriteString(`Apply these task-specific thinking patterns on top of the baseline above:

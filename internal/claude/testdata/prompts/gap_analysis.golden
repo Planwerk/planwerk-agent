@@ -121,4 +121,6 @@ Write your entire output in English, whatever language the input is written in â
 
 When you are done, emit a gap report grouped by feature_id, with each gap's gap_type, severity, title, source (the verbatim spec snippet), description (what is missing), evidence (where you looked), confidence, and a suggested_issue with title and body.
 
+This session runs unattended: nobody reads it until it ends, and nothing answers a question you ask. Your final message is the only text planwerk-agent reads, so it must be the complete gap report, every feature included.
+
 Now perform the gap analysis.
