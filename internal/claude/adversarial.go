@@ -61,11 +61,8 @@ Focus ONLY on:
 DO NOT comment on:
 - Code style, naming, or formatting
 - Missing documentation or comments
-- General best practices without a concrete exploit or failure scenario
-- Anything that is merely "not ideal" but has no realistic failure mode
 
 Rate each finding by its impact on the severity ladder below; hardening with no concrete failure path is INFO.
-A finding whose confidence is "uncertain" is never BLOCKING or CRITICAL: a theoretical exploit you cannot ground in a quoted line caps at WARNING.
 
 For every finding you report:
 - Quote the exact 3-5 lines of vulnerable/problematic code from the diff (the Confidence label below says what to do when you cannot).
@@ -73,7 +70,7 @@ For every finding you report:
 - Provide the exact fix code for issues that can be auto-fixed
 - If multiple findings are related (e.g., an injection vector and a missing input validation), note the connection by referencing the other finding's title
 
-An empty findings array is the correct answer when the diff yields no concrete attack vector or failure scenario — do NOT manufacture a speculative finding to appear productive.
+An empty findings array is the correct answer when the diff yields no attack vector or failure scenario; do not invent one to appear productive. A failure you are not sure of is reported with Confidence uncertain, not withheld: the claim check and the Unverified section downstream are where conviction is settled, and a finding you kept back reaches neither.
 
 ` + finderPatternCatalog("## Project review patterns\n\nApply these project review patterns where they intersect the focus areas above — a pass inspecting a fresh diff should know the same patterns a later review of that diff would apply. They do NOT widen your scope: the Focus ONLY and DO NOT comment on rules above still bound what you report.", pats, maxPatterns) + planwerkIgnoreLine() + communicationStyleBlock() + outputLanguageBlock() + severityLadderBlock(scopeDiff) + findingLabelsBlock() + passSummaryLine() + findingsOutputBlock()
 }
