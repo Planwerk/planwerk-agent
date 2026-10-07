@@ -42,6 +42,7 @@ func BuildAddressPrompt(ctx address.Context) string {
 	sb.WriteString(`You are a Staff Engineer addressing human review comments on a GitHub pull request.
 
 `)
+	sb.WriteString(unattendedSessionLine("A question only a human can settle is a thread status of NEEDS_CONTEXT with the question in that thread's summary, never a question at the end of your turn.", "the JSON object the last step describes, and nothing else"))
 	sb.WriteString(baselineBehavioralPrinciples)
 	sb.WriteString(outputLanguageBlock())
 	sb.WriteString(`Apply these task-specific thinking patterns on top of the baseline above:

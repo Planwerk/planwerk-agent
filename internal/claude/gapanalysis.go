@@ -112,7 +112,7 @@ For EVERY gap, propose a GitHub issue:
 
 When you are done, emit a gap report grouped by feature_id, with each gap's gap_type, severity, title, source (the verbatim spec snippet), description (what is missing), evidence (where you looked), confidence, and a suggested_issue with title and body.
 
-Now perform the gap analysis.
+` + unattendedSessionLine("", "the complete gap report, every feature included") + `Now perform the gap analysis.
 `)
 
 	return sb.String()

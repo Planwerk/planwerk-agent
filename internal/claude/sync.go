@@ -81,6 +81,7 @@ Each <wiki-entry> below is one wiki page. Its path and kind are in the tag attri
 	sb.WriteString(communicationStyleBlock())
 	sb.WriteString(outputLanguageBlock())
 
+	sb.WriteString(unattendedSessionLine("", "the complete reconciliation: every entry you flag, or the statement that every entry is current"))
 	sb.WriteString("Now reconcile the entries. Walk the codebase to verify each staleness claim, compare the entries against each other for redundancy, and report only the entries you flag (stale or redundant) with a concrete reason. If every entry is current, say so and flag nothing.\n")
 
 	return sb.String()

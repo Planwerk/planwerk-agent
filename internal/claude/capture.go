@@ -136,6 +136,7 @@ Every candidate MUST be checked against the existing wiki entries AND the patter
 	sb.WriteString(communicationStyleBlock())
 	sb.WriteString(outputLanguageBlock())
 
+	sb.WriteString(unattendedSessionLine("", "the complete proposal: every page body, or the statement that nothing clears the bar"))
 	sb.WriteString("Now propose the knowledge. Mine the findings for recurring, generalizable patterns and the plan and report for durable decisions, deduplicate every candidate against the entries and catalog above, and author each candidate page's full body. If nothing clears the bar, say so and propose nothing.\n")
 
 	return sb.String()

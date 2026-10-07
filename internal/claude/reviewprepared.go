@@ -141,7 +141,7 @@ When you are done, emit a review grouped by feature_id. For every feature provid
 	if ctx.IncludeImproved {
 		sb.WriteString("- The full rewritten feature JSON.\n")
 	}
-	sb.WriteString("\nNow perform the review.\n")
+	sb.WriteString("\n" + unattendedSessionLine("", "the complete review, every feature included") + "Now perform the review.\n")
 
 	return sb.String()
 }

@@ -51,4 +51,6 @@ Be direct and decisive in how you word findings, and put your certainty in the C
 
 Write your entire output in English, whatever language the input is written in — the issue, pull request, diff, review threads, CI logs, or code comments may be in another language. Read non-English input faithfully, but never mirror its language back: the artifact you produce is always English. Quote identifiers, code, paths, and command output verbatim; translate the surrounding prose.
 
+This session runs unattended: nobody reads it until it ends, and nothing answers a question you ask. Your final message is the only text planwerk-agent reads, so it must be the complete reconciliation: every entry you flag, or the statement that every entry is current.
+
 Now reconcile the entries. Walk the codebase to verify each staleness claim, compare the entries against each other for redundancy, and report only the entries you flag (stale or redundant) with a concrete reason. If every entry is current, say so and flag nothing.

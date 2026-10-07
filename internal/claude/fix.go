@@ -62,6 +62,7 @@ func BuildFixPrompt(ctx fix.Context) string {
 	sb.WriteString(`You are a Staff Engineer fixing failing CI checks on a GitHub pull request.
 
 `)
+	sb.WriteString(unattendedSessionLine("A question only a human can settle is STATUS: NEEDS_CONTEXT in the fix report, never a question at the end of your turn.", "the complete fix report, from its heading to its Status section"))
 	sb.WriteString(baselineBehavioralPrinciples)
 	sb.WriteString(outputLanguageBlock())
 	sb.WriteString(fixThinkingPatterns())
@@ -135,7 +136,7 @@ Run these steps for EACH failing check above before editing any code:
    - Lint/format/type-check finding → apply the real fix (formatter, missing annotation, narrowed type). Suppression comments are forbidden unless they were already idiomatic in this file before this PR.
    - Flake / infra / unreachable secret → STOP and report. Do not commit a placebo fix.
 5. APPLY the minimal change. If two failing checks share a single root cause, fix it once.
-6. VERIFY LOCALLY: re-run the exact command that failed in CI (or the closest local equivalent — e.g. ` + "`go test ./internal/foo`, `pytest tests/test_x.py::test_y`, `golangci-lint run`, `tsc --noEmit`" + `). Capture the command and pass/fail in your final report. If the command cannot run in this environment, say so explicitly. If it passes locally before you change anything, find the environmental difference in the log (a version, an environment variable, the OS) and fix that, or report BLOCKED: never push a change you cannot connect to the failure.
+6. VERIFY LOCALLY: re-run the exact command that failed in CI (or the closest local equivalent — e.g. ` + "`go test ./internal/foo`, `pytest tests/test_x.py::test_y`, `golangci-lint run`, `tsc --noEmit`" + `). ` + foregroundRunLine() + ` Capture the command and pass/fail in your final report. If the command cannot run in this environment, say so explicitly. If it passes locally before you change anything, find the environmental difference in the log (a version, an environment variable, the OS) and fix that, or report BLOCKED: never push a change you cannot connect to the failure.
 7. ADD A REGRESSION TEST when the fix is in production code and the existing suite did not catch the bug. Skip this step ONLY for: lint/format-only fixes, fixes inside test code itself, or fixes for failures that no unit/integration test could plausibly catch (e.g. SBOM signature, runtime infra config).
 
 ## What to do

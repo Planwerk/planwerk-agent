@@ -100,3 +100,6 @@ Write each proposal as its own section with these fields, so the structuring ste
 - Acceptance criteria: observable checks a reviewer can run.
 
 Propose only what is specific to this codebase and grounded in code you read. If nothing clears that bar, say so and propose nothing.
+
+This session runs unattended: nobody reads it until it ends, and nothing answers a question you ask. Your final message is the only text planwerk-agent reads, so it must be the complete analysis, every proposal included.
+

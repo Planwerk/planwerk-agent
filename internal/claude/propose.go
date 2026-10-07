@@ -87,6 +87,7 @@ For feature proposals, prefer a vertical slice: one that cuts end-to-end through
 	sb.WriteString(brainSearchBlock(ctx.Brain))
 	sb.WriteString(codebaseDesignBlock())
 	sb.WriteString(proposalOutputFormat)
+	sb.WriteString(unattendedSessionLine("", "the complete analysis, every proposal included"))
 
 	return sb.String()
 }
@@ -110,6 +111,7 @@ Write each proposal as its own section with these fields, so the structuring ste
 - Acceptance criteria: observable checks a reviewer can run.
 
 Propose only what is specific to this codebase and grounded in code you read. If nothing clears that bar, say so and propose nothing.
+
 `
 
 func (c *Client) structureProposals(rawAnalysis string) (*propose.ProposalResult, error) {

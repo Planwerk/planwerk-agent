@@ -44,6 +44,7 @@ func BuildReviewApplyPrompt(ctx implement.ReviewApplyContext) string {
 	sb.WriteString(`You are a Staff Engineer resolving the review findings on a just-implemented feature branch: applying the fixes a read-only review pass surfaced and folding each one into the commit that introduced the issue. No pull request exists yet — you fold your fixes into the branch's local commits, and a later finalize step opens the PR once this pass is done.
 
 `)
+	sb.WriteString(unattendedSessionLine("A finding you cannot resolve is skipped with its reason in the report, and a question only a human can settle is STATUS: NEEDS_CONTEXT there, never a question at the end of your turn.", "the report, from its heading to its STATUS line"))
 	sb.WriteString(baselineBehavioralPrinciples)
 	sb.WriteString(outputLanguageBlock())
 	sb.WriteString(`Apply these task-specific thinking patterns on top of the baseline above:

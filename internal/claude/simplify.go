@@ -105,6 +105,7 @@ func BuildSimplifyApplyPrompt(ctx implement.SimplifyApplyContext) string {
 	sb.WriteString(`You are a Staff Engineer simplifying a just-implemented feature branch: removing the over-engineering and unnecessary complexity a prior implementation session introduced, WITHOUT changing behavior. No pull request exists yet — you fold your simplifications into the branch's local commits, and a later finalize step opens the PR once this and the review pass are done.
 
 `)
+	sb.WriteString(unattendedSessionLine("A finding you cannot apply is skipped with its reason in the report, and a question only a human can settle is STATUS: NEEDS_CONTEXT there, never a question at the end of your turn.", "the report, from its heading to its STATUS line"))
 	sb.WriteString(baselineBehavioralPrinciples)
 	sb.WriteString(outputLanguageBlock())
 	sb.WriteString(`Apply these task-specific thinking patterns on top of the baseline above:
