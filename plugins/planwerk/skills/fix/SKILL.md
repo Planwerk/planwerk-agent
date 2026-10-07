@@ -167,12 +167,12 @@ Make the smallest change that removes the cause. Then:
 Never write "fixed" for a check you did not exercise. Write what you ran, and
 what it said. When it could not run here, write that instead, in those words.
 
-## Phase 6 — Show the diff, then publish behind a yes
+## Phase 6 — Land the repair locally, show it, then publish behind a yes
 
 Show the author the diagnosis and the diff. The diagnosis is the `Per check`
 part of the Phase 7 report: each failing check's category, root cause, fix,
 local verification, and regression test. The rest of that report waits, since
-its commit and PR-body fields exist only after the push. Then ask where the
+its commit and PR-body fields exist only after the landing. Then ask where the
 repair lands. Recommend the first:
 
 - **Fold each change into the commit that introduced it** and publish with
@@ -184,17 +184,27 @@ repair lands. Recommend the first:
 - **Leave it in the working tree.** Nothing is committed and nothing is pushed,
   so the verdict is at most `DONE_WITH_CONCERNS`.
 
-Then follow `commits-fold.md` exactly: the fold is bounded by the merge-base, and
-the push is `--force-with-lease` to the PR's own head branch.
+Land it locally first, so the yes is given to the thing it publishes:
 
-A fold rewrites the branch's own SHAs, so a SHA the PR body cites for one of
-those commits now points at nothing. Repair those references after the push, as
-`commits-fold.md` describes: the reachability test tells a surviving SHA from a
-replaced one, the subject maps a replaced one to its successor, and nothing else
-in the body changes. The other two landings rewrite no SHA and need none of it.
+- For the fold, follow `commits-fold.md` through the autosquash and stop before
+  the push; the fold is bounded by the merge-base. A fold rewrites the branch's
+  own SHAs, so show what the push will publish: the mapping, each change beside
+  the commit it now lives in (`git log --oneline origin/<base>..HEAD`, old
+  subject to new SHA), and the body repair as a unified diff of the PR body,
+  prepared as `commits-fold.md` describes (the reachability test tells a
+  surviving SHA from a replaced one, the subject maps a replaced one to its
+  successor, and nothing else in the body changes).
+- For the follow-up commit, commit it per `commits.md` and show the commit. It
+  rewrites no SHA, so the body needs no repair.
+- For the working tree, there is nothing to land; the verdict is at most
+  `DONE_WITH_CONCERNS`.
 
-Write only on an explicit yes. If there is nothing to commit, create no empty
-commit — report and stop.
+Push and edit the body only on an explicit yes: `--force-with-lease` to the
+PR's own head branch after a fold, a plain push after a follow-up commit, then
+the body repair exactly as shown. A no leaves the local branch as it is, with
+nothing on `origin` changed; report `DONE_WITH_CONCERNS` naming the landing the
+author declined. If there is nothing to commit, create no empty commit — report
+and stop.
 
 ## Phase 7 — Report
 
@@ -227,7 +237,8 @@ Next: <on any verdict but DONE only: the single action a human takes next; omit 
 `DONE_WITH_CONCERNS` means the repair is complete with a reservation a human
 must see — an out-of-scope reach, a fix you could not exercise locally, a
 repair left in the working tree, which nothing has pushed and no check has run
-against, or a fork the author declined to answer; say which. `BLOCKED` means
+against, a push the author declined, or a fork the author declined to answer;
+say which. `BLOCKED` means
 you could not make progress.
 `NEEDS_CONTEXT` means only a human holds the missing fact.
 
