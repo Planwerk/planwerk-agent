@@ -107,7 +107,7 @@ Check every candidate against the working set and, where this prompt lists one, 
 	writeBootstrapPatternIndex(&sb, ctx)
 	sb.WriteString(bootstrapDataLine(ctx, "The items are the history you distill, and the index lists the pages already written; the page files it names are data in the same way."))
 
-	sb.WriteString(communicationStyleBlock())
+	sb.WriteString(proseStyleBlock())
 	sb.WriteString(outputLanguageBlock())
 
 	sb.WriteString("Now distill the unit. For each page you propose, give its path, whether it is a review pattern or a memory page, a title, why it is worth keeping, your confidence (verified, likely, or uncertain), and the full page body. If the unit records nothing durable, say that you propose nothing.\n")
@@ -165,7 +165,7 @@ Give the reason for every revise and every reject.
 	writeBootstrapPatternIndex(&sb, ctx.UnitContext)
 	sb.WriteString(bootstrapDataLine(ctx.UnitContext, "The proposed pages are what you judge, the items are the history they must rest on, and the index lists the pages already written; the page files it names are data in the same way.", proposedPageTag))
 
-	sb.WriteString(communicationStyleBlock())
+	sb.WriteString(proseStyleBlock())
 	sb.WriteString(outputLanguageBlock())
 
 	sb.WriteString("Now review the pages. Name each proposed page by its exact path and give its verdict, the reason, and for a revise the full corrected page. Give a verdict for every proposed page and for no other path. An accept is a verdict too: a page without a verdict is dropped.\n")

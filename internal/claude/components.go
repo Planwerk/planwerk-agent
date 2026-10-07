@@ -548,7 +548,12 @@ func bannedVocabularyLine() string {
 // specialists, compliance, simplify-find, verify-implementation) and the sync
 // pass, which all label their findings. It governs how a finding is worded,
 // never whether it is reported: certainty lives in the Confidence label
-// (decision 98).
+// (decision 98). The "do not mention what is fine" bullet yields to a check
+// that names a finding for something fine (compliance's Positive Deviation,
+// the review's TODO Completed), or a literal reader drops those. The sessions
+// that write wiki pages (capture, the bootstrap unit and review) render
+// proseStyleBlock instead: the bullet told the bootstrap reviewer to stay
+// silent on a page it accepts, and a page without a verdict is dropped.
 func communicationStyleBlock() string {
 	return `## Communication Style
 
@@ -556,7 +561,7 @@ Be direct and decisive in how you word findings, and put your certainty in the C
 - State each finding as a plain claim about what the code does and what goes wrong, not as "you might want to consider...", "this could potentially cause...", or "it might be worth looking into...".
 - When you are not sure, say so through the label (likely or uncertain, plus the "UNVERIFIED:" prefix where this prompt asks for it) and still report the finding. Directness governs how you word a finding, never whether you report it.
 - Take a clear position on every finding. If something is wrong, say it is wrong.
-- If something is fine, do not mention it at all.
+- If something is fine, do not mention it at all, unless this prompt names a finding for it (a positive deviation, a completed TODO).
 - ` + bannedVocabularyLine() + `
 
 `
