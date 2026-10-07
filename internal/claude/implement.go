@@ -327,46 +327,39 @@ This is a single, non-interactive, one-shot session: there is NO next turn, no h
 
 	sb.WriteString(`## Implementation Workflow
 
-Run these steps in order. Do not skip ahead.
-
-1. READ the issue body in full. Extract Acceptance Criteria, Non-Goals, Affected Areas, References, and — when present — the Work breakdown (every work package / work item / numbered or lettered part, with each part's own deliverables) into your working notes. The set of work packages is your checklist: none is done until all are done.
-2. WALK the repository to ground the issue in reality:
-   - Open the README, top-level layout, and any package the issue mentions.
-   - For every file the issue cites, open it and confirm it still exists at (or near) the cited path.
-   - Identify the project's test conventions (unit, integration, E2E) and where tests live.
-   - Identify the project's documentation conventions (README, docs/, CHANGELOG, generated API docs).
-`)
+Ground the work before you change anything: read the issue in full (its Acceptance Criteria, Non-Goals, Affected Areas, References, and the work breakdown when it has one; the work packages are your checklist, and none is done until all are done), open every file, symbol, and migration it cites and confirm each exists at or near the cited path, and find how the project lays out code, tests, and documentation, so the change and its tests and docs match. `)
 	if hasPlan {
-		sb.WriteString(`3. VALIDATE the provided implementation plan against what you found in steps 1-2. Adopt its change set and commit sequence; refine them only where the repository contradicts the plan, and note every deviation for the final report.
-`)
+		sb.WriteString(`Adopt the plan below as the default route, its change set and commit sequence included; refine it only where the repository contradicts it, and note every deviation for the final report.`)
 	} else {
-		sb.WriteString(`3. PLAN the smallest change set that satisfies every Acceptance Criterion. Sketch the commit sequence before editing — keep each commit small and reviewable.
-`)
+		sb.WriteString(`Design the smallest change set that satisfies every Acceptance Criterion, and sequence it into small, reviewable commits before you edit.`)
 	}
+	sb.WriteString(` Then:
+
+`)
 	if hasResume {
-		fmt.Fprintf(&sb, "4. STAY on the existing feature branch `%s` you are already checked out on — an earlier run created it (see \"Resuming a partial implementation\" above). Do NOT create a new branch and do NOT reset, rebase, or amend it.\n", ctx.Resume.Branch)
+		fmt.Fprintf(&sb, "1. STAY on the existing feature branch `%s` you are already checked out on — an earlier run created it (see \"Resuming a partial implementation\" above). Do NOT create a new branch and do NOT reset, rebase, or amend it.\n", ctx.Resume.Branch)
 	} else {
-		fmt.Fprintf(&sb, "4. CREATE a fresh feature branch off the current default branch. Use a short, descriptive branch name that MUST begin with \"implement/issue-%d-\" (e.g. \"implement/issue-%d-<slug>\") — planwerk-agent keys on this prefix to find and resume the branch if this session is interrupted before it finishes.\n", ctx.IssueNumber, ctx.IssueNumber)
+		fmt.Fprintf(&sb, "1. CREATE a fresh feature branch off the current default branch. Use a short, descriptive branch name that MUST begin with \"implement/issue-%d-\" (e.g. \"implement/issue-%d-<slug>\") — planwerk-agent keys on this prefix to find and resume the branch if this session is interrupted before it finishes.\n", ctx.IssueNumber, ctx.IssueNumber)
 	}
 	if orchestrated {
-		sb.WriteString(`5. IMPLEMENT the change set package by package, through the ` + "`" + implementerAgentName + "`" + ` agent (see "Orchestrated implementation" above):
+		sb.WriteString(`2. IMPLEMENT the change set package by package, through the ` + "`" + implementerAgentName + "`" + ` agent (see "Orchestrated implementation" above):
    - Delegate one work package per task with a self-contained brief; the worker matches existing conventions, adds the package's tests and docs, and commits in small, reviewable steps.
    - After each worker returns, verify its commits and run the tests in the foreground yourself; dispatch follow-up tasks for every gap, and only then delegate the next package.
 `)
 	} else {
-		sb.WriteString(`5. IMPLEMENT the change set as the thinking patterns above describe: matching conventions, with its tests and docs, in small, reviewable commits.
+		sb.WriteString(`2. IMPLEMENT the change set as the thinking patterns above describe: matching conventions, with its tests and docs, in small, reviewable commits.
 `)
 	}
-	sb.WriteString(`6. VERIFY LOCALLY before you hand off:
+	sb.WriteString(`3. VERIFY LOCALLY before you hand off:
    - ` + foregroundRunLine() + `
    - Run the project's test suite (or the targeted subset that covers the new code).
    - Run lint / vet / formatter / type-checker as the project configures them.
    - When a check fails, run it on the base commit too: a failure that also happens there is pre-existing. Leave it alone and record it as "fail — pre-existing on <base>" with its output; fix only what your change broke.
    - Capture the exact commands you ran and their pass/fail status for the report below.
    - Leave a clean tree: ` + "`git status`" + ` shows nothing uncommitted. Delete the scratch scripts, throwaway tests, and debug output you made only to check something; keep a new test only where the issue asks for it or the repository keeps tests of that kind, sized like its neighbors.
-7. SELF-REVIEW the diff against the issue's Acceptance Criteria. Remove anything that is not strictly required. Stop if you have drifted into a Non-Goal.
-8. STOP after committing on the feature branch. Do NOT push and do NOT open a pull request — automated simplify and review passes run over your diff next, and a dedicated finalize step opens the draft PR (linking the issue with "Closes #` + fmt.Sprintf("%d", ctx.IssueNumber) + `") once they are done. Leave the branch checked out with your commits on it.
-9. OUTPUT the structured implementation report below.
+4. SELF-REVIEW the diff against the issue's Acceptance Criteria. Remove anything that is not strictly required. Stop if you have drifted into a Non-Goal.
+5. STOP after committing on the feature branch. Do NOT push and do NOT open a pull request — automated simplify and review passes run over your diff next, and a dedicated finalize step opens the draft PR (linking the issue with "Closes #` + fmt.Sprintf("%d", ctx.IssueNumber) + `") once they are done. Leave the branch checked out with your commits on it.
+6. OUTPUT the structured implementation report below.
 
 ## Implementation Report (final output)
 
@@ -581,35 +574,24 @@ Read the title, body, and state in full. Extract Acceptance Criteria, Non-Goals,
 
 	sb.WriteString(`## Implementation Workflow
 
-Run these steps in order. Do not skip ahead.
+Ground the work before you change anything: read the issue in full (its Acceptance Criteria, Non-Goals, Affected Areas, References, and the work breakdown when it has one; the work packages are your checklist, and none is done until all are done), open every file, symbol, and migration it cites and confirm each exists at or near the cited path, and find how the project lays out code, tests, and documentation, so the change and its tests and docs match. Design the smallest change set that satisfies every Acceptance Criterion, and sequence it into small, reviewable commits before you edit. Then:
 
-1. READ the issue body in full (from the gh fetch above). Extract Acceptance Criteria, Non-Goals, Affected Areas, References, and — when present — the Work breakdown (every work package / work item / numbered or lettered part, with each part's own deliverables) into your working notes. The set of work packages is your checklist: none is done until all are done.
-2. WALK the repository to ground the issue in reality:
-   - Open the README, top-level layout, and any package the issue mentions.
-   - For every file the issue cites, open it and confirm it still exists at (or near) the cited path.
-   - Identify the project's test conventions (unit, integration, E2E) and where tests live.
-   - Identify the project's documentation conventions (README, docs/, CHANGELOG, generated API docs).
-3. PLAN the smallest change set that satisfies every Acceptance Criterion. Sketch the commit sequence before editing — keep each commit small and reviewable.
-4. CREATE a fresh feature branch off the current default branch. Use a short, descriptive branch name that MUST begin with "implement/issue-` + fmt.Sprintf("%d", issueNumber) + `-" (e.g. "implement/issue-` + fmt.Sprintf("%d", issueNumber) + `-<slug>") so the branch is unambiguously identifiable as this issue's implementation.
-5. IMPLEMENT the change set:
-   - Match existing layout, naming, error handling, and logging conventions.
-   - Add unit tests for new logic, and make every new test exercise at least one error or edge path — not the happy path only. Add integration / E2E tests when the project has them for comparable features.
-   - Add or update documentation (README, CHANGELOG, doc comments, CLI help, generated API references) for every user-visible change.
-   - Commit in small, reviewable steps with descriptive messages.
-6. VERIFY LOCALLY before opening the PR:
+1. CREATE a fresh feature branch off the current default branch. Use a short, descriptive branch name that MUST begin with "implement/issue-` + fmt.Sprintf("%d", issueNumber) + `-" (e.g. "implement/issue-` + fmt.Sprintf("%d", issueNumber) + `-<slug>") so the branch is unambiguously identifiable as this issue's implementation.
+2. IMPLEMENT the change set as the thinking patterns above describe: matching conventions, with its tests and docs, in small, reviewable commits.
+3. VERIFY LOCALLY before opening the PR:
    - ` + foregroundRunLine() + `
    - Run the project's test suite (or the targeted subset that covers the new code).
    - Run lint / vet / formatter / type-checker as the project configures them.
    - When a check fails, run it on the base commit too: a failure that also happens there is pre-existing. Leave it alone and record it as "fail — pre-existing on <base>" with its output; fix only what your change broke.
    - Capture the exact commands you ran and their pass/fail status for the report below.
    - Leave a clean tree: ` + "`git status`" + ` shows nothing uncommitted. Delete the scratch scripts, throwaway tests, and debug output you made only to check something; keep a new test only where the issue asks for it or the repository keeps tests of that kind, sized like its neighbors.
-7. SELF-REVIEW the diff against the issue's Acceptance Criteria. Remove anything that is not strictly required. Stop if you have drifted into a Non-Goal.
-8. PUSH the branch and — ONLY when you implemented the WHOLE issue — OPEN A DRAFT PULL REQUEST linked to issue #` + fmt.Sprintf("%d", issueNumber) + `:
+4. SELF-REVIEW the diff against the issue's Acceptance Criteria. Remove anything that is not strictly required. Stop if you have drifted into a Non-Goal.
+5. PUSH the branch and — ONLY when you implemented the WHOLE issue — OPEN A DRAFT PULL REQUEST linked to issue #` + fmt.Sprintf("%d", issueNumber) + `:
    - If you implemented EVERY work package and satisfied every Acceptance Criterion (a DONE / DONE_WITH_CONCERNS implementation): link with the GitHub closing keyword "Closes #` + fmt.Sprintf("%d", issueNumber) + `" on its own line, so GitHub auto-links the PR and closes the issue on merge. Do NOT use a bare "Implements #` + fmt.Sprintf("%d", issueNumber) + `" mention — GitHub only recognizes the closing keywords (close/closes/closed, fix/fixes/fixed, resolve/resolves/resolved), so a plain reference does NOT create the linkage GitHub displays.
    - If ANY work package is unfinished (a PARTIAL implementation): push the branch so the committed work persists, but do NOT open a pull request — a partial PR splits the issue's delivery, and the issue lands as exactly ONE complete PR. Report PARTIAL below so the operator reruns the implementation on this same branch to finish the remaining packages.
    - Walk the reviewer through the change set in commit order.
    - Call out anything that diverged from the issue (and why).
-9. OUTPUT the structured implementation report below.
+6. OUTPUT the structured implementation report below.
 
 ## Implementation Report (final output)
 

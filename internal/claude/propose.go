@@ -50,24 +50,7 @@ func buildAnalysisPrompt(ctx propose.AnalysisContext) string {
 		"The patterns below are the same catalog the review and audit commands apply. Use them as a lens when proposing features or improvements: when a proposal addresses a pattern (closes a gap, hardens against a violation, or extends coverage) reference the pattern by name in the proposal description so reviewers can trace the rationale back to the catalog.",
 		ctx.Catalog, ctx.Patterns, ctx.MaxPatterns))
 
-	sb.WriteString(`Analyze the entire codebase systematically:
-
-1. **Architecture & Structure**: Understand the overall architecture, module structure, dependencies, and design patterns used.
-2. **Code Quality**: Identify areas where code quality could be improved — missing tests, error handling gaps, inconsistencies.
-3. **Feature Gaps**: Identify missing features that would make the project more complete, useful, or production-ready.
-4. **Developer Experience**: Look for improvements to DX — better CLI output, configuration, documentation, tooling.
-5. **Performance & Scalability**: Identify potential bottlenecks or areas where performance could be improved.
-6. **Security**: Look for security hardening opportunities.
-7. **Testing**: Identify gaps in test coverage and testing strategy.
-8. **CI/CD & Operations**: Look for improvements to build, release, and deployment processes.
-
-For each area, think about:
-- What exists today and what is missing?
-- What would a production-ready version of this project need?
-- What would make the biggest impact for users?
-- What is achievable with reasonable effort?
-
-Reference actual files, functions, and code patterns you observe.
+	sb.WriteString(`Analyze the entire codebase, and cover it: its architecture and module structure, its code quality (tests, error handling, consistency), the features a production-ready version still lacks, the developer experience (CLI output, configuration, documentation, tooling), performance and scalability, security hardening, test coverage and strategy, and its build, release, and deployment. A proposal answers what exists today and what is missing, what a production-ready version of this project needs, what makes the biggest difference for users, and what is achievable with reasonable effort. Reference actual files, functions, and code patterns you observe.
 
 For feature proposals, prefer a vertical slice: one that cuts end-to-end through the layers it touches and is demoable on its own, not a horizontal layer that delivers nothing until a later proposal lands. When a feature proposal depends on another, state an honest "Blocked by" note naming that proposal so independent proposals stay grabbable in parallel. This applies to feature work — a refactoring, testing, or documentation proposal need not be demoable end-to-end.`)
 

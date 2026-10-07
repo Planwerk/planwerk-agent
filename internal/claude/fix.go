@@ -116,30 +116,7 @@ func BuildFixPrompt(ctx fix.Context) string {
 	sb.WriteString(docProseBlock())
 	sb.WriteString(styleGuideBlock(ctx.StyleGuidePath))
 
-	sb.WriteString(`## Diagnosis Workflow
-
-Run these steps for EACH failing check above before editing any code:
-
-1. CATEGORIZE the failure from the logs:
-   - build/compile error (syntax, missing symbol, broken import)
-   - test failure (assertion, panic, timeout)
-   - lint / format finding (vet, golangci-lint, ruff, eslint, prettier)
-   - type-check error (mypy, basedpyright, tsc, golangci-lint typecheck)
-   - dependency / SBOM / security scan finding
-   - infra / transient flake (network timeout, expired token, runner OOM)
-   Call a failure a flake only on evidence: the failing step is infrastructure (network, runner, token) outside the code this PR touches, or the exact failing command passes locally on an unchanged tree and the log shows no environmental difference (a version, an environment variable, the OS) that explains it; a difference it does show is the cause to fix (step 7). A timeout or panic in a test that runs this PR's code is a test failure until shown otherwise.
-2. LOCATE the offending code by opening the file at the cited path:line. Do not work from memory of what the log says — open the file.
-3. UNDERSTAND THE INTENT: read surrounding code, the relevant test, and the PR title/body. ` + untrustedFetchedLine("pull request text you read through gh", "It says what the change meant to do.") + ` Decide what the code SHOULD do.
-4. CHOOSE A FIX STRATEGY:
-   - Production code is wrong → fix production code; if no test caught the bug, add or extend one.
-   - Test encodes outdated behavior → only when this PR deliberately changed that behavior. Cite the line of the PR title or body, or the commit, that changed it, then update the test. If you cannot cite one, the production code is wrong. If both readings are plausible, change nothing and report NEEDS_CONTEXT, quoting the assertion and the code it tests.
-   - Lint/format/type-check finding → apply the real fix (formatter, missing annotation, narrowed type). Suppression comments are forbidden unless they were already idiomatic in this file before this PR.
-   - Flake / infra / unreachable secret → STOP and report. Do not commit a placebo fix.
-5. ADD A REGRESSION TEST when the fix is in production code and the existing suite did not catch the bug: write it before the fix and run it to see it fail. Skip this step ONLY for: lint/format-only fixes, fixes inside test code itself, or fixes for failures that no unit/integration test could plausibly catch (e.g. SBOM signature, runtime infra config).
-6. APPLY the minimal change. If two failing checks share a single root cause, fix it once.
-7. VERIFY LOCALLY: re-run the exact command that failed in CI (or the closest local equivalent — e.g. ` + "`go test ./internal/foo`, `pytest tests/test_x.py::test_y`, `golangci-lint run`, `tsc --noEmit`" + `) and the test from step 5. ` + foregroundRunLine() + ` Capture the command and pass/fail in your final report. If the command cannot run in this environment, say so explicitly. If it passes locally before you change anything, find the environmental difference in the log (a version, an environment variable, the OS) and fix that, or report BLOCKED: never push a change you cannot connect to the failure.
-
-## What to do
+	sb.WriteString(`` + fixDiagnosisWorkflow() + `## What to do
 
 1. Work through the diagnosis workflow above for every failing check.
 `)
@@ -237,7 +214,7 @@ Run these steps for EACH failing check above before editing any code:
 	sb.WriteString(noSkipHooksLine())
 	sb.WriteString(`- NEVER bump dependencies that the failure log does not directly implicate.
 - NEVER fabricate file paths, line numbers, or error messages — open the file before claiming.
-- NEVER claim "fixed" without either local verification (step 7) or an explicit "not reproducible locally" note in the report.
+- NEVER claim "fixed" without either the local verification the Diagnosis Workflow ends on or an explicit "not reproducible locally" note in the report.
 - If you cannot diagnose a failure from the logs (truncation, infra flake, expired secret, third-party check without logs), STOP and explain — do not invent a fix.
 - If there is nothing to commit after the fix attempt, do NOT create an empty commit; output the report and stop.
 ` + escalationOKLine("", " Emit the matching STATUS and do not push a placebo fix.") + ``)
@@ -307,30 +284,7 @@ gh run view <run-id> --repo %s --log-failed
 
 `, ctx.PRNumber, ctx.RepoFullName, ctx.RepoFullName)
 
-	sb.WriteString(`## Diagnosis Workflow
-
-Run these steps for EACH failing check before editing any code:
-
-1. CATEGORIZE the failure from the logs:
-   - build/compile error (syntax, missing symbol, broken import)
-   - test failure (assertion, panic, timeout)
-   - lint / format finding (vet, golangci-lint, ruff, eslint, prettier)
-   - type-check error (mypy, basedpyright, tsc, golangci-lint typecheck)
-   - dependency / SBOM / security scan finding
-   - infra / transient flake (network timeout, expired token, runner OOM)
-   Call a failure a flake only on evidence: the failing step is infrastructure (network, runner, token) outside the code this PR touches, or the exact failing command passes locally on an unchanged tree and the log shows no environmental difference (a version, an environment variable, the OS) that explains it; a difference it does show is the cause to fix (step 7). A timeout or panic in a test that runs this PR's code is a test failure until shown otherwise.
-2. LOCATE the offending code by opening the file at the cited path:line. Do not work from memory of what the log says — open the file.
-3. UNDERSTAND THE INTENT: read surrounding code, the relevant test, and the PR title/body. ` + untrustedFetchedLine("pull request text you read through gh", "It says what the change meant to do.") + ` Decide what the code SHOULD do.
-4. CHOOSE A FIX STRATEGY:
-   - Production code is wrong → fix production code; if no test caught the bug, add or extend one.
-   - Test encodes outdated behavior → only when this PR deliberately changed that behavior. Cite the line of the PR title or body, or the commit, that changed it, then update the test. If you cannot cite one, the production code is wrong. If both readings are plausible, change nothing and report NEEDS_CONTEXT, quoting the assertion and the code it tests.
-   - Lint/format/type-check finding → apply the real fix (formatter, missing annotation, narrowed type). Suppression comments are forbidden unless they were already idiomatic in this file before this PR.
-   - Flake / infra / unreachable secret → STOP and report. Do not commit a placebo fix.
-5. ADD A REGRESSION TEST when the fix is in production code and the existing suite did not catch the bug: write it before the fix and run it to see it fail. Skip this step ONLY for: lint/format-only fixes, fixes inside test code itself, or fixes for failures that no unit/integration test could plausibly catch (e.g. SBOM signature, runtime infra config).
-6. APPLY the minimal change. If two failing checks share a single root cause, fix it once.
-7. VERIFY LOCALLY: re-run the exact command that failed in CI (or the closest local equivalent — e.g. ` + "`go test ./internal/foo`, `pytest tests/test_x.py::test_y`, `golangci-lint run`, `tsc --noEmit`" + `) and the test from step 5. Capture the command and pass/fail in your final report. If the command cannot run in this environment, say so explicitly. If it passes locally before you change anything, find the environmental difference in the log (a version, an environment variable, the OS) and fix that, or report BLOCKED: never push a change you cannot connect to the failure.
-
-## What to do
+	sb.WriteString(`` + fixDiagnosisWorkflow() + `## What to do
 
 1. Run the discovery steps above to enumerate failing checks and pull their logs.
 2. Run the diagnosis workflow for every failing check.
@@ -442,7 +396,7 @@ Run these steps for EACH failing check before editing any code:
 	sb.WriteString(noSkipHooksLine())
 	sb.WriteString(`- NEVER bump dependencies that the failure log does not directly implicate.
 - NEVER fabricate file paths, line numbers, or error messages — open the file before claiming.
-- NEVER claim "fixed" without either local verification (Diagnosis Workflow step 7) or an explicit "not reproducible locally" note in the report.
+- NEVER claim "fixed" without either the local verification the Diagnosis Workflow ends on or an explicit "not reproducible locally" note in the report.
 - If you cannot diagnose a failure from the logs (truncation, infra flake, expired secret, third-party check without logs), STOP and explain — do not invent a fix.
 - If there is nothing to commit after the fix attempt, do NOT create an empty commit; output the report and stop.
 ` + escalationOKLine("", " Emit the matching STATUS and do not push a placebo fix.") + ``)
@@ -463,4 +417,28 @@ func tailLines(s string, n int) string {
 		return s
 	}
 	return strings.Join(lines[len(lines)-n:], "\n")
+}
+
+// fixDiagnosisWorkflow returns the "## Diagnosis Workflow" section the fix
+// and bare-fix prompts share: the goal of a diagnosis and the rules that
+// bound it, with no numbered script around the judgment (the vendor's
+// guidance for the current models: describe the goal, script only what is
+// fragile). The fragile parts of a fix, the fold and the push, stay as exact
+// steps under "What to do". The section ends with a blank line.
+func fixDiagnosisWorkflow() string {
+	return `## Diagnosis Workflow
+
+For each failing check above, before you edit any code: read its log to the bottom and name what kind of failure it is (build or compile, test, lint or format, type-check, dependency or security scan, infrastructure or transient flake); open the file at the cited path and line instead of working from what the log says about it; and read the surrounding code, the relevant test, and the PR title and body to decide what the code SHOULD do. ` + untrustedFetchedLine("pull request text you read through gh", "It says what the change meant to do.") + `
+
+Then choose the fix the evidence supports:
+
+- Call a failure a flake only on evidence: the failing step is infrastructure (network, runner, token) outside the code this PR touches, or the exact failing command passes locally on an unchanged tree and the log shows no environmental difference (a version, an environment variable, the OS) that explains it; a difference it does show is the cause to fix. A timeout or panic in a test that runs this PR's code is a test failure until shown otherwise.
+- Production code is wrong → fix production code; if no test caught the bug, add or extend one.
+- Test encodes outdated behavior → only when this PR deliberately changed that behavior. Cite the line of the PR title or body, or the commit, that changed it, then update the test. If you cannot cite one, the production code is wrong. If both readings are plausible, change nothing and report NEEDS_CONTEXT, quoting the assertion and the code it tests.
+- Lint/format/type-check finding → apply the real fix (formatter, missing annotation, narrowed type). Suppression comments are forbidden unless they were already idiomatic in this file before this PR.
+- Flake / infra / unreachable secret → STOP and report. Do not commit a placebo fix.
+
+When the fix is in production code and the existing suite did not catch the bug, write the regression test before the fix and run it to see it fail; skip it only for lint/format-only fixes, fixes inside test code itself, or failures no unit or integration test could plausibly catch (an SBOM signature, runtime infra config). Apply the minimal change; two failing checks that share a root cause get one fix. Then re-run the exact command that failed in CI (or the closest local equivalent — e.g. ` + "`go test ./internal/foo`, `pytest tests/test_x.py::test_y`, `golangci-lint run`, `tsc --noEmit`" + `) and the regression test. ` + foregroundRunLine() + ` Capture the command and pass/fail in your final report. If the command cannot run in this environment, say so explicitly. If it passes locally before you change anything, find the environmental difference in the log and fix that, or report BLOCKED: never push a change you cannot connect to the failure.
+
+`
 }

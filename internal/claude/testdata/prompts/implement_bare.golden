@@ -102,35 +102,24 @@ Read the title, body, and state in full. Extract Acceptance Criteria, Non-Goals,
 
 ## Implementation Workflow
 
-Run these steps in order. Do not skip ahead.
+Ground the work before you change anything: read the issue in full (its Acceptance Criteria, Non-Goals, Affected Areas, References, and the work breakdown when it has one; the work packages are your checklist, and none is done until all are done), open every file, symbol, and migration it cites and confirm each exists at or near the cited path, and find how the project lays out code, tests, and documentation, so the change and its tests and docs match. Design the smallest change set that satisfies every Acceptance Criterion, and sequence it into small, reviewable commits before you edit. Then:
 
-1. READ the issue body in full (from the gh fetch above). Extract Acceptance Criteria, Non-Goals, Affected Areas, References, and — when present — the Work breakdown (every work package / work item / numbered or lettered part, with each part's own deliverables) into your working notes. The set of work packages is your checklist: none is done until all are done.
-2. WALK the repository to ground the issue in reality:
-   - Open the README, top-level layout, and any package the issue mentions.
-   - For every file the issue cites, open it and confirm it still exists at (or near) the cited path.
-   - Identify the project's test conventions (unit, integration, E2E) and where tests live.
-   - Identify the project's documentation conventions (README, docs/, CHANGELOG, generated API docs).
-3. PLAN the smallest change set that satisfies every Acceptance Criterion. Sketch the commit sequence before editing — keep each commit small and reviewable.
-4. CREATE a fresh feature branch off the current default branch. Use a short, descriptive branch name that MUST begin with "implement/issue-42-" (e.g. "implement/issue-42-<slug>") so the branch is unambiguously identifiable as this issue's implementation.
-5. IMPLEMENT the change set:
-   - Match existing layout, naming, error handling, and logging conventions.
-   - Add unit tests for new logic, and make every new test exercise at least one error or edge path — not the happy path only. Add integration / E2E tests when the project has them for comparable features.
-   - Add or update documentation (README, CHANGELOG, doc comments, CLI help, generated API references) for every user-visible change.
-   - Commit in small, reviewable steps with descriptive messages.
-6. VERIFY LOCALLY before opening the PR:
+1. CREATE a fresh feature branch off the current default branch. Use a short, descriptive branch name that MUST begin with "implement/issue-42-" (e.g. "implement/issue-42-<slug>") so the branch is unambiguously identifiable as this issue's implementation.
+2. IMPLEMENT the change set as the thinking patterns above describe: matching conventions, with its tests and docs, in small, reviewable commits.
+3. VERIFY LOCALLY before opening the PR:
    - Run every command in the FOREGROUND and wait for it to finish before the next step — never background a test or build run and move on. You need its real exit status in hand to commit and to fill in the report; a backgrounded run's result never reaches this one-shot session. If a command outlives the Bash tool's foreground time limit, background it and poll its output within this same turn until it exits.
    - Run the project's test suite (or the targeted subset that covers the new code).
    - Run lint / vet / formatter / type-checker as the project configures them.
    - When a check fails, run it on the base commit too: a failure that also happens there is pre-existing. Leave it alone and record it as "fail — pre-existing on <base>" with its output; fix only what your change broke.
    - Capture the exact commands you ran and their pass/fail status for the report below.
    - Leave a clean tree: `git status` shows nothing uncommitted. Delete the scratch scripts, throwaway tests, and debug output you made only to check something; keep a new test only where the issue asks for it or the repository keeps tests of that kind, sized like its neighbors.
-7. SELF-REVIEW the diff against the issue's Acceptance Criteria. Remove anything that is not strictly required. Stop if you have drifted into a Non-Goal.
-8. PUSH the branch and — ONLY when you implemented the WHOLE issue — OPEN A DRAFT PULL REQUEST linked to issue #42:
+4. SELF-REVIEW the diff against the issue's Acceptance Criteria. Remove anything that is not strictly required. Stop if you have drifted into a Non-Goal.
+5. PUSH the branch and — ONLY when you implemented the WHOLE issue — OPEN A DRAFT PULL REQUEST linked to issue #42:
    - If you implemented EVERY work package and satisfied every Acceptance Criterion (a DONE / DONE_WITH_CONCERNS implementation): link with the GitHub closing keyword "Closes #42" on its own line, so GitHub auto-links the PR and closes the issue on merge. Do NOT use a bare "Implements #42" mention — GitHub only recognizes the closing keywords (close/closes/closed, fix/fixes/fixed, resolve/resolves/resolved), so a plain reference does NOT create the linkage GitHub displays.
    - If ANY work package is unfinished (a PARTIAL implementation): push the branch so the committed work persists, but do NOT open a pull request — a partial PR splits the issue's delivery, and the issue lands as exactly ONE complete PR. Report PARTIAL below so the operator reruns the implementation on this same branch to finish the remaining packages.
    - Walk the reviewer through the change set in commit order.
    - Call out anything that diverged from the issue (and why).
-9. OUTPUT the structured implementation report below.
+6. OUTPUT the structured implementation report below.
 
 ## Implementation Report (final output)
 
