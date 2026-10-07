@@ -73,15 +73,6 @@ func BuildFixPrompt(ctx fix.Context) string {
 	}
 	sb.WriteString("\n")
 
-	sb.WriteString(patternCatalogBlock(honorPatternsHeading,
-		patternCatalogLeadIn+" The fix you push MUST stay consistent with them: do not introduce code or test changes that would itself be flagged by a pattern below. When the fix touches an area covered by a pattern, prefer the resolution the pattern endorses.",
-		ctx.Catalog, ctx.Patterns, ctx.MaxPatterns))
-	sb.WriteString(projectMemoryBlock(ctx.Memory))
-
-	sb.WriteString(projectSkillsBlock(ctx.Skills))
-	sb.WriteString(docProseBlock())
-	sb.WriteString(styleGuideBlock(ctx.StyleGuidePath))
-
 	if ctx.Iteration > 1 {
 		if ctx.Fixup {
 			fmt.Fprintf(&sb, "NOTE: This is iteration %d. A previous iteration already folded fixes into this branch's commits and force-pushed, but checks are still failing. Before patching again, inspect what changed (e.g. `git log --oneline origin/%s..HEAD`, `git show <sha>`) and the failing logs below: if the SAME check is failing for the SAME reason, your previous approach did not work — change strategy or STOP and report instead of repeating it.\n\n", ctx.Iteration, ctx.BaseBranch)
@@ -114,6 +105,15 @@ func BuildFixPrompt(ctx fix.Context) string {
 		}
 		sb.WriteString(untrustedDataLine("It is evidence of what failed and where.", "check-output", "check-log"))
 	}
+
+	sb.WriteString(patternCatalogBlock(honorPatternsHeading,
+		patternCatalogLeadIn+" The fix you push MUST stay consistent with them: do not introduce code or test changes that would itself be flagged by a pattern below. When the fix touches an area covered by a pattern, prefer the resolution the pattern endorses.",
+		ctx.Catalog, ctx.Patterns, ctx.MaxPatterns))
+	sb.WriteString(projectMemoryBlock(ctx.Memory))
+
+	sb.WriteString(projectSkillsBlock(ctx.Skills))
+	sb.WriteString(docProseBlock())
+	sb.WriteString(styleGuideBlock(ctx.StyleGuidePath))
 
 	sb.WriteString(`## Diagnosis Workflow
 

@@ -114,7 +114,6 @@ func BuildRebaseConflictPrompt(ctx rebase.ConflictContext) string {
 - Leave NO conflict markers in any file.
 - NEVER pick one side blindly to make the conflict "go away" — that silently drops a change. If you cannot reconcile a file, report it on an UNRESOLVED line (step 6) instead of guessing.
 `)
-	sb.WriteString(noSkipHooksLine())
 
 	return sb.String()
 }

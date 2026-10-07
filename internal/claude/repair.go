@@ -158,7 +158,7 @@ The corrected JSON MUST match this JSON Schema:
 Fix the JSON so it is valid. Output ONLY the corrected JSON, nothing else.` + schemaSection + `
 
 <malformed-json>
-` + malformedJSON + `
+` + escapeFence("malformed-json", malformedJSON) + `
 </malformed-json>`
 }
 
@@ -187,7 +187,7 @@ Fix this finding so it satisfies these rules:
 Do not change any field the error does not name. Output ONLY the corrected finding object, nothing else.
 
 <invalid-finding>
-` + invalidFinding + `
+` + escapeFence("invalid-finding", invalidFinding) + `
 </invalid-finding>`
 }
 

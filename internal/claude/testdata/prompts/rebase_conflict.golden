@@ -91,4 +91,3 @@ The catalog is on disk. Every line below names a file under `/tmp/planwerk-agent
 - Do NOT run `git rebase --abort`, `git commit`, `git push`, or any force-push. Your job ends at `git add`.
 - Leave NO conflict markers in any file.
 - NEVER pick one side blindly to make the conflict "go away" — that silently drops a change. If you cannot reconcile a file, report it on an UNRESOLVED line (step 6) instead of guessing.
-- NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).
