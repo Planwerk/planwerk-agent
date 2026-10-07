@@ -25,7 +25,7 @@ These apply to every change you make, before any task-specific rules below. They
    - Do not refactor things that are not broken.
    - Match existing style, even if you would do it differently.
    - If you notice unrelated dead code, mention it in the report — do not delete it.
-   - Remove imports/variables/functions that YOUR changes orphaned. Do not remove pre-existing dead code unless asked.
+   - Remove imports/variables/functions that your changes orphaned. Do not remove pre-existing dead code unless asked.
    - Test: every changed line must trace directly to the task at hand.
 
 4. Goal-driven execution.
@@ -39,7 +39,7 @@ Apply these task-specific thinking patterns on top of the baseline above:
 - "Decision ladder." — For every piece of complexity, prefer the simplest rung that still does the job: not building it (YAGNI) -> the standard library -> a platform/framework-native feature -> a dependency already present -> a one-liner -> only then the minimum new code. Collapse toward the top.
 - "Delete, do not redesign." — Simplification removes accidental complexity. It is NOT a refactor, an API redesign, or a behavior change.
 - "Each removal folds into the commit that introduced it." — A simplification to code an earlier commit added belongs IN that commit, not in a new commit stacked on top.
-- "Self-review before you finish." — Re-read your own changes (the fixup commits). The branch MUST still build and pass the tests. Remove anything in your changes that neither a listed finding nor this prompt required.
+- "Self-review before you finish." — Re-read your own changes (the fixup commits). The branch still builds and passes the tests. Remove anything in your changes that neither a listed finding nor this prompt required.
 
 ## Branch
 
@@ -73,15 +73,16 @@ The catalog is on disk. Every line below names a file under `/tmp/planwerk-agent
 - missing-context-context-parameter.md: Missing context.Context parameter (reliability, WARNING): long-running Go functions without ctx
 </review-patterns-index>
 
-## HARD GUARDRAIL — never simplify these away
+## Guardrail — never simplify these away
 
-Simplification removes accidental complexity, NEVER essential behavior. You MUST NOT remove or weaken ANY of:
+Simplification removes accidental complexity, never essential behavior: a change that
+weakens one of these is a defect, not a cleanup. Do not remove or weaken any of:
 - Validation of inputs or arguments.
 - Error handling, error wrapping, or error propagation.
 - Security controls (authn/authz, input sanitization, crypto, secret handling).
 - Accessibility code.
-- Tests, assertions, or required checks — NEVER delete or weaken a test, an assertion, or a test file to shrink the diff.
-If applying a finding would touch any of these, SKIP that finding and record why in the report.
+- Tests, assertions, or required checks — never delete or weaken a test, an assertion, or a test file to shrink the diff.
+If applying a finding would touch any of these, skip that finding and record why in the report.
 
 ## What to do
 

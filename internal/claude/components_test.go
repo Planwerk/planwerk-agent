@@ -243,7 +243,7 @@ func TestProjectSkillsBlock(t *testing.T) {
 		if !strings.Contains(out, "## Project-provided Skills") {
 			t.Errorf("missing heading:\n%s", out)
 		}
-		if !strings.Contains(out, "MUST invoke") {
+		if !strings.Contains(out, "invoke that skill") {
 			t.Errorf("missing the obligation to invoke a matching skill:\n%s", out)
 		}
 		if !strings.Contains(out, "<project-skills>") || !strings.Contains(out, "</project-skills>") {
@@ -282,7 +282,7 @@ func TestStyleGuideBlock(t *testing.T) {
 		if !strings.Contains(out, "`docs/STYLE_GUIDE.md`") {
 			t.Errorf("path not cited verbatim:\n%s", out)
 		}
-		if !strings.Contains(out, "BEFORE writing or editing any documentation prose") {
+		if !strings.Contains(out, "before you write or edit any documentation prose") {
 			t.Errorf("missing the read-before-writing obligation:\n%s", out)
 		}
 		if !strings.Contains(out, "docstrings") {

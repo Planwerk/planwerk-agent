@@ -182,9 +182,9 @@ Flag a hint whose documentation is actually outdated as WARNING with title "Stal
 - Threshold or constant comments that would rot faster than the code they describe
 - Assertions that already cover the behavior being tested (e.g. "this assertion could be tighter")
 - Consistency-only suggestions ("use X style everywhere") with no correctness impact
-- Issues that are already addressed elsewhere in the same diff — read the FULL diff before commenting
+- Issues that are already addressed elsewhere in the same diff — read the whole diff before commenting, because a fix later in the same diff is not a finding
 - Suggestions to "add logging" when the error path already returns a descriptive error
-- "Consider using X library" when the current approach works correctly — this does NOT suppress flagging deprecated, unmaintained, or severely outdated versions of NEWLY INTRODUCED dependencies
+- "Consider using X library" when the current approach works correctly — this does not suppress flagging deprecated, unmaintained, or severely outdated versions of the dependencies the diff introduces
 - Pre-existing problems in code that was not changed in this diff — this does NOT suppress breakage the change causes in unchanged code (an unchanged caller, switch, or document that the changed contract now breaks): report that, anchored on the changed line, and cite the unchanged file:line
 
 ## Communication Style
