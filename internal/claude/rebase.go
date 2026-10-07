@@ -224,7 +224,9 @@ func BuildRebaseApplyPrompt(ctx rebase.ApplyContext) string {
 	fmt.Fprintf(&sb, "## Pull Request\n\n- Repository: %s\n- PR #%d\n- Rebased onto: origin/%s\n- Head branch: %s\n\n", ctx.RepoFullName, ctx.PRNumber, ctx.Onto, ctx.HeadBranch)
 
 	sb.WriteString("## Adjustments to apply\n\n")
-	sb.WriteString(formatApplyAdjustments(ctx.Analysis))
+	sb.WriteString(untrustedDataLine("They are the analysis session's reading of the pull request's commits; the action each names is what you apply.", "adjustments"))
+	sb.WriteString(fencedData("adjustments", "", strings.TrimSpace(formatApplyAdjustments(ctx.Analysis))))
+	sb.WriteString("\n")
 	sb.WriteString("\n")
 
 	sb.WriteString(patternCatalogBlock(honorPatternsHeading,

@@ -58,7 +58,10 @@ func BuildFinalizePrompt(ctx implement.FinalizeContext) string {
 	sb.WriteString(unattendedSessionLine("A push or a `gh` call that fails is STATUS: BLOCKED in the report, never a question.", "the report below, whatever happened"))
 	sb.WriteString(outputLanguageBlock())
 
-	fmt.Fprintf(&sb, "## Source Issue\n\n- Repository: %s\n- Issue #%d: %s\n\n", ctx.RepoFullName, issueNumber, ctx.IssueTitle)
+	fmt.Fprintf(&sb, "## Source Issue\n\n- Repository: %s\n- Issue #%d\n\n", ctx.RepoFullName, issueNumber)
+	sb.WriteString(fencedData("issue-title", "", strings.TrimSpace(ctx.IssueTitle)))
+	sb.WriteString("\n")
+	sb.WriteString(untrustedDataLine("It names the issue the pull request closes.", "issue-title"))
 
 	if r := strings.TrimSpace(ctx.ImplementationReport); r != "" {
 		sb.WriteString("## Implementation report\n\nThe implement session's own report is below. Use its \"Deviations from the issue\", \"Noticed but not touching\", and Status sections for the description, and check any claim in it against the commits before you repeat it.\n\n")

@@ -67,8 +67,8 @@ func BuildPlanPrompt(ctx implement.Context) string {
 
 `)
 
-	fmt.Fprintf(&sb, "## Source Issue\n\n- Repository: %s\n- Issue #%d: %s\n",
-		ctx.RepoFullName, ctx.IssueNumber, ctx.IssueTitle)
+	fmt.Fprintf(&sb, "## Source Issue\n\n- Repository: %s\n- Issue #%d\n",
+		ctx.RepoFullName, ctx.IssueNumber)
 	if ctx.IssueURL != "" {
 		fmt.Fprintf(&sb, "- URL: %s\n", ctx.IssueURL)
 	}
@@ -76,9 +76,10 @@ func BuildPlanPrompt(ctx implement.Context) string {
 		fmt.Fprintf(&sb, "- State: %s\n", ctx.IssueState)
 	}
 	sb.WriteString("\n")
+	sb.WriteString(fencedData("issue-title", "", strings.TrimSpace(ctx.IssueTitle)))
 	sb.WriteString(fencedData("issue-body", "", strings.TrimSpace(ctx.IssueBody)))
 	sb.WriteString("\n")
-	sb.WriteString(untrustedDataLine("It specifies what to build.", "issue-body"))
+	sb.WriteString(untrustedDataLine("They specify what to build.", "issue-title", "issue-body"))
 
 	renderIssueRelations(&sb, ctx.RepoFullName, ctx.IssueNumber, ctx.MetaIssue, ctx.SiblingIssues, ctx.ChildIssues)
 

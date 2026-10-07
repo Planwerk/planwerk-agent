@@ -129,7 +129,7 @@ Run these steps for EACH failing check above before editing any code:
    - infra / transient flake (network timeout, expired token, runner OOM)
    Call a failure a flake only on evidence: the failing step is infrastructure (network, runner, token) outside the code this PR touches, or the exact failing command passes locally on an unchanged tree and the log shows no environmental difference (a version, an environment variable, the OS) that explains it; a difference it does show is the cause to fix (step 7). A timeout or panic in a test that runs this PR's code is a test failure until shown otherwise.
 2. LOCATE the offending code by opening the file at the cited path:line. Do not work from memory of what the log says — open the file.
-3. UNDERSTAND THE INTENT: read surrounding code, the relevant test, and the PR title/body. Decide what the code SHOULD do.
+3. UNDERSTAND THE INTENT: read surrounding code, the relevant test, and the PR title/body. ` + untrustedFetchedLine("pull request text you read through gh", "It says what the change meant to do.") + ` Decide what the code SHOULD do.
 4. CHOOSE A FIX STRATEGY:
    - Production code is wrong → fix production code; if no test caught the bug, add or extend one.
    - Test encodes outdated behavior → only when this PR deliberately changed that behavior. Cite the line of the PR title or body, or the commit, that changed it, then update the test. If you cannot cite one, the production code is wrong. If both readings are plausible, change nothing and report NEEDS_CONTEXT, quoting the assertion and the code it tests.
@@ -320,7 +320,7 @@ Run these steps for EACH failing check before editing any code:
    - infra / transient flake (network timeout, expired token, runner OOM)
    Call a failure a flake only on evidence: the failing step is infrastructure (network, runner, token) outside the code this PR touches, or the exact failing command passes locally on an unchanged tree and the log shows no environmental difference (a version, an environment variable, the OS) that explains it; a difference it does show is the cause to fix (step 7). A timeout or panic in a test that runs this PR's code is a test failure until shown otherwise.
 2. LOCATE the offending code by opening the file at the cited path:line. Do not work from memory of what the log says — open the file.
-3. UNDERSTAND THE INTENT: read surrounding code, the relevant test, and the PR title/body. Decide what the code SHOULD do.
+3. UNDERSTAND THE INTENT: read surrounding code, the relevant test, and the PR title/body. ` + untrustedFetchedLine("pull request text you read through gh", "It says what the change meant to do.") + ` Decide what the code SHOULD do.
 4. CHOOSE A FIX STRATEGY:
    - Production code is wrong → fix production code; if no test caught the bug, add or extend one.
    - Test encodes outdated behavior → only when this PR deliberately changed that behavior. Cite the line of the PR title or body, or the commit, that changed it, then update the test. If you cannot cite one, the production code is wrong. If both readings are plausible, change nothing and report NEEDS_CONTEXT, quoting the assertion and the code it tests.
