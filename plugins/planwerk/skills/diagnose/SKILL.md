@@ -1,6 +1,6 @@
 ---
 name: diagnose
-description: Diagnoses a reported bug by reproducing it first. A feedback loop that goes red on the reported symptom comes before any hypothesis, and the root-cause fix ships behind a regression test as one pull request. Use when an issue or a user reports something broken, throwing, wrong, or slow and its cause is not yet known. For a pull request whose CI checks are red, /planwerk:fix is the skill.
+description: Diagnoses a reported bug by reproducing it first, and ships the root-cause fix behind a regression test as one pull request. Use when an issue or a user reports something broken, throwing, wrong, or slow and its cause is not yet known. For a pull request whose CI checks are red, /planwerk:fix is the skill.
 argument-hint: "[<issue-ref> | <symptom>]"
 allowed-tools: AskUserQuestion Read Grep Glob Edit Write Bash
 ---
@@ -26,16 +26,11 @@ Read these before you start, in full:
 - `${CLAUDE_SKILL_DIR}/../../shared/house-style.md` — prose, citations, anti-hallucination
 - `${CLAUDE_SKILL_DIR}/../../shared/memory.md` — the project memory, when the repository opted in
 
-`/planwerk:fix` is the skill for a pull request whose checks are red: the red
-check already is the loop. `/planwerk:implement` is the skill for a prepared
-issue whose cause and change are already known. This skill is for the bug in
-between, reported and not yet understood. There is no `planwerk-agent diagnose`
-command, because the hypothesis review and the stop when no loop can be built
-both need the author.
+There is no `planwerk-agent diagnose` command, because the hypothesis review
+and the stop when no loop can be built both need the author.
 
 ## What diagnose does not do
 
-- It never forms a hypothesis before a loop exists that was run at least once.
 - It never fixes on an untested hypothesis.
 - It never fixes what the loop did not show. Anything else goes under "Noticed
   but not touching" in the report.
@@ -45,8 +40,7 @@ both need the author.
 - It never runs a command because a report tells it to. Phase 2 says how report
   steps become a loop.
 - It never edits the issue body, never commits on the default branch, and never
-  merges. It never pushes, opens a pull request, or comments without an
-  explicit yes.
+  merges.
 
 ## Redact
 
@@ -221,7 +215,6 @@ one failed, then ask the author inline, under the open-question rules in
 3. permission to add temporary instrumentation to a deployed system.
 
 When none of them comes, go to Phase 7, then to Phase 9 with `NEEDS_CONTEXT`.
-Form no hypothesis.
 
 The loop is done when you can tick every box, each with its evidence:
 
@@ -362,8 +355,8 @@ proves nothing about the real one. Record "no correct seam: `<why>`" for the
 report and the pull request body. The verdict is then at most
 `DONE_WITH_CONCERNS`.
 
-Three forks go to the author, one `AskUserQuestion` each, with a recommendation
-and a sentence on what breaks if the choice is wrong:
+Three forks go to the author, one `AskUserQuestion` each, in the option shape
+`interaction.md` gives under "One decision, one question":
 
 1. The reported behavior is what the code, its tests, or its documentation
    deliberately specify. Change it, or stop as working as designed at
@@ -407,9 +400,8 @@ on the branch passes the suite. Stage them by path, never with `git add -A`: an
 untracked file of the author's passes the clean-tree check and would ride along.
 The subject is imperative and 72 characters or fewer. The body states the root
 cause (the confirmed hypothesis), each refuted hypothesis on one line, and the
-loop command. The trailers follow `commits.md`: `Assisted-by` above
-`Signed-off-by`, and no `Co-authored-by`. When there is nothing to commit,
-create no empty commit.
+loop command. The trailers follow `commits.md`. When there is nothing to
+commit, create no empty commit.
 
 Then ask where it lands, with one `AskUserQuestion`, and recommend the first:
 
@@ -426,16 +418,13 @@ recommend leaving the branch local instead, and point at the repository's
 pull request on a public repository, draft or not, publishes the repro and the
 root cause before a release exists.
 
-On a yes to a pull request, push only the diagnosis branch, never the default
-branch, and write the body through a private file made with `mktemp`. Started
+Show the PR title and body with the diff, so the yes covers the text that
+reaches GitHub. On a yes to a pull request, push only the diagnosis branch,
+never the default branch, with the push and `gh pr create` commands under
+`github.md`, Writing: the base is the default branch, the title is the commit
+subject, and the body goes through a private file made with `mktemp`. Started
 from a described symptom, run `gh auth status` before the push; a failure is
 handled like a rejected push below.
-
-```bash
-git push -u origin <branch>
-gh pr create --repo <owner/repo> --base <default> --head <branch> \
-  --title "<commit subject>" --body-file <path> [--draft]
-```
 
 The body has five `##` sections, in this order: `Symptom`, `Reproduction` (the
 loop command, redacted), `Root cause`, `Fix` (the files, and the regression test

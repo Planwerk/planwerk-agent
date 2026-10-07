@@ -29,9 +29,8 @@ Read these before you start, in full:
 - `${CLAUDE_SKILL_DIR}/../../shared/memory.md` — the project memory, when the repository opted in
 
 `planwerk-agent fix <pr-ref>` is the same work unattended, in a loop, in a
-throw-away clone. Reach for the command when nobody is watching and for this
-skill when someone is: the command has to guess at every fork in Phase 4, and
-you can ask.
+throw-away clone; this skill is for when someone is watching, because the
+command has to guess at every fork in Phase 4 and you can ask.
 
 ## What fix does not do
 
@@ -45,7 +44,6 @@ you can ask.
   for them is worse than reporting them.
 - It never loops. One repair, then a verdict. `planwerk-agent fix` is the loop.
 - It never merges, closes, relabels, or rewrites the base branch's commits.
-- It never pushes without an explicit yes.
 
 ## Phase 1 — Establish the pull request, and that you are standing on it
 
@@ -98,9 +96,10 @@ build tooling define.
 
 ## Phase 3 — Reproduce before you diagnose
 
-Run the exact command CI ran. Not the closest equivalent you remember — the one
-the workflow ran, as the log shows it, with its flags, against the package or
-test it named.
+Run the command the workflow file defines for the failed step, with the flags
+the workflow passes. The log tells you which step and which package or test;
+the workflow file tells you the command. Not the closest equivalent you
+remember.
 
 A failure you cannot reproduce is a finding in itself. Say which of these it is,
 because each has a different repair and only one of them is a code change:
@@ -131,9 +130,8 @@ missing import, a formatter's diff, a type annotation the checker demands — no
 of these is a decision. Asking about them teaches the author to stop reading your
 questions.
 
-Four forks are real, and each is the author's under `interaction.md` — one
-`AskUserQuestion` per fork, a recommendation on exactly one option, and a
-sentence on what breaks if the choice is wrong:
+Four forks are real, and each is the author's: one `AskUserQuestion` per fork,
+in the option shape `interaction.md` gives under "One decision, one question":
 
 1. **The production code is wrong, or the test encodes behavior that is no
    longer wanted.** This is the fork the unattended loop cannot see, because
@@ -186,9 +184,8 @@ repair lands. Recommend the first:
 - **Leave it in the working tree.** Nothing is committed and nothing is pushed,
   so the verdict is at most `DONE_WITH_CONCERNS`.
 
-Then follow `commits-fold.md` exactly: the fold is bounded by the merge-base, the
-push is `--force-with-lease` to the PR's own head branch, and every commit
-carries `Assisted-by` above `Signed-off-by`.
+Then follow `commits-fold.md` exactly: the fold is bounded by the merge-base, and
+the push is `--force-with-lease` to the PR's own head branch.
 
 A fold rewrites the branch's own SHAs, so a SHA the PR body cites for one of
 those commits now points at nothing. Repair those references after the push, as
@@ -201,8 +198,8 @@ commit — report and stop.
 
 ## Phase 7 — Report
 
-Post the same shape the `fix` command posts, so a pull request carries one
-report format whichever produced it:
+Post the shape the `fix` command posts, extended by the two landings the
+command does not have (a follow-up commit, a repair left in the tree):
 
 ```
 ## Fix Report
@@ -228,9 +225,10 @@ Next: <on any verdict but DONE only: the single action a human takes next; omit 
 
 `DONE` means every check was fixed and verified, and the repair was pushed.
 `DONE_WITH_CONCERNS` means the repair is complete with a reservation a human
-must see — an out-of-scope reach, a fix you could not exercise locally, or a
+must see — an out-of-scope reach, a fix you could not exercise locally, a
 repair left in the working tree, which nothing has pushed and no check has run
-against; say which. `BLOCKED` means you could not make progress.
+against, or a fork the author declined to answer; say which. `BLOCKED` means
+you could not make progress.
 `NEEDS_CONTEXT` means only a human holds the missing fact.
 
 Stopping at `BLOCKED` is a successful run. Bad work is worse than no work, and a
