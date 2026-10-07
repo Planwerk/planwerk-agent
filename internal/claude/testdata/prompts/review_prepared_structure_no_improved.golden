@@ -3,8 +3,8 @@ Convert the following review-prepared report into structured JSON. Extract every
 Output ONLY valid JSON matching this exact schema (no markdown fences, no surrounding text):
 
 {
-  "repo": "owner/name",
-  "overview": "2-4 sentence overall summary: how many features were reviewed, headline themes, and the 1-2 most important findings.",
+  "repo": "",
+  "overview": "The report's opening overview, copied; an empty string when the report gives none.",
   "features": [
     {
       "feature_id": "PX-0028",
@@ -30,6 +30,7 @@ Output ONLY valid JSON matching this exact schema (no markdown fences, no surrou
 }
 
 Field rules:
+- "repo": leave as empty string — it is filled in automatically.
 - "id": leave as empty string — it is assigned automatically.
 - "category": exactly one of the values above.
 - "severity": uppercase, never BLOCKING.

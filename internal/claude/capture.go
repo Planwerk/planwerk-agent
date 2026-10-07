@@ -139,10 +139,16 @@ Every candidate MUST be checked against the existing wiki entries AND the patter
 	sb.WriteString(outputLanguageBlock())
 
 	sb.WriteString(unattendedSessionLine("", "the complete proposal: every page body, or the statement that nothing clears the bar"))
-	sb.WriteString("Now propose the knowledge. Mine the findings for recurring, generalizable patterns and the plan and report for durable decisions, deduplicate every candidate against the entries and catalog above, and author each candidate page's full body. If nothing clears the bar, say so and propose nothing.\n")
+	sb.WriteString("Now propose the knowledge. Mine the findings for recurring, generalizable patterns and the plan and report for durable decisions, deduplicate every candidate against the entries and catalog above, and for each page you propose, " + proposedPageFields + ". If nothing clears the bar, say so and propose nothing.\n")
 
 	return sb.String()
 }
+
+// proposedPageFields names what the capture and bootstrap-unit sessions give
+// for every page they propose, so the structure prompt that converts their
+// output (buildCaptureStructurePrompt) copies a title, a rationale, and a
+// confidence the session stated instead of inventing them.
+const proposedPageFields = "give its path, whether it is a review pattern or a memory page, a title, why it is worth keeping, your confidence (verified, likely, or uncertain), and the full page body"
 
 // pageConventionsBlock returns the three bullets that state how a proposed
 // page is written: the format of a review pattern, the format of a memory

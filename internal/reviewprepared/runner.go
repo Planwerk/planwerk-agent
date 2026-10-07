@@ -134,9 +134,9 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		if err != nil {
 			return fmt.Errorf("claude review-prepared: %w", err)
 		}
-		if result.RepoFullName == "" {
-			result.RepoFullName = repo.FullName()
-		}
+		// The structure prompt leaves "repo" empty; the runner knows the name,
+		// and a value the model copied from the schema must not win.
+		result.RepoFullName = repo.FullName()
 		assignIDs(result)
 
 		if !opts.NoCache && headSHA != "" && !opts.CreatePR {

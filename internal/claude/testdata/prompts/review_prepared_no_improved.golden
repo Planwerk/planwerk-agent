@@ -129,7 +129,7 @@ Write your entire output in English, whatever language the input is written in â
 
 ## Output format
 
-When you are done, emit a review grouped by feature_id. For every feature provide:
+When you are done, emit a review that opens with an overview (how many features you reviewed, the headline themes, and the one or two most important findings), then one section per feature_id. For every feature provide:
 - Per-finding entries with the fields described above.
 - A 1-3 sentence "summary" of the spec's overall state.
 

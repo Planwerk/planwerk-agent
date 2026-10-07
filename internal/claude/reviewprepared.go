@@ -113,9 +113,9 @@ For each finding, include:
 `)
 
 	if ctx.IncludeImproved {
-		sb.WriteString(`## Improved JSON (REQUIRED for every feature)
+		sb.WriteString(`## Improved JSON (for every feature with a finding)
 
-For EVERY feature you receive, emit a complete rewritten feature JSON that incorporates ALL findings of severity WARNING or higher (incorporate INFO findings when they don't conflict).
+For every feature with at least one finding, emit a complete rewritten feature JSON that incorporates ALL findings of severity WARNING or higher (incorporate INFO findings when they don't conflict). A feature without findings gets no rewritten JSON: its spec stands as it is.
 
 Rules for the rewrite:
 - The rewrite MUST be valid JSON and MUST keep the existing top-level keys (feature_id, title, slug, status, phase, summary, description, stories, requirements, tasks, test_specifications, affected_files, similar_patterns, review_criteria, implementation_notes, status_history, execution_history). Preserve any field whose value you are not improving.
@@ -134,12 +134,12 @@ Rules for the rewrite:
 
 	sb.WriteString(`## Output format
 
-When you are done, emit a review grouped by feature_id. For every feature provide:
+When you are done, emit a review that opens with an overview (how many features you reviewed, the headline themes, and the one or two most important findings), then one section per feature_id. For every feature provide:
 - Per-finding entries with the fields described above.
 - A 1-3 sentence "summary" of the spec's overall state.
 `)
 	if ctx.IncludeImproved {
-		sb.WriteString("- The full rewritten feature JSON.\n")
+		sb.WriteString("- The full rewritten feature JSON, for a feature with at least one finding.\n")
 	}
 	sb.WriteString("\n" + unattendedSessionLine("", "the complete review, every feature included") + "Now perform the review.\n")
 
@@ -214,8 +214,8 @@ func buildReviewPreparedStructurePrompt(rawAnalysis string, includeImproved bool
 ` + jsonSchemaOnlyLine() + `
 
 {
-  "repo": "owner/name",
-  "overview": "2-4 sentence overall summary: how many features were reviewed, headline themes, and the 1-2 most important findings.",
+  "repo": "",
+  "overview": "The report's opening overview, copied; an empty string when the report gives none.",
   "features": [
     {
       "feature_id": "PX-0028",
@@ -241,6 +241,7 @@ func buildReviewPreparedStructurePrompt(rawAnalysis string, includeImproved bool
 }
 
 Field rules:
+- "repo": leave as empty string — it is filled in automatically.
 - ` + emptyIDLine() + `
 - "category": exactly one of the values above.
 - "severity": uppercase, never BLOCKING.
