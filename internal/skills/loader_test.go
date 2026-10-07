@@ -120,3 +120,21 @@ func TestLoad_HandlesCRLFFrontmatter(t *testing.T) {
 		t.Fatalf("unexpected description: %q", got[0].Description)
 	}
 }
+
+func TestLoad_SkipsSkillsClosedToModelInvocation(t *testing.T) {
+	root := t.TempDir()
+	// Claude Code removes a skill with disable-model-invocation from the
+	// model's context and blocks the Skill tool from running it, so the
+	// prompt must not oblige a session to invoke one. The key is read the
+	// way Claude Code reads it: true, yes, on, and 1 in any case set it.
+	writeSkill(t, root, "closed-true", "---\nname: closed-true\ndescription: Author only.\ndisable-model-invocation: true\n---\nbody\n")
+	writeSkill(t, root, "closed-yes", "---\nname: closed-yes\ndescription: Author only.\ndisable-model-invocation: Yes\n---\nbody\n")
+	writeSkill(t, root, "closed-one", "---\nname: closed-one\ndescription: Author only.\ndisable-model-invocation: 1\n---\nbody\n")
+	writeSkill(t, root, "open-false", "---\nname: open-false\ndescription: Model may invoke.\ndisable-model-invocation: false\n---\nbody\n")
+	writeSkill(t, root, "open-absent", "---\nname: open-absent\ndescription: Model may invoke.\n---\nbody\n")
+
+	got := Load(root)
+	if len(got) != 2 || got[0].Name != "open-absent" || got[1].Name != "open-false" {
+		t.Fatalf("want only the skills open to model invocation, got %+v", got)
+	}
+}

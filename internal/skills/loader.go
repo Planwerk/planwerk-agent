@@ -40,12 +40,35 @@ type Skill struct {
 type skillFrontmatter struct {
 	Name        string `yaml:"name"`
 	Description string `yaml:"description"`
+	// DisableModelInvocation mirrors Claude Code's disable-model-invocation
+	// key: a skill with it set is removed from the model's context and the
+	// Skill tool refuses to run it, so only the author can invoke it.
+	DisableModelInvocation frontmatterBool `yaml:"disable-model-invocation"`
+}
+
+// frontmatterBool reads a frontmatter boolean the way Claude Code does: true,
+// yes, on, and 1 set it, in any letter case; every other value and an absent
+// key leave it unset. A plain Go bool would reject the yes/no spelling the
+// skill documentation allows.
+type frontmatterBool bool
+
+func (b *frontmatterBool) UnmarshalYAML(value *yaml.Node) error {
+	switch strings.ToLower(strings.TrimSpace(value.Value)) {
+	case "true", "yes", "on", "1":
+		*b = true
+	default:
+		*b = false
+	}
+	return nil
 }
 
 // Load discovers the Agent Skills committed under <repoDir>/.claude/skills/ and
 // returns them sorted by name. Each skill lives in its own directory with a
 // SKILL.md carrying YAML frontmatter (name, description); Load reads only that
-// frontmatter.
+// frontmatter. A skill whose frontmatter sets disable-model-invocation is left
+// out: Claude Code keeps such a skill out of the model's context and blocks
+// the Skill tool from running it, so a prompt that obliged a session to invoke
+// it would oblige the impossible.
 //
 // It is best-effort: a missing directory returns nil, and an unreadable or
 // malformed SKILL.md is skipped (and logged) rather than failing the caller —
@@ -89,8 +112,8 @@ func Load(repoDir string) []Skill {
 
 // parseSkill reads name + description from a SKILL.md's YAML frontmatter. The
 // skill directory name is the fallback identity when the frontmatter omits
-// name. Returns ok=false when the file is absent, carries no frontmatter, or
-// yields no usable name.
+// name. Returns ok=false when the file is absent, carries no frontmatter,
+// yields no usable name, or is closed to model invocation.
 func parseSkill(path, dirName string) (Skill, bool) {
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -110,6 +133,10 @@ func parseSkill(path, dirName string) (Skill, bool) {
 		name = strings.TrimSpace(dirName)
 	}
 	if name == "" {
+		return Skill{}, false
+	}
+	if meta.DisableModelInvocation {
+		slog.Debug("skipping skill closed to model invocation", "path", path, "skill", name)
 		return Skill{}, false
 	}
 	return Skill{Name: name, Description: strings.TrimSpace(meta.Description)}, true
