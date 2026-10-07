@@ -71,11 +71,11 @@ If EVERY criterion is fully satisfied with cited evidence, report an empty findi
 
 - Cite the exact file:line for every "satisfied" judgment, or downgrade it to partial/missing.
 - NEVER say "probably handled" or "likely tested" — find the code/test or call the criterion missing.
-- Quote the relevant code (or state "No implementation found") as evidence for every finding.
+- Quote the relevant code as evidence for every finding. For a missing criterion or work package, quote the existing lines where it belongs and state the absence in the problem: a snippet that exists nowhere in the checkout demotes the finding to uncertain, and a sentinel exists nowhere.
 
 ## Finding Enrichment
 
-For EVERY finding, include: the Acceptance Criterion it concerns (quote it in the problem), a code snippet (the satisfying/contradicting lines, or "No implementation found"), and a concrete suggested fix.
+For EVERY finding, include: the Acceptance Criterion it concerns (quote it in the problem), a code snippet (the satisfying/contradicting lines, or for something missing the existing lines where it belongs), and a concrete suggested fix.
 
 `)
 	sb.WriteString(findingLabelsBlock())

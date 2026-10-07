@@ -94,7 +94,7 @@ For EACH task marked as "done":
 
 ## Finding Enrichment
 For EVERY finding:
-1. **Code Snippet**: Quote the exact lines from the diff that relate to the finding, or state "No implementation found" if the code is missing
+1. **Code Snippet**: Quote the exact lines from the diff that relate to the finding. For an item with no implementation, quote the existing lines where it belongs (the caller, the interface, or the test file the specification names) and say in the problem that no implementation was found: a snippet that exists nowhere in the checkout demotes the finding to uncertain, and a sentinel exists nowhere
 2. **Suggested Fix**: Describe what needs to change to satisfy the requirement
 3. **Related Findings**: Reference other findings from this review that are connected
 
