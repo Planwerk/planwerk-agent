@@ -20,7 +20,10 @@ docs. Name the slices that returned `clean`.
 
 One line per commit on the branch, newest last: `<sha> <theme>`, then the
 findings it cleared as `file:line` pairs. A golden regeneration is its own
-line when it stands alone.
+line when it stands alone. The repository merges by rebase, which rewrites
+every SHA on the branch: write the SHAs `main` carries after the merge (map
+the branch's commits by subject), and cite a change that waits on another
+pull request by that pull request and its theme, never by a branch SHA.
 
 ## Deferred
 
