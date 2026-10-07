@@ -2,7 +2,7 @@
 name: decide
 description: Settles the decisions a Meta Issue deferred when it was split — open items whose unverified recommendations its Sub Issues already assume — and records the outcomes in the Meta Issue and the Sub Issues that assumed them. Use when a Meta Issue carries a decisions or spike section with items nobody has confirmed yet, or when a Sub Issue exists solely to verify and record them.
 argument-hint: "<issue-ref>"
-allowed-tools: AskUserQuestion Read Grep Glob Write Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue view:*) Bash(gh issue edit:*) Bash(gh issue comment:*) Bash(gh api:*) Bash(git fetch:*) Bash(git status:*) Bash(git rev-parse:*) Bash(git switch:*) Bash(git merge --ff-only:*) Bash(git log:*) Bash(git show:*) Bash(wc:*) Bash(planwerk-agent brain memory:*)
+allowed-tools: AskUserQuestion Read Grep Glob Write Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue view:*) Bash(gh issue edit:*) Bash(gh issue comment:*) Bash(gh api:*) Bash(git fetch:*) Bash(git status:*) Bash(git rev-parse:*) Bash(git switch:*) Bash(git merge --ff-only:*) Bash(git log:*) Bash(git show:*) Bash(wc:*) Bash(diff:*) Bash(planwerk-agent brain memory:*)
 ---
 
 # Settle a Meta Issue's decisions
