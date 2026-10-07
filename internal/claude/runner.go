@@ -1008,7 +1008,7 @@ func envelopeFailure(raw []byte) string {
 		reason = resp.Subtype
 	}
 	status := strings.TrimSpace(string(resp.APIErrorStatus))
-	if status == "" || status == "null" {
+	if status == "" || status == jsonNull {
 		return reason
 	}
 	if reason == "" {

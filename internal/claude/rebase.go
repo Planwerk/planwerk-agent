@@ -7,6 +7,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/rebase"
 	"github.com/planwerk/planwerk-agent/internal/report"
+	"github.com/planwerk/planwerk-agent/internal/report/schema"
 )
 
 // ResolveRebaseConflict runs a fresh Claude Code session inside the checkout to
@@ -35,7 +36,7 @@ func (c *Client) AnalyzeRebasedCommits(dir string, ctx rebase.AnalysisContext) (
 		return nil, fmt.Errorf("analyzing rebased commits: %w", err)
 	}
 	var result report.RebaseAnalysis
-	if err := c.decodeJSONWithRepair(text, "structured rebase-analysis", &result); err != nil {
+	if err := c.decodeJSONWithRepairSchema(text, "structured rebase-analysis", string(schema.RebaseAnalysis), &result); err != nil {
 		return nil, err
 	}
 	result.Model = model

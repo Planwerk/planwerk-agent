@@ -8,6 +8,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/mdfence"
 	"github.com/planwerk/planwerk-agent/internal/report"
+	"github.com/planwerk/planwerk-agent/internal/report/schema"
 )
 
 // Address runs a fresh auto-mode Claude Code session inside the checkout to
@@ -24,7 +25,7 @@ func (c *Client) Address(dir string, ctx address.Context) (*report.AddressResult
 		return nil, fmt.Errorf("running address: %w", err)
 	}
 	var result report.AddressResult
-	if err := c.decodeJSONWithRepair(out, "structured address-result", &result); err != nil {
+	if err := c.decodeJSONWithRepairSchema(out, "structured address-result", string(schema.AddressResult), &result); err != nil {
 		return nil, err
 	}
 	result.Model = model
@@ -51,7 +52,7 @@ func BuildAddressPrompt(ctx address.Context) string {
 - "Open the file at the anchored hunk; do not guess." — The diff hunk shows where the comment was left. Open the actual source at that path and line before editing. Never invent code shapes or line numbers.
 - "Verify before committing." — Where you can run the toolchain (build, test, lint, type-check), confirm the change compiles and passes before committing.
 - "If you cannot address it, say so." — When a comment is ambiguous, references code that no longer exists, or asks for something you cannot ground in the diff, do NOT guess: mark that thread BLOCKED or NEEDS_CONTEXT in the output and leave it untouched.
-- "A reviewer can be wrong." — When you have concrete evidence the requested change would be incorrect (it would break behavior, contradict the issue, or reintroduce a bug), do NOT make the change and do NOT file the thread as BLOCKED: set its status to NEEDS_CONTEXT and state the disagreement with the file:line evidence in the summary, so a human decides.
+- "A reviewer can be wrong." — When you have concrete evidence the requested change would be incorrect (it would break behavior, contradict the pull request's stated intent, or reintroduce a bug), do NOT make the change and do NOT file the thread as BLOCKED: set its status to NEEDS_CONTEXT and state the disagreement with the file:line evidence in the summary, so a human decides.
 
 `)
 
@@ -169,7 +170,7 @@ func BuildBareAddressPrompt(ctx address.BareContext) string {
 - "Open the file at the anchored hunk; do not guess." — Open the actual source at the path and line the comment is anchored to before editing.
 - "Verify before committing." — Where you can run the toolchain, confirm the change compiles and passes before committing.
 - "If you cannot address it, say so." — When a comment is ambiguous or references code that no longer exists, do NOT guess: leave it untouched and report it.
-- "A reviewer can be wrong." — When you have concrete evidence the requested change would be incorrect (it would break behavior, contradict the issue, or reintroduce a bug), do NOT make the change and do NOT file the thread as BLOCKED: set its status to NEEDS_CONTEXT and state the disagreement with the file:line evidence in the summary, so a human decides.
+- "A reviewer can be wrong." — When you have concrete evidence the requested change would be incorrect (it would break behavior, contradict the pull request's stated intent, or reintroduce a bug), do NOT make the change and do NOT file the thread as BLOCKED: set its status to NEEDS_CONTEXT and state the disagreement with the file:line evidence in the summary, so a human decides.
 
 `)
 
