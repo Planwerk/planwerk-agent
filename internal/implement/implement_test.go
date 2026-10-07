@@ -2650,6 +2650,22 @@ func TestRun_FinalizeBlockedIsFatal(t *testing.T) {
 	}
 }
 
+// TestRun_FinalizeWithoutReportIsFatal: a finalize session that ended without
+// its STATUS line vouched for nothing, so the run fails the same way it does
+// on BLOCKED instead of reporting the pass complete with no pull request.
+func TestRun_FinalizeWithoutReportIsFatal(t *testing.T) {
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
+	cl := &fakeClaude{report: validImplReport}
+	ff := &fakeFinalizer{report: "I pushed the branch and will open the pull request next."}
+	r := newRunner(gh, cl)
+	r.Finalizer = ff
+
+	err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42"})
+	if err == nil || !strings.Contains(err.Error(), "without its report") {
+		t.Fatalf("Run returned %v, want a fatal error naming the missing report", err)
+	}
+}
+
 type fakeClaude struct {
 	called atomic.Int32
 	dir    string
@@ -3122,7 +3138,9 @@ func TestRun_PassesPatternsToClaude(t *testing.T) {
 	sa.onApply = func(ctx SimplifyApplyContext) { statCatalogFile("simplify-apply", ctx.Catalog.Dir) }
 	av := &fakeAdversarialVerifier{results: oneThenCleanReview(reviewTestProdFile)}
 	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
-	ra.onApply = func(ctx ReviewApplyContext) { statCatalogFile(fmt.Sprintf("review-apply (source %q)", ctx.Source), ctx.Catalog.Dir) }
+	ra.onApply = func(ctx ReviewApplyContext) {
+		statCatalogFile(fmt.Sprintf("review-apply (source %q)", ctx.Source), ctx.Catalog.Dir)
+	}
 	r := simplifyRunner(gh, cl, sf, sa)
 	r.Planner = fp
 	r.AdversarialVerifier = av

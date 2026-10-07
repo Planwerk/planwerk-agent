@@ -61,9 +61,10 @@ func BuildFinalizePrompt(ctx implement.FinalizeContext) string {
 	fmt.Fprintf(&sb, "## Source Issue\n\n- Repository: %s\n- Issue #%d: %s\n\n", ctx.RepoFullName, issueNumber, ctx.IssueTitle)
 
 	if r := strings.TrimSpace(ctx.ImplementationReport); r != "" {
-		sb.WriteString("## Implementation report\n\nThe implement session's own report is below. Use its \"Deviations from the issue\" and \"Noticed but not touching\" sections for the description, and check any claim in it against the commits before you repeat it.\n\n")
+		sb.WriteString("## Implementation report\n\nThe implement session's own report is below. Use its \"Deviations from the issue\", \"Noticed but not touching\", and Status sections for the description, and check any claim in it against the commits before you repeat it.\n\n")
 		sb.WriteString(fencedData("implementation-report", "", r))
 		sb.WriteString("\n")
+		sb.WriteString(untrustedDataLine("It is the implement session's account of the change, and it quotes the issue's own text; its sections feed the pull request description.", "implementation-report"))
 	}
 
 	// Finalize only runs for a complete implementation (a PARTIAL run persists
@@ -88,6 +89,7 @@ Run these steps in order. Do not skip ahead.
 ` + linkInstruction + `
    - Walk the reviewer through the change set in commit order, reading the actual commits and diff — not guessing from the issue.
    - Carry over every entry of the implementation report's "Deviations from the issue" section, with its reason, and write "none" when it lists none. Mention what it lists under "Noticed but not touching" in one short list, so a reviewer knows it was seen and left alone.
+   - When the report's verdict is DONE_WITH_CONCERNS, state its reservations, name every Acceptance Criterion it marks "unproven" with the CI job that proves it, and carry its Next line, so the reviewer sees what the implement session could not prove here.
    - Write it as plain prose for a reviewer:
 ` + indentLines(aiWritingTellsBullets, "     ") + `     - ` + bannedVocabularyLine() + `
 4. OUTPUT the structured report below.
