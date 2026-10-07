@@ -156,6 +156,12 @@ what must still verify it. Never fold an unanswered call into a phase.
 
 ## Phase 5 — Carve the phases
 
+When nothing survived Phase 3 and Phase 4 (every lead refuted, every author's
+call settled as Healthy), there is nothing to carve and nothing to file: report
+the bucket totals, the detectors that ran and the ones that were missing, and
+stop. A survey Meta Issue with no phase is not a result, and Phase 6 and Phase
+7 are not reached.
+
 Each phase is one future Sub Issue, and one issue is one complete pull
 request — size every phase so a single session can land it. Then:
 

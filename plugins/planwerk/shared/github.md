@@ -157,6 +157,13 @@ split per `issue-format.md`), then pass its path. `gh issue create`
 prints the new issue's URL on stdout; parse the trailing number from it rather
 than assuming the next number in sequence.
 
+When a write fails after an earlier one landed (a continuation comment after
+its issue, a Sub Issue after its Meta Issue, a link after both), stop writing.
+Report what landed, by number and URL, and what did not, with the error as `gh`
+printed it. Never retry the write that landed, and never delete what landed to
+start over: the author decides whether to finish by hand or to run the skill
+again against what exists.
+
 ## Labels
 
 Attach only labels the author asked for. This project's convention is that
