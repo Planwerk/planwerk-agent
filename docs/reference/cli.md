@@ -519,6 +519,10 @@ rebased commit against the upstream commits that entered the base since the PR
 forked and report concrete per-commit adjustments — even where git produced no
 textual conflict. History is force-pushed only with `--push`.
 
+The command runs unattended, so a conflict it cannot reconcile aborts the
+rebase. When you are in the checkout and can settle that conflict yourself, use
+the [`/planwerk:rebase` skill](/how-to/rebase-a-pr-interactively) instead.
+
 ```bash
 planwerk-agent rebase owner/repo#123
 planwerk-agent rebase --onto develop owner/repo#123

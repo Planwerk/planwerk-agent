@@ -158,8 +158,8 @@ To let the skills read the memory:
    flag decides first, then the config file, then the environment variable.
 
 With the wiki off, or with a wiki that has no memory pages, the command prints
-nothing and the skill proceeds without a memory. The `draft`, `humanize`, and
-`cleanup` skills read none. A skill run proposes and pushes no wiki page.
+nothing and the skill proceeds without a memory. The `draft`, `humanize`,
+`cleanup`, and `rebase` skills read none. A skill run proposes and pushes no wiki page.
 
 ## Private wikis
 

@@ -21,6 +21,12 @@ planwerk-agent rebase --local --push
 
 See the [CLI reference](/reference/cli#rebase) for the full flag table.
 
+When you are sitting in a checkout of the pull request and want to settle the
+conflicts yourself, the [`/planwerk:rebase` skill](/how-to/rebase-a-pr-interactively)
+does the same work in your session: it brings you the conflicts the two sides
+genuinely disagree on, pushes only after you say yes, and corrects the pull
+request body the rewrite left stale.
+
 ## How it works
 
 1. **Resolve the PR.** Without `--local` the PR head is cloned into a temp dir;

@@ -1,11 +1,11 @@
 # Use the skills
 
-planwerk-agent ships eleven Claude Code Skills. Six author the issues the rest
+planwerk-agent ships twelve Claude Code Skills. Six author the issues the rest
 of the pipeline consumes, one settles the decisions a Meta Issue deferred to a
 spike, one implements a prepared issue directly in your checkout, one diagnoses
 a reported bug from a failing reproduction to its fix, one repairs a pull
-request whose checks went red, and one rewrites prose that reads
-machine-written:
+request whose checks went red, one rebases a pull request whose base moved,
+and one rewrites prose that reads machine-written:
 
 | Skill | What it does |
 |-------|--------------|
@@ -19,17 +19,20 @@ machine-written:
 | `/planwerk:implement` | Implements a prepared issue in your checkout — a plan you approve in plan mode, one complete pull request behind your yes, none of the pipeline's passes |
 | `/planwerk:diagnose` | Reproduces a reported bug with a feedback loop that goes red before any theory, and fixes the root cause behind a regression test in one pull request |
 | `/planwerk:fix` | Repairs a pull request's failing CI checks, and asks you at the forks a diagnosis cannot settle |
+| `/planwerk:rebase` | Rebases a pull request onto its base in your checkout, resolves each conflict so both sides survive, settles the review threads the base already answered, and corrects what the rewrite left stale in the PR body |
 | `/planwerk:humanize` | Rewrites existing prose to remove the signs of AI writing, preserving every fact |
 
 `draft` and `meta` replace the subcommands of the same names, which were
 removed. Each skill needs decisions only a human can make, and a skill can ask
 for them mid-run in a way a one-shot subcommand never could.
 
-Three exist both ways. `elaborate` is also the
-[`elaborate` command](/reference/cli#elaborate), and `fix` is also the
-[`fix` command](/reference/cli#fix), for unattended use in CI. Reach for a
+Four exist both ways. `elaborate` is also the
+[`elaborate` command](/reference/cli#elaborate), `fix` is also the
+[`fix` command](/reference/cli#fix), and `rebase` is also the
+[`rebase` command](/reference/cli#rebase), for unattended use in CI. Reach for a
 command when nobody is watching — it has to guess where the skill would have
-asked. For `implement` the difference is more than supervision: the
+asked, and the `rebase` command can only abort at a conflict the skill would
+bring to you. For `implement` the difference is more than supervision: the
 [`implement` command](/reference/cli#implement) runs simplify, review, and
 verification passes over the result, which the skill deliberately omits — you
 approve the plan and read the diff instead. `diagnose` exists only as a skill:
@@ -48,7 +51,8 @@ claude plugin install planwerk@planwerk-agent
 Restart Claude Code. `/planwerk:draft`, `/planwerk:elaborate`,
 `/planwerk:cleanup`, `/planwerk:meta`, `/planwerk:decide`, `/planwerk:revisit`,
 `/planwerk:clarify`, `/planwerk:implement`, `/planwerk:diagnose`,
-`/planwerk:fix`, and `/planwerk:humanize` are now available in any session.
+`/planwerk:fix`, `/planwerk:rebase`, and `/planwerk:humanize` are now available
+in any session.
 
 To update after a new release:
 
@@ -75,8 +79,8 @@ the repo whose issue you are working on. `/planwerk:implement` goes further: it
 writes code, so it needs a clean working tree it can branch in, on an
 up-to-date default branch. `/planwerk:diagnose` writes code too: it needs a
 clean working tree on an up-to-date default branch, and the repository's own
-build and test tooling, which its loop runs. `/planwerk:fix` needs the PR's own
-head branch checked out, with a clean working tree. `/planwerk:cleanup` surveys the code
+build and test tooling, which its loop runs. `/planwerk:fix` and `/planwerk:rebase`
+need the PR's own head branch checked out, with a clean working tree. `/planwerk:cleanup` surveys the code
 itself, so it always runs from inside a checkout, on an up-to-date default
 branch. `/planwerk:draft`
 and `/planwerk:meta` only talk to the GitHub API and need no checkout.
@@ -239,6 +243,30 @@ one is right. It folds the repair into the commit that introduced the bug and
 pushes only once you say so. See
 [Fix failing checks](/how-to/fix-failing-checks).
 
+## Rebase the pull request when its base moved
+
+```
+/planwerk:rebase owner/repo#123
+```
+
+Run it from inside a checkout of the PR's head branch; with no argument it
+targets the pull request for the branch you are on, and `--onto` names a base
+other than the one the PR targets. The skill records the fork point, every
+commit's SHA, and the PR body before it rewrites anything, reads what upstream
+did to the paths both sides changed, and replays each commit as itself. A
+conflict is resolved so that both the replayed commit and the upstream change
+survive; a side-pick is never an option. The two conflicts that are yours reach
+you with a recommendation: the sides want different behavior, or a commit no
+longer makes sense on the new base. After a clean replay it runs the
+repository's own gate and folds in what the rebase broke. It then reads the
+open review threads and finds the ones the upstream range settled, a request
+that moved into its own issue and landed on the base before the branch did,
+and proposes resolving each with a reply naming the evidence. It pushes with
+`--force-with-lease` only once you say so, resolves the threads you approved,
+and repairs the PR body: the SHA references the rewrite stranded, and the
+sentences a resolution changed the truth of, nothing else. See
+[Rebase a PR interactively](/how-to/rebase-a-pr-interactively).
+
 ## Humanize prose that reads machine-written
 
 ```
@@ -256,8 +284,9 @@ GitHub; you review the result with `git diff`. See
 ## Nothing reaches GitHub without a yes
 
 Every skill reads GitHub freely and writes only once, behind an explicit
-confirmation. If you decline, nothing is created, `/planwerk:fix` pushes
-nothing, and `/planwerk:implement` and `/planwerk:diagnose` leave their branch local. `/planwerk:humanize` never writes to GitHub at all: it edits files in
+confirmation. If you decline, nothing is created, `/planwerk:fix` and
+`/planwerk:rebase` push nothing, and `/planwerk:implement` and
+`/planwerk:diagnose` leave their branch local. `/planwerk:humanize` never writes to GitHub at all: it edits files in
 your working tree, and confirms the file list first when it inferred one
 rather than being given it. If you skip a question, the skill records it as an unresolved decision
 in the issue — or, for `fix`, as a concern in its report — rather than quietly
@@ -305,7 +334,7 @@ A repository can keep a project memory on its GitHub Wiki: one page per
 decision, convention, or piece of context. `elaborate`, `implement`, `fix`,
 `revisit`, `clarify`, `decide`, `diagnose`, and `meta` read it, so a plan, a
 split, or a repair does not contradict a decision the team already recorded.
-`draft`, `humanize`, and `cleanup` do not.
+`draft`, `humanize`, `cleanup`, and `rebase` do not.
 
 The skills read the memory through the binary and never clone the wiki
 themselves:
@@ -393,7 +422,9 @@ issue has been sitting long enough for the branch to move under it, and
 more than it catches, `/planwerk:implement` takes the implement step
 interactively, in your own checkout. A reported bug whose cause nobody knows
 yet enters at `/planwerk:diagnose`, and its pull request's checks are
-`/planwerk:fix`'s from there. Or `/planwerk:meta` → `planwerk-agent ship` to drive every Sub
+`/planwerk:fix`'s from there. A pull request whose base moved under it goes
+through `/planwerk:rebase` before `/planwerk:fix`, so a check that is red only
+because of the drift is never repaired as if the code were wrong. Or `/planwerk:meta` → `planwerk-agent ship` to drive every Sub
 Issue to merged in dependency order. `ship` reads the native sub-issue and
 `blocked by` relationships `/planwerk:meta` writes, which is why the skill
 records the dependency graph as real GitHub relationships and not as prose.
