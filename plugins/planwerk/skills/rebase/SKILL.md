@@ -86,8 +86,10 @@ Stop, and let the author decide, when any of these holds:
 
 When `origin/<base>` is already an ancestor of `HEAD`
 (`git merge-base --is-ancestor origin/<base> HEAD` exits 0), the branch is up
-to date. Say so, and stop: there is nothing to replay and nothing in the body
-to correct.
+to date: there is nothing to replay and nothing in the body to correct. Say so
+and write the Phase 8 report with `DONE`, `Replayed: 0 commit(s)`, and every
+other field at its unchanged value; a report that says the branch needed
+nothing is the run's result.
 
 When `--onto` names a branch other than the PR's base, the rebase alone leaves
 the pull request comparing against the old base. Say so now, and carry the
@@ -168,6 +170,17 @@ no longer has a change to make. When a replayed commit becomes empty by git's
 own measure (the replay stops with nothing to commit) because upstream already
 carries it, `git rebase --skip` is the right action, and the report names the
 dropped commit.
+
+When a hook rejects a replayed commit at `git rebase --continue`, the replay
+stops on that commit with its tree in place. Whose finding it is decides what
+happens: when the rule, or the code it checks, entered with the upstream range
+(the same commit passes the hook at `$before`), the rejection is a conflict git
+did not see; repair it in that commit, stage the repair, and continue, and the
+report names it under Adjustments as Phase 4 would. When the commit fails the
+hook at `$before` too, the rebase did not cause it, and nothing here edits a
+commit for a reason the rebase did not introduce: `git rebase --abort`, and
+report `BLOCKED` with the commit, the hook, and what it printed. `--no-verify`
+is never the answer (the rules at the top).
 
 Two conflicts are the author's, one `AskUserQuestion` each, in the option shape
 `interaction.md` gives under "One decision, one question":
@@ -389,7 +402,9 @@ every thread the upstream range settled resolved with its evidence.
 must see: a gate that could not run here, a dropped commit, a pre-existing
 failure handed to `/planwerk:fix`, a push the author declined, or a fork the
 author declined to answer; say which.
-`BLOCKED` means a conflict could not be reconciled and the branch is as it was.
+`BLOCKED` means a conflict could not be reconciled, or a hook rejected a
+replayed commit for a reason the rebase did not introduce, and the branch is as
+it was.
 `NEEDS_CONTEXT` means only a human holds the missing fact.
 
 Stopping at `BLOCKED` is a successful run. A side-pick that compiles costs the
