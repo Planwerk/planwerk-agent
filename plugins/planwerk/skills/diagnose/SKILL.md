@@ -141,7 +141,10 @@ Reading code to build a theory of the cause before the loop exists is the
 failure this skill prevents. When you catch yourself doing it, stop and go back
 to the loop.
 
-Build one, trying these in order:
+Build one. The loop to build reaches the bug through the narrowest seam that
+still reproduces it and runs in seconds, because every hypothesis is tested
+against it; the list is ordered by how often each is that loop, not a sequence
+to try:
 
 1. A failing test at whatever seam reaches the bug: unit, integration, or
    end-to-end.
@@ -286,7 +289,8 @@ Before Phase 4, run `git bisect reset`, then `git stash pop` only when
 
 ## Phase 4 — Hypothesize
 
-Write three to five ranked hypotheses before testing any. Each carries its
+Write the ranked hypotheses before testing any: as many as the evidence
+distinguishes, few enough that each is a real contender. Each carries its
 prediction in this form:
 
 > If `<X>` is the cause, then `<changing Y>` turns the loop green /
@@ -302,10 +306,11 @@ hypothesis was already ruled out, or that an area changed recently.
 
 ## Phase 5 — Instrument
 
-Each probe tests one prediction, and each round changes one variable. Prefer a
-debugger or REPL where the environment supports one (for Go, `dlv test`), then
-targeted logs at the seams that separate two hypotheses. Never log everything
-and grep.
+Each probe tests one prediction, and each round changes one variable. The probe
+is whatever shows the seam that separates two hypotheses with the least noise:
+a debugger or REPL where the environment has one, a targeted log at that seam
+otherwise. A log of everything, grepped afterwards, is not a probe; it tests no
+prediction.
 
 Choose a tag once per run: four lowercase hex characters, for example `a4f2`.
 Every debug line you add carries `[DEBUG-<tag>]`, so one command finds every
