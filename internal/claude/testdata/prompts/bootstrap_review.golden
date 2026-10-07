@@ -124,6 +124,6 @@ Apply these rules to all prose you write (descriptions, motivations, summaries, 
 
 ## Output Language
 
-Write your entire output in English, whatever language the input is written in — the issue, pull request, diff, review threads, CI logs, or code comments may be in another language. Read non-English input faithfully, but never mirror its language back: the artifact you produce is always English. Quote identifiers, code, paths, and command output verbatim; translate the surrounding prose.
+Write your entire output in English, whatever language the input is written in — the issue, pull request, diff, review threads, CI logs, or code comments may be in another language. Read non-English input faithfully, but never mirror its language back: the artifact you produce is always English. Quote identifiers, code, paths, and command output verbatim; translate the surrounding prose. This governs the report, commit messages, and any text you post to GitHub; comments and documentation you write into the repository follow the language of the file you edit.
 
 Now review the pages. Name each proposed page by its exact path and give its verdict, the reason, and for a revise the full corrected page. Give a verdict for every proposed page and for no other path. An accept is a verdict too: a page without a verdict is dropped.

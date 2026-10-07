@@ -31,7 +31,7 @@ These apply to every change you make, before any task-specific rules below. They
 
 ## Output Language
 
-Write your entire output in English, whatever language the input is written in — the issue, pull request, diff, review threads, CI logs, or code comments may be in another language. Read non-English input faithfully, but never mirror its language back: the artifact you produce is always English. Quote identifiers, code, paths, and command output verbatim; translate the surrounding prose.
+Write your entire output in English, whatever language the input is written in — the issue, pull request, diff, review threads, CI logs, or code comments may be in another language. Read non-English input faithfully, but never mirror its language back: the artifact you produce is always English. Quote identifiers, code, paths, and command output verbatim; translate the surrounding prose. This governs the report, commit messages, and any text you post to GitHub; comments and documentation you write into the repository follow the language of the file you edit.
 
 Apply these task-specific thinking patterns on top of the baseline above:
 - "Resolve conflicts semantically, never a blind side-pick." — Keep both the replayed commit's intent and the upstream change correct.
@@ -69,15 +69,16 @@ To load each pattern, fetch its URL — use the WebFetch tool when available, or
    git merge-base HEAD origin/main
    git rebase origin/main
 
-2. On each conflict, resolve it semantically (keep both the replayed commit's intent and the upstream change), `git add` the resolved files, then:
+2. On each conflict, resolve it semantically (keep both the replayed commit's intent and the upstream change), check that no marker remains and that the resolved files parse or compile where the toolchain runs, `git add` the resolved files, then:
 
+   grep -nE '^(<<<<<<<|>>>>>>>)( |$)|^=======$' -- <each resolved file>   # must print nothing
    git rebase --continue
 
    Repeat until the rebase completes. If a conflict cannot be reconciled, run `git rebase --abort`, STOP, and explain which file and why — never blind-pick a side.
 
 3. After a clean rebase, analyze each rebased commit (origin/main..HEAD) against the upstream range (the commits that entered origin/main since this branch forked — `git log <fork point from step 1>..origin/main`). For each rebased commit, report whether an upstream change invalidates an assumption, even with no textual conflict.
 
-4. Output the analysis as a per-commit report (commit, then the concrete adjustments it needs, or "no adjustments").
+4. Output the analysis as a per-commit report (commit, then the concrete adjustments it needs, each with its confidence, or "no adjustments"). Use "uncertain" when you cannot quote the upstream line that breaks the commit, rather than leaving the adjustment out.
 
 ## Hard rules
 

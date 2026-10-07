@@ -180,6 +180,7 @@ func BuildBareAddressPrompt(ctx address.BareContext) string {
 	sb.WriteString("You are already running inside a checkout of this PR's head branch. Do NOT re-checkout, do NOT clone. Operate on the working tree you have.\n\n")
 
 	sb.WriteString(renderBareCatalog(ctx.PatternCatalog, ctx.HasRepoLocalRefs))
+	sb.WriteString(docProseBlock())
 
 	fmt.Fprintf(&sb, `## Fetch the review threads
 

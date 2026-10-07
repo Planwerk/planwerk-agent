@@ -320,15 +320,16 @@ func BuildBareRebasePrompt(ctx rebase.BareContext) string {
    git merge-base HEAD origin/%[1]s
    git rebase origin/%[1]s
 
-2. On each conflict, resolve it semantically (keep both the replayed commit's intent and the upstream change), `+"`git add`"+` the resolved files, then:
+2. On each conflict, resolve it semantically (keep both the replayed commit's intent and the upstream change), check that no marker remains and that the resolved files parse or compile where the toolchain runs, `+"`git add`"+` the resolved files, then:
 
+   grep -nE '^(<<<<<<<|>>>>>>>)( |$)|^=======$' -- <each resolved file>   # must print nothing
    git rebase --continue
 
    Repeat until the rebase completes. If a conflict cannot be reconciled, run `+"`git rebase --abort`"+`, STOP, and explain which file and why — never blind-pick a side.
 
 3. After a clean rebase, analyze each rebased commit (origin/%[1]s..HEAD) against the upstream range (the commits that entered origin/%[1]s since this branch forked — `+"`git log <fork point from step 1>..origin/%[1]s`"+`). For each rebased commit, report whether an upstream change invalidates an assumption, even with no textual conflict.
 
-4. Output the analysis as a per-commit report (commit, then the concrete adjustments it needs, or "no adjustments").
+4. Output the analysis as a per-commit report (commit, then the concrete adjustments it needs, each with its confidence, or "no adjustments"). Use "uncertain" when you cannot quote the upstream line that breaks the commit, rather than leaving the adjustment out.
 
 ## Hard rules
 

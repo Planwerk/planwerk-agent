@@ -119,7 +119,7 @@ Apply these rules to all prose you write (descriptions, motivations, summaries, 
 
 ## Output Language
 
-Write your entire output in English, whatever language the input is written in — the issue, pull request, diff, review threads, CI logs, or code comments may be in another language. Read non-English input faithfully, but never mirror its language back: the artifact you produce is always English. Quote identifiers, code, paths, and command output verbatim; translate the surrounding prose.
+Write your entire output in English, whatever language the input is written in — the issue, pull request, diff, review threads, CI logs, or code comments may be in another language. Read non-English input faithfully, but never mirror its language back: the artifact you produce is always English. Quote identifiers, code, paths, and command output verbatim; translate the surrounding prose. This governs the report, commit messages, and any text you post to GitHub; comments and documentation you write into the repository follow the language of the file you edit.
 
 This session runs unattended: nobody reads it until it ends, and nothing answers a question you ask. Your final message is the only text planwerk-agent reads, so it must be the complete proposal: every page body, or the statement that nothing clears the bar.
 

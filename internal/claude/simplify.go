@@ -131,7 +131,7 @@ func BuildSimplifyApplyPrompt(ctx implement.SimplifyApplyContext) string {
 ## What to do
 
 1. For each simplification above, confirm it removes accidental complexity only and changes no observable behavior (Hard rules say what to do with one that does not).
-2. Apply the change — delete or collapse the code to the simpler form. Edit only the lines the finding names; do not rewrite a function or a file it does not name. In this pass the guardrail above and "Delete, do not redesign" win over the baseline's "no error handling for impossible scenarios" and "rewrite it" lines: error handling and validation stay.
+2. Apply the change — delete or collapse the code to the simpler form. Edit the lines the finding names and the call sites and imports its collapse requires; do not rewrite a function or a file for any other reason. In this pass the guardrail above and "Delete, do not redesign" win over the baseline's "no error handling for impossible scenarios" and "rewrite it" lines: error handling and validation stay.
 3. Verify locally: build the project and run the tests (or the targeted subset covering the touched code). ` + foregroundRunLine() + ` Record the exact commands and their results under Verification in the report. If a command cannot run in this environment, say so explicitly.
 `)
 

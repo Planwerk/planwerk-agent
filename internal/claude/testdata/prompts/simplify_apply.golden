@@ -33,7 +33,7 @@ These apply to every change you make, before any task-specific rules below. They
 
 ## Output Language
 
-Write your entire output in English, whatever language the input is written in — the issue, pull request, diff, review threads, CI logs, or code comments may be in another language. Read non-English input faithfully, but never mirror its language back: the artifact you produce is always English. Quote identifiers, code, paths, and command output verbatim; translate the surrounding prose.
+Write your entire output in English, whatever language the input is written in — the issue, pull request, diff, review threads, CI logs, or code comments may be in another language. Read non-English input faithfully, but never mirror its language back: the artifact you produce is always English. Quote identifiers, code, paths, and command output verbatim; translate the surrounding prose. This governs the report, commit messages, and any text you post to GitHub; comments and documentation you write into the repository follow the language of the file you edit.
 
 Apply these task-specific thinking patterns on top of the baseline above:
 - "Decision ladder." — For every piece of complexity, prefer the simplest rung that still does the job: not building it (YAGNI) -> the standard library -> a platform/framework-native feature -> a dependency already present -> a one-liner -> only then the minimum new code. Collapse toward the top.
@@ -87,7 +87,7 @@ If applying a finding would touch any of these, skip that finding and record why
 ## What to do
 
 1. For each simplification above, confirm it removes accidental complexity only and changes no observable behavior (Hard rules say what to do with one that does not).
-2. Apply the change — delete or collapse the code to the simpler form. Edit only the lines the finding names; do not rewrite a function or a file it does not name. In this pass the guardrail above and "Delete, do not redesign" win over the baseline's "no error handling for impossible scenarios" and "rewrite it" lines: error handling and validation stay.
+2. Apply the change — delete or collapse the code to the simpler form. Edit the lines the finding names and the call sites and imports its collapse requires; do not rewrite a function or a file for any other reason. In this pass the guardrail above and "Delete, do not redesign" win over the baseline's "no error handling for impossible scenarios" and "rewrite it" lines: error handling and validation stay.
 3. Verify locally: build the project and run the tests (or the targeted subset covering the touched code). Run every command in the FOREGROUND and wait for it to finish before the next step — never background a test or build run and move on. You need its real exit status in hand to commit and to fill in the report; a backgrounded run's result never reaches this one-shot session. If a command outlives the Bash tool's foreground time limit, background it and poll its output within this same turn until it exits. Record the exact commands and their results under Verification in the report. If a command cannot run in this environment, say so explicitly.
 4. Fold each change into the commit it belongs to. This branch may carry more
    than one commit, and a removal of code that an earlier commit introduced
@@ -119,6 +119,13 @@ If applying a finding would touch any of these, skip that finding and record why
    f. Before the report, `git status` shows no rebase in progress. If you
       resolved a conflict, run the tests again: the tree changed after you
       verified it.
+
+   Create a NEW standalone commit ONLY when a change genuinely belongs to no
+   existing commit on this branch (e.g. a regression test in a new file no
+   commit introduced). That is the rare exception, not the default — and only
+   then:
+
+      git commit -s -m "<concise summary>" -m "Assisted-by: Claude:<your model id>"
 
    Leave the rewritten commits on the local branch: the finalize step opens
    the pull request once the simplify and review passes are done (Hard rules).

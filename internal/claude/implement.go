@@ -503,7 +503,7 @@ func renderResumeSection(rc *implement.ResumeContext) string {
 	}
 	if prior := strings.TrimSpace(rc.PriorReport); prior != "" {
 		sb.WriteString(`
-The stopped session's final account is preserved below. Treat it as your map, not as truth: it records what that session had already implemented and verified — commits made, verification commands that already passed, and what was still outstanding when it stopped. Focus your work on the outstanding part, re-verify the account's claims cheaply (git log, re-run a check only where doubt exists) instead of redoing every verification from scratch, and never contradict the actual repository state in its favor.
+The stopped session's final account is preserved below. Treat it as your map, not as truth: it records what that session had already implemented and verified — commits made, verification commands that already passed, and what was still outstanding when it stopped. Focus your work on the outstanding part, re-verify the account's claims cheaply (git log, re-run a check only where doubt exists) instead of redoing every verification from scratch, and never contradict the actual repository state in its favor. The report's Local verification lists only commands you ran in this session, after your last commit: the account's passes are its evidence, not yours.
 
 ` + fencedData("previous-session-account", "", prior) + "\n" + untrustedDataLine("It is the stopped session's account of how far it got.", "previous-session-account"))
 	}
@@ -607,7 +607,7 @@ ALWAYS end the session with this report — even if you stopped early or hit a c
    ### Acceptance Criteria
    - <criterion verbatim>
      - Status: <satisfied | unproven | partial | missing>
-     - Evidence: <file:lines that satisfy it, or the test that exercises it — cite the edge or error test, not a happy-path one, when a new test covers the criterion — or "see PR description">
+     - Evidence: <file:lines that satisfy it, or the test that exercises it — cite the edge or error test, not a happy-path one, when a new test covers the criterion>
    - (unproven = the test that proves the criterion is written and committed but cannot run here — it needs a cluster, a credential, or a job that only CI runs; name the test and the CI job that runs it. An unproven criterion is not partial: partial and missing describe code or tests you have not written.)
    ### Commits
    - <sha7> <subject>

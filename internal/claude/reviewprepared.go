@@ -51,7 +51,7 @@ Apply these thinking patterns:
 		fmt.Fprintf(&sb, "Repository: %s\n\n", ctx.RepoName)
 	}
 
-	sb.WriteString(patternCatalogBlock("## Review Patterns (context, not the focus)",
+	sb.WriteString(patternContextBlock("## Review Patterns (context, not the focus)",
 		"These are the project's review patterns. Use them as a sanity lens to judge whether the SPEC anticipates them — for example, if a pattern says 'every public API needs docs' and the spec lacks a docs task, that's a finding.",
 		ctx.Catalog, ctx.Patterns, ctx.MaxPatterns))
 
@@ -107,7 +107,7 @@ For each finding, include:
 - INFO: a polish issue (typo, missing summary, ambiguous priority text).
 
 ## Verification rules (mandatory)
-- Every finding cites the exact spec_pointer and carries a 1-2 sentence description; the structuring step copies both.
+- Every finding cites the exact spec_pointer and carries a short description of what is wrong and why it matters; the structuring step copies both.
 - If a feature is in great shape, emit it with an empty findings array and a positive 1-sentence summary.
 
 `)
@@ -136,7 +136,7 @@ Rules for the rewrite:
 
 When you are done, emit a review that opens with an overview (how many features you reviewed, the headline themes, and the one or two most important findings), then one section per feature_id. For every feature provide:
 - Per-finding entries with the fields described above.
-- A 1-3 sentence "summary" of the spec's overall state.
+- A short "summary" of the spec's overall state.
 `)
 	if ctx.IncludeImproved {
 		sb.WriteString("- The full rewritten feature JSON, for a feature with at least one finding.\n")
@@ -221,7 +221,7 @@ func buildReviewPreparedStructurePrompt(rawAnalysis string, includeImproved bool
       "feature_id": "PX-0028",
       "feature_file": "PX-0028-...json",
       "title": "Feature title from the spec",
-      "summary": "1-3 sentence verdict for this specific feature.",` + improvedField + `
+      "summary": "The feature's verdict, copied from the report.",` + improvedField + `
       "findings": [
         {
           "id": "",
@@ -230,7 +230,7 @@ func buildReviewPreparedStructurePrompt(rawAnalysis string, includeImproved bool
           "category": "stories|requirements|tasks|tests|review_criteria|implementation_notes|other",
           "severity": "CRITICAL|WARNING|INFO",
           "title": "Short, specific finding title (no severity prefix, no brackets)",
-          "description": "What is wrong and why it matters. 1-3 sentences.",
+          "description": "What is wrong and why it matters, copied from the report.",
           "suggestion": "Concrete edit text. Copy-paste-ready when possible.",
           "spec_pointer": "JSON-pointer-ish path inside the spec, e.g. stories[2].criteria[1] or requirements[REQ-005].scenarios[0]",
           "confidence": "verified|likely|uncertain"
