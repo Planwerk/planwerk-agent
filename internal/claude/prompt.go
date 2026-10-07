@@ -57,12 +57,12 @@ Review the FULL pull request diff — every commit between origin/%s and HEAD mu
 
 These rules exist because a reader acts on what the review claims, and a claim the code does not back misleads them.
 
-- QUOTE-OR-DEMOTE: every finding MUST quote the exact triggering line(s) verbatim from the diff in its code snippet. If you cannot quote the line, set confidence to "uncertain" — NEVER invent, paraphrase, or reconstruct a snippet to make a finding look verified. Unverifiable findings are downgraded automatically; fabricating a snippet defeats the gate.
+- QUOTE-OR-DEMOTE: every finding MUST quote the exact triggering line(s) verbatim from the diff in its code snippet; the Confidence label below says what to do when you cannot. Unverifiable findings are downgraded automatically; fabricating a snippet defeats the gate.
 - NEVER say "this is probably tested" — name the specific test file and test function, or flag as "test coverage unknown"
 - NEVER say "this is handled elsewhere" — cite the exact file and line that handles it, or say "not verified"
 - NEVER say "the caller validates this" — name the caller and the validation, or say "unverified assumption"
 - NEVER assume error handling exists unless you can see it in the diff or trace it in the codebase
-- If you are not sure an issue is real, report it anyway: state the claim plainly, prefix its problem with "UNVERIFIED:", and set its Confidence to uncertain. Uncertain findings are filed in a separate section, so reporting one costs the reader little, while dropping a real bug costs a lot.
+- If you are not sure an issue is real, report it anyway: state the claim plainly, prefix its problem with "UNVERIFIED:", and set its Confidence to uncertain. An uncertain warning or nit is filed in a separate section and an uncertain blocker goes to a claim check, so reporting one costs the reader little, while dropping a real bug costs a lot.
 - When referencing code outside the diff, always prefix with the file path (e.g. "In cmd/main.go:42, ...")
 
 `)
@@ -227,7 +227,6 @@ Every finding you report includes:
 5. **Fix Options** (REQUIRED for needs-discussion and architectural findings; OMIT for auto-fix):
    Provide 2-3 alternative approaches (label them A, B, C). For each option supply: ` + "`approach`" + ` (one sentence), ` + "`pros`" + `, ` + "`cons`" + `, ` + "`effort`" + ` (LOW | MED | HIGH), and ` + "`risk_if_skipped`" + ` (what happens if this option is NOT chosen).
    Then pick exactly ONE option as the recommendation in ` + "`recommended_option`" + ` (matching the chosen option's id) and justify it in ` + "`recommendation_reasoning`" + ` (1-2 sentences referencing codebase patterns, the relevant review-pattern source, or project constraints).
-   For ` + "`auto-fix`" + ` findings DO NOT emit options — the single ` + "`suggested_fix`" + ` from rule 2 is the entire output.
 
 `)
 

@@ -1397,6 +1397,19 @@ func TestBuildSpecialistPrompt_Golden(t *testing.T) {
 	assertGoldenPrompt(t, "specialist_security", buildSpecialistPrompt("develop", specialistByKey(t, "security"), nil, 0))
 }
 
+// TestBuildSpecialistPrompt_EveryDomain_Golden locks the prompt of every
+// registered specialist, so an edit to one domain's Focus text shows up as a
+// golden diff like any other prompt edit; the security goldens above cover the
+// catalog forms, which the Focus text does not change.
+func TestBuildSpecialistPrompt_EveryDomain_Golden(t *testing.T) {
+	for _, sp := range Specialists {
+		if sp.Key == "security" {
+			continue
+		}
+		assertGoldenPrompt(t, "specialist_"+sp.Key, buildSpecialistPrompt("develop", sp, nil, 0))
+	}
+}
+
 // TestBuildSpecialistPrompt_Patterns_Golden locks a domain specialist's prompt
 // when it is grounded in the project review-pattern catalog: the
 // <review-patterns> block appears with its in-domain framing, carrying only the
