@@ -101,6 +101,7 @@ Apply the `Documentation Structure (Diátaxis)` review pattern to every document
 
 Scan declared dependencies (go.mod, package.json, requirements.txt, pyproject.toml, Cargo.toml, pom.xml, GitHub Actions workflow files, Dockerfiles, Helm Chart.yaml):
 
+These apply the Severity Ladder to dependencies, and the ladder governs where they differ: a deprecated or unmaintained dependency is CRITICAL because it receives no fixes, so a defect in it is one the project cannot patch; an outdated version is WARNING because the fixes it lacks sit on paths the project may not use.
 - Flag deprecated dependencies as CRITICAL titled "Deprecated Dependency: <name>".
 - Flag unmaintained (archived/abandoned) dependencies as CRITICAL titled "Unmaintained Dependency: <name>".
 - Flag significantly outdated versions as WARNING titled "Outdated Dependency: <name> uses <version>, latest is <latest>".
