@@ -212,6 +212,13 @@ func rebaseStateFrom(dir string, runErr error) (RebaseState, error) {
 // rebaseInProgress reports whether a rebase is paused in dir, by probing for
 // the rebase-merge / rebase-apply state directories git creates. `git rev-parse
 // --git-path` resolves the correct location even inside a linked worktree.
+// RebaseInProgress reports whether the checkout at dir is in the middle of a
+// rebase: a session that stopped mid-rebase leaves a half-replayed HEAD that
+// must never be published.
+func (Client) RebaseInProgress(dir string) (bool, error) {
+	return rebaseInProgress(dir)
+}
+
 func rebaseInProgress(dir string) (bool, error) {
 	for _, name := range []string{"rebase-merge", "rebase-apply"} {
 		out, err := gitCapture(dir, "rev-parse", "--git-path", name)

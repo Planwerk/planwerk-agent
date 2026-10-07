@@ -59,4 +59,4 @@ Output ONLY valid JSON matching this exact schema (no markdown fences, no surrou
 }
 
 Field rules:
-- "upstream_ref" and "confidence" are optional; omit "upstream_ref" when no single upstream commit is responsible.
+- "upstream_ref" is optional: omit it when no single upstream commit is responsible. Every adjustment carries "confidence".

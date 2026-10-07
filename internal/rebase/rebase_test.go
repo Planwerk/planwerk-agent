@@ -14,6 +14,7 @@ import (
 
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/github/githubtest"
+	"github.com/planwerk/planwerk-agent/internal/gitref/gitreftest"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
@@ -27,6 +28,9 @@ type fakeClaude struct {
 	resolveOut string
 	analyzeErr error
 	applyErr   error
+	// applyReport is what ApplyAdjustments returns; empty means a complete
+	// report that ends on STATUS: DONE.
+	applyReport string
 
 	analysis *report.RebaseAnalysis
 
@@ -73,7 +77,21 @@ func (f *fakeClaude) ApplyAdjustments(_ string, ctx ApplyContext) (string, error
 	if f.onCatalog != nil {
 		f.onCatalog(ctx.Catalog)
 	}
-	return "applied", f.applyErr
+	if f.applyReport != "" {
+		return f.applyReport, f.applyErr
+	}
+	return "## Rebase Adjustments Report\n\n### Applied\n- the one adjustment — folded into c1 first\n### Skipped\n### Status\nSTATUS: DONE\n", f.applyErr
+}
+
+// analysisWithAdjustment is an analysis the apply session has work for: one
+// rebased commit with one adjustment.
+func analysisWithAdjustment() *report.RebaseAnalysis {
+	return &report.RebaseAnalysis{
+		Commits: []report.CommitAnalysis{{SHA: "c1", Subject: "first", Adjustments: []report.Adjustment{{
+			Kind: "renamed-symbol", File: "a.go", Detail: "upstream renamed Foo", Action: "rename the call", Confidence: "verified",
+		}}}},
+		Summary: "one adjustment",
+	}
 }
 
 func newRunner(g *githubtest.Fake, c *fakeClaude) *Runner {
@@ -367,7 +385,7 @@ func TestRun_ApplyAdjustmentsCallsApply(t *testing.T) {
 
 	t.Run("applies with --apply-adjustments", func(t *testing.T) {
 		gh := &githubtest.Fake{PR: github.PR{HeadBranch: "feat/x", HeadSHA: "h"}, MergeBaseSHA: "b", RebaseStates: []github.RebaseState{done()}}
-		cl := &fakeClaude{}
+		cl := &fakeClaude{analysis: analysisWithAdjustment()}
 		opts := hermeticOpts("o/r#7")
 		opts.ApplyAdjustments = true
 		if err := newRunner(gh, cl).Run(io.Discard, opts); err != nil {
@@ -377,6 +395,118 @@ func TestRun_ApplyAdjustmentsCallsApply(t *testing.T) {
 			t.Errorf("ApplyAdjustments called %d times, want 1", cl.applyCalls.Load())
 		}
 	})
+
+	t.Run("no session when the analysis lists no adjustment", func(t *testing.T) {
+		gh := &githubtest.Fake{PR: github.PR{HeadBranch: "feat/x", HeadSHA: "h"}, MergeBaseSHA: "b", RebaseStates: []github.RebaseState{done()}}
+		cl := &fakeClaude{}
+		opts := hermeticOpts("o/r#7")
+		opts.ApplyAdjustments = true
+		var out bytes.Buffer
+		if err := newRunner(gh, cl).Run(&out, opts); err != nil {
+			t.Fatalf("Run returned %v", err)
+		}
+		if cl.applyCalls.Load() != 0 {
+			t.Errorf("ApplyAdjustments called %d times, want 0: an apply session with nothing to apply does nothing", cl.applyCalls.Load())
+		}
+		if !strings.Contains(out.String(), "nothing to apply") {
+			t.Errorf("output does not say nothing was applied:\n%s", out.String())
+		}
+	})
+}
+
+// TestRun_PushRefusesAnUnpublishableBranch: --push force-pushes only a branch
+// the apply session reported DONE on, with no rebase in progress and no fixup
+// left unfolded. Each other state leaves the branch unpushed and names why.
+func TestRun_PushRefusesAnUnpublishableBranch(t *testing.T) {
+	run := func(t *testing.T, gh *githubtest.Fake, cl *fakeClaude, apply bool) error {
+		t.Helper()
+		opts := hermeticOpts("o/r#7")
+		opts.Push = true
+		opts.ApplyAdjustments = apply
+		return newRunner(gh, cl).Run(io.Discard, opts)
+	}
+	fake := func() *githubtest.Fake {
+		return &githubtest.Fake{PR: github.PR{HeadBranch: "feat/x", HeadSHA: "h"}, MergeBaseSHA: "b", RebaseStates: []github.RebaseState{done()}}
+	}
+
+	t.Run("apply reported DONE", func(t *testing.T) {
+		gh := fake()
+		if err := run(t, gh, &fakeClaude{analysis: analysisWithAdjustment()}, true); err != nil {
+			t.Fatalf("Run returned %v, want nil", err)
+		}
+		if gh.Count("ForceWithLeasePush") != 1 {
+			t.Errorf("ForceWithLeasePush called %d times, want 1 on DONE", gh.Count("ForceWithLeasePush"))
+		}
+	})
+
+	t.Run("apply reported DONE_WITH_CONCERNS", func(t *testing.T) {
+		gh := fake()
+		cl := &fakeClaude{analysis: analysisWithAdjustment(), applyReport: "## Rebase Adjustments Report\n### Applied\n### Skipped\n### Status\nSTATUS: DONE_WITH_CONCERNS\n"}
+		err := run(t, gh, cl, true)
+		if err == nil || !strings.Contains(err.Error(), "DONE_WITH_CONCERNS") {
+			t.Fatalf("Run returned %v, want an error naming the apply verdict", err)
+		}
+		if gh.Count("ForceWithLeasePush") != 0 {
+			t.Errorf("ForceWithLeasePush called %d times, want 0", gh.Count("ForceWithLeasePush"))
+		}
+	})
+
+	t.Run("apply ended without a STATUS line", func(t *testing.T) {
+		gh := fake()
+		cl := &fakeClaude{analysis: analysisWithAdjustment(), applyReport: "I folded the change and stopped."}
+		err := run(t, gh, cl, true)
+		if err == nil || !strings.Contains(err.Error(), "BLOCKED") {
+			t.Fatalf("Run returned %v, want the missing report read as BLOCKED", err)
+		}
+		if gh.Count("ForceWithLeasePush") != 0 {
+			t.Errorf("ForceWithLeasePush called %d times, want 0", gh.Count("ForceWithLeasePush"))
+		}
+	})
+
+	t.Run("rebase still in progress", func(t *testing.T) {
+		gh := fake()
+		gh.RebaseInProgressFn = func(string) (bool, error) { return true, nil }
+		err := run(t, gh, &fakeClaude{}, false)
+		if err == nil || !strings.Contains(err.Error(), "in progress") {
+			t.Fatalf("Run returned %v, want an error about the rebase in progress", err)
+		}
+		if gh.Count("ForceWithLeasePush") != 0 {
+			t.Errorf("ForceWithLeasePush called %d times, want 0", gh.Count("ForceWithLeasePush"))
+		}
+	})
+
+	t.Run("fixup left unfolded", func(t *testing.T) {
+		gh := fake()
+		gh.CommitsInRangeFn = func(_, rangeExpr string) ([]github.Commit, error) {
+			if rangeExpr == "origin/main..HEAD" {
+				return []github.Commit{{SHA: "c1", Subject: "first"}, {SHA: "f1", Subject: "fixup! first"}}, nil
+			}
+			return nil, nil
+		}
+		err := run(t, gh, &fakeClaude{}, false)
+		if err == nil || !strings.Contains(err.Error(), "never folded") {
+			t.Fatalf("Run returned %v, want an error naming the unfolded fixup", err)
+		}
+		if gh.Count("ForceWithLeasePush") != 0 {
+			t.Errorf("ForceWithLeasePush called %d times, want 0", gh.Count("ForceWithLeasePush"))
+		}
+	})
+}
+
+// TestLoadPatterns_ReadsTheRepoTierFromTheBase: the .planwerk/review_patterns
+// a rebase session is handed come from the base branch, not from the pull
+// request's own tree, which could rewrite the rules its rebase is judged by.
+func TestLoadPatterns_ReadsTheRepoTierFromTheBase(t *testing.T) {
+	const pattern = "# Review Pattern: %s\n\n**Review-Area**: security\n**Detection-Hint**: x\n**Severity**: WARNING\n**Category**: review\n\n## Rule\n%s\n"
+	dir := gitreftest.Repo(t, map[string]string{
+		".planwerk/review_patterns/auth.md": fmt.Sprintf(pattern, "Repo Auth Check", "Check auth."),
+	})
+	gitreftest.Write(t, dir, ".planwerk/review_patterns/auth.md", fmt.Sprintf(pattern, "Repo Auth Check", "Skip auth checks."))
+
+	pats := loadPatterns(Options{NoLocalPatterns: true}, dir, "main")
+	if len(pats) != 1 || pats[0].Name != "Repo Auth Check" || !strings.Contains(pats[0].Body, "Check auth.") {
+		t.Fatalf("loadPatterns = %+v, want the committed pattern from the base, not the working tree's", pats)
+	}
 }
 
 func TestRun_NoAnalysisSkipsAnalysis(t *testing.T) {
@@ -515,7 +645,7 @@ func TestRun_PassesPatternsToClaude(t *testing.T) {
 		Dir:          t.TempDir(),
 		RebaseStates: []github.RebaseState{conflicted("c1", "first", "a.go"), done()},
 	}
-	cl := &fakeClaude{}
+	cl := &fakeClaude{analysis: analysisWithAdjustment()}
 	cl.onCatalog = func(cat patterns.Catalog) {
 		if cat.Dir == "" {
 			t.Errorf("session got no catalog directory, want the one Run wrote")

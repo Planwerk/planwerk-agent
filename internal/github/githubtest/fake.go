@@ -217,6 +217,7 @@ type Fake struct {
 	StartRebaseFn            func(dir, onto string) (github.RebaseState, error)
 	RebaseContinueFn         func(dir string) (github.RebaseState, error)
 	RebaseAbortFn            func(dir string) error
+	RebaseInProgressFn       func(dir string) (bool, error)
 	ResetHardFn              func(dir, ref string) error
 	ConflictedFilesFn        func(dir string) ([]string, error)
 	ForceWithLeasePushFn     func(dir, branch string) error
@@ -972,6 +973,16 @@ func (f *Fake) RebaseAbort(dir string) error {
 	}
 	f.setErr(i, err)
 	return err
+}
+
+func (f *Fake) RebaseInProgress(dir string) (bool, error) {
+	i := f.record("RebaseInProgress", dir)
+	if f.RebaseInProgressFn != nil {
+		in, err := f.RebaseInProgressFn(dir)
+		f.setErr(i, err)
+		return in, err
+	}
+	return false, nil
 }
 
 func (f *Fake) ResetHard(dir, ref string) error {

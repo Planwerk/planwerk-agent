@@ -42,18 +42,28 @@ func (c *Client) AnalyzeRebasedCommits(dir string, ctx rebase.AnalysisContext) (
 	return &result, nil
 }
 
+// rebaseApplyReportHeading is the heading every rebase apply report opens
+// with. The prompt mandates it, runClaudeAutoReport nudges a session that ends
+// without it, and the rebase runner reads the report's terminal STATUS line
+// before it publishes the branch.
+const rebaseApplyReportHeading = "## Rebase Adjustments Report"
+
 // ApplyRebaseAdjustments runs a fresh auto-mode Claude session that applies the
 // post-rebase analysis as fixup commits folded into the commits they belong to
 // (git commit --fixup + git rebase --autosquash), reusing the fix --local
-// recipe. It does NOT push — the orchestrator force-pushes under --push.
+// recipe. It does NOT push — the orchestrator force-pushes under --push, and
+// only when the report it returns ends on STATUS: DONE. The session runs under
+// the completion nudge (runClaudeAutoReport): a turn that ends without the
+// report is resumed to finish and report instead of leaving a half-folded
+// branch for the push.
 func (c *Client) ApplyRebaseAdjustments(dir string, ctx rebase.ApplyContext) (string, error) {
 	// Applying adjustments renders no attribution footer, so the resolved model
 	// is not threaded out.
-	out, _, err := c.runClaudeAuto(dir, BuildRebaseApplyPrompt(ctx), "rebase-apply", ctx.Catalog)
+	out, _, err := c.runClaudeAutoReport(dir, BuildRebaseApplyPrompt(ctx), "rebase-apply", rebaseApplyReportHeading, reportStatusChoices, ctx.Catalog)
 	if err != nil {
 		return "", fmt.Errorf("applying rebase adjustments: %w", err)
 	}
-	return strings.TrimSpace(out), nil
+	return sanitizeReport(out, rebaseApplyReportHeading), nil
 }
 
 // BuildRebaseConflictPrompt assembles the prompt for resolving a single
@@ -184,7 +194,7 @@ Open the actual files; do not guess. Report every adjustment you find with its c
 }
 
 Field rules:
-- "upstream_ref" and "confidence" are optional; omit "upstream_ref" when no single upstream commit is responsible.
+- "upstream_ref" is optional: omit it when no single upstream commit is responsible. Every adjustment carries "confidence".
 `)
 
 	return sb.String()
@@ -242,20 +252,25 @@ func BuildRebaseApplyPrompt(ctx rebase.ApplyContext) string {
 
       GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash "$(git merge-base origin/%[1]s HEAD)"
 
-`+foldConflictSteps('d', "the report")+`4. Output a report in this exact shape:
+`+foldConflictSteps('d', "the report")+`4. Output the report below as the last thing in this session, whatever happened:
+
+   `+rebaseApplyReportHeading+`
 
    ### Applied
    - <adjustment> — folded into <sha> <subject>
    ### Skipped
    - <adjustment> — <why: false positive, already handled, or no longer applies>
+   ### Status
+   STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT>
+   (DONE = every listed adjustment applied or skipped with its reason, the fold complete, no fixup left unfolded, and no rebase in progress; DONE_WITH_CONCERNS = the branch is consistent but carries a reservation a human must see, such as fixups left unfolded after a conflict you could not resolve; BLOCKED = the branch is not in a state to publish; NEEDS_CONTEXT = an adjustment turns on a decision only a human can make. planwerk-agent publishes the branch under --push only on DONE.)
 
 ## Hard rules
 
 - Apply ONLY the adjustments listed above.
-- Do NOT push. Do NOT force-push. The orchestrator publishes the branch separately, only when --push is given.
+- Do NOT push. Do NOT force-push. planwerk-agent publishes the branch separately, only when --push is given and your report says DONE.
 - NEVER rebase, reorder, drop, or rewrite commits that already exist on origin/%[1]s — only this branch's own commits (origin/%[1]s..HEAD) may be folded.
 - If an adjustment is a false positive or no longer applies, SKIP it and record why — do not invent a change to satisfy it.
-- If there is nothing to apply, do NOT create an empty commit; say so and stop.
+- If there is nothing to apply, do NOT create an empty commit; output the report with empty Applied and Skipped lists and STATUS: DONE.
 `, ctx.Onto)
 	sb.WriteString(noSkipHooksLine())
 

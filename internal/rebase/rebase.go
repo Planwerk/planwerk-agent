@@ -160,7 +160,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		return fmt.Errorf("listing PR commits to replay: %w", err)
 	}
 
-	pats := loadPatterns(opts, pr.Dir)
+	pats := loadPatterns(opts, pr.Dir, origin)
 
 	// --print-prompt renders the analysis prompt from the computed ranges
 	// without performing the rebase, so it never mutates the working tree.
@@ -184,15 +184,22 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 
 	// The rebase is clean. Analyze the rebased commits against the upstream
 	// range, then optionally apply the adjustments.
+	applyStatus := ""
 	if !opts.NoAnalysis {
-		if err := r.analyzeAndReport(w, opts, pr, onto, origin, origMergeBase, fullName, owner, repo, number, pats, cat); err != nil {
+		status, err := r.analyzeAndReport(w, opts, pr, onto, origin, origMergeBase, fullName, owner, repo, number, pats, cat)
+		if err != nil {
 			return err
 		}
+		applyStatus = status
 	}
 
 	// Publish only when asked. Rewriting history requires a force-push, and we
-	// never do that implicitly.
+	// never do that implicitly, nor for a branch the apply session did not
+	// leave in a publishable state.
 	if opts.Push {
+		if err := r.publishable(pr, origin, applyStatus); err != nil {
+			return err
+		}
 		if err := r.GitHub.ForceWithLeasePush(pr.Dir, pr.HeadBranch); err != nil {
 			return fmt.Errorf("force-pushing rebased branch %s: %w", pr.HeadBranch, err)
 		}
@@ -264,14 +271,20 @@ func (r *Runner) runRebaseLoop(w io.Writer, opts Options, pr *github.PR, onto, f
 
 // analyzeAndReport runs the post-rebase analysis, renders it, posts it as a PR
 // comment (unless suppressed), and optionally applies the adjustments.
-func (r *Runner) analyzeAndReport(w io.Writer, opts Options, pr *github.PR, onto, origin, origMergeBase, fullName, owner, repo string, number int, pats []patterns.Pattern, cat patterns.Catalog) error {
+// analyzeAndReport analyzes the rebased commits, prints and posts the
+// analysis, and applies the adjustments under --apply-adjustments. It returns
+// the terminal STATUS of the apply session's report, or "" when no apply
+// session ran (the flag is off, or the analysis found nothing to apply), so
+// the caller can refuse to publish a branch the session did not leave in a
+// publishable state.
+func (r *Runner) analyzeAndReport(w io.Writer, opts Options, pr *github.PR, onto, origin, origMergeBase, fullName, owner, repo string, number int, pats []patterns.Pattern, cat patterns.Catalog) (string, error) {
 	upstream, err := r.GitHub.CommitsInRange(pr.Dir, origMergeBase+".."+origin)
 	if err != nil {
-		return fmt.Errorf("listing upstream commits: %w", err)
+		return "", fmt.Errorf("listing upstream commits: %w", err)
 	}
 	rebased, err := r.GitHub.CommitsInRange(pr.Dir, origin+"..HEAD")
 	if err != nil {
-		return fmt.Errorf("listing rebased commits: %w", err)
+		return "", fmt.Errorf("listing rebased commits: %w", err)
 	}
 
 	analysis, err := r.Claude.AnalyzeRebasedCommits(pr.Dir, AnalysisContext{
@@ -285,7 +298,7 @@ func (r *Runner) analyzeAndReport(w io.Writer, opts Options, pr *github.PR, onto
 		MaxPatterns:     opts.MaxPatterns,
 	})
 	if err != nil {
-		return fmt.Errorf("analyzing rebased commits: %w", err)
+		return "", fmt.Errorf("analyzing rebased commits: %w", err)
 	}
 
 	var rendered strings.Builder
@@ -294,22 +307,75 @@ func (r *Runner) analyzeAndReport(w io.Writer, opts Options, pr *github.PR, onto
 
 	r.postAnalysisComment(w, opts, owner, repo, number, rendered.String(), analysis.Model)
 
-	if opts.ApplyAdjustments {
-		applyReport, err := r.Claude.ApplyAdjustments(pr.Dir, ApplyContext{
-			RepoFullName: fullName,
-			PRNumber:     number,
-			Onto:         onto,
-			HeadBranch:   pr.HeadBranch,
-			Analysis:     *analysis,
-			Patterns:     pats,
-			Catalog:      cat,
-			MaxPatterns:  opts.MaxPatterns,
-		})
-		if err != nil {
-			return fmt.Errorf("applying rebase adjustments: %w", err)
+	if !opts.ApplyAdjustments {
+		return "", nil
+	}
+	if !hasAdjustments(*analysis) {
+		// A session started to apply nothing would read "(The analysis
+		// reported no adjustments.)" and end; the branch is already what the
+		// apply session would have left.
+		_, _ = fmt.Fprintln(w, "\nThe analysis reported no adjustments; nothing to apply.")
+		return "", nil
+	}
+	applyReport, err := r.Claude.ApplyAdjustments(pr.Dir, ApplyContext{
+		RepoFullName: fullName,
+		PRNumber:     number,
+		Onto:         onto,
+		HeadBranch:   pr.HeadBranch,
+		Analysis:     *analysis,
+		Patterns:     pats,
+		Catalog:      cat,
+		MaxPatterns:  opts.MaxPatterns,
+	})
+	if err != nil {
+		return "", fmt.Errorf("applying rebase adjustments: %w", err)
+	}
+	if applyReport != "" {
+		_, _ = fmt.Fprintf(w, "\nClaude apply report:\n%s\n", applyReport)
+	}
+	status := report.TerminalStatus(applyReport)
+	if status == "" {
+		// The prompt mandates the report; a session that ended without its
+		// STATUS line left the branch in a state nobody vouched for.
+		status = report.StatusBlocked
+		slog.Warn("rebase apply session ended without a terminal STATUS line; treating the branch as not publishable", "pr", number)
+	}
+	return status, nil
+}
+
+// hasAdjustments reports whether the analysis lists at least one adjustment
+// for any rebased commit.
+func hasAdjustments(a report.RebaseAnalysis) bool {
+	for _, c := range a.Commits {
+		if len(c.Adjustments) > 0 {
+			return true
 		}
-		if applyReport != "" {
-			_, _ = fmt.Fprintf(w, "\nClaude apply report:\n%s\n", applyReport)
+	}
+	return false
+}
+
+// publishable returns an error when the rebased branch must not be
+// force-pushed: the apply session reported anything but DONE, a rebase is
+// still in progress, or a fixup commit the fold never folded is left on the
+// branch. applyStatus is "" when no apply session ran.
+func (r *Runner) publishable(pr *github.PR, origin, applyStatus string) error {
+	if applyStatus != "" && applyStatus != report.StatusDone {
+		return fmt.Errorf("not pushing %s: the rebase apply session reported %s", pr.HeadBranch, applyStatus)
+	}
+	inProgress, err := r.GitHub.RebaseInProgress(pr.Dir)
+	if err != nil {
+		return fmt.Errorf("checking for a rebase in progress: %w", err)
+	}
+	if inProgress {
+		return fmt.Errorf("not pushing %s: a rebase is still in progress in the checkout", pr.HeadBranch)
+	}
+	commits, err := r.GitHub.CommitsInRange(pr.Dir, origin+"..HEAD")
+	if err != nil {
+		return fmt.Errorf("listing the branch's commits before pushing: %w", err)
+	}
+	for _, c := range commits {
+		if strings.HasPrefix(c.Subject, "fixup! ") || strings.HasPrefix(c.Subject, "squash! ") {
+			return fmt.Errorf("not pushing %s: commit %s (%q) was never folded", pr.HeadBranch, report.ShortSHA(c.SHA), c.Subject)
 		}
 	}
 	return nil
@@ -411,15 +477,20 @@ func (r *Runner) postAnalysisComment(w io.Writer, opts Options, owner, repo stri
 // loadPatterns runs technology detection on the checkout and loads the
 // review-pattern catalog filtered by those tags, so both the conflict
 // resolution and the analysis are grounded in the same set plus any
-// project-specific patterns under .planwerk/review_patterns/. Failures are
-// non-fatal: the run falls back to no patterns.
-func loadPatterns(opts Options, repoDir string) []patterns.Pattern {
+// project-specific patterns under .planwerk/review_patterns/. The repo tier is
+// read from baseRef (origin/<onto>), never from the pull request's own tree:
+// the patterns are spliced into the prompts as instructions, and a pull
+// request must not be able to rewrite the rules its own rebase is judged by,
+// as fix and address already read them from the base (decision 97). Failures
+// are non-fatal: the run falls back to no patterns.
+func loadPatterns(opts Options, repoDir, baseRef string) []patterns.Pattern {
 	tags := detect.Technologies(repoDir)
 	if len(tags) > 0 {
 		slog.Info("detected technologies", "technologies", strings.Join(tags, ", "))
 	}
 	pats := patterns.LoadForRepoOrWarn(patterns.RepoLoadOptions{
 		RepoDir:    repoDir,
+		RepoRef:    baseRef,
 		Extra:      opts.PatternDirs,
 		Tags:       tags,
 		NoEmbedded: opts.NoLocalPatterns,
