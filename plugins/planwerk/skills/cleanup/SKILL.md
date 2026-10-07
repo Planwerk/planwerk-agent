@@ -55,9 +55,9 @@ verify list compares the tree against before you file.
 
 ## Phase 1 — Take stock
 
-Resolve the repository from the checkout
-(`gh repo view --json nameWithOwner --jq .nameWithOwner`) and state it, so a
-wrong target is caught before hours of analysis, not after.
+Resolve the repository from the checkout (`github.md`, Resolving the target
+repository) and state it, so a wrong target is caught before hours of analysis,
+not after.
 
 Then inventory what you are about to survey:
 
@@ -146,9 +146,8 @@ the phases around exactly this.
 Deleting a published interface is on `interaction.md`'s irreversibility list,
 so every **Author's call** item is genuinely theirs. Group the items by
 surface — one question per exported package or API area, never one per symbol
-— and ask each group as its own `AskUserQuestion`: a recommendation on one
-option, a concrete upside and an honest downside on each, one sentence on what
-breaks if the choice is wrong.
+— and ask each group as its own `AskUserQuestion`, under the rules in
+`interaction.md`.
 
 What the author settles moves to Dead or Healthy accordingly. What they
 decline or leave open lands in the Meta Issue's `## Open decisions` block, in
@@ -196,21 +195,9 @@ Fix what fails and re-run. Only a plan that passes all seven reaches Phase 6.
 
 ## Phase 6 — Write the Meta Issue
 
-Emit the body in English, in the survey Meta Issue format from
-`issue-format-survey.md`: the `**Category**` / `**Scope**` header line, a
-`## Description` naming what was surveyed, the surveyed commit, the tools and
-searches used, and the totals; a `## Motivation` stating what this specific
-dead and duplicated code costs — quantified, not adjectives; a
-`## Cleanup phases` section with one `###` heading per phase, which is the
-work-package enumeration `meta` splits; the `## Open decisions` block when
-Phase 4 left any; and the `Surveyed by` footer.
-
-The findings under each phase name files and symbols pinned to the surveyed
-commit. That is the survey's deliberate exception to the draft-depth no-paths
-rule: dead code has no behavior to describe, so the paths are the evidence.
-The Sub Issues split from this issue stay path-free and point back here.
-
-Give the issue a descriptive, specific title in imperative mood.
+Emit the body in English in the survey Meta Issue format from
+`issue-format-survey.md`, one `###` per phase. Give the issue a descriptive,
+specific title in imperative mood.
 
 ## Phase 7 — Confirm, then file
 
@@ -236,11 +223,10 @@ clusters it records, in how many phases, at which commit. Then name every
 Author's call the author declined, every detector that was absent, and
 anything the survey could not verify.
 
-End with the next step as the last line, nothing after it — no closers, no
-recap: `/planwerk:meta <issue-ref>` splits the Meta Issue into Sub Issues, and
-when an `## Open decisions` block exists, `/planwerk:decide` settles it after
-the split. `cleanup` stops at filing. It does not split, elaborate, or delete
-anything.
+End with the next step as the last line: `/planwerk:meta <issue-ref>` splits
+the Meta Issue into Sub Issues, and when an `## Open decisions` block exists,
+`/planwerk:decide` settles it after the split. `cleanup` stops at filing. It
+does not split, elaborate, or delete anything.
 
 ## Before you file, verify
 

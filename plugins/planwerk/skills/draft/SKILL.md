@@ -30,9 +30,9 @@ common source of an issue nobody can act on.
 
 ## Phase 1 — Establish the target and the idea
 
-Resolve the repository from the arguments, or from the checkout with
-`gh repo view --json nameWithOwner --jq .nameWithOwner`. State which repository
-you resolved, so a wrong one is caught now rather than after filing.
+Resolve the repository per `github.md`, Resolving the target repository. State
+which repository you resolved, so a wrong one is caught now rather than after
+filing.
 
 Read its `.planwerk/related-repos.md`, if it has one. Say nothing about it yet —
 you cannot judge which counterparts apply until Phase 2 has told you what the
@@ -42,8 +42,8 @@ If the arguments carry no idea, ask for it and wait.
 
 ## Phase 2 — Clarify
 
-Ask three to five short questions, numbered, in the author's own language. Ask
-only what sharpens the *description*:
+Ask, inline per `interaction.md` (Open questions are asked inline), only what
+sharpens the *description*:
 
 - The problem behind the idea — what goes wrong today.
 - Who benefits, concretely. Name the role, not "users".
@@ -54,8 +54,7 @@ Do not ask about implementation details, file layout, or a step-by-step plan.
 Those belong to `elaborate`, and asking about them here teaches the author to
 answer the wrong question.
 
-Wait for the answers. If an answer is vague, name what is still missing and push
-once more. Then stop pushing.
+Wait for the answers.
 
 ## Phase 3 — Draft
 
@@ -64,8 +63,7 @@ Write the issue body in English, in the house draft format: the
 and the attribution footer with the `Drafted by` verb.
 
 Describe the work by its behavior and the interfaces it touches. Name no source
-files: this issue sits in the tracker and may be picked up long after the
-surrounding code has moved, and a brief pinned to today's file layout rots.
+files (`house-style.md`, How long a file path stays true).
 
 Give it a descriptive, specific title in imperative mood.
 
@@ -112,8 +110,8 @@ Print every new issue's URL.
 Name the next step: `/planwerk:elaborate <issue-ref>` turns this description into
 an engineering plan grounded in the repository. A counterpart stays at draft
 depth until the issue blocking it has a plan, so name it as the later step, not
-the next one. If any question went unanswered, list it now as an unresolved
-decision rather than pretending it was settled.
+the next one. A question the author left unanswered lands here, as an
+unresolved decision (`interaction.md`, Record what was never decided).
 
 ## Before you file, verify
 
