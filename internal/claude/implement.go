@@ -287,7 +287,7 @@ This is a single, non-interactive, one-shot session: there is NO next turn, no h
 	if orchestrated {
 		sb.WriteString(orchestrationBlock())
 	}
-	sb.WriteString(implementThinkingPatterns("Self-review before you hand off."))
+	sb.WriteString(implementThinkingPatterns())
 
 	fmt.Fprintf(&sb, "## Source Issue\n\n- Repository: %s\n- Issue #%d\n",
 		ctx.RepoFullName, ctx.IssueNumber)
@@ -550,7 +550,7 @@ func BuildBareImplementPrompt(ctx implement.BareContext) string {
 `)
 	sb.WriteString(baselineBehavioralPrinciples)
 	sb.WriteString(outputLanguageBlock())
-	sb.WriteString(implementThinkingPatterns("Self-review before opening the PR."))
+	sb.WriteString(implementThinkingPatterns())
 
 	fmt.Fprintf(&sb, "## Source Issue\n\n- Repository: %s\n- Issue #%d\n\n", repoFullName, issueNumber)
 
@@ -678,14 +678,15 @@ When you hit a circuit breaker, halt immediately and emit STATUS: PARTIAL when a
 // implement and bare-implement prompts share. The two copies had drifted: one
 // carried "Skipping a listed work package is not smaller; it is unfinished",
 // the other a claim that no later session exists, which the resume design in
-// the same prompt contradicts. selfReviewLabel is the one wording that differs
-// on purpose — the bare session opens the pull request itself.
+// the same prompt contradicts. The self-review of the diff lives in the
+// workflow's step 7 alone, bound to the Acceptance Criteria and Non-Goals: a
+// second copy here was over-verification scaffolding on the Opus line.
 //
 // "Verify the ground truth" separates a cited file that moved (follow it and
 // record the deviation) from one that is gone (stop): an older issue's line
 // numbers are routinely stale, and a literal reading of "if it does not match,
 // STOP" turned that into a BLOCKED run and no pull request.
-func implementThinkingPatterns(selfReviewLabel string) string {
+func implementThinkingPatterns() string {
 	return `Apply these task-specific thinking patterns on top of the baseline above:
 - "Read the issue first, in full." — Acceptance Criteria, Non-Goals, Affected Areas, References. Do NOT start editing before you have read every section.
 - "Verify the ground truth." — For every file, symbol, package, or migration the issue cites, open it and confirm it exists and matches the description. If a cited file or symbol moved or was renamed, follow it and record that under "Deviations from the issue". STOP and report only when what the issue asks for cannot be built on what exists: the thing is gone and nothing replaces it, or a criterion is unreachable.
@@ -695,7 +696,6 @@ func implementThinkingPatterns(selfReviewLabel string) string {
 - "Tests are part of the change." — Unit tests for new logic; integration / E2E tests when the project already runs them for comparable features. Every new test must exercise at least one error or edge path (empty/zero-length, nil/absent, an upstream error), not the happy path only. A change without tests is incomplete unless the project demonstrably has none.
 - "Documentation is part of the change." — README, CHANGELOG, doc comments, CLI help text, generated API docs — every user-visible behavior change updates docs in the same change set.
 - "Commits tell the story." — Stage the work as a sequence of small, reviewable commits; do not produce a single monolithic diff. Write each commit message cleanly: a concise, imperative subject line and, when the change needs it, a body that explains the why. Wrap EVERY line — subject and body alike — at 72 characters or fewer.
-- "` + selfReviewLabel + `" — Walk the diff once more as a reviewer. Reject anything you would push back on.
 - "Stay inside the agreed scope." — If the issue's Non-Goals exclude something, do NOT do it.
 - "Note it, don't fix it." — When you notice something worth improving that the issue did not ask for, write it down for the report's "Noticed but not touching" section and leave the code alone.
 

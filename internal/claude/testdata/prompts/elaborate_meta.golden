@@ -162,7 +162,7 @@ Settle the design in your reasoning, then write the elaborated issue once, in yo
 3. Name consistency — each symbol is named identically everywhere. A function called clearLayers() in one section and clearFullLayers() in another is a bug; reconcile it.
 4. Citation check — every cited file path, symbol, and migration exists in the repository, or is explicitly marked as an assumption per the Anti-Hallucination Rules.
 5. Edge-case coverage — every data-flow acceptance criterion enumerates its empty/zero-length, nil/absent, and upstream-error shadow paths as separate entries, each naming the concrete error (see Edge-Case Enumeration).
-6. Domain sweep — walk the Domain Sweep list once more against the finished draft. For each domain, either name the Acceptance Criterion or Affected Areas entry that carries it, or state to yourself that the issue does not touch it. A domain you can do neither for is a gap; close it before emitting.
+6. Domain sweep — every domain the issue touches has an Acceptance Criterion or an Affected Areas entry that carries it, and every other domain needs nothing. A domain you can place in neither is a gap; close it before emitting.
 7. Size — estimate the draft's length against the budget in Size. Over it, apply the Size moves before emitting; a draft is never shortened by dropping a criterion, a citation, or an edge case.
 
 
