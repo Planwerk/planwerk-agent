@@ -66,7 +66,7 @@ func BuildReviewApplyPrompt(ctx implement.ReviewApplyContext) string {
 	sb.WriteString("\n")
 
 	sb.WriteString(patternCatalogBlock(honorPatternsHeading,
-		"These patterns are the catalog the project's review/audit/elaborate tools share — including any project-specific patterns shipped under `.planwerk/review_patterns/` in this repository. The fixed result MUST stay consistent with them: do not introduce code or test changes that would themselves be flagged by a pattern below. When a fix touches an area covered by a pattern, prefer the resolution the pattern endorses.",
+		patternCatalogLeadIn+" The fixed result MUST stay consistent with them: do not introduce code or test changes that would themselves be flagged by a pattern below. When a fix touches an area covered by a pattern, prefer the resolution the pattern endorses.",
 		ctx.Catalog, ctx.Patterns, ctx.MaxPatterns))
 
 	sb.WriteString(`## What to do
@@ -77,7 +77,7 @@ func BuildReviewApplyPrompt(ctx implement.ReviewApplyContext) string {
 4. Verify locally: build the project and run the tests (or the targeted subset covering the touched code). ` + foregroundRunLine() + ` Record the exact commands and their results under Verification in the report. If a command cannot run in this environment, say so explicitly.
 `)
 
-	sb.WriteString(foldSteps(ctx.BaseBranch, 5))
+	sb.WriteString(foldSteps(ctx.BaseBranch, 5, "a fix for code", "changing", "the report", foldLocalTail))
 
 	sb.WriteString(`6. After folding, output a structured review report in this exact shape:
 
@@ -108,8 +108,7 @@ func BuildReviewApplyPrompt(ctx implement.ReviewApplyContext) string {
 - If a finding is a false positive or no longer applies, SKIP it and record why — do not invent a change to satisfy it.
 - An architectural finding, or a needs-discussion finding whose fix would change a public interface or observable behavior beyond the finding's own defect, needs a human decision: list it under Skipped as "needs discussion" and change nothing for it.
 - If there is nothing to fix after review, do NOT create an empty commit; output the report with an empty Resolved list and stop.
-- It is OK to stop and report BLOCKED or NEEDS_CONTEXT. Bad work is worse than no work; escalating is not penalized.
-`)
+` + escalationOKLine("", "") + ``)
 
 	return sb.String()
 }

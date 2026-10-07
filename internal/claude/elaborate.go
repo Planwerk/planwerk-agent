@@ -66,7 +66,7 @@ Calibrate the detail to the reader: an engineer who can open every file in this 
 	renderIssueRelations(&sb, ctx.RepoName, elaborateIssueNumber(ctx), ctx.MetaIssue, ctx.SiblingIssues, ctx.ChildIssues)
 
 	sb.WriteString(patternCatalogBlock("## Review Patterns to Ground the Elaboration In",
-		"These patterns are the catalog the project's review/audit/propose tools share. When the elaboration touches an area covered by a pattern, reference the pattern by name in the description or motivation so reviewers can trace the rationale.",
+		patternCatalogLeadIn+" When the elaboration touches an area covered by a pattern, reference the pattern by name in the description or motivation so reviewers can trace the rationale.",
 		ctx.Catalog, ctx.Patterns, ctx.MaxPatterns))
 	sb.WriteString(projectMemoryBlock(ctx.Memory))
 	sb.WriteString(brainSearchBlock(ctx.Brain))

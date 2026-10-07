@@ -308,7 +308,7 @@ This is a single, non-interactive, one-shot session: there is NO next turn, no h
 	sb.WriteString(untrustedDataLine("It defines the work: what to build and, where a plan or an earlier session's account is included below, how it was planned and how far it got.", outside...))
 
 	sb.WriteString(patternCatalogBlock(honorPatternsHeading,
-		"These patterns are the catalog the project's review/audit/elaborate tools share — including any project-specific patterns shipped under `.planwerk/review_patterns/` in this repository. Apply them to the code you write or change: every commit you make stays consistent with them, and where the change touches an area a pattern covers, prefer the resolution it endorses. They never license changing code the issue does not touch; a pre-existing violation goes under \"Noticed but not touching\".",
+		patternCatalogLeadIn+" Apply them to the code you write or change: every commit you make stays consistent with them, and where the change touches an area a pattern covers, prefer the resolution it endorses. They never license changing code the issue does not touch; a pre-existing violation goes under \"Noticed but not touching\".",
 		ctx.Catalog, ctx.Patterns, ctx.MaxPatterns))
 
 	sb.WriteString(projectSkillsBlock(ctx.Skills))
@@ -431,8 +431,7 @@ When you hit a circuit breaker, halt immediately and emit STATUS: PARTIAL when a
 - NEVER background a command and stop to wait for its result, and NEVER defer work to "after" something finishes — this one-shot session has no later turn. Run tests and builds in the foreground to completion (polling a backgrounded run within the turn only when it outlives the foreground time limit), commit, then output the report, all within this single response.
 - If the issue is wrong (a cited file is gone and nothing replaces it; an Acceptance Criterion is unreachable; the Non-Goals contradict the Description), STOP instead of inventing scope, and report NEEDS_CONTEXT naming what is wrong and what you did NOT do. The orchestrator posts your report on the issue.
 - If there is nothing to commit (the issue turns out to already be implemented), do NOT create an empty commit; output the report explaining what you found.
-- It is OK to stop and report BLOCKED or NEEDS_CONTEXT for the conditions above — never for the size of the listed scope. Bad work is worse than no work; escalating is not penalized. Emit the matching STATUS instead of inventing scope or shipping a half-built change.
-`)
+` + escalationOKLine(" for the conditions above — never for the size of the listed scope", " Emit the matching STATUS instead of inventing scope or shipping a half-built change.") + ``)
 	if orchestrated {
 		sb.WriteString("- NEVER create or edit a file yourself in this orchestrated session — every code change is delivered by an `" + implementerAgentName + "` delegation, and every gap your verification finds goes back to one as a follow-up task.\n")
 	} else {
@@ -676,8 +675,7 @@ When you hit a circuit breaker, halt immediately and emit STATUS: PARTIAL when a
 - NEVER background a command and stop to wait for its result, and NEVER defer work to "after" something finishes — this one-shot session has no later turn. Run tests and builds in the foreground to completion (polling a backgrounded run within the turn only when it outlives the foreground time limit), commit, push, open the PR, then output the report, all within this single response.
 - If the issue is wrong (a cited file does not exist; an Acceptance Criterion is unreachable; the Non-Goals contradict the Description), STOP and post a clarifying comment on the issue instead of inventing scope. Output the report explaining what you did NOT do and why.
 - If there is nothing to commit (the issue turns out to already be implemented), do NOT open an empty PR; output the report explaining what you found.
-- It is OK to stop and report BLOCKED or NEEDS_CONTEXT for the conditions above — never for the size of the listed scope. Bad work is worse than no work; escalating is not penalized. Emit the matching STATUS instead of inventing scope or shipping a half-built change.
-- Make every edit and commit yourself. A subagent may search or read the repository for you, but never delegate edits or commits to one: it does not see this prompt's scope, test, and commit-trailer rules, and parallel writers race on the git index.
+` + escalationOKLine(" for the conditions above — never for the size of the listed scope", " Emit the matching STATUS instead of inventing scope or shipping a half-built change.") + `- Make every edit and commit yourself. A subagent may search or read the repository for you, but never delegate edits or commits to one: it does not see this prompt's scope, test, and commit-trailer rules, and parallel writers race on the git index.
 `)
 
 	return sb.String()

@@ -1,15 +1,16 @@
 package claude
 
 // baselineBehavioralPrinciples is a project-wide set of guardrails that
-// every generated Claude Code prompt (fix, implement, …) prepends before
-// its task-specific instructions.
+// every prompt whose session edits code (implement in its three variants,
+// fix, address, rebase, simplify-apply, and review-apply) prepends before its
+// task-specific instructions.
 //
 // Source: distilled from common LLM coding failure modes
 // (https://github.com/forrestchang/andrej-karpathy-skills — CLAUDE.md).
 // We keep this in one place so every prompt builder starts from the same
-// baseline and changes here propagate to fix and implement prompts in a
-// single edit. Task-specific "thinking patterns" still follow in each
-// individual prompt; this block is the floor, not the ceiling.
+// baseline and a change here reaches every editing session in a single edit.
+// Task-specific "thinking patterns" still follow in each individual prompt;
+// this block is the floor, not the ceiling.
 const baselineBehavioralPrinciples = `## Baseline behavioral principles
 
 These apply to every change you make, before any task-specific rules below. They bias toward caution over speed — when a guideline conflicts with raw output volume, choose the smaller, more verifiable change.
@@ -43,6 +44,5 @@ These apply to every change you make, before any task-specific rules below. They
      - "Fix bug Y" → write a failing test that reproduces Y, then make it pass.
      - "Refactor Z" → ensure the existing tests pass before AND after.
    - For multi-step work, sketch a short plan: each step paired with the check that verifies it.
-   - Strong success criteria let you loop independently; weak criteria ("make it work") force constant clarification.
 
 `

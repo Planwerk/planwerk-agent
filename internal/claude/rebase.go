@@ -88,7 +88,7 @@ func BuildRebaseConflictPrompt(ctx rebase.ConflictContext) string {
 	}
 
 	sb.WriteString(patternCatalogBlock(honorPatternsHeading,
-		"These patterns are the catalog the project's review/audit tools share. Your conflict resolution MUST stay consistent with them: do not resolve a conflict in a way that would itself be flagged by a pattern below.",
+		patternCatalogLeadIn+" Your conflict resolution MUST stay consistent with them: do not resolve a conflict in a way that would itself be flagged by a pattern below.",
 		ctx.Catalog, ctx.Patterns, ctx.MaxPatterns))
 
 	sb.WriteString(`## What to do

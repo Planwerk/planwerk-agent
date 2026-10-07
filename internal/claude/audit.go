@@ -102,7 +102,7 @@ Scan declared dependencies (go.mod, package.json, requirements.txt, pyproject.to
 
 `)
 
-	// Suppressions (shared with review/compliance; codebase scope omits diff-only bullets)
+	// Suppressions (shared with review; codebase scope omits diff-only bullets)
 	sb.WriteString(suppressionsBlock(scopeCodebase))
 
 	// Anti-hallucination rules

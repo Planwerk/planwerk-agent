@@ -68,7 +68,7 @@ func BuildAddressPrompt(ctx address.Context) string {
 	sb.WriteString(addressThreadLimitLine)
 
 	sb.WriteString(patternCatalogBlock(honorPatternsHeading,
-		"These patterns are the catalog the project's review/audit tools share. Your change MUST stay consistent with them: do not address a comment in a way that would itself be flagged by a pattern below.",
+		patternCatalogLeadIn+" Your change MUST stay consistent with them: do not address a comment in a way that would itself be flagged by a pattern below.",
 		ctx.Catalog, ctx.Patterns, ctx.MaxPatterns))
 	sb.WriteString(projectMemoryBlock(ctx.Memory))
 

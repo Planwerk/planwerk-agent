@@ -83,7 +83,7 @@ This session is autonomous and one-shot: nobody reads it until the plan is poste
 	renderIssueRelations(&sb, ctx.RepoFullName, ctx.IssueNumber, ctx.MetaIssue, ctx.SiblingIssues, ctx.ChildIssues)
 
 	sb.WriteString(patternCatalogBlock(honorPatternsHeading,
-		"These patterns are the catalog the project's review/audit/elaborate tools share — including any project-specific patterns shipped under `.planwerk/review_patterns/` in this repository. Treat them as binding constraints on the planned change set: when a pattern covers an area the plan touches, plan the resolution the pattern endorses.",
+		patternCatalogLeadIn+" Treat them as binding constraints on the planned change set: when a pattern covers an area the plan touches, plan the resolution the pattern endorses.",
 		ctx.Catalog, ctx.Patterns, ctx.MaxPatterns))
 
 	// Project memory from the repo's GitHub Wiki (no-op when the wiki carries
