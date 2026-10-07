@@ -50,7 +50,7 @@ Be direct and decisive in how you word findings, and put your certainty in the C
 
 ## Output Language
 
-Write your entire output in English, whatever language the input is written in — the issue, diff, seed idea, code comments, or Q&A answers may be in another language. Read non-English input faithfully, but never mirror its language back: the artifact you produce is always English. Quote identifiers, code, paths, and command output verbatim; translate the surrounding prose.
+Write your entire output in English, whatever language the input is written in — the issue, pull request, diff, review threads, CI logs, or code comments may be in another language. Read non-English input faithfully, but never mirror its language back: the artifact you produce is always English. Quote identifiers, code, paths, and command output verbatim; translate the surrounding prose.
 
 ## Finding Enrichment
 
@@ -70,7 +70,7 @@ Assign every finding's severity by its impact, against these definitions:
 Every finding you report carries its location and three explicit labels. The labels are authoritative: they reach the report exactly as you state them, nothing downstream re-derives them, and the output schema rejects a finding that lacks one.
 
 - **Location**: the repo-relative path and the line or line range of the triggering code (e.g. `internal/store/query.go:42-45`); for something missing, the file and line where it belongs. Later passes merge and verify findings by their location.
-- **Severity**: one of BLOCKING, CRITICAL, WARNING, INFO (per the severity guidance above).
+- **Severity**: one of BLOCKING, CRITICAL, WARNING, INFO (per the severity definitions above).
 - **Actionability**: one of auto-fix, needs-discussion, architectural:
   - auto-fix: A senior engineer would apply this fix without discussion (dead code removal, N+1 query fixes, stale comment cleanup, magic number extraction, missing error wrapping, simple nil checks). These will be marked as AUTO-FIX — an agent should apply them directly.
   - needs-discussion: Requires team input before fixing (security fixes, race condition resolutions, API/design changes, anything changing observable behavior). These will be marked as ASK — requires human confirmation.
@@ -120,12 +120,12 @@ Output ONLY valid JSON matching this exact schema (no markdown fences, no surrou
 }
 
 Field rules:
-- `severity`, `actionability` and `confidence`: the three labels from the Finding Labels section, exactly one enum value each. The output is rejected when a finding lacks one.
+- `severity`, `actionability` and `confidence`: the three labels from the Finding Labels section, exactly one enum value each.
 - `line_end`: only when the finding spans a line range.
 - `pattern`: only when the finding violates a review pattern listed in this prompt, by that pattern's exact name.
-- `code_snippet` and `suggested_fix`: only when this prompt's enrichment rules ask for them. Never invent either.
+- `code_snippet` and `suggested_fix`: only when this prompt asks for them. Never invent either.
 - `fix_options`, `recommended_option` and `recommendation_reasoning`: only for a needs-discussion or architectural finding in a prompt that asks for fix options, never for an auto-fix finding. Each option's `id` is its letter (A, B, C), which `recommended_option` names.
 - `related_to`: the titles of the other findings in this output that the finding connects to; `[]` when none.
 - `findings`: `[]` when the pass reports nothing.
 - `summary` and `recommendation`: what this prompt's summary instructions describe. `recommendation` is the empty string when the prompt asks for no recommendation.
-- The JSON object is the entire response: no markdown fences, no prose before or after it, and no reasoning or tool output inside it.
+- The JSON object is your entire final message: no prose before or after it, and no reasoning or tool output inside it.

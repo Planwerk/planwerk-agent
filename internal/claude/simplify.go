@@ -125,7 +125,7 @@ func BuildSimplifyApplyPrompt(ctx implement.SimplifyApplyContext) string {
 	sb.WriteString("\n")
 
 	sb.WriteString(patternCatalogBlock(honorPatternsHeading,
-		"These patterns are the catalog the project's review/audit/elaborate tools share — including any project-specific patterns shipped under `.planwerk/review_patterns/` in this repository. The simplified result MUST stay consistent with them. When a simplification touches an area covered by a pattern, prefer the resolution the pattern endorses.",
+		patternCatalogLeadIn+" The simplified result MUST stay consistent with them. When a simplification touches an area covered by a pattern, prefer the resolution the pattern endorses.",
 		ctx.Catalog, ctx.Patterns, ctx.MaxPatterns))
 
 	sb.WriteString(simplifyApplyGuardrailBlock() + `
@@ -136,7 +136,7 @@ func BuildSimplifyApplyPrompt(ctx implement.SimplifyApplyContext) string {
 3. Verify locally: build the project and run the tests (or the targeted subset covering the touched code). ` + foregroundRunLine() + ` Record the exact commands and their results under Verification in the report. If a command cannot run in this environment, say so explicitly.
 `)
 
-	sb.WriteString(foldSteps(ctx.BaseBranch, 4))
+	sb.WriteString(foldSteps(ctx.BaseBranch, 4, "a removal of code", "changing", "the report", foldLocalTail))
 
 	sb.WriteString(`5. After folding, output a structured simplification report in this exact shape:
 
@@ -165,8 +165,7 @@ func BuildSimplifyApplyPrompt(ctx implement.SimplifyApplyContext) string {
 	sb.WriteString(`- NEVER fabricate file paths, line numbers, or symbols — open the file before claiming.
 - If a finding no longer applies, would change behavior, or touches a guardrail area, SKIP it and record why — do not force it.
 - If there is nothing to simplify after review, do NOT create an empty commit; output the report with an empty Applied list and stop.
-- It is OK to stop and report BLOCKED or NEEDS_CONTEXT. Bad work is worse than no work; escalating is not penalized.
-`)
+` + escalationOKLine("", "") + ``)
 
 	return sb.String()
 }
@@ -196,42 +195,4 @@ func renderSimplifyFindings(findings []report.Finding) string {
 		}
 	}
 	return sb.String()
-}
-
-// foldSteps renders the fold-via-autosquash instructions shared by the
-// findings-driven apply prompts: each change is folded into the branch commit it
-// belongs to (git commit --fixup + git rebase --autosquash bounded to the
-// merge-base). It does NOT push — these passes run on the local feature branch
-// before any pull request exists; the finalize step opens the PR afterwards.
-// baseBranch bounds the rebase to the branch's own commits; foldStep is the step
-// number so the caller can place the block within its own numbered workflow.
-func foldSteps(baseBranch string, foldStep int) string {
-	return fmt.Sprintf(`%[1]d. Fold each change into the commit it belongs to. This branch may carry more
-   than one commit, and a removal of code that an earlier commit introduced
-   belongs IN that commit — not in a new commit stacked on top.
-
-   a. List the branch's own commits (oldest first):
-
-      git log --oneline --reverse origin/%[2]s..HEAD
-
-   b. For each distinct change, find the commit that introduced the code you
-      are changing — use `+"`git blame <file>`, `git log -p -- <file>`, or `git log -S<symbol>`"+`.
-   c. Stage ONLY that change and record it as a fixup of its target commit:
-
-      git add -- <files for this change>
-      git commit --fixup=<target-sha>
-
-      Repeat (c) for every change that maps to a different commit.
-   d. Once every change is recorded as a fixup, fold them in non-interactively
-      (no editor opens). Rebase against the merge-base so ONLY this branch's
-      own commits are folded and the branch is never silently advanced onto a
-      moved base:
-
-      GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash "$(git merge-base origin/%[2]s HEAD)"
-
-`+foldConflictSteps('e', "the report")+`   Do NOT push and do NOT open a pull request. Leave the rewritten commits on the
-   local branch — the finalize step opens the PR once the simplify and review
-   passes are done.
-
-`, foldStep, baseBranch)
 }

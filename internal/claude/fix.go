@@ -74,7 +74,7 @@ func BuildFixPrompt(ctx fix.Context) string {
 	sb.WriteString("\n")
 
 	sb.WriteString(patternCatalogBlock(honorPatternsHeading,
-		"These patterns are the catalog the project's review/audit/elaborate tools share — including any project-specific patterns shipped under `.planwerk/review_patterns/` in this repository. The fix you push MUST stay consistent with them: do not introduce code or test changes that would itself be flagged by a pattern below. When the fix touches an area covered by a pattern, prefer the resolution the pattern endorses.",
+		patternCatalogLeadIn+" The fix you push MUST stay consistent with them: do not introduce code or test changes that would itself be flagged by a pattern below. When the fix touches an area covered by a pattern, prefer the resolution the pattern endorses.",
 		ctx.Catalog, ctx.Patterns, ctx.MaxPatterns))
 	sb.WriteString(projectMemoryBlock(ctx.Memory))
 
@@ -144,28 +144,8 @@ Run these steps for EACH failing check above before editing any code:
 `)
 
 	if ctx.Fixup {
-		fmt.Fprintf(&sb, "2. Fold each change into the commit it belongs to. This branch may carry more\n"+
-			"   than one commit, and a fix for code that an earlier commit introduced\n"+
-			"   belongs IN that commit — not in a new commit stacked on top.\n\n"+
-			"   a. List the branch's own commits (oldest first):\n\n"+
-			"      git log --oneline --reverse origin/%[1]s..HEAD\n\n"+
-			"   b. For each distinct change, find the commit that introduced the code you\n"+
-			"      are fixing — use `git blame <file>`, `git log -p -- <file>`, or `git log -S<symbol>`.\n"+
-			"   c. Stage ONLY that change and record it as a fixup of its target commit:\n\n"+
-			"      git add -- <files for this change>\n"+
-			"      git commit --fixup=<target-sha>\n\n"+
-			"      Repeat (c) for every change that maps to a different commit.\n"+
-			"   d. Once every change is recorded as a fixup, fold them in non-interactively\n"+
-			"      (no editor opens). Rebase against the merge-base so ONLY this branch's\n"+
-			"      own commits are folded and the branch is never silently advanced onto a\n"+
-			"      moved base:\n\n"+
-			"      GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash \"$(git merge-base origin/%[1]s HEAD)\"\n\n"+
-			foldConflictSteps('e', "pushing")+
-			"   Create a NEW standalone commit ONLY when a change genuinely belongs to no\n"+
-			"   existing commit on this branch (e.g. an entirely new file unrelated to any\n"+
-			"   of them). That is the rare exception, not the default — and only then:\n\n"+
-			"      git commit -s -m \"<concise summary>\" -m \"Failed checks: <comma-separated names>\" -m \"Assisted-by: Claude\"\n\n"+
-			"3. Publish the rewritten branch:\n\n"+
+		sb.WriteString(foldSteps(ctx.BaseBranch, 2, "a fix for code", "fixing", "pushing", fixStandaloneCommitTail))
+		fmt.Fprintf(&sb, "3. Publish the rewritten branch:\n\n"+
 			"      git push --force-with-lease origin HEAD:%[2]s\n\n"+
 			"   The autosquash rebase rewrote the branch's commit SHAs, so a plain push is\n"+
 			"   rejected. Use --force-with-lease (never plain --force): it publishes the\n"+
@@ -259,8 +239,7 @@ Run these steps for EACH failing check above before editing any code:
 - NEVER claim "fixed" without either local verification (step 6) or an explicit "not reproducible locally" note in the report.
 - If you cannot diagnose a failure from the logs (truncation, infra flake, expired secret, third-party check without logs), STOP and explain — do not invent a fix.
 - If there is nothing to commit after the fix attempt, do NOT create an empty commit; output the report and stop.
-- It is OK to stop and report BLOCKED or NEEDS_CONTEXT. Bad work is worse than no work; escalating is not penalized. Emit the matching STATUS and do not push a placebo fix.
-- If the same check is failing for the same root cause as the previous iteration, STOP and report — repeating the failed approach will not help.
+` + escalationOKLine("", " Emit the matching STATUS and do not push a placebo fix.") + `- If the same check is failing for the same root cause as the previous iteration, STOP and report — repeating the failed approach will not help.
 `)
 
 	return sb.String()
@@ -368,35 +347,7 @@ Run these steps for EACH failing check before editing any code:
    git fetch origin <base>
 
    Use the printed name wherever <base> appears below.
-7. Fold each change into the commit it belongs to. This branch may carry more
-   than one commit, and a fix for code that an earlier commit introduced
-   belongs IN that commit — not in a new commit stacked on top.
-
-   a. List the branch's own commits (oldest first):
-
-      git log --oneline --reverse origin/<base>..HEAD
-
-   b. For each distinct change, find the commit that introduced the code you
-      are fixing (git blame <file>, git log -p -- <file>, or git log -S<symbol>).
-   c. Stage ONLY that change and record it as a fixup of its target commit:
-
-      git add -- <files for this change>
-      git commit --fixup=<target-sha>
-
-      Repeat (c) for every change that maps to a different commit.
-   d. Once every change is recorded as a fixup, fold them in non-interactively
-      (no editor opens), bounded to the merge-base so ONLY this branch's own
-      commits are folded:
-
-      GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash "$(git merge-base origin/<base> HEAD)"
-
-`+foldConflictSteps('e', "pushing")+`   Create a NEW standalone commit ONLY when a change genuinely belongs to no
-   existing commit on this branch (e.g. an entirely new file unrelated to any
-   of them). That is the rare exception, not the default — and only then:
-
-      git commit -s -m "<concise summary>" -m "Failed checks: <comma-separated names>" -m "Assisted-by: Claude"
-
-8. Publish the rewritten branch:
+`+foldSteps("<base>", 7, "a fix for code", "fixing", "pushing", fixStandaloneCommitTail)+`8. Publish the rewritten branch:
 
       git push --force-with-lease origin HEAD
 
@@ -494,8 +445,7 @@ Run these steps for EACH failing check before editing any code:
 - NEVER claim "fixed" without either local verification (Diagnosis Workflow step 6) or an explicit "not reproducible locally" note in the report.
 - If you cannot diagnose a failure from the logs (truncation, infra flake, expired secret, third-party check without logs), STOP and explain — do not invent a fix.
 - If there is nothing to commit after the fix attempt, do NOT create an empty commit; output the report and stop.
-- It is OK to stop and report BLOCKED or NEEDS_CONTEXT. Bad work is worse than no work; escalating is not penalized. Emit the matching STATUS and do not push a placebo fix.
-`)
+` + escalationOKLine("", " Emit the matching STATUS and do not push a placebo fix.") + ``)
 
 	return sb.String()
 }

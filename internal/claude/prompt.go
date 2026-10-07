@@ -192,10 +192,10 @@ When the diff introduces a new dependency, check its freshness and maintenance s
 		sb.WriteString("\nFlag a hint whose documentation is actually outdated as WARNING with title \"Stale Documentation: <file>\", as the Documentation Completeness rule above says. A hint whose documentation turns out to be current gets no finding.\n\n")
 	}
 
-	// False-positive suppressions (shared with audit/compliance via suppressionsBlock)
+	// False-positive suppressions (shared with audit via suppressionsBlock)
 	sb.WriteString(suppressionsBlock(scopeDiff))
 
-	// Anti-sycophancy rules (shared with audit/adversarial/compliance)
+	// Anti-sycophancy rules (communicationStyleBlock, shared with every finder)
 	sb.WriteString(communicationStyleBlock())
 	sb.WriteString(outputLanguageBlock())
 

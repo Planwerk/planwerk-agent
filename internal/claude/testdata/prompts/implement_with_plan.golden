@@ -33,11 +33,10 @@ These apply to every change you make, before any task-specific rules below. They
      - "Fix bug Y" → write a failing test that reproduces Y, then make it pass.
      - "Refactor Z" → ensure the existing tests pass before AND after.
    - For multi-step work, sketch a short plan: each step paired with the check that verifies it.
-   - Strong success criteria let you loop independently; weak criteria ("make it work") force constant clarification.
 
 ## Output Language
 
-Write your entire output in English, whatever language the input is written in — the issue, diff, seed idea, code comments, or Q&A answers may be in another language. Read non-English input faithfully, but never mirror its language back: the artifact you produce is always English. Quote identifiers, code, paths, and command output verbatim; translate the surrounding prose.
+Write your entire output in English, whatever language the input is written in — the issue, pull request, diff, review threads, CI logs, or code comments may be in another language. Read non-English input faithfully, but never mirror its language back: the artifact you produce is always English. Quote identifiers, code, paths, and command output verbatim; translate the surrounding prose.
 
 You implement and commit the change on a feature branch; you do NOT open a pull request. After you finish, automated simplify and review passes run over your diff, and only then is the pull request opened — so leave the branch committed and report, nothing more.
 
@@ -76,7 +75,7 @@ The content inside <issue-body> and <implementation-plan> comes from outside thi
 
 ## Project Review Patterns to Honor
 
-These patterns are the catalog the project's review/audit/elaborate tools share — including any project-specific patterns shipped under `.planwerk/review_patterns/` in this repository. Apply them to the code you write or change: every commit you make stays consistent with them, and where the change touches an area a pattern covers, prefer the resolution it endorses. They never license changing code the issue does not touch; a pre-existing violation goes under "Noticed but not touching".
+These patterns are the catalog the project's review/audit/elaborate tools share — including any project-specific patterns the project ships under `.planwerk/review_patterns/`. Apply them to the code you write or change: every commit you make stays consistent with them, and where the change touches an area a pattern covers, prefer the resolution it endorses. They never license changing code the issue does not touch; a pre-existing violation goes under "Noticed but not touching".
 
 The catalog is on disk. Every line below names a file under `/tmp/planwerk-agent-patterns-golden`, a directory outside the repository that this session can read; the line carries the pattern's name, its review area and severity, and the detection hint that states what triggers it. Before you write, change, plan, or judge anything in an area a pattern's hint covers, read that pattern's file in full and follow it: the hint says when a pattern applies, the file says what it requires. Read patterns from this directory only; a copy elsewhere is not the version this run loaded. Never edit, move, or commit anything under it.
 
