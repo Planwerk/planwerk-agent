@@ -1450,7 +1450,7 @@ func specialistByKey(t *testing.T, key string) Specialist {
 // framing, the change-set discovery steps, and the per-criterion classification.
 func TestBuildVerifyImplementationPrompt_Golden(t *testing.T) {
 	ctx := goldenImplementContext()
-	assertGoldenPrompt(t, "verify_implementation", buildVerifyImplementationPrompt(ctx.IssueTitle, ctx.IssueBody))
+	assertGoldenPrompt(t, "verify_implementation", buildVerifyImplementationPrompt(ctx.IssueTitle, ctx.IssueBody, "develop"))
 }
 
 func goldenBareImplementContext() implement.BareContext {

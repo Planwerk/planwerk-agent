@@ -5,9 +5,9 @@ Commit messages say what the implementing session meant to do; verify each crite
 
 ## Determine the change set
 You are inside a checkout currently on the implementation's feature branch.
-- Find the base branch: run `git symbolic-ref refs/remotes/origin/HEAD` (fall back to origin/main, then origin/master).
-- Run `git diff <base>...HEAD --stat` and `git log <base>..HEAD --oneline` to see what changed.
-- Read the actual changed files. Do NOT judge from commit messages alone.
+SCOPE: Only review files this branch changed since it forked from origin/develop.
+First run: git diff origin/develop...HEAD --name-only
+Then read the changed files; `git log origin/develop..HEAD --oneline` lists the commits, and every criterion is judged against the files, not the messages.
 
 ## Source Issue
 

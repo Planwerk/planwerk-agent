@@ -1268,7 +1268,15 @@ func effectiveImplementStatus(implReport string) (status string, reinterpreted b
 // (or a clean pass) the pass stays render-only, exactly as before.
 func (r *Runner) runVerification(w io.Writer, dir string, ctx Context) {
 	slog.Info("running independent implementation verification")
-	result, err := r.Verifier.VerifyImplementation(dir, ctx.IssueTitle, ctx.IssueBody)
+	// The verifier scopes its diff to the base the branch forked from, as the
+	// other finders do, so the branch is resolved before the pass; when it
+	// cannot be, the base stays empty and the prompt falls back to its default.
+	branch, branchErr := r.GitHub.CurrentBranchRef(dir)
+	baseBranch := ""
+	if branchErr == nil && branch != nil {
+		baseBranch = branch.BaseBranch
+	}
+	result, err := r.Verifier.VerifyImplementation(dir, ctx.IssueTitle, ctx.IssueBody, baseBranch)
 	if err != nil {
 		slog.Warn("implementation verification failed", "err", err)
 		_, _ = fmt.Fprintf(w, "\nIndependent verification could not run: %v\n", err)
@@ -1280,10 +1288,9 @@ func (r *Runner) runVerification(w io.Writer, dir string, ctx Context) {
 		return
 	}
 
-	branch, err := r.GitHub.CurrentBranchRef(dir)
-	if err != nil {
-		slog.Warn("could not resolve the branch to apply verification findings; skipping", "err", err)
-		_, _ = fmt.Fprintf(w, "\nVerification fixes skipped: could not resolve the base branch for this checkout: %v\n", err)
+	if branchErr != nil {
+		slog.Warn("could not resolve the branch to apply verification findings; skipping", "err", branchErr)
+		_, _ = fmt.Fprintf(w, "\nVerification fixes skipped: could not resolve the base branch for this checkout: %v\n", branchErr)
 		return
 	}
 
