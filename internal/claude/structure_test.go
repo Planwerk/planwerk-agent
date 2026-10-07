@@ -80,6 +80,43 @@ func TestDecodeJSONWithRepair_RepairsMalformed(t *testing.T) {
 // TestDecodeJSONWithRepair_RepairCallFails covers a repair session that errors
 // out: the decode gives up after that one call and reports the original parse
 // error, not the session's.
+// TestDecodeJSONWithRepair_NoJSONValueIsNotRepaired: output with no brace or
+// bracket in it (a session that ended on a question or a summary) is an error
+// before any repair call, because a repair of nothing can only invent the
+// object and the invented object decodes to a result nobody vouched for.
+func TestDecodeJSONWithRepair_NoJSONValueIsNotRepaired(t *testing.T) {
+	t.Parallel()
+	c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
+		return `{"a":1,"b":"unexpected"}`, "", nil
+	})
+	var v sample
+	err := c.decodeJSONWithRepair("Should I fold the change into the first commit or open a new one?", "address-result", &v)
+	if err == nil || !strings.Contains(err.Error(), "holds no JSON value") {
+		t.Fatalf("err = %v, want the no-JSON-value error", err)
+	}
+	if len(*calls) != 0 {
+		t.Errorf("repair ran %d sessions, want 0 for text with no JSON value", len(*calls))
+	}
+}
+
+// TestDecodeJSONWithRepair_NullReplyIsAFailure: the repair prompt tells the
+// model to answer null when the payload holds nothing to repair; that answer
+// ends the decode as a failure instead of decoding to the zero value.
+func TestDecodeJSONWithRepair_NullReplyIsAFailure(t *testing.T) {
+	t.Parallel()
+	c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
+		return "null", "", nil
+	})
+	var v sample
+	err := c.decodeJSONWithRepair("{ the session wrote prose with a brace in it", "address-result", &v)
+	if err == nil || !strings.Contains(err.Error(), "no JSON value to repair") {
+		t.Fatalf("err = %v, want the null-reply error", err)
+	}
+	if len(*calls) != 1 {
+		t.Errorf("repair ran %d sessions, want 1", len(*calls))
+	}
+}
+
 func TestDecodeJSONWithRepair_RepairCallFails(t *testing.T) {
 	t.Parallel()
 	c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
@@ -87,7 +124,7 @@ func TestDecodeJSONWithRepair_RepairCallFails(t *testing.T) {
 	})
 
 	var got sample
-	err := c.decodeJSONWithRepair(`not json`, "test", &got)
+	err := c.decodeJSONWithRepair(`{not json`, "test", &got)
 	if err == nil {
 		t.Fatal("expected an error when repair fails")
 	}
@@ -113,7 +150,7 @@ func TestDecodeJSONWithRepair_RepairStillInvalid(t *testing.T) {
 	})
 
 	var got sample
-	if err := c.decodeJSONWithRepair(`bad`, "test", &got); err == nil {
+	if err := c.decodeJSONWithRepair(`{bad`, "test", &got); err == nil {
 		t.Error("expected an error when repaired output is still invalid")
 	}
 	if len(*calls) != maxRepairRounds {
@@ -193,7 +230,7 @@ func TestDecodeJSONWithRepair_BoundedRounds(t *testing.T) {
 	})
 
 	var got sample
-	err := c.decodeJSONWithRepair(`bad`, "test", &got)
+	err := c.decodeJSONWithRepair(`{bad`, "test", &got)
 	if err == nil {
 		t.Fatal("expected an error after the repair budget is exhausted")
 	}
@@ -215,7 +252,7 @@ func TestDecodeJSONWithRepair_EmptyRepairOutput(t *testing.T) {
 	})
 
 	var got sample
-	err := c.decodeJSONWithRepair(`bad`, "test", &got)
+	err := c.decodeJSONWithRepair(`{bad`, "test", &got)
 	if err == nil {
 		t.Fatal("expected an error when every repair answer is empty")
 	}
@@ -742,8 +779,9 @@ func TestFinishReview_RepairsTruncatedPayload(t *testing.T) {
 }
 
 // TestFinishReview_EmptyOutputFailsAfterRepairRounds covers a finder that
-// returned nothing usable: the repair budget runs out, and the error names the
-// pass and the file the raw output was saved to.
+// returned nothing usable: output with no JSON value in it spends no repair
+// round (a repair of nothing could only invent the findings), and the error
+// names the pass and the file the raw output was saved to.
 func TestFinishReview_EmptyOutputFailsAfterRepairRounds(t *testing.T) {
 	t.Parallel()
 	c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
@@ -754,8 +792,8 @@ func TestFinishReview_EmptyOutputFailsAfterRepairRounds(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error for an empty output")
 	}
-	if len(*calls) != maxRepairRounds {
-		t.Errorf("ran %d repair sessions, want %d", len(*calls), maxRepairRounds)
+	if len(*calls) != 0 {
+		t.Errorf("ran %d repair sessions, want 0 for output with no JSON value", len(*calls))
 	}
 	if !strings.Contains(err.Error(), "parsing review output as JSON") {
 		t.Errorf("error does not name the pass: %v", err)
