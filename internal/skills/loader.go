@@ -11,6 +11,7 @@
 package skills
 
 import (
+	"bytes"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -78,6 +79,12 @@ func Load(repoDir string) []Skill {
 	if repoDir == "" {
 		return nil
 	}
+	return loadDirs(repoDir, nil)
+}
+
+// loadDirs is Load over the skill directories keep admits by directory name;
+// a nil keep admits every directory.
+func loadDirs(repoDir string, keep func(dir string) bool) []Skill {
 	root := filepath.Join(repoDir, ".claude", "skills")
 	entries, err := os.ReadDir(root)
 	if err != nil {
@@ -89,7 +96,7 @@ func Load(repoDir string) []Skill {
 
 	var out []Skill
 	for _, e := range entries {
-		if !e.IsDir() {
+		if !e.IsDir() || (keep != nil && !keep(e.Name())) {
 			continue
 		}
 		path := filepath.Join(root, e.Name(), "SKILL.md")
@@ -171,4 +178,85 @@ func LoadFromRef(repoDir, ref string) []Skill {
 		return nil
 	}
 	return Load(root)
+}
+
+// LoadShared is LoadFromRef for a session that runs in a checkout of a pull
+// request's head. Claude Code loads every skill from the working tree, and the
+// Skill tool reads the checkout's SKILL.md (verified 2026-10-07 with a branch
+// that changed a skill's body), so a pull request that adds or edits a skill
+// would hand its own text to the fix or address session as a recipe, whatever
+// the prompt lists. LoadShared therefore returns only the skills whose
+// SKILL.md is byte-identical at ref and in the working tree, and beside them
+// the names the working tree's other skills answer to (the directory name and
+// the frontmatter name), for the caller to deny to the Skill tool. A skill the
+// pull request removed is in neither list, since nothing can invoke it; a
+// skill closed to model invocation is left out of the first as Load leaves it
+// out. When ref cannot be read, nothing is shared and every working-tree skill
+// is named, so a session never follows a skill the base cannot vouch for.
+func LoadShared(repoDir, ref string) (shared []Skill, changed []string) {
+	if repoDir == "" {
+		return nil, nil
+	}
+	head := filepath.Join(repoDir, ".claude", "skills")
+	entries, err := os.ReadDir(head)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			slog.Warn("reading skills directory failed; continuing without project skills", "dir", head, "err", err)
+		}
+		return nil, nil
+	}
+	root, cleanup, ok := gitref.Materialize(repoDir, ref, ".claude/skills")
+	defer cleanup()
+
+	same := map[string]bool{}
+	seen := map[string]bool{}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		headBytes, err := os.ReadFile(filepath.Join(head, e.Name(), "SKILL.md"))
+		if err != nil {
+			continue // not a skill
+		}
+		if ok {
+			baseBytes, err := os.ReadFile(filepath.Join(root, ".claude", "skills", e.Name(), "SKILL.md"))
+			if err == nil && bytes.Equal(baseBytes, headBytes) {
+				same[e.Name()] = true
+				continue
+			}
+		}
+		for _, n := range skillNames(headBytes, e.Name()) {
+			if !seen[n] {
+				seen[n] = true
+				changed = append(changed, n)
+			}
+		}
+	}
+	sort.Strings(changed)
+	if ok {
+		shared = loadDirs(root, func(dir string) bool { return same[dir] })
+	}
+	if len(changed) > 0 {
+		slog.Info("project skills the pull request adds or changes are denied to the session", "names", changed)
+	}
+	return shared, changed
+}
+
+// skillNames returns the names a SKILL.md answers to: its directory name, and
+// its frontmatter name when that differs. A frontmatter that does not parse
+// leaves the directory name alone.
+func skillNames(content []byte, dirName string) []string {
+	names := []string{dirName}
+	fm, ok := extractFrontmatter(string(content))
+	if !ok {
+		return names
+	}
+	var meta skillFrontmatter
+	if err := yaml.Unmarshal([]byte(fm), &meta); err != nil {
+		return names
+	}
+	if n := strings.TrimSpace(meta.Name); n != "" && n != dirName {
+		names = append(names, n)
+	}
+	return names
 }

@@ -1048,11 +1048,12 @@ func goldenFixContext() fix.Context {
 				WorkflowRunID: 99,
 			},
 		},
-		Patterns:    goldenPatterns(),
-		Catalog:     goldenCatalog(),
-		MaxPatterns: 0,
-		Skills:      goldenSkills(),
-		Fixup:       true,
+		Patterns:      goldenPatterns(),
+		Catalog:       goldenCatalog(),
+		MaxPatterns:   0,
+		Skills:        goldenSkills(),
+		ChangedSkills: []string{"deploy"},
+		Fixup:         true,
 	}
 }
 

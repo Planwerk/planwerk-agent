@@ -307,7 +307,7 @@ This is a single, non-interactive, one-shot session: there is NO next turn, no h
 		patternCatalogLeadIn+" Apply them to the code you write or change: every commit you make stays consistent with them, and where the change touches an area a pattern covers, prefer the resolution it endorses. They never license changing code the issue does not touch; a pre-existing violation goes under \"Noticed but not touching\".",
 		ctx.Catalog, ctx.Patterns, ctx.MaxPatterns))
 
-	sb.WriteString(projectSkillsBlock(ctx.Skills))
+	sb.WriteString(projectSkillsBlock(ctx.Skills, nil))
 	sb.WriteString(docProseBlock())
 	sb.WriteString(styleGuideBlock(ctx.StyleGuidePath))
 
@@ -556,7 +556,7 @@ func BuildBareImplementPrompt(ctx implement.BareContext) string {
 
 	sb.WriteString(renderBareCatalog(ctx.PatternCatalog, ctx.HasRepoLocalRefs))
 
-	sb.WriteString(projectSkillsBlock(ctx.Skills))
+	sb.WriteString(projectSkillsBlock(ctx.Skills, nil))
 	sb.WriteString(docProseBlock())
 	sb.WriteString(styleGuideBlock(ctx.StyleGuidePath))
 
