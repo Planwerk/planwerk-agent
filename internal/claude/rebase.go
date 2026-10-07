@@ -80,11 +80,9 @@ func BuildRebaseConflictPrompt(ctx rebase.ConflictContext) string {
 	sb.WriteString(baselineBehavioralPrinciples)
 	sb.WriteString(outputLanguageBlock())
 	sb.WriteString(`Apply these task-specific thinking patterns on top of the baseline above:
-- "Resolve semantically, never a blind side-pick." — Do NOT just take "ours" or "theirs". Produce the resolution that keeps BOTH the replayed commit's intent and the upstream change correct.
+- "Resolve semantically." — Produce the resolution that keeps BOTH the replayed commit's intent and the upstream change correct.
 - "Honor the replayed commit's intent." — The commit being applied has a purpose (its subject/message). The resolved file must still serve that purpose after absorbing the upstream change.
 - "Inspect both sides before editing." — Read the conflict markers, then use git to see each side: ` + "`git log`, `git show`, `git diff`" + ` on the conflicted paths. Understand what upstream changed and why before resolving.
-- "Touch only the conflicted files." — Resolve exactly the files git marked as unmerged. Do not refactor, reformat, or change unrelated code while resolving.
-- "Leave no markers." — The resolved files must contain no conflict markers (` + "`<<<<<<<`, `=======`, `>>>>>>>`" + `) and must compile / parse.
 
 `)
 
@@ -120,10 +118,10 @@ func BuildRebaseConflictPrompt(ctx rebase.ConflictContext) string {
 
 ## Hard rules
 
-- Resolve ONLY the conflicted files listed above. Do NOT touch other files.
+- Resolve ONLY the conflicted files listed above. Do NOT touch other files, and do not refactor, reformat, or change unrelated code while resolving.
 - Do NOT run ` + "`git rebase --continue`" + ` — the orchestrator runs it after this session, once the files are staged.
 - Do NOT run ` + "`git rebase --abort`, `git commit`, `git push`" + `, or any force-push. Your job ends at ` + "`git add`" + `.
-- Leave NO conflict markers in any file.
+- Leave NO conflict markers in any file (step 4 checks), and leave every resolved file in a state that compiles or parses.
 - NEVER pick one side blindly to make the conflict "go away" — that silently drops a change. If you cannot reconcile a file, report it on an UNRESOLVED line (step 6) instead of guessing.
 `)
 
@@ -235,8 +233,7 @@ func BuildRebaseApplyPrompt(ctx rebase.ApplyContext) string {
 
 	fmt.Fprintf(&sb, `## What to do
 
-1. For each adjustment, open the named file and confirm it still applies — the analysis marks each with a confidence and can be wrong or already handled. Apply exactly the described change; if it is a false positive or no longer applies, SKIP it and record why in the report.
-   Confirm a "likely" or "uncertain" adjustment against the file before you apply it, and SKIP one you cannot confirm.
+1. For each adjustment, open the named file and confirm it still applies — the analysis marks each with a confidence and can be wrong or already handled; confirm a "likely" or "uncertain" one against the file before you apply it. Apply exactly the described change (Hard rules say what to do with one that does not apply).
 2. Verify locally where you can run the toolchain. `+foregroundRunLine()+`
 3. Fold each change into the commit it belongs to (the branch's own commits are the range origin/%[1]s..HEAD):
 

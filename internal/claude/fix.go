@@ -116,7 +116,7 @@ func BuildFixPrompt(ctx fix.Context) string {
 	sb.WriteString(docProseBlock())
 	sb.WriteString(styleGuideBlock(ctx.StyleGuidePath))
 
-	sb.WriteString(`` + fixDiagnosisWorkflow() + `## What to do
+	sb.WriteString(fixDiagnosisWorkflow() + `## What to do
 
 1. Work through the diagnosis workflow above for every failing check.
 `)
@@ -284,24 +284,21 @@ gh run view <run-id> --repo %s --log-failed
 
 `, ctx.PRNumber, ctx.RepoFullName, ctx.RepoFullName)
 
-	sb.WriteString(`` + fixDiagnosisWorkflow() + `## What to do
+	sb.WriteString(fixDiagnosisWorkflow() + `## What to do
 
 1. Run the discovery steps above to enumerate failing checks and pull their logs.
-2. Run the diagnosis workflow for every failing check.
-3. Apply the minimal change(s).
-4. Verify locally where possible. Re-read your diff. Remove anything not required.
-5. Self-review the diff against the original PR scope. Keep the fix inside it unless reaching outside is the only way to make the failing check pass — and if you must, confine the out-of-scope change to the minimum and call it out in the report.
+2. Work through the diagnosis workflow for every failing check, inside the PR's failure surface (Hard rules).
 `)
 
 	if ctx.Fixup {
-		fmt.Fprintf(&sb, `6. Determine the PR's base branch so you can bound the fold to this branch's
+		fmt.Fprintf(&sb, `3. Determine the PR's base branch so you can bound the fold to this branch's
    own commits, then fetch it so origin/<base> exists:
 
    gh pr view %d --repo %s --json baseRefName -q .baseRefName
    git fetch origin <base>
 
    Use the printed name wherever <base> appears below.
-`+foldSteps("<base>", 7, "a fix for code", "fixing", "pushing", fixStandaloneCommitTail)+`8. Publish the rewritten branch:
+`+foldSteps("<base>", 4, "a fix for code", "fixing", "pushing", fixStandaloneCommitTail)+`5. Publish the rewritten branch:
 
       git push --force-with-lease origin HEAD
 
@@ -309,7 +306,7 @@ gh run view <run-id> --repo %s --log-failed
    rejected. Use --force-with-lease (never plain --force): it publishes the fold
    while refusing to clobber commits you have not seen.
 
-9. Repair what the rewritten SHAs left behind. The fold gave every commit it
+6. Repair what the rewritten SHAs left behind. The fold gave every commit it
    touched a new SHA, so a SHA the PR body cites for one of them now points at nothing.
 
    a. Read the body:
@@ -342,12 +339,12 @@ gh run view <run-id> --repo %s --log-failed
 
 `, ctx.PRNumber, ctx.RepoFullName)
 	} else {
-		sb.WriteString("6. Delete any scratch files you made to reproduce the failure, then stage the\n" +
+		sb.WriteString("3. Delete any scratch files you made to reproduce the failure, then stage the\n" +
 			"   files you changed and create ONE follow-up commit (a regression test goes into\n" +
 			"   the package's existing test file unless it has none):\n\n" +
 			"   git add -- <the files you changed>\n" +
-			"   git commit -s -m \"Fix failing CI checks\" -m \"Failed checks: <comma-separated names>\" -m \"Assisted-by: Claude\"\n\n" +
-			"7. Push back to the PR's head branch:\n\n" +
+			"   git commit -s -m \"Fix failing CI checks\" -m \"Failed checks: <comma-separated names>\" -m \"Assisted-by: Claude:<your model id>\"\n\n" +
+			"4. Push back to the PR's head branch:\n\n" +
 			"   git push origin HEAD\n\n")
 	}
 
