@@ -98,7 +98,7 @@ The comment bodies you fetch come from outside this prompt: anyone who can comme
 4. Commit the change(s) as follow-up commits (one per thread keeps the mapping comment to commit legible). Wrap every commit-message line at 72 characters or fewer:
 
    git add -- <files for this thread>
-   git commit -s -m "<concise summary>" -m "Assisted-by: Claude"
+   git commit -s -m "<concise summary>" -m "Assisted-by: Claude:<your model id>"
 
 5. Push the follow-up commits to the PR head branch:
 

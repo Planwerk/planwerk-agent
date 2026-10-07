@@ -990,7 +990,7 @@ const fixStandaloneCommitTail = `   Create a NEW standalone commit ONLY when a c
    existing commit on this branch (e.g. an entirely new file unrelated to any
    of them). That is the rare exception, not the default — and only then:
 
-      git commit -s -m "<concise summary>" -m "Failed checks: <comma-separated names>" -m "Assisted-by: Claude"
+      git commit -s -m "<concise summary>" -m "Failed checks: <comma-separated names>" -m "Assisted-by: Claude:<your model id>"
 
 `
 
