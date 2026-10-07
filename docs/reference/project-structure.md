@@ -149,10 +149,22 @@ planwerk-agent/
 │   └── todocheck/
 │       ├── todocheck.go        # Load TODOS.md for cross-reference
 │       └── todocheck_test.go
+├── .claude/                    # This repository's own Claude Code tooling (never shipped)
+│   ├── agents/
+│   │   ├── prompt-auditor.md   # Read-only audit of one prompt builder against the doctrine
+│   │   └── skill-auditor.md    # Read-only audit of a plugin skill or shared document
+│   ├── commands/
+│   │   └── audit-prompt.md     # /audit-prompt <builder>: delegates to prompt-auditor
+│   ├── skills/
+│   │   └── iterate-prompts/    # /iterate-prompts: one audit iteration over every prompt surface
+│   │       ├── SKILL.md
+│   │       ├── reference/      # The brief and ledger templates, the seven audit slices
+│   │       └── scripts/        # probe-models.sh (alias → model id), check.sh (is an iteration due)
+│   └── prompt-audits/          # The ledger: one file per iteration, newest is the state
 ├── .claude-plugin/
 │   └── marketplace.json        # Claude Code marketplace catalog (this repo)
 ├── plugins/
-│   └── planwerk/               # The plugin: draft / elaborate / meta skills
+│   └── planwerk/               # The plugin: the twelve interactive skills
 │       ├── .claude-plugin/
 │       │   └── plugin.json
 │       ├── shared/             # One source for the format, style, doctrine, gh calls
@@ -169,10 +181,19 @@ planwerk-agent/
 │       │   ├── github.md              # The gh commands every skill needs
 │       │   ├── github-relations.md    # Neighborhood query, sub-issue wiring
 │       │   └── github-checks.md       # A pull request and its checks
-│       └── skills/
-│           ├── draft/SKILL.md
-│           ├── elaborate/SKILL.md
-│           └── meta/SKILL.md
+│       └── skills/             # One directory per skill, SKILL.md each
+│           ├── clarify/
+│           ├── cleanup/
+│           ├── decide/
+│           ├── diagnose/
+│           ├── draft/
+│           ├── elaborate/
+│           ├── fix/
+│           ├── humanize/
+│           ├── implement/
+│           ├── meta/
+│           ├── rebase/
+│           └── revisit/
 ├── tools/
 │   └── toolbox/
 │       ├── Dockerfile          # Toolbox image every make target runs in (Go, golangci-lint, claude)
