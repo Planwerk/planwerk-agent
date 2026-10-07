@@ -1,0 +1,1156 @@
+{
+  "runs": 3,
+  "thorough": true,
+  "specialists": true,
+  "tiers": {
+    "claude_model": "opus",
+    "claude_effort": "xhigh",
+    "finder_model": "opus",
+    "finder_effort": "xhigh",
+    "structure_model": "sonnet",
+    "structure_effort": "xhigh"
+  },
+  "cases": [
+    {
+      "name": "breaking-response-field",
+      "description": "The user response renames its email JSON field to email_address without versioning, which breaks every client that reads email.",
+      "clean": false,
+      "tp": 3,
+      "fp": 19,
+      "fn": 0,
+      "severity_matches": 3,
+      "precision": 0.13636363636363635,
+      "recall": 1,
+      "severity_accuracy": 1,
+      "found_by": {
+        "adversarial": 3,
+        "review": 3,
+        "specialist:api-contract": 3,
+        "specialist:maintainability": 3,
+        "specialist:testing": 3
+      },
+      "usage": {
+        "calls": 27,
+        "input_tokens": 254,
+        "output_tokens": 77282,
+        "cache_read_input_tokens": 3942660,
+        "cache_creation_input_tokens": 834061,
+        "est_cost_usd": 9.007676,
+        "passes": [
+          {
+            "pass": "review",
+            "calls": 3,
+            "input_tokens": 30,
+            "output_tokens": 27868,
+            "cache_read_input_tokens": 880352,
+            "cache_creation_input_tokens": 189140,
+            "est_cost_usd": 2.2466703999999997
+          },
+          {
+            "pass": "adversarial",
+            "calls": 3,
+            "input_tokens": 34,
+            "output_tokens": 9085,
+            "cache_read_input_tokens": 861133,
+            "cache_creation_input_tokens": 164040,
+            "est_cost_usd": 1.6663826000000002
+          },
+          {
+            "pass": "specialist-maintainability",
+            "calls": 3,
+            "input_tokens": 30,
+            "output_tokens": 12041,
+            "cache_read_input_tokens": 490924,
+            "cache_creation_input_tokens": 129121,
+            "est_cost_usd": 1.3720928
+          },
+          {
+            "pass": "specialist-api-contract",
+            "calls": 3,
+            "input_tokens": 28,
+            "output_tokens": 7993,
+            "cache_read_input_tokens": 458083,
+            "cache_creation_input_tokens": 115113,
+            "est_cost_usd": 1.1724926
+          },
+          {
+            "pass": "specialist-performance",
+            "calls": 3,
+            "input_tokens": 26,
+            "output_tokens": 1549,
+            "cache_read_input_tokens": 319013,
+            "cache_creation_input_tokens": 77508,
+            "est_cost_usd": 0.7149506000000001
+          },
+          {
+            "pass": "specialist-testing",
+            "calls": 3,
+            "input_tokens": 32,
+            "output_tokens": 12030,
+            "cache_read_input_tokens": 307929,
+            "cache_creation_input_tokens": 43380,
+            "est_cost_usd": 0.6493538000000001
+          },
+          {
+            "pass": "specialist-security",
+            "calls": 3,
+            "input_tokens": 26,
+            "output_tokens": 1708,
+            "cache_read_input_tokens": 258705,
+            "cache_creation_input_tokens": 55185,
+            "est_cost_usd": 0.527485
+          },
+          {
+            "pass": "specialist-data-migration",
+            "calls": 3,
+            "input_tokens": 36,
+            "output_tokens": 2859,
+            "cache_read_input_tokens": 283747,
+            "cache_creation_input_tokens": 33849,
+            "est_cost_usd": 0.3848654
+          },
+          {
+            "pass": "verify-claims",
+            "calls": 3,
+            "input_tokens": 12,
+            "output_tokens": 2149,
+            "cache_read_input_tokens": 82774,
+            "cache_creation_input_tokens": 26725,
+            "est_cost_usd": 0.2733828
+          }
+        ]
+      }
+    },
+    {
+      "name": "clean-refactor",
+      "description": "A behavior-preserving refactor that hoists the greeting format string into a named constant. No bug is seeded; any finding here is a false positive.",
+      "clean": true,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "severity_matches": 0,
+      "precision": null,
+      "recall": null,
+      "severity_accuracy": null,
+      "usage": {
+        "calls": 21,
+        "input_tokens": 158,
+        "output_tokens": 12067,
+        "cache_read_input_tokens": 2410135,
+        "cache_creation_input_tokens": 655112,
+        "est_cost_usd": 5.964895,
+        "passes": [
+          {
+            "pass": "review",
+            "calls": 3,
+            "input_tokens": 26,
+            "output_tokens": 3327,
+            "cache_read_input_tokens": 724167,
+            "cache_creation_input_tokens": 177376,
+            "est_cost_usd": 1.6304854
+          },
+          {
+            "pass": "adversarial",
+            "calls": 3,
+            "input_tokens": 18,
+            "output_tokens": 1505,
+            "cache_read_input_tokens": 411400,
+            "cache_creation_input_tokens": 159303,
+            "est_cost_usd": 1.386876
+          },
+          {
+            "pass": "specialist-maintainability",
+            "calls": 3,
+            "input_tokens": 22,
+            "output_tokens": 1395,
+            "cache_read_input_tokens": 386717,
+            "cache_creation_input_tokens": 121184,
+            "est_cost_usd": 1.0748034
+          },
+          {
+            "pass": "specialist-performance",
+            "calls": 3,
+            "input_tokens": 18,
+            "output_tokens": 1261,
+            "cache_read_input_tokens": 245827,
+            "cache_creation_input_tokens": 75884,
+            "est_cost_usd": 0.6815294
+          },
+          {
+            "pass": "specialist-security",
+            "calls": 3,
+            "input_tokens": 22,
+            "output_tokens": 1431,
+            "cache_read_input_tokens": 228811,
+            "cache_creation_input_tokens": 53217,
+            "est_cost_usd": 0.5002062
+          },
+          {
+            "pass": "specialist-testing",
+            "calls": 3,
+            "input_tokens": 30,
+            "output_tokens": 1970,
+            "cache_read_input_tokens": 236967,
+            "cache_creation_input_tokens": 37909,
+            "est_cost_usd": 0.3901854
+          },
+          {
+            "pass": "specialist-data-migration",
+            "calls": 3,
+            "input_tokens": 22,
+            "output_tokens": 1178,
+            "cache_read_input_tokens": 176246,
+            "cache_creation_input_tokens": 30239,
+            "est_cost_usd": 0.3008092
+          }
+        ]
+      }
+    },
+    {
+      "name": "goroutine-leak",
+      "description": "A background goroutine reads a channel in an unbounded loop and never observes ctx.Done(), so it leaks when the caller returns.",
+      "clean": false,
+      "tp": 3,
+      "fp": 38,
+      "fn": 0,
+      "severity_matches": 0,
+      "precision": 0.07317073170731707,
+      "recall": 1,
+      "severity_accuracy": 0,
+      "found_by": {
+        "adversarial": 3,
+        "review": 3,
+        "specialist:maintainability": 2,
+        "specialist:performance": 3,
+        "specialist:testing": 3
+      },
+      "usage": {
+        "calls": 24,
+        "input_tokens": 212,
+        "output_tokens": 91572,
+        "cache_read_input_tokens": 3206772,
+        "cache_creation_input_tokens": 718750,
+        "est_cost_usd": 8.223642400000001,
+        "passes": [
+          {
+            "pass": "review",
+            "calls": 3,
+            "input_tokens": 32,
+            "output_tokens": 31826,
+            "cache_read_input_tokens": 939364,
+            "cache_creation_input_tokens": 187140,
+            "est_cost_usd": 2.3216408
+          },
+          {
+            "pass": "adversarial",
+            "calls": 3,
+            "input_tokens": 28,
+            "output_tokens": 15742,
+            "cache_read_input_tokens": 736049,
+            "cache_creation_input_tokens": 162759,
+            "est_cost_usd": 1.7642338
+          },
+          {
+            "pass": "specialist-maintainability",
+            "calls": 3,
+            "input_tokens": 24,
+            "output_tokens": 9694,
+            "cache_read_input_tokens": 387916,
+            "cache_creation_input_tokens": 126211,
+            "est_cost_usd": 1.2812472000000001
+          },
+          {
+            "pass": "specialist-performance",
+            "calls": 3,
+            "input_tokens": 28,
+            "output_tokens": 11795,
+            "cache_read_input_tokens": 320371,
+            "cache_creation_input_tokens": 83243,
+            "est_cost_usd": 0.9660302000000001
+          },
+          {
+            "pass": "specialist-testing",
+            "calls": 3,
+            "input_tokens": 30,
+            "output_tokens": 15263,
+            "cache_read_input_tokens": 261848,
+            "cache_creation_input_tokens": 45481,
+            "est_cost_usd": 0.7215976
+          },
+          {
+            "pass": "specialist-security",
+            "calls": 3,
+            "input_tokens": 28,
+            "output_tokens": 2323,
+            "cache_read_input_tokens": 258321,
+            "cache_creation_input_tokens": 54776,
+            "est_cost_usd": 0.5364442
+          },
+          {
+            "pass": "specialist-data-migration",
+            "calls": 3,
+            "input_tokens": 30,
+            "output_tokens": 1510,
+            "cache_read_input_tokens": 218572,
+            "cache_creation_input_tokens": 31119,
+            "est_cost_usd": 0.3229864
+          },
+          {
+            "pass": "verify-claims",
+            "calls": 3,
+            "input_tokens": 12,
+            "output_tokens": 3419,
+            "cache_read_input_tokens": 84331,
+            "cache_creation_input_tokens": 28021,
+            "est_cost_usd": 0.3094622
+          }
+        ]
+      }
+    },
+    {
+      "name": "irreversible-migration",
+      "description": "A new migration drops the users.email column and ships no down migration, so the change cannot be rolled back and every stored address is lost.",
+      "clean": false,
+      "tp": 3,
+      "fp": 29,
+      "fn": 0,
+      "severity_matches": 3,
+      "precision": 0.09375,
+      "recall": 1,
+      "severity_accuracy": 1,
+      "found_by": {
+        "adversarial": 3,
+        "review": 3,
+        "specialist:data-migration": 3,
+        "specialist:maintainability": 3,
+        "specialist:testing": 1
+      },
+      "usage": {
+        "calls": 24,
+        "input_tokens": 284,
+        "output_tokens": 107959,
+        "cache_read_input_tokens": 4332233,
+        "cache_creation_input_tokens": 729013,
+        "est_cost_usd": 8.860331,
+        "passes": [
+          {
+            "pass": "review",
+            "calls": 3,
+            "input_tokens": 32,
+            "output_tokens": 38163,
+            "cache_read_input_tokens": 940896,
+            "cache_creation_input_tokens": 184179,
+            "est_cost_usd": 2.4264636
+          },
+          {
+            "pass": "adversarial",
+            "calls": 3,
+            "input_tokens": 32,
+            "output_tokens": 18478,
+            "cache_read_input_tokens": 859071,
+            "cache_creation_input_tokens": 163834,
+            "est_cost_usd": 1.8521742
+          },
+          {
+            "pass": "specialist-maintainability",
+            "calls": 3,
+            "input_tokens": 36,
+            "output_tokens": 9832,
+            "cache_read_input_tokens": 746272,
+            "cache_creation_input_tokens": 126856,
+            "est_cost_usd": 1.3608864
+          },
+          {
+            "pass": "specialist-data-migration",
+            "calls": 3,
+            "input_tokens": 42,
+            "output_tokens": 22225,
+            "cache_read_input_tokens": 348089,
+            "cache_creation_input_tokens": 46017,
+            "est_cost_usd": 0.8824217999999999
+          },
+          {
+            "pass": "specialist-performance",
+            "calls": 3,
+            "input_tokens": 34,
+            "output_tokens": 3061,
+            "cache_read_input_tokens": 427336,
+            "cache_creation_input_tokens": 78013,
+            "est_cost_usd": 0.7709272
+          },
+          {
+            "pass": "specialist-security",
+            "calls": 3,
+            "input_tokens": 38,
+            "output_tokens": 2891,
+            "cache_read_input_tokens": 401384,
+            "cache_creation_input_tokens": 55599,
+            "est_cost_usd": 0.5830408
+          },
+          {
+            "pass": "specialist-testing",
+            "calls": 3,
+            "input_tokens": 40,
+            "output_tokens": 7576,
+            "cache_read_input_tokens": 355974,
+            "cache_creation_input_tokens": 43473,
+            "est_cost_usd": 0.5706588
+          },
+          {
+            "pass": "verify-claims",
+            "calls": 3,
+            "input_tokens": 30,
+            "output_tokens": 5733,
+            "cache_read_input_tokens": 253211,
+            "cache_creation_input_tokens": 31042,
+            "est_cost_usd": 0.41375819999999996
+          }
+        ]
+      }
+    },
+    {
+      "name": "n-plus-one-query",
+      "description": "Order items now load through one query per order inside the loop instead of one batched query, so listing N orders costs N+1 round trips to the database.",
+      "clean": false,
+      "tp": 3,
+      "fp": 19,
+      "fn": 0,
+      "severity_matches": 0,
+      "precision": 0.13636363636363635,
+      "recall": 1,
+      "severity_accuracy": 0,
+      "found_by": {
+        "adversarial": 3,
+        "review": 3,
+        "specialist:performance": 3,
+        "specialist:testing": 3
+      },
+      "usage": {
+        "calls": 24,
+        "input_tokens": 216,
+        "output_tokens": 79377,
+        "cache_read_input_tokens": 3235818,
+        "cache_creation_input_tokens": 749657,
+        "est_cost_usd": 8.2328236,
+        "passes": [
+          {
+            "pass": "review",
+            "calls": 3,
+            "input_tokens": 28,
+            "output_tokens": 21648,
+            "cache_read_input_tokens": 808489,
+            "cache_creation_input_tokens": 192280,
+            "est_cost_usd": 2.1330098
+          },
+          {
+            "pass": "adversarial",
+            "calls": 3,
+            "input_tokens": 26,
+            "output_tokens": 9062,
+            "cache_read_input_tokens": 671691,
+            "cache_creation_input_tokens": 168076,
+            "est_cost_usd": 1.6602902000000004
+          },
+          {
+            "pass": "specialist-maintainability",
+            "calls": 3,
+            "input_tokens": 30,
+            "output_tokens": 14180,
+            "cache_read_input_tokens": 494808,
+            "cache_creation_input_tokens": 132578,
+            "est_cost_usd": 1.4433056
+          },
+          {
+            "pass": "specialist-performance",
+            "calls": 3,
+            "input_tokens": 26,
+            "output_tokens": 8398,
+            "cache_read_input_tokens": 359330,
+            "cache_creation_input_tokens": 83569,
+            "est_cost_usd": 0.908482
+          },
+          {
+            "pass": "specialist-testing",
+            "calls": 3,
+            "input_tokens": 30,
+            "output_tokens": 18317,
+            "cache_read_input_tokens": 265646,
+            "cache_creation_input_tokens": 50774,
+            "est_cost_usd": 0.8257812
+          },
+          {
+            "pass": "specialist-security",
+            "calls": 3,
+            "input_tokens": 30,
+            "output_tokens": 2977,
+            "cache_read_input_tokens": 292835,
+            "cache_creation_input_tokens": 58582,
+            "est_cost_usd": 0.586883
+          },
+          {
+            "pass": "specialist-data-migration",
+            "calls": 3,
+            "input_tokens": 30,
+            "output_tokens": 1948,
+            "cache_read_input_tokens": 220424,
+            "cache_creation_input_tokens": 33226,
+            "est_cost_usd": 0.34897279999999997
+          },
+          {
+            "pass": "verify-claims",
+            "calls": 3,
+            "input_tokens": 16,
+            "output_tokens": 2847,
+            "cache_read_input_tokens": 122595,
+            "cache_creation_input_tokens": 30572,
+            "est_cost_usd": 0.326099
+          }
+        ]
+      }
+    },
+    {
+      "name": "nil-map-append",
+      "description": "NewStore no longer initializes the counts map, so Add writes to a nil map and panics; the append result is also discarded, so names is never updated.",
+      "clean": false,
+      "tp": 6,
+      "fp": 22,
+      "fn": 0,
+      "severity_matches": 3,
+      "precision": 0.21428571428571427,
+      "recall": 1,
+      "severity_accuracy": 0.5,
+      "found_by": {
+        "adversarial": 5,
+        "review": 5,
+        "specialist:maintainability": 3,
+        "specialist:testing": 3
+      },
+      "usage": {
+        "calls": 24,
+        "input_tokens": 208,
+        "output_tokens": 52967,
+        "cache_read_input_tokens": 3012435,
+        "cache_creation_input_tokens": 699205,
+        "est_cost_usd": 7.256299,
+        "passes": [
+          {
+            "pass": "review",
+            "calls": 3,
+            "input_tokens": 28,
+            "output_tokens": 14987,
+            "cache_read_input_tokens": 796306,
+            "cache_creation_input_tokens": 178555,
+            "est_cost_usd": 1.8875532000000002
+          },
+          {
+            "pass": "adversarial",
+            "calls": 3,
+            "input_tokens": 24,
+            "output_tokens": 6811,
+            "cache_read_input_tokens": 539775,
+            "cache_creation_input_tokens": 161168,
+            "est_cost_usd": 1.533615
+          },
+          {
+            "pass": "specialist-maintainability",
+            "calls": 3,
+            "input_tokens": 26,
+            "output_tokens": 9007,
+            "cache_read_input_tokens": 438147,
+            "cache_creation_input_tokens": 125426,
+            "est_cost_usd": 1.2712814
+          },
+          {
+            "pass": "specialist-performance",
+            "calls": 3,
+            "input_tokens": 30,
+            "output_tokens": 2874,
+            "cache_read_input_tokens": 355409,
+            "cache_creation_input_tokens": 77546,
+            "est_cost_usd": 0.7490497999999999
+          },
+          {
+            "pass": "specialist-testing",
+            "calls": 3,
+            "input_tokens": 32,
+            "output_tokens": 10730,
+            "cache_read_input_tokens": 310455,
+            "cache_creation_input_tokens": 42002,
+            "est_cost_usd": 0.612835
+          },
+          {
+            "pass": "specialist-security",
+            "calls": 3,
+            "input_tokens": 22,
+            "output_tokens": 1714,
+            "cache_read_input_tokens": 229454,
+            "cache_creation_input_tokens": 53475,
+            "est_cost_usd": 0.5080588
+          },
+          {
+            "pass": "specialist-data-migration",
+            "calls": 3,
+            "input_tokens": 30,
+            "output_tokens": 2866,
+            "cache_read_input_tokens": 218604,
+            "cache_creation_input_tokens": 32321,
+            "est_cost_usd": 0.35972879999999996
+          },
+          {
+            "pass": "verify-claims",
+            "calls": 3,
+            "input_tokens": 16,
+            "output_tokens": 3978,
+            "cache_read_input_tokens": 124285,
+            "cache_creation_input_tokens": 28712,
+            "est_cost_usd": 0.334177
+          }
+        ]
+      }
+    },
+    {
+      "name": "off-by-one",
+      "description": "The tail clamp uses len(s)-1 instead of len(s), so the final element of a non-evenly-divisible slice is dropped. The existing test only covers an even split, so the boundary case is untested.",
+      "clean": false,
+      "tp": 3,
+      "fp": 13,
+      "fn": 0,
+      "severity_matches": 0,
+      "precision": 0.1875,
+      "recall": 1,
+      "severity_accuracy": 0,
+      "found_by": {
+        "adversarial": 3,
+        "review": 3,
+        "specialist:maintainability": 2,
+        "specialist:testing": 3
+      },
+      "usage": {
+        "calls": 24,
+        "input_tokens": 236,
+        "output_tokens": 59938,
+        "cache_read_input_tokens": 3829011,
+        "cache_creation_input_tokens": 704799,
+        "est_cost_usd": 7.6038982,
+        "passes": [
+          {
+            "pass": "review",
+            "calls": 3,
+            "input_tokens": 38,
+            "output_tokens": 18839,
+            "cache_read_input_tokens": 1148452,
+            "cache_creation_input_tokens": 181379,
+            "est_cost_usd": 2.0576544
+          },
+          {
+            "pass": "adversarial",
+            "calls": 3,
+            "input_tokens": 32,
+            "output_tokens": 8264,
+            "cache_read_input_tokens": 861117,
+            "cache_creation_input_tokens": 162014,
+            "est_cost_usd": 1.6337433999999997
+          },
+          {
+            "pass": "specialist-maintainability",
+            "calls": 3,
+            "input_tokens": 32,
+            "output_tokens": 7221,
+            "cache_read_input_tokens": 541117,
+            "cache_creation_input_tokens": 125133,
+            "est_cost_usd": 1.2538354
+          },
+          {
+            "pass": "specialist-testing",
+            "calls": 3,
+            "input_tokens": 40,
+            "output_tokens": 15155,
+            "cache_read_input_tokens": 383631,
+            "cache_creation_input_tokens": 47366,
+            "est_cost_usd": 0.7589142
+          },
+          {
+            "pass": "specialist-performance",
+            "calls": 3,
+            "input_tokens": 26,
+            "output_tokens": 1906,
+            "cache_read_input_tokens": 318282,
+            "cache_creation_input_tokens": 76444,
+            "est_cost_usd": 0.7134324
+          },
+          {
+            "pass": "specialist-security",
+            "calls": 3,
+            "input_tokens": 22,
+            "output_tokens": 2041,
+            "cache_read_input_tokens": 229344,
+            "cache_creation_input_tokens": 53677,
+            "est_cost_usd": 0.5161928
+          },
+          {
+            "pass": "specialist-data-migration",
+            "calls": 3,
+            "input_tokens": 34,
+            "output_tokens": 3329,
+            "cache_read_input_tokens": 263699,
+            "cache_creation_input_tokens": 31662,
+            "est_cost_usd": 0.37275179999999997
+          },
+          {
+            "pass": "verify-claims",
+            "calls": 3,
+            "input_tokens": 12,
+            "output_tokens": 3183,
+            "cache_read_input_tokens": 83369,
+            "cache_creation_input_tokens": 27124,
+            "est_cost_usd": 0.2973738
+          }
+        ]
+      }
+    },
+    {
+      "name": "sql-injection",
+      "description": "A query is built with fmt.Sprintf that concatenates caller-supplied input into the SQL text instead of using a bound parameter — a SQL injection.",
+      "clean": false,
+      "tp": 3,
+      "fp": 16,
+      "fn": 0,
+      "severity_matches": 3,
+      "precision": 0.15789473684210525,
+      "recall": 1,
+      "severity_accuracy": 1,
+      "found_by": {
+        "adversarial": 3,
+        "review": 3,
+        "specialist:maintainability": 2,
+        "specialist:security": 3,
+        "specialist:testing": 2
+      },
+      "usage": {
+        "calls": 24,
+        "input_tokens": 212,
+        "output_tokens": 62032,
+        "cache_read_input_tokens": 3083248,
+        "cache_creation_input_tokens": 707667,
+        "est_cost_usd": 7.5194735999999995,
+        "passes": [
+          {
+            "pass": "review",
+            "calls": 3,
+            "input_tokens": 24,
+            "output_tokens": 14564,
+            "cache_read_input_tokens": 655230,
+            "cache_creation_input_tokens": 178386,
+            "est_cost_usd": 1.8495099999999998
+          },
+          {
+            "pass": "adversarial",
+            "calls": 3,
+            "input_tokens": 28,
+            "output_tokens": 6586,
+            "cache_read_input_tokens": 730843,
+            "cache_creation_input_tokens": 161396,
+            "est_cost_usd": 1.5691686
+          },
+          {
+            "pass": "specialist-maintainability",
+            "calls": 3,
+            "input_tokens": 26,
+            "output_tokens": 8632,
+            "cache_read_input_tokens": 438249,
+            "cache_creation_input_tokens": 126014,
+            "est_cost_usd": 1.2685058
+          },
+          {
+            "pass": "specialist-testing",
+            "calls": 3,
+            "input_tokens": 32,
+            "output_tokens": 17854,
+            "cache_read_input_tokens": 284579,
+            "cache_creation_input_tokens": 48099,
+            "est_cost_usd": 0.7989158000000001
+          },
+          {
+            "pass": "specialist-performance",
+            "calls": 3,
+            "input_tokens": 28,
+            "output_tokens": 2653,
+            "cache_read_input_tokens": 318737,
+            "cache_creation_input_tokens": 77453,
+            "est_cost_usd": 0.7365434
+          },
+          {
+            "pass": "specialist-security",
+            "calls": 3,
+            "input_tokens": 36,
+            "output_tokens": 7410,
+            "cache_read_input_tokens": 374313,
+            "cache_creation_input_tokens": 57698,
+            "est_cost_usd": 0.6847905999999999
+          },
+          {
+            "pass": "specialist-data-migration",
+            "calls": 3,
+            "input_tokens": 26,
+            "output_tokens": 2166,
+            "cache_read_input_tokens": 197712,
+            "cache_creation_input_tokens": 31786,
+            "est_cost_usd": 0.33725439999999995
+          },
+          {
+            "pass": "verify-claims",
+            "calls": 3,
+            "input_tokens": 12,
+            "output_tokens": 2167,
+            "cache_read_input_tokens": 83585,
+            "cache_creation_input_tokens": 26835,
+            "est_cost_usd": 0.274785
+          }
+        ]
+      }
+    },
+    {
+      "name": "swallowed-error",
+      "description": "Load now discards the errors from os.ReadFile and json.Unmarshal, so a missing or malformed config is silently treated as an empty, valid config.",
+      "clean": false,
+      "tp": 3,
+      "fp": 19,
+      "fn": 0,
+      "severity_matches": 0,
+      "precision": 0.13636363636363635,
+      "recall": 1,
+      "severity_accuracy": 0,
+      "found_by": {
+        "adversarial": 3,
+        "review": 3,
+        "specialist:security": 3
+      },
+      "usage": {
+        "calls": 24,
+        "input_tokens": 210,
+        "output_tokens": 72883,
+        "cache_read_input_tokens": 3232076,
+        "cache_creation_input_tokens": 713706,
+        "est_cost_usd": 7.8145632,
+        "passes": [
+          {
+            "pass": "review",
+            "calls": 3,
+            "input_tokens": 34,
+            "output_tokens": 25392,
+            "cache_read_input_tokens": 1009664,
+            "cache_creation_input_tokens": 186561,
+            "est_cost_usd": 2.2023968
+          },
+          {
+            "pass": "adversarial",
+            "calls": 3,
+            "input_tokens": 30,
+            "output_tokens": 11481,
+            "cache_read_input_tokens": 670881,
+            "cache_creation_input_tokens": 165441,
+            "est_cost_usd": 1.6874441999999998
+          },
+          {
+            "pass": "specialist-maintainability",
+            "calls": 3,
+            "input_tokens": 30,
+            "output_tokens": 10512,
+            "cache_read_input_tokens": 490366,
+            "cache_creation_input_tokens": 127187,
+            "est_cost_usd": 1.3259292
+          },
+          {
+            "pass": "specialist-performance",
+            "calls": 3,
+            "input_tokens": 24,
+            "output_tokens": 1530,
+            "cache_read_input_tokens": 282701,
+            "cache_creation_input_tokens": 75975,
+            "est_cost_usd": 0.6950362000000001
+          },
+          {
+            "pass": "specialist-security",
+            "calls": 3,
+            "input_tokens": 26,
+            "output_tokens": 7409,
+            "cache_read_input_tokens": 258851,
+            "cache_creation_input_tokens": 56919,
+            "est_cost_usd": 0.6554062
+          },
+          {
+            "pass": "specialist-testing",
+            "calls": 3,
+            "input_tokens": 28,
+            "output_tokens": 12673,
+            "cache_read_input_tokens": 237889,
+            "cache_creation_input_tokens": 43112,
+            "est_cost_usd": 0.6460458
+          },
+          {
+            "pass": "specialist-data-migration",
+            "calls": 3,
+            "input_tokens": 26,
+            "output_tokens": 1959,
+            "cache_read_input_tokens": 197691,
+            "cache_creation_input_tokens": 31558,
+            "est_cost_usd": 0.3312862
+          },
+          {
+            "pass": "verify-claims",
+            "calls": 3,
+            "input_tokens": 12,
+            "output_tokens": 1927,
+            "cache_read_input_tokens": 84033,
+            "cache_creation_input_tokens": 26953,
+            "est_cost_usd": 0.2710186
+          }
+        ]
+      }
+    },
+    {
+      "name": "untested-branch",
+      "description": "Discount gains a 15% tier for 100 units or more, but the test file is unchanged, so the new branch has no test.",
+      "clean": false,
+      "tp": 3,
+      "fp": 11,
+      "fn": 0,
+      "severity_matches": 3,
+      "precision": 0.21428571428571427,
+      "recall": 1,
+      "severity_accuracy": 1,
+      "found_by": {
+        "adversarial": 1,
+        "review": 2,
+        "specialist:testing": 3
+      },
+      "usage": {
+        "calls": 21,
+        "input_tokens": 210,
+        "output_tokens": 52729,
+        "cache_read_input_tokens": 3555381,
+        "cache_creation_input_tokens": 678033,
+        "est_cost_usd": 7.190760200000001,
+        "passes": [
+          {
+            "pass": "review",
+            "calls": 3,
+            "input_tokens": 34,
+            "output_tokens": 17529,
+            "cache_read_input_tokens": 1006300,
+            "cache_creation_input_tokens": 181610,
+            "est_cost_usd": 2.004856
+          },
+          {
+            "pass": "adversarial",
+            "calls": 3,
+            "input_tokens": 36,
+            "output_tokens": 15309,
+            "cache_read_input_tokens": 925242,
+            "cache_creation_input_tokens": 167452,
+            "est_cost_usd": 1.8309884
+          },
+          {
+            "pass": "specialist-maintainability",
+            "calls": 3,
+            "input_tokens": 30,
+            "output_tokens": 7206,
+            "cache_read_input_tokens": 540945,
+            "cache_creation_input_tokens": 125498,
+            "est_cost_usd": 1.256413
+          },
+          {
+            "pass": "specialist-performance",
+            "calls": 3,
+            "input_tokens": 18,
+            "output_tokens": 1236,
+            "cache_read_input_tokens": 245793,
+            "cache_creation_input_tokens": 76043,
+            "est_cost_usd": 0.6822946
+          },
+          {
+            "pass": "specialist-testing",
+            "calls": 3,
+            "input_tokens": 40,
+            "output_tokens": 8446,
+            "cache_read_input_tokens": 382237,
+            "cache_creation_input_tokens": 42851,
+            "est_cost_usd": 0.5883354000000001
+          },
+          {
+            "pass": "specialist-security",
+            "calls": 3,
+            "input_tokens": 26,
+            "output_tokens": 1639,
+            "cache_read_input_tokens": 257516,
+            "cache_creation_input_tokens": 53698,
+            "est_cost_usd": 0.5139712000000001
+          },
+          {
+            "pass": "specialist-data-migration",
+            "calls": 3,
+            "input_tokens": 26,
+            "output_tokens": 1364,
+            "cache_read_input_tokens": 197348,
+            "cache_creation_input_tokens": 30881,
+            "est_cost_usd": 0.3139016
+          }
+        ]
+      }
+    }
+  ],
+  "aggregate": {
+    "name": "AGGREGATE",
+    "clean": false,
+    "tp": 30,
+    "fp": 186,
+    "fn": 0,
+    "severity_matches": 15,
+    "precision": 0.1388888888888889,
+    "recall": 1,
+    "severity_accuracy": 0.5,
+    "found_by": {
+      "adversarial": 27,
+      "review": 28,
+      "specialist:api-contract": 3,
+      "specialist:data-migration": 3,
+      "specialist:maintainability": 15,
+      "specialist:performance": 6,
+      "specialist:security": 6,
+      "specialist:testing": 21
+    },
+    "usage": {
+      "calls": 237,
+      "input_tokens": 2200,
+      "output_tokens": 668806,
+      "cache_read_input_tokens": 33839769,
+      "cache_creation_input_tokens": 7190003,
+      "est_cost_usd": 77.67436219999999,
+      "passes": [
+        {
+          "pass": "review",
+          "calls": 30,
+          "input_tokens": 306,
+          "output_tokens": 214143,
+          "cache_read_input_tokens": 8909220,
+          "cache_creation_input_tokens": 1836606,
+          "est_cost_usd": 20.760240399999997
+        },
+        {
+          "pass": "adversarial",
+          "calls": 30,
+          "input_tokens": 288,
+          "output_tokens": 102323,
+          "cache_read_input_tokens": 7267202,
+          "cache_creation_input_tokens": 1635483,
+          "est_cost_usd": 16.5849164
+        },
+        {
+          "pass": "specialist-maintainability",
+          "calls": 30,
+          "input_tokens": 286,
+          "output_tokens": 89720,
+          "cache_read_input_tokens": 4955461,
+          "cache_creation_input_tokens": 1265208,
+          "est_cost_usd": 12.908300200000001
+        },
+        {
+          "pass": "specialist-performance",
+          "calls": 30,
+          "input_tokens": 258,
+          "output_tokens": 36263,
+          "cache_read_input_tokens": 3192799,
+          "cache_creation_input_tokens": 781678,
+          "est_cost_usd": 7.6182758
+        },
+        {
+          "pass": "specialist-testing",
+          "calls": 30,
+          "input_tokens": 334,
+          "output_tokens": 120014,
+          "cache_read_input_tokens": 3027155,
+          "cache_creation_input_tokens": 444447,
+          "est_cost_usd": 6.562623
+        },
+        {
+          "pass": "specialist-security",
+          "calls": 30,
+          "input_tokens": 276,
+          "output_tokens": 31543,
+          "cache_read_input_tokens": 2789534,
+          "cache_creation_input_tokens": 552826,
+          "est_cost_usd": 5.6124788
+        },
+        {
+          "pass": "specialist-data-migration",
+          "calls": 30,
+          "input_tokens": 302,
+          "output_tokens": 41404,
+          "cache_read_input_tokens": 2322132,
+          "cache_creation_input_tokens": 332658,
+          "est_cost_usd": 3.9549784
+        },
+        {
+          "pass": "verify-claims",
+          "calls": 24,
+          "input_tokens": 122,
+          "output_tokens": 25403,
+          "cache_read_input_tokens": 918183,
+          "cache_creation_input_tokens": 225984,
+          "est_cost_usd": 2.5000566
+        },
+        {
+          "pass": "specialist-api-contract",
+          "calls": 3,
+          "input_tokens": 28,
+          "output_tokens": 7993,
+          "cache_read_input_tokens": 458083,
+          "cache_creation_input_tokens": 115113,
+          "est_cost_usd": 1.1724926
+        }
+      ]
+    }
+  },
+  "recall_by_pass": [
+    {
+      "pass": "review",
+      "found": 28,
+      "recall": 0.9333333333333333
+    },
+    {
+      "pass": "adversarial",
+      "found": 27,
+      "recall": 0.9
+    },
+    {
+      "pass": "specialist:testing",
+      "found": 21,
+      "recall": 0.7
+    },
+    {
+      "pass": "specialist:maintainability",
+      "found": 15,
+      "recall": 0.5
+    },
+    {
+      "pass": "specialist:performance",
+      "found": 6,
+      "recall": 0.2
+    },
+    {
+      "pass": "specialist:security",
+      "found": 6,
+      "recall": 0.2
+    },
+    {
+      "pass": "specialist:api-contract",
+      "found": 3,
+      "recall": 0.1
+    },
+    {
+      "pass": "specialist:data-migration",
+      "found": 3,
+      "recall": 0.1
+    }
+  ]
+}
