@@ -2,7 +2,7 @@
 name: elaborate
 description: Expands a high-level GitHub issue into a deeply detailed engineering plan grounded in the actual repository, with the open decisions resolved by its author. Use when an issue needs a plan before it can be implemented, or when the user asks to elaborate, deepen, or flesh out an issue.
 argument-hint: "<issue-ref>"
-allowed-tools: AskUserQuestion Read Grep Glob Write Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue view:*) Bash(gh issue edit:*) Bash(gh issue comment:*) Bash(gh issue create:*) Bash(gh api:*) Bash(wc:*) Bash(planwerk-agent brain memory:*)
+allowed-tools: AskUserQuestion Read Grep Glob Write Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue view:*) Bash(gh issue edit:*) Bash(gh issue comment:*) Bash(gh issue create:*) Bash(gh api:*) Bash(git fetch:*) Bash(git status:*) Bash(git rev-parse:*) Bash(git switch:*) Bash(git merge --ff-only:*) Bash(git log:*) Bash(git show:*) Bash(wc:*) Bash(planwerk-agent brain memory:*)
 ---
 
 # Elaborate an issue
@@ -31,7 +31,9 @@ Read these before you start, in full:
 - `${CLAUDE_SKILL_DIR}/../../shared/memory.md` — the project memory, when the repository opted in
 
 You must be inside a checkout of the issue's repository. If the working tree
-belongs to a different repo, say so and stop.
+belongs to a different repo, say so and stop. Then check the checkout per
+`github.md`, The checkout, because a plan cites `path:line`, and a citation
+taken from a stale checkout names a line that has moved.
 
 ## Phase 1 — Read the issue and its neighborhood
 

@@ -2,7 +2,7 @@
 name: draft
 description: Turns a rough, one-line feature idea into a filed GitHub issue at draft depth. Use when the user wants to capture an idea, file an issue, or write up a ticket. It describes the idea; it does not plan the implementation.
 argument-hint: "[owner/repo] [one-line idea]"
-allowed-tools: AskUserQuestion Read Write Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue list:*) Bash(gh issue create:*) Bash(gh api:*) Bash(wc:*)
+allowed-tools: AskUserQuestion Read Write Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue list:*) Bash(gh issue view:*) Bash(gh issue create:*) Bash(gh issue comment:*) Bash(gh api:*) Bash(wc:*)
 ---
 
 # Draft an issue
@@ -76,7 +76,8 @@ gh issue list --repo <owner/repo> --search "<distinctive words>" --state all --l
 ```
 
 If a plausible duplicate exists, show it and ask whether to file anyway, comment
-on the existing issue instead, or stop. Do not decide this one yourself.
+on the existing issue instead, or stop. Do not decide this one yourself. The
+comment is a write like the issue: draft it, show it, and post it on its own yes.
 
 ## Phase 5 — Offer the counterpart, when the map calls for one
 

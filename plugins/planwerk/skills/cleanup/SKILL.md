@@ -2,7 +2,7 @@
 name: cleanup
 description: Surveys the checkout you are in for dead code and duplicated code, and files the verified findings as a Meta Issue — evidence-backed findings grouped into compact cleanup phases sized one pull request each, ready for /planwerk:meta to split into Sub Issues. Use when a codebase has accumulated unused or copy-pasted code and the author wants a verifiable cleanup plan rather than an ad-hoc deletion pass. It plans the cleanup; it never deletes code itself.
 argument-hint: "[<path>…]"
-allowed-tools: AskUserQuestion Read Grep Glob Write Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue create:*) Bash(gh issue comment:*) Bash(git fetch:*) Bash(git status:*) Bash(git rev-parse:*) Bash(git switch:*) Bash(git merge --ff-only:*) Bash(git log:*) Bash(git show:*) Bash(git ls-files:*) Bash(wc:*) Bash(command -v:*) Bash(go vet:*) Bash(deadcode:*) Bash(vulture:*) Bash(ruff check:*) Bash(knip:*) Bash(ts-prune:*) Bash(depcheck:*) Bash(jscpd:*) Bash(dupl:*)
+allowed-tools: AskUserQuestion Read Grep Glob Write Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue create:*) Bash(gh issue comment:*) Bash(git fetch:*) Bash(git status:*) Bash(git rev-parse:*) Bash(git switch:*) Bash(git merge --ff-only:*) Bash(git log:*) Bash(git show:*) Bash(git ls-files:*) Bash(wc:*) Bash(command -v:*) Bash(go vet:*) Bash(deadcode:*) Bash(vulture:*) Bash(ruff check --no-fix:*) Bash(knip:*) Bash(ts-prune:*) Bash(depcheck:*) Bash(jscpd:*) Bash(dupl:*)
 ---
 
 # Survey a codebase for cleanup
