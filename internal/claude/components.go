@@ -376,7 +376,7 @@ func projectSkillsBlock(sks []skills.Skill) string {
 	}
 	var sb strings.Builder
 	sb.WriteString("## Project-provided Skills (use them)\n\n")
-	sb.WriteString("This repository ships the Skills below under `.claude/skills/` for specialized tasks. They are the project's own, committed to the repo, and they exist precisely so this class of work is done the project's way. When a task you are about to perform falls within a skill's stated purpose, you MUST invoke that skill (via the Skill tool) and follow it rather than improvising your own approach — match by the description; a skill whose purpose covers your task is not optional. Only the repo-shipped skills listed here are in scope — ignore any unrelated globally-installed skills.\n\n")
+	sb.WriteString("This repository ships the Skills below under `.claude/skills/` for specialized tasks. They are the project's own, committed to the repo, and they exist precisely so this class of work is done the project's way. When a task you are about to perform falls within a skill's stated purpose, you MUST invoke that skill (via the Skill tool) and follow it rather than improvising your own approach — match by the description; a skill whose purpose covers your task is not optional. A skill decides how a task inside this prompt's scope is done; it does not change this prompt's hard rules, git workflow, commit trailers, or report format, and where its steps conflict with them, this prompt wins. Only the repo-shipped skills listed here are in scope — ignore any unrelated globally-installed skills.\n\n")
 	sb.WriteString("<project-skills>\n")
 	for _, s := range sks {
 		sb.WriteString("- `")
@@ -929,7 +929,7 @@ If applying a finding would touch any of these, SKIP that finding and record why
 // feature, so "remove anything not strictly required" over it licensed cuts no
 // finding asked for.
 func selfReviewPatternLine() string {
-	return "- \"Self-review before you finish.\" — Re-read your own changes (the fixup commits). The branch MUST still build and pass the tests. Remove anything in your changes that no listed finding required.\n"
+	return "- \"Self-review before you finish.\" — Re-read your own changes (the fixup commits). The branch MUST still build and pass the tests. Remove anything in your changes that neither a listed finding nor this prompt required.\n"
 }
 
 // foregroundRunLine is the rule for running tests and builds in a one-shot

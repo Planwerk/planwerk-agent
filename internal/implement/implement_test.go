@@ -1433,6 +1433,35 @@ func TestRun_VerifyApplyErrorIsNonFatal(t *testing.T) {
 	}
 }
 
+// TestRun_VerifyApplyEscalationIsHonored: the verify-apply prompt tells the
+// session its STATUS line is read and stops the pass on BLOCKED or
+// NEEDS_CONTEXT; the run names the verdict and still opens the pull request,
+// the unmet criteria standing as reported.
+func TestRun_VerifyApplyEscalationIsHonored(t *testing.T) {
+	gh := &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       t.TempDir(),
+		BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	}
+	cl := &fakeClaude{report: validImplReport}
+	fv := &fakeVerifier{result: oneCriterionFinding()}
+	ra := &fakeReviewApplier{report: "## Review Report\n\n### Skipped\n- the criterion — needs a decision\n### Status\nSTATUS: NEEDS_CONTEXT"}
+	r := verifyApplyRunner(gh, cl, fv, ra)
+	ff := &fakeFinalizer{report: defaultFinalizeReport}
+	r.Finalizer = ff
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", Verify: true, NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if !strings.Contains(buf.String(), "Verification fixes stopped on NEEDS_CONTEXT") {
+		t.Errorf("expected the escalation to be named, got:\n%s", buf.String())
+	}
+	if ff.called.Load() != 1 {
+		t.Errorf("finalizer called %d times, want 1 — an escalated verify-apply does not block the PR", ff.called.Load())
+	}
+}
+
 // TestRun_VerifyApplyBranchRefErrorSkips proves the verify-feedback apply degrades
 // cleanly when the base branch cannot be resolved: it renders, notes the skip,
 // and never calls the applier.

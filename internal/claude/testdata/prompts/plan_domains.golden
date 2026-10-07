@@ -88,6 +88,7 @@ Ground the plan before you design it: open every file, symbol, and migration the
    - As a <role>, I want <want>, so that <so_that> — <extracted from the issue | derived>. Write "None — purely mechanical work" (no synthetic persona) for refactors, CI fixes, or dependency bumps that serve no distinct persona.
    ### Change Set
    - <path> — <create | modify | delete>: <what changes and why, naming the exact symbols involved; reference the user story or work package it serves when present>
+   - (When the issue is already implemented, write "none — already implemented at <file:line>" with the evidence for each Acceptance Criterion, and the same under Commit Sequence; the verdict is still PLAN_READY.)
    ### Commit Sequence
    1. <imperative subject, 72 chars or fewer> — <files touched; one line on the why for the commit body>
    ### Test Plan
