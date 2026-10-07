@@ -103,8 +103,10 @@ Now, grounded in what you read, surface the choices that would otherwise become
 guesses. These are the decisions worth an author's time:
 
 - An ambiguity in the issue that changes what gets built.
-- A design fork where two reasonable implementations diverge, and the issue does
-  not say which.
+- A design fork where two reasonable implementations diverge, the issue does
+  not say which, and each option has an honest downside (`interaction.md`, the
+  option shape). A fork where one option has no downside is yours to take:
+  record it in the plan as a decision, not as a question.
 - Scope that the issue implies but never states, where guessing wrong means
   building the wrong thing.
 
