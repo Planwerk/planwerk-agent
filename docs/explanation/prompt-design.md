@@ -98,6 +98,16 @@ its first message can drop the definitions of the report's verdicts. The
 implement status contract is therefore also appended to the session's system
 prompt, which Claude Code rebuilds after a compaction (decision 108).
 
+The verdicts are a contract with code, and the contract is checked per verdict.
+For every verdict word a prompt defines, the orchestrator has a branch
+(`report.TerminalStatus` and the `switch` on it), and the audit checks that what
+the prompt says the verdict means is what that branch does with it, including
+the empty `STATUS` case. A verdict the prompt defines and the orchestrator
+treats as another, or one the orchestrator acts on that the prompt never names,
+is a defect of the contract, not of wording. The finalize pass that accepted a
+report without a `STATUS` and the rebase apply that had no verdict at all were
+both found by that check in the October 2026 iteration.
+
 ## Single source of truth
 
 An instruction that more than one builder needs is written once and shared, not
@@ -137,6 +147,14 @@ block would inject diff-only wording into the audit and vice versa, so they are
 kept separate on purpose. `components.go` documents these exceptions in its
 header. Single source of truth means *one source per instruction*, not *one
 block for every superficially similar paragraph*.
+
+A structuring prompt has a source too: the analysis prompt whose output it
+copies. The copier runs without tools and sees only that output, so every field
+its schema asks for has to be one the analysis prompt asked the session to
+write. A field the analysis never produces is one the copier invents, and a
+sentence count in the schema ("1-3 sentences") makes it rewrite prose that was
+written to its own rules. The audit lists the copier's fields and finds each in
+the analysis prompt.
 
 ## Text from outside the prompt is data
 
@@ -217,6 +235,14 @@ checkable parts: the description fits the 1024-character budget it is charged
 against, it carries a `Use when …` trigger the model can route on, and it does
 not sequence steps. The last is a narrow heuristic against the one tell we
 shipped; the rule is broader than the regex, and this page is where it lives.
+
+A skill makes one more contract, with its own frontmatter. `allowed-tools` is
+what the session may run without a prompt, so a command the body names that no
+grant covers stops the step at a permission prompt or makes the session
+improvise around it, and a grant wider than the body's form (`ruff check` for a
+body that says `ruff check --no-fix`) is the inverse. The audit reads every
+command the body names against the grants, in the form the body uses, and every
+grant against the steps.
 
 ## Writing for the model the prompt runs on
 

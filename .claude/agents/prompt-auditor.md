@@ -98,6 +98,23 @@ model the prompt runs on" sections carry the reasoning):
   positive, step-by-step choreography for judgment work, and an unattended
   session never told it is unattended. Classify each fix as a behavioral change.
 
+And the two contracts with code the October 2026 iteration found broken
+(the doctrine's "Completion criteria" and "Single source of truth" sections
+carry the reasoning):
+
+- **Verdict table** — for every verdict word a prompt defines (DONE,
+  DONE_WITH_CONCERNS, PARTIAL, BLOCKED, NEEDS_CONTEXT, …), find the
+  orchestrator's branch on it (`report.TerminalStatus` callers and the
+  `switch` on the status) and check that what the prompt says the verdict
+  means is what that branch does with it, including the empty-STATUS case. A
+  verdict the prompt defines and the code treats as another, or one the code
+  acts on that the prompt never names, is a finding.
+- **Structure prompt ↔ analysis prompt** — for a structuring prompt (the
+  no-tools copier), list every field its schema asks for and find each in the
+  analysis prompt it copies from. A field the analysis never asks the session
+  to write is one the copier will invent; a sentence count in the schema makes
+  it rewrite prose written to its own rules. Both are findings.
+
 ## Output format
 
 Lead with a one-line verdict (`clean` / `N findings`). Then, for each finding:
