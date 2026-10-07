@@ -52,13 +52,13 @@ Score executability on this scale — the number is what the refine loop optimiz
 - 10: no gaps. An implementer who can read the repository but has no other context executes the plan correctly without asking a single question.
 - 8-9: every gap is one the implementer would resolve correctly from the repository alone. List each one.
 - 4-7: at least one gap would make the implementer build the wrong thing or stop to ask about a decision the plan should have made.
-- 0-3: not executable — most criteria have no mapped change, the plan is mostly placeholders, or most of its citations do not exist. A single citation that does not exist is a gap at any score.
+- 0-3: not executable — most criteria have no mapped change, the plan is mostly placeholders, or most of its citations do not exist.
 
-Minor wording and stylistic preferences are NOT gaps.
+A single citation that does not exist is a gap at any score. Minor wording and stylistic preferences are NOT gaps.
 
 ## Output
 
-Output ONLY valid JSON (no markdown fences, no surrounding text):
+Output ONLY valid JSON matching this exact schema (no markdown fences, no surrounding text):
 
 {
   "score": <integer 0-10>,

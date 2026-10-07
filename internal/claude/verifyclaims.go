@@ -65,9 +65,9 @@ func buildClaimVerificationPrompt(findings []report.Finding) string {
 		if f.Line > 0 {
 			loc = fmt.Sprintf("%s:%d", loc, f.Line)
 		}
-		fmt.Fprintf(&b, "%d. [%s] %s — %s\n   Problem: %s\n", i, f.Severity, f.Title, loc, f.Problem)
+		fmt.Fprintf(&b, "%d. [%s] %s — %s\n   Problem: %s\n", i, f.Severity, escapeFence("findings", f.Title), loc, escapeFence("findings", f.Problem))
 		if f.CodeSnippet != "" {
-			fmt.Fprintf(&b, "   Quoted code:\n%s\n", mdfence.Wrap(f.CodeSnippet, ""))
+			fmt.Fprintf(&b, "   Quoted code:\n%s\n", mdfence.Wrap(escapeFence("findings", f.CodeSnippet), ""))
 		}
 	}
 	b.WriteString("</findings>")

@@ -61,7 +61,7 @@ func buildGapAnalysisPrompt(ctx gapanalysis.AnalysisContext) string {
 `)
 	for _, f := range ctx.Features {
 		base := filepath.Base(f.FilePath)
-		fmt.Fprintf(&sb, "<feature id=%q file=%q>\n", f.FeatureID, base)
+		sb.WriteString("<feature" + fenceAttr("feature", "id", f.FeatureID) + fenceAttr("feature", "file", base) + ">\n")
 		sb.WriteString(escapeFence("feature", f.FormatForPrompt()))
 		fmt.Fprintf(&sb, "</feature>\n\n")
 	}
@@ -228,7 +228,5 @@ Field rules:
 - "suggested_issue.title": never start with "[CRITICAL]", "Severity:", or any other level marker.
 - If a feature has no gaps, still include it with an empty "gaps" array and a positive summary.
 
-<gap-analysis-report>
-` + rawAnalysis + `
-</gap-analysis-report>`
+` + fencedData("gap-analysis-report", "", rawAnalysis)
 }
