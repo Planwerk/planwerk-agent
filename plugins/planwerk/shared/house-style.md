@@ -90,7 +90,9 @@ never had.
 State what is, not what "could be considered".
 
 - Do not write "you might want to consider…" — state what is wrong.
-- Do not write "this could potentially cause…" — state what will happen.
+- Do not write "this could potentially cause…" — state what happens, with the
+  confidence you have: a certain consequence as a fact, an uncertain one with
+  what makes it uncertain.
 - Take a position. If something is wrong, say it is wrong. If it is fine, do not
   mention it at all.
 
@@ -103,9 +105,12 @@ rest. Shape every final report or wrap-up so those two lines are enough:
   after it — never a narration of what you are about to say.
 - If anything is left open, end by naming the single next action — one concrete
   command or step, not a list of options.
-- No closers, no recaps. Never end with "Let me know if…", "Hope this helps",
-  or a paragraph restating what was already said. The artifact ends when its
-  last piece of information is written.
+- An artifact (an issue body, a plan, a report, a commit message) has no
+  closer and no recap: it ends when its last piece of information is written,
+  never with "Let me know if…", "Hope this helps", or a paragraph restating
+  what it already said. A conversation turn that closes a run of work may end
+  with a summary that stands on its own for a reader who sees only that turn;
+  that is a deliverable, not a recap.
 
 ## Anti-hallucination
 
