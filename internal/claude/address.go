@@ -20,7 +20,9 @@ import (
 // confirmation. The decode shares decodeJSONWithRepair so a one-character JSON
 // glitch does not fail the run.
 func (c *Client) Address(dir string, ctx address.Context) (*report.AddressResult, error) {
-	out, model, err := c.runSession(c.autoMemorySpec(dir, "address", ctx.Catalog, ctx.Memory), BuildAddressPrompt(ctx))
+	spec := c.autoMemorySpec(dir, "address", ctx.Catalog, ctx.Memory)
+	spec.denyRules = skillDenyRules(ctx.ChangedSkills)
+	out, model, err := c.runSession(spec, BuildAddressPrompt(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("running address: %w", err)
 	}
@@ -72,7 +74,7 @@ func BuildAddressPrompt(ctx address.Context) string {
 		ctx.Catalog, ctx.Patterns, ctx.MaxPatterns))
 	sb.WriteString(projectMemoryBlock(ctx.Memory))
 
-	sb.WriteString(projectSkillsBlock(ctx.Skills))
+	sb.WriteString(projectSkillsBlock(ctx.Skills, ctx.ChangedSkills))
 	sb.WriteString(docProseBlock())
 	sb.WriteString(styleGuideBlock(ctx.StyleGuidePath))
 

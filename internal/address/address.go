@@ -182,7 +182,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		return nil
 	}
 
-	sks := skills.LoadFromRef(pr.Dir, "origin/"+pr.BaseBranch)
+	sks, changedSkills := skills.LoadShared(pr.Dir, "origin/"+pr.BaseBranch)
 
 	if opts.PrintPrompt {
 		unit := selected
@@ -193,7 +193,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		// (zero Catalog) instead of pointing at a directory removed on exit. It
 		// resolves no wiki and carries no project memory.
 		pats := loadPatterns(opts, pr.Dir, "origin/"+pr.BaseBranch, "")
-		prompt := r.BuildPrompt(r.contextFor(opts, pr, unit, pats, patterns.Catalog{}, patterns.MemoryCatalog{}, sks))
+		prompt := r.BuildPrompt(r.contextFor(opts, pr, unit, pats, patterns.Catalog{}, patterns.MemoryCatalog{}, sks, changedSkills))
 		if _, err := io.WriteString(w, prompt); err != nil {
 			return fmt.Errorf("writing prompt: %w", err)
 		}
@@ -208,14 +208,14 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	wiki := r.ResolveWiki(owner, repo, opts.Wiki, opts.Remote)
 	pats := loadPatterns(opts, pr.Dir, "origin/"+pr.BaseBranch, wiki.PatternsDir)
 
-	return r.dispatch(w, opts, pr, fullName, selected, pats, sks, wiki.MemoryPages)
+	return r.dispatch(w, opts, pr, fullName, selected, pats, sks, changedSkills, wiki.MemoryPages)
 }
 
 // dispatch drives the address work: aggregate (one session over all threads) or
 // per-thread (one session per thread, bounded by MaxIterations). It collects
 // the per-thread results, posts the aggregate report, and returns an escalation
 // or max-iterations error when the run could not finish cleanly.
-func (r *Runner) dispatch(w io.Writer, opts Options, pr *github.PR, fullName string, selected []github.ReviewThread, pats []patterns.Pattern, sks []skills.Skill, memory []patterns.MemoryPage) error {
+func (r *Runner) dispatch(w io.Writer, opts Options, pr *github.PR, fullName string, selected []github.ReviewThread, pats []patterns.Pattern, sks []skills.Skill, changedSkills []string, memory []patterns.MemoryPage) error {
 	// One catalog and one memory directory per address run, shared by every
 	// per-thread or aggregate session and removed when dispatch returns.
 	cat, cleanupCatalog := patterns.MaterializeOrWarn(pats)
@@ -236,7 +236,7 @@ func (r *Runner) dispatch(w io.Writer, opts Options, pr *github.PR, fullName str
 			}
 			processed++
 			_, _ = fmt.Fprintf(w, "Addressing thread %s (%s)...\n", t.ID, threadLocation(t))
-			result, err := r.addressUnit(w, opts, pr, []github.ReviewThread{t}, pats, cat, mem, sks)
+			result, err := r.addressUnit(w, opts, pr, []github.ReviewThread{t}, pats, cat, mem, sks, changedSkills)
 			if err != nil {
 				return err
 			}
@@ -252,7 +252,7 @@ func (r *Runner) dispatch(w io.Writer, opts Options, pr *github.PR, fullName str
 		}
 	} else {
 		_, _ = fmt.Fprintf(w, "Addressing %d thread(s) as one aggregate commit...\n", len(selected))
-		result, err := r.addressUnit(w, opts, pr, selected, pats, cat, mem, sks)
+		result, err := r.addressUnit(w, opts, pr, selected, pats, cat, mem, sks, changedSkills)
 		if err != nil {
 			return err
 		}
@@ -287,8 +287,8 @@ func (r *Runner) dispatch(w io.Writer, opts Options, pr *github.PR, fullName str
 // addressUnit runs one Claude address session, publishes the follow-up
 // commit(s) it made, and (gated) replies to and resolves each addressed thread.
 // The push is fatal on failure; replying and resolving are best-effort.
-func (r *Runner) addressUnit(w io.Writer, opts Options, pr *github.PR, threads []github.ReviewThread, pats []patterns.Pattern, cat patterns.Catalog, mem patterns.MemoryCatalog, sks []skills.Skill) (*report.AddressResult, error) {
-	result, err := r.Claude.Address(pr.Dir, r.contextFor(opts, pr, threads, pats, cat, mem, sks))
+func (r *Runner) addressUnit(w io.Writer, opts Options, pr *github.PR, threads []github.ReviewThread, pats []patterns.Pattern, cat patterns.Catalog, mem patterns.MemoryCatalog, sks []skills.Skill, changedSkills []string) (*report.AddressResult, error) {
+	result, err := r.Claude.Address(pr.Dir, r.contextFor(opts, pr, threads, pats, cat, mem, sks, changedSkills))
 	if err != nil {
 		return nil, fmt.Errorf("claude address: %w", err)
 	}
@@ -381,7 +381,7 @@ func pickByID(w io.Writer, threads []github.ReviewThread, ids []string) []github
 }
 
 // contextFor assembles the Claude prompt context for a unit of work.
-func (r *Runner) contextFor(opts Options, pr *github.PR, threads []github.ReviewThread, pats []patterns.Pattern, cat patterns.Catalog, mem patterns.MemoryCatalog, sks []skills.Skill) Context {
+func (r *Runner) contextFor(opts Options, pr *github.PR, threads []github.ReviewThread, pats []patterns.Pattern, cat patterns.Catalog, mem patterns.MemoryCatalog, sks []skills.Skill, changedSkills []string) Context {
 	return Context{
 		RepoFullName:       fmt.Sprintf("%s/%s", pr.Owner, pr.Repo),
 		PRNumber:           pr.Number,
@@ -395,6 +395,7 @@ func (r *Runner) contextFor(opts Options, pr *github.PR, threads []github.Review
 		Memory:             mem,
 		MaxPatterns:        opts.MaxPatterns,
 		Skills:             sks,
+		ChangedSkills:      changedSkills,
 		StyleGuidePath:     styleguide.Find(pr.Dir),
 		Local:              opts.Local,
 	}

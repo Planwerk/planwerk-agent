@@ -167,6 +167,36 @@ func withReadOnlyDenied(args []string, readOnly bool) []string {
 	return append(args, claudeReadOnlyDeniedTools...)
 }
 
+// withDenyRules appends rules to the --disallowed-tools list: it continues the
+// list withReadOnlyDenied opened for a read-only session, and opens one for a
+// mutating session. A nil rules is a no-op. Like withReadOnlyDenied it must
+// precede withAllowedTools, whose flag terminates the variadic list.
+func withDenyRules(args []string, readOnly bool, rules []string) []string {
+	if len(rules) == 0 {
+		return args
+	}
+	if !readOnly {
+		args = append(args, "--disallowed-tools")
+	}
+	return append(args, rules...)
+}
+
+// skillDenyRules returns one Skill deny rule per name, in the parameter form
+// Skill(skill:<name>), which Claude Code matches whichever of its names the
+// model calls the skill by (verified 2026-10-07: a session under
+// --permission-mode auto had the invocation refused and recorded as a
+// permission denial, while an unruled session ran the skill).
+func skillDenyRules(names []string) []string {
+	if len(names) == 0 {
+		return nil
+	}
+	rules := make([]string, 0, len(names))
+	for _, n := range names {
+		rules = append(rules, "Skill(skill:"+n+")")
+	}
+	return rules
+}
+
 // readOnlyHookSettings is the --settings value that switches every hook off for
 // a read-only session, so a hook in the reviewed checkout's
 // .claude/settings.json never runs as the operator (decision 95).
@@ -230,6 +260,12 @@ type runSpec struct {
 	// spec honors it: the sessions that edit, commit, and push get no search.
 	// runClaudeMemory, runClaudeFindings, and runClaudePlan set it.
 	searchRule string
+	// denyRules are the permission deny rules of this one session, emitted
+	// under --disallowed-tools after the read-only list (withDenyRules). The
+	// fix and address sessions deny the Skill tool the skills the pull request
+	// adds or changes (skillDenyRules), because Claude Code loads a skill's
+	// body from the checkout they run in.
+	denyRules []string
 	// sessionID pins the CLI session's id (--session-id) and resume continues
 	// that session (--resume). Both are zero for a one-shot call; set by the
 	// completion nudge (decision 78).
@@ -810,6 +846,7 @@ func (c *Client) claudeArgs(spec runSpec, outputFormat string, extra ...string) 
 		return withNoTools(args)
 	}
 	args = withReadOnlyDenied(args, spec.readOnly)
+	args = withDenyRules(args, spec.readOnly, spec.denyRules)
 	var rules []string
 	if spec.readOnly && spec.searchRule != "" {
 		rules = append(rules, spec.searchRule)

@@ -352,6 +352,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		cat, cleanupCatalog := patterns.MaterializeOrWarn(pats)
 		mem, cleanupMemory := patterns.MaterializeMemoryOrWarn(wiki.MemoryPages)
 
+		sks, changedSkills := skills.LoadShared(fresh.Dir, "origin/"+pr.BaseBranch)
 		fixReport, model, fixErr := r.Claude.Fix(fresh.Dir, Context{
 			RepoFullName:   fullName,
 			PRNumber:       number,
@@ -366,7 +367,8 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 			Catalog:        cat,
 			Memory:         mem,
 			MaxPatterns:    opts.MaxPatterns,
-			Skills:         skills.LoadFromRef(fresh.Dir, "origin/"+pr.BaseBranch),
+			Skills:         sks,
+			ChangedSkills:  changedSkills,
 			StyleGuidePath: styleguide.Find(fresh.Dir),
 			Local:          opts.Local,
 			Fixup:          !opts.NoFixup,

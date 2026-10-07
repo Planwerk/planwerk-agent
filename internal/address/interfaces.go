@@ -35,10 +35,18 @@ type Context struct {
 	Memory      patterns.MemoryCatalog
 	MaxPatterns int
 	// Skills lists the Agent Skills the target repo ships under .claude/skills/
-	// (loaded by skills.Load from the checkout), rendered into the address prompt
-	// so the session uses a matching project skill when resolving a thread instead
-	// of improvising. Empty when the repo ships none.
+	// as the base branch has them and the pull request left them
+	// (skills.LoadShared), rendered into the address prompt so the session uses
+	// a matching project skill when resolving a thread instead of improvising.
+	// Empty when the repo ships none.
 	Skills []skills.Skill
+	// ChangedSkills names the skills the pull request adds or changes under
+	// .claude/skills/ (the second result of skills.LoadShared). They are left
+	// out of Skills, named in the prompt as left out, and denied to the Skill
+	// tool for the session, because Claude Code loads a skill's body from the
+	// checkout and a pull request must not hand the session that addresses it
+	// a recipe.
+	ChangedSkills []string
 	// StyleGuidePath is the repo-relative path of the documentation style
 	// guide the target repo commits (found by styleguide.Find from the
 	// checkout, e.g. "STYLE_GUIDE.md"). Rendered into the address prompt so

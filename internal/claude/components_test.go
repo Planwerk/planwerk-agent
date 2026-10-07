@@ -227,11 +227,27 @@ func TestDomainGlossaryBlockEscapesBreakout(t *testing.T) {
 // "you MUST invoke" obligation.
 func TestProjectSkillsBlock(t *testing.T) {
 	t.Run("no skills yields empty string", func(t *testing.T) {
-		if got := projectSkillsBlock(nil); got != "" {
+		if got := projectSkillsBlock(nil, nil); got != "" {
 			t.Errorf("projectSkillsBlock(nil) = %q, want empty", got)
 		}
-		if got := projectSkillsBlock([]skills.Skill{}); got != "" {
+		if got := projectSkillsBlock([]skills.Skill{}, nil); got != "" {
 			t.Errorf("projectSkillsBlock(empty) = %q, want empty", got)
+		}
+	})
+
+	// A pull request that adds or changes a skill: the skill is named as left
+	// out and refused, beside the list when there is one and alone otherwise,
+	// so the session reads neither the omission nor the refusal as a defect.
+	t.Run("changed skills are named as left out and refused", func(t *testing.T) {
+		withList := projectSkillsBlock([]skills.Skill{{Name: "release", Description: "Cut a release."}}, []string{"deploy", "deploy-alias"})
+		for _, want := range []string{"- `release`", "adds or changes the skills `deploy`, `deploy-alias`", "left out of the list above", "the Skill tool refuses them", "not a defect to repair"} {
+			if !strings.Contains(withList, want) {
+				t.Errorf("block with a list lacks %q:\n%s", want, withList)
+			}
+		}
+		alone := projectSkillsBlock(nil, []string{"deploy"})
+		if !strings.HasPrefix(alone, "## Project-provided Skills\n\n") || strings.Contains(alone, "<project-skills>") || !strings.Contains(alone, "They are not listed, and the Skill tool refuses them") {
+			t.Errorf("block without a list = %q", alone)
 		}
 	})
 
@@ -239,7 +255,7 @@ func TestProjectSkillsBlock(t *testing.T) {
 		out := projectSkillsBlock([]skills.Skill{
 			{Name: "drift-check", Description: "Reconcile spec/code drift."},
 			{Name: "no-desc"},
-		})
+		}, nil)
 		if !strings.Contains(out, "## Project-provided Skills") {
 			t.Errorf("missing heading:\n%s", out)
 		}

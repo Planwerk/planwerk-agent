@@ -3,7 +3,11 @@ package skills
 import (
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"testing"
+
+	"github.com/planwerk/planwerk-agent/internal/gitref/gitreftest"
 )
 
 // writeSkill creates <root>/.claude/skills/<dir>/SKILL.md with the given body.
@@ -136,5 +140,49 @@ func TestLoad_SkipsSkillsClosedToModelInvocation(t *testing.T) {
 	got := Load(root)
 	if len(got) != 2 || got[0].Name != "open-absent" || got[1].Name != "open-false" {
 		t.Fatalf("want only the skills open to model invocation, got %+v", got)
+	}
+}
+
+// TestLoadShared_ListsTheUnchangedAndNamesTheRest is the property the function
+// exists for: a session in a pull request's checkout is handed the skills the
+// pull request left alone, and the names of the ones it added or changed, so
+// the caller can deny those to the Skill tool; a removed skill is in neither.
+func TestLoadShared_ListsTheUnchangedAndNamesTheRest(t *testing.T) {
+	dir := gitreftest.Repo(t, map[string]string{
+		".claude/skills/kept/SKILL.md":    "---\nname: kept\ndescription: Kept as it was.\n---\n\nBody.\n",
+		".claude/skills/edited/SKILL.md":  "---\nname: edited\ndescription: At the base.\n---\n\nBase body.\n",
+		".claude/skills/removed/SKILL.md": "---\nname: removed\ndescription: Gone on the head.\n---\n\nBody.\n",
+	})
+	writeSkill(t, dir, "edited", "---\nname: edited\ndescription: At the base.\n---\n\nThe pull request's body.\n")
+	writeSkill(t, dir, "added", "---\nname: added-alias\ndescription: New on the head.\n---\n\nBody.\n")
+	if err := os.RemoveAll(filepath.Join(dir, ".claude", "skills", "removed")); err != nil {
+		t.Fatal(err)
+	}
+
+	shared, changed := LoadShared(dir, "main")
+	if want := []Skill{{Name: "kept", Description: "Kept as it was."}}; !reflect.DeepEqual(shared, want) {
+		t.Errorf("shared = %+v, want %+v", shared, want)
+	}
+	if want := []string{"added", "added-alias", "edited"}; !slices.Equal(changed, want) {
+		t.Errorf("changed = %v, want %v", changed, want)
+	}
+}
+
+// TestLoadShared_UnreadableRefNamesEveryWorkingTreeSkill: without a base to
+// vouch for a skill, nothing is shared and every skill is named, so a session
+// never follows a skill the base cannot be read for.
+func TestLoadShared_UnreadableRefNamesEveryWorkingTreeSkill(t *testing.T) {
+	dir := gitreftest.Repo(t, map[string]string{
+		".claude/skills/kept/SKILL.md": "---\nname: kept\ndescription: Kept.\n---\n\nBody.\n",
+	})
+	shared, changed := LoadShared(dir, "no-such-ref")
+	if shared != nil {
+		t.Errorf("shared = %+v, want none", shared)
+	}
+	if want := []string{"kept"}; !slices.Equal(changed, want) {
+		t.Errorf("changed = %v, want %v", changed, want)
+	}
+	if s, c := LoadShared(t.TempDir(), "main"); s != nil || c != nil {
+		t.Errorf("a checkout without skills = %+v, %v; want nothing", s, c)
 	}
 }

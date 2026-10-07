@@ -29,7 +29,9 @@ import (
 // its report, the same session is resumed to finish and report instead of the
 // iteration losing its work.
 func (c *Client) Fix(dir string, ctx fix.Context) (string, string, error) {
-	out, model, err := c.runWithCompletionNudge(c.autoMemorySpec(dir, "fix", ctx.Catalog, ctx.Memory), BuildFixPrompt(ctx), fixReportHeading, reportStatusChoices)
+	spec := c.autoMemorySpec(dir, "fix", ctx.Catalog, ctx.Memory)
+	spec.denyRules = skillDenyRules(ctx.ChangedSkills)
+	out, model, err := c.runWithCompletionNudge(spec, BuildFixPrompt(ctx), fixReportHeading, reportStatusChoices)
 	if err != nil {
 		return "", "", fmt.Errorf("running fix: %w", err)
 	}
@@ -118,7 +120,7 @@ func BuildFixPrompt(ctx fix.Context) string {
 		ctx.Catalog, ctx.Patterns, ctx.MaxPatterns))
 	sb.WriteString(projectMemoryBlock(ctx.Memory))
 
-	sb.WriteString(projectSkillsBlock(ctx.Skills))
+	sb.WriteString(projectSkillsBlock(ctx.Skills, ctx.ChangedSkills))
 	sb.WriteString(docProseBlock())
 	sb.WriteString(styleGuideBlock(ctx.StyleGuidePath))
 

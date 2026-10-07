@@ -210,7 +210,13 @@ patterns are spliced in as instructions, and the skills block obliges a session
 to follow a recipe. Those cannot be framed as data without losing their
 purpose, so they are read from the pull request's base instead of its head
 (`internal/gitref`), where a pull request cannot rewrite them; the review then
-flags a change to them as a finding. The same reasoning covers issue comments
+flags a change to them as a finding. A skill needs one step more: Claude Code
+loads every skill's body from the working tree, and the Skill tool runs the
+checkout's SKILL.md whatever the prompt listed (verified 2026-10-07), so the
+fix and address sessions list only the skills the pull request left as they
+were, name the ones it adds or changes as left out, and deny those to the
+Skill tool for the session (`Skill(skill:<name>)` under `--disallowed-tools`,
+decision 119). The same reasoning covers issue comments
 the tool acts on, such as a reused plan: they count only when the tool itself or
 a maintainer wrote them.
 
