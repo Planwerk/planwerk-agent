@@ -104,6 +104,12 @@ builders:
    (pinned on purpose) from rules about the conversation.
 10. **Provenance.** `git log -L` or `git blame` each finding's lines and label
     text added after the last audit with the commit.
+11. **Grants versus steps.** Read every command the body names, in prose or
+    in a fenced block, against the frontmatter's `allowed-tools`, in the form
+    the body uses: a command with no grant stops the step at a permission
+    prompt, and a grant wider than the body's form (`ruff check` for a body
+    that says `ruff check --no-fix`) is the inverse. Then read every grant
+    against the steps; a grant no step uses is a finding too.
 
 ## Output format
 
