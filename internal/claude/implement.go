@@ -298,14 +298,7 @@ This is a single, non-interactive, one-shot session: there is NO next turn, no h
 	sb.WriteString("\n")
 	sb.WriteString(fencedData("issue-body", "", strings.TrimSpace(ctx.IssueBody)))
 	sb.WriteString("\n")
-	outside := []string{"issue-body"}
-	if strings.TrimSpace(ctx.Plan) != "" {
-		outside = append(outside, "implementation-plan")
-	}
-	if ctx.Resume != nil && len(ctx.Resume.Commits) > 0 && strings.TrimSpace(ctx.Resume.PriorReport) != "" {
-		outside = append(outside, "previous-session-account")
-	}
-	sb.WriteString(untrustedDataLine("It defines the work: what to build and, where a plan or an earlier session's account is included below, how it was planned and how far it got.", outside...))
+	sb.WriteString(untrustedDataLine("It defines the work: what to build.", "issue-body"))
 
 	sb.WriteString(patternCatalogBlock(honorPatternsHeading,
 		patternCatalogLeadIn+" Apply them to the code you write or change: every commit you make stays consistent with them, and where the change touches an area a pattern covers, prefer the resolution it endorses. They never license changing code the issue does not touch; a pre-existing violation goes under \"Noticed but not touching\".",
@@ -321,6 +314,7 @@ This is a single, non-interactive, one-shot session: there is NO next turn, no h
 		sb.WriteString("A dedicated read-only planning session already grounded this issue in the repository and produced the plan below. Treat it as the default route: adopt its change set, commit sequence, test plan, and documentation plan. Re-verify its Ground-Truth Notes as you work — when the repository contradicts the plan, deviate as narrowly as possible and record the deviation (with rationale) under \"Deviations from the issue\" in your report.\n\n")
 		sb.WriteString(fencedData("implementation-plan", "", strings.TrimSpace(ctx.Plan)))
 		sb.WriteString("\n")
+		sb.WriteString(untrustedDataLine("It is how the planning session planned the work.", "implementation-plan"))
 	}
 
 	hasResume := ctx.Resume != nil && len(ctx.Resume.Commits) > 0
@@ -349,7 +343,7 @@ Run these steps in order. Do not skip ahead.
 	if hasResume {
 		fmt.Fprintf(&sb, "4. STAY on the existing feature branch `%s` you are already checked out on — an earlier run created it (see \"Resuming a partial implementation\" above). Do NOT create a new branch and do NOT reset, rebase, or amend it.\n", ctx.Resume.Branch)
 	} else {
-		fmt.Fprintf(&sb, "4. CREATE a fresh feature branch off the current default branch. Use a short, descriptive branch name that MUST begin with \"implement/issue-%d-\" (e.g. \"implement/issue-%d-<slug>\") — the orchestrator keys on this prefix to find and resume the branch if this session is interrupted before it finishes.\n", ctx.IssueNumber, ctx.IssueNumber)
+		fmt.Fprintf(&sb, "4. CREATE a fresh feature branch off the current default branch. Use a short, descriptive branch name that MUST begin with \"implement/issue-%d-\" (e.g. \"implement/issue-%d-<slug>\") — planwerk-agent keys on this prefix to find and resume the branch if this session is interrupted before it finishes.\n", ctx.IssueNumber, ctx.IssueNumber)
 	}
 	if orchestrated {
 		sb.WriteString(`5. IMPLEMENT the change set package by package, through the ` + "`" + implementerAgentName + "`" + ` agent (see "Orchestrated implementation" above):
@@ -357,11 +351,7 @@ Run these steps in order. Do not skip ahead.
    - After each worker returns, verify its commits and run the tests in the foreground yourself; dispatch follow-up tasks for every gap, and only then delegate the next package.
 `)
 	} else {
-		sb.WriteString(`5. IMPLEMENT the change set:
-   - Match existing layout, naming, error handling, and logging conventions.
-   - Add unit tests for new logic, and make every new test exercise at least one error or edge path — not the happy path only. Add integration / E2E tests when the project has them for comparable features.
-   - Add or update documentation (README, CHANGELOG, doc comments, CLI help, generated API references) for every user-visible change.
-   - Commit in small, reviewable steps with descriptive messages.
+		sb.WriteString(`5. IMPLEMENT the change set as the thinking patterns above describe: matching conventions, with its tests and docs, in small, reviewable commits.
 `)
 	}
 	sb.WriteString(`6. VERIFY LOCALLY before you hand off:
@@ -377,7 +367,7 @@ Run these steps in order. Do not skip ahead.
 
 ## Implementation Report (final output)
 
-ALWAYS end the session with this report — it is mandatory and is the last thing you output, even if you stopped early or hit a circuit breaker below. A session that ends without it (a bare summary, a "waiting for the tests to finish" note, anything missing the heading and a terminal STATUS line) is treated by the orchestrator as a failed, unfinished implementation: the run is aborted and no pull request is opened. After committing on the feature branch, output a report in this exact shape:
+ALWAYS end the session with this report — it is mandatory and is the last thing you output, even if you stopped early or hit a circuit breaker below. A session that ends without it (a bare summary, a "waiting for the tests to finish" note, anything missing the heading and a terminal STATUS line) is treated by planwerk-agent as a failed, unfinished implementation: the run is aborted and no pull request is opened. After committing on the feature branch, output a report in this exact shape:
 
    ## Implementation Report (issue #` + fmt.Sprintf("%d", ctx.IssueNumber) + `)
 
@@ -406,20 +396,20 @@ ALWAYS end the session with this report — it is mandatory and is the last thin
    STATUS: <DONE | DONE_WITH_CONCERNS | PARTIAL | BLOCKED | NEEDS_CONTEXT>
    ` + implementVerdictDefinitions() + `
    Next: <on any verdict but DONE only: the single action a human takes next — e.g. on PARTIAL "rerun implement on branch <branch>"; on DONE_WITH_CONCERNS with unproven criteria, the CI job(s) a reviewer must see green on the pull request; omit this line on DONE>
-   Do NOT report DONE or DONE_WITH_CONCERNS when any work package is partial or not started — that is exactly the false "this closes the issue" signal this report exists to prevent. A complete subset of a multi-package issue is PARTIAL, not DONE. On PARTIAL the orchestrator opens NO pull request: it keeps the branch so a follow-up run resumes it and finishes the remaining packages — the single pull request (linking "Closes #` + fmt.Sprintf("%d", ctx.IssueNumber) + `") opens only once every package is done.
+   Do NOT report DONE or DONE_WITH_CONCERNS when any work package is partial or not started — that is exactly the false "this closes the issue" signal this report exists to prevent. A complete subset of a multi-package issue is PARTIAL, not DONE. On PARTIAL planwerk-agent opens NO pull request: it keeps the branch so a follow-up run resumes it and finishes the remaining packages — the single pull request (linking "Closes #` + fmt.Sprintf("%d", ctx.IssueNumber) + `") opens only once every package is done.
 
 ## Circuit breakers — stop instead of thrashing
 
 You run fully autonomously, with no human in the loop and a bounded budget, so a thrash loop burns the whole budget before anyone notices. STOP and output the report the moment you detect any of these conditions — do not push through them:
-- Fighting the test suite: the same test (or set of tests) keeps failing across repeated, distinct fix attempts and you are not converging. NEVER weaken, skip, or delete the test to go green — that masks the defect instead of fixing it; stop instead. A test that fails on the base commit too is pre-existing, not a fight: record it and carry on.
+- Fighting the test suite: the same test (or set of tests) keeps failing across repeated, distinct fix attempts and you are not converging; stop instead. A test that fails on the base commit too is pre-existing, not a fight: record it and carry on.
 - Ballooning scope: the change set is growing past the plan and the issue's implied blast radius — new top-level packages or files the issue never asked for — to force something to work. Implementing the work packages the issue EXPLICITLY lists (including a new package or files it names) is required scope, NOT ballooning; this breaker is only for scope the issue never asked for.
 - Reverting in circles: you have reverted and rewritten the same code more than once without converging on a working change.
 
 When you hit a circuit breaker, halt immediately and emit STATUS: PARTIAL when a partial but reviewable change already exists — at least one work package is done and committed but others remain (commit what you have on the branch; no pull request is opened for it, and a follow-up run resumes the branch to finish the rest), STATUS: DONE_WITH_CONCERNS when every work package is in fact complete but you have reservations a reviewer should see, or STATUS: BLOCKED when nothing shippable was produced. A stopped run that explains why is worth far more than an exhausted budget. The circuit breakers are the ONLY legitimate route to PARTIAL.
 
-` + reportShapeBlock("DONE") + commitTrailerBlock() + attributionFooterBlock("Implemented by") + implementRationalizationsBlock() + `## Hard rules
+` + reportShapeBlock("DONE") + commitTrailerBlock() + implementRationalizationsBlock() + `## Hard rules
 
-` + noSkipHooksLine() + `- NEVER weaken or delete tests to make the suite green; fix the root cause.
+` + noSkipHooksLine() + `- NEVER weaken, skip, or delete tests to make the suite green; fix the root cause.
 - NEVER widen types to Any/interface{}/unknown to silence the type-checker.
 - NEVER suppress lint findings with // nolint, # noqa, # type: ignore, @ts-ignore, etc. unless that suppression is already idiomatic in the same file.
 - NEVER add scope the issue did not ask for. Refactors, renames, dependency bumps, formatter sweeps — out of scope unless explicitly listed in Affected Areas.
@@ -429,7 +419,7 @@ When you hit a circuit breaker, halt immediately and emit STATUS: PARTIAL when a
 - NEVER split the issue's delivery or pre-emptively descope it. The whole issue lands as exactly ONE pull request. Never propose follow-up issues or PRs as a substitute for implementing listed scope.
 - NEVER push or force-push, and do NOT open a pull request — the finalize step does that after the simplify and review passes. Your job ends at committing on the branch.
 - NEVER background a command and stop to wait for its result, and NEVER defer work to "after" something finishes — this one-shot session has no later turn. Run tests and builds in the foreground to completion (polling a backgrounded run within the turn only when it outlives the foreground time limit), commit, then output the report, all within this single response.
-- If the issue is wrong (a cited file is gone and nothing replaces it; an Acceptance Criterion is unreachable; the Non-Goals contradict the Description), STOP instead of inventing scope, and report NEEDS_CONTEXT naming what is wrong and what you did NOT do. The orchestrator posts your report on the issue.
+- If the issue is wrong (a cited file is gone and nothing replaces it; an Acceptance Criterion is unreachable; the Non-Goals contradict the Description), STOP instead of inventing scope, and report NEEDS_CONTEXT naming what is wrong and what you did NOT do. planwerk-agent posts your report on the issue.
 - If there is nothing to commit (the issue turns out to already be implemented), do NOT create an empty commit; output the report explaining what you found.
 ` + escalationOKLine(" for the conditions above — never for the size of the listed scope", " Emit the matching STATUS instead of inventing scope or shipping a half-built change.") + ``)
 	if orchestrated {
@@ -463,7 +453,7 @@ This session ends with an implementation report whose last section is a terminal
 STATUS: <DONE | DONE_WITH_CONCERNS | PARTIAL | BLOCKED | NEEDS_CONTEXT>
 ` + implementVerdictDefinitions() + `
 
-An Acceptance Criterion whose test is written and committed but can only run in CI on the pull request is reported as "unproven" in the report's Acceptance Criteria section, never as a reason for PARTIAL. The orchestrator opens no pull request on PARTIAL, BLOCKED, or NEEDS_CONTEXT.
+An Acceptance Criterion whose test is written and committed but can only run in CI on the pull request is reported as "unproven" in the report's Acceptance Criteria section, never as a reason for PARTIAL. planwerk-agent opens no pull request on PARTIAL, BLOCKED, or NEEDS_CONTEXT.
 `
 }
 
@@ -519,12 +509,12 @@ func renderResumeSection(rc *implement.ResumeContext) string {
 		sb.WriteString(`
 The stopped session's final account is preserved below. Treat it as your map, not as truth: it records what that session had already implemented and verified — commits made, verification commands that already passed, and what was still outstanding when it stopped. Focus your work on the outstanding part, re-verify the account's claims cheaply (git log, re-run a check only where doubt exists) instead of redoing every verification from scratch, and never contradict the actual repository state in its favor.
 
-` + fencedData("previous-session-account", "", prior))
+` + fencedData("previous-session-account", "", prior) + "\n" + untrustedDataLine("It is the stopped session's account of how far it got.", "previous-session-account"))
 	}
 	sb.WriteString(`
 Continue that work — do NOT start over:
 - Do NOT create a new branch, and do NOT reset, rebase, revert, or amend the commits already on this branch. They are completed work; build on top of them.
-- Reconcile the commits above against the plan's Commit Sequence and Work Breakdown: work out which commits and work packages are already delivered and which remain. Open the files an existing commit changed to confirm it does what its subject claims; only if one is clearly broken or incomplete should you correct it in a NEW follow-up commit — never by rewriting history.
+- Reconcile the commits above against the plan's Commit Sequence and Work Breakdown, or without a plan against the issue's work breakdown: work out which commits and work packages are already delivered and which remain. Open the files an existing commit changed to confirm it does what its subject claims; only if one is clearly broken or incomplete should you correct it in a NEW follow-up commit — never by rewriting history.
 - Then implement ONLY the remaining commits and work packages, on this same branch, committing as you go.
 - In the Work Breakdown Coverage and Commits sections of your report, include the already-present commits and mark the packages they deliver "done", with those commits as evidence — exactly as if you had made them this session.
 
@@ -566,7 +556,7 @@ func BuildBareImplementPrompt(ctx implement.BareContext) string {
 			strings.Join(ctx.TechTags, ", "))
 	}
 
-	sb.WriteString("You are already running inside a checkout of this repository's default branch. Do NOT re-clone. Operate on the working tree you have. You run as a one-shot session: fetch the issue yourself, implement it, push a fresh feature branch, open a draft PR, and report.\n\n")
+	sb.WriteString("You are already running inside a checkout of this repository's default branch. Do NOT re-clone. Operate on the working tree you have. You run as a one-shot session: fetch the issue yourself, implement it, push a fresh feature branch, open a draft PR once the whole issue is implemented, and report.\n\n")
 
 	sb.WriteString(renderBareCatalog(ctx.PatternCatalog, ctx.HasRepoLocalRefs))
 
@@ -620,7 +610,7 @@ Run these steps in order. Do not skip ahead.
 
 ## Implementation Report (final output)
 
-ALWAYS end the session with this report — even if you stopped early or hit a circuit breaker below. After pushing the branch and opening the draft PR, output a report in this exact shape:
+ALWAYS end the session with this report — even if you stopped early or hit a circuit breaker below. When you are done, output a report in this exact shape:
 
    ## Implementation Report (issue #` + fmt.Sprintf("%d", issueNumber) + `)
 
@@ -648,14 +638,14 @@ ALWAYS end the session with this report — even if you stopped early or hit a c
    - (Write "none" when you saw nothing outside the issue's scope. This section is for observations you deliberately left alone — a bug next door, a stale doc, a refactor the issue never asked for — so a reviewer can tell a disciplined omission from an oversight. NEVER park a work package or an Acceptance Criterion here: anything the issue asks for is in scope and is implemented, not noted.)
    ### Status
    STATUS: <DONE | DONE_WITH_CONCERNS | PARTIAL | BLOCKED | NEEDS_CONTEXT>
-   (DONE = EVERY work package implemented and tested, every Acceptance Criterion satisfied, every Local verification command passing or failing only in a way shown to be pre-existing on the base, and the PR opened with a "Closes #` + fmt.Sprintf("%d", issueNumber) + `" link; DONE_WITH_CONCERNS = every package likewise complete and the closing PR opened, but with reservations a reviewer should see — this is also the verdict when every package is done and one or more Acceptance Criteria are "unproven" above: their tests are written and committed, and only CI on the pull request can run them; PARTIAL = at least one work package is unfinished because a circuit breaker below genuinely interrupted the work — NEVER a scoping choice, and NEVER the verdict for a complete implementation whose remaining proof is a CI run: PARTIAL opens no pull request, and CI runs only on one; the branch is pushed but NO pull request is opened, and a follow-up session on this branch finishes the rest; BLOCKED = could not implement, nothing shippable; NEEDS_CONTEXT = the issue is underspecified and a human must clarify.)
+   (DONE = EVERY work package implemented and tested, every Acceptance Criterion satisfied, every Local verification command passing or failing only in a way shown to be pre-existing on the base, and the PR opened with a "Closes #` + fmt.Sprintf("%d", issueNumber) + `" link; DONE_WITH_CONCERNS = every package likewise complete and the closing PR opened, but with reservations a reviewer should see — this is also the verdict when every package is done and one or more Acceptance Criteria are "unproven" above: their tests are written and committed, and only CI on the pull request can run them; PARTIAL = at least one work package is unfinished because a circuit breaker below genuinely interrupted the work — NEVER a scoping choice, and NEVER the verdict for a complete implementation whose remaining proof is a CI run: PARTIAL opens no pull request, and CI runs only on one; the branch is pushed, and a follow-up session on this branch finishes the rest; BLOCKED = could not implement, nothing shippable; NEEDS_CONTEXT = the issue is underspecified and a human must clarify.)
    Next: <on any verdict but DONE only: the single action a human takes next — e.g. on PARTIAL "rerun implement on branch <branch>"; on DONE_WITH_CONCERNS with unproven criteria, the CI job(s) a reviewer must see green on the pull request; omit this line on DONE>
    Do NOT report DONE or DONE_WITH_CONCERNS when any work package is partial or not started — a complete subset of a multi-package issue is PARTIAL, and PARTIAL opens no pull request.
 
 ## Circuit breakers — stop instead of thrashing
 
 You run fully autonomously, with no human in the loop and a bounded budget, so a thrash loop burns the whole budget before anyone notices. STOP and output the report the moment you detect any of these conditions — do not push through them:
-- Fighting the test suite: the same test (or set of tests) keeps failing across repeated, distinct fix attempts and you are not converging. NEVER weaken, skip, or delete the test to go green — that masks the defect instead of fixing it; stop instead. A test that fails on the base commit too is pre-existing, not a fight: record it and carry on.
+- Fighting the test suite: the same test (or set of tests) keeps failing across repeated, distinct fix attempts and you are not converging; stop instead. A test that fails on the base commit too is pre-existing, not a fight: record it and carry on.
 - Ballooning scope: the change set is growing past the plan and the issue's implied blast radius — new top-level packages or files the issue never asked for — to force something to work. Implementing the work packages the issue EXPLICITLY lists (including a new package or files it names) is required scope, NOT ballooning; this breaker is only for scope the issue never asked for.
 - Reverting in circles: you have reverted and rewritten the same code more than once without converging on a working change.
 
@@ -663,7 +653,7 @@ When you hit a circuit breaker, halt immediately and emit STATUS: PARTIAL when a
 
 ` + reportShapeBlock("DONE") + commitTrailerBlock() + attributionFooterBlock("Implemented by") + implementRationalizationsBlock() + `## Hard rules
 
-` + noSkipHooksLine() + `- NEVER weaken or delete tests to make the suite green; fix the root cause.
+` + noSkipHooksLine() + `- NEVER weaken, skip, or delete tests to make the suite green; fix the root cause.
 - NEVER widen types to Any/interface{}/unknown to silence the type-checker.
 - NEVER suppress lint findings with // nolint, # noqa, # type: ignore, @ts-ignore, etc. unless that suppression is already idiomatic in the same file.
 - NEVER add scope the issue did not ask for. Refactors, renames, dependency bumps, formatter sweeps — out of scope unless explicitly listed in Affected Areas.
