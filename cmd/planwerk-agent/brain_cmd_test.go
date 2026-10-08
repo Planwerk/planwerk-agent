@@ -593,10 +593,13 @@ func TestBrainSearchCmd_StopsWithoutAMirror(t *testing.T) {
 	}
 }
 
-// The compiled-in review tier, pinned by value so a changed default fails here.
+// The compiled-in analysis and review tiers, pinned by value so a changed
+// default fails here.
 const (
-	wantReviewModel  = "fable"
-	wantReviewEffort = "high"
+	wantAnalysisModel  = "haiku"
+	wantAnalysisEffort = "xhigh"
+	wantReviewModel    = "haiku"
+	wantReviewEffort   = "xhigh"
 )
 
 func TestBrainBootstrapCmd_RegistersItsFlags(t *testing.T) {
@@ -604,7 +607,7 @@ func TestBrainBootstrapCmd_RegistersItsFlags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("finding the bootstrap command: %v", err)
 	}
-	for _, name := range []string{"dry-run", "max-units", "write-wiki", "wiki-ref", "review-model", "review-effort", "decision-docs", "no-decision-docs", "source"} {
+	for _, name := range []string{"dry-run", "max-units", "write-wiki", "wiki-ref", "analysis-model", "analysis-effort", "review-model", "review-effort", "decision-docs", "no-decision-docs", "source"} {
 		if bootstrapCmd.Flags().Lookup(name) == nil {
 			t.Errorf("brain bootstrap must expose --%s", name)
 		}
@@ -615,6 +618,12 @@ func TestBrainBootstrapCmd_RegistersItsFlags(t *testing.T) {
 		if bootstrapCmd.Flags().Lookup(name) != nil {
 			t.Errorf("brain bootstrap must not expose --%s", name)
 		}
+	}
+	if got := bootstrapCmd.Flags().Lookup("analysis-model").DefValue; got != wantAnalysisModel {
+		t.Errorf("--analysis-model defaults to %q, want %s", got, wantAnalysisModel)
+	}
+	if got := bootstrapCmd.Flags().Lookup("analysis-effort").DefValue; got != wantAnalysisEffort {
+		t.Errorf("--analysis-effort defaults to %q, want %s", got, wantAnalysisEffort)
 	}
 	if got := bootstrapCmd.Flags().Lookup("review-model").DefValue; got != wantReviewModel {
 		t.Errorf("--review-model defaults to %q, want %s", got, wantReviewModel)
@@ -650,6 +659,7 @@ func TestBrainBootstrapCmd_RejectsBadFlagsBeforeAnyWork(t *testing.T) {
 		}
 	}
 	t.Setenv("PATH", bin)
+	t.Setenv(envBrainAnalysisEffort, "")
 	t.Setenv(envBrainReviewEffort, "")
 	t.Chdir(t.TempDir())
 
@@ -661,7 +671,8 @@ func TestBrainBootstrapCmd_RejectsBadFlagsBeforeAnyWork(t *testing.T) {
 		{"dry run with write", []string{"--dry-run", "--write-wiki"}, "--dry-run and --write-wiki are mutually exclusive"},
 		{"documents with none", []string{"--decision-docs", "a.md", "--no-decision-docs"}, "--decision-docs and --no-decision-docs are mutually exclusive"},
 		{"negative unit count", []string{"--max-units", "-1"}, "--max-units must be >= 0, got -1"},
-		{"unknown effort", []string{"--review-effort", "huge"}, `invalid --review-effort "huge": must be one of low, medium, high, xhigh, max (env: PLANWERK_BRAIN_REVIEW_EFFORT)`},
+		{"unknown analysis effort", []string{"--analysis-effort", "huge"}, `invalid --analysis-effort "huge": must be one of low, medium, high, xhigh, max (env: PLANWERK_BRAIN_ANALYSIS_EFFORT)`},
+		{"unknown review effort", []string{"--review-effort", "huge"}, `invalid --review-effort "huge": must be one of low, medium, high, xhigh, max (env: PLANWERK_BRAIN_REVIEW_EFFORT)`},
 		{"unknown source", []string{"--source", "x"}, `--source must be "api" or "mirror", got "x"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -754,6 +765,61 @@ func TestBrainBootstrapSource(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestResolveBrainAnalysisTier(t *testing.T) {
+	t.Run("defaults without a flag or a variable", func(t *testing.T) {
+		t.Setenv(envBrainAnalysisModel, "")
+		t.Setenv(envBrainAnalysisEffort, "")
+		m, e, err := resolveBrainAnalysisTier(wantAnalysisModel, false, wantAnalysisEffort, false)
+		if err != nil || m != wantAnalysisModel || e != wantAnalysisEffort {
+			t.Errorf("tier = %q/%q, %v, want %s/%s", m, e, err, wantAnalysisModel, wantAnalysisEffort)
+		}
+	})
+
+	// The analysis has its own tier: the main tier's variables do not reach it.
+	t.Run("the main tier's variables are ignored", func(t *testing.T) {
+		t.Setenv(envBrainAnalysisModel, "")
+		t.Setenv(envBrainAnalysisEffort, "")
+		t.Setenv(envClaudeModel, "opus")
+		t.Setenv(envClaudeEffort, "max")
+		m, e, err := resolveBrainAnalysisTier(wantAnalysisModel, false, wantAnalysisEffort, false)
+		if err != nil || m != wantAnalysisModel || e != wantAnalysisEffort {
+			t.Errorf("tier = %q/%q, %v, want %s/%s", m, e, err, wantAnalysisModel, wantAnalysisEffort)
+		}
+	})
+
+	t.Run("the variables replace the defaults", func(t *testing.T) {
+		const varModel, varEffort = "opus", "max"
+		t.Setenv(envBrainAnalysisModel, " "+varModel+" ")
+		t.Setenv(envBrainAnalysisEffort, varEffort)
+		m, e, err := resolveBrainAnalysisTier(wantAnalysisModel, false, wantAnalysisEffort, false)
+		if err != nil || m != varModel || e != varEffort {
+			t.Errorf("tier = %q/%q, %v, want %s/%s", m, e, err, varModel, varEffort)
+		}
+	})
+
+	t.Run("a flag wins over its variable", func(t *testing.T) {
+		t.Setenv(envBrainAnalysisModel, "opus")
+		t.Setenv(envBrainAnalysisEffort, "max")
+		const flagModel, flagEffort = "sonnet", "low"
+		m, e, err := resolveBrainAnalysisTier(flagModel, true, flagEffort, true)
+		if err != nil || m != flagModel || e != flagEffort {
+			t.Fatalf("tier = %q/%q, %v, want %s/%s", m, e, err, flagModel, flagEffort)
+		}
+		client := claude.NewClient(claude.WithBrainAnalysisModel(m), claude.WithBrainAnalysisEffort(e))
+		if gotModel, gotEffort := client.BrainAnalysisTier(); gotModel != flagModel || gotEffort != flagEffort {
+			t.Errorf("client tier = %q/%q, want %s/%s", gotModel, gotEffort, flagModel, flagEffort)
+		}
+	})
+
+	t.Run("an unknown effort from the variable is rejected", func(t *testing.T) {
+		t.Setenv(envBrainAnalysisEffort, "huge")
+		_, _, err := resolveBrainAnalysisTier(wantAnalysisModel, false, wantAnalysisEffort, false)
+		if err == nil || !strings.Contains(err.Error(), "--analysis-effort") || !strings.Contains(err.Error(), "PLANWERK_BRAIN_ANALYSIS_EFFORT") {
+			t.Errorf("err = %v, want it to name the flag and the variable", err)
+		}
+	})
 }
 
 func TestResolveBrainReviewTier(t *testing.T) {

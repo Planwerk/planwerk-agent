@@ -9,7 +9,6 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/brain"
 	"github.com/planwerk/planwerk-agent/internal/capture"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
-	"github.com/planwerk/planwerk-agent/internal/search"
 )
 
 // The fences of the two bootstrap prompts.
@@ -27,11 +26,11 @@ const (
 //  2. Structure that prose into JSON matching capture.CaptureResult, with the
 //     capture pass's structuring prompt.
 //
-// The session is read-only on the main tier and may read the pages of the
-// working set (ctx.PagesDir). It proposes; the review (BootstrapReview) and
-// the caller decide what is kept.
+// The session is read-only on the brain analysis tier (BrainAnalysisTier) and
+// may read the pages of the working set (ctx.PagesDir). It proposes; the
+// review (BootstrapReview) and the caller decide what is kept.
 func (c *Client) BootstrapUnit(dir string, ctx brain.UnitContext) (*capture.CaptureResult, error) {
-	rawAnalysis, model, err := c.runClaudeMemory(dir, buildBootstrapUnitPrompt(ctx), "bootstrap-unit", noCatalog, patterns.MemoryCatalog{Dir: ctx.PagesDir}, search.Surface{})
+	rawAnalysis, model, err := c.runClaudeBrainAnalysis(dir, buildBootstrapUnitPrompt(ctx), "bootstrap-unit", patterns.MemoryCatalog{Dir: ctx.PagesDir})
 	if err != nil {
 		return nil, fmt.Errorf("running bootstrap analysis: %w", err)
 	}

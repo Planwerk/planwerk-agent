@@ -1393,15 +1393,75 @@ func TestStructureWorkDir_IsAnEmptyDirectoryOfOurOwn(t *testing.T) {
 	}
 }
 
-// TestBrainReviewTier locks the page review's tier: fable and high without an
-// option, the option's value with one, and the default again for an empty
+// TestBrainAnalysisTier locks the bootstrap analysis's tier: haiku and xhigh
+// without an option, the option's value with one, and the default again for
+// an empty option, so a misconfigured flag cannot select an empty model or
+// effort. The main tier stays out of it in both directions.
+func TestBrainAnalysisTier(t *testing.T) {
+	t.Parallel()
+	const analysisModel, analysisEffort = "analysis-tier-model", "low"
+	const wantModel, wantEffort = "haiku", "xhigh"
+
+	if DefaultBrainAnalysisModel != wantModel || DefaultBrainAnalysisEffort != wantEffort {
+		t.Errorf("compiled-in tier = %q/%q, want %s/%s", DefaultBrainAnalysisModel, DefaultBrainAnalysisEffort, wantModel, wantEffort)
+	}
+	if model, effort := NewClient(WithModel(testTierOverride)).BrainAnalysisTier(); model != DefaultBrainAnalysisModel || effort != DefaultBrainAnalysisEffort {
+		t.Errorf("default tier = %q/%q, want the compiled-in one, not the main tier", model, effort)
+	}
+	c := NewClient(WithModel(testTierOverride), WithBrainAnalysisModel(analysisModel), WithBrainAnalysisEffort(analysisEffort))
+	if model, effort := c.BrainAnalysisTier(); model != analysisModel || effort != analysisEffort {
+		t.Errorf("tier = %q/%q, want %q/%q", model, effort, analysisModel, analysisEffort)
+	}
+	if c.model != testTierOverride || c.effort != DefaultClaudeEffort {
+		t.Errorf("the analysis options changed the main tier: %q/%q", c.model, c.effort)
+	}
+	if model, effort := c.BrainReviewTier(); model != DefaultBrainReviewModel || effort != DefaultBrainReviewEffort {
+		t.Errorf("the analysis options changed the review tier: %q/%q", model, effort)
+	}
+	c = NewClient(WithBrainAnalysisModel(""), WithBrainAnalysisEffort(""))
+	if model, effort := c.BrainAnalysisTier(); model != DefaultBrainAnalysisModel || effort != DefaultBrainAnalysisEffort {
+		t.Errorf("empty options gave %q/%q, want the defaults", model, effort)
+	}
+}
+
+// TestRunClaudeBrainAnalysis_Spec proves the bootstrap analysis runs read-only
+// on its own tier with only the pages directory readable.
+func TestRunClaudeBrainAnalysis_Spec(t *testing.T) {
+	t.Parallel()
+	const analysisModel, analysisEffort, cloneDir, pagesDir = "analysis-tier-model", "low", "/clone", "/state/pages"
+	c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
+		return "proposals", testResolvedModel, nil
+	}, WithModel(testTierOverride), WithBrainAnalysisModel(analysisModel), WithBrainAnalysisEffort(analysisEffort))
+
+	text, model, err := c.runClaudeBrainAnalysis(cloneDir, "distill this", "bootstrap-unit", patterns.MemoryCatalog{Dir: pagesDir})
+	if err != nil || text != "proposals" || model != testResolvedModel {
+		t.Fatalf("runClaudeBrainAnalysis = %q, %q, %v", text, model, err)
+	}
+	if len(*calls) != 1 {
+		t.Fatalf("ran %d sessions, want 1", len(*calls))
+	}
+	spec := (*calls)[0].spec
+	if spec.model != analysisModel || spec.effort != analysisEffort {
+		t.Errorf("tier = %q/%q, want the analysis tier %q/%q", spec.model, spec.effort, analysisModel, analysisEffort)
+	}
+	if !spec.readOnly || spec.noTools || spec.permissionMode != "" || spec.searchRule != "" {
+		t.Errorf("spec = %+v, want a read-only session on the default permission mode without brain search", spec)
+	}
+	if spec.dir != cloneDir || spec.label != "bootstrap-unit" || !slices.Equal(spec.addDirs, []string{pagesDir}) {
+		t.Errorf("dir %q, label %q, addDirs %v", spec.dir, spec.label, spec.addDirs)
+	}
+}
+
+// TestBrainReviewTier locks the page review's tier: haiku and xhigh without
+// an option, the option's value with one, and the default again for an empty
 // option, so a misconfigured flag cannot select an empty model or effort.
 func TestBrainReviewTier(t *testing.T) {
 	t.Parallel()
 	const reviewModel, reviewEffort = "review-tier-model", "low"
+	const wantModel, wantEffort = "haiku", "xhigh"
 
-	if DefaultBrainReviewModel != "fable" || DefaultBrainReviewEffort != "high" {
-		t.Errorf("compiled-in tier = %q/%q, want fable/high", DefaultBrainReviewModel, DefaultBrainReviewEffort)
+	if DefaultBrainReviewModel != wantModel || DefaultBrainReviewEffort != wantEffort {
+		t.Errorf("compiled-in tier = %q/%q, want %s/%s", DefaultBrainReviewModel, DefaultBrainReviewEffort, wantModel, wantEffort)
 	}
 	if model, effort := NewClient().BrainReviewTier(); model != DefaultBrainReviewModel || effort != DefaultBrainReviewEffort {
 		t.Errorf("default tier = %q/%q, want the compiled-in one", model, effort)

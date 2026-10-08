@@ -21,18 +21,19 @@ func bootstrapTestContext() brain.UnitContext {
 }
 
 const (
-	// The two tiers the bootstrap tests tell apart, and the model id the
-	// review session reports.
+	// The three tiers the bootstrap tests tell apart, and the model id the
+	// review session reports. Neither session may run on the main tier.
 	bootstrapMainModel     = "main-tier-model"
+	bootstrapAnalysisModel = "analysis-tier-model"
 	bootstrapReviewModel   = "review-tier-model"
-	bootstrapReviewModelID = "claude-fable-5-1"
+	bootstrapReviewModelID = "claude-haiku-5-5"
 
 	bootstrapProposalsJSON = `{"patterns": [], "memory": [{"path": "memory/flags.md", "kind": "memory", "title": "Flags", "body": "# Flags\n\n**Summary**: Off by default.", "rationale": "durable", "confidence": "verified"}]}`
 	bootstrapVerdictsJSON  = `{"pages": [{"path": "memory/flags.md", "verdict": "revise", "body": "# Flags\n\n**Summary**: A new flag is off by default.", "reason": "the summary was vague"}]}`
 )
 
-// TestBootstrapUnit_RunsAnalysisThenStructure proves the analysis runs on the
-// main tier, read-only, with the pages directory readable, and that its prose
+// TestBootstrapUnit_RunsAnalysisThenStructure proves the analysis runs on its
+// own tier, not the main one, read-only, with the pages directory readable, and that its prose
 // is structured under the unit's own label with the capture structure prompt.
 func TestBootstrapUnit_RunsAnalysisThenStructure(t *testing.T) {
 	t.Parallel()
@@ -41,7 +42,7 @@ func TestBootstrapUnit_RunsAnalysisThenStructure(t *testing.T) {
 			return "I propose memory/flags.md.", testResolvedModel, nil
 		}
 		return bootstrapProposalsJSON, "claude-sonnet-5-5", nil
-	}, WithModel(bootstrapMainModel), WithEffort("medium"), WithBrainReviewModel(bootstrapReviewModel), WithBrainReviewEffort("low"))
+	}, WithModel(bootstrapMainModel), WithEffort("medium"), WithBrainAnalysisModel(bootstrapAnalysisModel), WithBrainAnalysisEffort("high"), WithBrainReviewModel(bootstrapReviewModel), WithBrainReviewEffort("low"))
 
 	ctx := bootstrapTestContext()
 	result, err := c.BootstrapUnit("/clone", ctx)
@@ -52,8 +53,8 @@ func TestBootstrapUnit_RunsAnalysisThenStructure(t *testing.T) {
 		t.Fatalf("ran %d sessions, want 2", len(*calls))
 	}
 	analysis, structuring := (*calls)[0], (*calls)[1]
-	if analysis.spec.label != "bootstrap-unit" || analysis.spec.model != bootstrapMainModel || analysis.spec.effort != "medium" {
-		t.Errorf("analysis ran as %q on %q/%q, want bootstrap-unit on the main tier", analysis.spec.label, analysis.spec.model, analysis.spec.effort)
+	if analysis.spec.label != "bootstrap-unit" || analysis.spec.model != bootstrapAnalysisModel || analysis.spec.effort != "high" {
+		t.Errorf("analysis ran as %q on %q/%q, want bootstrap-unit on the analysis tier", analysis.spec.label, analysis.spec.model, analysis.spec.effort)
 	}
 	if !analysis.spec.readOnly || analysis.spec.dir != "/clone" || !strings.Contains(strings.Join(analysis.spec.addDirs, ","), ctx.PagesDir) {
 		t.Errorf("analysis spec = %+v, want a read-only session in the clone that may read the pages directory", analysis.spec)
@@ -84,7 +85,7 @@ func TestBootstrapReview_RunsOnTheReviewTier(t *testing.T) {
 			return "memory/flags.md: revise.", bootstrapReviewModelID, nil
 		}
 		return bootstrapVerdictsJSON, "claude-sonnet-5-5", nil
-	}, WithModel(bootstrapMainModel), WithEffort("medium"), WithBrainReviewModel(bootstrapReviewModel), WithBrainReviewEffort("low"))
+	}, WithModel(bootstrapMainModel), WithEffort("medium"), WithBrainAnalysisModel(bootstrapAnalysisModel), WithBrainAnalysisEffort("high"), WithBrainReviewModel(bootstrapReviewModel), WithBrainReviewEffort("low"))
 
 	ctx := brain.ReviewContext{
 		UnitContext: bootstrapTestContext(),
