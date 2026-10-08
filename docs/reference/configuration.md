@@ -73,9 +73,10 @@ variables ([Precedence](#precedence)); `repo` is config-only.
 
 `brain bootstrap` and `brain sync` read `wiki.repo` and `wiki.ref` and, like
 `sync`, ignore `wiki.enabled`: running one of these commands is the opt-in. The
-mirror directory of `brain sync` has no config key. The review tier of
-`brain bootstrap` has no config key; it is set with `--review-model` and
-`--review-effort` or their environment variables.
+mirror directory of `brain sync` has no config key. The analysis and review
+tiers of `brain bootstrap` have no config key; they are set with
+`--analysis-model`, `--analysis-effort`, `--review-model`, and `--review-effort`
+or their environment variables.
 
 The separate `capture:` section gates the *write*: `capture.wiki` controls
 whether the capture pass pushes the accepted pages to the wiki (the

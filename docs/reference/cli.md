@@ -1016,16 +1016,19 @@ planwerk-agent brain bootstrap owner/repo --write-wiki     # push the pages afte
 | `--max-units` | Stop after this many units in this run; `0` processes every remaining unit | `0` |
 | `--write-wiki` | Once no unit remains, push the changed pages after a confirmation at a terminal | `false` |
 | `--wiki-ref` | Pin the wiki to a branch, tag, or commit (env: `PLANWERK_WIKI_REF`) | - |
-| `--review-model` | Model of the page review (env: `PLANWERK_BRAIN_REVIEW_MODEL`) | `fable` |
-| `--review-effort` | Reasoning effort of the page review: one of `low`, `medium`, `high`, `xhigh`, `max` (env: `PLANWERK_BRAIN_REVIEW_EFFORT`) | `high` |
+| `--analysis-model` | Model of the analysis that proposes the pages of a unit (env: `PLANWERK_BRAIN_ANALYSIS_MODEL`) | `haiku` |
+| `--analysis-effort` | Reasoning effort of the analysis: one of `low`, `medium`, `high`, `xhigh`, `max` (env: `PLANWERK_BRAIN_ANALYSIS_EFFORT`) | `xhigh` |
+| `--review-model` | Model of the page review (env: `PLANWERK_BRAIN_REVIEW_MODEL`) | `haiku` |
+| `--review-effort` | Reasoning effort of the page review: one of `low`, `medium`, `high`, `xhigh`, `max` (env: `PLANWERK_BRAIN_REVIEW_EFFORT`) | `xhigh` |
 | `--decision-docs` | Repository-relative paths of the decision documents to read, comma-separated or repeated; replaces discovery | - |
 | `--no-decision-docs` | Read no decision document | `false` |
 | `--source` | Where the history is read from: `api` (the GitHub API) or `mirror` (the local mirror of [`brain sync`](#brain-sync)) | `api` |
 
 `--dry-run` and `--write-wiki` are mutually exclusive, and so are
 `--decision-docs` and `--no-decision-docs`. `--max-units` must not be negative.
-An unknown `--review-effort` and an unknown `--source` are rejected before any
-session runs.
+An unknown `--analysis-effort` or `--review-effort` and an unknown `--source`
+are rejected before any session runs. Neither session follows `--claude-model`
+or `--claude-effort`.
 
 The command always reads the wiki, so it has `--wiki-ref` and neither `--wiki`
 nor `--no-wiki`. It reads `wiki.repo` and `wiki.ref` from
@@ -1083,8 +1086,8 @@ says how many.
 
 #### Sessions
 
-The analysis runs on `--claude-model` and `--claude-effort`. It proposes memory
-pages and review patterns, or nothing. A new page must be
+The analysis runs on `--analysis-model` and `--analysis-effort`. It proposes
+memory pages and review patterns, or nothing. A new page must be
 `memory/<name>.md` or `review_patterns/<name>.md` with a name of lowercase
 letters, digits, `.`, `_`, and `-` that starts with a letter or a digit; a
 proposal for the path of an existing page is an update. Any other path is
@@ -1165,9 +1168,9 @@ Units: 196 total, 2 processed, 194 remaining
 Pages: 4 new, 1 updated, 3 unchanged, 0 diverged
 - `memory/pin-dependencies.md` (new) from owner/repo#6
 - `memory/one-off.md` (issue-6): a one-off, not a decision
-Models: analysis claude-opus-5-5, review claude-fable-5-1
-Usage this run: 48211 input tokens, 9120 output tokens, 4 calls, est. $1.84
-Usage all runs: 131004 input tokens, 26377 output tokens, 12 calls, est. $5.02
+Models: analysis claude-haiku-5-5, review claude-haiku-5-5
+Usage this run: 48211 input tokens, 9120 output tokens, 4 calls, est. $0.01
+Usage all runs: 131004 input tokens, 26377 output tokens, 12 calls, est. $0.03
 Propose-only: nothing was written to the wiki. The pages are under .planwerk-brain-sync/pages; run again with --write-wiki to push them.
 ```
 
