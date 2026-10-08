@@ -2,7 +2,7 @@
 
 head: <short SHA of the commit the audit read; the next check counts commits from this entry's own commit, not from here>
 claude_code: <claude --version, as the probe prints it>
-models: opus=<id> sonnet=<id> fable=<id>
+models: opus=<id> sonnet=<id> fable=<id> haiku=<id>
 guidance: <the "## Migrating to …" headings of model-migration.md that cover the ids above, separated by "; ">
 eval_baseline: <path or commit of the baseline report this iteration recorded, or "none">
 branch: <the branch that carries this iteration's commits>

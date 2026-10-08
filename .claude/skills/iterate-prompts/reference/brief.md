@@ -19,7 +19,7 @@ reader without a commit. Today the aliases resolve to:
 | main, finder, implement, worker | `opus` / `xhigh` | <id> | review, audit, adversarial, specialists, compliance, simplify, verify, implement, fix, address, rebase, finalize, elaborate, propose, gap, sync, capture, review-prepared |
 | plan | `opus` / `xhigh` (fable one flag away) | <id> | the implement plan session |
 | structure | `sonnet` / `xhigh`, no tools, empty dir | <id> | the *_structure prompts, repair prompts, dedup |
-| brain review | `fable` / `high` | <id> | bootstrap review |
+| brain analysis, brain review | `haiku` / `xhigh` | <id> | bootstrap-unit, bootstrap-review |
 
 The skills under `plugins/planwerk/skills/` run interactively on the model of
 the author's own session.

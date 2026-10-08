@@ -2,15 +2,15 @@
 # Prints the Claude Code version and the model id each alias planwerk-agent
 # passes resolves to today, one `key=value` line each, so an iteration can
 # compare them with the newest ledger entry. Runs one one-word session per
-# alias with no tools, no hooks, no settings, and no MCP servers; the three
-# sessions cost about $0.11 in total (2026-10-07).
+# alias with no tools, no hooks, no settings, and no MCP servers; the opus,
+# sonnet, and fable sessions cost about $0.11 in total (2026-10-07).
 #
-# Usage: probe-models.sh [alias ...]   (default: opus sonnet fable)
+# Usage: probe-models.sh [alias ...]   (default: opus sonnet fable haiku)
 set -euo pipefail
 
 aliases=("$@")
 if [ ${#aliases[@]} -eq 0 ]; then
-  aliases=(opus sonnet fable)
+  aliases=(opus sonnet fable haiku)
 fi
 
 printf 'claude_code=%s\n' "$(claude --version | awk '{print $1}')"
