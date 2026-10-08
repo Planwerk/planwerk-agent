@@ -593,13 +593,14 @@ func TestBrainSearchCmd_StopsWithoutAMirror(t *testing.T) {
 	}
 }
 
-// The compiled-in analysis and review tiers, pinned by value so a changed
-// default fails here.
+// The compiled-in analysis and review tiers and the structuring model of
+// brain bootstrap, pinned by value so a changed default fails here.
 const (
 	wantAnalysisModel  = "haiku"
 	wantAnalysisEffort = "xhigh"
 	wantReviewModel    = "haiku"
 	wantReviewEffort   = "xhigh"
+	wantStructureModel = "haiku"
 )
 
 func TestBrainBootstrapCmd_RegistersItsFlags(t *testing.T) {
@@ -818,6 +819,50 @@ func TestResolveBrainAnalysisTier(t *testing.T) {
 		_, _, err := resolveBrainAnalysisTier(wantAnalysisModel, false, wantAnalysisEffort, false)
 		if err == nil || !strings.Contains(err.Error(), "--analysis-effort") || !strings.Contains(err.Error(), "PLANWERK_BRAIN_ANALYSIS_EFFORT") {
 			t.Errorf("err = %v, want it to name the flag and the variable", err)
+		}
+	})
+}
+
+// TestResolveBrainStructureModel parses the bootstrap command's flags under the
+// real root, so the --structure-model it reads is the inherited persistent
+// flag: haiku when neither the flag nor the variable is set, the variable over
+// that default, and the flag over the variable.
+func TestResolveBrainStructureModel(t *testing.T) {
+	bootstrapCmd := func(t *testing.T, args ...string) *pflag.FlagSet {
+		t.Helper()
+		cmd, _, err := newRootCmd(&runtimeDeps{}).Find([]string{"brain", "bootstrap"})
+		if err != nil {
+			t.Fatalf("finding the bootstrap command: %v", err)
+		}
+		if err := cmd.ParseFlags(args); err != nil {
+			t.Fatalf("parsing %v: %v", args, err)
+		}
+		return cmd.Flags()
+	}
+
+	t.Run("haiku without a flag or a variable", func(t *testing.T) {
+		t.Setenv(envStructureModel, "")
+		if got := resolveBrainStructureModel(bootstrapCmd(t)); got != wantStructureModel {
+			t.Errorf("model = %q, want %s", got, wantStructureModel)
+		}
+		if claude.DefaultStructureModel == claude.DefaultBrainStructureModel {
+			t.Errorf("the root's structuring default is %q too, so the bootstrap default changes nothing", claude.DefaultStructureModel)
+		}
+	})
+
+	const varModel, flagModel = "opus", "sonnet"
+
+	t.Run("the variable replaces the default", func(t *testing.T) {
+		t.Setenv(envStructureModel, " "+varModel+" ")
+		if got := resolveBrainStructureModel(bootstrapCmd(t)); got != varModel {
+			t.Errorf("model = %q, want %s", got, varModel)
+		}
+	})
+
+	t.Run("the flag wins over the variable", func(t *testing.T) {
+		t.Setenv(envStructureModel, varModel)
+		if got := resolveBrainStructureModel(bootstrapCmd(t, "--structure-model", flagModel)); got != flagModel {
+			t.Errorf("model = %q, want %s", got, flagModel)
 		}
 	})
 }

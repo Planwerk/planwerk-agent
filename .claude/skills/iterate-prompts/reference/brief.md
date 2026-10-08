@@ -18,8 +18,8 @@ reader without a commit. Today the aliases resolve to:
 |---|---|---|---|
 | main, finder, implement, worker | `opus` / `xhigh` | <id> | review, audit, adversarial, specialists, compliance, simplify, verify, implement, fix, address, rebase, finalize, elaborate, propose, gap, sync, capture, review-prepared |
 | plan | `opus` / `xhigh` (fable one flag away) | <id> | the implement plan session |
-| structure | `sonnet` / `xhigh`, no tools, empty dir | <id> | the *_structure prompts, repair prompts, dedup |
-| brain analysis, brain review | `haiku` / `xhigh` | <id> | bootstrap-unit, bootstrap-review |
+| structure | `sonnet` / `xhigh`, no tools, empty dir | <id> | the *_structure prompts, repair prompts, dedup (bootstrap's on haiku) |
+| brain analysis, brain review, their structuring | `haiku` / `xhigh` | <id> | bootstrap-unit, bootstrap-review, and their -structure calls |
 
 The skills under `plugins/planwerk/skills/` run interactively on the model of
 the author's own session.
