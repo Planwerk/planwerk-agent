@@ -3,8 +3,11 @@
 # version and alias resolution (probe-models.sh) with the newest ledger entry
 # under .claude/prompt-audits/, and counts the commits that touched a prompt
 # surface since that entry landed (the entry's own commit; its head: line
-# names the older commit the audit read). It calls the model only through the
-# probe (about $0.11) and never edits anything.
+# names the older commit the audit read). A model id that moved, a major or
+# minor Claude Code release, and a commit on a surface are reasons; a patch
+# release of Claude Code is printed and not counted, because patches ship most
+# days and change the harness, not the prompts' reader. It calls the model
+# only through the probe (about $0.11) and never edits anything.
 #
 # Usage: check.sh            from the repository root
 # Exit:  0 nothing changed, 3 an iteration is due, 1 error.
@@ -25,6 +28,8 @@ fi
 echo "ledger: $ledger"
 
 field() { sed -n "s/^$1: *//p" "$ledger" | head -1; }
+# cc_level reduces a Claude Code version to its major.minor part.
+cc_level() { printf '%s' "$1" | awk -F. '{print $1"."$2}'; }
 last_head=$(field head)
 last_cc=$(field claude_code)
 last_models=$(field models)
@@ -34,8 +39,13 @@ now_cc=$(printf '%s\n' "$probe" | sed -n 's/^claude_code=//p')
 now_models=$(printf '%s\n' "$probe" | grep -v '^claude_code=' | tr '\n' ' ' | sed 's/ $//')
 
 reasons=()
+cc_note=""
 if [ "$now_cc" != "$last_cc" ]; then
-  reasons+=("claude-code:$last_cc->$now_cc")
+  if [ "$(cc_level "$now_cc")" != "$(cc_level "$last_cc")" ]; then
+    reasons+=("claude-code:$last_cc->$now_cc")
+  else
+    cc_note=" (patch release, not a reason on its own)"
+  fi
 fi
 if [ "$now_models" != "$last_models" ]; then
   reasons+=("models:[$last_models]->[$now_models]")
@@ -58,7 +68,7 @@ else
   reasons+=("ledger-commit-unknown:$base")
 fi
 
-echo "claude_code: last=$last_cc now=$now_cc"
+echo "claude_code: last=$last_cc now=$now_cc$cc_note"
 echo "models: last=[$last_models] now=[$now_models]"
 echo "commits on the prompt surfaces since the ledger entry ($base): $commits"
 
