@@ -1165,7 +1165,7 @@ The run prints to stdout:
 
 ```text
 Units: 196 total, 2 processed, 194 remaining
-  103 issues, 66 pull requests, 16 commit ranges, 11 decision document chunks; 18 bot-authored pull requests skipped
+  103 issues (with 58 pull requests), 66 standalone pull requests, 16 commit ranges, 11 decision document chunks; 18 bot-authored pull requests skipped
 [3/196] issue-6: 2 proposed, 1 accepted, 1 rejected
 Pages: 4 new, 1 updated, 3 unchanged, 0 diverged
 - `memory/pin-dependencies.md` (new) from owner/repo#6
@@ -1176,8 +1176,11 @@ Usage all runs: 131004 input tokens, 26377 output tokens, 12 calls, est. $0.03
 Propose-only: nothing was written to the wiki. The pages are under .planwerk-brain-sync/pages; run again with --write-wiki to push them.
 ```
 
-- The two `Units:` lines count the units by state and by kind. A dry run then
-  prints one line per remaining unit, `<key>  <title>`, and stops.
+- The two `Units:` lines count the units by state and by kind. An issue unit
+  holds the merged pull requests that closed its issue; the count in
+  parentheses names them, each one once. A standalone pull request closed no
+  issue and is a unit of its own. A dry run then prints one line per remaining
+  unit, `<key>  <title>`, and stops.
 - One `[<position>/<total>]` line per processed unit.
 - The `Pages:` line, then one line per dirty page (`new` or `update`, and the
   source of the page, or `a local edit` for a hand-edited page that had no

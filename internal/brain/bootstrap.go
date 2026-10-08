@@ -266,15 +266,24 @@ func (r *bootstrapRun) printf(format string, args ...any) {
 	_, _ = fmt.Fprintf(r.w, format, args...)
 }
 
-// printUnitSummary writes the two lines that count the units.
+// printUnitSummary writes the two lines that count the units. The second line
+// also counts the pull requests the issue units hold, each one once, so a
+// count of pull request units alone does not read as every pull request the
+// run analyzes.
 func (r *bootstrapRun) printUnitSummary(units []Unit, remaining, skippedBots int) {
 	kinds := make(map[string]int)
+	issuePRs := make(map[int]bool)
 	for _, u := range units {
 		kinds[u.Kind]++
+		if u.Kind == KindIssue {
+			for _, n := range u.PRs {
+				issuePRs[n] = true
+			}
+		}
 	}
 	r.printf("Units: %d total, %d processed, %d remaining\n", len(units), len(units)-remaining, remaining)
-	r.printf("  %d issues, %d pull requests, %d commit ranges, %d decision document chunks; %d bot-authored pull requests skipped\n",
-		kinds[KindIssue], kinds[KindPR], kinds[KindCommits], kinds[KindDoc], skippedBots)
+	r.printf("  %d issues (with %d pull requests), %d standalone pull requests, %d commit ranges, %d decision document chunks; %d bot-authored pull requests skipped\n",
+		kinds[KindIssue], len(issuePRs), kinds[KindPR], kinds[KindCommits], kinds[KindDoc], skippedBots)
 }
 
 // prepare readies a real run: it reconciles the state with the page files,

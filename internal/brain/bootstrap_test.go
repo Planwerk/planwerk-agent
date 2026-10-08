@@ -175,7 +175,14 @@ func assertContains(t *testing.T, out string, wants ...string) {
 
 func TestRun_DryRunListsTheUnitsAndTouchesNothing(t *testing.T) {
 	l := handClosedIssues(2)
-	l.PRs = []github.MergedPR{{Number: 9, Title: "Update a dependency", MergedAt: day(1), AuthorIsBot: true}}
+	// Pull request 7 closes both issues and counts once among the pull
+	// requests the issue units hold.
+	l.PRs = []github.MergedPR{
+		{Number: 7, Title: "Fix both", MergedAt: day(2), ClosesIssues: []int{1, 2}},
+		{Number: 8, Title: "Fix the second", MergedAt: day(2), ClosesIssues: []int{2}},
+		{Number: 9, Title: "Update a dependency", MergedAt: day(1), AuthorIsBot: true},
+		{Number: 10, Title: "Tidy the docs", MergedAt: day(3)},
+	}
 	h := newHarness(t, l)
 	writeTree(t, h.clone, map[string]string{"docs/adr/0001-x.md": "# Decision\n"})
 
@@ -184,10 +191,11 @@ func TestRun_DryRunListsTheUnitsAndTouchesNothing(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 	chunk := chunkDocument("docs/adr/0001-x.md", "# Decision\n")[0]
-	want := "Units: 3 total, 0 processed, 3 remaining\n" +
-		"  2 issues, 0 pull requests, 0 commit ranges, 1 decision document chunks; 1 bot-authored pull requests skipped\n" +
+	want := "Units: 4 total, 0 processed, 4 remaining\n" +
+		"  2 issues (with 2 pull requests), 1 standalone pull requests, 0 commit ranges, 1 decision document chunks; 1 bot-authored pull requests skipped\n" +
 		"issue-1  Issue 1\n" +
 		"issue-2  Issue 2\n" +
+		"pr-10  Tidy the docs\n" +
 		chunk.key() + "  docs/adr/0001-x.md (chunk 1 of 1)\n"
 	if out != want {
 		t.Errorf("output =\n%s\nwant\n%s", out, want)
@@ -782,7 +790,7 @@ func TestRun_Report(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 	want := "Units: 1 total, 0 processed, 1 remaining\n" +
-		"  1 issues, 0 pull requests, 0 commit ranges, 0 decision document chunks; 0 bot-authored pull requests skipped\n" +
+		"  1 issues (with 0 pull requests), 0 standalone pull requests, 0 commit ranges, 0 decision document chunks; 0 bot-authored pull requests skipped\n" +
 		"[1/1] issue-1: 4 proposed, 2 accepted, 2 rejected\n" +
 		"Pages: 1 new, 1 updated, 1 unchanged, 1 diverged\n" +
 		"- `memory/new.md` (new) from acme/widgets#1\n" +
