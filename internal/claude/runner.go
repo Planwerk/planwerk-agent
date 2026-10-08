@@ -66,15 +66,25 @@ const (
 	// structuring tier; override it with WithStructureEffort (--structure-effort
 	// / PLANWERK_STRUCTURE_EFFORT) (decisions 56 and 101).
 	DefaultStructureEffort = "xhigh"
+	// DefaultBrainAnalysisModel is the compiled-in model for the analysis of
+	// `brain bootstrap`, the session that proposes the pages of one unit;
+	// override it with WithBrainAnalysisModel (--analysis-model /
+	// PLANWERK_BRAIN_ANALYSIS_MODEL) (decisions 112 and 120).
+	DefaultBrainAnalysisModel = "haiku"
+	// DefaultBrainAnalysisEffort is the compiled-in reasoning effort for the
+	// analysis of `brain bootstrap`; override it with WithBrainAnalysisEffort
+	// (--analysis-effort / PLANWERK_BRAIN_ANALYSIS_EFFORT) (decisions 112 and
+	// 120).
+	DefaultBrainAnalysisEffort = "xhigh"
 	// DefaultBrainReviewModel is the compiled-in model for the page review of
-	// `brain bootstrap`, the second model that judges every page the analysis
-	// proposes; override it with WithBrainReviewModel (--review-model /
-	// PLANWERK_BRAIN_REVIEW_MODEL) (decision 112).
-	DefaultBrainReviewModel = "fable"
+	// `brain bootstrap`, the second session that judges every page the
+	// analysis proposes; override it with WithBrainReviewModel (--review-model
+	// / PLANWERK_BRAIN_REVIEW_MODEL) (decisions 112 and 120).
+	DefaultBrainReviewModel = "haiku"
 	// DefaultBrainReviewEffort is the compiled-in reasoning effort for the page
 	// review of `brain bootstrap`; override it with WithBrainReviewEffort
-	// (--review-effort / PLANWERK_BRAIN_REVIEW_EFFORT) (decision 112).
-	DefaultBrainReviewEffort = "high"
+	// (--review-effort / PLANWERK_BRAIN_REVIEW_EFFORT) (decisions 112 and 120).
+	DefaultBrainReviewEffort = "xhigh"
 	// claudeAutoPermissionMode is the --permission-mode value the implement
 	// command passes to its orchestrated `claude -p` session so tool calls
 	// run without an interactive confirmation. "auto" is Claude Code's auto
@@ -402,12 +412,17 @@ type Client struct {
 	effort          string
 	planEffort      string
 	structureEffort string
-	// brainReviewModel/brainReviewEffort select the tier of the page review of
-	// `brain bootstrap` (see BrainReviewTier). NewClient seeds them from
-	// DefaultBrainReviewModel and DefaultBrainReviewEffort (decision 112).
-	brainReviewModel  string
-	brainReviewEffort string
-	showOutput        bool
+	// brainAnalysisModel/brainAnalysisEffort select the tier of the analysis
+	// of `brain bootstrap` (see BrainAnalysisTier), brainReviewModel/
+	// brainReviewEffort the tier of its page review (see BrainReviewTier).
+	// NewClient seeds them from DefaultBrainAnalysisModel,
+	// DefaultBrainAnalysisEffort, DefaultBrainReviewModel, and
+	// DefaultBrainReviewEffort (decisions 112 and 120).
+	brainAnalysisModel  string
+	brainAnalysisEffort string
+	brainReviewModel    string
+	brainReviewEffort   string
+	showOutput          bool
 
 	// inheritUserConfig, when true, lets sessions load the invoking user's
 	// global ~/.claude settings and MCP servers instead of running hermetically
@@ -435,20 +450,22 @@ type Option func(*Client)
 
 // NewClient returns a Client seeded with the compiled-in defaults
 // (DefaultClaudeTimeout/Model/Effort and the planning, finder, structuring,
-// and brain review defaults), then applies opts.
+// and brain analysis and review defaults), then applies opts.
 func NewClient(opts ...Option) *Client {
 	c := &Client{
-		timeout:           DefaultClaudeTimeout,
-		model:             DefaultClaudeModel,
-		planModel:         DefaultPlanModel,
-		structureModel:    DefaultStructureModel,
-		finderModel:       DefaultFinderModel,
-		finderEffort:      DefaultFinderEffort,
-		effort:            DefaultClaudeEffort,
-		planEffort:        DefaultPlanEffort,
-		structureEffort:   DefaultStructureEffort,
-		brainReviewModel:  DefaultBrainReviewModel,
-		brainReviewEffort: DefaultBrainReviewEffort,
+		timeout:             DefaultClaudeTimeout,
+		model:               DefaultClaudeModel,
+		planModel:           DefaultPlanModel,
+		structureModel:      DefaultStructureModel,
+		finderModel:         DefaultFinderModel,
+		finderEffort:        DefaultFinderEffort,
+		effort:              DefaultClaudeEffort,
+		planEffort:          DefaultPlanEffort,
+		structureEffort:     DefaultStructureEffort,
+		brainAnalysisModel:  DefaultBrainAnalysisModel,
+		brainAnalysisEffort: DefaultBrainAnalysisEffort,
+		brainReviewModel:    DefaultBrainReviewModel,
+		brainReviewEffort:   DefaultBrainReviewEffort,
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -568,6 +585,28 @@ func WithStructureEffort(e string) Option {
 	}
 }
 
+// WithBrainAnalysisModel sets the model used by the analysis of `brain
+// bootstrap`. An empty m is ignored, which leaves the seeded default in place
+// (DefaultBrainAnalysisModel).
+func WithBrainAnalysisModel(m string) Option {
+	return func(c *Client) {
+		if m != "" {
+			c.brainAnalysisModel = m
+		}
+	}
+}
+
+// WithBrainAnalysisEffort sets the reasoning effort used by the analysis of
+// `brain bootstrap`. An empty e is ignored, which leaves the seeded default in
+// place (DefaultBrainAnalysisEffort).
+func WithBrainAnalysisEffort(e string) Option {
+	return func(c *Client) {
+		if e != "" {
+			c.brainAnalysisEffort = e
+		}
+	}
+}
+
 // WithBrainReviewModel sets the model used by the page review of `brain
 // bootstrap`. An empty m is ignored, which leaves the seeded default in place
 // (DefaultBrainReviewModel).
@@ -625,8 +664,8 @@ func (c *Client) runClaude(dir, prompt, label string, cat patterns.Catalog) (tex
 // memory: mem is the memory catalog whose directory the session may read
 // beside the pattern catalog's, the zero MemoryCatalog for a run without one.
 // surface pre-approves `brain search` for the session, the zero Surface for a
-// session without the search. The propose analysis, the elaboration, and the
-// bootstrap analysis (BootstrapUnit) call it.
+// session without the search. The propose analysis and the elaboration call
+// it.
 func (c *Client) runClaudeMemory(dir, prompt, label string, cat patterns.Catalog, mem patterns.MemoryCatalog, surface search.Surface) (text, model string, err error) {
 	return c.runSession(runSpec{dir: dir, label: label, model: c.model, effort: c.effort, readOnly: true, addDirs: []string{cat.Dir, mem.Dir}, searchRule: surface.AllowRule()}, prompt)
 }
@@ -709,6 +748,20 @@ func firstNonEmpty(override, fallback string) string {
 // search.
 func (c *Client) runClaudePlan(dir, prompt, label string, cat patterns.Catalog, mem patterns.MemoryCatalog, surface search.Surface) (text, model string, err error) {
 	return c.runSession(runSpec{dir: dir, label: label, model: c.planModel, effort: c.planEffort, readOnly: true, addDirs: []string{cat.Dir, mem.Dir}, searchRule: surface.AllowRule()}, prompt)
+}
+
+// runClaudeBrainAnalysis is runClaude on the brain analysis tier
+// (BrainAnalysisTier) for the analysis of `brain bootstrap` (decision 120).
+// mem is the memory catalog whose directory the session may read (--add-dir):
+// the pages of the working set the analysis deduplicates against and corrects.
+func (c *Client) runClaudeBrainAnalysis(dir, prompt, label string, mem patterns.MemoryCatalog) (text, model string, err error) {
+	return c.runSession(runSpec{dir: dir, label: label, model: c.brainAnalysisModel, effort: c.brainAnalysisEffort, readOnly: true, addDirs: []string{mem.Dir}}, prompt)
+}
+
+// BrainAnalysisTier returns the model and effort runClaudeBrainAnalysis runs
+// the analysis of `brain bootstrap` on.
+func (c *Client) BrainAnalysisTier() (model, effort string) {
+	return c.brainAnalysisModel, c.brainAnalysisEffort
 }
 
 // runClaudeBrainReview is runClaude on the brain review tier (BrainReviewTier)

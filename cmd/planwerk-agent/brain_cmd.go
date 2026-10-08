@@ -265,7 +265,7 @@ or short form (owner/repo).`,
 // read from (brainBootstrapSource).
 func newBrainBootstrapCmd(deps *runtimeDeps) *cobra.Command {
 	var opts brain.BootstrapOptions
-	var wikiRef, reviewModel, reviewEffort, source string
+	var wikiRef, analysisModel, analysisEffort, reviewModel, reviewEffort, source string
 
 	bootstrapCmd := &cobra.Command{
 		Use:   "bootstrap <repo-ref>",
@@ -278,8 +278,7 @@ issue with the pull requests and the commit that closed it, every merged pull
 request that closed no issue (a bot's is skipped), the commits pushed without
 a pull request in ranges of up to 25, and the decision documents of the
 repository in chunks. For each unit one session proposes pages, and a second
-session on its own model reviews every proposed page against the unit and the
-code at HEAD.
+session reviews every proposed page against the unit and the code at HEAD.
 
 The pages and the progress are kept in .planwerk-brain-sync in the working
 directory, and the state is saved after every unit. A run that is interrupted
@@ -299,8 +298,9 @@ it. The mirror is read as it is: the run does not sync it, so it sees the
 history up to the last "brain sync", and it stops when the mirror is missing
 or no sync of it has finished. The repository is still cloned.
 
-The analysis runs on --claude-model and --claude-effort, the page review on
---review-model and --review-effort.
+The analysis runs on --analysis-model and --analysis-effort and the page review
+on --review-model and --review-effort; neither follows --claude-model or
+--claude-effort.
 
 Repository reference can be a URL (https://github.com/owner/repo)
 or short form (owner/repo).`,
@@ -320,17 +320,24 @@ or short form (owner/repo).`,
 			if err != nil {
 				return err
 			}
-			model, effort, err := resolveBrainReviewTier(reviewModel, flags.Changed("review-model"), reviewEffort, flags.Changed("review-effort"))
+			aModel, aEffort, err := resolveBrainAnalysisTier(analysisModel, flags.Changed("analysis-model"), analysisEffort, flags.Changed("analysis-effort"))
+			if err != nil {
+				return err
+			}
+			rModel, rEffort, err := resolveBrainReviewTier(reviewModel, flags.Changed("review-model"), reviewEffort, flags.Changed("review-effort"))
 			if err != nil {
 				return err
 			}
 
-			// The page review runs on its own tier, so build a client that
-			// layers the resolved --review-* options on top of the shared
-			// --claude-* options. The command runs its sessions on this client,
-			// not deps.claude, so it prints its own usage totals.
+			// The analysis and the page review run on their own tiers, so build
+			// a client that layers the resolved --analysis-* and --review-*
+			// options on top of the shared --claude-* options. The command runs
+			// its sessions on this client, not deps.claude, so it prints its own
+			// usage totals.
 			clientOpts := append([]claude.Option{}, deps.claudeOpts...)
-			clientOpts = append(clientOpts, claude.WithBrainReviewModel(model), claude.WithBrainReviewEffort(effort))
+			clientOpts = append(clientOpts,
+				claude.WithBrainAnalysisModel(aModel), claude.WithBrainAnalysisEffort(aEffort),
+				claude.WithBrainReviewModel(rModel), claude.WithBrainReviewEffort(rEffort))
 			client := claude.NewClient(clientOpts...)
 			defer client.LogUsageSummary(cmd.ErrOrStderr())
 
@@ -352,6 +359,8 @@ or short form (owner/repo).`,
 	flags.IntVar(&opts.MaxUnits, "max-units", 0, "Stop after this many units in this run (0 processes every remaining unit)")
 	flags.BoolVar(&opts.WriteWiki, "write-wiki", false, "Once no unit remains, push the changed pages to the wiki after a confirmation at a terminal")
 	flags.StringVar(&wikiRef, "wiki-ref", "", "Pin the wiki to a branch, tag, or commit (env: "+envWikiRef+"; empty uses the wiki's default branch)")
+	flags.StringVar(&analysisModel, "analysis-model", claude.DefaultBrainAnalysisModel, "Model of the analysis that proposes the pages of a unit (env: "+envBrainAnalysisModel+")")
+	flags.StringVar(&analysisEffort, "analysis-effort", claude.DefaultBrainAnalysisEffort, "Reasoning effort of the analysis: low, medium, high, xhigh, or max (env: "+envBrainAnalysisEffort+")")
 	flags.StringVar(&reviewModel, "review-model", claude.DefaultBrainReviewModel, "Model of the page review (env: "+envBrainReviewModel+")")
 	flags.StringVar(&reviewEffort, "review-effort", claude.DefaultBrainReviewEffort, "Reasoning effort of the page review: low, medium, high, xhigh, or max (env: "+envBrainReviewEffort+")")
 	flags.StringSliceVar(&opts.DecisionDocs, "decision-docs", nil, "Repository-relative paths of the decision documents to read, in place of the discovered ones")
@@ -386,6 +395,19 @@ func brainBootstrapSource(source, repoRef string) (brain.Source, error) {
 	default:
 		return nil, fmt.Errorf("--source must be %q or %q, got %q", brainSourceAPI, brainSourceMirror, source)
 	}
+}
+
+// resolveBrainAnalysisTier resolves the model and the effort of the analysis
+// of `brain bootstrap`: the flag when it was set, else the environment
+// variable, else the compiled-in default. The effort is validated here, before
+// any session runs.
+func resolveBrainAnalysisTier(model string, modelSet bool, effort string, effortSet bool) (m, e string, err error) {
+	m = resolveString(model, modelSet, envBrainAnalysisModel, claude.DefaultBrainAnalysisModel)
+	e, err = resolveEffort(effort, effortSet, envBrainAnalysisEffort, claude.DefaultBrainAnalysisEffort, false, "--analysis-effort")
+	if err != nil {
+		return "", "", err
+	}
+	return m, e, nil
 }
 
 // resolveBrainReviewTier resolves the model and the effort of the page review

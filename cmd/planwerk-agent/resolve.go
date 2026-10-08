@@ -133,8 +133,18 @@ const envPlanModel = "PLANWERK_PLAN_MODEL"
 // --plan-effort CLI flag takes precedence when explicitly set.
 const envPlanEffort = "PLANWERK_PLAN_EFFORT"
 
+// envBrainAnalysisModel overrides the model used by the analysis of `brain
+// bootstrap` (e.g. "sonnet", "opus"). The --analysis-model CLI flag takes
+// precedence when explicitly set.
+const envBrainAnalysisModel = "PLANWERK_BRAIN_ANALYSIS_MODEL"
+
+// envBrainAnalysisEffort overrides the reasoning effort used by the analysis
+// of `brain bootstrap` (low, medium, high, xhigh, max). The --analysis-effort
+// CLI flag takes precedence when explicitly set.
+const envBrainAnalysisEffort = "PLANWERK_BRAIN_ANALYSIS_EFFORT"
+
 // envBrainReviewModel overrides the model used by the page review of `brain
-// bootstrap` (e.g. "fable", "opus"). The --review-model CLI flag takes
+// bootstrap` (e.g. "sonnet", "opus"). The --review-model CLI flag takes
 // precedence when explicitly set.
 const envBrainReviewModel = "PLANWERK_BRAIN_REVIEW_MODEL"
 
