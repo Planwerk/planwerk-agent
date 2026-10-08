@@ -7,9 +7,9 @@ description: >-
   against the prompt-design doctrine and the vendor's guidance for those
   models, applies the wording-only fixes on a branch, puts each behavioral
   change to the author, and records the outcome in a ledger the next
-  iteration reads. Use when a model has been released, Claude Code has been
-  upgraded, a run of commits touched the prompts, or a quarter has passed
-  since the last entry under .claude/prompt-audits/. `check` says whether an
+  iteration reads. Use when a model has been released, Claude Code has moved
+  to a new minor version, a run of commits touched the prompts, or a quarter
+  has passed since the last entry under .claude/prompt-audits/. `check` says whether an
   iteration is due and spends nothing beyond three one-word sessions.
 argument-hint: "[check|full] [builders|skills|shared]"
 arguments: [mode, surface]
@@ -50,8 +50,12 @@ It reads the newest ledger under `.claude/prompt-audits/`, runs
 `probe-models.sh` (one one-word session per alias planwerk-agent passes,
 about $0.11 in all), and prints the Claude Code version and the model id each
 alias resolves to, last time and now, the commits that touched a prompt
-surface since the ledger entry landed, and a `due=` line with its reasons.
-Exit 3 means due, 0 means nothing changed.
+surface since the ledger entry landed, and a `due=` line with its reasons: a
+model id that moved, a major or minor Claude Code release, a commit on a
+surface. A patch release of Claude Code is printed and not counted, because
+patches ship most days and change the harness, not the prompts' reader; a
+full run the author asks for may still cite one. Exit 3 means due, 0 means
+nothing changed.
 
 Then load the vendor guidance: invoke the bundled `claude-api` skill and note
 the base directory it prints. Under it, `shared/model-migration.md` holds one
