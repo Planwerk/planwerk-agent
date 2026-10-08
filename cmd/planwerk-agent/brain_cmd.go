@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/planwerk/planwerk-agent/internal/brain"
 	"github.com/planwerk/planwerk-agent/internal/claude"
@@ -300,7 +301,8 @@ or no sync of it has finished. The repository is still cloned.
 
 The analysis runs on --analysis-model and --analysis-effort and the page review
 on --review-model and --review-effort; neither follows --claude-model or
---claude-effort.
+--claude-effort. Their structuring runs on --structure-model and
+--structure-effort, whose model defaults to haiku for this command.
 
 Repository reference can be a URL (https://github.com/owner/repo)
 or short form (owner/repo).`,
@@ -331,13 +333,15 @@ or short form (owner/repo).`,
 
 			// The analysis and the page review run on their own tiers, so build
 			// a client that layers the resolved --analysis-* and --review-*
-			// options on top of the shared --claude-* options. The command runs
-			// its sessions on this client, not deps.claude, so it prints its own
+			// options, and the structuring model with this command's default,
+			// on top of the shared --claude-* options. The command runs its
+			// sessions on this client, not deps.claude, so it prints its own
 			// usage totals.
 			clientOpts := append([]claude.Option{}, deps.claudeOpts...)
 			clientOpts = append(clientOpts,
 				claude.WithBrainAnalysisModel(aModel), claude.WithBrainAnalysisEffort(aEffort),
-				claude.WithBrainReviewModel(rModel), claude.WithBrainReviewEffort(rEffort))
+				claude.WithBrainReviewModel(rModel), claude.WithBrainReviewEffort(rEffort),
+				claude.WithStructureModel(resolveBrainStructureModel(flags)))
 			client := claude.NewClient(clientOpts...)
 			defer client.LogUsageSummary(cmd.ErrOrStderr())
 
@@ -408,6 +412,16 @@ func resolveBrainAnalysisTier(model string, modelSet bool, effort string, effort
 		return "", "", err
 	}
 	return m, e, nil
+}
+
+// resolveBrainStructureModel resolves the structuring model of `brain
+// bootstrap` from the inherited --structure-model flag: the flag when it was
+// set, else PLANWERK_STRUCTURE_MODEL, else DefaultBrainStructureModel in place
+// of the root's DefaultStructureModel. The root resolved the same flag and
+// variable against the other default, so only an unset knob changes.
+func resolveBrainStructureModel(flags *pflag.FlagSet) string {
+	model, _ := flags.GetString("structure-model")
+	return resolveString(model, flags.Changed("structure-model"), envStructureModel, claude.DefaultBrainStructureModel)
 }
 
 // resolveBrainReviewTier resolves the model and the effort of the page review

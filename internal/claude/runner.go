@@ -76,6 +76,12 @@ const (
 	// (--analysis-effort / PLANWERK_BRAIN_ANALYSIS_EFFORT) (decisions 112 and
 	// 120).
 	DefaultBrainAnalysisEffort = "xhigh"
+	// DefaultBrainStructureModel is the compiled-in structuring model of `brain
+	// bootstrap`: the command passes it to WithStructureModel in place of
+	// DefaultStructureModel, so the structuring of its analysis and review runs
+	// on it unless --structure-model or PLANWERK_STRUCTURE_MODEL names another
+	// (decision 120). The structuring effort keeps DefaultStructureEffort.
+	DefaultBrainStructureModel = "haiku"
 	// DefaultBrainReviewModel is the compiled-in model for the page review of
 	// `brain bootstrap`, the second session that judges every page the
 	// analysis proposes; override it with WithBrainReviewModel (--review-model

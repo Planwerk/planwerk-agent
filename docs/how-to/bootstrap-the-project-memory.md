@@ -34,9 +34,10 @@ planwerk-agent brain bootstrap owner/repo --max-units 5
 ```
 
 Read the pages under `.planwerk-brain-sync/pages` and the `Usage this run:`
-line before you pay for the rest. Both sessions run on `haiku` at `xhigh`. To
-change the models, set the analysis with `--analysis-model` and
-`--analysis-effort` and the review with `--review-model` and `--review-effort`;
+line before you pay for the rest. Both sessions, and the structuring of their
+prose, run on `haiku` at `xhigh`. To change the models, set the analysis with
+`--analysis-model` and `--analysis-effort`, the review with `--review-model`
+and `--review-effort`, and the structuring with `--structure-model`;
 `--claude-model` and `--claude-effort` do not reach either session:
 
 ```bash
