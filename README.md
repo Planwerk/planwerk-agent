@@ -31,6 +31,7 @@ than subcommands:
 - **`/planwerk:draft`** turns a one-line idea into a ready-to-file GitHub issue
 - **`/planwerk:elaborate`** expands an issue into an engineering plan grounded in the repository
 - **`/planwerk:cleanup`** surveys a codebase for dead and duplicated code, and files a Meta Issue with a phased, evidence-backed cleanup plan
+- **`/planwerk:audit`** audits a codebase against its review patterns and the catalog's principles in your checkout, verifies every finding against the line it cites, and files the ones worth a pull request as issues behind your yes
 - **`/planwerk:meta`** splits a Meta Issue into linked, dependency-ordered Sub Issues
 - **`/planwerk:decide`** verifies the decisions a Meta Issue's split deferred to a spike, and folds the outcomes into the Meta Issue and every Sub Issue that assumed one
 - **`/planwerk:revisit`** re-checks a prepared issue against what has actually landed since, and corrects what went stale

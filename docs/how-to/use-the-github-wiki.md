@@ -4,7 +4,7 @@ Make your repository's **GitHub Wiki** a source of project review patterns and
 project memory for `review`, `audit`, `propose`, `elaborate`, the `implement`
 plan step, `fix`, and `address`. `ship` hands the wiki to every `implement` and
 `fix` run it drives. The `elaborate`, `implement`, `fix`, `revisit`, `clarify`,
-`decide`, `diagnose`, and `meta` skills read the project memory as well (see
+`decide`, `diagnose`, `meta`, and `audit` skills read the project memory as well (see
 [Read the memory from the skills](#read-the-memory-from-the-skills)).
 The wiki is human-editable through the web UI and git-versioned, so this
 knowledge evolves independently of code commits and never pollutes a diff.
@@ -138,7 +138,7 @@ planwerk-agent ship --wiki owner/repo#100
 ## Read the memory from the skills
 
 The `elaborate`, `implement`, `fix`, `revisit`, `clarify`, `decide`,
-`diagnose`, and `meta` skills read the project memory through the binary and
+`diagnose`, `meta`, and `audit` skills read the project memory through the binary and
 never clone the wiki themselves. A skill runs one command for the index and one
 per page its work touches:
 

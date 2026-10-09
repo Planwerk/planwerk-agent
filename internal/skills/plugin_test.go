@@ -12,10 +12,10 @@ import (
 )
 
 // pluginRoot is the Claude Code plugin this repository ships as a marketplace:
-// the interactive clarify/cleanup/decide/diagnose/draft/elaborate/fix/humanize/
-// implement/meta/rebase/revisit skills. Three replaced the subcommands of the
-// same names; elaborate, fix, implement, and rebase stand beside theirs, which
-// still run unattended.
+// the interactive audit/clarify/cleanup/decide/diagnose/draft/elaborate/fix/
+// humanize/implement/meta/rebase/revisit skills. Three replaced the subcommands
+// of the same names; audit, elaborate, fix, implement, and rebase stand beside
+// theirs, which still run unattended.
 const pluginRoot = "../../plugins/planwerk"
 
 // marketplaceManifest is the repo-root marketplace catalog Claude Code reads
@@ -25,7 +25,7 @@ const marketplaceManifest = "../../.claude-plugin/marketplace.json"
 // wantSkills is the skill set the plugin ships, in the sorted order the
 // discovered set is compared against. Adding or removing one is a deliberate
 // act, so it is pinned here rather than discovered.
-var wantSkills = []string{"clarify", "cleanup", "decide", "diagnose", "draft", "elaborate", "fix", "humanize", "implement", "meta", "rebase", "revisit"}
+var wantSkills = []string{"audit", "clarify", "cleanup", "decide", "diagnose", "draft", "elaborate", "fix", "humanize", "implement", "meta", "rebase", "revisit"}
 
 // skillDirRef matches a `${CLAUDE_SKILL_DIR}/<path>` reference in a SKILL.md
 // body. Claude Code expands the variable to the skill's own directory, so every
@@ -197,8 +197,9 @@ func TestSharedDocsAreReferenced(t *testing.T) {
 // `planwerk-agent brain memory`, per shared/memory.md. The other skills never
 // need it: draft describes an idea without planning it, humanize edits form
 // only, cleanup surveys code, and rebase reconciles two changes that already
-// exist without designing a new one.
-var memorySkills = []string{"clarify", "decide", "diagnose", "elaborate", "fix", "implement", "meta", "revisit"}
+// exist without designing a new one. audit reads it because a recorded
+// decision can refute a finding, as it does for the audit command.
+var memorySkills = []string{"audit", "clarify", "decide", "diagnose", "elaborate", "fix", "implement", "meta", "revisit"}
 
 // brainMemoryRule is the allowed-tools entry that lets a skill whose
 // allowed-tools name each Bash command it may run call
@@ -207,8 +208,8 @@ var memorySkills = []string{"clarify", "decide", "diagnose", "elaborate", "fix",
 const brainMemoryRule = "Bash(planwerk-agent brain memory:*)"
 
 // TestPluginSkillsReadTheProjectMemory pins which skills read the project
-// memory: the eight that plan or change code load shared/memory.md, the four
-// others do not, and each of the eight may run the command that document
+// memory: the nine that plan, judge, or change code load shared/memory.md, the
+// four others do not, and each of the nine may run the command that document
 // gives it, through a bare Bash entry or through brainMemoryRule.
 func TestPluginSkillsReadTheProjectMemory(t *testing.T) {
 	isMemorySkill := map[string]bool{}

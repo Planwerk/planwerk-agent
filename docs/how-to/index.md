@@ -6,6 +6,7 @@ solves one specific problem.
 - [Review a pull request](/how-to/review-a-pr)
 - [Analyze a repository and generate proposals](/how-to/analyze-a-repository)
 - [Audit a codebase against all patterns](/how-to/audit-a-codebase)
+- [Audit a codebase interactively](/how-to/audit-a-codebase-interactively)
 - [Provide a domain glossary](/how-to/provide-a-domain-glossary)
 - [Customize the domain sweep](/how-to/customize-the-domain-sweep)
 - [Use the GitHub Wiki as a knowledge source](/how-to/use-the-github-wiki)

@@ -136,6 +136,9 @@ Where an artifact lives decides whether it may name files.
 - **`elaborate`** writes a plan that `implement` consumes against the same
   checkout. Path grounding is required: cite concrete files and symbols, and
   verify each one exists before you name it.
+- **`cleanup` and `audit`** write into the tracker too, and name files only
+  in their evidence, pinned to the commit they examined; their format files
+  (`issue-format-survey.md`, `issue-format-audit.md`) say where.
 
 ## Design vocabulary
 

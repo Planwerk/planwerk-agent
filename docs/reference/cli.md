@@ -12,9 +12,10 @@ omitted. Shell completions and man pages are produced by the built-in
 ::: info Drafting and splitting are skills, not subcommands
 `draft` and `meta` are no longer `planwerk-agent` subcommands. They are Claude
 Code Skills — `/planwerk:draft` and `/planwerk:meta` — because both turn on
-decisions only a human can make mid-run. `elaborate` and `fix` exist both ways:
-as the commands documented below, and as the `/planwerk:elaborate` and
-`/planwerk:fix` skills. See [Use the skills](/how-to/use-the-skills).
+decisions only a human can make mid-run. `audit`, `elaborate`, and `fix` exist
+both ways: as the commands documented below, and as the `/planwerk:audit`,
+`/planwerk:elaborate`, and `/planwerk:fix` skills. See
+[Use the skills](/how-to/use-the-skills).
 :::
 
 ## Global flags
@@ -165,6 +166,11 @@ planwerk-agent propose --create-issues owner/repo
 ## `audit`
 
 Apply every loaded review pattern to an entire codebase.
+
+The command runs unattended and prints its findings. When you are in the
+checkout and want each finding verified against the line it cites, and the
+ones worth a pull request filed as issues behind your yes, use the
+[`/planwerk:audit` skill](/how-to/audit-a-codebase-interactively) instead.
 
 ```bash
 planwerk-agent audit owner/repo

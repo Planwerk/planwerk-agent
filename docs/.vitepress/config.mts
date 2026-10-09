@@ -53,6 +53,10 @@ export default defineConfig({
               link: '/how-to/analyze-a-repository',
             },
             { text: 'Audit a codebase', link: '/how-to/audit-a-codebase' },
+            {
+              text: 'Audit a codebase interactively',
+              link: '/how-to/audit-a-codebase-interactively',
+            },
             { text: 'Check feature gaps', link: '/how-to/check-feature-gaps' },
             { text: 'Use the skills', link: '/how-to/use-the-skills' },
             { text: 'Draft an issue', link: '/how-to/draft-an-issue' },

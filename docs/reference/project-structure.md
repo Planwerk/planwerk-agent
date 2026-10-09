@@ -164,13 +164,14 @@ planwerk-agent/
 ├── .claude-plugin/
 │   └── marketplace.json        # Claude Code marketplace catalog (this repo)
 ├── plugins/
-│   └── planwerk/               # The plugin: the twelve interactive skills
+│   └── planwerk/               # The plugin: the thirteen interactive skills
 │       ├── .claude-plugin/
 │       │   └── plugin.json
 │       ├── shared/             # One source for the format, style, doctrine, gh calls
 │       │   ├── issue-format.md        # Draft depth, titles, the footer
 │       │   ├── issue-format-plan.md   # Depth 2 and the rules a plan satisfies
 │       │   ├── issue-format-survey.md # The survey Meta Issue cleanup files
+│       │   ├── issue-format-audit.md  # The audit issue, draft depth plus evidence
 │       │   ├── house-style.md
 │       │   ├── humanizer.md
 │       │   ├── interaction.md
@@ -182,6 +183,7 @@ planwerk-agent/
 │       │   ├── github-relations.md    # Neighborhood query, sub-issue wiring
 │       │   └── github-checks.md       # A pull request and its checks
 │       └── skills/             # One directory per skill, SKILL.md each
+│           ├── audit/
 │           ├── clarify/
 │           ├── cleanup/
 │           ├── decide/

@@ -30,6 +30,12 @@ See the [CLI reference](/reference/cli#audit) for every flag. Audit reuses the
 review finding schema, so findings render the same way — see
 [Output format](/reference/output-format).
 
+When you are sitting in a checkout and want the findings verified line by line
+and filed as issues you approve one by one, the
+[`/planwerk:audit` skill](/how-to/audit-a-codebase-interactively) does the same
+audit in your session: it quotes the code behind every finding, brings you the
+calls only you can make, and files one issue per work package behind your yes.
+
 ## How it works
 
 1. **Repo Input**: The tool receives a GitHub repository reference (URL or `owner/repo`).
