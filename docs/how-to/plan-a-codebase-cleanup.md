@@ -16,11 +16,13 @@ command. Optional path arguments narrow the survey
 scope. The skill records the HEAD commit it surveyed, and every finding is
 pinned to it.
 
-It is narrower than [`planwerk-agent audit`](/how-to/audit-a-codebase), which
-applies every loaded review pattern to the codebase and prints findings. The
+It is narrower than [`planwerk-agent audit`](/how-to/audit-a-codebase) and
+its skill, [`/planwerk:audit`](/how-to/audit-a-codebase-interactively), which
+apply every loaded review pattern to the codebase and report findings. The
 skill hunts two specific defects — code nothing reaches and code that exists
 twice — and its product is not a report but a Meta Issue wired for the split
-pipeline.
+pipeline. `audit` hands those two kinds of lead to `cleanup` rather than
+filing them.
 
 ## A finding is a lead until it survives refutation
 

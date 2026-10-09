@@ -1,8 +1,8 @@
 # Use the skills
 
-planwerk-agent ships twelve Claude Code Skills. Six author the issues the rest
-of the pipeline consumes, one settles the decisions a Meta Issue deferred to a
-spike, one implements a prepared issue directly in your checkout, one diagnoses
+planwerk-agent ships thirteen Claude Code Skills. Seven author the issues the
+rest of the pipeline consumes, one settles the decisions a Meta Issue deferred to
+a spike, one implements a prepared issue directly in your checkout, one diagnoses
 a reported bug from a failing reproduction to its fix, one repairs a pull
 request whose checks went red, one rebases a pull request whose base moved,
 and one rewrites prose that reads machine-written:
@@ -12,6 +12,7 @@ and one rewrites prose that reads machine-written:
 | `/planwerk:draft` | Turns a rough idea into a ready-to-file issue through a short clarifying conversation |
 | `/planwerk:elaborate` | Expands an issue into an engineering plan grounded in the repository |
 | `/planwerk:cleanup` | Surveys a codebase for dead and duplicated code, and files a Meta Issue with a phased, evidence-backed cleanup plan |
+| `/planwerk:audit` | Audits a codebase against its review patterns and the catalog's principles, verifies every finding against the line it cites, and files one issue per work package worth a pull request |
 | `/planwerk:meta` | Splits a Meta Issue into linked, dependency-ordered Sub Issues |
 | `/planwerk:decide` | Verifies the decisions a Meta Issue's split deferred to a spike, and folds the outcomes into the Meta Issue and every Sub Issue that assumed one |
 | `/planwerk:revisit` | Re-checks a prepared issue against what has actually landed since, and corrects what went stale |
@@ -26,13 +27,17 @@ and one rewrites prose that reads machine-written:
 removed. Each skill needs decisions only a human can make, and a skill can ask
 for them mid-run in a way a one-shot subcommand never could.
 
-Four exist both ways. `elaborate` is also the
+Five exist both ways. `elaborate` is also the
 [`elaborate` command](/reference/cli#elaborate), `fix` is also the
 [`fix` command](/reference/cli#fix), and `rebase` is also the
 [`rebase` command](/reference/cli#rebase), for unattended use in CI. Reach for a
 command when nobody is watching — it has to guess where the skill would have
 asked, and the `rebase` command can only abort at a conflict the skill would
-bring to you. For `implement` the difference is more than supervision: the
+bring to you. `audit` is also the [`audit` command](/reference/cli#audit),
+which loads the embedded catalog and the wiki's patterns and prints every
+finding; the skill reads the patterns the checkout commits, verifies each
+finding against the line it cites, and files issues only behind your yes. For
+`implement` the difference is more than supervision: the
 [`implement` command](/reference/cli#implement) runs simplify, review, and
 verification passes over the result, which the skill deliberately omits — you
 approve the plan and read the diff instead. `diagnose` exists only as a skill:
@@ -49,7 +54,7 @@ claude plugin install planwerk@planwerk-agent
 ```
 
 Restart Claude Code. `/planwerk:draft`, `/planwerk:elaborate`,
-`/planwerk:cleanup`, `/planwerk:meta`, `/planwerk:decide`, `/planwerk:revisit`,
+`/planwerk:cleanup`, `/planwerk:audit`, `/planwerk:meta`, `/planwerk:decide`, `/planwerk:revisit`,
 `/planwerk:clarify`, `/planwerk:implement`, `/planwerk:diagnose`,
 `/planwerk:fix`, `/planwerk:rebase`, and `/planwerk:humanize` are now available
 in any session.
@@ -80,14 +85,14 @@ writes code, so it needs a clean working tree it can branch in, on an
 up-to-date default branch. `/planwerk:diagnose` writes code too: it needs a
 clean working tree on an up-to-date default branch, and the repository's own
 build and test tooling, which its loop runs. `/planwerk:fix` and `/planwerk:rebase`
-need the PR's own head branch checked out, with a clean working tree. `/planwerk:cleanup` surveys the code
-itself, so it always runs from inside a checkout, on an up-to-date default
-branch. `/planwerk:draft`
+need the PR's own head branch checked out, with a clean working tree. `/planwerk:cleanup` and
+`/planwerk:audit` examine the code itself, so they always run from inside a
+checkout, on an up-to-date default branch. `/planwerk:draft`
 and `/planwerk:meta` only talk to the GitHub API and need no checkout.
 `/planwerk:humanize` is the inverse: it works on files in your checkout and
 needs no GitHub access at all.
 
-Eight skills read the [project memory](#project-memory) through
+Nine skills read the [project memory](#project-memory) through
 `planwerk-agent brain memory`, so they need the `planwerk-agent` binary on
 `PATH` for it. Without the binary they read no memory, and nothing else about
 them changes.
@@ -134,6 +139,28 @@ candidates come to you as questions, and what you leave open lands in an
 `## Open decisions` block `/planwerk:decide` can settle later. It files one
 Meta Issue on your yes and deletes nothing. See
 [Plan a codebase cleanup](/how-to/plan-a-codebase-cleanup).
+
+## Audit the codebase in your checkout
+
+```
+/planwerk:audit
+```
+
+Run it from inside a checkout. The skill applies the review patterns the
+repository commits under `.planwerk/review_patterns/`, the design and
+technology principles the planwerk catalog teaches, and the questions a Staff
+Engineer asks of any module — blast radius, the error path at three in the
+morning, where the tests are — to the whole tree, with the read-only detectors
+already on `PATH` run first. Every hit is a lead: it becomes a finding only
+once the skill has quoted the lines that trigger it and run the searches that
+would refute it, and its severity comes from the same ladder the command uses,
+never from how it reads. The calls only you can make — a dependency jump, a
+public surface, a fix that changes behavior — reach you as questions. Findings
+at warning and above are grouped into work packages sized one pull request
+each, checked against the tracker so a repeat audit files nothing twice, and
+filed as one issue per package on your yes. It changes no code, and hands dead
+and duplicated code to `/planwerk:cleanup`. See
+[Audit a codebase interactively](/how-to/audit-a-codebase-interactively).
 
 ## Split a Meta Issue
 
@@ -294,7 +321,7 @@ picking an answer.
 
 ## One format, every issue skill
 
-The six issue skills share their format specification rather than each restating
+The seven issue skills share their format specification rather than each restating
 it, so an issue is the same shape whichever produced it. That matters because
 [`plan`](/reference/cli#implement), [`implement`](/reference/cli#implement), and
 [`ship`](/reference/cli#ship) read these issues:
@@ -310,6 +337,9 @@ it, so an issue is the same shape whichever produced it. That matters because
   survey left open calls, an `## Open decisions` block. Its findings name
   files and symbols, pinned to the surveyed commit, because dead code has no
   behavior to describe it by; the Sub Issues split from it stay path-free.
+- The issues `audit` files keep the draft sections path-free and add
+  `## Evidence`: the audited commit, the severity, the pattern, and each site
+  with the lines quoted verbatim — a finding without its site is an opinion.
 - Every body ends with an attribution footer naming planwerk-agent and the exact
   Claude model that wrote it.
 
@@ -318,8 +348,9 @@ There are exactly these two depths. `elaborate` promotes a draft to a plan;
 there.
 
 The specification lives in `plugins/planwerk/shared/issue-format.md`, with the
-elaborated depth in `issue-format-plan.md` and the survey Meta Issue in
-`issue-format-survey.md`, so a skill loads only the depth it writes. A Go test
+elaborated depth in `issue-format-plan.md`, the survey Meta Issue in
+`issue-format-survey.md`, and the audit issue in `issue-format-audit.md`, so a
+skill loads only the depth it writes. A Go test
 (`TestBuildIssueBody_MatchesSharedFormat`) fails when the `elaborate` command's
 renderer and that document disagree, so the two `elaborate` paths cannot drift.
 `issue-format.md` also specifies how a body over its limit — 40,000 characters
@@ -332,9 +363,9 @@ and that a plan over it is split at write-back, never shortened to fit.
 
 A repository can keep a project memory on its GitHub Wiki: one page per
 decision, convention, or piece of context. `elaborate`, `implement`, `fix`,
-`revisit`, `clarify`, `decide`, `diagnose`, and `meta` read it, so a plan, a
-split, or a repair does not contradict a decision the team already recorded.
-`draft`, `humanize`, `cleanup`, and `rebase` do not.
+`revisit`, `clarify`, `decide`, `diagnose`, `meta`, and `audit` read it, so a
+plan, a split, a repair, or a finding does not contradict a decision the team
+already recorded. `draft`, `humanize`, `cleanup`, and `rebase` do not.
 
 The skills read the memory through the binary and never clone the wiki
 themselves:
@@ -429,7 +460,9 @@ Issue to merged in dependency order. `ship` reads the native sub-issue and
 `blocked by` relationships `/planwerk:meta` writes, which is why the skill
 records the dependency graph as real GitHub relationships and not as prose.
 A cleanup enters that chain one step earlier: `/planwerk:cleanup` surveys the
-checkout and files the Meta Issue that `/planwerk:meta` then splits.
+checkout and files the Meta Issue that `/planwerk:meta` then splits. An audit
+enters the first chain at its second step: `/planwerk:audit` files one issue
+per work package, and each goes to `/planwerk:elaborate` from there.
 
 When the split produced a decisions or spike Sub Issue, run `/planwerk:decide`
 on it before elaborating the siblings that assume its outcomes — an

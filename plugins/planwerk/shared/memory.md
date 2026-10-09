@@ -1,7 +1,7 @@
 # Project memory
 
 Read by `elaborate`, `implement`, `fix`, `revisit`, `clarify`, `decide`,
-`diagnose`, and `meta`. The other skills never need it.
+`diagnose`, `meta`, and `audit`. The other skills never need it.
 
 A repository can keep a project memory on its GitHub Wiki: one page per
 decision, convention, or piece of context the team wants every plan and

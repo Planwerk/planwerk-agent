@@ -10,14 +10,16 @@ elaborated issue plans it. Nothing in between.
 `draft` and `meta` write depth 1. `elaborate` promotes depth 1 to depth 2.
 `revisit` re-checks an issue at the depth it already has and leaves it there.
 `cleanup` files a Meta Issue at depth 1 plus the sections its findings need —
-see `issue-format-survey.md`.
+see `issue-format-survey.md`. `audit` files one depth-1 issue per work
+package plus the evidence behind it — see `issue-format-audit.md`.
 
 This file carries depth 1 and the three rules every issue obeys whatever its
 depth: the title, the footer, and what to do when a document exceeds its
 body's limit.
 Depth 2, and the rules a plan must satisfy to be executable, are in
 `issue-format-plan.md`. The survey Meta Issue `cleanup` files is in
-`issue-format-survey.md`. Read the one your skill writes.
+`issue-format-survey.md`, and the audit issue in `issue-format-audit.md`.
+Read the one your skill writes.
 
 ## Depth 1 — draft
 
@@ -81,6 +83,7 @@ _<verb> [planwerk-agent](https://github.com/planwerk/planwerk-agent) with Claude
 | `clarify` | `Clarified by` |
 | `decide` (each issue it corrects) | `Decided by` |
 | `cleanup` (the Meta Issue it files) | `Surveyed by` |
+| `audit` (each issue it files) | `Audited by` |
 
 The footer names the skill that last wrote the body, so `revisit`, `clarify`,
 and `decide` replace the verb they find rather than appending a second line.
@@ -110,7 +113,7 @@ points back at the tool that produced it. Add the footer once, as the last line.
 A body has a limit, and a document over it is not shortened. Once a body
 carries a plan — the elaborated depth — it holds at most 40,000 characters
 (`issue-format-plan.md` says why, and what that means for a plan). A
-draft-depth body and a survey Meta Issue are bounded only by GitHub's cap of
+draft-depth body, an audit issue, and a survey Meta Issue are bounded only by GitHub's cap of
 65,536 characters, which GitHub enforces on every body and every comment by
 rejecting a longer write outright. A document over its limit is written as the
 body plus one or more **continuation comments**, and every skill that reads an
