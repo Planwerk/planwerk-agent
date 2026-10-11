@@ -44,6 +44,16 @@ and `--review-effort`, and the structuring with `--structure-model`;
 planwerk-agent brain bootstrap owner/repo --max-units 5 --analysis-model sonnet --review-model opus
 ```
 
+On a Max or Team plan, the structuring can draw on the plan's monthly API
+credits instead of its Claude Code limits. Link a Claude Console organization
+to the plan, create a key there, and run the structuring through the Messages
+API (see [`--structure-backend`](/reference/cli#global-flags)):
+
+```bash
+export PLANWERK_ANTHROPIC_API_KEY=sk-ant-...
+planwerk-agent brain bootstrap owner/repo --structure-backend api
+```
+
 ## Run the rest
 
 Run the command without `--max-units`. It continues with the first unit that is
