@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/planwerk/planwerk-agent/internal/patterns"
@@ -435,6 +436,13 @@ type Client struct {
 	// (see hermeticArgs). Set via WithInheritUserConfig (decision 45).
 	inheritUserConfig bool
 
+	// structureAPI, when set, runs the structuring tier on the Messages API
+	// before `claude -p` (runStructureAPI); structureAPIOff switches it off for
+	// the rest of the run after an error every later call would repeat. Set via
+	// WithStructureAPI (decision 122).
+	structureAPI    structureAPIFunc
+	structureAPIOff atomic.Bool
+
 	// sessionFn, when set, runs every session in place of the claude CLI. Only tests set it.
 	sessionFn func(spec runSpec, prompt string) (text, model string, err error)
 
@@ -793,9 +801,15 @@ func (c *Client) BrainReviewTier() (model, effort string) {
 // decodeJSONWithRepair backstop guards malformed output. Every structuring and
 // repair call reaches the CLI through here, so this is where the tier's
 // isolation is set: the spec sets noTools and names no dir, and runSession runs
-// it in structureWorkDir (decisions 56 and 91).
+// it in structureWorkDir (decisions 56 and 91). With a structuring API
+// configured, the call goes to the Messages API first and reaches the CLI only
+// when the API cannot serve it (decision 122).
 func (c *Client) runClaudeStructure(prompt, label string) (text, model string, err error) {
-	return c.runSession(runSpec{label: label, model: c.structureModel, effort: c.structureEffort, readOnly: true, noTools: true}, prompt)
+	spec := runSpec{label: label, model: c.structureModel, effort: c.structureEffort, readOnly: true, noTools: true}
+	if text, model, ok := c.runStructureAPI(spec, prompt); ok {
+		return text, model, nil
+	}
+	return c.runSession(spec, prompt)
 }
 
 // StructureTier returns the model and effort runClaudeStructure runs the

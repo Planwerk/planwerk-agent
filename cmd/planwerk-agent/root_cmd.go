@@ -47,6 +47,7 @@ func newRootCmd(deps *runtimeDeps) *cobra.Command {
 	var claudeEffort string
 	var structureModel string
 	var structureEffort string
+	var structureBackend string
 	var finderModel string
 	var finderEffort string
 	var claudeInheritUserConfig bool
@@ -111,6 +112,13 @@ or short form (owner/repo#123).`,
 				return err
 			}
 
+			// The API backend fails without its key; say so before the first
+			// session rather than at the first structuring call.
+			structAPIKey, err := resolveStructureAPIKey(structureBackend, cmd.Flags().Changed("structure-backend"))
+			if err != nil {
+				return err
+			}
+
 			// Same reason as the structuring effort: the finder passes run before
 			// the passes that act on their findings, so a typo must be caught here
 			// rather than after a six-specialist fan-out has spent its tokens.
@@ -133,6 +141,7 @@ or short form (owner/repo#123).`,
 				claude.WithEffort(mainEffort),
 				claude.WithStructureModel(structModel),
 				claude.WithStructureEffort(structEffort),
+				claude.WithStructureAPI(structAPIKey),
 				claude.WithFinderModel(findModel),
 				claude.WithFinderEffort(findEffort),
 				claude.WithInheritUserConfig(resolveBool(claudeInheritUserConfig, cmd.Flags().Changed("claude-inherit-user-config"), envClaudeInheritUserConfig)),
@@ -243,6 +252,7 @@ or short form (owner/repo#123).`,
 	persistent.StringVar(&claudeEffort, "claude-effort", claude.DefaultClaudeEffort, "Reasoning effort passed to Claude Code via --effort (low, medium, high, xhigh, max; env: "+envClaudeEffort+")")
 	persistent.StringVar(&structureModel, "structure-model", claude.DefaultStructureModel, "Model for the mechanical JSON-structuring passes (independent of --claude-model; the cheap tier that casts an analysis session's prose into its JSON schema for propose, elaborate, gap-analysis, sync, capture and review-prepared, and runs the JSON repair and dedup calls; brain bootstrap defaults it to "+claude.DefaultBrainStructureModel+"; env: "+envStructureModel+")")
 	persistent.StringVar(&structureEffort, "structure-effort", claude.DefaultStructureEffort, "Reasoning effort for the JSON-structuring passes (low, medium, high, xhigh, max; env: "+envStructureEffort+")")
+	persistent.StringVar(&structureBackend, "structure-backend", claude.DefaultStructureBackend, "How the JSON-structuring passes reach the model: cli (claude -p, on your Claude Code login) or api (the Messages API with the key in "+envAnthropicAPIKey+", drawing on that Console organization's API credits; a call the API cannot serve falls back to claude -p; env: "+envStructureBackend+")")
 	persistent.StringVar(&finderModel, "finder-model", claude.DefaultFinderModel, "Model for the read-only finder passes: the adversarial pass, the domain specialists, coverage, compliance, the simplify finder, and claim verification (empty inherits --claude-model; env: "+envFinderModel+")")
 	persistent.StringVar(&finderEffort, "finder-effort", claude.DefaultFinderEffort, "Reasoning effort for the finder passes (low, medium, high, xhigh, max; empty inherits --claude-effort; env: "+envFinderEffort+")")
 	persistent.BoolVar(&claudeInheritUserConfig, "claude-inherit-user-config", false, "Let orchestrated Claude sessions inherit your user-global ~/.claude settings and MCP servers (default: isolated for reproducible output; env: "+envClaudeInheritUserConfig+")")

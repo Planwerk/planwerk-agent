@@ -195,6 +195,20 @@ const envStructureModel = "PLANWERK_STRUCTURE_MODEL"
 // max). The --structure-effort CLI flag takes precedence when explicitly set.
 const envStructureEffort = "PLANWERK_STRUCTURE_EFFORT"
 
+// envStructureBackend selects how the JSON-structuring passes reach a model:
+// "cli" runs them through `claude -p`, "api" through the Messages API with the
+// key in PLANWERK_ANTHROPIC_API_KEY (decision 122). The --structure-backend
+// CLI flag takes precedence when explicitly set.
+const envStructureBackend = "PLANWERK_STRUCTURE_BACKEND"
+
+// envAnthropicAPIKey holds the Claude Console API key the "api" structuring
+// backend calls the Messages API with. It is not ANTHROPIC_API_KEY on purpose:
+// every `claude -p` session inherits the environment, and Claude Code bills a
+// session to ANTHROPIC_API_KEY when it is set, so that name would move every
+// session off the plan — and the API credits a plan includes do not cover
+// Claude Code.
+const envAnthropicAPIKey = "PLANWERK_ANTHROPIC_API_KEY"
+
 // envClaudeInheritUserConfig opts orchestrated Claude sessions out of hermetic
 // mode, letting them load the invoking user's global ~/.claude settings and
 // MCP servers. Any truthy value (1, true, yes, on; case-insensitive) enables
@@ -277,6 +291,25 @@ func resolveEffort(flag string, set bool, env, def string, allowEmpty bool, flag
 		return "", fmt.Errorf("invalid %s %q: must be one of %s (env: %s)", flagName, effort, claude.EffortLevels(), env)
 	}
 	return effort, nil
+}
+
+// resolveStructureAPIKey resolves the structuring backend like resolveString
+// and returns the API key the "api" backend calls the Messages API with, or ""
+// for the "cli" backend. It rejects an unknown backend, and the "api" backend
+// without PLANWERK_ANTHROPIC_API_KEY, before any session runs.
+func resolveStructureAPIKey(flag string, set bool) (string, error) {
+	backend := resolveString(flag, set, envStructureBackend, claude.DefaultStructureBackend)
+	if !claude.ValidStructureBackend(backend) {
+		return "", fmt.Errorf("invalid --structure-backend %q: must be one of %s, %s (env: %s)", backend, claude.StructureBackendCLI, claude.StructureBackendAPI, envStructureBackend)
+	}
+	if backend != claude.StructureBackendAPI {
+		return "", nil
+	}
+	key := strings.TrimSpace(os.Getenv(envAnthropicAPIKey))
+	if key == "" {
+		return "", fmt.Errorf("--structure-backend %s needs a Claude Console API key in %s", claude.StructureBackendAPI, envAnthropicAPIKey)
+	}
+	return key, nil
 }
 
 // resolveRemotePatternsTTL returns the effective remote-patterns TTL.

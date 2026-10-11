@@ -57,6 +57,8 @@ shapes the analysis itself:
   `--finder-effort`. A review by Sonnet and a review by Fable are different
   analyses of the same diff, so they are different entries. Re-running with a
   stronger model gives you that model's findings, not a hit on the weaker run.
+  `--structure-backend` is not part of the key: both backends run the same
+  structuring model on the same prompt.
 - **The pattern sources** — the `--patterns` sources in order, whether
   `--no-repo-patterns` / `--no-local-patterns` suppressed a catalog, and
   `--max-patterns`. The loaded catalog decides what the analysis looks for, so

@@ -17,6 +17,8 @@ full resolution order.
 | `PLANWERK_CLAUDE_EFFORT` | `--claude-effort` | One of `low`, `medium`, `high`, `xhigh`, `max`. |
 | `PLANWERK_STRUCTURE_MODEL` | `--structure-model` | Model alias or full ID for the JSON-structuring passes. Independent of `PLANWERK_CLAUDE_MODEL`. Default `sonnet`; `brain bootstrap` defaults it to `haiku`. |
 | `PLANWERK_STRUCTURE_EFFORT` | `--structure-effort` | Reasoning effort for the JSON-structuring passes: one of `low`, `medium`, `high`, `xhigh`, `max`. |
+| `PLANWERK_STRUCTURE_BACKEND` | `--structure-backend` | `cli` (default) or `api`: whether the JSON-structuring passes run through `claude -p` or the Messages API. |
+| `PLANWERK_ANTHROPIC_API_KEY` | — | Claude Console API key for `--structure-backend api`; required with it. Deliberately not `ANTHROPIC_API_KEY`: every `claude -p` session inherits the environment and would bill that key instead of your plan, and the API credits of a Max or Team plan do not cover Claude Code. |
 | `PLANWERK_FINDER_MODEL` | `--finder-model` | Model alias or full ID for the read-only finder passes (the adversarial pass, the domain specialists, the coverage map, the feature-compliance check, the simplify finder, the implementation verifier and claim verification). Empty inherits `PLANWERK_CLAUDE_MODEL`. |
 | `PLANWERK_FINDER_EFFORT` | `--finder-effort` | Reasoning effort for the finder passes: one of `low`, `medium`, `high`, `xhigh`, `max`. Empty inherits `PLANWERK_CLAUDE_EFFORT`. |
 | `PLANWERK_CLAUDE_INHERIT_USER_CONFIG` | `--claude-inherit-user-config` | Truthy values let sessions inherit user-global `~/.claude` config: `1`, `true`, `yes`, `on` (case-insensitive). Off by default (hermetic). |
