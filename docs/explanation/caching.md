@@ -63,6 +63,8 @@ shapes the analysis itself:
   `--finder-tools` is folded in when it is set, so restricting the finders'
   tools is a different analysis, while a run that leaves it unset keeps the key
   it had before the flag existed.
+  `--structure-backend` is not part of the key: both backends run the same
+  structuring model on the same prompt.
 - **The pattern sources** — the `--patterns` sources in order, whether
   `--no-repo-patterns` / `--no-local-patterns` suppressed a catalog, and
   `--max-patterns`. The loaded catalog decides what the analysis looks for, so
