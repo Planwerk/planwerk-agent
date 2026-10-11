@@ -432,3 +432,32 @@ func TestRootCmd_FinderToolsJoinTheFingerprintOnlyWhenSet(t *testing.T) {
 		t.Errorf("run with both: fingerprint %q, want %q", fp, base+"|diff-exclusions|finder-tools=Read")
 	}
 }
+
+// TestResolveStructureAPIKey covers the structuring backend: cli needs no key,
+// api returns PLANWERK_ANTHROPIC_API_KEY and fails before any session without
+// it, and an unknown backend is rejected naming the flag and the env var.
+func TestResolveStructureAPIKey(t *testing.T) {
+	t.Setenv(envStructureBackend, "")
+	t.Setenv(envAnthropicAPIKey, "")
+	t.Setenv("ANTHROPIC_API_KEY", "sk-not-this-one")
+	if key, err := resolveStructureAPIKey("", false); err != nil || key != "" {
+		t.Errorf("default: got %q, %v; want the cli backend without a key", key, err)
+	}
+	if _, err := resolveStructureAPIKey("api", true); err == nil || !strings.Contains(err.Error(), envAnthropicAPIKey) {
+		t.Errorf("api without key: got %v; want an error naming %s", err, envAnthropicAPIKey)
+	}
+	t.Setenv(envAnthropicAPIKey, "  sk-ant-test  ")
+	if key, err := resolveStructureAPIKey("api", true); err != nil || key != "sk-ant-test" {
+		t.Errorf("api flag: got %q, %v; want the trimmed key", key, err)
+	}
+	t.Setenv(envStructureBackend, "api")
+	if key, err := resolveStructureAPIKey("", false); err != nil || key != "sk-ant-test" {
+		t.Errorf("api env: got %q, %v; want the key", key, err)
+	}
+	if key, err := resolveStructureAPIKey("cli", true); err != nil || key != "" {
+		t.Errorf("cli flag over api env: got %q, %v; want no key", key, err)
+	}
+	if _, err := resolveStructureAPIKey("http", true); err == nil || !strings.Contains(err.Error(), "--structure-backend") || !strings.Contains(err.Error(), envStructureBackend) {
+		t.Errorf("unknown backend: got %v", err)
+	}
+}
