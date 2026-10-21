@@ -379,11 +379,11 @@ Author's call the author declined or left open, with its evidence; the
 pattern sources and memory pages the audit used; the detectors that were
 absent; and anything the audit could not check.
 
-End with the next step as the last line: `/planwerk:elaborate <issue-ref>`
-on the first issue filed, in the table's order. When nothing was filed, the
-last line names the tracked issue to elaborate instead, or says that no
-issue follows from this audit. `audit` stops at filing. It does not plan,
-fix, or elaborate anything.
+End with the next step as the last line: `/planwerk:elaborate <issue-ref>`,
+in a fresh session (`/clear` or a new `claude`), on the first issue filed, in
+the table's order. When nothing was filed, the last line names the tracked
+issue to elaborate instead, or says that no issue follows from this audit.
+`audit` stops at filing. It does not plan, fix, or elaborate anything.
 
 ## Before you file, verify
 

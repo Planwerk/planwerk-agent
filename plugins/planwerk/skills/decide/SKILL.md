@@ -276,9 +276,10 @@ Corrected, or explicitly decided, say its verification job is done and that the
 author can close it.
 
 End with the next step as the last line: name the Sub Issue whose decisions
-just unblocked it and point at `/planwerk:elaborate` or `planwerk-agent
-implement`, or, if a Broken item still stands unresolved, say that it blocks
-everything downstream until it is fixed.
+just unblocked it and point at `/planwerk:elaborate`, in a fresh session
+(`/clear` or a new `claude`), or at `planwerk-agent implement`, or, if a
+Broken item still stands unresolved, say that it blocks everything downstream
+until it is fixed.
 
 ## Before you write back, verify
 

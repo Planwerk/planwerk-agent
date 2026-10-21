@@ -231,8 +231,9 @@ anything the survey could not verify.
 
 End with the next step as the last line: `/planwerk:meta <issue-ref>` splits
 the Meta Issue into Sub Issues, and when an `## Open decisions` block exists,
-`/planwerk:decide` settles it after the split. `cleanup` stops at filing. It
-does not split, elaborate, or delete anything.
+`/planwerk:decide` settles it after the split, each in a fresh session
+(`/clear` or a new `claude`). `cleanup` stops at filing. It does not split,
+elaborate, or delete anything.
 
 ## Before you file, verify
 

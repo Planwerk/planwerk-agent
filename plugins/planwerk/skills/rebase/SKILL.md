@@ -411,8 +411,9 @@ Stopping at `BLOCKED` is a successful run. A side-pick that compiles costs the
 next person the change it dropped.
 
 Then offer to post the report as a PR comment, and say what happens next: the
-checks run on the pushed tip, and `/planwerk:fix` repairs them if they come
-back red for a reason the rebase did not introduce.
+checks run on the pushed tip, and `/planwerk:fix`, in a fresh session
+(`/clear` or a new `claude`), repairs them if they come back red for a reason
+the rebase did not introduce.
 
 ## Before you push, verify
 

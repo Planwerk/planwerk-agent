@@ -230,7 +230,8 @@ When any Sub Issue landed in another repository, say so, and that `ship`
 reports it rather than drives it (`cross-repo.md`, Wiring the two together).
 
 End with the next step as the last line: each Sub Issue is at draft depth, so
-`/planwerk:elaborate <sub-issue-ref>` plans one when the author is ready, and
+`/planwerk:elaborate <sub-issue-ref>`, in a fresh session (`/clear` or a new
+`claude`), plans one when the author is ready, and
 `planwerk-agent ship <meta-issue-ref>` drives them all in dependency order.
 `meta` stops at creating and linking. It does not elaborate, implement, or
 close anything.
