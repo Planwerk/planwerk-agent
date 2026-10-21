@@ -1646,6 +1646,13 @@ func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx
 			preFix = ""
 		}
 
+		infoHanded := 0
+		for _, f := range actionable {
+			if f.Severity == report.SeverityInfo {
+				infoHanded++
+			}
+		}
+		slog.Info("handing review findings to the apply session", "issue", number, "iteration", i, "handed", len(actionable), "info", infoHanded)
 		reviewReport, model, err := r.ReviewApplier.ApplyReview(dir, ReviewApplyContext{
 			RepoFullName: ctx.RepoFullName,
 			BaseBranch:   branch.BaseBranch,
@@ -1659,7 +1666,7 @@ func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx
 			_, _ = fmt.Fprintf(w, "\nReview apply could not run: %v\n", err)
 			return allFindings
 		}
-		roundReport := appendUnverifiedSection(reviewReport, unvSection)
+		roundReport := appendReportSections(reviewReport, handedSection(actionable), unvSection)
 		if roundReport != "" {
 			_, _ = fmt.Fprintf(w, "\nReview report:\n%s\n", roundReport)
 			// Post the report before the escalation check so an escalated report
@@ -1893,19 +1900,41 @@ func unverifiedSection(findings []report.Finding) string {
 	return strings.TrimRight(sb.String(), "\n")
 }
 
-// appendUnverifiedSection appends the withheld-findings section to an apply
-// report, so a single posted comment carries both what was fixed and what was
-// withheld. Either part may be empty.
-func appendUnverifiedSection(applyReport, unvSection string) string {
-	applyReport = strings.TrimRight(applyReport, "\n")
-	switch {
-	case applyReport == "":
-		return unvSection
-	case unvSection == "":
-		return applyReport
-	default:
-		return applyReport + "\n\n" + unvSection
+// handedSection renders how many findings the survive-before-apply gate handed
+// to the apply session, by severity, as a report section, so the posted round
+// report records what the session was asked to act on: the apply report lists
+// what it resolved and skipped, but not what it received. All four levels are
+// always named, zeros included, so every report greps the same way; a finding
+// rated none of them counts toward the total only. Empty when nothing was
+// handed.
+func handedSection(findings []report.Finding) string {
+	if len(findings) == 0 {
+		return ""
 	}
+	counts := map[report.Severity]int{}
+	for _, f := range findings {
+		counts[f.Severity]++
+	}
+	return fmt.Sprintf("### Handed to the apply session\n\n%d finding(s): BLOCKING %d, CRITICAL %d, WARNING %d, INFO %d",
+		len(findings), counts[report.SeverityBlocking], counts[report.SeverityCritical], counts[report.SeverityWarning], counts[report.SeverityInfo])
+}
+
+// appendReportSections appends the harness's own sections (the handed count,
+// the withheld findings) to an apply report, so a single posted comment carries
+// what was fixed, what the session was handed, and what was withheld. Empty
+// sections are skipped, the rest follow in argument order one blank line apart,
+// and an empty report leaves only the sections.
+func appendReportSections(applyReport string, sections ...string) string {
+	var parts []string
+	if applyReport = strings.TrimRight(applyReport, "\n"); applyReport != "" {
+		parts = append(parts, applyReport)
+	}
+	for _, s := range sections {
+		if s != "" {
+			parts = append(parts, s)
+		}
+	}
+	return strings.Join(parts, "\n\n")
 }
 
 // withheldOnlyReport is the review report posted when every self-review finding
