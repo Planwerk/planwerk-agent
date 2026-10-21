@@ -151,15 +151,21 @@ planwerk-agent/
 │       └── todocheck_test.go
 ├── .claude/                    # This repository's own Claude Code tooling (never shipped)
 │   ├── agents/
+│   │   ├── guidance-mapper.md  # Read-only mapping of vendor recommendations onto one slice
 │   │   ├── prompt-auditor.md   # Read-only audit of one prompt builder against the doctrine
 │   │   └── skill-auditor.md    # Read-only audit of a plugin skill or shared document
 │   ├── commands/
 │   │   └── audit-prompt.md     # /audit-prompt <builder>: delegates to prompt-auditor
 │   ├── skills/
+│   │   ├── analyze-guidance/   # /analyze-guidance <url>: one vendor page against every slice
+│   │   │   ├── SKILL.md
+│   │   │   ├── reference/      # The five slices, the brief and ledger templates
+│   │   │   └── scripts/        # fetch.sh (the page as Markdown, is an analysis due)
 │   │   └── iterate-prompts/    # /iterate-prompts: one audit iteration over every prompt surface
 │   │       ├── SKILL.md
 │   │       ├── reference/      # The brief and ledger templates, the seven audit slices
 │   │       └── scripts/        # probe-models.sh (alias → model id), check.sh (is an iteration due)
+│   ├── guidance-analyses/      # The ledger of /analyze-guidance: one file per page and analysis
 │   └── prompt-audits/          # The ledger: one file per iteration, newest is the state
 ├── .claude-plugin/
 │   └── marketplace.json        # Claude Code marketplace catalog (this repo)
