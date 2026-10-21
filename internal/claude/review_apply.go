@@ -58,10 +58,14 @@ func BuildReviewApplyPrompt(ctx implement.ReviewApplyContext) string {
 		ctx.RepoFullName, ctx.BaseBranch)
 
 	sb.WriteString("## Review findings to resolve\n\n")
+	// Only a review finding can be skipped as optional INFO: the verification
+	// lead-in has the session close every gap, whatever its severity.
+	skipReasons := "false positive, no longer present, or needs discussion"
 	if ctx.Source == implement.ReviewApplySourceVerification {
 		sb.WriteString("These are the gaps an independent verification found between the issue's Acceptance Criteria and the produced diff: each names a criterion the branch does not yet satisfy. Close each one — implement what the criterion requires — unless it is a false positive or no longer applies to the current diff, in which case skip it and say so in the report.\n\n")
 	} else {
-		sb.WriteString("These are the findings from the read-only review pass over the produced diff. Resolve each one — fix the root cause — unless it is a false positive or no longer applies to the current diff, in which case skip it and say so in the report.\n\n")
+		sb.WriteString("These are the findings from the read-only review pass over the produced diff. Resolve each BLOCKING, CRITICAL, and WARNING finding — fix the root cause — unless it is a false positive or no longer applies to the current diff, in which case skip it and say so in the report. An INFO finding is optional: the severity ladder rates INFO as a style suggestion or minor improvement, and chasing every one adds abstraction, defensive code, and tests for cases that cannot happen. Apply an INFO finding only when its fix is confined to the code the finding cites and changes no behavior (no new or changed error path, retry, exit code, validation, default, or output); such a fix needs no regression test. Otherwise list it under Skipped as \"optional INFO, not applied\" and change nothing for it.\n\n")
+		skipReasons = "false positive, no longer present, needs discussion, or optional INFO, not applied"
 	}
 	sb.WriteString(renderReviewFindings(ctx.Findings))
 	sb.WriteString("\n")
@@ -86,9 +90,9 @@ func BuildReviewApplyPrompt(ctx implement.ReviewApplyContext) string {
    ## Review Report
 
    ### Resolved
-   - <finding title> — <root cause and the fix> (folded into <commit subject>)
+   - [<severity>] <finding title> — <root cause and the fix> (folded into <commit subject>)
    ### Skipped
-   - <finding title> — <why: false positive, no longer present, or needs discussion>
+   - [<severity>] <finding title> — <why: ` + skipReasons + `>
    ### Verification
    - <exact command> — <PASS | FAIL: first failing line | not run: reason>
    ### Diff summary

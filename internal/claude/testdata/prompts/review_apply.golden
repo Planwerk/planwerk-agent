@@ -49,7 +49,7 @@ Apply these task-specific thinking patterns on top of the baseline above:
 
 ## Review findings to resolve
 
-These are the findings from the read-only review pass over the produced diff. Resolve each one — fix the root cause — unless it is a false positive or no longer applies to the current diff, in which case skip it and say so in the report.
+These are the findings from the read-only review pass over the produced diff. Resolve each BLOCKING, CRITICAL, and WARNING finding — fix the root cause — unless it is a false positive or no longer applies to the current diff, in which case skip it and say so in the report. An INFO finding is optional: the severity ladder rates INFO as a style suggestion or minor improvement, and chasing every one adds abstraction, defensive code, and tests for cases that cannot happen. Apply an INFO finding only when its fix is confined to the code the finding cites and changes no behavior (no new or changed error path, retry, exit code, validation, default, or output); such a fix needs no regression test. Otherwise list it under Skipped as "optional INFO, not applied" and change nothing for it.
 
 1. Unparameterized SQL query allows injection [CRITICAL] (internal/store/query.go)
    - Problem: User input is concatenated straight into the SQL string.
@@ -139,9 +139,9 @@ Apply these rules to every piece of documentation you write or edit (README and 
    ## Review Report
 
    ### Resolved
-   - <finding title> — <root cause and the fix> (folded into <commit subject>)
+   - [<severity>] <finding title> — <root cause and the fix> (folded into <commit subject>)
    ### Skipped
-   - <finding title> — <why: false positive, no longer present, or needs discussion>
+   - [<severity>] <finding title> — <why: false positive, no longer present, needs discussion, or optional INFO, not applied>
    ### Verification
    - <exact command> — <PASS | FAIL: first failing line | not run: reason>
    ### Diff summary
