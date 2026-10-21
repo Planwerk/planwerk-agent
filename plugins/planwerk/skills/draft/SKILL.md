@@ -108,11 +108,12 @@ Print every new issue's URL.
 
 ## Phase 7 — Hand off
 
-Name the next step: `/planwerk:elaborate <issue-ref>` turns this description into
-an engineering plan grounded in the repository. A counterpart stays at draft
-depth until the issue blocking it has a plan, so name it as the later step, not
-the next one. A question the author left unanswered lands here, as an
-unresolved decision (`interaction.md`, Record what was never decided).
+Name the next step: `/planwerk:elaborate <issue-ref>`, in a fresh session
+(`/clear` or a new `claude`), turns this description into an engineering plan
+grounded in the repository. A counterpart stays at draft depth until the issue
+blocking it has a plan, so name it as the later step, not the next one. A
+question the author left unanswered lands here, as an unresolved decision
+(`interaction.md`, Record what was never decided).
 
 ## Before you file, verify
 

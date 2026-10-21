@@ -518,9 +518,9 @@ A `gh issue comment` error is quoted to the author, and the report stands
 unchanged.
 
 End with the next step as the last line, nothing after it: the pull request's
-checks run on the pushed branch, and `/planwerk:fix` repairs them if they come
-back red. On a stop, the last line is the single thing that unblocks the
-diagnosis.
+checks run on the pushed branch, and `/planwerk:fix`, in a fresh session
+(`/clear` or a new `claude`), repairs them if they come back red. On a stop,
+the last line is the single thing that unblocks the diagnosis.
 
 ## Before you publish, verify
 

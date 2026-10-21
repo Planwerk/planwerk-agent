@@ -243,6 +243,31 @@ func TestPluginSkillsReadTheProjectMemory(t *testing.T) {
 	}
 }
 
+// freshSessionSkills are the skills whose closing handoff names another
+// /planwerk: skill. The other five hand off to a command or to nobody: revisit
+// and clarify to `planwerk-agent implement`, which starts its own sessions, fix
+// to the author or `planwerk-agent fix`, and elaborate and humanize end without
+// a next skill.
+var freshSessionSkills = []string{"audit", "cleanup", "decide", "diagnose", "draft", "implement", "meta", "rebase"}
+
+// freshSessionHandoff is the phrase each of those handoffs carries. A chain of
+// skills run in one conversation reaches compaction sooner, and a compaction can
+// summarize away the rules the running skill read at its start.
+const freshSessionHandoff = "in a fresh session (`/clear` or a new `claude`)"
+
+// TestPluginSkillsHandOffInAFreshSession pins the phrase in every
+// skill-to-skill handoff, so the eight copies cannot drift apart. The body is
+// matched with its whitespace collapsed, since the phrase may break across a
+// wrapped line.
+func TestPluginSkillsHandOffInAFreshSession(t *testing.T) {
+	for _, name := range freshSessionSkills {
+		body := strings.Join(strings.Fields(readSkill(t, name)), " ")
+		if !strings.Contains(body, freshSessionHandoff) {
+			t.Errorf("skill %q: its handoff to the next skill lacks %q", name, freshSessionHandoff)
+		}
+	}
+}
+
 // readSkill returns the SKILL.md of the named plugin skill.
 func readSkill(t *testing.T, name string) string {
 	t.Helper()

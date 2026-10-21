@@ -206,8 +206,9 @@ Open with one line: what shipped, or why nothing did. Then state:
   with the branch left local, never a smaller pull request.
 
 End with the next step as the last line, nothing after it: the PR's checks run
-on the pushed branch, and `/planwerk:fix` repairs them if they come back red —
-or, on `BLOCKED`, the single thing that unblocks the work.
+on the pushed branch, and `/planwerk:fix`, in a fresh session (`/clear` or a
+new `claude`), repairs them if they come back red — or, on `BLOCKED`, the
+single thing that unblocks the work.
 
 ## Before you publish, verify
 
