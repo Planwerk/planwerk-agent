@@ -163,7 +163,13 @@ That difference is why the acting path treats hygiene as a gate. A finding must
 survive the same stages — merge, dedup, snippet gate, claim verification — before
 `implement`'s editing session may act on it. Findings that do not survive are
 reported (on stdout and on the issue) but never applied: the restriction is
-enforced by the harness, not requested in the editing session's prompt. To bound
+enforced by the harness, not requested in the editing session's prompt. Among
+the survivors, INFO is optional: the editing session applies an INFO finding only
+when the fix stays in the code the finding cites and changes no behavior. That
+one rule is asked in the prompt rather than enforced by the harness. Each posted
+round report counts what the session was handed by severity and labels every
+entry it resolved or skipped with one, so how often it applies an INFO finding
+can be read off the issue ([design decision 124](/explanation/design-decisions)). To bound
 the cost, `implement` runs the fan-out on the first round of its review loop only;
 later rounds re-check the applied fixes with the cheaper adversarial finder alone,
 and at a narrower scope: the first round reviews the whole branch diff, while
