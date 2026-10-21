@@ -45,7 +45,7 @@ endif
 TOOLBOX_GO_VERSION := $(shell sed -n 's/^go //p' go.mod)
 TOOLBOX_GOLANGCI_LINT_VERSION := $(shell sed -n 's/^ *version: *//p' .github/workflows/lint.yml)
 TOOLBOX_NODE_VERSION ?= 24
-TOOLBOX_CLAUDE_CODE_VERSION ?= 2.1.280
+TOOLBOX_CLAUDE_CODE_VERSION ?= 2.1.306
 
 TOOLBOX_BUILD_ARGS := \
 	--build-arg GO_VERSION=$(TOOLBOX_GO_VERSION) \

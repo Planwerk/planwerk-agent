@@ -76,7 +76,7 @@ The implement session runs in Claude Code's auto mode (--permission-mode
 auto) so it can edit files, run the test suite, and commit without an
 interactive confirmation. A background classifier still vets each action and
 blocks anything irreversible or aimed outside the repository (force push,
-pushing to main, data exfiltration). Requires Claude Code v2.1.83+. The
+pushing to main, data exfiltration). Requires Claude Code v2.1.306+. The
 session runs on the shared --claude-model unless --implement-model overrides
 the model for just this one session; the simplify, review, and finalize
 passes below always stay on --claude-model.

@@ -37,7 +37,7 @@ These persistent flags apply to every command (`review`, `propose`, `audit`,
 | `--structure-effort` | Reasoning effort for the JSON-structuring passes: one of `low`, `medium`, `high`, `xhigh`, `max`. The model swap is the primary cost lever; this is the secondary tunable (`medium` is enough to transcribe). Env: `PLANWERK_STRUCTURE_EFFORT`. | `xhigh` |
 | `--finder-model` | Model for the read-only **finder passes** — the adversarial pass, each domain specialist, the coverage map, the feature-compliance check, the simplify finder, and claim verification. Independent of `--claude-model`, and empty by default, which inherits it. These passes are the fan-out: six specialists run concurrently on every `review --specialists` and on the first round of `implement`'s review loop, so they are where a cheaper tier saves most — and, because their findings drive an editing session, where it can cost recall. Measure with `make eval` before lowering it. Env: `PLANWERK_FINDER_MODEL`. | _(inherits `--claude-model`)_ |
 | `--finder-effort` | Reasoning effort for the finder passes: one of `low`, `medium`, `high`, `xhigh`, `max`. Empty inherits `--claude-effort`. Thinking tokens are output tokens, so this is the cheaper half of the experiment above: try `high` before swapping the model. Env: `PLANWERK_FINDER_EFFORT`. | _(inherits `--claude-effort`)_ |
-| `--claude-inherit-user-config` | Let orchestrated Claude sessions inherit your user-global `~/.claude` settings and MCP servers. Off by default: every session runs hermetically (`--setting-sources project --strict-mcp-config`) so a review is reproducible across machines. Enable only if your `claude` authentication lives in a user-global setting (e.g. `apiKeyHelper`). Env: `PLANWERK_CLAUDE_INHERIT_USER_CONFIG` (truthy: `1`, `true`, `yes`, `on`). See [design decisions #45–#46](/explanation/design-decisions) for the reproducibility rationale. | `false` |
+| `--claude-inherit-user-config` | Let orchestrated Claude sessions inherit your user-global `~/.claude` settings and MCP servers. Off by default: every session runs hermetically so a review is reproducible across machines. A session that edits loads only the checkout's `.claude/settings.json` (`--setting-sources project`), a read-only session loads no settings file (`--setting-sources=`), and no session loads an MCP server (`--strict-mcp-config`). Enable only if your `claude` authentication lives in a user-global setting (e.g. `apiKeyHelper`); a read-only session then loads your user settings and still never the checkout's. Env: `PLANWERK_CLAUDE_INHERIT_USER_CONFIG` (truthy: `1`, `true`, `yes`, `on`). See [design decisions #45, #46, and #123](/explanation/design-decisions) for the rationale. | `false` |
 
 Logs are written to stderr; when stderr is not a terminal, Claude-invocation
 heartbeats are still emitted at INFO level so long-running runs are visible in
@@ -50,9 +50,11 @@ The root command reviews a single GitHub pull request.
 > Every pass that emits findings (the review, the audit, the adversarial pass,
 > the domain specialists, the feature-compliance check, the simplify finder and
 > the implementation verifier) constrains its output with Claude Code's
-> `--json-schema` flag, so `review`, `audit` and `implement` require Claude Code
-> v2.1.83+ (the same minimum the `implement` auto mode needs). The review and
-> the audit run on `--claude-model`; the other five run on the `--finder-model`
+> `--json-schema` flag. Like every command that starts a Claude session,
+> `review`, `audit` and `implement` require Claude Code v2.1.306+, the version
+> the read-only sessions' permission mode was verified on
+> ([design decision #123](/explanation/design-decisions)). The review and the
+> audit run on `--claude-model`; the other five run on the `--finder-model`
 > tier.
 
 ```bash
@@ -633,7 +635,7 @@ planwerk-agent implement --wiki --capture-wiki --yes owner/repo#123
 
 `--dry-run`, `--print-prompt`, `--print-bare-prompt`, and `--print-plan-prompt`
 are mutually exclusive. The implement session runs in Claude Code's auto mode
-and requires Claude Code v2.1.83+.
+and requires Claude Code v2.1.306+.
 
 A session that ends without its implementation report (typically it yielded to
 "wait" for a backgrounded test run whose result can never arrive in a one-shot
