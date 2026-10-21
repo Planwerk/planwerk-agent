@@ -64,8 +64,8 @@ skills, 5 repository setup and user guidance.
 
 ## Proposals
 
-Ranked by value. The author took 15 of the 16 forward on 2026-10-21 and
-deferred one.
+Ranked by value. The author took 15 of the 16 forward on 2026-10-21, filed
+as #283 to #297 with #293 blocked by #283 and #284, and deferred one.
 
 1. **readonly-permission-mode** (R34, R16; slices 1, 3, 5). Pass an explicit
    `--permission-mode` (`dontAsk`, or `manual`) to read-only and structuring
@@ -78,7 +78,7 @@ deferred one.
    checkout or the `--add-dir` catalog: decision 95's threat class. Needs the
    decision-95-style probe first (checkout with `defaultMode: acceptEdits`,
    then with an allow rule, session asked to `touch probe`), then argv tests.
-   Disposition: accepted, to be filed through `/planwerk:draft`.
+   Disposition: issue #283.
 2. **claude-md-is-agent-config** (R14; slices 1, 2, 5). (a) Extend the
    review's agent-configuration rule (`internal/claude/prompt.go:32`) to
    `CLAUDE.md`, `CLAUDE.local.md`, and `AGENTS.md` at any depth; S,
@@ -86,7 +86,7 @@ deferred one.
    106). (b) Decide whether read-only review sessions should load the head's
    CLAUDE.md at all (decision 97: rules come from the base); M, needs probes
    that a head CLAUDE.md reaches the session and what `--bare` /
-   `--safe-mode` keep on 2.1.306. Disposition: accepted, to be filed through `/planwerk:draft`.
+   `--safe-mode` keep on 2.1.306. Disposition: issue #284.
 3. **surface-permission-denials** (R35; slice 1). Decode the result
    envelope's `permission_denials` on both runner paths, log them per pass,
    and warn when an auto session had Edit/Write denied (auto mode silently
@@ -101,62 +101,61 @@ deferred one.
    (`docs/reference/cli.md:747-748`, `docs/how-to/implement-an-issue.md:109`
    contradict `cli.md:685-689`). M; code, prompt-behavior (finder: eval
    evidence), decision. Prevents decision 62's failure (4 of 7 work packages
-   shipped), today caught only by self-report. Disposition: accepted, to be filed through `/planwerk:draft`.
+   shipped), today caught only by self-report. Disposition: issue #285.
 5. **elaborate-handoff** (R24; slice 4). `elaborate` ends with a report that
    says whether an implementation plan comment exists and hands off with
    `--no-plan-reuse` when one does, as `plugins/planwerk/shared/github.md:97-99`
    requires of every skill that changes an issue body (clarify, decide, and
    revisit comply). Optional guard in `internal/skills/plugin_test.go`. S;
    skill. Prevents an implement run that silently reuses a plan written
-   against the pre-elaboration body. Disposition: accepted, to be filed through `/planwerk:draft`.
+   against the pre-elaboration body. Disposition: issue #286.
 6. **agent-tool-name** (R28; slice 2). `internal/claude/implement.go:473`
    tells the orchestrator to delegate "via the Task tool"; the 2.1.306 tool
    is `Agent`. Rename it, or name no tool, and regenerate
-   `implement_orchestrated.golden`. S; prompt-wording. Disposition: accepted, to be filed through `/planwerk:draft`.
+   `implement_orchestrated.golden`. S; prompt-wording. Disposition: issue #287.
 7. **readonly-env-tokens** (R16; slice 1). Probe whether a read-only session
    can print `GH_TOKEN` (`printenv`, `echo $GH_TOKEN`); if it can, set
    `cmd.Env` for read-only specs without the GitHub tokens. S after the
    probe; code. Decision 95's threat, in the Action with a write token.
-   Disposition: accepted, to be filed through `/planwerk:draft`.
+   Disposition: issue #288.
 8. **stop-hook-background-gate** (R5; slices 1, 5). A Stop hook (the binary
    itself as the command) that blocks the turn while `background_tasks` holds
    a running shell task and while the report is missing; the completion nudge
    stays as the backstop. M; code, decision. Prevents decision 78's failure
    at its source instead of re-running the killed tests. Must answer decision
-   108's objections to inline hooks; probe first. Disposition: accepted, to be filed through `/planwerk:draft`.
+   108's objections to inline hooks; probe first. Disposition: issue #289.
 9. **count-compactions-and-delegations** (R15, R27, R28; slice 2). Count
    compaction events and `Agent` calls per pass in `stream.go` and the usage
    summary, so a lost contract outside implement becomes visible before it
-   is fixed by prompt. S; code. Disposition: accepted, to be filed through `/planwerk:draft`.
+   is fixed by prompt. S; code. Disposition: issue #290.
 10. **info-findings-optional** (R36; slices 2, 3). Decide whether verified
     INFO findings reach review-apply; filter them in the partition
     (`internal/implement/implement.go:1616-1625`) or say "optional" in the
     apply prompt. S; decision. Count applied INFO findings in real runs
-    first. Disposition: accepted, to be filed through `/planwerk:draft`.
+    first. Disposition: issue #291.
 11. **rebase-apply-evidence** (R7, R2; slice 2). Add the Verification line
     simplify-apply and review-apply carry to the rebase-apply report and its
     DONE, as one shared block. S; prompt-behavior. The runner force-pushes on
-    that DONE. Disposition: accepted, to be filed through `/planwerk:draft`.
+    that DONE. Disposition: issue #292.
 12. **target-repo-reads-page** (R5, R14, R16, R18, R19; slice 5). A
     reference page "What planwerk-agent reads from your repository": each
     file, which sessions read it, from which ref (`.planwerk/*`,
     `STYLE_GUIDE.md`, `CONTEXT.md`, `.claude/skills/`, `.claude/settings.json`
-    hooks, `CLAUDE.md`, `.mcp.json` ignored). M; docs. Disposition: accepted, to be filed through `/planwerk:draft`.
+    hooks, `CLAUDE.md`, `.mcp.json` ignored). M; docs. Disposition: issue #293.
 13. **contributor-claude-md** (R14; slice 5). A root CLAUDE.md of 15–25 lines
     of facts (Docker toolbox, golden regeneration, `make eval` spends tokens,
     `make plugin-validate`, trailers, search the decisions by mechanism), plus
     a make target for golden regeneration. S; docs, code. Every planwerk
-    session on this repository would load it, so facts only. Disposition:
-    accepted, to be filed through `/planwerk:draft`.
+    session on this repository would load it, so facts only. Disposition: issue #294.
 14. **skill-validation-in-ci** (R20; slice 5). CI validates only `.` and
     `plugins/planwerk` (`.github/workflows/ci.yml:98-99`), so the skill
     directories' schema checks decision 116 relies on run only by hand. S;
-    config. Disposition: accepted, to be filed through `/planwerk:draft`.
+    config. Disposition: issue #295.
 15. **no-session-persistence** (R31; slice 1). `--no-session-persistence` for
-    one-shot read-only and structuring sessions. S; code. Disposition: accepted, to be filed through `/planwerk:draft`.
+    one-shot read-only and structuring sessions. S; code. Disposition: issue #296.
 16. **skills-fresh-session-handoffs** (R26; slice 4). Say "in a fresh session"
     in the skill-to-skill handoffs and in `docs/how-to/use-the-skills.md`. S;
-    docs, prompt-wording. Disposition: accepted, to be filed through `/planwerk:draft`.
+    docs, prompt-wording. Disposition: issue #297.
 
 Conformance only, listed for completeness: subagent fan-out in the audit and
 cleanup skills (R28, M); humanize's undo note (R29); a decision on
