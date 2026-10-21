@@ -467,3 +467,12 @@ per work package, and each goes to `/planwerk:elaborate` from there.
 When the split produced a decisions or spike Sub Issue, run `/planwerk:decide`
 on it before elaborating the siblings that assume its outcomes — an
 unverified recommendation is a guess, and a plan built on a guess inherits it.
+
+Start each skill in a fresh session: `/clear`, or a new `claude`. A chain run
+in one conversation carries every earlier skill's repository walk into the next
+one, which then reaches compaction sooner, and a compaction can summarize away
+the rules the running skill read at its start, such as the explicit yes before
+a GitHub write. Every skill re-reads the issue and the checkout it works on, so
+a fresh session loses nothing. Each skill's closing handoff to the next one
+asks for the fresh session too. The commands already work this way: each of
+their passes starts a session of its own.
