@@ -238,7 +238,7 @@ func TestRunClaudeStructure_RunsIsolatedFromTheOperatorsDirectory(t *testing.T) 
 			if slices.Contains(argv, "--disallowed-tools") || slices.Contains(argv, "--allowed-tools") {
 				t.Errorf("a structuring session must carry neither tool list; got %v", argv)
 			}
-			if !slices.Contains(argv, "--setting-sources") || !slices.Contains(argv, "--strict-mcp-config") {
+			if !slices.Contains(argv, "--setting-sources=") || !slices.Contains(argv, "--strict-mcp-config") {
 				t.Errorf("a structuring session lost its hermetic flags; got %v", argv)
 			}
 		})
