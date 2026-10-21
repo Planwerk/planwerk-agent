@@ -33,6 +33,44 @@ func TestReviewApplyPrompt_CarriesActionabilityAndSkipRule(t *testing.T) {
 	}
 }
 
+// TestReviewApplyPrompt_MakesInfoOptional: a review finding rated INFO is
+// optional for the apply session, a verification gap is closed whatever its
+// severity, and either source's report labels each entry with its severity so
+// the posted reports can be counted by level.
+func TestReviewApplyPrompt_MakesInfoOptional(t *testing.T) {
+	review := BuildReviewApplyPrompt(implement.ReviewApplyContext{RepoFullName: "o/r", BaseBranch: "main"})
+	for _, want := range []string{
+		"Resolve each BLOCKING, CRITICAL, and WARNING finding",
+		"An INFO finding is optional",
+		`list it under Skipped as "optional INFO, not applied"`,
+	} {
+		if !strings.Contains(review, want) {
+			t.Errorf("the review-source prompt is missing %q", want)
+		}
+	}
+
+	verification := BuildReviewApplyPrompt(implement.ReviewApplyContext{
+		RepoFullName: "o/r",
+		BaseBranch:   "main",
+		Source:       implement.ReviewApplySourceVerification,
+	})
+	if strings.Contains(verification, "optional INFO") {
+		t.Error("the verification-source prompt must neither make INFO optional nor offer it as a Skipped reason: its lead-in closes every gap")
+	}
+	if !strings.Contains(verification, "- [<severity>] <finding title> — <why: false positive, no longer present, or needs discussion>") {
+		t.Error("the verification-source Skipped template must keep its three reasons")
+	}
+	if !strings.Contains(review, "- [<severity>] <finding title> — <why: false positive, no longer present, needs discussion, or optional INFO, not applied>") {
+		t.Error("the review-source Skipped template has no reason for an optional INFO finding")
+	}
+
+	for name, got := range map[string]string{"review": review, "verification": verification} {
+		if !strings.Contains(got, "- [<severity>] <finding title> — <root cause and the fix>") {
+			t.Errorf("the %s-source report template does not label a Resolved entry with its severity", name)
+		}
+	}
+}
+
 // TestSimplifyApplyPrompt_FencesSnippetWithBackticks: a quoted snippet whose
 // own line of three backticks would close a fixed fence stays inside its fence,
 // and a finding without a snippet renders no Code block.
