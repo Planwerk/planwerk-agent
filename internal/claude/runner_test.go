@@ -185,11 +185,11 @@ func TestWithReadOnlyDenied_PrecedesAllowedTools(t *testing.T) {
 
 // TestHermeticArgs_IsolatesUserConfig locks in the default-on isolation: a
 // Client built with the compiled-in defaults appends --setting-sources project
-// and --strict-mcp-config so orchestrated sessions ignore the invoking user's
-// global ~/.claude settings and MCP servers, keeping reviews reproducible.
+// and --strict-mcp-config to a mutating session, so it ignores the invoking
+// user's global ~/.claude settings and MCP servers, keeping runs reproducible.
 func TestHermeticArgs_IsolatesUserConfig(t *testing.T) {
 	c := NewClient()
-	got := c.hermeticArgs([]string{"-p", "--model", "opus"})
+	got := c.hermeticArgs([]string{"-p", "--model", "opus"}, false)
 
 	idx := slices.Index(got, "--setting-sources")
 	if idx == -1 || idx+1 >= len(got) || got[idx+1] != "project" {
@@ -201,18 +201,44 @@ func TestHermeticArgs_IsolatesUserConfig(t *testing.T) {
 }
 
 // TestHermeticArgs_InheritWhenEnabled documents the escape hatch: a Client built
-// with WithInheritUserConfig(true) leaves the args untouched so a session can
-// load user-global config (for an environment whose claude auth depends on it).
+// with WithInheritUserConfig(true) leaves a mutating session's args untouched
+// so it can load user-global config (for an environment whose claude auth
+// depends on it).
 func TestHermeticArgs_InheritWhenEnabled(t *testing.T) {
 	c := NewClient(WithInheritUserConfig(true))
 	base := []string{"-p", "--model", "opus"}
-	got := c.hermeticArgs(base)
+	got := c.hermeticArgs(base, false)
 
 	if slices.Contains(got, "--setting-sources") || slices.Contains(got, "--strict-mcp-config") {
 		t.Errorf("hermeticArgs emitted isolation flags despite WithInheritUserConfig(true); got %v", got)
 	}
 	if len(got) != len(base) {
 		t.Errorf("hermeticArgs changed args when inheriting; got %v, want %v", got, base)
+	}
+}
+
+// TestHermeticArgs_ReadOnlyLoadsNoSettingsFile locks in that a read-only
+// session gets an empty setting-source list in one element, so neither the
+// user's settings nor the checkout's .claude/settings.json reach it, and that
+// it still loads no MCP servers (decision 123).
+func TestHermeticArgs_ReadOnlyLoadsNoSettingsFile(t *testing.T) {
+	got := NewClient().hermeticArgs([]string{"-p"}, true)
+
+	want := []string{"-p", "--setting-sources=", "--strict-mcp-config"}
+	if !slices.Equal(got, want) {
+		t.Errorf("hermeticArgs(read-only) = %q, want %q", got, want)
+	}
+}
+
+// TestHermeticArgs_ReadOnlyInheritsOnlyUserSettings covers the escape hatch on
+// a read-only session: it keeps the user's settings, where the authentication
+// lives, and still drops the checkout's (decision 123).
+func TestHermeticArgs_ReadOnlyInheritsOnlyUserSettings(t *testing.T) {
+	got := NewClient(WithInheritUserConfig(true)).hermeticArgs([]string{"-p"}, true)
+
+	want := []string{"-p", "--setting-sources", "user"}
+	if !slices.Equal(got, want) {
+		t.Errorf("hermeticArgs(read-only, inherit) = %q, want %q", got, want)
 	}
 }
 
@@ -640,7 +666,7 @@ func TestClaudeArgs_NoToolsReplacesTheToolFlags(t *testing.T) {
 		t.Errorf("a no-tools session must emit neither tool list; got %v", args)
 	}
 	// The isolation the other flags provide is unaffected.
-	if !slices.Contains(args, "--setting-sources") || !slices.Contains(args, "--strict-mcp-config") {
+	if !slices.Contains(args, "--setting-sources=") || !slices.Contains(args, "--strict-mcp-config") {
 		t.Errorf("a no-tools session lost its hermetic flags; got %v", args)
 	}
 }
@@ -666,6 +692,35 @@ func TestClaudeArgs_ReadOnlyDisablesProjectHooks(t *testing.T) {
 	args := NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", permissionMode: claudeAutoPermissionMode}, "json")
 	if slices.Contains(args, "--settings") {
 		t.Errorf("a mutating session must keep the project's hooks; got %v", args)
+	}
+}
+
+// TestClaudeArgs_ReadOnlyRunsInDontAsk locks in that a read-only session (an
+// analysis pass or a structuring pass) names its permission mode, so a
+// permissions.defaultMode in the checkout under review cannot choose one for
+// it, while a mutating session keeps its own mode and gets no second flag
+// (decision 123).
+func TestClaudeArgs_ReadOnlyRunsInDontAsk(t *testing.T) {
+	t.Parallel()
+
+	for _, spec := range []runSpec{
+		{model: "opus", effort: "xhigh", readOnly: true},
+		{model: "sonnet", effort: "medium", readOnly: true, noTools: true},
+	} {
+		args := NewClient().claudeArgs(spec, "json")
+		i := slices.Index(args, "--permission-mode")
+		if i == -1 || i+1 >= len(args) || args[i+1] != claudeReadOnlyPermissionMode {
+			t.Errorf("read-only spec %+v: want --permission-mode %s; got %v", spec, claudeReadOnlyPermissionMode, args)
+		}
+	}
+
+	args := NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", permissionMode: claudeAutoPermissionMode}, "json")
+	i := slices.Index(args, "--permission-mode")
+	if i == -1 || i+1 >= len(args) || args[i+1] != claudeAutoPermissionMode {
+		t.Errorf("a mutating session must keep --permission-mode %s; got %v", claudeAutoPermissionMode, args)
+	}
+	if slices.Contains(args[i+1:], "--permission-mode") {
+		t.Errorf("a mutating session carries a second --permission-mode; got %v", args)
 	}
 }
 
@@ -849,7 +904,7 @@ func TestClaudeArgs_AddDirFollowsThePermissionMode(t *testing.T) {
 		t.Errorf("argv carries more than one --add-dir; got %v", args)
 	}
 
-	// A read-only session has no permission mode and still gets the directory.
+	// A read-only session, in claudeReadOnlyPermissionMode, still gets the directory.
 	args = NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", readOnly: true, addDirs: []string{"/x/y"}}, "json")
 	j := slices.Index(args, "--add-dir")
 	if j == -1 || j+2 >= len(args) || args[j+1] != "/x/y" || !strings.HasPrefix(args[j+2], "--") {
@@ -1445,7 +1500,7 @@ func TestRunClaudeBrainAnalysis_Spec(t *testing.T) {
 		t.Errorf("tier = %q/%q, want the analysis tier %q/%q", spec.model, spec.effort, analysisModel, analysisEffort)
 	}
 	if !spec.readOnly || spec.noTools || spec.permissionMode != "" || spec.searchRule != "" {
-		t.Errorf("spec = %+v, want a read-only session on the default permission mode without brain search", spec)
+		t.Errorf("spec = %+v, want a read-only session without a permission mode of its own and without brain search", spec)
 	}
 	if spec.dir != cloneDir || spec.label != "bootstrap-unit" || !slices.Equal(spec.addDirs, []string{pagesDir}) {
 		t.Errorf("dir %q, label %q, addDirs %v", spec.dir, spec.label, spec.addDirs)
@@ -1500,7 +1555,7 @@ func TestRunClaudeBrainReview_Spec(t *testing.T) {
 		t.Errorf("tier = %q/%q, want the review tier %q/%q", spec.model, spec.effort, reviewModel, reviewEffort)
 	}
 	if !spec.readOnly || spec.noTools || spec.permissionMode != "" {
-		t.Errorf("spec = %+v, want a read-only session on the default permission mode", spec)
+		t.Errorf("spec = %+v, want a read-only session without a permission mode of its own", spec)
 	}
 	if spec.dir != "/clone" || spec.label != "bootstrap-review" || !slices.Equal(spec.addDirs, []string{pagesDir}) {
 		t.Errorf("dir %q, label %q, addDirs %v", spec.dir, spec.label, spec.addDirs)

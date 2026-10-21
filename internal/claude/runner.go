@@ -102,10 +102,16 @@ const (
 	// session is one-shot and non-interactive (no human to approve each
 	// step), so auto mode is preferred over bypassPermissions precisely
 	// because it keeps those safety checks. Read-only commands (review,
-	// audit, …) keep the default mode by passing an empty permission mode
-	// to runClaude. Requires Claude Code v2.1.83+; see
+	// audit, …) pass an empty permission mode to runClaude and run in
+	// claudeReadOnlyPermissionMode. Requires Claude Code v2.1.306+; see
 	// https://code.claude.com/docs/en/auto-mode-config.
 	claudeAutoPermissionMode = "auto"
+	// claudeReadOnlyPermissionMode is the --permission-mode claudeArgs passes
+	// to every read-only and structuring session that names no mode of its
+	// own. "dontAsk" denies every tool call that is not pre-approved, so a
+	// checkout's permissions.defaultMode cannot start a read-only pass in a
+	// mode that approves edits or commands (decision 123).
+	claudeReadOnlyPermissionMode = "dontAsk"
 	// claudeWaitDelay bounds how long a timed-out invocation may still block
 	// after its deadline. exec.CommandContext kills only the `claude` process
 	// itself; a test run, build, or subagent it started inherits the stdout
@@ -150,7 +156,8 @@ func EffortLevels() string {
 // restrict the rest of the toolset. The auto-mode sessions (implement, fix,
 // address, rebase) already get both from the auto classifier's read-only-HTTP
 // allowance, so listing them here is redundant-but-harmless for them and
-// load-bearing for the default-mode ones.
+// load-bearing for the read-only ones, which run in
+// claudeReadOnlyPermissionMode.
 var claudeAllowedTools = []string{"WebSearch", "WebFetch"}
 
 // withAllowedTools appends the --allowed-tools flag followed by every entry in
@@ -243,7 +250,7 @@ func withNoTools(args []string) []string {
 type runSpec struct {
 	dir            string
 	label          string
-	permissionMode string // --permission-mode when non-empty
+	permissionMode string // --permission-mode when non-empty; a read-only spec defaults to claudeReadOnlyPermissionMode
 	model          string
 	effort         string
 	readOnly       bool // deny the write tools (withReadOnlyDenied)
@@ -380,15 +387,24 @@ func cliJSONSchema(doc string) string {
 }
 
 // hermeticArgs appends the flags that isolate a session from the invoking
-// user's global configuration. --setting-sources project drops the user-global
-// ~/.claude/settings.json (and settings.local.json) and keeps the checkout's
-// committed .claude/settings.json; --strict-mcp-config with no --mcp-config
-// loads no MCP servers. WithInheritUserConfig(true) opts out for an
-// environment whose claude authentication lives in user-global settings (e.g.
-// apiKeyHelper) (decision 45).
-func (c *Client) hermeticArgs(args []string) []string {
-	if c.inheritUserConfig {
+// user's global configuration. For a mutating session, --setting-sources
+// project drops the user-global ~/.claude/settings.json (and
+// settings.local.json) and keeps the checkout's committed
+// .claude/settings.json; --strict-mcp-config with no --mcp-config loads no MCP
+// servers. A read-only session gets --setting-sources= in one element, an
+// empty source list, so it loads no settings file and the checkout's
+// permission rules never reach it (decision 123). WithInheritUserConfig(true)
+// opts out for an environment whose claude authentication lives in
+// user-global settings (e.g. apiKeyHelper): a mutating session then loads
+// every source, a read-only one the user's alone (decision 45).
+func (c *Client) hermeticArgs(args []string, readOnly bool) []string {
+	switch {
+	case c.inheritUserConfig && readOnly:
+		return append(args, "--setting-sources", "user")
+	case c.inheritUserConfig:
 		return args
+	case readOnly:
+		return append(args, "--setting-sources=", "--strict-mcp-config")
 	}
 	return append(args, "--setting-sources", "project", "--strict-mcp-config")
 }
@@ -654,14 +670,15 @@ func WithInheritUserConfig(b bool) Option {
 	return func(c *Client) { c.inheritUserConfig = b }
 }
 
-// runClaude invokes claude in the given directory on its default permission
-// mode and returns the extracted text response along with the resolved model
-// id the session reported. Use it for the read-only analysis steps (propose,
-// elaborate, sync, capture, …) that do not mutate the checkout; the review and
-// the audit use runClaudeFindings, and the JSON-structuring passes — and their
-// repair recovery — use runClaudeStructure for the dedicated cheap tier
-// instead. cat is the pattern catalog whose directory the session may
-// read (--add-dir), noCatalog for a session without one.
+// runClaude invokes claude in the given directory in
+// claudeReadOnlyPermissionMode and returns the extracted text response along
+// with the resolved model id the session reported. Use it for the read-only
+// analysis steps (propose, elaborate, sync, capture, …) that do not mutate the
+// checkout; the review and the audit use runClaudeFindings, and the
+// JSON-structuring passes — and their repair recovery — use runClaudeStructure
+// for the dedicated cheap tier instead. cat is the pattern catalog whose
+// directory the session may read (--add-dir), noCatalog for a session without
+// one.
 func (c *Client) runClaude(dir, prompt, label string, cat patterns.Catalog) (text, model string, err error) {
 	return c.runClaudeMemory(dir, prompt, label, cat, patterns.MemoryCatalog{}, search.Surface{})
 }
@@ -888,8 +905,13 @@ func (c *Client) claudeArgs(spec runSpec, outputFormat string, extra ...string) 
 	}
 	args = append(args, extra...)
 	args = withAppendSystemPrompt(args, spec.appendSystemPrompt)
-	if spec.permissionMode != "" {
-		args = append(args, "--permission-mode", spec.permissionMode)
+	readOnly := spec.readOnly || spec.noTools
+	mode := spec.permissionMode
+	if mode == "" && readOnly {
+		mode = claudeReadOnlyPermissionMode
+	}
+	if mode != "" {
+		args = append(args, "--permission-mode", mode)
 	}
 	if dirs := nonEmptyDirs(spec.addDirs); len(dirs) > 0 && !spec.noTools {
 		args = append(append(args, "--add-dir"), dirs...)
@@ -899,8 +921,8 @@ func (c *Client) claudeArgs(spec runSpec, outputFormat string, extra ...string) 
 	}
 	args = withSession(args, spec)
 	args = withAgents(args, spec.agentsJSON)
-	args = c.hermeticArgs(args)
-	args = withHooksDisabled(args, spec.readOnly || spec.noTools)
+	args = c.hermeticArgs(args, readOnly)
+	args = withHooksDisabled(args, readOnly)
 	if spec.noTools {
 		return withNoTools(args)
 	}
