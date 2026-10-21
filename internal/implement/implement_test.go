@@ -1829,10 +1829,12 @@ func twoReviewFindings() *report.ReviewResult {
 }
 
 // Shared literals for the review-pass assertions, extracted so the repeated
-// base-branch and production-file strings stay under the goconst threshold.
+// base-branch, production-file, and report-heading strings stay under the
+// goconst threshold.
 const (
-	reviewTestBase     = "main"
-	reviewTestProdFile = "internal/foo/foo.go"
+	reviewTestBase          = "main"
+	reviewTestProdFile      = "internal/foo/foo.go"
+	reviewTestHandedHeading = "### Handed to the apply session"
 )
 
 func TestRun_ReviewDefaultOnAppliesFindings(t *testing.T) {
@@ -3641,6 +3643,117 @@ func TestRun_ReviewAllFindingsUnverifiedSkipsApply(t *testing.T) {
 	if !strings.Contains(gh.Comments()[0], "Every self-review finding was withheld") {
 		t.Errorf("posted comment missing the withheld-only note:\n%s", gh.Comments()[0])
 	}
+	if strings.Contains(gh.Comments()[0], reviewTestHandedHeading) {
+		t.Errorf("a round that handed nothing must post no handed count:\n%s", gh.Comments()[0])
+	}
+}
+
+// TestRun_ReviewReportCountsHandedSeverities proves every verified finding,
+// INFO included, still reaches the apply session, and the posted round report
+// counts what it was handed by severity: after the session's own report and
+// before the withheld findings, which the count leaves out.
+func TestRun_ReviewReportCountsHandedSeverities(t *testing.T) {
+	gh := reviewGH(t)
+	cl := &fakeClaude{}
+	verified := func(sev report.Severity, title string) report.Finding {
+		return report.Finding{Severity: sev, Title: title, File: reviewTestProdFile, Problem: "p", Confidence: report.ConfidenceVerified}
+	}
+	av := &fakeAdversarialVerifier{results: []*report.ReviewResult{
+		{Findings: []report.Finding{
+			verified(report.SeverityCritical, "nil map write"),
+			verified(report.SeverityWarning, "swallowed error"),
+			verified(report.SeverityInfo, "comment contradicts the code"),
+			verified(report.SeverityInfo, "retry the push once"),
+			{Severity: report.SeverityInfo, Title: "maybe rename the helper", File: reviewTestProdFile, Problem: "p", Confidence: report.ConfidenceUncertain},
+		}},
+		{},
+	}}
+	ra := &fakeReviewApplier{report: "## Review Report\n\n### Resolved\n- [CRITICAL] nil map write — fixed\n\n### Status\nSTATUS: DONE"}
+	r := reviewRunner(gh, cl, av, ra)
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if ra.called.Load() != 1 {
+		t.Fatalf("applier ran %d times, want 1", ra.called.Load())
+	}
+	var info int
+	for _, f := range ra.ctx.Findings {
+		if f.Severity == report.SeverityInfo {
+			info++
+		}
+	}
+	if len(ra.ctx.Findings) != 4 || info != 2 {
+		t.Errorf("applier got %d findings (%d INFO), want 4 (2 INFO) — the selection hands every verified INFO finding over", len(ra.ctx.Findings), info)
+	}
+	if gh.Count("AddIssueComment") != 1 {
+		t.Fatalf("AddIssueComment ran %d times, want 1 (the round report)", gh.Count("AddIssueComment"))
+	}
+	comment := gh.Comments()[0]
+	if !strings.Contains(comment, "4 finding(s): BLOCKING 0, CRITICAL 1, WARNING 1, INFO 2") {
+		t.Errorf("posted comment missing the handed count:\n%s", comment)
+	}
+	if !strings.Contains(comment, "maybe rename the helper") {
+		t.Errorf("posted comment missing the withheld uncertain INFO finding:\n%s", comment)
+	}
+	status := strings.Index(comment, "STATUS: DONE")
+	handed := strings.Index(comment, reviewTestHandedHeading)
+	withheld := strings.Index(comment, "### Unverified findings (reported, not applied)")
+	if status < 0 || handed < 0 || withheld < 0 || status >= handed || handed >= withheld {
+		t.Errorf("want the session's report, then the handed count, then the withheld findings; got positions %d, %d, %d:\n%s", status, handed, withheld, comment)
+	}
+}
+
+// TestRun_ReviewApplyErrorPostsNoReport proves a failed apply session posts no
+// round report, so no handed count lands on the issue for an apply that never
+// produced a report, and the run stays green.
+func TestRun_ReviewApplyErrorPostsNoReport(t *testing.T) {
+	gh := reviewGH(t)
+	cl := &fakeClaude{}
+	av := &fakeAdversarialVerifier{result: &report.ReviewResult{Findings: []report.Finding{
+		criticalFinding("real bug", reviewTestProdFile),
+	}}}
+	ra := &fakeReviewApplier{err: errors.New("apply exploded")}
+	r := reviewRunner(gh, cl, av, ra)
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil — the review pass is non-fatal", err)
+	}
+	if av.called.Load() != 1 || ra.called.Load() != 1 {
+		t.Errorf("finder/applier called (%d/%d), want 1/1 — a failed apply ends the pass", av.called.Load(), ra.called.Load())
+	}
+	if !strings.Contains(buf.String(), "Review apply could not run: apply exploded") {
+		t.Errorf("stdout missing the apply failure:\n%s", buf.String())
+	}
+	if gh.Count("AddIssueComment") != 0 {
+		t.Errorf("AddIssueComment ran %d times, want 0 — a failed apply posts no round report:\n%v", gh.Count("AddIssueComment"), gh.Comments())
+	}
+}
+
+// TestRun_ReviewLoopStopsWhenEveryInfoSkipped proves a round whose only
+// findings are INFO, all skipped as optional, ends the loop: the branch is
+// unchanged, so the next round could only hand the same findings over again.
+func TestRun_ReviewLoopStopsWhenEveryInfoSkipped(t *testing.T) {
+	gh := reviewGH(t)
+	cl := &fakeClaude{}
+	av := &fakeAdversarialVerifier{result: &report.ReviewResult{Findings: []report.Finding{
+		{Severity: report.SeverityInfo, Title: "comment drifts from the code", File: reviewTestProdFile, Problem: "p", Confidence: report.ConfidenceVerified},
+	}}}
+	ra := &fakeReviewApplier{report: "## Review Report\n\n### Resolved\n\n### Skipped\n- [INFO] comment drifts from the code — optional INFO, not applied\n\n### Status\nSTATUS: DONE"}
+	r := reviewRunner(gh, cl, av, ra)
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if av.called.Load() != 1 || ra.called.Load() != 1 {
+		t.Errorf("finder/applier called (%d/%d), want 1/1 — skipping every INFO finding resolves nothing", av.called.Load(), ra.called.Load())
+	}
+	if !strings.Contains(buf.String(), "resolved none of the 1 finding(s) it was handed") {
+		t.Errorf("stdout missing the nothing-resolved note:\n%s", buf.String())
+	}
 }
 
 // TestRun_ReviewSnippetGateDemotesUnquotedFinding proves the snippet gate
@@ -3872,12 +3985,78 @@ func TestResolvedCount(t *testing.T) {
 		{"numbered items up to the next heading", "### Resolved\n1. a\n2. b\n3. c\n## Diff summary\n- Files: x\n", 3, true},
 		{"items after the section are not counted", "### Resolved\n- a — fixed\n### Skipped\n- b\n- c\n", 1, true},
 		{"prose mentioning the word is not a heading", "The **Resolved** list below is long\n- a\n", 0, false},
+		{"severity-labelled entries", "### Resolved\n- [INFO] a — comment corrected (folded into abc1234 subject)\n- [CRITICAL] b — fixed\n### Skipped\n- [INFO] c — optional INFO, not applied\n", 2, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			n, found := resolvedCount(tc.report)
 			if n != tc.wantN || found != tc.wantFound {
 				t.Errorf("resolvedCount() = (%d, %v), want (%d, %v)", n, found, tc.wantN, tc.wantFound)
+			}
+		})
+	}
+}
+
+// TestHandedSection pins the count line a round report carries for the findings
+// handed to the apply session: all four levels in ladder order, zeros included,
+// so every posted report greps the same way.
+func TestHandedSection(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name     string
+		findings []report.Finding
+		want     string
+	}{
+		{"nil findings", nil, ""},
+		{"no findings", []report.Finding{}, ""},
+		{"mixed severities", []report.Finding{
+			{Severity: report.SeverityInfo},
+			{Severity: report.SeverityCritical},
+			{Severity: report.SeverityWarning},
+			{Severity: report.SeverityInfo},
+		}, reviewTestHandedHeading + "\n\n4 finding(s): BLOCKING 0, CRITICAL 1, WARNING 1, INFO 2"},
+		{"every level counted on its own", []report.Finding{
+			{Severity: report.SeverityInfo}, {Severity: report.SeverityWarning}, {Severity: report.SeverityInfo},
+			{Severity: report.SeverityCritical}, {Severity: report.SeverityWarning}, {Severity: report.SeverityInfo},
+			{Severity: report.SeverityBlocking}, {Severity: report.SeverityWarning}, {Severity: report.SeverityCritical},
+			{Severity: report.SeverityInfo},
+		}, reviewTestHandedHeading + "\n\n10 finding(s): BLOCKING 1, CRITICAL 2, WARNING 3, INFO 4"},
+		{"an unrated finding counts toward the total only", []report.Finding{
+			{Severity: ""},
+			{Severity: report.SeverityInfo},
+		}, reviewTestHandedHeading + "\n\n2 finding(s): BLOCKING 0, CRITICAL 0, WARNING 0, INFO 1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := handedSection(tc.findings); got != tc.want {
+				t.Errorf("handedSection() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestAppendReportSections covers how a round report is assembled from the
+// apply session's report and the harness's own sections.
+func TestAppendReportSections(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name     string
+		report   string
+		sections []string
+		want     string
+	}{
+		{"sections follow the report in order", "## Review Report\n\nSTATUS: DONE\n\n", []string{"### A", "### B"}, "## Review Report\n\nSTATUS: DONE\n\n### A\n\n### B"},
+		{"empty sections are skipped", "## Review Report", []string{"", "### B", ""}, "## Review Report\n\n### B"},
+		{"an empty report leaves the sections", "", []string{"### A", "### B"}, "### A\n\n### B"},
+		{"a report alone is returned trimmed", "## Review Report\n", nil, "## Review Report"},
+		{"nothing at all", "", []string{"", ""}, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := appendReportSections(tc.report, tc.sections...); got != tc.want {
+				t.Errorf("appendReportSections() = %q, want %q", got, tc.want)
 			}
 		})
 	}
