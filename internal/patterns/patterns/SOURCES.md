@@ -21,6 +21,7 @@ Central catalog of all best-practice guides referenced by review patterns.
 | S | Go Code Review Comments | https://go.dev/wiki/CodeReviewComments | 31 review topics from the Go team (migrated from github.com/golang/go/wiki) |
 | S | Table-Driven Tests (Go Wiki) | https://go.dev/wiki/TableDrivenTests | Canonical table-driven-test pattern with `t.Run`, `t.Parallel()` |
 | S | errors package | https://pkg.go.dev/errors | `New`, `Unwrap`, `Is`, `As`, `Join` reference |
+| S | cmp package | https://pkg.go.dev/cmp | `Ordered`, `Compare`, `Less`; standard library since Go 1.21 |
 | S | Go Proverbs | https://go-proverbs.github.io/ | Rob Pike's design principles for Go |
 | S | Go Talks Index | https://go.dev/talks/ | Official index of Go project talks |
 | S | Rob Pike — Go Concurrency Patterns (2012) | https://go.dev/talks/2012/concurrency.slide | Foundational Google I/O 2012 talk on goroutines, channels, select |
@@ -33,6 +34,7 @@ Central catalog of all best-practice guides referenced by review patterns.
 | S | Working with Errors in Go 1.13 | https://go.dev/blog/go1.13-errors | `Unwrap()`, `errors.Is`, `errors.As`, `%w` |
 | S | When To Use Generics (Ian Lance Taylor) | https://go.dev/blog/when-generics | Official guidance: generics vs. interfaces |
 | S | Using Subtests and Sub-benchmarks | https://go.dev/blog/subtests | `t.Run`/`b.Run`, parallelism control |
+| S | Fixing For Loops in Go 1.22 | https://go.dev/blog/loopvar-preview | Per-iteration `for` loop variables in modules whose `go.mod` declares `go 1.22` or later; older modules keep one shared variable |
 | S | Go Fuzzing | https://go.dev/doc/security/fuzz/ | Fuzz testing since Go 1.18 |
 
 ### Go — Community Style Guides & Workshops
