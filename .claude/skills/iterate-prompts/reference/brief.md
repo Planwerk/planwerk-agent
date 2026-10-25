@@ -45,8 +45,8 @@ Group 1 for every prompt.
 1. `file:line` and the exact sentence quoted.
 2. The failure mode (doctrine: no-op / duplication / sediment / sprawl /
    premature completion / scattering / leading-word / prohibition /
-   information-hierarchy / single-source-of-truth / contradiction /
-   prompt↔parser drift / untrusted-input / target-model fit)
+   field-order / information-hierarchy / single-source-of-truth /
+   contradiction / prompt↔parser drift / untrusted-input / target-model fit)
    and, where it applies, the prompt-audit.md group row.
 3. Why, in one sentence, tied to the doctrine or to the cited vendor line.
 4. The fix: concrete replacement wording or the deletion.

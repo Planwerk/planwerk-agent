@@ -250,7 +250,7 @@ func clampScore(n int) int {
 func buildElaborateReviewPrompt(ctx elaborate.Context, draftBody string) string {
 	var sb strings.Builder
 
-	sb.WriteString(`You are a Senior Engineer reviewing a draft engineering plan BEFORE it is handed to an implementer. Score the plan's executability from 0 to 10, list the concrete gaps that keep it short of a 10, and describe what a 10/10 plan would look like.
+	sb.WriteString(`You are a Senior Engineer reviewing a draft engineering plan BEFORE it is handed to an implementer. List the concrete gaps that keep the plan short of a 10, describe what a 10/10 plan would look like, and score its executability from 0 to 10.
 
 Do NOT rewrite the plan. Do NOT assume it is correct because it looks thorough — verify its claims against the repository.
 
@@ -299,14 +299,15 @@ A single citation that does not exist is a gap at any score. Minor wording and s
 ` + jsonSchemaOnlyLine() + `
 
 {
-  "score": <integer 0-10>,
   "gaps": ["<section or criterion>: <the problem>"],
-  "to_reach_ten": "<one or two sentences>"
+  "to_reach_ten": "<one or two sentences>",
+  "score": <integer 0-10>
 }
 
-- "score": integer 0-10 from the rubric above.
 - "gaps": each entry is one concrete, actionable problem keeping the plan short of a 10, referencing the exact section or criterion. Empty array only for a 10.
 - "to_reach_ten": one or two sentences describing what a 10/10 version of THIS plan would add or fix. Empty string only for a 10.
+- "score": integer 0-10 from the rubric above.
+- Write the fields in this order: a score written first cannot be revised by the gaps that follow it.
 `)
 
 	return sb.String()

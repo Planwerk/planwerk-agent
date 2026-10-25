@@ -31,12 +31,12 @@ Output ONLY valid JSON matching this exact schema (no markdown fences, no surrou
     {
       "function": "functionName()",
       "file": "path/to/file.go",
-      "rating": "★★★|★★|★|GAP",
       "test_file": "path/to/test_file.go",
       "test_func": "TestFunctionName",
       "uncovered_paths": ["description of untested path"],
       "e2e_test": "path/to/chainsaw-test.yaml or e2e test file if applicable",
-      "e2e_gap": "description of missing E2E coverage, empty if covered or not applicable"
+      "e2e_gap": "description of missing E2E coverage, empty if covered or not applicable",
+      "rating": "★★★|★★|★|GAP"
     }
   ]
 }
@@ -45,4 +45,5 @@ Leave test_file and test_func empty for GAP entries.
 Leave uncovered_paths empty for ★★★ entries.
 Leave e2e_test empty if no E2E test exists or E2E is not applicable.
 Leave e2e_gap empty if E2E coverage exists or the project has no E2E tests.
+Write each entry's rating last: a rating written first cannot be revised by the tests and untested paths that follow it.
 Include every changed non-test function and method, even a trivial one; a test function is never an entry, because the report counts the entries as the functions under test. If the branch changed no non-test function or method (a documentation- or configuration-only change), output {"entries": []}.

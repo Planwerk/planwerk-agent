@@ -56,7 +56,11 @@ var AddressResult []byte
 // against it (decision 109). It mirrors report.ReviewResult minus the
 // Go-derived and pipeline-set fields such a pass never emits, the finding id
 // among them. A finding requires its severity, actionability and confidence
-// labels, and none of the three enums has an empty member.
+// labels, and none of the three enums has an empty member. A finding's
+// properties are listed in the order the session fills them, its evidence
+// (location, quoted code, problem, fix) before its severity, actionability and
+// confidence labels; cliJSONSchema keeps that order on the wire and
+// findingsOutputBlock shows the same one (decision 136).
 //
 //go:embed finder-output.schema.json
 var FinderOutput []byte

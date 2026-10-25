@@ -743,9 +743,13 @@ func jsonSchemaOnlyLine() string {
 // with: the JSON shape of schema.FinderOutput, which the finder session emits
 // under --json-schema and finishReview decodes (decision 109), and one rule per
 // field that needs one. The shape names every field the schema defines, each
-// once, and carries no finding id, since assignIDs sets it. Field names in the
-// rules are backtick-quoted, so the block renders each double-quoted key exactly
-// once.
+// once and in the schema's order, and carries no finding id, since assignIDs
+// sets it. That order puts a finding's evidence (location, quote, problem, fix)
+// before its three labels and the fix-option reasoning before the recommended
+// option; a reorder of either copy alone fails
+// TestFindingsOutputBlock_MatchesFinderOutputSchema (decision 136). Field names
+// in the rules are backtick-quoted, so the block renders each double-quoted key
+// exactly once.
 func findingsOutputBlock() string {
 	return `## Output
 
@@ -754,18 +758,18 @@ func findingsOutputBlock() string {
 {
   "findings": [
     {
-      "severity": "BLOCKING|CRITICAL|WARNING|INFO",
       "title": "Short title",
       "file": "path/to/file.go",
       "line": 42,
       "line_end": 45,
+      "code_snippet": "The exact triggering lines, verbatim, preserving indentation",
+      "problem": "What is wrong and what goes wrong because of it",
       "pattern": "Exact name of the violated review pattern",
+      "action": "What should be done to fix it",
+      "suggested_fix": "The replacement code or the fix approach",
+      "severity": "BLOCKING|CRITICAL|WARNING|INFO",
       "actionability": "auto-fix|needs-discussion|architectural",
       "confidence": "verified|likely|uncertain",
-      "problem": "What is wrong and what goes wrong because of it",
-      "action": "What should be done to fix it",
-      "code_snippet": "The exact triggering lines, verbatim, preserving indentation",
-      "suggested_fix": "The replacement code or the fix approach",
       "fix_options": [
         {
           "id": "A",
@@ -776,8 +780,8 @@ func findingsOutputBlock() string {
           "risk_if_skipped": "What goes wrong if this option is NOT chosen"
         }
       ],
-      "recommended_option": "A",
       "recommendation_reasoning": "1-2 sentences",
+      "recommended_option": "A",
       "related_to": ["titles of other findings in this output"]
     }
   ],
@@ -786,11 +790,12 @@ func findingsOutputBlock() string {
 }
 
 Field rules:
-- ` + "`severity`, `actionability` and `confidence`" + `: the three labels from the Finding Labels section, exactly one enum value each.
+- Write each finding's fields in the order shown: its three labels come after its quote, problem and fix, and its recommended option after the reasoning, because a judgment written first cannot be revised by the evidence that follows it.
 - ` + "`line_end`" + `: only when the finding spans a line range.
-- ` + "`pattern`" + `: only when the finding violates a review pattern listed in this prompt, by that pattern's exact name.
 - ` + "`code_snippet` and `suggested_fix`" + `: only when this prompt asks for them. Never invent either.
-- ` + "`fix_options`, `recommended_option` and `recommendation_reasoning`" + `: only for a needs-discussion or architectural finding in a prompt that asks for fix options, never for an auto-fix finding. Each option's ` + "`id`" + ` is its letter (A, B, C), which ` + "`recommended_option`" + ` names.
+- ` + "`pattern`" + `: only when the finding violates a review pattern listed in this prompt, by that pattern's exact name.
+- ` + "`severity`, `actionability` and `confidence`" + `: the three labels from the Finding Labels section, exactly one enum value each.
+- ` + "`fix_options`, `recommendation_reasoning` and `recommended_option`" + `: only for a needs-discussion or architectural finding in a prompt that asks for fix options, never for an auto-fix finding. Each option's ` + "`id`" + ` is its letter (A, B, C), which ` + "`recommended_option`" + ` names.
 - ` + "`related_to`" + `: the titles of the other findings in this output that the finding connects to; ` + "`[]`" + ` when none.
 - ` + "`findings`" + `: ` + "`[]`" + ` when the pass reports nothing.
 - ` + "`summary` and `recommendation`" + `: what this prompt's summary instructions describe. ` + "`recommendation`" + ` is the empty string when the prompt asks for no recommendation.

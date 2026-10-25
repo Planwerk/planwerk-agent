@@ -132,12 +132,21 @@ carry the reasoning):
   to write is one the copier will invent; a sentence count in the schema makes
   it rewrite prose written to its own rules. Both are findings.
 
+And the doctrine's "The evidence before the verdict" section:
+
+- **Field order** — in a JSON shape a session fills while it judges (not a
+  structuring copier's), a field that judges (a label, a verdict, a score, a
+  chosen id) placed before the fields that carry its evidence, or a
+  `--json-schema` document whose property order differs from the example the
+  prompt shows. Read the shape in the golden file; a reorder of a finder's
+  shape is a behavioral change.
+
 ## Output format
 
 Lead with a one-line verdict (`clean` / `N findings`). Then, for each finding:
 
 - **Failure mode** — one of the six, or `information-hierarchy` /
-  `single-source-of-truth` / `leading-word` / `prohibition`.
+  `single-source-of-truth` / `leading-word` / `prohibition` / `field-order`.
 - **Location** — `file:line` and the **exact** offending sentence quoted
   verbatim.
 - **Why** — the operational test it fails, in one sentence.

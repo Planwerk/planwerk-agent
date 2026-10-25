@@ -1,8 +1,8 @@
 package claude
 
 import (
+	"bytes"
 	"encoding/json"
-	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -10,6 +10,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/elaborate"
 	"github.com/planwerk/planwerk-agent/internal/implement"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
+	"github.com/planwerk/planwerk-agent/internal/report"
 	"github.com/planwerk/planwerk-agent/internal/report/schema"
 	"github.com/planwerk/planwerk-agent/internal/search"
 	"github.com/planwerk/planwerk-agent/internal/skills"
@@ -418,33 +419,63 @@ func TestFindingsOutputBlock_RendersEachFieldOnce(t *testing.T) {
 	}
 }
 
+// objectKeys returns the keys of the JSON object raw in document order, which
+// a decode into a map would lose. It fails the test when raw is not an object.
+func objectKeys(t *testing.T, raw json.RawMessage) []string {
+	t.Helper()
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
+		t.Fatalf("not a JSON object: %s", raw)
+	}
+	var keys []string
+	for dec.More() {
+		tok, err := dec.Token()
+		if err != nil {
+			t.Fatalf("reading a key of %s: %v", raw, err)
+		}
+		key, _ := tok.(string)
+		var value json.RawMessage
+		if err := dec.Decode(&value); err != nil {
+			t.Fatalf("reading the value of %q: %v", key, err)
+		}
+		keys = append(keys, key)
+	}
+	return keys
+}
+
 // TestFindingsOutputBlock_MatchesFinderOutputSchema is the drift guard between
 // the two copies of the finder output shape: the example every finder prompt
 // shows and schema.FinderOutput, which the CLI enforces with
 // additionalProperties false. At each level (the output, a finding, a fix
-// option) the example names exactly the properties the schema defines, so a key
-// added to or renamed in only one of them fails here rather than failing every
-// finder session's --json-schema validation.
+// option) the example names exactly the properties the schema defines, in the
+// schema's order, so a key added to, renamed in or moved in only one of them
+// fails here rather than failing every finder session's --json-schema
+// validation or showing the session one order and enforcing another.
 func TestFindingsOutputBlock_MatchesFinderOutputSchema(t *testing.T) {
-	var example map[string]any
-	if err := json.Unmarshal([]byte(extractJSONValue(findingsOutputBlock())), &example); err != nil {
+	example := json.RawMessage(extractJSONValue(findingsOutputBlock()))
+	var output struct {
+		Findings []json.RawMessage `json:"findings"`
+	}
+	if err := json.Unmarshal(example, &output); err != nil {
 		t.Fatalf("the block's example is not valid JSON: %v", err)
 	}
-	findings, _ := example["findings"].([]any)
-	if len(findings) != 1 {
-		t.Fatalf("the example shows %d findings, want 1", len(findings))
+	if len(output.Findings) != 1 {
+		t.Fatalf("the example shows %d findings, want 1", len(output.Findings))
 	}
-	finding, _ := findings[0].(map[string]any)
-	options, _ := finding["fix_options"].([]any)
-	if len(options) != 1 {
-		t.Fatalf("the example finding shows %d fix options, want 1", len(options))
+	var finding struct {
+		FixOptions []json.RawMessage `json:"fix_options"`
 	}
-	option, _ := options[0].(map[string]any)
+	if err := json.Unmarshal(output.Findings[0], &finding); err != nil {
+		t.Fatalf("decoding the example finding: %v", err)
+	}
+	if len(finding.FixOptions) != 1 {
+		t.Fatalf("the example finding shows %d fix options, want 1", len(finding.FixOptions))
+	}
 
 	var doc struct {
-		Properties map[string]json.RawMessage `json:"properties"`
+		Properties json.RawMessage `json:"properties"`
 		Defs       map[string]struct {
-			Properties map[string]json.RawMessage `json:"properties"`
+			Properties json.RawMessage `json:"properties"`
 		} `json:"$defs"`
 	}
 	if err := json.Unmarshal(schema.FinderOutput, &doc); err != nil {
@@ -452,15 +483,99 @@ func TestFindingsOutputBlock_MatchesFinderOutputSchema(t *testing.T) {
 	}
 	for _, level := range []struct {
 		name          string
-		shape, schema []string
+		shape, schema json.RawMessage
 	}{
-		{"output", slices.Sorted(maps.Keys(example)), slices.Sorted(maps.Keys(doc.Properties))},
-		{"finding", slices.Sorted(maps.Keys(finding)), slices.Sorted(maps.Keys(doc.Defs["finding"].Properties))},
-		{"fix option", slices.Sorted(maps.Keys(option)), slices.Sorted(maps.Keys(doc.Defs["fixOption"].Properties))},
+		{"output", example, doc.Properties},
+		{"finding", output.Findings[0], doc.Defs["finding"].Properties},
+		{"fix option", finding.FixOptions[0], doc.Defs["fixOption"].Properties},
 	} {
-		if !slices.Equal(level.shape, level.schema) {
-			t.Errorf("the example's %s keys are %q, schema.FinderOutput defines %q", level.name, level.shape, level.schema)
+		shapeKeys, schemaKeys := objectKeys(t, level.shape), objectKeys(t, level.schema)
+		if !slices.Equal(shapeKeys, schemaKeys) {
+			t.Errorf("the example's %s keys are %q, schema.FinderOutput defines %q", level.name, shapeKeys, schemaKeys)
 		}
+	}
+}
+
+// TestFinderOutputSchema_PutsEvidenceBeforeLabels pins the order the drift
+// guard above holds both copies to. A session fills schema.FinderOutput in its
+// property order, so a finding's location, quote, problem and fix come before
+// its three labels, its actionability before the fix options it gates, and the
+// reasoning about those options before the option it recommends: a field the
+// session has written cannot be revised by the evidence that follows it
+// (decision 136).
+func TestFinderOutputSchema_PutsEvidenceBeforeLabels(t *testing.T) {
+	var doc struct {
+		Defs map[string]struct {
+			Properties json.RawMessage `json:"properties"`
+		} `json:"$defs"`
+	}
+	if err := json.Unmarshal(schema.FinderOutput, &doc); err != nil {
+		t.Fatalf("decoding schema.FinderOutput: %v", err)
+	}
+	keys := objectKeys(t, doc.Defs["finding"].Properties)
+	position := func(key string) int {
+		i := slices.Index(keys, key)
+		if i < 0 {
+			t.Fatalf("schema.FinderOutput's finding has no %q property: %q", key, keys)
+		}
+		return i
+	}
+	for _, rule := range []struct{ earlier, later []string }{
+		{
+			earlier: []string{"file", "line", "line_end", "code_snippet", "problem", "action", "suggested_fix"},
+			later:   []string{"severity", "actionability", "confidence"},
+		},
+		{earlier: []string{"actionability"}, later: []string{"fix_options"}},
+		{earlier: []string{"recommendation_reasoning"}, later: []string{"recommended_option"}},
+	} {
+		for _, earlier := range rule.earlier {
+			for _, later := range rule.later {
+				if position(earlier) > position(later) {
+					t.Errorf("schema.FinderOutput lists %q after %q, want it before: %q", earlier, later, keys)
+				}
+			}
+		}
+	}
+}
+
+// TestJudgingShapesPutTheVerdictLast pins the order of the two judging shapes
+// that run without --json-schema, where the prompt's example is the session's
+// only guide to it: the claim verifier writes its evidence and reason before
+// its verdict, and the coverage map rates an entry after its tests and
+// untested paths (decision 136). The elaborate reviewer's example is not valid
+// JSON (its score is a placeholder), so its golden holds its order.
+func TestJudgingShapesPutTheVerdictLast(t *testing.T) {
+	verifier := buildClaimVerificationPrompt([]report.Finding{{
+		Severity: report.SeverityCritical,
+		Title:    "Nil dereference on missing session",
+		File:     "handlers/session.go",
+		Line:     55,
+		Problem:  "session may be nil when the cookie is absent.",
+	}})
+	for _, tc := range []struct {
+		name, prompt, list string
+		want               []string
+	}{
+		{"verify-claims", verifier, "verdicts", []string{"index", "evidence", "reason", "verdict"}},
+		{"coverage", buildCoveragePrompt("develop"), "entries", []string{"function", "file", "test_file", "test_func", "uncovered_paths", "e2e_test", "e2e_gap", "rating"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, shape, ok := strings.Cut(tc.prompt, jsonSchemaOnlyLine())
+			if !ok {
+				t.Fatal("the prompt carries no JSON-only line")
+			}
+			var example map[string][]json.RawMessage
+			if err := json.Unmarshal([]byte(extractJSONValue(shape)), &example); err != nil {
+				t.Fatalf("the prompt's example is not valid JSON: %v", err)
+			}
+			entries := example[tc.list]
+			if len(entries) != 1 {
+				t.Fatalf("the example shows %d %s entries, want 1", len(entries), tc.list)
+			}
+			if got := objectKeys(t, entries[0]); !slices.Equal(got, tc.want) {
+				t.Errorf("the example entry's keys are %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 

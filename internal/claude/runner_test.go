@@ -265,6 +265,32 @@ func TestCLIJSONSchema_StripsDialectFromEmbeddedSchema(t *testing.T) {
 	}
 }
 
+// TestCLIJSONSchema_KeepsNestedPropertyOrder guards the finding's property
+// order on the wire. The session fills the --json-schema document in the order
+// its properties are listed, which puts a finding's evidence before its labels
+// (decision 136). cliJSONSchema re-encodes only the top level, so the wire
+// copy must list a finding's properties exactly as the embedded schema does; a
+// re-encode through map[string]any would sort them alphabetically.
+func TestCLIJSONSchema_KeepsNestedPropertyOrder(t *testing.T) {
+	type schemaDefs struct {
+		Defs map[string]struct {
+			Properties json.RawMessage `json:"properties"`
+		} `json:"$defs"`
+	}
+	var wire, embedded schemaDefs
+	if err := json.Unmarshal([]byte(cliJSONSchema(string(schema.FinderOutput))), &wire); err != nil {
+		t.Fatalf("decoding the wire copy: %v", err)
+	}
+	if err := json.Unmarshal(schema.FinderOutput, &embedded); err != nil {
+		t.Fatalf("decoding schema.FinderOutput: %v", err)
+	}
+	got := objectKeys(t, wire.Defs["finding"].Properties)
+	want := objectKeys(t, embedded.Defs["finding"].Properties)
+	if !slices.Equal(got, want) {
+		t.Errorf("the wire copy lists a finding's properties as %q, the embedded schema as %q", got, want)
+	}
+}
+
 // TestCLIJSONSchema_PassesThroughNonObjects documents the guard: a document that
 // is not a JSON object — including the empty string every schema-less caller
 // passes — is returned untouched, so the empty value still suppresses the flag

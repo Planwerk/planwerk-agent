@@ -366,7 +366,11 @@ func nonEmptyDirs(dirs []string) []string {
 // schemas use ($defs, $ref, type, enum, items, required, additionalProperties)
 // mean the same thing under both drafts, so nothing is validated more loosely.
 // The embedded documents stay authoritative 2020-12 for the schema subcommand
-// and the contract tests; only this wire copy is adjusted. A document that does
+// and the contract tests; only this wire copy is adjusted. Only the top-level
+// object is re-encoded, with its keys sorted; every nested value passes through
+// as written, so the order of a finding's properties under $defs, which the
+// session fills in that order, survives (decision 136). A decode into
+// map[string]any would sort them alphabetically. A document that does
 // not parse as a JSON object — including the empty string the schema-less
 // callers pass — travels through untouched, so the CLI reports the real defect
 // instead of this helper masking it.
