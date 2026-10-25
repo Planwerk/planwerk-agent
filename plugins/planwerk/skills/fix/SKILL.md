@@ -155,7 +155,9 @@ Make the smallest change that removes the cause. Then:
 
 - **Add a regression test** when the fix is in production code and the existing
   suite did not catch the bug. It must fail before your fix and pass after —
-  check that, do not assume it. Skip this only for a lint or format fix, a fix
+  check that, do not assume it. Seeing it fail means reverting the fix, which is
+  a red you force (`commits.md`, A red you forced counts once a diff shows the
+  edit). Skip this only for a lint or format fix, a fix
   inside test code itself, or a failure no test could plausibly catch (an SBOM
   signature, a runner's memory limit).
 - **Re-run the command from Phase 3.** It must now pass. Run the project's own

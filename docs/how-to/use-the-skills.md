@@ -404,11 +404,14 @@ command.
 A repository can commit its own domain vocabulary as `GLOSSARY.md` (or
 `CONTEXT.md`, or `.planwerk/context.md`); see
 [Provide a domain glossary](/how-to/provide-a-domain-glossary). Every skill
-reads it from the checkout and names things by its terms. When you use a word
-the glossary defines differently, or lists under `_Avoid_`, the skill asks which
-you mean before it writes the word down, and it does the same when you describe
-behavior the code contradicts. The skills never edit the glossary; a term worth
-adding comes back in the closing report as a proposed entry.
+except `humanize`, which keeps every term as written, reads it before it asks
+you anything: from the checkout when it runs in one of that repository, through
+the GitHub API otherwise. It names things by the glossary's terms. When you use
+a word the glossary defines differently, or lists under `_Avoid_`, the skill
+asks which you mean before it writes the word down, and inside a checkout it
+does the same when you describe behavior the code contradicts. The skills never
+edit the glossary; a term worth adding comes back beside the closing report as
+a proposed entry, never inside anything posted to GitHub.
 
 ## Declare the repositories that follow this one
 
