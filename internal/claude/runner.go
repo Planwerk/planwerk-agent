@@ -7,9 +7,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -56,6 +58,11 @@ const (
 	// inherits the main tier; override it with --finder-model /
 	// PLANWERK_FINDER_MODEL (decision 79).
 	DefaultFinderModel = ""
+	// DefaultFinderTools is the compiled-in --finder-tools list. Empty passes no
+	// --tools, so the seven passes that emit findings load Claude Code's default
+	// tool set; override it with WithFinderTools (--finder-tools /
+	// PLANWERK_FINDER_TOOLS) (decision 152).
+	DefaultFinderTools = ""
 	// DefaultStructureModel is the compiled-in model for the structuring tier:
 	// the secondary `claude -p` calls that transcribe an upstream call's
 	// already-reasoned prose into its artifact's JSON schema. It is independent
@@ -244,9 +251,20 @@ func withNoTools(args []string) []string {
 	return append(args, "--tools", "")
 }
 
+// withTools appends --tools followed by names joined by commas, the form the
+// CLI's help documents ("Bash,Edit,Read"), when names is non-empty, and is a
+// no-op otherwise. The one value keeps the variadic flag's list closed by the
+// --disallowed-tools or --allowed-tools token claudeArgs appends after it
+// (decision 152).
+func withTools(args []string, names []string) []string {
+	if len(names) == 0 {
+		return args
+	}
+	return append(args, "--tools", strings.Join(names, ","))
+}
+
 // runSpec bundles the per-invocation knobs of one `claude -p` session. The
-// runClaude* wrappers construct it; runSession and
-// runClaudeStream consume it.
+// runClaude* wrappers construct it; runSession and runClaudeStream consume it.
 type runSpec struct {
 	dir            string
 	label          string
@@ -292,17 +310,24 @@ type runSpec struct {
 	// adds or changes (skillDenyRules), because Claude Code loads a skill's
 	// body from the checkout they run in.
 	denyRules []string
+	// tools names the built-in tools the session loads, passed as --tools with
+	// the names joined by commas when non-empty (withTools); nil loads Claude
+	// Code's default set. The two runners of the passes that emit findings set
+	// it from --finder-tools. A noTools spec ignores it (decision 152).
+	tools []string
 	// sessionID pins the CLI session's id (--session-id) and resume continues
-	// that session (--resume). Both are zero for a one-shot call; set by the
-	// completion nudge (decision 78).
+	// that session (--resume). runSession pins a fresh id on every session that
+	// names none; the completion nudge sets both to resume a session it pinned
+	// (decisions 78 and 152).
 	sessionID string
 	resume    bool
 }
 
 // withSession appends the session-identity flags: --session-id <id> pins a
-// fresh session's id so a follow-up turn can find it, --resume <id> continues
-// that session in place of starting a fresh one. A no-op when no session id is
-// set — the ordinary one-shot invocation.
+// fresh session's id so a follow-up turn can find it and its transcript can be
+// named, --resume <id> continues that session in place of starting a fresh
+// one. A no-op when no session id is set, which runSession leaves only when
+// newSessionID failed (decision 152).
 func withSession(args []string, spec runSpec) []string {
 	if spec.sessionID == "" {
 		return args
@@ -315,9 +340,9 @@ func withSession(args []string, spec runSpec) []string {
 
 // newSessionID returns a fresh RFC 4122 version-4 UUID for the CLI's
 // --session-id flag (which requires a valid UUID). It returns "" when the
-// system's entropy source fails — the caller then runs without a pinned
-// session id, which merely disables the completion nudge for that call rather
-// than failing the session.
+// system's entropy source fails — that session then just runs unpinned, which
+// disables the completion nudge for the call and leaves its id to the stream,
+// rather than failing the session (decision 152).
 func newSessionID() string {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
@@ -436,8 +461,12 @@ type Client struct {
 	// finderModel/finderEffort select the tier of the read-only finder passes
 	// (see FinderTier). NewClient seeds them from DefaultFinderModel and
 	// DefaultFinderEffort; an empty value inherits the main tier (decision 79).
-	finderModel     string
-	finderEffort    string
+	finderModel  string
+	finderEffort string
+	// finderTools is the --tools list of the seven passes that emit findings,
+	// set via WithFinderTools; nil, the default (DefaultFinderTools), passes no
+	// --tools (decision 152).
+	finderTools     []string
 	effort          string
 	planEffort      string
 	structureEffort string
@@ -451,7 +480,10 @@ type Client struct {
 	brainAnalysisEffort string
 	brainReviewModel    string
 	brainReviewEffort   string
-	showOutput          bool
+	// showOutput prints every session's events as they arrive (see
+	// streamSinkFor); false, the default, keeps them quiet behind the
+	// heartbeat. Either way runClaudeStream reads them. Set via WithShowOutput.
+	showOutput bool
 
 	// inheritUserConfig, when true, lets sessions load the invoking user's
 	// global ~/.claude settings and MCP servers instead of running hermetically
@@ -565,6 +597,61 @@ func WithFinderEffort(e string) Option {
 	}
 }
 
+// WithFinderTools sets the built-in tools the seven passes that emit findings
+// load, passed to each as --tools: the review, the audit, the adversarial pass,
+// each domain specialist, the feature-compliance check, the simplify finder and
+// the implementation verifier. The coverage map, claim verification and every
+// other session keep Claude Code's default set. An empty names is ignored,
+// which leaves the earlier value in place (DefaultFinderTools passes no
+// --tools); a later option wins, and names is cloned. ParseToolList produces
+// the list the root command and the eval pass in (decision 152).
+func WithFinderTools(names []string) Option {
+	return func(c *Client) {
+		if len(names) > 0 {
+			c.finderTools = slices.Clone(names)
+		}
+	}
+}
+
+// FinderTools returns a copy of the --tools list the passes that emit findings
+// run with, nil when they load Claude Code's default set. cmd/planwerk-eval's
+// tests read it to prove buildClient wires the list.
+func (c *Client) FinderTools() []string {
+	return slices.Clone(c.finderTools)
+}
+
+// toolName is the shape ParseToolList admits for a built-in tool name: a
+// capital letter, then letters and digits.
+var toolName = regexp.MustCompile(`^[A-Z][A-Za-z0-9]*$`)
+
+// ParseToolList parses a --finder-tools value: names separated by commas, each
+// trimmed. It returns the names sorted with duplicates dropped, nil for a blank
+// s, and an error quoting the first entry that is empty or not a capitalized
+// tool name, so a typo such as "read", a permission rule such as "Bash(git:*)"
+// or the CLI's "default" keyword fails before any session runs. It checks the
+// syntax only; a well-formed name Claude Code does not know is caught by the
+// warning against the session's init event (warnUnloadedTools). Write-tool
+// names are accepted, since claudeReadOnlyDeniedTools still denies them on the
+// read-only passes (decision 152).
+func ParseToolList(s string) ([]string, error) {
+	if strings.TrimSpace(s) == "" {
+		return nil, nil
+	}
+	var names []string
+	for _, entry := range strings.Split(s, ",") {
+		name := strings.TrimSpace(entry)
+		if name == "" {
+			return nil, fmt.Errorf("empty tool name in %q", s)
+		}
+		if !toolName.MatchString(name) {
+			return nil, fmt.Errorf("tool %q is not a built-in tool name: want a capital letter, then letters and digits", name)
+		}
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	return slices.Compact(names), nil
+}
+
 // WithPlanModel sets the model used by Plan sessions (the implement command's
 // planning phase). An empty m is ignored.
 func WithPlanModel(m string) Option {
@@ -663,11 +750,11 @@ func WithBrainReviewEffort(e string) Option {
 	}
 }
 
-// WithShowOutput toggles live streaming of Claude Code output. When false (the
-// default), runClaude buffers the result via --output-format json. When true,
-// runClaude delegates to runClaudeStream which uses
-// --output-format stream-json --verbose and surfaces assistant text and tool
-// activity to a streamSink as it arrives.
+// WithShowOutput toggles printing Claude Code's live output. Every session runs
+// with --output-format stream-json --verbose and is read by runClaudeStream
+// either way; true prints the assistant text and tool activity as they arrive
+// (newDefaultStreamSink), false (the default) keeps them quiet behind the
+// elapsed-time heartbeat (decision 152).
 func WithShowOutput(b bool) Option {
 	return func(c *Client) { c.showOutput = b }
 }
@@ -722,16 +809,17 @@ func (c *Client) runClaudeMemory(dir, prompt, label string, cat patterns.Catalog
 // passes schema.FinderOutput to the CLI via --json-schema, so the session emits
 // its findings as JSON itself. The review and the audit call it; the other five
 // passes that emit findings run on the finder tier through
-// runClaudeFinderFindings (decision 109). cat is the pattern catalog whose
-// directory the session may read (--add-dir); the audit, and a review without
-// --scope-patterns, pass noCatalog, because their prompts carry the bodies
-// (decision 141). mem is the project memory catalog whose directory the
-// session may read, the zero MemoryCatalog for a run without one. surface
-// pre-approves `brain search` for the session, the zero Surface for a session
-// without the search. diffDir is the directory of the diff the session reads
-// (diffscope.Diff.Dir), "" for none; the audit has no diff (decision 137).
+// runClaudeFinderFindings (decision 109). All seven load the --finder-tools
+// list (decision 152). cat is the pattern catalog whose directory the session
+// may read (--add-dir); the audit, and a review without --scope-patterns, pass
+// noCatalog, because their prompts carry the bodies (decision 141). mem is the
+// project memory catalog whose directory the session may read, the zero
+// MemoryCatalog for a run without one. surface pre-approves `brain search` for
+// the session, the zero Surface for a session without the search. diffDir is
+// the directory of the diff the session reads (diffscope.Diff.Dir), "" for
+// none; the audit has no diff (decision 137).
 func (c *Client) runClaudeFindings(dir, prompt, label string, cat patterns.Catalog, mem patterns.MemoryCatalog, surface search.Surface, diffDir string) (text, model string, err error) {
-	return c.runSession(runSpec{dir: dir, label: label, model: c.model, effort: c.effort, readOnly: true, jsonSchema: string(schema.FinderOutput), addDirs: []string{cat.Dir, mem.Dir, diffDir}, searchRule: surface.AllowRule()}, prompt)
+	return c.runSession(runSpec{dir: dir, label: label, model: c.model, effort: c.effort, readOnly: true, jsonSchema: string(schema.FinderOutput), addDirs: []string{cat.Dir, mem.Dir, diffDir}, searchRule: surface.AllowRule(), tools: c.finderTools}, prompt)
 }
 
 // noCatalog is what a session without a pattern catalog passes to its runner:
@@ -773,12 +861,16 @@ func (c *Client) runClaudeFinder(dir, prompt, label string) (text, model string,
 // seven passes that emit findings call it: the adversarial pass, each domain
 // specialist, the feature-compliance check, the simplify finder, and the
 // implementation verifier. The review and the audit run on --claude-model
-// through runClaudeFindings (decision 109). diffDir is the directory of the
-// diff the session reads (diffscope.Diff.Dir), "" for none (decision 137).
+// through runClaudeFindings (decision 109). All seven load the --finder-tools
+// list, which finderSpec leaves out, so the coverage map and claim
+// verification keep the default set (decision 152). diffDir is the directory
+// of the diff the session reads (diffscope.Diff.Dir), "" for none (decision
+// 137).
 func (c *Client) runClaudeFinderFindings(dir, prompt, label, diffDir string) (text, model string, err error) {
 	spec := c.finderSpec(dir, label)
 	spec.jsonSchema = string(schema.FinderOutput)
 	spec.addDirs = []string{diffDir}
+	spec.tools = c.finderTools
 	return c.runSession(spec, prompt)
 }
 
@@ -921,19 +1013,17 @@ func (c *Client) implementSessionModel() string {
 	return c.model
 }
 
-// claudeArgs assembles the claude CLI argv for spec. outputFormat selects the
-// envelope ("json" for the buffered runner, "stream-json" for the streaming
-// one) and extra follows it (the streaming runner adds --verbose). Everything
-// after that is emitted here and only here, so the two runners cannot drift on
-// which flags an isolation-, tool-, agent- or session-level decision produces.
-func (c *Client) claudeArgs(spec runSpec, outputFormat string, extra ...string) []string {
+// claudeArgs assembles the claude CLI argv for spec. Every session runs with
+// --output-format stream-json --verbose, the event stream runClaudeStream
+// reads (decision 152). Every flag an isolation-, tool-, agent- or
+// session-level decision produces is emitted here and only here.
+func (c *Client) claudeArgs(spec runSpec) []string {
 	args := []string{
 		"-p",
 		"--model", spec.model,
 		"--effort", spec.effort,
-		"--output-format", outputFormat,
+		"--output-format", "stream-json", "--verbose",
 	}
-	args = append(args, extra...)
 	args = withAppendSystemPrompt(args, spec.appendSystemPrompt)
 	readOnly := spec.readOnly || spec.noTools
 	mode := spec.permissionMode
@@ -956,6 +1046,7 @@ func (c *Client) claudeArgs(spec runSpec, outputFormat string, extra ...string) 
 	if spec.noTools {
 		return withNoTools(args)
 	}
+	args = withTools(args, spec.tools)
 	args = withReadOnlyDenied(args, spec.readOnly)
 	args = withDenyRules(args, spec.readOnly, spec.denyRules)
 	var rules []string
@@ -968,8 +1059,8 @@ func (c *Client) claudeArgs(spec runSpec, outputFormat string, extra ...string) 
 // claudeCommand builds the claude subprocess for spec: claudeArgs for the
 // argv, the wait delay, the working directory when spec names one, and the
 // prompt on stdin.
-func (c *Client) claudeCommand(ctx context.Context, spec runSpec, prompt, outputFormat string, extra ...string) *exec.Cmd {
-	cmd := exec.CommandContext(ctx, "claude", c.claudeArgs(spec, outputFormat, extra...)...)
+func (c *Client) claudeCommand(ctx context.Context, spec runSpec, prompt string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, "claude", c.claudeArgs(spec)...)
 	cmd.WaitDelay = claudeWaitDelay
 	if spec.dir != "" {
 		cmd.Dir = spec.dir
@@ -980,10 +1071,12 @@ func (c *Client) claudeCommand(ctx context.Context, spec runSpec, prompt, output
 
 // runSession runs one session: through sessionFn when a test set it, through
 // the claude CLI otherwise. On the CLI path it first resolves structureWorkDir
-// as a noTools spec's working directory, before any process starts. It then
-// buffers the result via --output-format json or, when c.showOutput is set,
-// streams it through runClaudeStream; the elapsed-time heartbeat runs only in
-// buffered mode, since the stream is its own heartbeat.
+// as a noTools spec's working directory, before any process starts, and drops
+// jsonSchema's dialect declaration (cliJSONSchema). It then pins a fresh
+// --session-id on a spec that names no id, logs the id at debug level, and
+// runs the session through runClaudeStream. A completion nudge's resumed spec
+// already carries the id it resumes, so --resume is untouched (decisions 78
+// and 152).
 func (c *Client) runSession(spec runSpec, prompt string) (string, string, error) {
 	if c.sessionFn != nil {
 		return c.sessionFn(spec, prompt)
@@ -995,66 +1088,24 @@ func (c *Client) runSession(spec runSpec, prompt string) (string, string, error)
 		}
 		spec.dir = dir
 	}
-	// Normalize once, above the fork, so neither runner path can pass the CLI a
-	// dialect declaration it cannot resolve.
 	spec.jsonSchema = cliJSONSchema(spec.jsonSchema)
-	if c.showOutput {
-		return c.runClaudeStream(spec, prompt)
+	if spec.sessionID == "" {
+		spec.sessionID = newSessionID()
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
-	defer cancel()
-
-	stopProgress := startProgress(spec.label)
-	defer stopProgress()
-
-	cmd := c.claudeCommand(ctx, spec, prompt, "json")
-	out, err := cmd.Output()
-	if err != nil {
-		// A failed turn still spent its tokens: Claude Code writes the same
-		// usage block on the failure envelope, so count it before reporting.
-		c.addFailureUsage(spec.label, out)
-		var exitErr *exec.ExitError
-		if !errors.As(err, &exitErr) {
-			if timeout := c.timeoutError(ctx, spec.model, nil); timeout != nil {
-				return "", "", timeout
-			}
-			return "", "", fmt.Errorf("claude (model %s): %w", spec.model, err)
-		}
-		if timeout := c.timeoutError(ctx, spec.model, exitErr.Stderr); timeout != nil {
-			return "", "", timeout
-		}
-		return "", "", claudeRunError(err, spec.model, out, exitErr.Stderr)
-	}
-	// The returned model is the exact id the envelope reports (e.g.
-	// "claude-opus-5-5"), which the caller threads into the artifact footers.
-	text, resolvedModel, usage, cost, err := extractText(out)
-	if err != nil {
-		return "", "", err
-	}
-	c.addUsage(spec.label, usage, cost)
-	return text, resolvedModel, nil
+	slog.Debug("claude session", "label", spec.label, "session_id", spec.sessionID, "resume", spec.resume)
+	return c.runClaudeStream(spec, prompt)
 }
 
+// claudeResponse is the view of a `result` event that a failed turn needs:
+// envelopeFailure reads its reason and addFailureUsage the tokens it spent.
 type claudeResponse struct {
 	Result string `json:"result"`
-	// StructuredOutput carries the schema-validated object the CLI produces when
-	// invoked with --json-schema. It is preferred over Result when present so a
-	// finder pass reads the constrained output directly; when the flag was
-	// not passed (or the CLI carries the object in Result instead) it stays nil
-	// and extractText falls back to Result. Captured raw and stringified in
-	// extractText, so an envelope that omits it costs nothing.
-	StructuredOutput json.RawMessage `json:"structured_output,omitempty"`
-	// Model is the resolved model id the CLI reports in the JSON envelope
-	// (e.g. "claude-opus-5-5"). It is the non-streaming counterpart of the
-	// streamEvent init model and feeds the attribution footers.
-	Model string `json:"model,omitempty"`
 	// Usage and TotalCostUSD carry the per-call cumulative token counts and the
 	// CLI's own estimated cost; they feed the per-Run usage accumulator. Both are
-	// captured raw and decoded best-effort in extractText, decoupled from the
-	// result/model decode above: a usage-schema change — a reshaped usage object,
-	// a stringified cost, a token count past int64 — must degrade these figures to
-	// zero, not fail the envelope and discard a result the call carried fine.
+	// captured raw and decoded best-effort in addFailureUsage, decoupled from the
+	// rest of the decode: a usage-schema change — a reshaped usage object, a
+	// stringified cost, a token count past int64 — must degrade these figures to
+	// zero, not make the failure unreadable.
 	Usage        json.RawMessage `json:"usage"`
 	TotalCostUSD json.RawMessage `json:"total_cost_usd"`
 	// IsError marks an envelope the CLI emitted for a FAILED turn. Claude Code
@@ -1092,10 +1143,10 @@ func (c *Client) timeoutError(ctx context.Context, model string, stderr []byte) 
 
 // addFailureUsage counts the tokens a FAILED invocation spent. Claude Code
 // reports an exhausted turn budget or an upstream API error by writing its
-// result envelope — usage block included — to stdout and exiting non-zero, and
-// the streaming path repeats those fields on the raw `result` event. A payload
-// that is not an envelope, or one that carries no usage at all, records nothing
-// rather than an empty call.
+// `result` event — usage block included — to stdout and exiting non-zero; raw
+// is that event as runClaudeStream kept it. A payload that is not such an
+// event, or one that carries no usage at all, records nothing rather than an
+// empty call.
 func (c *Client) addFailureUsage(label string, raw []byte) {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return
@@ -1118,12 +1169,11 @@ func (c *Client) addFailureUsage(label string, raw []byte) {
 
 // claudeRunError renders a failed `claude -p` invocation into an error that
 // names what went wrong. Claude Code reports an API-level failure (a hit rate
-// limit, an exhausted turn budget) by writing its result envelope to STDOUT and
-// exiting non-zero with STDERR empty. stdout is the buffered envelope or, on the
-// streaming path, the raw `result` event, which repeats the same fields; stderr
-// carries the failures that never reach the API, such as an unknown flag. The
-// model alias is named either way, since which session hit the limit is the
-// actionable part.
+// limit, an exhausted turn budget) by writing its `result` event to STDOUT and
+// exiting non-zero with STDERR empty. stdout is that raw event, as
+// runClaudeStream kept it; stderr carries the failures that never reach the
+// API, such as an unknown flag. The model alias is named either way, since
+// which session hit the limit is the actionable part.
 func claudeRunError(err error, model string, stdout, stderr []byte) error {
 	if failure := envelopeFailure(stdout); failure != "" {
 		return fmt.Errorf("claude (model %s): %w: %s", model, err, failure)
@@ -1143,9 +1193,9 @@ func claudeRunError(err error, model string, stdout, stderr []byte) error {
 // the reason in result and the upstream status in api_error_status (is_error
 // true, api_error_status 429, result "You've reached your Fable 5 limit."),
 // while a harness-level abort carries no result at all and names itself only in
-// subtype (is_error true, subtype "error_max_turns"). It reads the streaming
-// path's raw `result` event just as well, since that event repeats these fields
-// verbatim — so the two runners cannot drift on how a failure is diagnosed.
+// subtype (is_error true, subtype "error_max_turns"). raw is the stream's
+// `result` event, which carries these fields verbatim, the same ones
+// `--output-format json` writes as its envelope.
 func envelopeFailure(raw []byte) string {
 	var resp claudeResponse
 	if err := json.Unmarshal(raw, &resp); err != nil || !resp.IsError {
@@ -1163,27 +1213,6 @@ func envelopeFailure(raw []byte) string {
 		return "api error " + status
 	}
 	return fmt.Sprintf("api error %s: %s", status, reason)
-}
-
-// extractText extracts the response text, the resolved model id, and the
-// per-call token usage and estimated cost from Claude's JSON output envelope.
-// When the output is not the expected envelope it returns an error wrapping the
-// parse failure and a truncated copy of the raw output. Failing loudly keeps a
-// changed CLI wire format (schema rename, error envelope, OAuth challenge) from
-// being silently treated as the assistant's reply, which would otherwise
-// produce nonsense findings or empty reports.
-func extractText(raw []byte) (text, model string, usage tokenUsage, cost float64, err error) {
-	var resp claudeResponse
-	if err := json.Unmarshal(raw, &resp); err != nil {
-		return "", "", tokenUsage{}, 0, fmt.Errorf("claude: parse output envelope: %w; first 200 bytes: %q", err, head(raw, 200))
-	}
-	// Decode usage and cost best-effort, independently of the result/model decode
-	// above. A malformed, reshaped, or absent block leaves the figures at zero
-	// instead of failing the whole call — usage-schema drift must never cost a
-	// result the envelope carried fine.
-	_ = json.Unmarshal(resp.Usage, &usage)
-	_ = json.Unmarshal(resp.TotalCostUSD, &cost)
-	return preferStructuredOutput(resp.StructuredOutput, resp.Result), resp.Model, usage, cost, nil
 }
 
 // preferStructuredOutput returns the CLI's schema-validated structured_output as

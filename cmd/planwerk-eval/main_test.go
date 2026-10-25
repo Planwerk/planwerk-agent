@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -234,7 +235,7 @@ const (
 func clearTierEnv(t *testing.T) {
 	t.Helper()
 	for _, name := range []string{
-		envClaudeModel, envClaudeEffort, envFinderModel, envFinderEffort, envStructureModel, envStructureEffort,
+		envClaudeModel, envClaudeEffort, envFinderModel, envFinderEffort, envStructureModel, envStructureEffort, envFinderTools,
 		"PLANWERK_CLAUDE_TIMEOUT", "PLANWERK_CLAUDE_INHERIT_USER_CONFIG", "PLANWERK_DIFF_EXCLUSIONS", "PLANWERK_SHOW_CLAUDE_OUTPUT",
 	} {
 		t.Setenv(name, "")
@@ -307,6 +308,16 @@ func TestResolveTiers(t *testing.T) {
 			name:    "an invalid structure effort names its variable",
 			env:     map[string]string{envStructureEffort: testBadEffort},
 			wantErr: `invalid PLANWERK_STRUCTURE_EFFORT="maximum"` + badEffortReason,
+		},
+		{
+			name: "a finder tool list is recorded sorted and trimmed",
+			env:  map[string]string{envFinderTools: " Read, Grep "},
+			want: with(func(tr *eval.Tiers) { tr.FinderTools = "Grep,Read" }),
+		},
+		{
+			name:    "an invalid finder tool list names its variable",
+			env:     map[string]string{envFinderTools: "read"},
+			wantErr: `invalid PLANWERK_FINDER_TOOLS="read": tool "read" is not a built-in tool name: want a capital letter, then letters and digits`,
 		},
 	}
 	for _, tt := range tests {
@@ -382,6 +393,24 @@ func TestBuildClientAppliesTheTiers(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("the finder tool list reaches the client", func(t *testing.T) {
+		clearTierEnv(t)
+		client, err := buildClient(eval.Tiers{FinderTools: "Grep,Read"})
+		if err != nil {
+			t.Fatalf("buildClient = %v, want a client", err)
+		}
+		if got, want := client.FinderTools(), []string{"Grep", "Read"}; !slices.Equal(got, want) {
+			t.Errorf("FinderTools() = %v, want %v", got, want)
+		}
+		client, err = buildClient(eval.Tiers{})
+		if err != nil {
+			t.Fatalf("buildClient = %v, want a client", err)
+		}
+		if got := client.FinderTools(); got != nil {
+			t.Errorf("FinderTools() = %v for the zero tiers, want nil", got)
+		}
+	})
 
 	t.Run("a bogus timeout is still rejected", func(t *testing.T) {
 		clearTierEnv(t)

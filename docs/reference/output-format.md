@@ -238,10 +238,13 @@ per-pass breakdown, most expensive first:
 
 ```text
 claude usage: 350.0k in / 33.0k out across 7 calls, est. $12.29
-  implement                 1 call   180.0k in / 21.0k out, est. $7.40
-  plan                      1 call   96.0k in / 8.0k out, est. $2.90
-  specialist-security       1 call   38.0k in / 1.4k out, est. $0.62
-  +4 further passes         4 calls  36.0k in / 2.6k out, est. $1.37
+  implement                 1 call   180.0k in / 21.0k out, est. $7.40, 61 turns
+                           tools: Bash 48, Read 31, Edit 17, Grep 9
+  plan                      1 call   96.0k in / 8.0k out, est. $2.90, 22 turns
+                           tools: Read 18, Grep 7, Bash 5
+  specialist-security       1 call   38.0k in / 1.4k out, est. $0.62, 14 turns, 2 denied
+                           tools: Read 22, Grep 9, Bash 4
+  +4 further passes         4 calls  36.0k in / 2.6k out, est. $1.37, 9 turns
 ```
 
 The pass name is the label the runner tags the `claude -p` invocation with, so
@@ -249,6 +252,14 @@ calls that belong to the same pass (the finder rounds of a review loop)
 accumulate together. At most eight rows are
 shown; the rest are summed into a trailing `+N further passes` line, so the
 breakdown always accounts for the whole run.
+
+The end of a row says how the pass's sessions spent their turns. `turns` is the
+sum of each call's `num_turns`. `denied` counts the tool calls Claude Code's
+permission check refused (`permission_denials`) and is omitted at zero. The
+`tools:` line under a row counts every tool call the pass's sessions made, a
+subagent's included, most-used first; the `+N further passes` line sums the
+turns and denials but prints no tools line. A run with a single pass prints
+that pass's row as well when it has turns, denials or tool calls to show.
 
 When a review is posted, the same totals are embedded as a `usage` object in
 the `<!-- planwerk-agent-data ... -->` block of the summary comment that both
@@ -285,7 +296,11 @@ extraction:
         "output_tokens": 3600,
         "cache_read_input_tokens": 12000,
         "cache_creation_input_tokens": 2464,
-        "est_cost_usd": 0.31
+        "est_cost_usd": 0.31,
+        "num_turns": 14,
+        "permission_denials": 2,
+        "tool_uses": { "Bash": 4, "Grep": 9, "Read": 22 },
+        "session_ids": ["0b6f4a8e-6a4c-4c1e-9a55-3f0d2c1b7e21"]
       }
     ]
   }
@@ -301,6 +316,18 @@ counters per pass, ordered as in the stderr breakdown and complete (never
 truncated); it is omitted when no pass was recorded. The top-level `passes`
 array records how each requested pass ended, not what it spent (see
 [Pass Status](#pass-status)).
+
+Each `usage.passes` entry also records how its sessions ran: `num_turns`,
+`permission_denials`, `tool_uses` (tool name to count) and `session_ids` (each
+session's `--session-id` once; a resumed completion-nudge turn shares its
+session's id). Each is omitted when empty, so older payloads are unchanged. A
+pass whose session failed or timed out keeps its entry, so its `session_ids`
+are there even when the failure billed no call: a pass that
+[Pass Status](#pass-status) records as `failed` finds them under the
+`usage.passes` entry of the same name. A session id names the
+transcript Claude Code wrote for that session under its config directory
+(`find ~/.claude/projects -name '<session id>.jsonl'`). Run with `-v` to see
+each id as the session starts.
 
 ## Demotion-Gate Records
 

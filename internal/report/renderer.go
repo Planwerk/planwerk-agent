@@ -514,14 +514,28 @@ func (u Usage) Sub(o Usage) Usage {
 // tags its `claude -p` invocation with ("review", "adversarial",
 // "specialist-security", "elaborate-structure", …). The counters mean exactly
 // what their Usage counterparts do; only the scope is narrower.
+//
+// The last four fields record how the pass's sessions ran. NumTurns is the sum
+// of each call's num_turns, as its `result` event reports it.
+// PermissionDenials is the number of tool calls Claude Code's permission check
+// refused. ToolUses counts every tool call of the pass's sessions by tool name,
+// a subagent's included. SessionIDs holds each session's id once, in the order
+// the sessions ended; the id names the transcript Claude Code wrote for the
+// session. Each is omitted when empty, so a payload written before they
+// existed is unchanged, and encoding/json sorts the ToolUses keys, so the wire
+// form stays deterministic (decision 152).
 type PassUsage struct {
-	Pass                string  `json:"pass"`
-	Calls               int     `json:"calls"`
-	InputTokens         int64   `json:"input_tokens"`
-	OutputTokens        int64   `json:"output_tokens"`
-	CacheReadTokens     int64   `json:"cache_read_input_tokens"`
-	CacheCreationTokens int64   `json:"cache_creation_input_tokens"`
-	CostUSD             float64 `json:"est_cost_usd"`
+	Pass                string         `json:"pass"`
+	Calls               int            `json:"calls"`
+	InputTokens         int64          `json:"input_tokens"`
+	OutputTokens        int64          `json:"output_tokens"`
+	CacheReadTokens     int64          `json:"cache_read_input_tokens"`
+	CacheCreationTokens int64          `json:"cache_creation_input_tokens"`
+	CostUSD             float64        `json:"est_cost_usd"`
+	NumTurns            int            `json:"num_turns,omitempty"`
+	PermissionDenials   int            `json:"permission_denials,omitempty"`
+	ToolUses            map[string]int `json:"tool_uses,omitempty"`
+	SessionIDs          []string       `json:"session_ids,omitempty"`
 }
 
 // dataBlockPayload is the JSON structure embedded in the HTML comment for machine consumption.

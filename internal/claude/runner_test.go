@@ -316,155 +316,6 @@ func TestCLIJSONSchema_LeavesSchemalessDocumentUnchanged(t *testing.T) {
 	}
 }
 
-func TestExtractText(t *testing.T) {
-	tests := []struct {
-		name      string
-		raw       string
-		wantText  string
-		wantModel string
-		wantUsage tokenUsage
-		wantCost  float64
-		wantErr   bool
-	}{
-		{
-			name:      "valid envelope",
-			raw:       `{"type":"result","result":"the answer","model":"claude-opus-5-5"}`,
-			wantText:  "the answer",
-			wantModel: "claude-opus-5-5",
-		},
-		{
-			// The full envelope carries usage and cost; all four token fields
-			// and the cost must parse.
-			name: "valid envelope with usage and cost",
-			raw: `{"result":"the answer","usage":{"input_tokens":3180,"output_tokens":4,` +
-				`"cache_read_input_tokens":15626,"cache_creation_input_tokens":2464},"total_cost_usd":0.049015}`,
-			wantText: "the answer",
-			wantUsage: tokenUsage{
-				InputTokens:         3180,
-				OutputTokens:        4,
-				CacheReadTokens:     15626,
-				CacheCreationTokens: 2464,
-			},
-			wantCost: 0.049015,
-		},
-		{
-			// A missing model must stay a successful parse with an empty model,
-			// not an error — the envelope legitimately omits it.
-			name:     "valid envelope omits model",
-			raw:      `{"result":"just text"}`,
-			wantText: "just text",
-		},
-		{
-			// An envelope that omits usage/cost must decode them to zero, not
-			// fail — older or newer CLI versions may not emit them.
-			name:      "valid envelope omits usage and cost",
-			raw:       `{"result":"just text"}`,
-			wantText:  "just text",
-			wantUsage: tokenUsage{},
-			wantCost:  0,
-		},
-		{
-			// Usage-schema drift must not fail the call: a usage object reshaped
-			// into an array can no longer decode into tokenUsage, but the result
-			// the envelope carried must still come through with usage at zero.
-			name:      "reshaped usage does not fail result extraction",
-			raw:       `{"result":"the answer","usage":[1,2,3],"total_cost_usd":0.5}`,
-			wantText:  "the answer",
-			wantUsage: tokenUsage{},
-			wantCost:  0.5,
-		},
-		{
-			// A cost emitted as a string can no longer decode into float64, but it
-			// must degrade to zero rather than fail the whole envelope; usage still
-			// decodes independently.
-			name:      "stringified cost does not fail result extraction",
-			raw:       `{"result":"the answer","usage":{"input_tokens":10},"total_cost_usd":"0.42"}`,
-			wantText:  "the answer",
-			wantUsage: tokenUsage{InputTokens: 10},
-			wantCost:  0,
-		},
-		{
-			// With --json-schema the CLI carries the validated object in
-			// structured_output; extractText must prefer it over result.
-			name:     "structured_output preferred over result",
-			raw:      `{"result":"prose fallback","structured_output":{"findings":null,"summary":"s"}}`,
-			wantText: `{"findings":null,"summary":"s"}`,
-		},
-		{
-			// A literal null structured_output is treated as absent, so result wins.
-			name:     "null structured_output falls back to result",
-			raw:      `{"result":"the answer","structured_output":null}`,
-			wantText: "the answer",
-		},
-		{
-			// Empty input is not a valid envelope; json.Unmarshal rejects it.
-			name:    "empty input",
-			raw:     "",
-			wantErr: true,
-		},
-		{
-			name:    "malformed envelope",
-			raw:     "not json at all",
-			wantErr: true,
-		},
-		{
-			// A valid-JSON prefix that is cut off mid-stream fails to parse.
-			name:    "partial envelope",
-			raw:     `{"result":"the answer"`,
-			wantErr: true,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			text, model, usage, cost, err := extractText([]byte(tc.raw))
-			if tc.wantErr {
-				if err == nil {
-					t.Fatalf("extractText(%q) = nil error, want an error", tc.raw)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("extractText(%q) returned unexpected error: %v", tc.raw, err)
-			}
-			if text != tc.wantText {
-				t.Errorf("text = %q, want %q", text, tc.wantText)
-			}
-			if model != tc.wantModel {
-				t.Errorf("model = %q, want %q", model, tc.wantModel)
-			}
-			if usage != tc.wantUsage {
-				t.Errorf("usage = %+v, want %+v", usage, tc.wantUsage)
-			}
-			if cost != tc.wantCost {
-				t.Errorf("cost = %v, want %v", cost, tc.wantCost)
-			}
-		})
-	}
-}
-
-// TestExtractText_ErrorIncludesTruncatedRaw locks in that a parse failure
-// surfaces a wrapped error carrying the first 200 bytes of the raw output for
-// debugging, and that the embedded raw output is truncated rather than dumped
-// in full.
-func TestExtractText_ErrorIncludesTruncatedRaw(t *testing.T) {
-	raw := []byte(strings.Repeat("x", 300))
-	_, _, _, _, err := extractText(raw)
-	if err == nil {
-		t.Fatal("extractText on invalid JSON = nil error, want an error")
-	}
-	if !strings.Contains(err.Error(), "parse output envelope") {
-		t.Errorf("error %q does not mention parse output envelope", err)
-	}
-	if !strings.Contains(err.Error(), strings.Repeat("x", 200)) {
-		t.Errorf("error %q does not include the first 200 bytes of raw output", err)
-	}
-	if strings.Contains(err.Error(), strings.Repeat("x", 201)) {
-		t.Errorf("error %q includes more than 200 bytes; head did not truncate", err)
-	}
-}
-
 // rateLimitEnvelope and maxTurnsEnvelope are the two failure envelopes Claude
 // Code actually emits, captured verbatim from `claude -p --output-format json`.
 // Both exit non-zero with an EMPTY stderr, which is the whole reason
@@ -630,47 +481,36 @@ func TestClaudeRunError_NoOutputAtAll(t *testing.T) {
 	}
 }
 
-// TestClaudeArgs_RunnersDifferOnlyInOutputFormat locks the buffered and
-// streaming runners to one argv: strip the output-format tail each asks for
-// and the rest must be identical.
-func TestClaudeArgs_RunnersDifferOnlyInOutputFormat(t *testing.T) {
+// TestClaudeArgs_StreamsEverySession locks every session to the event stream
+// runClaudeStream reads: a full session and a structuring one both ask for
+// --output-format stream-json --verbose, and the spec-driven flags survive.
+func TestClaudeArgs_StreamsEverySession(t *testing.T) {
 	full := runSpec{model: "opus", effort: "high", permissionMode: "plan", jsonSchema: `{"type":"object"}`, readOnly: true, agentsJSON: "{}", appendSystemPrompt: "contract", sessionID: "0b6f4a8e-6a4c-4c1e-9a55-3f0d2c1b7e21", addDirs: []string{"/tmp/planwerk-agent-patterns-test"}}
-	structuring := runSpec{model: "sonnet", effort: "medium", readOnly: true, noTools: true, jsonSchema: `{"type":"object"}`}
+	structuring := runSpec{model: "sonnet", effort: "medium", readOnly: true, noTools: true, jsonSchema: `{"type":"object"}`, sessionID: "0b6f4a8e-6a4c-4c1e-9a55-3f0d2c1b7e21"}
 
 	for _, tc := range []struct {
 		name string
 		spec runSpec
+		want []string
 	}{
-		{"a full session", full},
-		// The structuring tier takes the same fork, so its trailing --tools ""
-		// must not reach one runner and miss the other.
-		{"a structuring session", structuring},
+		{"a full session", full, []string{"--session-id", "--permission-mode", "--add-dir", "--append-system-prompt", "--json-schema"}},
+		{"a structuring session", structuring, []string{"--session-id", "--permission-mode", "--json-schema"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			c := NewClient()
-			buffered := c.claudeArgs(tc.spec, "json")
-			streaming := c.claudeArgs(tc.spec, "stream-json", "--verbose")
-
-			strip := func(args []string, tail ...string) []string {
-				i := slices.Index(args, "--output-format")
-				if i == -1 || !slices.Equal(args[i+1:i+1+len(tail)], tail) {
-					t.Fatalf("argv %v lacks the output-format tail %v", args, tail)
+			args := NewClient().claudeArgs(tc.spec)
+			i := slices.Index(args, "--output-format")
+			if i == -1 || !slices.Equal(args[i+1:i+3], []string{"stream-json", "--verbose"}) {
+				t.Fatalf("argv %v lacks --output-format stream-json --verbose", args)
+			}
+			if slices.Contains(args, "json") {
+				t.Errorf("argv %v still asks for the buffered json envelope", args)
+			}
+			for _, flag := range tc.want {
+				if !slices.Contains(args, flag) {
+					t.Errorf("argv lost the spec-driven flag %s: %v", flag, args)
 				}
-				return slices.Concat(args[:i], args[i+1+len(tail):])
-			}
-			got, want := strip(streaming, "stream-json", "--verbose"), strip(buffered, "json")
-			if !slices.Equal(got, want) {
-				t.Errorf("runners diverge beyond the output format:\nstreaming %v\nbuffered  %v", got, want)
-			}
-			if !slices.Contains(want, "--json-schema") {
-				t.Errorf("argv lost a spec-driven flag: %v", want)
 			}
 		})
-	}
-
-	c := NewClient()
-	if args := c.claudeArgs(full, "json"); !slices.Contains(args, "--session-id") || !slices.Contains(args, "--permission-mode") || !slices.Contains(args, "--add-dir") || !slices.Contains(args, "--append-system-prompt") {
-		t.Errorf("argv lost a spec-driven flag: %v", args)
 	}
 }
 
@@ -682,7 +522,7 @@ func TestClaudeArgs_RunnersDifferOnlyInOutputFormat(t *testing.T) {
 func TestClaudeArgs_NoToolsReplacesTheToolFlags(t *testing.T) {
 	t.Parallel()
 
-	args := NewClient().claudeArgs(runSpec{model: "sonnet", effort: "medium", readOnly: true, noTools: true}, "json")
+	args := NewClient().claudeArgs(runSpec{model: "sonnet", effort: "medium", readOnly: true, noTools: true})
 
 	idx := slices.Index(args, "--tools")
 	if idx == -1 {
@@ -711,14 +551,14 @@ func TestClaudeArgs_ReadOnlyDisablesProjectHooks(t *testing.T) {
 		{model: "opus", effort: "xhigh", readOnly: true},
 		{model: "sonnet", effort: "medium", readOnly: true, noTools: true},
 	} {
-		args := NewClient().claudeArgs(spec, "json")
+		args := NewClient().claudeArgs(spec)
 		i := slices.Index(args, "--settings")
 		if i == -1 || i+1 >= len(args) || args[i+1] != readOnlyHookSettings {
 			t.Errorf("read-only spec %+v: want --settings %s; got %v", spec, readOnlyHookSettings, args)
 		}
 	}
 
-	args := NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", permissionMode: claudeAutoPermissionMode}, "json")
+	args := NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", permissionMode: claudeAutoPermissionMode})
 	if slices.Contains(args, "--settings") {
 		t.Errorf("a mutating session must keep the project's hooks; got %v", args)
 	}
@@ -736,14 +576,14 @@ func TestClaudeArgs_ReadOnlyRunsInDontAsk(t *testing.T) {
 		{model: "opus", effort: "xhigh", readOnly: true},
 		{model: "sonnet", effort: "medium", readOnly: true, noTools: true},
 	} {
-		args := NewClient().claudeArgs(spec, "json")
+		args := NewClient().claudeArgs(spec)
 		i := slices.Index(args, "--permission-mode")
 		if i == -1 || i+1 >= len(args) || args[i+1] != claudeReadOnlyPermissionMode {
 			t.Errorf("read-only spec %+v: want --permission-mode %s; got %v", spec, claudeReadOnlyPermissionMode, args)
 		}
 	}
 
-	args := NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", permissionMode: claudeAutoPermissionMode}, "json")
+	args := NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", permissionMode: claudeAutoPermissionMode})
 	i := slices.Index(args, "--permission-mode")
 	if i == -1 || i+1 >= len(args) || args[i+1] != claudeAutoPermissionMode {
 		t.Errorf("a mutating session must keep --permission-mode %s; got %v", claudeAutoPermissionMode, args)
@@ -755,11 +595,11 @@ func TestClaudeArgs_ReadOnlyRunsInDontAsk(t *testing.T) {
 
 // TestClaudeArgs_ToolFlagsSurviveWithoutNoTools guards the other direction: every
 // session that is not a structuring pass keeps the deny/allow pair exactly as
-// before, and never carries --tools.
+// before, and carries no --tools while its spec names no tool list.
 func TestClaudeArgs_ToolFlagsSurviveWithoutNoTools(t *testing.T) {
 	t.Parallel()
 
-	args := NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", readOnly: true}, "json")
+	args := NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", readOnly: true})
 
 	denyIdx := slices.Index(args, "--disallowed-tools")
 	allowIdx := slices.Index(args, "--allowed-tools")
@@ -767,10 +607,75 @@ func TestClaudeArgs_ToolFlagsSurviveWithoutNoTools(t *testing.T) {
 		t.Fatalf("read-only session lost the deny-then-allow tool flags; got %v", args)
 	}
 	if slices.Contains(args, "--tools") {
-		t.Errorf("--tools must be reserved for the structuring tier; got %v", args)
+		t.Errorf("--tools must stay off a session whose spec names no tool list; got %v", args)
 	}
 	if !slices.Equal(args[denyIdx+1:allowIdx], claudeReadOnlyDeniedTools) {
 		t.Errorf("denied tools = %v, want %v", args[denyIdx+1:allowIdx], claudeReadOnlyDeniedTools)
+	}
+}
+
+// TestClaudeArgs_ToolListPrecedesTheDenyList pins where a --finder-tools list
+// lands: one comma-joined --tools value ahead of --disallowed-tools, whose
+// token closes the variadic list, with the deny list unchanged and
+// --allowed-tools still last. A structuring spec ignores the list and keeps
+// its trailing empty --tools alone.
+func TestClaudeArgs_ToolListPrecedesTheDenyList(t *testing.T) {
+	t.Parallel()
+
+	args := NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", readOnly: true, tools: []string{"Grep", "Read"}})
+	toolsIdx := slices.Index(args, "--tools")
+	denyIdx := slices.Index(args, "--disallowed-tools")
+	allowIdx := slices.Index(args, "--allowed-tools")
+	if toolsIdx == -1 || denyIdx != toolsIdx+2 || args[toolsIdx+1] != "Grep,Read" {
+		t.Fatalf("want --tools Grep,Read directly before --disallowed-tools; got %v", args)
+	}
+	if allowIdx < denyIdx || !slices.Equal(args[denyIdx+1:allowIdx], claudeReadOnlyDeniedTools) {
+		t.Errorf("deny list = %v, want %v ahead of --allowed-tools; got %v", args[denyIdx+1:allowIdx], claudeReadOnlyDeniedTools, args)
+	}
+	if tail := []string{"--allowed-tools", "WebSearch", "WebFetch"}; !slices.Equal(args[len(args)-len(tail):], tail) {
+		t.Errorf("--allowed-tools must stay the trailing flag; got %v", args)
+	}
+
+	noTools := NewClient().claudeArgs(runSpec{model: "sonnet", effort: "medium", readOnly: true, noTools: true, tools: []string{"Grep", "Read"}})
+	if i := slices.Index(noTools, "--tools"); i != len(noTools)-2 || noTools[i+1] != "" || slices.Contains(noTools, "Grep,Read") {
+		t.Errorf("a structuring spec must keep only its trailing --tools \"\"; got %v", noTools)
+	}
+}
+
+// TestParseToolList pins what --finder-tools accepts: comma-separated tool
+// names, trimmed, sorted and deduplicated, and nil for a blank value. An empty
+// entry, a lowercase name, a permission rule, another separator and the CLI's
+// "default" keyword are refused with the entry quoted.
+func TestParseToolList(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		in      string
+		want    []string
+		wantErr string
+	}{
+		{in: "", want: nil},
+		{in: "  ", want: nil},
+		{in: " Read, Grep ,Read", want: []string{"Grep", "Read"}},
+		{in: "WebFetch,Bash,Glob", want: []string{"Bash", "Glob", "WebFetch"}},
+		{in: "Read,,Grep", wantErr: `empty tool name in "Read,,Grep"`},
+		{in: "read", wantErr: `tool "read" is not a built-in tool name`},
+		{in: "Bash(git:*)", wantErr: `tool "Bash(git:*)" is not a built-in tool name`},
+		{in: "Read;Grep", wantErr: `tool "Read;Grep" is not a built-in tool name`},
+		{in: "default", wantErr: `tool "default" is not a built-in tool name`},
+	} {
+		t.Run(tc.in, func(t *testing.T) {
+			got, err := ParseToolList(tc.in)
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Errorf("ParseToolList(%q) error = %v, want one containing %q", tc.in, err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil || !slices.Equal(got, tc.want) || (tc.want == nil) != (got == nil) {
+				t.Errorf("ParseToolList(%q) = %#v, %v; want %#v", tc.in, got, err, tc.want)
+			}
+		})
 	}
 }
 
@@ -785,14 +690,14 @@ func TestClaudeArgs_SearchRuleFollowsTheWebTools(t *testing.T) {
 	c := NewClient()
 	readOnly := runSpec{model: "opus", effort: "xhigh", readOnly: true}
 
-	without := c.claudeArgs(readOnly, "json")
+	without := c.claudeArgs(readOnly)
 	if tail := []string{"--allowed-tools", "WebSearch", "WebFetch"}; len(without) < len(tail) || !slices.Equal(without[len(without)-len(tail):], tail) {
 		t.Fatalf("a read-only session without a rule must end in %v; got %v", tail, without)
 	}
 
 	withRule := readOnly
 	withRule.searchRule = rule
-	if got, want := c.claudeArgs(withRule, "json"), append(slices.Clone(without), rule); !slices.Equal(got, want) {
+	if got, want := c.claudeArgs(withRule), append(slices.Clone(without), rule); !slices.Equal(got, want) {
 		t.Errorf("a read-only session with a rule: argv %v, want %v", got, want)
 	}
 
@@ -803,7 +708,7 @@ func TestClaudeArgs_SearchRuleFollowsTheWebTools(t *testing.T) {
 	} {
 		noRule := spec
 		noRule.searchRule = ""
-		if got, want := c.claudeArgs(spec, "json"), c.claudeArgs(noRule, "json"); !slices.Equal(got, want) || slices.Contains(got, rule) {
+		if got, want := c.claudeArgs(spec), c.claudeArgs(noRule); !slices.Equal(got, want) || slices.Contains(got, rule) {
 			t.Errorf("%s must not carry the rule: argv %v, want %v", name, got, want)
 		}
 	}
@@ -860,7 +765,7 @@ func TestAdapters_HandTheSearchRuleToTheSessionsThatSearch(t *testing.T) {
 		if first.label != label {
 			t.Fatalf("first session has label %q, want %q", first.label, label)
 		}
-		return c.claudeArgs(first, "json")
+		return c.claudeArgs(first)
 	}
 	hasBashRule := func(args []string) bool {
 		return slices.ContainsFunc(args, func(a string) bool { return strings.HasPrefix(a, "Bash(") })
@@ -911,7 +816,7 @@ func TestAdapters_HandTheSearchRuleToTheSessionsThatSearch(t *testing.T) {
 func TestClaudeArgs_AddDirFollowsThePermissionMode(t *testing.T) {
 	t.Parallel()
 
-	args := NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", permissionMode: claudeAutoPermissionMode, addDirs: []string{"/x/y"}}, "json")
+	args := NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", permissionMode: claudeAutoPermissionMode, addDirs: []string{"/x/y"}})
 	i := slices.Index(args, "--permission-mode")
 	if i == -1 || i+4 >= len(args) {
 		t.Fatalf("argv lacks --permission-mode followed by --add-dir, its value and a flag; got %v", args)
@@ -921,7 +826,7 @@ func TestClaudeArgs_AddDirFollowsThePermissionMode(t *testing.T) {
 	}
 
 	// Two directories follow the one flag, in order, and a flag follows them.
-	args = NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", permissionMode: claudeAutoPermissionMode, addDirs: []string{"/a", "/b"}}, "json")
+	args = NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", permissionMode: claudeAutoPermissionMode, addDirs: []string{"/a", "/b"}})
 	i = slices.Index(args, "--permission-mode")
 	if i == -1 || i+5 >= len(args) {
 		t.Fatalf("argv lacks --permission-mode followed by --add-dir, two values and a flag; got %v", args)
@@ -934,7 +839,7 @@ func TestClaudeArgs_AddDirFollowsThePermissionMode(t *testing.T) {
 	}
 
 	// A read-only session, in claudeReadOnlyPermissionMode, still gets the directory.
-	args = NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", readOnly: true, addDirs: []string{"/x/y"}}, "json")
+	args = NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", readOnly: true, addDirs: []string{"/x/y"}})
 	j := slices.Index(args, "--add-dir")
 	if j == -1 || j+2 >= len(args) || args[j+1] != "/x/y" || !strings.HasPrefix(args[j+2], "--") {
 		t.Errorf("a read-only spec must carry --add-dir /x/y and then a flag; got %v", args)
@@ -953,12 +858,12 @@ func TestClaudeArgs_NoAddDirWhenEmpty(t *testing.T) {
 		{model: "opus", effort: "xhigh", readOnly: true, addDirs: []string{}},
 		{model: "opus", effort: "xhigh", readOnly: true, addDirs: []string{"", ""}},
 	} {
-		if args := NewClient().claudeArgs(spec, "json"); slices.Contains(args, "--add-dir") || slices.Contains(args, "") {
+		if args := NewClient().claudeArgs(spec); slices.Contains(args, "--add-dir") || slices.Contains(args, "") {
 			t.Errorf("spec %+v without a directory emitted --add-dir or an empty argument; got %v", spec, args)
 		}
 	}
 
-	args := NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", readOnly: true, addDirs: []string{"", "/b"}}, "json")
+	args := NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", readOnly: true, addDirs: []string{"", "/b"}})
 	j := slices.Index(args, "--add-dir")
 	if j == -1 || j+2 >= len(args) || args[j+1] != "/b" || !strings.HasPrefix(args[j+2], "--") {
 		t.Errorf("want --add-dir /b and then a flag; got %v", args)
@@ -974,7 +879,7 @@ func TestClaudeArgs_NoAddDirWhenEmpty(t *testing.T) {
 func TestClaudeArgs_NoToolsNeverOpensADirectory(t *testing.T) {
 	t.Parallel()
 
-	args := NewClient().claudeArgs(runSpec{model: "sonnet", effort: "medium", readOnly: true, noTools: true, addDirs: []string{"/x/y", "/z"}}, "json")
+	args := NewClient().claudeArgs(runSpec{model: "sonnet", effort: "medium", readOnly: true, noTools: true, addDirs: []string{"/x/y", "/z"}})
 	if slices.Contains(args, "--add-dir") || slices.Contains(args, "/x/y") || slices.Contains(args, "/z") {
 		t.Errorf("a no-tools session must not be handed a directory; got %v", args)
 	}
@@ -991,7 +896,7 @@ func TestClaudeArgs_AppendSystemPromptPrecedesThePermissionMode(t *testing.T) {
 	t.Parallel()
 
 	const catalogDir = "/tmp/catalog"
-	args := NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", permissionMode: claudeAutoPermissionMode, addDirs: []string{catalogDir}, appendSystemPrompt: "x\ny"}, "json")
+	args := NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", permissionMode: claudeAutoPermissionMode, addDirs: []string{catalogDir}, appendSystemPrompt: "x\ny"})
 	i := slices.Index(args, "--append-system-prompt")
 	p := slices.Index(args, "--permission-mode")
 	if i == -1 || p == -1 || i+1 >= len(args) {
@@ -1018,7 +923,7 @@ func TestClaudeArgs_NoAppendSystemPromptWhenEmpty(t *testing.T) {
 		{model: "opus", effort: "xhigh", permissionMode: claudeAutoPermissionMode},
 		{model: "sonnet", effort: "medium", readOnly: true, noTools: true},
 	} {
-		args := NewClient().claudeArgs(spec, "json")
+		args := NewClient().claudeArgs(spec)
 		if slices.Contains(args, "--append-system-prompt") {
 			t.Errorf("spec %+v without appendSystemPrompt emitted --append-system-prompt; got %v", spec, args)
 		}
@@ -1254,7 +1159,7 @@ func TestAdapters_OpenTheMemoryDirectory(t *testing.T) {
 				if first.label != row.label {
 					t.Fatalf("first session has label %q, want %q", first.label, row.label)
 				}
-				args := c.claudeArgs(first, "json")
+				args := c.claudeArgs(first)
 				if got := addDirValues(args); !slices.Equal(got, tc.want) {
 					t.Errorf("--add-dir carries %q, want %q; argv %v", got, tc.want, args)
 				}
@@ -1290,7 +1195,7 @@ func TestAdapters_OpenTheMemoryDirectory(t *testing.T) {
 		if first.label != "elaborate-review" {
 			t.Fatalf("first session has label %q, want elaborate-review", first.label)
 		}
-		args := c.claudeArgs(first, "json")
+		args := c.claudeArgs(first)
 		if slices.Contains(args, "--add-dir") || slices.Contains(args, memoryDir) || slices.Contains(args, catalogDir) {
 			t.Errorf("the reviewer session must open no directory; argv %v", args)
 		}
@@ -1355,11 +1260,13 @@ func TestFixAndAddress_KeepTheirSessionModeWithTheMemory(t *testing.T) {
 // each adapter runs one read-only session that keeps its tools and carries
 // schema.FinderOutput, and the empty output it returns decodes without a
 // structuring or repair session behind it. The review and the audit run on the
-// main model and effort, the other five on the finder tier.
+// main model and effort, the other five on the finder tier, and all seven load
+// the --finder-tools list, and no list at all without the option.
 func TestFinders_ConstrainTheOutputSchema(t *testing.T) {
 	t.Parallel()
 
 	const finderModel = "haiku"
+	finderTools := []string{"Grep", "Read"}
 	rows := []struct {
 		name, label, model, effort string
 		run                        func(c *Client) (*report.ReviewResult, error)
@@ -1391,7 +1298,7 @@ func TestFinders_ConstrainTheOutputSchema(t *testing.T) {
 			t.Parallel()
 			c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
 				return emptyFinderOutputJSON, "", nil
-			}, WithFinderModel(finderModel), WithFinderEffort(testWorkerEffort))
+			}, WithFinderModel(finderModel), WithFinderEffort(testWorkerEffort), WithFinderTools(finderTools))
 
 			result, err := row.run(c)
 			if err != nil {
@@ -1412,6 +1319,62 @@ func TestFinders_ConstrainTheOutputSchema(t *testing.T) {
 			}
 			if spec.noTools || !spec.readOnly {
 				t.Errorf("noTools=%v readOnly=%v, want a read-only session that keeps its tools", spec.noTools, spec.readOnly)
+			}
+			if !slices.Equal(spec.tools, finderTools) {
+				t.Errorf("tools = %v, want the --finder-tools list %v", spec.tools, finderTools)
+			}
+
+			c, calls = scriptedClient(t, func(int, runSpec, string) (string, string, error) {
+				return emptyFinderOutputJSON, "", nil
+			})
+			if _, err := row.run(c); err != nil {
+				t.Fatalf("adapter without --finder-tools returned error: %v", err)
+			}
+			if spec := (*calls)[0].spec; spec.tools != nil || slices.Contains(c.claudeArgs(spec), "--tools") {
+				t.Errorf("without --finder-tools: tools = %v, argv %v; want no tool list", spec.tools, c.claudeArgs(spec))
+			}
+		})
+	}
+}
+
+// TestFinderTools_LeaveTheOtherSessionsAlone proves the scope of
+// --finder-tools: the coverage map, claim verification and an analysis session
+// keep Claude Code's default set when it is set.
+// TestFinders_ConstrainTheOutputSchema covers the seven passes it applies to.
+func TestFinderTools_LeaveTheOtherSessionsAlone(t *testing.T) {
+	t.Parallel()
+
+	others := []struct {
+		name, output string
+		run          func(c *Client) error
+	}{
+		{"CoverageMap", `{"entries":[]}`, func(c *Client) error {
+			_, err := c.CoverageMap("", "develop")
+			return err
+		}},
+		{"VerifyFindingClaims", `{"verdicts":[]}`, func(c *Client) error {
+			_, err := c.VerifyFindingClaims("", []report.Finding{{Severity: report.SeverityCritical, Title: "t", File: "a.go", Line: 1}})
+			return err
+		}},
+		{"runClaude", "prose", func(c *Client) error {
+			_, _, err := c.runClaude("", "prompt", "propose", noCatalog)
+			return err
+		}},
+	}
+	for _, row := range others {
+		t.Run(row.name, func(t *testing.T) {
+			t.Parallel()
+			c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
+				return row.output, "", nil
+			}, WithFinderTools([]string{"Grep", "Read"}))
+			if err := row.run(c); err != nil {
+				t.Fatalf("session returned error: %v", err)
+			}
+			if len(*calls) != 1 {
+				t.Fatalf("ran %d sessions, want 1", len(*calls))
+			}
+			if spec := (*calls)[0].spec; spec.tools != nil {
+				t.Errorf("%s session tools = %v, want nil: --finder-tools covers only the passes that emit findings", spec.label, spec.tools)
 			}
 		})
 	}
@@ -1764,7 +1727,7 @@ func TestRunClaudeBrainReview_Spec(t *testing.T) {
 		t.Errorf("dir %q, label %q, addDirs %v", spec.dir, spec.label, spec.addDirs)
 	}
 
-	args := c.claudeArgs(spec, "json")
+	args := c.claudeArgs(spec)
 	i := slices.Index(args, "--disallowed-tools")
 	if i == -1 || i+3 >= len(args) || !slices.Equal(args[i+1:i+4], []string{"Edit", "Write", "NotebookEdit"}) {
 		t.Errorf("argv must deny the write tools; got %v", args)

@@ -1,6 +1,7 @@
 package eval
 
 import (
+	"maps"
 	"reflect"
 	"slices"
 	"testing"
@@ -66,6 +67,45 @@ func TestSumUsage(t *testing.T) {
 		}
 		if want := []string{"c", "a", "b"}; !slices.Equal(names, want) {
 			t.Errorf("pass order = %v, want %v", names, want)
+		}
+	})
+
+	t.Run("merges how each pass's sessions ran without touching either input", func(t *testing.T) {
+		a := report.Usage{Passes: []report.PassUsage{
+			{Pass: "review", NumTurns: 10, PermissionDenials: 1, ToolUses: map[string]int{"Read": 5, "Grep": 2}, SessionIDs: []string{"a-1"}},
+			{Pass: "structure", Calls: 1},
+		}}
+		b := report.Usage{Passes: []report.PassUsage{
+			{Pass: "review", NumTurns: 4, ToolUses: map[string]int{"Read": 1, "Bash": 3}, SessionIDs: []string{"b-1", "b-2"}},
+		}}
+		clone := func(u report.Usage) report.Usage {
+			c := u
+			c.Passes = nil
+			for _, p := range u.Passes {
+				p.ToolUses = maps.Clone(p.ToolUses)
+				p.SessionIDs = slices.Clone(p.SessionIDs)
+				c.Passes = append(c.Passes, p)
+			}
+			return c
+		}
+		aBefore, bBefore := clone(a), clone(b)
+
+		got := sumUsage(a, b)
+
+		want := []report.PassUsage{
+			{Pass: "review", NumTurns: 14, PermissionDenials: 1, ToolUses: map[string]int{"Read": 6, "Grep": 2, "Bash": 3}, SessionIDs: []string{"a-1", "b-1", "b-2"}},
+			{Pass: "structure", Calls: 1},
+		}
+		if !reflect.DeepEqual(got.Passes, want) {
+			t.Errorf("sumUsage passes =\n%+v\nwant\n%+v", got.Passes, want)
+		}
+		if !reflect.DeepEqual(a, aBefore) || !reflect.DeepEqual(b, bBefore) {
+			t.Errorf("sumUsage mutated an input: a = %+v, b = %+v", a, b)
+		}
+		got.Passes[0].ToolUses["Read"] = 99
+		got.Passes[0].SessionIDs[0] = "changed"
+		if !reflect.DeepEqual(a, aBefore) || !reflect.DeepEqual(b, bBefore) {
+			t.Errorf("the merged pass aliases an input: a = %+v, b = %+v", a, b)
 		}
 	})
 

@@ -2,6 +2,7 @@ package claude
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -949,5 +950,32 @@ func TestFinderTierIgnoresEmptyOverrides(t *testing.T) {
 	c := NewClient(WithFinderModel(testImplementOverride), WithFinderEffort(testWorkerEffort), WithFinderModel(""), WithFinderEffort(""))
 	if c.finderModel != testImplementOverride || c.finderEffort != testWorkerEffort {
 		t.Errorf("finder tier = %q/%q, want the earlier non-empty values kept", c.finderModel, c.finderEffort)
+	}
+}
+
+// TestFinderToolsIgnoresEmptyOverrides mirrors the tier options for the tool
+// list: an empty list keeps the earlier one, the getter hands out a copy, and
+// a client built without the option passes no list (DefaultFinderTools).
+func TestFinderToolsIgnoresEmptyOverrides(t *testing.T) {
+	c := NewClient(WithFinderTools([]string{"Read"}), WithFinderTools(nil))
+	if got := c.FinderTools(); !slices.Equal(got, []string{"Read"}) {
+		t.Errorf("FinderTools() = %v, want the earlier non-empty [Read] kept", got)
+	}
+
+	got := c.FinderTools()
+	got[0] = "Bash"
+	if again := c.FinderTools(); !slices.Equal(again, []string{"Read"}) {
+		t.Errorf("FinderTools() = %v after mutating a returned copy, want [Read]", again)
+	}
+
+	names := []string{"Grep"}
+	c = NewClient(WithFinderTools(names))
+	names[0] = "Bash"
+	if got := c.FinderTools(); !slices.Equal(got, []string{"Grep"}) {
+		t.Errorf("FinderTools() = %v after mutating the option's argument, want [Grep]", got)
+	}
+
+	if got := NewClient().FinderTools(); got != nil {
+		t.Errorf("NewClient().FinderTools() = %v, want nil", got)
 	}
 }

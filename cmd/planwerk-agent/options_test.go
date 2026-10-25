@@ -157,6 +157,7 @@ func TestRoot_DiffExclusionsReachTheClientAndTheCacheKey(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv(envDiffExclusions, tc.env)
+			t.Setenv(envFinderTools, "")
 			deps := &runtimeDeps{version: "test"}
 			cmd := newRootCmd(deps)
 			cmd.SetOut(&bytes.Buffer{})

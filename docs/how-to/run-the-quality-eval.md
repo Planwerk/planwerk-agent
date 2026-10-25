@@ -67,15 +67,16 @@ The Claude model, effort, and timeout come from the same `PLANWERK_*`
 environment overrides the main CLI honors (`PLANWERK_CLAUDE_MODEL`,
 `PLANWERK_CLAUDE_EFFORT`, `PLANWERK_STRUCTURE_MODEL`,
 `PLANWERK_STRUCTURE_EFFORT`, `PLANWERK_FINDER_MODEL`,
-`PLANWERK_FINDER_EFFORT`, `PLANWERK_CLAUDE_TIMEOUT`,
+`PLANWERK_FINDER_EFFORT`, `PLANWERK_FINDER_TOOLS`, `PLANWERK_CLAUDE_TIMEOUT`,
 `PLANWERK_CLAUDE_INHERIT_USER_CONFIG`, `PLANWERK_DIFF_EXCLUSIONS`), and the
 two switches take the values the CLI takes: `1`, `true`, `yes`, `on`, `0`,
 `false`, `no`, `off`, in any letter case. An effort that is not one of `low`,
-`medium`, `high`, `xhigh`, `max`, or a switch set to any other value exits 1
-before any case runs. The corpus holds no lock, vendored or generated file, so
-`PLANWERK_DIFF_EXCLUSIONS` leaves a corpus run unchanged. An AACR-Bench pull
-request can change such a file, and the variable then leaves it out as it
-does on a real review.
+`medium`, `high`, `xhigh`, `max`, a tool list that
+[`--finder-tools`](/reference/cli#global-flags) would refuse, or a switch set
+to any other value exits 1 before any case runs. The corpus holds no lock,
+vendored or generated file, so `PLANWERK_DIFF_EXCLUSIONS` leaves a corpus run
+unchanged. An AACR-Bench pull request can change such a file, and the variable
+then leaves it out as it does on a real review.
 
 ## What it measures
 
@@ -288,7 +289,10 @@ In `-json` output each case and the aggregate carry `precision`, `recall`,
 (totals over all runs), and the report carries `runs`, `thorough`,
 `specialists`, `scope_patterns` (present when set), `tiers`, `match` and
 `recall_by_pass`. `tiers` holds `claude_model`, `claude_effort`,
-`finder_model`, `finder_effort`, `structure_model` and `structure_effort`.
+`finder_model`, `finder_effort`, `structure_model` and `structure_effort`, and
+`finder_tools` when `PLANWERK_FINDER_TOOLS` is set. Each `usage.passes` entry
+also carries `num_turns`, `permission_denials`, `tool_uses` and `session_ids`
+(see [Claude Usage Totals](/reference/output-format#claude-usage-totals)).
 
 ## Run against AACR-Bench
 
@@ -677,3 +681,33 @@ little. Nine of its ten cases change a `.go` file, which keeps every body but
 Markdown Quality's, so for them the comparison measures mostly the
 `<patterns for="…">` grouping. Only `irreversible-migration`, whose head
 changes a SQL file alone, moves the Go patterns to the index.
+
+## Try a finder tool set
+
+`PLANWERK_FINDER_TOOLS` names the built-in tools the seven passes that emit
+findings load, the review and the audit included; the coverage map and claim
+verification keep the default set. Unset, the passes load Claude Code's
+default set. What a finder can call decides what it can read, so a smaller set
+can cost recall, and the same rule decides as for the finder tier (decision
+106).
+
+Record a baseline with the variable unset, then compare a candidate set
+against it, for example one that drops `Agent`, `TodoWrite` and `Skill`:
+
+```bash
+# Baseline: Claude Code's default tool set
+go run ./cmd/planwerk-eval -thorough -specialists -runs 3 -json > /tmp/eval-baseline.json
+
+# Candidate: the tools a finder reads the change with
+PLANWERK_FINDER_TOOLS=Bash,Glob,Grep,Read,WebFetch,WebSearch \
+  go run ./cmd/planwerk-eval -thorough -specialists -runs 3 \
+  -baseline /tmp/eval-baseline.json -json > /tmp/eval-candidate.json
+```
+
+Keep `Bash` in any candidate: without it a pass cannot run git or
+`brain search`. The candidate's `-json` report carries the comparison: its
+`comparison` field holds the verdict, and `candidate_tiers.finder_tools`
+names the tools the candidate ran with, while `baseline_tiers` names none. In
+each side's report, `tool_uses` per pass shows which tools the finders
+actually called, so you can see what a candidate took away before you read
+its verdict.
