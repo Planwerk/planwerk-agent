@@ -104,9 +104,10 @@ func TestSetupRepoCommitsGoModInBase(t *testing.T) {
 }
 
 // TestSetupRepoListsFileChanges locks the changed-file list RunCase hands the
-// review: DiffFileChanges over a setupRepo checkout lists the files the head/
-// overlay changes and not the go.mod the base commit carries, so the corpus
-// runs the review prompt's Changed Files section (decision 138).
+// review: the corpus pull request checkoutCase builds over a setupRepo
+// checkout lists the files the head/ overlay changes and not the go.mod the
+// base commit carries, so the corpus runs the review prompt's Changed Files
+// section (decision 138).
 func TestSetupRepoListsFileChanges(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")
@@ -117,21 +118,17 @@ func TestSetupRepoListsFileChanges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadCase: %v", err)
 	}
-	repo := t.TempDir()
-	if _, err := setupRepo(repo, c); err != nil {
-		t.Fatalf("setupRepo: %v", err)
+	pr, err := checkoutCase(t.TempDir(), c)
+	if err != nil {
+		t.Fatalf("checkoutCase: %v", err)
 	}
 
-	got, err := (github.Client{}).DiffFileChanges(repo, evalBaseBranch)
-	if err != nil {
-		t.Fatalf("DiffFileChanges: %v", err)
-	}
 	want := []github.FileChange{
 		{Path: "extra.go", Status: github.FileAdded, Added: 3},
 		{Path: "main.go", Status: github.FileModified, Added: 1, Deleted: 1},
 	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("DiffFileChanges = %+v, want %+v", got, want)
+	if !reflect.DeepEqual(pr.FileChanges, want) {
+		t.Errorf("FileChanges = %+v, want %+v", pr.FileChanges, want)
 	}
 }
 

@@ -2,7 +2,9 @@
 
 Measure how well the review pipeline actually finds bugs. `make eval` runs the
 **shipped** review pipeline against a small labeled corpus of seeded-bug cases
-and scores the findings for precision, recall, F1, and severity accuracy.
+and scores the findings for precision, recall, F1, and severity accuracy. It
+can also score a sample of AACR-Bench, a benchmark of real pull requests; see
+[Run against AACR-Bench](#run-against-aacr-bench).
 
 > [!IMPORTANT]
 > The eval invokes the **real** `claude` CLI and **spends tokens**. It needs an
@@ -50,6 +52,12 @@ it directly for the full flag set (`go run ./cmd/planwerk-eval -h`):
   [Compare a change against a baseline](#compare-a-change-against-a-baseline).
 - `-case <name>` runs one case, `-json` emits the report as JSON, and
   `-corpus <dir>` points at another corpus.
+- `-aacr <export>` scores a sample of AACR-Bench instead of the corpus, and
+  `-aacr-sample N` (default 10) sets how many pull requests it holds; see
+  [Run against AACR-Bench](#run-against-aacr-bench).
+- `-aacr-cache <dir>` sets where the benchmark repositories are fetched to,
+  and `-judge` also asks whether each line-overlapping pair raises the same
+  concern; see [Run against AACR-Bench](#run-against-aacr-bench).
 
 The Claude model, effort, and timeout come from the same `PLANWERK_*`
 environment overrides the main CLI honors (`PLANWERK_CLAUDE_MODEL`,
@@ -61,7 +69,9 @@ two switches take the values the CLI takes: `1`, `true`, `yes`, `on`, `0`,
 `false`, `no`, `off`, in any letter case. An effort that is not one of `low`,
 `medium`, `high`, `xhigh`, `max`, or a switch set to any other value exits 1
 before any case runs. The corpus holds no lock, vendored or generated file, so
-`PLANWERK_DIFF_EXCLUSIONS` leaves an eval run unchanged.
+`PLANWERK_DIFF_EXCLUSIONS` leaves a corpus run unchanged. An AACR-Bench pull
+request can change such a file, and the variable then leaves it out as it
+does on a real review.
 
 ## What it measures
 
@@ -110,11 +120,12 @@ pass's recall is its credited findings over the aggregate TP + FN. One
 prediction that matches two nearby expected findings credits its passes for
 both, so a pass's recall can exceed the pooled recall.
 
-Each throwaway repo gets a `go.mod` (`module planwerk-eval/corpus`, `go 1.22`)
+Each corpus repo gets a `go.mod` (`module planwerk-eval/corpus`, `go 1.22`)
 in its base commit, written by the harness. Technology detection then tags
 the repo `go` and the review loads the Go technology patterns a real Go
 repository gets. The file is part of the base commit, so it never shows up
-among the changed files.
+among the changed files. An AACR-Bench repository is a real one and gets
+none.
 
 The exit code is non-zero **only** on a harness error (bad corpus, git failure,
 pipeline or JSON error) — **never** because the scores are low. A low score is a
@@ -275,6 +286,136 @@ In `-json` output each case and the aggregate carry `precision`, `recall`,
 `recall_by_pass`. `tiers` holds `claude_model`, `claude_effort`,
 `finder_model`, `finder_effort`, `structure_model` and `structure_effort`.
 
+## Run against AACR-Bench
+
+The corpus says whether a change loses a seeded bug in a small Go tree, not
+how the review fares on real code in other languages.
+[AACR-Bench](https://huggingface.co/datasets/Alibaba-Aone/aacr-bench)
+(Apache-2.0, paper [arXiv 2601.19494](https://arxiv.org/abs/2601.19494)) holds
+2,145 review comments on 200 pull requests from 50 repositories in 10
+languages, 1,505 of them verified by experts. `-aacr` scores a sample of it
+instead of the corpus. The repository never vendors the dataset: download it
+yourself.
+
+> [!IMPORTANT]
+> Every sampled pull request is a full review of a real repository. Expect a
+> multiple of a corpus case's cost per run, plus network traffic and gigabytes
+> of disk for the shallow clones. Start with `-aacr-sample 2`. The benchmark
+> never runs in `make test` or CI.
+
+Fetch the export at a pinned revision and check its hash:
+
+```bash
+curl -L -o ~/aacr-bench.json \
+  https://huggingface.co/datasets/Alibaba-Aone/aacr-bench/resolve/47be1d6df1e7faf222cf531587772d92f79fe6b2/dataset.json
+sha256sum ~/aacr-bench.json
+# 0804505f0a474765ce2840c832cfeaa6c4f0250dd6ccb169fe73c6758b245a86
+```
+
+Then score a sample:
+
+```bash
+# Ten pull requests, matched on lines
+go run ./cmd/planwerk-eval -aacr ~/aacr-bench.json -aacr-sample 10
+
+# Also judge every line-overlapping pair
+go run ./cmd/planwerk-eval -aacr ~/aacr-bench.json -aacr-sample 10 -judge
+
+# With the adversarial pass and the specialists, as JSON
+go run ./cmd/planwerk-eval -aacr ~/aacr-bench.json -thorough -specialists -json
+
+# One pull request, named <repo>-<number>
+go run ./cmd/planwerk-eval -aacr ~/aacr-bench.json -case uv-12941
+```
+
+`-case` finds any candidate of the export, sampled or not, so `-aacr-sample`
+beside it exits 1 before anything runs. So do `-aacr-sample`, `-aacr-cache`
+and `-judge` without `-aacr`, which a corpus run would ignore.
+
+> [!NOTE]
+> Under the toolbox, the export and the cache must sit on a path the container
+> mounts. Put the export in the checkout without committing it and pass
+> `-aacr-cache /cache/planwerk-eval-aacr`, the toolbox's cache volume, or run
+> natively with `TOOLBOX=0`. The default cache lives in the container's home
+> directory and goes away with it.
+
+### How a case is built
+
+- Every pull request with at least one verified (`label` 1) comment on the
+  right side becomes a case; 196 of the 200 have one.
+- The export names the commits the reverse of GitHub's wording:
+  `pr_source_commit` is the base the pull request was opened against, and
+  `pr_target_commit` is the revision under review.
+- Before the first session starts, the harness fetches both commits into a
+  bare repository of their own under the cache (`planwerk-eval/aacr` in the
+  user cache directory, or `-aacr-cache`), at increasing depths until their
+  merge base appears. A later run reuses the repository without the network.
+  A pull request that cannot be fetched stops the eval before a token is
+  spent, and the error names every such pull request.
+- Each run reviews a fresh repository whose `main` and `origin/main` carry the
+  merge base's tree and whose `eval/head` carries the revision's tree. The
+  review therefore sees exactly the revision's diff, even when the base has
+  moved on since. The pull request has an empty title, technology detection
+  runs on the real repository, and no `go.mod` is written. As for a corpus
+  case, the review prompt lists the revision's changed files and the
+  review's JSON output records which of them the session reported reading
+  (decision 138).
+
+### Sampling
+
+`-aacr-sample N` draws N pull requests deterministically. It rotates over the
+languages and, for each pull request, over the context most of its verified
+comments carry (`Diff Level`, `File Level` or `Repo Level`). Both are taken
+in sorted order and counted from 0: in round r, language i takes a pull
+request of context i + r, wrapping around the three, and falls through to its
+next context when it has none there. Within one language and context the
+order is fixed by a hash of the pull request URL. With today's export, a
+sample of 10 holds one pull request per language.
+
+### Matching
+
+Only verified right-side comments are expected findings. Verified left-side
+comments sit on deleted lines no finding can cite; the report counts them as
+`left_excluded` and does not score them. A prediction matches a comment when
+it names the same file and its line range shares a line with the comment's
+range, with no tolerance and no keyword: the benchmark's Line Correct. Each
+comment claims at most one prediction, as in the corpus.
+
+`-judge` adds one structure-tier call per line-overlapping pair. It asks
+whether the finding and the comment raise the same concern, and only a yes
+matches: the benchmark's Semantically Correct. A reply that gives no verdict
+is a failed judgement, not a no, and a run's judging is retried once like a
+failed run. The judge runs on the structure tier, so
+`PLANWERK_STRUCTURE_MODEL` and `PLANWERK_STRUCTURE_EFFORT` move it together
+with the review's structuring. Severity accuracy is `n/a`, because no comment
+names a severity.
+
+### Read the benchmark report
+
+The ground truth is incomplete: a finding no annotator wrote counts as a
+false positive, so precision is a lower bound. Recall is a lower bound too,
+because several verified comments can share lines while one finding claims
+only one of them. The table's footer says so, and three lines follow the
+`RUNS:` line or close the report:
+
+```
+RUNS: 1 per case (thorough: no, specialists: no)
+AACR-BENCH: 10 of 196 pull requests from aacr-bench.json (sha256 0804505f0a47), match: line+judge (range overlap and a same-concern judgement)
+LEFT SIDE: 2 verified comments on deleted lines not scored
+TIERS: claude opus/xhigh, finder opus/xhigh, structure sonnet/xhigh
+...
+JUDGE: 41 pairs, 17 same concern; 41 calls, 820000 prompt tokens, 9000 output tokens, $1.20 (total)
+```
+
+In `-json` output the report carries `match` (`line` or `line+judge`), `aacr`
+(`export`, `sha256`, `sample`, `candidates`) and, under `-judge`, `judge`
+(`pairs`, `same`, `usage`). Each case adds `url`, `language`, `context` and
+`left_excluded`, and the aggregate sums `left_excluded`.
+
+A benchmark run is never the gate of decision 106: `-baseline` refuses an
+AACR-Bench report on either side. Compare two benchmark reports by eye, and
+only when their `sha256`, `sample` and `match` agree.
+
 ## Compare a change against a baseline
 
 A change is judged against the commit it branches from by one rule (decision
@@ -283,7 +424,7 @@ A change is judged against the commit it branches from by one rule (decision
 - Both sides ran at least 3 times per case, with the same `-thorough` and
   `-specialists` flags, over the same cases, scored by the same match rule,
   and at least one case seeds a bug. Over clean cases alone no check can
-  fail.
+  fail. Neither side is an AACR-Bench run.
 - Pooled recall is not below the baseline's. Recall gets no tolerance.
 - Pooled precision and pooled severity accuracy are each at most 10 points
   below the baseline's (with a 1e-9 slack for rounding).

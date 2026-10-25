@@ -2,6 +2,7 @@ package eval
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -96,15 +97,20 @@ func LoadReport(path string) (Report, error) {
 }
 
 // Comparable returns why baseline cannot be compared with a run made under cfg
-// over the named cases, or nil when it can. Both sides need MinCompareRuns
-// runs, the same passes, the same set of cases in any order, and the baseline
-// must be scored by MatchRule, because the same predictions tally differently
-// under another rule (decision 146). The baseline also needs a recall: over
-// clean cases alone no check can fail. main calls it before the first case
-// runs, so a mismatch spends no tokens. ScopePatterns, like the tiers, is
-// never compared: a candidate with -scope-patterns against a baseline without
-// it is the experiment (decision 141).
+// over the named cases, or nil when it can. Neither side may be an AACR-Bench
+// run: its ground truth is incomplete, so it is a benchmark to read, never the
+// gate (decision 147). Both sides need MinCompareRuns runs, the same passes,
+// the same set of cases in any order, and the baseline must be scored by
+// MatchRule, because the same predictions tally differently under another rule
+// (decision 146). The baseline also needs a recall: over clean cases alone no
+// check can fail. main calls it before the first case runs, so a mismatch
+// spends no tokens. ScopePatterns, like the tiers, is never compared: a
+// candidate with -scope-patterns against a baseline without it is the
+// experiment (decision 141).
 func Comparable(baseline Report, cfg Config, cases []string) error {
+	if baseline.AACR != nil || cfg.AACR != nil {
+		return errors.New("an AACR-Bench report is a periodic benchmark with incomplete ground truth, never a baseline or a candidate (decision 106 compares corpus runs)")
+	}
 	if baseline.Runs < MinCompareRuns || cfg.Runs < MinCompareRuns {
 		return fmt.Errorf("a comparison needs at least %d runs per side (baseline %d, this run %d); re-run with -runs %d",
 			MinCompareRuns, baseline.Runs, cfg.Runs, MinCompareRuns)

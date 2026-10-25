@@ -99,13 +99,14 @@ for instructions the bare variant dropped or states differently.
 ## 4. Analysis and writers (`prompt-auditor`)
 
 Read-only analysis passes (several with the project memory and `brain
-search`), the structure and dedup prompts on the structure tier, and the
-bootstrap review on the brain review tier.
+search`), the structure, dedup and eval-judge prompts on the structure tier,
+and the bootstrap review on the brain review tier.
 
 Builders: `elaborate.go` (three); `propose.go` (two); `gapanalysis.go` (two);
 `sync.go` (two); `reviewprepared.go` (two); `capture.go` (two); `bootstrap.go`
-(three); `glossary_prompt.go`; `dedup.go`; the context blocks in
-`relations.go`, `progress.go`, `specialist_gate.go`.
+(three); `glossary_prompt.go`; `dedup.go`; `evaljudge.go`
+buildSameIntentPrompt; the context blocks in `relations.go`, `progress.go`,
+`specialist_gate.go`.
 
 Shared blocks: proseStyleBlock, docProseBlock, aiWritingTellsBullets,
 outputLanguageBlock, attributionFooterBlock, domainGlossaryBlock,
@@ -114,7 +115,8 @@ patternCatalogBlock, untrustedDataLine and fencedData and escapeFences,
 jsonSchemaOnlyLine, the page conventions capture and bootstrap share.
 
 Goldens: `elaborate*`, `propose*` or `analysis*`, `gap*`, `sync*`,
-`review_prepared*`, `capture*`, `bootstrap*`, `glossary*`, `dedup*`.
+`review_prepared*`, `capture*`, `bootstrap*`, `glossary*`, `dedup*`,
+`same_intent_judge`.
 
 Lens: for each structure prompt find the decoder and check the prompt asks for
 exactly the fields and enums the Go reads, including the empty branch. Check

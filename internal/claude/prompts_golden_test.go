@@ -1526,6 +1526,13 @@ func TestBuildClaimVerificationPrompt_Golden(t *testing.T) {
 	assertGoldenPrompt(t, "verify_claims", buildClaimVerificationPrompt(findings))
 }
 
+// TestBuildSameIntentPrompt_Golden locks the eval's same-intent judge prompt:
+// the shared location named as no evidence, both answer branches, the reason
+// before the verdict, and the two comments each in its own fence.
+func TestBuildSameIntentPrompt_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "same_intent_judge", buildSameIntentPrompt(sameIntentFixture()))
+}
+
 // TestBuildProposalStructurePrompt_Golden locks the propose-structuring prompt:
 // the proposal JSON schema, the priority/category/scope vocabularies, and the
 // 5-20 proposal budget.

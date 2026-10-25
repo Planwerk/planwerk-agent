@@ -1,6 +1,7 @@
 package eval
 
 import (
+	"encoding/json"
 	"maps"
 	"math"
 	"reflect"
@@ -655,4 +656,238 @@ func TestRenderTableNoPasses(t *testing.T) {
 	if !strings.HasPrefix(recall, "(none)\n") {
 		t.Errorf("RECALL BY PASS with no credit = %q, want (none)", recall)
 	}
+}
+
+// aacrCase builds an AACR-Bench case expecting the given reference comments.
+func aacrCase(findings ...ExpectedFinding) Case {
+	src := &AACRSource{URL: "https://github.com/acme/widget/pull/7", Owner: "acme", Repo: "widget", Number: 7}
+	return Case{Name: "widget-7", Expected: Expected{Description: src.URL, Findings: findings}, AACR: src}
+}
+
+// refComment builds an AACR-Bench reference comment over [from, to], with no
+// severity and no keywords, as LoadAACR builds one.
+func refComment(file string, from, to int) ExpectedFinding {
+	return ExpectedFinding{File: file, Line: from, LineEnd: to, Comment: "the map is written after Unlock"}
+}
+
+func TestScoreRunAACR(t *testing.T) {
+	// No prediction below shares a word with the reference comment.
+	unrelated := func(file string, line, lineEnd int) report.Finding {
+		return pfSpan(file, line, lineEnd, report.SeverityWarning, "Shadowed variable", "x is declared twice")
+	}
+	tests := []struct {
+		name                   string
+		c                      Case
+		preds                  []report.Finding
+		verdicts               map[PairKey]bool
+		wantTP, wantFP, wantFN int
+	}{
+		{name: "overlapping ranges match without a keyword", c: aacrCase(refComment("store.go", 40, 44)),
+			preds: []report.Finding{unrelated("store.go", 44, 50)}, wantTP: 1},
+		{name: "a prediction inside the range matches", c: aacrCase(refComment("store.go", 40, 44)),
+			preds: []report.Finding{unrelated("store.go", 42, 0)}, wantTP: 1},
+		{name: "an adjacent range does not overlap", c: aacrCase(refComment("store.go", 40, 44)),
+			preds: []report.Finding{unrelated("store.go", 45, 50)}, wantFP: 1, wantFN: 1},
+		{name: "a line before the range does not match, unlike the corpus window", c: aacrCase(refComment("store.go", 40, 44)),
+			preds: []report.Finding{unrelated("store.go", 39, 0)}, wantFP: 1, wantFN: 1},
+		{name: "another file does not match", c: aacrCase(refComment("store.go", 40, 44)),
+			preds: []report.Finding{unrelated("cache.go", 42, 0)}, wantFP: 1, wantFN: 1},
+		{name: "an unlocated prediction does not match", c: aacrCase(refComment("store.go", 1, 44)),
+			preds: []report.Finding{unrelated("store.go", 0, 44)}, wantFP: 1, wantFN: 1},
+		{name: "line_end widens the prediction onto the range", c: aacrCase(refComment("store.go", 40, 44)),
+			preds: []report.Finding{unrelated("store.go", 30, 40)}, wantTP: 1},
+		{name: "nil verdicts match on lines alone", c: aacrCase(refComment("store.go", 40, 44), refComment("store.go", 60, 61)),
+			preds: []report.Finding{unrelated("store.go", 41, 0), unrelated("store.go", 60, 0)}, wantTP: 2},
+		{name: "a pair judged another concern does not match", c: aacrCase(refComment("store.go", 40, 44)),
+			preds: []report.Finding{unrelated("store.go", 41, 0)}, verdicts: map[PairKey]bool{{Pred: 0, Exp: 0}: false}, wantFP: 1, wantFN: 1},
+		{name: "a pair judged the same concern matches", c: aacrCase(refComment("store.go", 40, 44)),
+			preds: []report.Finding{unrelated("store.go", 41, 0)}, verdicts: map[PairKey]bool{{Pred: 0, Exp: 0}: true}, wantTP: 1},
+		{name: "the judged-same prediction takes the claim", c: aacrCase(refComment("store.go", 40, 44)),
+			preds:    []report.Finding{unrelated("store.go", 41, 0), unrelated("store.go", 43, 0)},
+			verdicts: map[PairKey]bool{{Pred: 0, Exp: 0}: false, {Pred: 1, Exp: 0}: true}, wantTP: 1, wantFP: 1},
+		{name: "an empty verdict map matches nothing", c: aacrCase(refComment("store.go", 40, 44)),
+			preds: []report.Finding{unrelated("store.go", 41, 0)}, verdicts: map[PairKey]bool{}, wantFP: 1, wantFN: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := ScoreRun(tt.c, Run{Result: report.ReviewResult{Findings: tt.preds}, Verdicts: tt.verdicts})
+			if s.TP != tt.wantTP || s.FP != tt.wantFP || s.FN != tt.wantFN {
+				t.Errorf("Score = {TP:%d FP:%d FN:%d}, want {TP:%d FP:%d FN:%d}", s.TP, s.FP, s.FN, tt.wantTP, tt.wantFP, tt.wantFN)
+			}
+			if s.SeverityMatches != 0 || s.SeverityUnscored != s.TP {
+				t.Errorf("SeverityMatches/SeverityUnscored = %d/%d, want 0/%d: a reference comment names no severity", s.SeverityMatches, s.SeverityUnscored, s.TP)
+			}
+		})
+	}
+
+	t.Run("a corpus case is scored by ScoreCase", func(t *testing.T) {
+		c := caseWith(false, ef("a.go", 10, "WARNING", "leak"))
+		r := Run{Result: report.ReviewResult{Findings: []report.Finding{pf("a.go", 12, report.SeverityWarning, "leak", "leaks")}},
+			Verdicts: map[PairKey]bool{}}
+		if got, want := ScoreRun(c, r), ScoreCase(c, r.Result); !reflect.DeepEqual(got, want) {
+			t.Errorf("ScoreRun = %+v, want ScoreCase's %+v", got, want)
+		}
+	})
+
+	t.Run("ScoreRuns scores each run by its own verdicts", func(t *testing.T) {
+		c := aacrCase(refComment("store.go", 40, 44))
+		hit := report.ReviewResult{Findings: []report.Finding{unrelated("store.go", 41, 0)}}
+		sc := ScoreRuns(c, []Run{{Result: hit}, {Result: hit, Verdicts: map[PairKey]bool{{Pred: 0, Exp: 0}: false}}})
+		if sc.Score.TP != 1 || sc.Score.FP != 1 || sc.Score.FN != 1 {
+			t.Errorf("Score = {TP:%d FP:%d FN:%d}, want {1 1 1}", sc.Score.TP, sc.Score.FP, sc.Score.FN)
+		}
+	})
+}
+
+func TestScoreRunAACRSeverityUndefined(t *testing.T) {
+	c := aacrCase(refComment("store.go", 40, 44))
+	s := ScoreRun(c, Run{Result: report.ReviewResult{Findings: []report.Finding{pf("store.go", 42, report.SeverityCritical, "x", "y")}}})
+	if s.TP != 1 {
+		t.Fatalf("TP = %d, want 1", s.TP)
+	}
+	if _, ok := s.SeverityAccuracy(); ok {
+		t.Error("severity accuracy is defined, want it undefined: no reference comment names a severity")
+	}
+	if cs := toCaseScore("widget-7", "", s); cs.SeverityAccuracy != nil {
+		t.Errorf("severity_accuracy = %v, want null", *cs.SeverityAccuracy)
+	}
+
+	// Mixed with a corpus tally, only the TP that name a severity count.
+	var agg Score
+	agg.Add(s)
+	agg.Add(Score{TP: 2, SeverityMatches: 1})
+	a, ok := agg.SeverityAccuracy()
+	wantDefined(t, "pooled sev-acc", a, ok, true, 0.5)
+}
+
+func TestBuildReportAACR(t *testing.T) {
+	withSource := func(c Case, lang, ctx string, left int) Case {
+		src := *c.AACR
+		src.Language, src.Context, src.LeftExcluded = lang, ctx, left
+		c.AACR = &src
+		return c
+	}
+	scored := []Scored{
+		{Case: withSource(aacrCase(refComment("store.go", 40, 44)), "Go", "Diff Level", 1), Score: Score{TP: 1, SeverityUnscored: 1}},
+		{Case: withSource(aacrCase(refComment("cache.go", 8, 9)), "Python", "Repo Level", 2), Score: Score{FN: 1, FP: 1}},
+	}
+	aacr := &AACRConfig{Export: "dataset.json", SHA256: strings.Repeat("ab", 32), Sample: 2, Candidates: 196}
+
+	rep := BuildReport(scored, Config{Runs: 1, AACR: aacr})
+	if rep.Match != MatchLine {
+		t.Errorf("Match = %q, want %q", rep.Match, MatchLine)
+	}
+	if c := rep.Cases[1]; c.URL != "https://github.com/acme/widget/pull/7" || c.Language != "Python" || c.Context != "Repo Level" || c.LeftExcluded != 2 {
+		t.Errorf("case = %+v, want its URL, Python, Repo Level and 2 left-side comments", c)
+	}
+	if rep.Aggregate.LeftExcluded != 3 {
+		t.Errorf("aggregate left_excluded = %d, want 3", rep.Aggregate.LeftExcluded)
+	}
+	if rep.Aggregate.SeverityAccuracy != nil {
+		t.Errorf("aggregate severity_accuracy = %v, want null", *rep.Aggregate.SeverityAccuracy)
+	}
+
+	judged := *aacr
+	judged.Judge = true
+	rep = BuildReport(scored, Config{Runs: 1, AACR: &judged})
+	if rep.Match != MatchLineJudge {
+		t.Errorf("judged Match = %q, want %q", rep.Match, MatchLineJudge)
+	}
+	rep.Judge = &JudgeSummary{Pairs: 4, Same: 3, Usage: report.Usage{Calls: 4, OutputTokens: 80}}
+
+	var buf strings.Builder
+	if err := RenderJSON(&buf, rep); err != nil {
+		t.Fatalf("RenderJSON: %v", err)
+	}
+	var got struct {
+		Match string                     `json:"match"`
+		AACR  map[string]json.RawMessage `json:"aacr"`
+		Judge struct {
+			Pairs int          `json:"pairs"`
+			Same  int          `json:"same"`
+			Usage report.Usage `json:"usage"`
+		} `json:"judge"`
+		Cases []map[string]json.RawMessage `json:"cases"`
+	}
+	if err := json.Unmarshal([]byte(buf.String()), &got); err != nil {
+		t.Fatalf("decoding the report: %v", err)
+	}
+	if got.Match != MatchLineJudge {
+		t.Errorf("match = %q, want %q", got.Match, MatchLineJudge)
+	}
+	keys := slices.Sorted(maps.Keys(got.AACR))
+	if want := []string{"candidates", "export", "sample", "sha256"}; !slices.Equal(keys, want) {
+		t.Errorf("aacr keys = %v, want %v: the rule lives in the top-level match", keys, want)
+	}
+	if got.Judge.Pairs != 4 || got.Judge.Same != 3 || got.Judge.Usage.Calls != 4 {
+		t.Errorf("judge = %+v, want 4 pairs, 3 same, 4 calls", got.Judge)
+	}
+	for _, key := range []string{"url", "language", "context", "left_excluded"} {
+		if _, ok := got.Cases[0][key]; !ok {
+			t.Errorf("case lacks %q:\n%s", key, buf.String())
+		}
+	}
+
+	t.Run("a corpus report carries none of the AACR-Bench keys", func(t *testing.T) {
+		var buf strings.Builder
+		rep := BuildReport([]Scored{{Case: caseWith(false, ef("a.go", 1, "WARNING", "x")), Score: Score{TP: 1, SeverityMatches: 1}}}, Config{Runs: 1})
+		if err := RenderJSON(&buf, rep); err != nil {
+			t.Fatalf("RenderJSON: %v", err)
+		}
+		for _, key := range []string{`"aacr"`, `"judge"`, `"url"`, `"language"`, `"context"`, `"left_excluded"`} {
+			if strings.Contains(buf.String(), key) {
+				t.Errorf("corpus report holds %s:\n%s", key, buf.String())
+			}
+		}
+		if rep.Match != MatchRule {
+			t.Errorf("Match = %q, want %q", rep.Match, MatchRule)
+		}
+	})
+}
+
+func TestRenderTableAACR(t *testing.T) {
+	scored := []Scored{{
+		Case:  aacrCase(refComment("store.go", 40, 44)),
+		Score: Score{TP: 1, FP: 2, SeverityUnscored: 1},
+	}}
+	scored[0].Case.AACR.LeftExcluded = 2
+	cfg := Config{Runs: 1, Tiers: sampleTiers(), AACR: &AACRConfig{Export: "dataset.json", SHA256: "0804505f0a474765ce2840c832cfeaa6", Sample: 1, Candidates: 196, Judge: true}}
+	rep := BuildReport(scored, cfg)
+	rep.Judge = &JudgeSummary{Pairs: 3, Same: 1, Usage: report.Usage{Calls: 3, InputTokens: 900, CacheReadTokens: 100, OutputTokens: 60, CostUSD: 0.04}}
+
+	var buf strings.Builder
+	RenderTable(&buf, rep)
+	out := buf.String()
+
+	const runsLine = "RUNS: 1 per case (thorough: no, specialists: no)\n"
+	const benchLines = "AACR-BENCH: 1 of 196 pull requests from dataset.json (sha256 0804505f0a47), match: line+judge (range overlap and a same-concern judgement)\n" +
+		"LEFT SIDE: 2 verified comments on deleted lines not scored\n" +
+		"TIERS: " + sampleTiersLine + "\n"
+	if !strings.Contains(out, runsLine+benchLines) {
+		t.Errorf("output lacks the AACR-BENCH and LEFT SIDE lines between RUNS and TIERS:\n%s", out)
+	}
+	if !strings.Contains(out, "AACR-Bench ground truth is incomplete: a finding no annotator wrote counts as FP, so precision is a lower bound.\n") {
+		t.Errorf("output lacks the lower-bound note:\n%s", out)
+	}
+	if strings.Contains(out, "A clean case seeds no bug") {
+		t.Errorf("output keeps the clean-case note:\n%s", out)
+	}
+	if f := strings.Fields(lineStarting(t, out, "widget-7 ")); !slices.Equal(f, []string{"widget-7", "no", "1", "2", "0", "33%", "100%", "50%", "n/a"}) {
+		t.Errorf("case row = %v, want severity accuracy n/a", f)
+	}
+	if _, after, _ := strings.Cut(out, "COST PER RUN"); !strings.HasSuffix(after, "\nJUDGE: 3 pairs, 1 same concern; 3 calls, 1000 prompt tokens, 60 output tokens, $0.04 (total)\n") {
+		t.Errorf("output does not end with the JUDGE line after COST PER RUN:\n%s", out)
+	}
+
+	t.Run("an unjudged run names the line rule and prints no JUDGE line", func(t *testing.T) {
+		cfg := cfg
+		aacr := *cfg.AACR
+		aacr.Judge = false
+		cfg.AACR = &aacr
+		var buf strings.Builder
+		RenderTable(&buf, BuildReport(scored, cfg))
+		if !strings.Contains(buf.String(), "), match: line (range overlap)\n") || strings.Contains(buf.String(), "JUDGE:") {
+			t.Errorf("output =\n%s\nwant match: line (range overlap) and no JUDGE line", buf.String())
+		}
+	})
 }

@@ -51,8 +51,9 @@ func TestRetry(t *testing.T) {
 
 // TestRunGuardsSpendNoTokens locks that run rejects a bad invocation before it
 // builds the first client, so a guard moved below the case loop fails here
-// instead of spending tokens. Every run in it that gets past the guards fails
-// in buildClient on the bogus timeout, and PATH holds neither git nor claude.
+// instead of spending tokens. Every corpus run in it that gets past the guards
+// fails in buildClient on the bogus timeout, every AACR-Bench run in
+// PrepareAACR, and PATH holds neither git nor claude.
 func TestRunGuardsSpendNoTokens(t *testing.T) {
 	t.Setenv("PLANWERK_CLAUDE_TIMEOUT", "bogus")
 	t.Setenv("PATH", t.TempDir())
@@ -76,31 +77,69 @@ func TestRunGuardsSpendNoTokens(t *testing.T) {
 	thorough := write("thorough.json", `{"runs": 3, "thorough": true, "cases": [{"name": "sample"}], "aggregate": {"recall": 1}}`)
 	comparable := write("comparable.json", fmt.Sprintf(`{"runs": 3, "match": %q, "cases": [{"name": "sample"}], "aggregate": {"recall": 1}}`, eval.MatchRule))
 	unrecordedMatch := write("unrecorded-match.json", `{"runs": 3, "cases": [{"name": "sample"}], "aggregate": {"recall": 1}}`)
+	export := write("aacr.json", `[{"project_main_language": "Go", "pr_url": "https://github.com/acme/widget/pull/7",
+		"pr_source_commit": "1111111111111111111111111111111111111111", "pr_target_commit": "2222222222222222222222222222222222222222",
+		"note": "a race", "path": "store.go", "side": "right", "from_line": 4, "to_line": 6, "context": "Diff Level", "label": 1}]`)
+	bench := aacrOptions{export: export, sample: 1, cacheDir: filepath.Join(dir, "cache")}
+	with := func(edit func(*aacrOptions)) aacrOptions {
+		o := bench
+		edit(&o)
+		return o
+	}
 
 	tests := []struct {
 		name     string
 		baseline string
 		runs     int
+		aacr     aacrOptions
 		want     string
 	}{
-		{"zero runs", "", 0, "-runs must be at least 1"},
-		{"a missing baseline", filepath.Join(dir, "missing.json"), 3, "reading baseline"},
-		{"a baseline run with other passes", thorough, 3, "compare like with like"},
-		{"a baseline with too few runs on this side", comparable, 1, "at least 3 runs per side"},
-		{"a baseline with no recorded match rule", unrecordedMatch, 3, "match rule"},
-		// The two rows that pass the guards prove the premise: the first client
-		// build fails, so no row can reach a model.
-		{"no baseline passes the guards", "", 1, "invalid PLANWERK_CLAUDE_TIMEOUT"},
-		{"a comparable baseline passes the guards", comparable, 3, "invalid PLANWERK_CLAUDE_TIMEOUT"},
+		{"zero runs", "", 0, aacrOptions{}, "-runs must be at least 1"},
+		{"a missing baseline", filepath.Join(dir, "missing.json"), 3, aacrOptions{}, "reading baseline"},
+		{"a baseline run with other passes", thorough, 3, aacrOptions{}, "compare like with like"},
+		{"a baseline with too few runs on this side", comparable, 1, aacrOptions{}, "at least 3 runs per side"},
+		{"a baseline with no recorded match rule", unrecordedMatch, 3, aacrOptions{}, "match rule"},
+		{"-judge without -aacr", "", 1, aacrOptions{judge: true}, "-judge needs -aacr"},
+		{"-aacr-sample without -aacr", "", 1, aacrOptions{sample: 2, aacrSampleSet: true}, "-aacr-sample needs -aacr"},
+		{"-aacr-cache without -aacr", "", 1, aacrOptions{cacheDir: filepath.Join(dir, "cache"), aacrCacheSet: true}, "-aacr-cache needs -aacr"},
+		{"-aacr-sample 0", "", 1, with(func(o *aacrOptions) { o.sample = 0 }), "-aacr-sample must be at least 1, got 0"},
+		{"a missing export", "", 1, with(func(o *aacrOptions) { o.export = filepath.Join(dir, "missing-export.json") }), "reading AACR-Bench export"},
+		{"an explicit -corpus with -aacr", "", 1, with(func(o *aacrOptions) { o.corpusSet = true }), "-aacr and -corpus"},
+		{"-aacr with a comparable baseline", comparable, 3, bench, "periodic benchmark"},
+		// The rows that pass the guards prove the premise: the first client
+		// build fails, or for an AACR-Bench run the fetch before it, so no row
+		// can reach a model.
+		{"no baseline passes the guards", "", 1, aacrOptions{}, "invalid PLANWERK_CLAUDE_TIMEOUT"},
+		{"a comparable baseline passes the guards", comparable, 3, aacrOptions{}, "invalid PLANWERK_CLAUDE_TIMEOUT"},
+		{"an AACR-Bench run prepares its repositories before any client", "", 1, bench, `"git": executable file not found`},
+		{"a judged AACR-Bench run prepares before it builds the judge", "", 1, with(func(o *aacrOptions) { o.judge = true }), `"git": executable file not found`},
+		{"an explicit -aacr-sample and -aacr-cache pass the guards with -aacr", "", 1, with(func(o *aacrOptions) { o.aacrSampleSet, o.aacrCacheSet = true, true }), `"git": executable file not found`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := run(corpus, "", tt.baseline, eval.Config{Runs: tt.runs}, false)
+			err := run(corpus, "", tt.baseline, eval.Config{Runs: tt.runs}, tt.aacr, false)
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("run = %v, want an error containing %q", err, tt.want)
 			}
 		})
 	}
+
+	t.Run("an unknown -case with -aacr", func(t *testing.T) {
+		if err := run(corpus, "widget-8", "", eval.Config{Runs: 1}, bench, false); err == nil || !strings.Contains(err.Error(), `no AACR-Bench case "widget-8"`) {
+			t.Errorf("run = %v, want a no-such-case error", err)
+		}
+	})
+	t.Run("-aacr-sample with -case", func(t *testing.T) {
+		sampled := with(func(o *aacrOptions) { o.aacrSampleSet = true })
+		if err := run(corpus, "widget-7", "", eval.Config{Runs: 1}, sampled, false); err == nil || !strings.Contains(err.Error(), "-aacr-sample and -case each choose the cases to score") {
+			t.Errorf("run = %v, want -aacr-sample refused beside -case", err)
+		}
+	})
+	t.Run("a -case with -aacr passes the guards", func(t *testing.T) {
+		if err := run(corpus, "widget-7", "", eval.Config{Runs: 1}, bench, false); err == nil || !strings.Contains(err.Error(), `"git": executable file not found`) {
+			t.Errorf("run = %v, want the fetch of the named case to fail", err)
+		}
+	})
 }
 
 // The tier a test selects in place of a compiled-in default, the effort no

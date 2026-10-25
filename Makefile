@@ -167,7 +167,8 @@ clean:
 	rm -f $(BINARY)
 	rm -rf completions docs/man
 
-# Output-quality eval: scores the review pipeline against the seeded-bug corpus.
+# Output-quality eval: scores the review pipeline against the seeded-bug corpus
+# (or, with EVAL_ARGS="-aacr <export>", an AACR-Bench sample).
 # Invokes the real claude CLI and spends tokens, so it is deliberately NOT wired
 # into `test` or CI. Pass flags via EVAL_ARGS, e.g. `make eval EVAL_ARGS=-json`.
 eval:
