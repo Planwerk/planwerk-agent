@@ -41,7 +41,7 @@ shared-document references, the memory readers, the pinned skill list.
 
 ## Where the surface lives
 
-- Twelve skills, one `SKILL.md` each, under `plugins/planwerk/skills/<name>/`.
+- The skills, one `SKILL.md` each, under `plugins/planwerk/skills/<name>/`.
   The frontmatter `description` is injected into every session's system
   prompt; the body loads only when the skill is invoked.
 - The shared documents under `plugins/planwerk/shared/`: the house issue
@@ -56,10 +56,11 @@ shared-document references, the memory readers, the pinned skill list.
 
 ## What to check
 
-Apply the doctrine's five failure modes (no-op, duplication, sediment,
-sprawl, premature completion) and its two structural rules (information
-hierarchy, single source of truth) with the operational tests the doctrine
-gives. Then these lenses, which are where skills fail differently from
+Apply the doctrine's six failure modes (no-op, duplication, sediment,
+sprawl, premature completion, scattering), its two structural rules
+(information hierarchy, single source of truth, the environment counting as a
+source), and its leading-word and positive-target habits with the operational
+tests the doctrine gives. Then these lenses, which are where skills fail differently from
 builders:
 
 1. **Description routing.** The description says what the skill does and
@@ -110,6 +111,11 @@ builders:
     prompt, and a grant wider than the body's form (`ruff check` for a body
     that says `ruff check --no-fix`) is the inverse. Then read every grant
     against the steps; a grant no step uses is a finding too.
+12. **Pointers.** Each shared document a body relies on is named by its path,
+    with the act (read it, in full) and, for a document only some runs need,
+    the condition beside it. A rule the skill needs on every run behind a
+    vaguely worded or conditional pointer is a finding, and so is another
+    skill named in prose where its document should be read.
 
 ## Output format
 

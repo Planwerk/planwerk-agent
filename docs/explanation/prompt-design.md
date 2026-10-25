@@ -148,6 +148,14 @@ kept separate on purpose. `components.go` documents these exceptions in its
 header. Single source of truth means *one source per instruction*, not *one
 block for every superficially similar paragraph*.
 
+The environment is a source too. A prompt that restates what the session can
+look up (a Makefile's targets, a flag's default, a directory listing, the number
+of skills a plugin ships) holds a cache of it, and a cache goes stale with no
+diff to show it. Cache only what cannot be found by looking: the convention
+nobody wrote down, the reason behind a choice, the trap no configuration file
+admits to. Everything else is pointed at rather than copied: "the lint target
+the CI workflow calls" stays true when the target is renamed.
+
 A structuring prompt has a source too: the analysis prompt whose output it
 copies. The copier runs without tools and sees only that output, so every field
 its schema asks for has to be one the analysis prompt asked the session to
@@ -250,6 +258,17 @@ body that says `ruff check --no-fix`) is the inverse. The audit reads every
 command the body names against the grants, in the form the body uses, and every
 grant against the steps.
 
+A description is one kind of pointer: text in context that names material
+outside it and says when to reach for it. A skill's list of shared documents is
+another, and so is every "per `github.md`, Reading" inside a step. The pointer's
+wording, not its target, decides whether the target is reached. Naming another
+skill in prose is the weak form; the collection the skills borrow from found
+that "run the grilling skill" does not reliably load it. The skills here name
+each shared document by its path, with the act ("read these before you start,
+in full") and, for a document only some runs need, the condition beside it. A
+target every run needs, behind a weakly worded pointer, is a variance bug:
+sharpen the wording before inlining the material.
+
 ## Writing for the model the prompt runs on
 
 A prompt is written for a reader, and the reader here is a specific model. The
@@ -298,9 +317,41 @@ before assuming what worked on the last model still does. That re-reading is
 the `/iterate-prompts` skill, described under
 [enforcement](#how-the-doctrine-is-enforced).
 
+## Leading words, and the target stated positively
+
+Two habits cost almost nothing and change how a literal reader holds a prompt.
+
+**Reach for a leading word.** A leading word is a compact concept the model
+already knows from pretraining, used as a token wherever the behavior it names
+is wanted: *red* in the diagnose skill (the loop goes red on the symptom, or it
+does not), *blast radius* in `clarify` and `decide`, *round* in the interview
+rules. One word recruits what the model already understands, so it anchors a
+region of behavior in fewer tokens than the sentence it replaces, and it can
+turn a fuzzy gate into a binary one: "a loop you believe in" becomes "a loop
+that goes red". Repeat the word, never its definition. Prefer a word the model
+already knows to one coined here: a coined word recruits nothing and pays for
+its definition wherever it is relied on. When a prompt spells out the same
+triad at three sites, or spends a sentence gesturing at one idea, look for the
+word that retires it. The no-op test grades leading words too: a word too weak
+to move the model off its default ("thorough", for a model that is thorough
+already) is a no-op, and the repair is a stronger word, not more words.
+
+**State the target, not the prohibition.** A prohibition names the behavior it
+forbids, and naming it keeps that behavior in view. Anthropic's prompting best
+practices say the same: "Tell Claude what to do instead of what not to do". So
+state the behavior wanted ("write one-line comments") and leave the unwanted
+one unspoken. "A finder reports; the pipeline filters" above is one instance: a
+bar of conviction phrased as a prohibition suppressed real findings. A
+prohibition earns its place as a hard guardrail that no positive phrasing holds
+as firmly (never edit a plan's `STATUS:` line, never pass `--no-verify`, never
+widen a write past what was approved), and even then the positive target sits
+beside it. The banned-vocabulary line is such a guardrail: a test and a
+reviewer can check a named word, and the prose rules around it state the
+target.
+
 ## The named failure modes
 
-The audit that pays this doctrine back across the builders looks for five
+The audit that pays this doctrine back across the builders looks for six
 specific failures. Naming them makes them reviewable — a reviewer can point at a
 line and say "that is sediment" instead of arguing taste.
 
@@ -325,10 +376,15 @@ line and say "that is sediment" instead of arguing taste.
   half done: a vague "done when it works", a criterion that covers the happy
   path but not the empty or error branch. *Caught by* the checkable-and-
   exhaustive test above.
+- **Scattering** — one meaning fragmented across a document: a rule under one
+  heading, its exception three sections down, its caveat in a closing note.
+  Unlike duplication it repeats nothing, so no grep finds it, and a reader who
+  acts on the first heading has half the rule. *Caught by* co-location: read a
+  concept's heading and ask whether its exceptions and caveats live under it.
 
 ## The no-op test, applied to a whole pass
 
-The five failure modes above are read at the resolution of a sentence: delete
+The six failure modes above are read at the resolution of a sentence: delete
 the line, and ask whether the output changes. A pass can fail the same test at
 the resolution of a *call*, and reading it will never reveal that, because every
 sentence in it looks like it instructs something.
@@ -450,7 +506,15 @@ duplication / sediment / sprawl / premature-completion failure modes — is adap
 from the `writing-great-skills` skill and `GLOSSARY.md` in
 [mattpocock/skills](https://github.com/mattpocock/skills) (MIT), reframed from
 authoring interactive Claude Code skills to authoring this project's
-non-interactive prompt builders.
+non-interactive prompt builders. That skill is `writing-for-agents` today, and
+four later additions come from it (`mattpocock/skills@5beb35b`,
+[decision 127](./design-decisions.md)): leading words and the negation they
+replace, scattering and the co-location that catches it, the environment as a
+source a prompt should point at rather than cache, and the pointer whose wording
+decides whether its target is reached. Its two loads (context and cognitive)
+and its router skills are left out: the description section above already
+prices the context load, and the plugin ships no user-invoked skill a router
+would index.
 
 Three later additions come from
 [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) (MIT). The
