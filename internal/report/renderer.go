@@ -62,6 +62,7 @@ func (r *Renderer) RenderMarkdown(result ReviewResult, pr PRInfo, minSeverity Se
 	r.renderSection("INFO", cf.Info)
 	r.renderUnverifiedSection(cf.Unverified)
 	r.renderExcludedFiles(result.ExcludedFiles)
+	r.renderFilesNotReviewed(result.Gates)
 
 	r.renderSummary(cf, result)
 	r.renderRecommendation(cf, result.Recommendation)
@@ -84,8 +85,9 @@ func (r *Renderer) renderFailedPasses(failed []PassStatus) {
 
 // renderExcludedFiles writes the note that lists what --diff-exclusions left
 // out of the diff the review read, so an exclusion is never silent: one line
-// per entry up to ExcludedFilesListLimit, then a count of the rest. It writes
-// nothing when excluded is empty (decision 137).
+// per entry up to ExcludedFilesListLimit, then a count of the rest. Each path
+// is written by changedFilePath. It writes nothing when excluded is empty
+// (decision 137).
 func (r *Renderer) renderExcludedFiles(excluded []ExcludedFile) {
 	if len(excluded) == 0 {
 		return
@@ -93,12 +95,49 @@ func (r *Renderer) renderExcludedFiles(excluded []ExcludedFile) {
 	_, _ = fmt.Fprintf(r.w, "> [!NOTE]\n> %d changed file(s) were left out of the diff the review read (--diff-exclusions): lock files, vendored code, and generated code. Tests outside vendored directories are never left out.\n", ExcludedFileCount(excluded))
 	shown := excluded[:min(len(excluded), ExcludedFilesListLimit)]
 	for _, e := range shown {
-		_, _ = fmt.Fprintf(r.w, "> - `%s` (%s)\n", e.Path, e.Label())
+		_, _ = fmt.Fprintf(r.w, "> - %s (%s)\n", changedFilePath(e.Path), e.Label())
 	}
 	if rest := len(excluded) - len(shown); rest > 0 {
 		_, _ = fmt.Fprintf(r.w, "> - and %d more (the --format json output and the data block list every one)\n", rest)
 	}
 	_, _ = fmt.Fprintln(r.w)
+}
+
+// renderFilesNotReviewed writes the Files Not Reviewed section, which names
+// each changed file the review prompt listed and the review session did not
+// report reading: skipped, with the session's reason when it gave one, or not
+// reported. The record is the session's own account, so the section claims no
+// more than that. Each path is written by changedFilePath. It writes nothing
+// when g records no missing file (decision 138).
+func (r *Renderer) renderFilesNotReviewed(g *GateStats) {
+	if g == nil || g.Files == nil || len(g.Files.Missing) == 0 {
+		return
+	}
+	_, _ = fmt.Fprintf(r.w, "## Files Not Reviewed (%d of %d)\n\n", len(g.Files.Missing), g.Files.Changed)
+	_, _ = fmt.Fprint(r.w, "The review did not report reading these changed files, so the findings above may not cover them.\n\n")
+	for _, m := range g.Files.Missing {
+		file := changedFilePath(m.File)
+		switch reason := strings.Join(strings.Fields(m.Reason), " "); {
+		case m.Status == FileUnreported:
+			_, _ = fmt.Fprintf(r.w, "- %s: not reported\n", file)
+		case reason != "":
+			_, _ = fmt.Fprintf(r.w, "- %s: skipped (%s)\n", file, reason)
+		default:
+			_, _ = fmt.Fprintf(r.w, "- %s: skipped\n", file)
+		}
+	}
+	_, _ = fmt.Fprint(r.w, "\n---\n\n")
+}
+
+// changedFilePath writes a changed file's path for the Files Not Reviewed
+// section and the excluded-files note. The pull request's author picks the
+// path, so it goes in a code span no backtick in it can close (mdfence.Span),
+// and each "<" in it is written as "&lt;", which the span shows as it stands:
+// the posted comment then holds no "<!--" the path put there, and a path
+// cannot forge the data block ParseDataBlock reads or any other marker
+// (decision 138).
+func changedFilePath(p string) string {
+	return mdfence.Span(strings.ReplaceAll(p, "<", "&lt;"))
 }
 
 // RenderWikiProvenance emits the "> Wiki: <repo>.wiki @ <short-sha>" header line

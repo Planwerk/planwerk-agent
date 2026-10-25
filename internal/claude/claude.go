@@ -7,6 +7,7 @@ import (
 
 	"github.com/planwerk/planwerk-agent/internal/diffscope"
 	"github.com/planwerk/planwerk-agent/internal/doccheck"
+	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
 	"github.com/planwerk/planwerk-agent/internal/search"
@@ -48,6 +49,10 @@ type ReviewContext struct {
 	// (diffscope.MaterializeOrWarn) and removes once Review returns. The zero
 	// Diff keeps the git command in the prompt (decision 137).
 	Diff diffscope.Diff
+	// ChangedFiles are the files the Changed Files section lists and the
+	// session accounts for in files_reviewed, which the caller checks with
+	// hygiene.CheckFileLedger; empty renders no section (decision 138).
+	ChangedFiles []github.FileChange
 }
 
 // Review runs the diff-review session in the given directory and returns its

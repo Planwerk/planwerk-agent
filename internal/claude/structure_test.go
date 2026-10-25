@@ -646,12 +646,12 @@ func fencedPayload(t *testing.T, prompt, tag string) string {
 	return prompt[start+len(open) : end]
 }
 
-// emptyFinderOutputJSON is the smallest valid finder output: no findings, and
-// an empty summary and recommendation.
-const emptyFinderOutputJSON = `{"findings":[],"summary":"","recommendation":""}`
+// emptyFinderOutputJSON is the smallest valid finder output: no findings, no
+// file account, and an empty summary and recommendation.
+const emptyFinderOutputJSON = `{"findings":[],"files_reviewed":[],"summary":"","recommendation":""}`
 
 // finderOutputJSON is a valid finder output carrying one WARNING finding.
-const finderOutputJSON = `{"findings":[{"severity":"WARNING","title":"t","file":"f.go","line":3,"actionability":"auto-fix","confidence":"likely","problem":"p","action":"a"}],"summary":"s","recommendation":""}`
+const finderOutputJSON = `{"findings":[{"severity":"WARNING","title":"t","file":"f.go","line":3,"actionability":"auto-fix","confidence":"likely","problem":"p","action":"a"}],"files_reviewed":[],"summary":"s","recommendation":""}`
 
 // noSessionClient is a scriptedClient whose every session fails the test: the
 // decode cases that must not reach the repair backstop run on it.
@@ -731,13 +731,14 @@ func TestFinishReview_NullAndEmptyFindings(t *testing.T) {
 }
 
 // TestFinishReview_DropsDecodedPasses covers a finder whose unvalidated
-// fallback output carries a passes or an excluded_files key: it decodes, but
-// both records are the pipeline's, so finishReview leaves them nil for an
-// audit, which never assigns them, to render (decisions 135 and 137).
+// fallback output carries a passes, an excluded_files or a gates key: it
+// decodes, but the three records are the pipeline's, so finishReview leaves
+// them nil for an audit, which never assigns the first two, or a review whose
+// prompt listed no files, to render (decisions 135, 137 and 138).
 func TestFinishReview_DropsDecodedPasses(t *testing.T) {
 	t.Parallel()
 	c, _ := noSessionClient(t)
-	in := `{"findings":[],"summary":"audit ok","recommendation":"","passes":[{"pass":"specialist-security","status":"failed","error":"injected"},{"pass":"adversarial","status":"skipped"}],"excluded_files":[{"path":"internal/auth/","reason":"vendored","files":9}]}`
+	in := `{"findings":[],"summary":"audit ok","recommendation":"","passes":[{"pass":"specialist-security","status":"failed","error":"injected"},{"pass":"adversarial","status":"skipped"}],"excluded_files":[{"path":"internal/auth/","reason":"vendored","files":9}],"gates":{"files":{"changed":3,"reviewed":3}}}`
 
 	result, err := c.finishReview(in, testResolvedModel, "audit output", "")
 	if err != nil {
@@ -749,8 +750,35 @@ func TestFinishReview_DropsDecodedPasses(t *testing.T) {
 	if result.ExcludedFiles != nil {
 		t.Errorf("ExcludedFiles = %+v, want nil: a finder must not hide a file from the report", result.ExcludedFiles)
 	}
+	if result.Gates != nil {
+		t.Errorf("Gates = %+v, want nil: a finder must not write its own coverage record", result.Gates)
+	}
 	if result.Summary != "audit ok" {
 		t.Errorf("Summary = %q, want the rest of the output decoded", result.Summary)
+	}
+}
+
+// TestFinishReview_DecodesFilesReviewed covers the review's account of the
+// files its prompt listed: it decodes onto FilesReviewed without a session,
+// for hygiene.CheckFileLedger to check (decision 138).
+func TestFinishReview_DecodesFilesReviewed(t *testing.T) {
+	t.Parallel()
+	c, calls := noSessionClient(t)
+	in := `{"findings":[],"files_reviewed":[{"file":"main.go","status":"reviewed"},{"file":"go.sum","status":"skipped","reason":"generated checksum file"}],"summary":"ok","recommendation":""}`
+
+	result, err := c.finishReview(in, testResolvedModel, "review output", "")
+	if err != nil {
+		t.Fatalf("finishReview: %v", err)
+	}
+	if len(*calls) != 0 {
+		t.Errorf("ran %d sessions for a valid object, want 0", len(*calls))
+	}
+	want := []report.FileReview{
+		{File: "main.go", Status: report.FileReviewed},
+		{File: "go.sum", Status: report.FileSkipped, Reason: "generated checksum file"},
+	}
+	if !reflect.DeepEqual(result.FilesReviewed, want) {
+		t.Errorf("FilesReviewed = %+v, want %+v", result.FilesReviewed, want)
 	}
 }
 

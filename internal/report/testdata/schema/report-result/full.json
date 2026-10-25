@@ -89,8 +89,15 @@
   "summary": "The change introduces authentication but ships a hardcoded secret and an SQL injection that must be fixed before merge.",
   "recommendation": "Do not merge until the BLOCKING and CRITICAL findings are resolved.",
   "gates": {
-    "snippet": { "examined": 3, "demoted": 1 },
-    "claim": { "sent": 3, "verdicts": 3, "refuted": 1 }
+    "snippet": { "examined": 3, "demoted": 1, "recovered_outside_diff": 1 },
+    "claim": { "sent": 3, "verdicts": 3, "refuted": 1 },
+    "files": {
+      "changed": 6,
+      "reviewed": 5,
+      "missing": [
+        { "file": "assets/logo.png", "status": "skipped", "reason": "binary image" }
+      ]
+    }
   },
   "passes": [
     { "pass": "adversarial", "status": "ran" },

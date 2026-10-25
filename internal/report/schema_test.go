@@ -106,8 +106,12 @@ func TestRendererOutputMatchesSchema(t *testing.T) {
 			Summary:        "a populated summary",
 			Recommendation: "a populated recommendation",
 			Gates: &report.GateStats{
-				Snippet: &report.SnippetGateStats{Examined: 3, Demoted: 1},
+				Snippet: &report.SnippetGateStats{Examined: 3, Demoted: 1, RecoveredOutsideDiff: 1},
 				Claim:   &report.ClaimGateStats{Sent: 2, Verdicts: 2, Refuted: 1},
+				Files: &report.FileGateStats{Changed: 4, Reviewed: 2, Missing: []report.MissingFile{
+					{File: "go.sum", Status: report.FileSkipped, Reason: "generated checksum file"},
+					{File: "docs/auth.md", Status: report.FileUnreported},
+				}},
 			},
 			Passes: []report.PassStatus{
 				{Pass: "adversarial", Status: report.PassStatusRan},
@@ -189,17 +193,23 @@ func TestInvalidRebaseAnalysisRejected(t *testing.T) {
 
 // TestInvalidFinderOutputRejected feeds inline documents that violate the
 // finder-output wire contract and asserts the validator rejects each: a label
-// that is empty or missing, and a field the finder never emits.
+// that is empty or missing, a field the finder never emits, and a
+// files_reviewed account that is missing or malformed. Every other document
+// carries files_reviewed, so each fails for its own defect alone.
 func TestInvalidFinderOutputRejected(t *testing.T) {
 	sch := compileSchema(t, "finder-output.schema.json", schema.FinderOutput)
 	for name, doc := range map[string]string{
-		"empty severity":            `{"findings":[{"severity":"","title":"t","file":"f","problem":"p","action":"a","actionability":"auto-fix","confidence":"likely"}],"summary":"","recommendation":""}`,
-		"missing confidence":        `{"findings":[{"severity":"INFO","title":"t","file":"f","problem":"p","action":"a","actionability":"auto-fix"}],"summary":"","recommendation":""}`,
-		"missing actionability":     `{"findings":[{"severity":"INFO","title":"t","file":"f","problem":"p","action":"a","confidence":"likely"}],"summary":"","recommendation":""}`,
-		"source finding count":      `{"findings":null,"summary":"","recommendation":"","source_finding_count":0}`,
-		"finding with confirmed_by": `{"findings":[{"severity":"INFO","title":"t","file":"f","problem":"p","action":"a","actionability":"auto-fix","confidence":"likely","confirmed_by":["review"]}],"summary":"","recommendation":""}`,
-		"top-level extra field":     `{"findings":null,"summary":"","recommendation":"","extra":true}`,
-		"excluded files":            `{"findings":null,"summary":"","recommendation":"","excluded_files":[{"path":"go.sum","reason":"lockfile"}]}`,
+		"empty severity":            `{"findings":[{"severity":"","title":"t","file":"f","problem":"p","action":"a","actionability":"auto-fix","confidence":"likely"}],"files_reviewed":[],"summary":"","recommendation":""}`,
+		"missing confidence":        `{"findings":[{"severity":"INFO","title":"t","file":"f","problem":"p","action":"a","actionability":"auto-fix"}],"files_reviewed":[],"summary":"","recommendation":""}`,
+		"missing actionability":     `{"findings":[{"severity":"INFO","title":"t","file":"f","problem":"p","action":"a","confidence":"likely"}],"files_reviewed":[],"summary":"","recommendation":""}`,
+		"source finding count":      `{"findings":null,"files_reviewed":[],"summary":"","recommendation":"","source_finding_count":0}`,
+		"finding with confirmed_by": `{"findings":[{"severity":"INFO","title":"t","file":"f","problem":"p","action":"a","actionability":"auto-fix","confidence":"likely","confirmed_by":["review"]}],"files_reviewed":[],"summary":"","recommendation":""}`,
+		"top-level extra field":     `{"findings":null,"files_reviewed":[],"summary":"","recommendation":"","extra":true}`,
+		"excluded files":            `{"findings":null,"files_reviewed":[],"summary":"","recommendation":"","excluded_files":[{"path":"go.sum","reason":"lockfile"}]}`,
+		"missing files_reviewed":    `{"findings":null,"summary":"","recommendation":""}`,
+		"bad file review status":    `{"findings":null,"files_reviewed":[{"file":"a.go","status":"read"}],"summary":"","recommendation":""}`,
+		"file review without file":  `{"findings":null,"files_reviewed":[{"status":"reviewed"}],"summary":"","recommendation":""}`,
+		"file review extra field":   `{"findings":null,"files_reviewed":[{"file":"a.go","status":"reviewed","lines":12}],"summary":"","recommendation":""}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			if err := validate(t, sch, []byte(doc)); err == nil {
@@ -240,6 +250,7 @@ func TestInvalidDocumentRejected(t *testing.T) {
 		"pass missing status":     `{"findings":null,"summary":"","recommendation":"","passes":[{"pass":"adversarial"}]}`,
 		"bad exclusion reason":    `{"findings":null,"summary":"","recommendation":"","excluded_files":[{"path":"foo_test.go","reason":"test"}]}`,
 		"vendored zero files":     `{"findings":null,"summary":"","recommendation":"","excluded_files":[{"path":"vendor/","reason":"vendored","files":0}]}`,
+		"bad missing-file status": `{"findings":null,"summary":"","recommendation":"","gates":{"files":{"changed":1,"reviewed":0,"missing":[{"file":"a.go","status":"reviewed"}]}}}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			if err := validate(t, sch, []byte(doc)); err == nil {

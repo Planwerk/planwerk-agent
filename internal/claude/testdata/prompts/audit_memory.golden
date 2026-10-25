@@ -220,6 +220,13 @@ Output ONLY valid JSON matching this exact schema (no markdown fences, no surrou
       "related_to": ["titles of other findings in this output"]
     }
   ],
+  "files_reviewed": [
+    {
+      "file": "path/to/file.go",
+      "status": "reviewed|skipped",
+      "reason": "Why the file was not read"
+    }
+  ],
   "summary": "The summary this prompt asks for",
   "recommendation": "The recommendation this prompt asks for, or an empty string"
 }
@@ -233,5 +240,6 @@ Field rules:
 - `fix_options`, `recommendation_reasoning` and `recommended_option`: only for a needs-discussion or architectural finding in a prompt that asks for fix options, never for an auto-fix finding. Each option's `id` is its letter (A, B, C), which `recommended_option` names.
 - `related_to`: the titles of the other findings in this output that the finding connects to; `[]` when none.
 - `findings`: `[]` when the pass reports nothing.
+- `files_reviewed`: one entry for each file this prompt's Changed Files section lists, with `reason` only for a `skipped` file; `[]` when this prompt has no Changed Files section.
 - `summary` and `recommendation`: what this prompt's summary instructions describe. `recommendation` is the empty string when the prompt asks for no recommendation.
 - The JSON object is your entire final message: no prose before or after it, and no reasoning or tool output inside it.

@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseRef(t *testing.T) {
@@ -625,5 +626,21 @@ func TestFetchAndCheckoutPinsHead(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestGitBytes_DoesNotWaitOnAGrandchildHoldingItsOutput pins gitWaitDelay: a
+// process git leaves running with the output pipes open, as a lazy fetch in a
+// blobless PR clone can during DiffFileChanges, must not keep gitBytes waiting
+// until it ends.
+func TestGitBytes_DoesNotWaitOnAGrandchildHoldingItsOutput(t *testing.T) {
+	t.Parallel()
+	start := time.Now()
+	_, err := gitBytes(t.TempDir(), "-c", "alias.hold=!sleep 30 &", "hold")
+	if elapsed := time.Since(start); elapsed > 10*time.Second {
+		t.Errorf("gitBytes returned after %s: the grandchild held it until it ended", elapsed)
+	}
+	if !errors.Is(err, exec.ErrWaitDelay) {
+		t.Errorf("err = %v, want exec.ErrWaitDelay once the pipes were closed", err)
 	}
 }

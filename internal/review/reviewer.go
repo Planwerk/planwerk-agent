@@ -307,22 +307,33 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	})
 	defer cleanupDiff()
 
+	// The changed files the review prompt lists and the session accounts for:
+	// the PR's file changes minus what the diff left out and the planning
+	// artifacts. A pull request with more than maxLedgerFiles of them gets no
+	// list and no record (decision 138).
+	ledger := reviewLedger(pr.FileChanges, reviewDiff.Excluded)
+	if len(ledger) > maxLedgerFiles {
+		slog.Info("the pull request changes more files than the review lists; file coverage is not recorded", "files", len(ledger), "max", maxLedgerFiles)
+		ledger = nil
+	}
+
 	reviewCtx := claude.ReviewContext{
-		Patterns:    pats,
-		MaxPatterns: opts.MaxPatterns,
-		MaxFindings: opts.MaxFindings,
-		BaseBranch:  pr.BaseBranch,
-		PRTitle:     redactedTitle.Text,
-		PRBody:      redactedBody.Text,
-		Checklist:   checklistContent,
-		CommitLog:   redactedCommitLog.Text,
-		StaleDocs:   staleDocs,
-		NewFeatures: newFeatures,
-		TodoContent: todoContent,
-		Glossary:    glossaryBody,
-		Memory:      mem,
-		Brain:       surface,
-		Diff:        reviewDiff,
+		Patterns:     pats,
+		MaxPatterns:  opts.MaxPatterns,
+		MaxFindings:  opts.MaxFindings,
+		BaseBranch:   pr.BaseBranch,
+		PRTitle:      redactedTitle.Text,
+		PRBody:       redactedBody.Text,
+		Checklist:    checklistContent,
+		CommitLog:    redactedCommitLog.Text,
+		StaleDocs:    staleDocs,
+		NewFeatures:  newFeatures,
+		TodoContent:  todoContent,
+		Glossary:     glossaryBody,
+		Memory:       mem,
+		Brain:        surface,
+		Diff:         reviewDiff,
+		ChangedFiles: ledger,
 	}
 
 	var (
@@ -434,6 +445,14 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// unchanged. See report.ClaimGateStats for why the refuted/sent ratio the
 	// records now carry is worth watching.
 	hygiene.VerifyClaims(result, pr.Dir, r.Claude.VerifyFindingClaims)
+
+	// 11d. Changed-file check: compare the files the prompt listed with the
+	// review session's account of them and record the outcome on the result,
+	// before the cache write so a cache hit renders it too. A record, not a
+	// gate: it moves no finding (decision 138).
+	if n := hygiene.CheckFileLedger(result, ledgerPaths(ledger)); n > 0 {
+		slog.Info("the review did not account for every changed file", "missing", n, "changed", len(ledger))
+	}
 
 	// 12. Cache the result together with the coverage map, so a later hit
 	// renders the report this run rendered rather than a subset of it. A run in

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 )
 
@@ -48,6 +49,10 @@ Review the FULL pull request diff — every commit between origin/%s and HEAD mu
 	if ctx.Diff.File != "" && len(ctx.Diff.Excluded) > 0 {
 		sb.WriteString(excludedFilesFence(ctx.Diff))
 	}
+
+	// Changed files: the list the session accounts for in files_reviewed,
+	// right under the scope it narrows (decision 138).
+	sb.WriteString(changedFilesBlock(ctx.ChangedFiles))
 
 	// Staff Engineer persona
 	sb.WriteString(`You are a Staff Engineer performing a code review. Apply these thinking patterns:
@@ -274,4 +279,43 @@ A zero-finding review is a valid outcome: when the diff is clean after the full 
 	sb.WriteString(findingsOutputBlock())
 
 	return sb.String()
+}
+
+// changedFilesBlock renders the review prompt's Changed Files section: one line
+// per file in a <changed-files> fence (changedFileLine), the line framing the
+// paths as data, and the completion criterion that every listed file gets its
+// own pass and one files_reviewed entry, reviewed or skipped with a reason. It
+// returns "" for no files. The list is the denominator hygiene.CheckFileLedger
+// checks the session's account against, and it is handed to the session
+// rather than left for it to look up because the check needs the session to
+// answer for exactly the files Go counts (decision 138). Only the review lists
+// files, so the block lives here rather than in components.go.
+func changedFilesBlock(files []github.FileChange) string {
+	if len(files) == 0 {
+		return ""
+	}
+	lines := make([]string, len(files))
+	for i, f := range files {
+		lines[i] = changedFileLine(f)
+	}
+	return "## Changed Files\n\n" +
+		fencedData("changed-files", "", strings.Join(lines, "\n")) + "\n" +
+		untrustedDataLine("Use it as the list of files this review accounts for.", "changed-files") +
+		"These are the files this pull request changes, each with how it changed and its added and removed line counts. Give every listed file its own pass over its diff, whatever its size or role: a test, a document, a configuration file, a deleted file, and the smaller half of a pair (an interface beside its implementation, a schema beside the code that reads it) each get one, because a defect there ships as surely as one in the main file. Account for each listed file once in `files_reviewed`, by its path exactly as listed: `reviewed` once you have read its diff, or `skipped` with the reason you did not read it. The report names every file you skip or leave out of `files_reviewed` as not reviewed, with your reason.\n\n"
+}
+
+// changedFileLine renders one file of the Changed Files list as
+// "<path> (<how>, +<added> -<deleted>)", where how is its status, or "renamed
+// from <old>" or "copied from <old>"; a binary file shows "binary" in place
+// of the counts.
+func changedFileLine(f github.FileChange) string {
+	how := f.Status
+	switch f.Status {
+	case github.FileRenamed, github.FileCopied:
+		how = f.Status + " from " + f.OldPath
+	}
+	if f.Binary {
+		return fmt.Sprintf("%s (%s, binary)", f.Path, how)
+	}
+	return fmt.Sprintf("%s (%s, +%d -%d)", f.Path, how, f.Added, f.Deleted)
 }

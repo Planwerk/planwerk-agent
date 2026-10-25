@@ -92,6 +92,15 @@ guard (#38), which refuses to treat output as a report unless it carries both
 the mandated heading and a terminal `STATUS` line. Both are completion criteria
 made checkable and exhaustive at the prompt level.
 
+A criterion is most checkable when the orchestrator checks it too. The review
+prompt lists the changed files and asks for an account of each in
+`files_reviewed`, reviewed or skipped with a reason; Go compares the account
+with the same list and names in the report every file the session skipped or
+left out (decision 138). The list is handed over rather than looked up, the
+one exception to "The environment is a source too" below, because the check
+needs the session to answer for exactly the files Go counts, and a list built
+at the reviewed head does not go stale.
+
 A completion criterion the model cannot see when it finishes is not checkable.
 A long implement session can compact its context, and the summary that replaces
 its first message can drop the definitions of the report's verdicts. The

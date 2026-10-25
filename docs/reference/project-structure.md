@@ -81,6 +81,7 @@ planwerk-agent/
 │   │   ├── item.go             # List items by update time, read one issue or PR with its whole conversation
 │   │   ├── thread.go           # Read an issue or PR with every comment, review, and commit
 │   │   ├── diff_test.go
+│   │   ├── filechanges.go      # List a PR's changed files with status and line counts (DiffFileChanges)
 │   │   ├── issues.go           # Create/search GitHub issues (gh CLI)
 │   │   ├── pr.go               # Fetch PR data, checkout (gh CLI), pin the head to the checkout
 │   │   ├── pr_test.go
@@ -93,7 +94,8 @@ planwerk-agent/
 │   │   ├── merge.go            # Multi-pass merge, confidence boost, ConfirmedBy provenance
 │   │   ├── dedup.go            # File-less duplicate fold (DedupFileless)
 │   │   ├── snippets.go         # Quote-or-demote snippet gate (VerifySnippets)
-│   │   └── claims.go           # Claim verification demotion (VerifyClaims, ClaimVerdict)
+│   │   ├── claims.go           # Claim verification demotion (VerifyClaims, ClaimVerdict)
+│   │   └── ledger.go           # Changed-file coverage record (CheckFileLedger)
 │   ├── mirror/                 # brain sync: the local mirror of a repository's knowledge on GitHub
 │   │   ├── mirror.go           # The mirror directory, state.json, the adapter seam, the run (Syncer)
 │   │   ├── format.go           # The item file: frontmatter and blocks (Render, Parse, ReadFrontmatter)
@@ -144,6 +146,7 @@ planwerk-agent/
 │   │   ├── reviewer.go         # Orchestration: PR → Claude → Report
 │   │   ├── reviewer_test.go
 │   │   ├── outdated.go         # Resolve the tool's own outdated inline review threads (--resolve-outdated)
+│   │   ├── ledger.go           # The changed-file ledger the review prompt lists (reviewLedger)
 │   │   └── merge.go            # Merge results from multiple review passes
 │   ├── search/                 # brain search: the full-text index of a mirror directory
 │   │   ├── index.go            # index.sqlite: the schema, the version check, the refresh, the block cutting (Open)

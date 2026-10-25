@@ -22,6 +22,12 @@ const (
 	gitCloneTimeout = 5 * time.Minute
 	// gitRemoteTimeout is the maximum time allowed for git remote operations (e.g. ls-remote).
 	gitRemoteTimeout = 2 * time.Minute
+	// gitWaitDelay bounds how long a gitBytes call may still block once git
+	// has exited or its timeout has killed it. A PR clone is blobless, so a
+	// diff that reads file contents starts a lazy fetch, which inherits the
+	// output pipes and would keep Wait reading them until it ends; this long
+	// after, Wait closes them instead (diffscope.gitWaitDelay).
+	gitWaitDelay = 2 * time.Second
 )
 
 // ErrHeadMismatch is returned when a pull request's checkout is not at the
@@ -41,6 +47,11 @@ type PR struct {
 	HeadBranch   string   // head branch name (e.g. "feature/CC-0042")
 	Dir          string   // local checkout directory (temp dir, caller must clean up)
 	ChangedFiles []string // repo-relative paths of files changed between base and head
+	// FileChanges lists every file changed between base and head with its
+	// status and line counts (DiffFileChanges); nil when git could not list
+	// them. The review prompt's Changed Files section is built from it
+	// (decision 138).
+	FileChanges []FileChange
 	// Local marks a PR whose Dir is the user's working tree (via --local). When
 	// set, Cleanup is a no-op so the user's checkout is never deleted.
 	Local bool
@@ -128,17 +139,30 @@ func parseDefaultBranch(symbolicRef string) string {
 // gitOutput runs a git command in dir and returns its trimmed stdout, wrapping
 // any failure with the command and git's stderr so callers can log the cause.
 func gitOutput(dir string, args ...string) (string, error) {
+	out, err := gitBytes(dir, args...)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// gitBytes is gitOutput for output whose bytes must survive as git wrote
+// them, such as the NUL-terminated paths of a -z listing: same timeout, same
+// error wrapping, stdout untrimmed. A process git leaves holding the output
+// pipes keeps it waiting no longer than gitWaitDelay.
+func gitBytes(dir string, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), gitRemoteTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
+	cmd.WaitDelay = gitWaitDelay
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
+		return nil, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
 	}
-	return strings.TrimSpace(string(out)), nil
+	return out, nil
 }
 
 // FetchAndCheckout retrieves PR metadata and checks out the PR locally into a
@@ -187,6 +211,11 @@ func (c Client) FetchAndCheckout(ref string) (*PR, error) {
 		slog.Warn("listing changed files failed; feature detection and specialist gating may be degraded", "err", err, "dir", dir, "base", pr.BaseBranch)
 	}
 	pr.ChangedFiles = changed
+	fileChanges, err := c.DiffFileChanges(dir, pr.BaseBranch)
+	if err != nil {
+		slog.Warn("listing changed-file stats failed; the review lists no changed files and records no file coverage", "err", err, "dir", dir, "base", pr.BaseBranch)
+	}
+	pr.FileChanges = fileChanges
 
 	return pr, nil
 }

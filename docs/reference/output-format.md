@@ -50,6 +50,14 @@ environment variable or secret manager.
 
 ---
 
+## Files Not Reviewed (1 of 6)
+
+The review did not report reading these changed files, so the findings above may not cover them.
+
+- `go.sum`: skipped (generated checksum file)
+
+---
+
 ## Summary
 
 The PR introduces user authentication with a well-structured handler layer, but hardcoded secrets and an SQL injection vulnerability must be addressed before merge. Error handling is inconsistent across the new endpoints.
@@ -76,6 +84,14 @@ version is unknown the repository link stands alone. Every artifact
 planwerk-agent leaves on GitHub (issue bodies, pull request descriptions, review
 comments, thread replies) carries the same self-attribution footer in this shape,
 so the report headers and the comment footers read identically.
+
+The Files Not Reviewed section appears only when the review session did not
+report reading every changed file its prompt listed; it names each such file,
+with the session's reason when it skipped one (see
+[Changed-File Coverage](#changed-file-coverage)). Each path sits in a code span
+that a backtick in the path cannot close, and a `<` in a path shows as `&lt;`,
+so a file name cannot write a comment marker such as the data block's into
+the posted comment.
 
 ## Severity Levels
 
@@ -169,7 +185,12 @@ extraction:
   "findings": [],
   "gates": {
     "snippet": { "examined": 8, "demoted": 2 },
-    "claim": { "sent": 3, "verdicts": 3, "refuted": 1 }
+    "claim": { "sent": 3, "verdicts": 3, "refuted": 1 },
+    "files": {
+      "changed": 6,
+      "reviewed": 5,
+      "missing": [{ "file": "go.sum", "status": "skipped", "reason": "generated checksum file" }]
+    }
   },
   "passes": [{ "pass": "adversarial", "status": "ran" }],
   "usage": {
@@ -232,6 +253,34 @@ is the claim verifier's own no-op signal: a verifier that refutes nothing across
 many runs is agreeing rather than verifying. Data blocks and cached results
 produced before gate recording existed carry no `gates` object and no
 per-finding records.
+
+### Changed-File Coverage
+
+The review prompt lists the changed files, and the review session accounts for
+each one: reviewed, or skipped with a reason (see
+[Changed-File Coverage](/explanation/review-methodology#changed-file-coverage)).
+After the gates, the pipeline compares that account with the list and records
+the outcome in `gates.files`:
+
+- `files.changed`: the files the review prompt listed. These are the changed
+  files without the ones `--diff-exclusions` left out of the diff and without
+  the `.planwerk/` planning artifacts; `.planwerk/checklist.md`,
+  `.planwerk/checklist.d/` and `.planwerk/review_patterns/` stay listed.
+- `files.reviewed`: the listed files the session reported reading.
+- `files.missing[]`: every other listed file, in listed order, with `status`
+  `skipped` and the session's `reason`, or `unreported` when the session's
+  account left the file out. Absent when the session reported reading every
+  listed file.
+
+The record is the review session's own account, and a session can call a file
+reviewed it never opened, so `reviewed` is an upper bound. The record never
+moves a finding or changes the verdict, and only `review` writes it: the audit
+and `implement`'s self-review list no files. The `--format json` output and the
+data block carry this record, not the session's own list. An absent `files`
+entry means no list was given: the changed files could not be listed, none
+remained after the exclusions, or the prompt would have listed more than 200.
+The Markdown report names the missing files in the Files Not Reviewed section
+before the Summary.
 
 ## Pass Status
 
@@ -319,6 +368,9 @@ rest:
 > - `go.sum` (lock file)
 > - `vendor/` (vendored, 12 files)
 ```
+
+Each path is written as in the Files Not Reviewed section: in a code span
+that a backtick in the path cannot close, with a `<` shown as `&lt;`.
 
 The `--format json` output and the data block carry every entry in
 `excluded_files`. Each entry has a `path`, a `reason` (`lockfile`, `vendored`,

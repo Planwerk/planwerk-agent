@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -2416,5 +2418,213 @@ func TestRun_ReviewReadsTheRunsDiff(t *testing.T) {
 		if _, err := os.Stat(got.Diff.Dir); !errors.Is(err, os.ErrNotExist) {
 			t.Errorf("exclude=%v: after Run, stat %s = %v, want not exist", tc.exclude, got.Diff.Dir, err)
 		}
+	}
+}
+
+// TestRun_FileLedgerReachesPromptAndRecord locks the changed-file check end to
+// end: the review is handed the PR's changed files minus the planning
+// artifacts, its account is recorded in gates.files before the cache write,
+// and the Markdown report, on the run and on a cache hit, names the file it
+// skipped (decision 138).
+func TestRun_FileLedgerReachesPromptAndRecord(t *testing.T) {
+	// Not t.Parallel(): cache.SetDir mutates a package-level variable.
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	pr := fakePR(t, "acme", "widgets", 25, "sha-ledger")
+	pr.FileChanges = []github.FileChange{
+		{Path: "main.go", Status: github.FileModified, Added: 4, Deleted: 1},
+		{Path: ".planwerk/plan.md", Status: github.FileAdded, Added: 30},
+		{Path: "main_test.go", Status: github.FileAdded, Added: 20},
+		{Path: "go.sum", Status: github.FileModified, Added: 2, Deleted: 2},
+	}
+	var listed []string
+	claudeMock := &configurableClaude{
+		review: func(_ string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
+			listed = ledgerPaths(ctx.ChangedFiles)
+			return &report.ReviewResult{Summary: "ok", FilesReviewed: []report.FileReview{
+				{File: "main.go", Status: report.FileReviewed},
+				{File: "main_test.go", Status: report.FileReviewed},
+				{File: "go.sum", Status: report.FileSkipped, Reason: "generated checksum file"},
+			}}, nil
+		},
+	}
+	gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
+
+	var out bytes.Buffer
+	if err := (&Runner{Claude: claudeMock, GitHub: gh}).Run(&out, baseOpts()); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if want := []string{"main.go", "main_test.go", "go.sum"}; !slices.Equal(listed, want) {
+		t.Errorf("ReviewContext.ChangedFiles lists %q, want %q", listed, want)
+	}
+	cached, ok := readCachedResult(t, cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA, baseOptsPatternFlag()))
+	if !ok || cached.Gates == nil || cached.Gates.Files == nil {
+		t.Fatalf("expected a cached result carrying gates.files, got ok=%v %+v", ok, cached)
+	}
+	want := report.FileGateStats{Changed: 3, Reviewed: 2, Missing: []report.MissingFile{
+		{File: "go.sum", Status: report.FileSkipped, Reason: "generated checksum file"},
+	}}
+	if !reflect.DeepEqual(*cached.Gates.Files, want) {
+		t.Errorf("cached gates.files = %+v, want %+v", *cached.Gates.Files, want)
+	}
+	const section = "## Files Not Reviewed (1 of 3)\n"
+	const line = "- `go.sum`: skipped (generated checksum file)\n"
+	if !strings.Contains(out.String(), section) || !strings.Contains(out.String(), line) {
+		t.Errorf("the Markdown report must name the skipped file:\n%s", out.String())
+	}
+
+	hitClaude := &configurableClaude{}
+	var hit bytes.Buffer
+	if err := (&Runner{Claude: hitClaude, GitHub: gh}).Run(&hit, baseOpts()); err != nil {
+		t.Fatalf("cache-hit Run returned error: %v", err)
+	}
+	if hitClaude.reviewCalls != 0 {
+		t.Fatalf("Review calls = %d on what should be a cache hit, want 0", hitClaude.reviewCalls)
+	}
+	if !strings.Contains(hit.String(), section) {
+		t.Errorf("the cache hit must render the section again:\n%s", hit.String())
+	}
+}
+
+// TestRun_FileLedgerLeavesOutExcludedFiles locks that the list and the run's
+// diff agree: a file --diff-exclusions left out of the diff is not listed
+// either, so the review is never asked to account for a file it was not shown
+// (decision 138).
+func TestRun_FileLedgerLeavesOutExcludedFiles(t *testing.T) {
+	// Not t.Parallel(): cache.SetDir mutates a package-level variable.
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	dir := t.TempDir()
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	write := func(name, content string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	git("init", "-q")
+	git("config", "user.email", "t@example.com")
+	git("config", "user.name", "tester")
+	write("app.go", "package app\n")
+	write("go.sum", "a v1 h1:x\n")
+	git("add", "-A")
+	git("commit", "-q", "-m", "base")
+	git("update-ref", "refs/remotes/origin/main", git("rev-parse", "HEAD"))
+	write("app.go", "package app\n\nfunc New() {}\n")
+	write("go.sum", "a v2 h1:y\n")
+	git("commit", "-q", "-am", "head")
+
+	fileChanges, err := (github.Client{}).DiffFileChanges(dir, "main")
+	if err != nil {
+		t.Fatalf("DiffFileChanges: %v", err)
+	}
+	for _, exclude := range []bool{false, true} {
+		var listed []string
+		claudeMock := &configurableClaude{
+			review: func(_ string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
+				listed = ledgerPaths(ctx.ChangedFiles)
+				return &report.ReviewResult{Summary: "ok"}, nil
+			},
+		}
+		pr := fakePR(t, "acme", "widgets", 26, "sha-ledger-excluded")
+		pr.Dir, pr.Local, pr.FileChanges = dir, true, fileChanges
+		gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
+		opts := baseOpts()
+		opts.NoCache = true
+		opts.DiffExclusions = exclude
+
+		if err := (&Runner{Claude: claudeMock, GitHub: gh}).Run(&bytes.Buffer{}, opts); err != nil {
+			t.Fatalf("exclude=%v: Run returned error: %v", exclude, err)
+		}
+		want := []string{"app.go", "go.sum"}
+		if exclude {
+			want = []string{"app.go"}
+		}
+		if !slices.Equal(listed, want) {
+			t.Errorf("exclude=%v: ReviewContext.ChangedFiles lists %q, want %q", exclude, listed, want)
+		}
+	}
+}
+
+// TestRun_FileLedgerOverCapRecordsNothing locks the cap: a pull request with
+// more than maxLedgerFiles listed files gets no list and no record, whatever
+// the session answers (decision 138).
+func TestRun_FileLedgerOverCapRecordsNothing(t *testing.T) {
+	// Not t.Parallel(): cache.SetDir mutates a package-level variable.
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	pr := fakePR(t, "acme", "widgets", 27, "sha-ledger-cap")
+	for i := range maxLedgerFiles + 1 {
+		pr.FileChanges = append(pr.FileChanges, github.FileChange{Path: fmt.Sprintf("gen/f%03d.go", i), Status: github.FileAdded, Added: 1})
+	}
+	var handed []github.FileChange
+	claudeMock := &configurableClaude{
+		review: func(_ string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
+			handed = ctx.ChangedFiles
+			return &report.ReviewResult{Summary: "ok", FilesReviewed: []report.FileReview{{File: "gen/f000.go", Status: report.FileReviewed}}}, nil
+		},
+	}
+	gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
+
+	var out bytes.Buffer
+	if err := (&Runner{Claude: claudeMock, GitHub: gh}).Run(&out, baseOpts()); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if len(handed) != 0 {
+		t.Errorf("ReviewContext.ChangedFiles holds %d files over the cap, want none", len(handed))
+	}
+	cached, ok := readCachedResult(t, cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA, baseOptsPatternFlag()))
+	if !ok {
+		t.Fatal("expected a cached result")
+	}
+	if cached.Gates != nil && cached.Gates.Files != nil {
+		t.Errorf("gates.files = %+v over the cap, want none", cached.Gates.Files)
+	}
+	if strings.Contains(out.String(), "Files Not Reviewed") {
+		t.Errorf("no list, so no section may render:\n%s", out.String())
+	}
+}
+
+// TestRun_NoFileChangesRecordsNothing locks the run whose changed files could
+// not be listed: no Changed Files section, no record (decision 138).
+func TestRun_NoFileChangesRecordsNothing(t *testing.T) {
+	// Not t.Parallel(): cache.SetDir mutates a package-level variable.
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	pr := fakePR(t, "acme", "widgets", 28, "sha-ledger-none")
+	var handed []github.FileChange
+	claudeMock := &configurableClaude{
+		review: func(_ string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
+			handed = ctx.ChangedFiles
+			return &report.ReviewResult{Summary: "ok"}, nil
+		},
+	}
+	gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
+
+	if err := (&Runner{Claude: claudeMock, GitHub: gh}).Run(&bytes.Buffer{}, baseOpts()); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if handed != nil {
+		t.Errorf("ReviewContext.ChangedFiles = %+v, want nil", handed)
+	}
+	cached, ok := readCachedResult(t, cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA, baseOptsPatternFlag()))
+	if !ok {
+		t.Fatal("expected a cached result")
+	}
+	if cached.Gates != nil && cached.Gates.Files != nil {
+		t.Errorf("gates.files = %+v without a list, want none", cached.Gates.Files)
 	}
 }

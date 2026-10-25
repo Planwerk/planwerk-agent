@@ -196,12 +196,38 @@ instead of dying in a log line. See
 [Demotion-Gate Records](/reference/output-format#demotion-gate-records) for the
 recorded shape.
 
+## Changed-File Coverage
+
+The review prompt lists the files the pull request changes, right under its
+scope: one line per file with its path, how it changed (added, modified,
+deleted, renamed or copied from another path, type-changed) and its added and
+removed line counts. The list leaves out the files `--diff-exclusions` left out
+of the diff and the `.planwerk/` planning artifacts, but keeps the checklist
+and the review patterns, since a change to those is a finding. The prompt asks
+for every listed file to get its own pass over its diff, a test, a document, a
+deleted file and the smaller half of a pair (an interface beside its
+implementation) included, and for an account of each in `files_reviewed`:
+reviewed, or skipped with a reason.
+
+After the gates, the pipeline compares the account with the list and records
+how many files were listed, how many the session reported reading, and which
+it skipped or left out. The report names those in a Files Not Reviewed section
+before the Summary ([Changed-File Coverage](/reference/output-format#changed-file-coverage)).
+The record never moves a finding, because a session can call a file reviewed
+it never opened: it shows the reader where the findings cannot come from, not
+proof of where they do. A pull request with more than 200 listed files gets no
+list and no record. The list is handed to the session rather than left for it
+to work out, because the check needs the session to answer for exactly the
+files the pipeline counts ([design decision 138](/explanation/design-decisions)).
+
 ## Shared with the `implement` self-review
 
 Everything above — the specialist fan-out, the cross-pass merge and dedup, the
 snippet gate, and claim verification — is behavior the `review` command and the
 `implement` command's self-review both run, out of the shared `internal/hygiene`
-package. The distinction is what each command does with the result. `review`
+package. The changed-file check is the exception: it runs in the `review`
+command only, since `implement`'s finders are handed no list of changed files.
+The distinction is what each command does with the result. `review`
 *reports*: it renders every finding, routing the ones that did not survive
 hygiene into an Unverified section a human can weigh, and under `--inline` posts
 none of those as a comment on the diff. `implement` *acts*: a

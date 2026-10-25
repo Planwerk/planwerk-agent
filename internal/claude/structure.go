@@ -183,7 +183,9 @@ func structure[T any](c *Client, prompt, runLabel, decodeLabel string) (*T, erro
 // backstop, the schema repair of any finding that still fails validation, the
 // pass's pattern tag on every finding that carries none (skipped when tag is
 // empty), stable IDs, and the model that produced the pass. The result never
-// carries Passes: the caller that runs the passes assigns it. pass names the
+// carries Passes or Gates: the caller that runs the passes and the gates
+// assigns them. It keeps the decoded FilesReviewed, the finder's account that
+// hygiene.CheckFileLedger checks (decision 138). pass names the
 // pass in the decode and repair errors; a final failure persists text and names
 // the saved file.
 func (c *Client) finishReview(text, model, pass, tag string) (*report.ReviewResult, error) {
@@ -191,12 +193,14 @@ func (c *Client) finishReview(text, model, pass, tag string) (*report.ReviewResu
 	if err := c.decodeJSONWithRepairSchema(text, pass, string(schema.FinderOutput), &result); err != nil {
 		return nil, wrapWithPersistedOutput(text, err)
 	}
-	// The pipeline owns the pass record and the excluded files. The CLI does
-	// not validate the result fallback, so a passes or excluded_files key a
-	// finder emitted would otherwise reach the output of a run that never
-	// assigns one, such as an audit (decisions 135 and 137).
+	// The pipeline owns the pass record, the excluded files and the gate
+	// records. The CLI does not validate the result fallback, so a passes,
+	// excluded_files or gates key a finder emitted would otherwise reach the
+	// output of a run that never assigns one, such as an audit, or a review
+	// whose prompt listed no files (decisions 135, 137 and 138).
 	result.Passes = nil
 	result.ExcludedFiles = nil
+	result.Gates = nil
 	if err := c.repairInvalidReview(&result, pass); err != nil {
 		return nil, fmt.Errorf("%s: %w", pass, wrapWithPersistedOutput(text, err))
 	}

@@ -127,6 +127,12 @@ func RunCase(client *claude.Client, c Case, opts RunOptions) (Run, error) {
 	if err != nil {
 		return Run{}, fmt.Errorf("case %s: %w", c.Name, err)
 	}
+	// The review prompt lists these files and the run records which the
+	// session read, as on a real pull request (decision 138).
+	fileChanges, err := (github.Client{}).DiffFileChanges(repoDir, evalBaseBranch)
+	if err != nil {
+		return Run{}, fmt.Errorf("case %s: listing changed files: %w", c.Name, err)
+	}
 
 	pr := &github.PR{
 		Owner:        "planwerk-eval",
@@ -138,6 +144,7 @@ func RunCase(client *claude.Client, c Case, opts RunOptions) (Run, error) {
 		HeadBranch:   "eval/head",
 		Dir:          repoDir,
 		ChangedFiles: changed,
+		FileChanges:  fileChanges,
 		Local:        true,
 	}
 

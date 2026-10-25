@@ -286,12 +286,13 @@ type ReviewResult struct {
 	// payload; WikiCommit is re-attached to the machine-readable data block.
 	WikiRepo   string `json:"-"`
 	WikiCommit string `json:"-"`
-	// Gates records what each demotion gate examined and demoted in this run.
-	// Unlike the neighboring json:"-" fields it IS serialized: it rides the
-	// cached result and the machine-readable data block so the refuted/examined
-	// ratio can be computed from history rather than from a fresh run. A nil
-	// per-gate entry means that gate never ran, which keeps a clean pass
-	// distinguishable from a skipped gate.
+	// Gates records what the two demotion gates examined and demoted in this
+	// run, and what the changed-file check, which records and never demotes,
+	// found. Unlike the neighboring json:"-" fields it IS serialized: it rides
+	// the cached result and the machine-readable data block so the
+	// refuted/examined ratio can be computed from history rather than from a
+	// fresh run. A nil per-gate entry means that gate never ran, which keeps a
+	// clean pass distinguishable from a skipped gate.
 	Gates *GateStats `json:"gates,omitempty"`
 	// Passes records how each secondary pass the run requested ended: the
 	// adversarial pass, the coverage map, the feature-compliance check, and each
@@ -306,13 +307,42 @@ type ReviewResult struct {
 	// a session. nil means exclusions were off, no changed file matched, or the
 	// result predates the field (decision 137).
 	ExcludedFiles []ExcludedFile `json:"excluded_files,omitempty"`
+	// FilesReviewed is the finder's own account of the files its prompt's
+	// Changed Files section listed (FinderOutput's files_reviewed): each one
+	// reviewed, or skipped with a reason. hygiene.CheckFileLedger reads it into
+	// Gates.Files. It rides the cached result, but the --format json output and
+	// the data block carry the Gates.Files record rather than this list
+	// (decision 138).
+	FilesReviewed []FileReview `json:"files_reviewed,omitempty"`
 }
 
-// GateStats aggregates the per-run counts of the review's two demotion gates.
-// A nil per-gate field means that gate did not run this run.
+// FileReview is one entry of a finder's files_reviewed account: a file its
+// prompt listed, by its path as listed, with Status FileReviewed, or
+// FileSkipped and the Reason the session gave for not reading it (decision
+// 138).
+type FileReview struct {
+	File   string `json:"file"`
+	Status string `json:"status"`
+	Reason string `json:"reason,omitempty"`
+}
+
+// FileReview.Status and MissingFile.Status values. A finder answers reviewed
+// or skipped; unreported marks a listed file the finder left out of its
+// account, and appears on a MissingFile only.
+const (
+	FileReviewed   = "reviewed"
+	FileSkipped    = "skipped"
+	FileUnreported = "unreported"
+)
+
+// GateStats aggregates the per-run counts of the two demotion gates and the
+// changed-file check, which records and never demotes. A nil per-gate field
+// means that gate did not run this run; a nil Files means the review prompt
+// listed no changed files.
 type GateStats struct {
 	Snippet *SnippetGateStats `json:"snippet,omitempty"`
 	Claim   *ClaimGateStats   `json:"claim,omitempty"`
+	Files   *FileGateStats    `json:"files,omitempty"`
 }
 
 // SnippetGateStats records the quote-or-demote gate's per-run counts: how many
@@ -344,4 +374,24 @@ type ClaimGateStats struct {
 	Sent     int `json:"sent"`
 	Verdicts int `json:"verdicts"`
 	Refuted  int `json:"refuted"`
+}
+
+// FileGateStats records the changed-file check: Changed is the number of files
+// the review prompt listed, Reviewed the subset the review session reported
+// reading, and Missing every other listed file, in listed order. The counts are
+// the session's own claim, so Reviewed is an upper bound; the check moves no
+// finding (decision 138).
+type FileGateStats struct {
+	Changed  int           `json:"changed"`
+	Reviewed int           `json:"reviewed"`
+	Missing  []MissingFile `json:"missing,omitempty"`
+}
+
+// MissingFile is a listed file the review session did not report reading:
+// Status FileSkipped with the Reason the session gave, or FileUnreported when
+// its account left the file out.
+type MissingFile struct {
+	File   string `json:"file"`
+	Status string `json:"status"`
+	Reason string `json:"reason,omitempty"`
 }
