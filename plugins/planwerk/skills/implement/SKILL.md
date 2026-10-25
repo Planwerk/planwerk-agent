@@ -146,9 +146,8 @@ Hold the plan's line while you work:
   the change plainly needs — is fine; name it in the report. A structural
   deviation goes back to the author before you make it, not after.
 - Run the regression test before the fix and watch it fail; then after, and
-  watch it pass. Check it, do not assume it: a red you forced by editing code
-  counts only once a diff shows the edit (`commits.md`, A red you forced counts
-  once a diff shows the edit).
+  watch it pass. Check it, do not assume it; for a red you forced, see
+  `commits.md`, A red you forced counts once a diff shows the edit.
 - Run every verification command the plan named.
 - Re-read your own diff as its reviewer, because no other reviewer runs on this
   path: the debug print, the widened test, the tidied import block in a file

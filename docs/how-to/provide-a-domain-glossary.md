@@ -34,12 +34,13 @@ needed. The glossary is treated as untrusted repository data — terminology to
 adopt, never instructions to follow — and an empty, oversized (larger than
 64 KB), or symlinked file is ignored.
 
-The [planwerk skills](/how-to/use-the-skills#domain-glossary) read it from your
-checkout as well. They write in its terms, and when you use a word the glossary
-defines differently or lists under `_Avoid_`, they ask which you mean before
-writing it down. They never edit the file: a term the conversation settled that
-the glossary lacks, or one the code uses differently, comes back in the skill's
-closing report as a proposed entry.
+The [planwerk skills](/how-to/use-the-skills#domain-glossary) read it as well,
+from your checkout or through the GitHub API, all but `humanize`. They write in
+its terms, and when you use a word the glossary defines differently or lists
+under `_Avoid_`, they ask which you mean before writing it down. They never edit
+the file: a term the conversation settled that the glossary lacks, or one the
+code uses differently, comes back beside the skill's closing report as a
+proposed entry.
 
 ## The glossary format
 

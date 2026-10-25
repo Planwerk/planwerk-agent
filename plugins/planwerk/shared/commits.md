@@ -1,8 +1,9 @@
 # Commits
 
-Rules for every commit a planwerk skill creates, and for every push that
-publishes one. Folding a change into the commit that caused it — and publishing
-that fold — is in `commits-fold.md`, for the skills that repair existing work.
+Rules for every commit a planwerk skill creates, for every push that publishes
+one, and for the checks and the red test that justify a fix. Folding a change
+into the commit that caused it — and publishing that fold — is in
+`commits-fold.md`, for the skills that repair existing work.
 
 ## Trailers
 
@@ -45,9 +46,11 @@ re-running the job, to turn a result green; `--no-verify` on a commit.
 
 A test that fails before a fix proves the fix only when it failed for the
 reason you think. When you force that red by editing code or a fixture
-(reverting the fix, planting the bug, breaking an input), `diff` the edited
-file against a pristine copy, such as `git diff -- <file>` or a copy saved
-before the edit, and find your change in it before you trust the red. An edit
+(reverting the fix, planting the bug, breaking an input), save a copy of the
+file just before the edit, `diff` the edited file against it, and find your
+change in the output before you trust the red. `git diff -- <file>` serves as
+that copy only when the state before the edit is the committed one, which a
+reverted, uncommitted fix is not. An edit
 can report success and change nothing: a `sed` address that never matched, a
 write into the wrong copy of a file, a build output that gets regenerated. A
 `grep` for the new text proves presence, not change, since the text may have
