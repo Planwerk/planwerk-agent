@@ -92,6 +92,14 @@ type Options struct {
 	// reads from disk (--scope-patterns); off by default. The adversarial
 	// pass and the specialists keep the whole catalog (decision 141).
 	ScopePatterns bool
+	// DryRun reports the run a review would make, from the review's own
+	// preparation, and stops before the first session: no Claude call, no
+	// cache write, no post, no capture pass. A cache hit is reported, not
+	// served (decision 143).
+	DryRun bool
+	// PrintPrompt writes the review session's prompt to the writer and stops,
+	// with the same guarantees as DryRun (decision 143).
+	PrintPrompt bool
 }
 
 // Runner executes the review pipeline using injected Claude and GitHub
@@ -145,7 +153,7 @@ func Run(w io.Writer, opts Options, client *claude.Client) error {
 // fetch & checkout PR → load patterns → review session → structure → render report.
 func (r *Runner) Run(w io.Writer, opts Options) error {
 	// 1. Fetch and checkout PR
-	slog.Info("fetching and checking out PR", "pr", opts.PRRef)
+	slog.Info("fetching and checking out PR", "pr", opts.PRRef, "dry_run", opts.DryRun, "print_prompt", opts.PrintPrompt)
 	var (
 		pr  *github.PR
 		err error
@@ -182,41 +190,283 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// mirror's revision is part of it (search.Surface.CacheFlag).
 	surface := search.SurfaceFor(opts.Brain, r.ResolveBrain, pr.Owner, pr.Repo)
 
-	// 2. Check cache (include flags that affect output in the cache key)
-	var cacheFlags []string
-	if opts.Thorough {
-		cacheFlags = append(cacheFlags, "thorough")
-	}
-	if opts.Specialists {
-		cacheFlags = append(cacheFlags, "specialists")
-	}
-	if opts.ScopePatterns {
-		cacheFlags = append(cacheFlags, "scope-patterns")
-	}
-	if opts.CoverageMap {
-		cacheFlags = append(cacheFlags, "coverage-map")
-	}
-	if opts.PartitionFiles > 0 {
-		cacheFlags = append(cacheFlags, fmt.Sprintf("partition-files=%d", opts.PartitionFiles))
-	}
-	if wiki.CommitSHA != "" {
-		cacheFlags = append(cacheFlags, "wiki="+wiki.CommitSHA)
-	}
-	if flag := surface.CacheFlag(); flag != "" {
-		cacheFlags = append(cacheFlags, flag)
-	}
-	// The loaded catalog decides what the review looks for, so it belongs in
-	// the key: --patterns ./new-rules must not be served a result from a run
-	// that never saw those rules.
-	cacheFlags = append(cacheFlags, "patterns="+patterns.Fingerprint(
-		opts.PatternDirs, opts.NoRepoPatterns, opts.NoLocalPatterns, opts.MaxPatterns))
-	cacheKey := cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA, cacheFlags...)
+	// 2. Check cache (include flags that affect output in the cache key). A dry
+	// run and a printed prompt read the entry but are never served it: they
+	// stand for the run a review makes on a miss (decision 143).
+	cacheKey := reviewCacheKey(opts, pr, wiki, surface)
+	cacheState := previewCacheOff
 	if !opts.NoCache {
-		if entry, ok := readCachedReview(cacheKey, opts.CacheMaxAge); ok {
+		entry, ok := readCachedReview(cacheKey, opts.CacheMaxAge)
+		cacheState = previewCacheMiss
+		if ok {
+			cacheState = previewCacheHit
+		}
+		if ok && !opts.DryRun && !opts.PrintPrompt {
 			slog.Info("using cached review result")
 			entry.Result.WikiRepo = wiki.Repo
 			entry.Result.WikiCommit = wiki.CommitSHA
 			return r.renderResult(w, entry.Result, pr, opts, entry.Coverage)
+		}
+	}
+
+	// 3-8b. Prepare the review: everything the sessions are handed, read and
+	// written once here, after the cache check, and removed when Run returns.
+	in, cleanup, err := r.prepareReview(opts, pr, wiki, surface)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	// The two modes stop here, before the first session: no Claude call, no
+	// cache write, no post, no capture pass (decision 143).
+	if opts.PrintPrompt {
+		return printReviewPrompt(w, in)
+	}
+	if opts.DryRun {
+		return writePreview(w, opts.Format, buildPreview(opts, pr, wiki, surface, cacheKey, cacheState, in))
+	}
+
+	// 9-12. Run Claude /review, adversarial review, coverage map, and feature compliance concurrently.
+	// All calls operate on the same checkout and diff with no data dependencies,
+	// so running them in parallel cuts wall-clock time from sum to max.
+	slog.Info("running Claude /review")
+	if opts.Thorough {
+		slog.Info("running adversarial review pass")
+	}
+	if opts.CoverageMap {
+		slog.Info("generating test coverage map")
+	}
+	if in.feature != nil {
+		slog.Info("running feature compliance check")
+	}
+
+	var (
+		// reviewParts holds the primary review's results unmerged: one per
+		// partition session, or the single session's (decision 142).
+		reviewParts      []*report.ReviewResult
+		result           *report.ReviewResult
+		advResult        *report.ReviewResult
+		complianceResult *report.ReviewResult
+		coverageResult   *report.CoverageResult
+		advErr           error
+		complianceErr    error
+		covErr           error
+	)
+	// specialistResults[i] holds the findings from claude.Specialists[i] and
+	// specialistStatus[i] how its pass ended; a nil result means that specialist
+	// was gated out or failed (both non-fatal), is skipped at merge, and its
+	// status says which.
+	var (
+		specialistResults []*report.ReviewResult
+		specialistStatus  []report.PassStatus
+	)
+
+	var g errgroup.Group
+	g.Go(func() error {
+		if len(in.sessions) > 0 {
+			parts, err := r.reviewPartitions(pr, in.plan, in.sessions, in.diff.Excluded)
+			if err != nil {
+				return fmt.Errorf("claude review: %w", err)
+			}
+			reviewParts = parts
+			return nil
+		}
+		res, err := r.Claude.Review(pr.Dir, in.reviewCtx)
+		if err != nil {
+			return fmt.Errorf("claude review: %w", err)
+		}
+		reviewParts = []*report.ReviewResult{res}
+		return nil
+	})
+	if opts.Thorough {
+		g.Go(func() error {
+			advResult, advErr = r.Claude.AdversarialReview(pr.Dir, pr.BaseBranch, "", in.pats, opts.MaxPatterns)
+			return nil
+		})
+	}
+	if opts.CoverageMap {
+		g.Go(func() error {
+			coverageResult, covErr = r.Claude.CoverageMap(pr.Dir, pr.BaseBranch)
+			return nil
+		})
+	}
+	if in.feature != nil {
+		g.Go(func() error {
+			complianceResult, complianceErr = r.Claude.FeatureCompliance(pr.Dir, pr.BaseBranch, in.feature)
+			return nil
+		})
+	}
+	if opts.Specialists {
+		g.Go(func() error {
+			specialistResults, specialistStatus = claude.RunSpecialistFanOut(pr.ChangedFiles, func(sp claude.Specialist) (*report.ReviewResult, error) {
+				return r.Claude.SpecialistReview(pr.Dir, pr.BaseBranch, sp, in.pats, opts.MaxPatterns)
+			})
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return err
+	}
+
+	// 11. Line anchoring: place each pass's findings on the code they quote
+	// before the merges below match them by file and line. A failed pass is left
+	// out, so the counts cover the passes the report draws on, each pass's
+	// findings before they are folded; a nil entry (a gated-out or failed
+	// specialist) is skipped (decision 139). Each partition of a partitioned
+	// review counts as a pass of its own here, so its findings are placed
+	// before the partitions merge (decision 142). A finding is relocated only
+	// within the changed files the diff kept: no session was shown the rest,
+	// and a large one left unread would stop every relocation (decision 137).
+	secondaries := make([]*report.ReviewResult, 0, len(reviewParts)+1+len(specialistResults))
+	secondaries = append(secondaries, reviewParts[1:]...)
+	if advErr == nil {
+		secondaries = append(secondaries, advResult)
+	}
+	if complianceErr == nil {
+		secondaries = append(secondaries, complianceResult)
+	}
+	secondaries = append(secondaries, specialistResults...)
+	hygiene.AnchorFindings(reviewParts[0], pr.Dir, diffscope.Reviewable(pr.ChangedFiles, in.diff.Excluded), secondaries...)
+
+	// The partitions fold into one primary result before the secondary passes
+	// merge into it, and that result carries the run's excluded files as the
+	// single session's does (claude.Client.Review). The partition record is
+	// the pipeline's, so a value decoded from a session's output never
+	// survives (decision 142).
+	if len(in.plan) > 0 {
+		result = mergePartitions(reviewParts, in.plan)
+		result.ExcludedFiles = in.diff.Excluded
+	} else {
+		result = reviewParts[0]
+		result.Partitions = nil
+	}
+
+	if advErr != nil {
+		slog.Warn("adversarial review failed", "err", advErr)
+	} else if advResult != nil {
+		hygiene.TagPass(result, hygiene.PassReview)
+		hygiene.TagPass(advResult, hygiene.PassAdversarial)
+		result = hygiene.MergeResults(result, advResult)
+	}
+	if complianceErr != nil {
+		slog.Warn("feature compliance check failed", "err", complianceErr)
+	} else if complianceResult != nil {
+		hygiene.TagPass(result, hygiene.PassReview)
+		hygiene.TagPass(complianceResult, hygiene.PassCompliance)
+		result = hygiene.MergeResults(result, complianceResult)
+	}
+	if opts.Specialists {
+		result = mergeSpecialists(result, specialistResults)
+	}
+	if covErr != nil {
+		slog.Warn("coverage map failed", "err", covErr)
+	}
+	// Record how each requested secondary pass ended, so the report names a
+	// failed one and the cache write below can refuse the result. Assigned
+	// unconditionally, so a value decoded from finder output never survives
+	// (decision 135).
+	result.Passes = requestedPasses(opts, in.feature != nil, advErr, covErr, complianceErr, specialistStatus)
+
+	// 11a. File-less dedup fallback: the fuzzy merge matcher can only anchor
+	// findings that carry a file, so cross-pass duplicates among file-less
+	// findings survive. When a secondary pass contributed, reconcile them with a
+	// single cheap structure-tier grouping call. Non-fatal: on failure the
+	// findings ship unmerged. The partitions of a partitioned review count as
+	// contributors, since each may report the same file-less finding
+	// (decision 142).
+	if opts.Thorough || opts.Specialists || in.feature != nil || len(in.plan) > 0 {
+		hygiene.DedupFileless(result, r.Claude.DedupFindings)
+	}
+
+	// 11b. Quote-or-demote gate: downgrade findings whose code snippet cannot
+	// be located in the changed files so unverifiable claims land in the
+	// Unverified section instead of next to confirmed bugs. The gate records
+	// what it examined and demoted on the result, which the cache write below
+	// then persists.
+	if n := hygiene.VerifySnippets(result, pr.Dir, pr.ChangedFiles); n > 0 {
+		slog.Info("demoted findings failing snippet verification", "count", n)
+	}
+
+	// 11c. Claim verification: re-check each BLOCKING/CRITICAL finding's claim
+	// against the checkout and demote any the verifier refutes with quoted
+	// counter-evidence. Runs before the cache write so the demotion — and the
+	// per-finding and run-level records the gate writes onto the result — are
+	// cached too. Fail-open: a failed verification publishes the findings
+	// unchanged. See report.ClaimGateStats for why the refuted/sent ratio the
+	// records now carry is worth watching.
+	hygiene.VerifyClaims(result, pr.Dir, r.Claude.VerifyFindingClaims)
+
+	// 11d. Changed-file check: compare the files the prompt listed with the
+	// review session's account of them and record the outcome on the result,
+	// before the cache write so a cache hit renders it too. A record, not a
+	// gate: it moves no finding (decision 138).
+	if n := hygiene.CheckFileLedger(result, ledgerPaths(in.ledger)); n > 0 {
+		slog.Info("the review did not account for every changed file", "missing", n, "changed", len(in.ledger))
+	}
+
+	// 12. Cache the result together with the coverage map, so a later hit
+	// renders the report this run rendered rather than a subset of it. A run in
+	// which a requested pass failed is not cached: the key names the passes the
+	// run asked for, so a cached entry would serve the incomplete review to
+	// every later run of the same commit and flags instead of retrying the pass
+	// (decision 135).
+	if !opts.NoCache {
+		if failed := result.FailedPasses(); len(failed) > 0 {
+			slog.Warn("not caching the review: a requested pass failed, so the next run retries it", "passes", passNames(failed))
+		} else if err := writeCachedReview(cacheKey, result, coverageResult); err != nil {
+			slog.Warn("could not cache result", "err", err)
+		}
+	}
+
+	// 13. Render. Record the resolved wiki provenance on the result (excluded
+	// from the cached payload, so it is re-attached on a cache hit too).
+	result.WikiRepo = wiki.Repo
+	result.WikiCommit = wiki.CommitSHA
+	slog.Info("review complete")
+	if err := r.renderResult(w, result, pr, opts, coverageResult); err != nil {
+		return err
+	}
+
+	// Capture pass: read-only proposal of new wiki review patterns from the review
+	// findings — writing nothing by default. Runs on a cache miss only (a cache hit
+	// returned above before the catalog was loaded), and only when a wiki resolved.
+	r.runCapture(w, pr, opts, result, in.pats, wiki)
+	return nil
+}
+
+// preparedReview is what the review sessions are handed, as prepareReview
+// read and wrote it: the detected technologies, the loaded catalog, the
+// detected feature file, the review session's diff, whose Excluded is the
+// run's excluded set, the changed-file ledger, the partition plan, the review
+// context, and one context per partition session (nil for one session).
+type preparedReview struct {
+	techTags  []string
+	pats      []patterns.Pattern
+	feature   *planwerk.Feature
+	diff      diffscope.Diff
+	ledger    []github.FileChange
+	plan      []report.ReviewPartition
+	reviewCtx claude.ReviewContext
+	sessions  []claude.ReviewContext
+}
+
+// prepareReview runs every step of a review before its first session, in
+// order: technology detection, the pattern, checklist and glossary loads
+// from the base ref, the commit log, the documentation and TODO checks,
+// feature detection, redaction, the project memory, the review diff, the
+// changed-file ledger, the --scope-patterns catalog and the partition plan,
+// then the review contexts. The live run, the dry run and the printed prompt
+// share it, so each sees what the others do. With opts.PrintPrompt it writes
+// nothing to disk and uses the forms that need no directory: the memory page
+// bodies, a Diff that names no file but carries the run's excluded set
+// (diffscope.Exclusions), and a nil Scope. The returned cleanup removes what it
+// wrote and is never nil; the caller runs it once the sessions return
+// (decision 143).
+func (r *Runner) prepareReview(opts Options, pr *github.PR, wiki patterns.ResolvedWiki, surface search.Surface) (*preparedReview, func(), error) {
+	var cleanups []func()
+	cleanup := func() {
+		for i := len(cleanups) - 1; i >= 0; i-- {
+			cleanups[i]()
 		}
 	}
 
@@ -238,7 +488,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		Remote:     opts.Remote,
 	})
 	if err != nil {
-		return err
+		return nil, func() {}, err
 	}
 
 	if len(pats) > 0 {
@@ -279,20 +529,6 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		slog.Info("detected Planwerk feature file", "feature_id", feature.FeatureID, "title", feature.Title)
 	}
 
-	// 9-12. Run Claude /review, adversarial review, coverage map, and feature compliance concurrently.
-	// All calls operate on the same checkout and diff with no data dependencies,
-	// so running them in parallel cuts wall-clock time from sum to max.
-	slog.Info("running Claude /review")
-	if opts.Thorough {
-		slog.Info("running adversarial review pass")
-	}
-	if opts.CoverageMap {
-		slog.Info("generating test coverage map")
-	}
-	if feature != nil {
-		slog.Info("running feature compliance check")
-	}
-
 	// Scrub obvious secrets from untrusted PR-supplied text before it is
 	// forwarded to Claude. A PR body or commit log accidentally committing
 	// a token would otherwise be echoed verbatim into the prompt.
@@ -304,20 +540,39 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	warnRedaction("commit log", redactedCommitLog)
 
 	// The project memory is written once here, after the cache check, and
-	// removed when Run returns.
-	mem, cleanupMemory := patterns.MaterializeMemoryOrWarn(wiki.MemoryPages)
-	defer cleanupMemory()
+	// removed when Run returns. A printed prompt outlives the run, so it
+	// carries the page bodies instead (decision 143).
+	mem := patterns.MemoryCatalog{Pages: wiki.MemoryPages}
+	if !opts.PrintPrompt {
+		var cleanupMemory func()
+		mem, cleanupMemory = patterns.MaterializeMemoryOrWarn(wiki.MemoryPages)
+		cleanups = append(cleanups, cleanupMemory)
+	}
 
 	// The review session's diff is written here too, and removed when Run
 	// returns. Its Excluded list is the run's excluded set: the review result
 	// records it, and the report lists it. A failed write leaves the zero
-	// Diff, whose prompt keeps the git command (decision 137).
-	reviewDiff, cleanupDiff := diffscope.MaterializeOrWarn(diffscope.Request{
+	// Diff, whose prompt keeps the git command (decision 137). A printed
+	// prompt takes that form, which needs no file, but classifies the changed
+	// files as the run does, so its changed-file list and partition plan are
+	// the run's (decision 143).
+	diffReq := diffscope.Request{
 		RepoDir: pr.Dir,
 		Revs:    []string{"origin/" + pr.BaseBranch + "...HEAD"},
 		Exclude: opts.DiffExclusions,
-	})
-	defer cleanupDiff()
+	}
+	var reviewDiff diffscope.Diff
+	if opts.PrintPrompt {
+		excluded, err := diffscope.Exclusions(diffReq)
+		if err != nil {
+			slog.Warn("classifying the changed files under --diff-exclusions failed; the printed prompt lists every one", "err", err)
+		}
+		reviewDiff.Excluded = excluded
+	} else {
+		var cleanupDiff func()
+		reviewDiff, cleanupDiff = diffscope.MaterializeOrWarn(diffReq)
+		cleanups = append(cleanups, cleanupDiff)
+	}
 
 	// The changed files the review prompt lists and the session accounts for:
 	// the PR's file changes minus what the diff left out and the planning
@@ -326,9 +581,11 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 
 	// Under --scope-patterns the review prompt carries the bodies the files
 	// the diff kept match and indexes the rest from a catalog written here,
-	// which is removed when Run returns (decision 141).
-	scope, cat, cleanupCatalog := scopeCatalog(opts.ScopePatterns, pr.Dir, diffscope.Reviewable(pr.ChangedFiles, reviewDiff.Excluded), pats)
-	defer cleanupCatalog()
+	// which is removed when Run returns (decision 141). A printed prompt
+	// carries every body, as a run whose catalog could not be written does
+	// (decision 143).
+	scope, cat, cleanupCatalog := scopeCatalog(opts.ScopePatterns && !opts.PrintPrompt, pr.Dir, diffscope.Reviewable(pr.ChangedFiles, reviewDiff.Excluded), pats)
+	cleanups = append(cleanups, cleanupCatalog)
 
 	// Under --partition-files a pull request whose diff keeps more files than
 	// the flag, its planning artifacts aside, is split here, before any
@@ -368,202 +625,55 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		Scope:        scope,
 		Catalog:      cat,
 	}
-	// One context per partition session, each with its share of the ledger;
-	// none when the review runs as one session on reviewCtx (decision 142).
-	sessions := partitionContexts(reviewCtx, plan, ledger)
+	return &preparedReview{
+		techTags:  techTags,
+		pats:      pats,
+		feature:   feature,
+		diff:      reviewDiff,
+		ledger:    ledger,
+		plan:      plan,
+		reviewCtx: reviewCtx,
+		// One context per partition session, each with its share of the
+		// ledger; none when the review runs as one session on reviewCtx
+		// (decision 142).
+		sessions: partitionContexts(reviewCtx, plan, ledger),
+	}, cleanup, nil
+}
 
-	var (
-		// reviewParts holds the primary review's results unmerged: one per
-		// partition session, or the single session's (decision 142).
-		reviewParts      []*report.ReviewResult
-		result           *report.ReviewResult
-		advResult        *report.ReviewResult
-		complianceResult *report.ReviewResult
-		coverageResult   *report.CoverageResult
-		advErr           error
-		complianceErr    error
-		covErr           error
-	)
-	// specialistResults[i] holds the findings from claude.Specialists[i] and
-	// specialistStatus[i] how its pass ended; a nil result means that specialist
-	// was gated out or failed (both non-fatal), is skipped at merge, and its
-	// status says which.
-	var (
-		specialistResults []*report.ReviewResult
-		specialistStatus  []report.PassStatus
-	)
-
-	var g errgroup.Group
-	g.Go(func() error {
-		if len(sessions) > 0 {
-			parts, err := r.reviewPartitions(pr, plan, sessions, reviewDiff.Excluded)
-			if err != nil {
-				return fmt.Errorf("claude review: %w", err)
-			}
-			reviewParts = parts
-			return nil
-		}
-		res, err := r.Claude.Review(pr.Dir, reviewCtx)
-		if err != nil {
-			return fmt.Errorf("claude review: %w", err)
-		}
-		reviewParts = []*report.ReviewResult{res}
-		return nil
-	})
+// reviewCacheKey returns the cache key of a review of pr: the pull request
+// and its head commit, plus every option that changes the result, the
+// resolved wiki commit, the mirror search's revision and the pattern
+// sources. The run, the dry run and the printed prompt compute it alike
+// (decision 143).
+func reviewCacheKey(opts Options, pr *github.PR, wiki patterns.ResolvedWiki, surface search.Surface) string {
+	var cacheFlags []string
 	if opts.Thorough {
-		g.Go(func() error {
-			advResult, advErr = r.Claude.AdversarialReview(pr.Dir, pr.BaseBranch, "", pats, opts.MaxPatterns)
-			return nil
-		})
+		cacheFlags = append(cacheFlags, "thorough")
+	}
+	if opts.Specialists {
+		cacheFlags = append(cacheFlags, "specialists")
+	}
+	if opts.ScopePatterns {
+		cacheFlags = append(cacheFlags, "scope-patterns")
 	}
 	if opts.CoverageMap {
-		g.Go(func() error {
-			coverageResult, covErr = r.Claude.CoverageMap(pr.Dir, pr.BaseBranch)
-			return nil
-		})
+		cacheFlags = append(cacheFlags, "coverage-map")
 	}
-	if feature != nil {
-		g.Go(func() error {
-			complianceResult, complianceErr = r.Claude.FeatureCompliance(pr.Dir, pr.BaseBranch, feature)
-			return nil
-		})
+	if opts.PartitionFiles > 0 {
+		cacheFlags = append(cacheFlags, fmt.Sprintf("partition-files=%d", opts.PartitionFiles))
 	}
-	if opts.Specialists {
-		g.Go(func() error {
-			specialistResults, specialistStatus = claude.RunSpecialistFanOut(pr.ChangedFiles, func(sp claude.Specialist) (*report.ReviewResult, error) {
-				return r.Claude.SpecialistReview(pr.Dir, pr.BaseBranch, sp, pats, opts.MaxPatterns)
-			})
-			return nil
-		})
+	if wiki.CommitSHA != "" {
+		cacheFlags = append(cacheFlags, "wiki="+wiki.CommitSHA)
 	}
-	if err := g.Wait(); err != nil {
-		return err
+	if flag := surface.CacheFlag(); flag != "" {
+		cacheFlags = append(cacheFlags, flag)
 	}
-
-	// 11. Line anchoring: place each pass's findings on the code they quote
-	// before the merges below match them by file and line. A failed pass is left
-	// out, so the counts cover the passes the report draws on, each pass's
-	// findings before they are folded; a nil entry (a gated-out or failed
-	// specialist) is skipped (decision 139). Each partition of a partitioned
-	// review counts as a pass of its own here, so its findings are placed
-	// before the partitions merge (decision 142). A finding is relocated only
-	// within the changed files the diff kept: no session was shown the rest,
-	// and a large one left unread would stop every relocation (decision 137).
-	secondaries := make([]*report.ReviewResult, 0, len(reviewParts)+1+len(specialistResults))
-	secondaries = append(secondaries, reviewParts[1:]...)
-	if advErr == nil {
-		secondaries = append(secondaries, advResult)
-	}
-	if complianceErr == nil {
-		secondaries = append(secondaries, complianceResult)
-	}
-	secondaries = append(secondaries, specialistResults...)
-	hygiene.AnchorFindings(reviewParts[0], pr.Dir, diffscope.Reviewable(pr.ChangedFiles, reviewDiff.Excluded), secondaries...)
-
-	// The partitions fold into one primary result before the secondary passes
-	// merge into it, and that result carries the run's excluded files as the
-	// single session's does (claude.Client.Review). The partition record is
-	// the pipeline's, so a value decoded from a session's output never
-	// survives (decision 142).
-	if len(plan) > 0 {
-		result = mergePartitions(reviewParts, plan)
-		result.ExcludedFiles = reviewDiff.Excluded
-	} else {
-		result = reviewParts[0]
-		result.Partitions = nil
-	}
-
-	if advErr != nil {
-		slog.Warn("adversarial review failed", "err", advErr)
-	} else if advResult != nil {
-		hygiene.TagPass(result, hygiene.PassReview)
-		hygiene.TagPass(advResult, hygiene.PassAdversarial)
-		result = hygiene.MergeResults(result, advResult)
-	}
-	if complianceErr != nil {
-		slog.Warn("feature compliance check failed", "err", complianceErr)
-	} else if complianceResult != nil {
-		hygiene.TagPass(result, hygiene.PassReview)
-		hygiene.TagPass(complianceResult, hygiene.PassCompliance)
-		result = hygiene.MergeResults(result, complianceResult)
-	}
-	if opts.Specialists {
-		result = mergeSpecialists(result, specialistResults)
-	}
-	if covErr != nil {
-		slog.Warn("coverage map failed", "err", covErr)
-	}
-	// Record how each requested secondary pass ended, so the report names a
-	// failed one and the cache write below can refuse the result. Assigned
-	// unconditionally, so a value decoded from finder output never survives
-	// (decision 135).
-	result.Passes = requestedPasses(opts, feature != nil, advErr, covErr, complianceErr, specialistStatus)
-
-	// 11a. File-less dedup fallback: the fuzzy merge matcher can only anchor
-	// findings that carry a file, so cross-pass duplicates among file-less
-	// findings survive. When a secondary pass contributed, reconcile them with a
-	// single cheap structure-tier grouping call. Non-fatal: on failure the
-	// findings ship unmerged. The partitions of a partitioned review count as
-	// contributors, since each may report the same file-less finding
-	// (decision 142).
-	if opts.Thorough || opts.Specialists || feature != nil || len(plan) > 0 {
-		hygiene.DedupFileless(result, r.Claude.DedupFindings)
-	}
-
-	// 11b. Quote-or-demote gate: downgrade findings whose code snippet cannot
-	// be located in the changed files so unverifiable claims land in the
-	// Unverified section instead of next to confirmed bugs. The gate records
-	// what it examined and demoted on the result, which the cache write below
-	// then persists.
-	if n := hygiene.VerifySnippets(result, pr.Dir, pr.ChangedFiles); n > 0 {
-		slog.Info("demoted findings failing snippet verification", "count", n)
-	}
-
-	// 11c. Claim verification: re-check each BLOCKING/CRITICAL finding's claim
-	// against the checkout and demote any the verifier refutes with quoted
-	// counter-evidence. Runs before the cache write so the demotion — and the
-	// per-finding and run-level records the gate writes onto the result — are
-	// cached too. Fail-open: a failed verification publishes the findings
-	// unchanged. See report.ClaimGateStats for why the refuted/sent ratio the
-	// records now carry is worth watching.
-	hygiene.VerifyClaims(result, pr.Dir, r.Claude.VerifyFindingClaims)
-
-	// 11d. Changed-file check: compare the files the prompt listed with the
-	// review session's account of them and record the outcome on the result,
-	// before the cache write so a cache hit renders it too. A record, not a
-	// gate: it moves no finding (decision 138).
-	if n := hygiene.CheckFileLedger(result, ledgerPaths(ledger)); n > 0 {
-		slog.Info("the review did not account for every changed file", "missing", n, "changed", len(ledger))
-	}
-
-	// 12. Cache the result together with the coverage map, so a later hit
-	// renders the report this run rendered rather than a subset of it. A run in
-	// which a requested pass failed is not cached: the key names the passes the
-	// run asked for, so a cached entry would serve the incomplete review to
-	// every later run of the same commit and flags instead of retrying the pass
-	// (decision 135).
-	if !opts.NoCache {
-		if failed := result.FailedPasses(); len(failed) > 0 {
-			slog.Warn("not caching the review: a requested pass failed, so the next run retries it", "passes", passNames(failed))
-		} else if err := writeCachedReview(cacheKey, result, coverageResult); err != nil {
-			slog.Warn("could not cache result", "err", err)
-		}
-	}
-
-	// 13. Render. Record the resolved wiki provenance on the result (excluded
-	// from the cached payload, so it is re-attached on a cache hit too).
-	result.WikiRepo = wiki.Repo
-	result.WikiCommit = wiki.CommitSHA
-	slog.Info("review complete")
-	if err := r.renderResult(w, result, pr, opts, coverageResult); err != nil {
-		return err
-	}
-
-	// Capture pass: read-only proposal of new wiki review patterns from the review
-	// findings — writing nothing by default. Runs on a cache miss only (a cache hit
-	// returned above before the catalog was loaded), and only when a wiki resolved.
-	r.runCapture(w, pr, opts, result, pats, wiki)
-	return nil
+	// The loaded catalog decides what the review looks for, so it belongs in
+	// the key: --patterns ./new-rules must not be served a result from a run
+	// that never saw those rules.
+	cacheFlags = append(cacheFlags, "patterns="+patterns.Fingerprint(
+		opts.PatternDirs, opts.NoRepoPatterns, opts.NoLocalPatterns, opts.MaxPatterns))
+	return cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA, cacheFlags...)
 }
 
 // requestedPasses returns how each secondary pass the run requested ended, in

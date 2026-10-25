@@ -2331,9 +2331,6 @@ func TestRun_FailedComplianceIsRecordedAndNotCached(t *testing.T) {
 	}
 }
 
-// formatJSON is the --format value that renders the review as JSON.
-const formatJSON = "json"
-
 // TestRun_PassStatusInJSONAndCache proves the pass records reach --format json
 // in launch order, the adversarial pass first and then the specialists in
 // registry order with the gated-out ones included, ride the cached result, and

@@ -61,6 +61,10 @@ func newRootCmd(deps *runtimeDeps) *cobra.Command {
 		Long: `planwerk-agent uses Claude Code to analyze GitHub PR changes and produces
 structured, categorized review results as Markdown, JSON, or SARIF output.
 
+Use --dry-run to see what a review would run, and what each pass would be
+sent, without a Claude call; --print-prompt renders the review prompt to
+stdout.
+
 PR reference can be a URL (https://github.com/owner/repo/pull/123)
 or short form (owner/repo#123).`,
 		Args: cobra.RangeArgs(0, 1),
@@ -227,6 +231,10 @@ or short form (owner/repo#123).`,
 			if cfg.ResolveOutdated && !cfg.InlineReview {
 				return fmt.Errorf("--resolve-outdated requires --inline")
 			}
+			// The checks above stay: they describe the run a dry run previews.
+			if cfg.DryRun && cfg.PrintPrompt {
+				return fmt.Errorf("--dry-run and --print-prompt are mutually exclusive")
+			}
 
 			opts := cfg
 			opts.Version = deps.version
@@ -283,6 +291,8 @@ or short form (owner/repo#123).`,
 	flags.BoolVar(&cfg.Local, "local", false, "Operate on the current working directory instead of cloning into a temp dir")
 	flags.BoolVar(&cfg.Force, "force", false, "With --local, skip the confirmation prompt when the working tree is dirty")
 	flags.BoolVar(&cfg.NoCapture, "no-capture", false, "Skip the read-only capture pass that proposes new wiki review patterns from the review findings (only runs with --wiki; writes nothing)")
+	flags.BoolVar(&cfg.DryRun, "dry-run", false, "Report what the review would run (the PR, head SHA, cache key and whether it hits, technologies, pattern counts, changed files, each pass with the specialist gate's choice and its prompt size) without invoking Claude, writing the cache, or posting")
+	flags.BoolVar(&cfg.PrintPrompt, "print-prompt", false, "Render the review prompt (with the pattern bodies) to stdout and exit; do not invoke Claude, write the cache, or post")
 	addWikiFlags(flags, &wikiEnable, &wikiDisable, &wikiRef)
 	brain.register(flags)
 	flags.BoolVar(&showVersion, "version", false, "Show version information and exit")
@@ -293,9 +303,11 @@ or short form (owner/repo#123).`,
 // validateReviewFormat rejects a --format the review cannot render and the
 // flags that cannot go with it: a posted comment is the Markdown report, so
 // json and sarif refuse --post-review and --inline, and a SARIF log has no
-// place for the coverage map. It returns nil for every combination it accepts.
-// The caller runs it before --inline implies --post-review, so each refusal
-// names the flag the user typed (decision 134).
+// place for the coverage map. A dry run's report and a printed prompt are no
+// SARIF log either, so sarif refuses --dry-run and --print-prompt
+// (decision 143). It returns nil for every combination it accepts. The caller
+// runs it before --inline implies --post-review, so each refusal names the
+// flag the user typed (decision 134).
 func validateReviewFormat(cfg review.Options) error {
 	switch cfg.Format {
 	case formatMarkdown:
@@ -312,6 +324,12 @@ func validateReviewFormat(cfg review.Options) error {
 	}
 	if cfg.CoverageMap && cfg.Format == formatSARIF {
 		return errors.New("--coverage-map cannot be used with --format sarif: SARIF has no place for the coverage map")
+	}
+	if cfg.DryRun && cfg.Format == formatSARIF {
+		return errors.New("--dry-run cannot be used with --format sarif")
+	}
+	if cfg.PrintPrompt && cfg.Format == formatSARIF {
+		return errors.New("--print-prompt cannot be used with --format sarif")
 	}
 	return nil
 }

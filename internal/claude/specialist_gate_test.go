@@ -154,6 +154,20 @@ func TestIsRouteFile(t *testing.T) {
 	}
 }
 
+// TestRelevanceString pins the names review --dry-run gives a gated-out
+// specialist's missing files, one per Relevance value (decision 143).
+func TestRelevanceString(t *testing.T) {
+	t.Parallel()
+	for r, want := range map[Relevance]string{
+		RelevanceAnySource: "source file",
+		RelevanceRoutes:    "route or handler file",
+	} {
+		if got := r.String(); got != want {
+			t.Errorf("Relevance(%d).String() = %q, want %q", r, got, want)
+		}
+	}
+}
+
 // sameStringSet reports whether a and b contain the same elements, ignoring
 // order and duplicates.
 func sameStringSet(a, b []string) bool {
