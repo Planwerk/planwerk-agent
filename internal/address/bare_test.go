@@ -51,3 +51,22 @@ func TestPrintBarePrompt_RequiresBuilder(t *testing.T) {
 		t.Fatalf("expected builder-required error, got %v", err)
 	}
 }
+
+func TestPrintBarePrompt_ReadsTheTrailerBan(t *testing.T) {
+	gh := &githubtest.Fake{
+		PR:  github.PR{HeadBranch: "feat/x", BaseBranch: "main"},
+		Dir: checkoutWithBase(t, trailerBanAgents),
+	}
+	r := newRunner(gh, &fakeClaude{})
+	var got BareContext
+	build := func(ctx BareContext) string {
+		got = ctx
+		return "ok"
+	}
+	if err := r.PrintBarePrompt(io.Discard, Options{PRRef: "o/r#1"}, build); err != nil {
+		t.Fatalf("PrintBarePrompt returned %v, want nil", err)
+	}
+	if got.AITrailersForbiddenBy != trailerBanFile {
+		t.Errorf("BareContext.AITrailersForbiddenBy = %q, want AGENTS.md", got.AITrailersForbiddenBy)
+	}
+}

@@ -537,7 +537,7 @@ the last line is the single thing that unblocks the diagnosis.
 - No test was weakened. Re-read the diff hunk by hunk against the list in
   `commits.md`.
 - Every changed file is warranted by the confirmed cause.
-- The commit ends with `Assisted-by` and then `Signed-off-by`.
+- The commit ends with the trailers `commits.md` asks for.
 - The push targets only the `diagnose/…` branch.
 - Everything shown is redacted.
 - The report is English, whatever language the conversation used.

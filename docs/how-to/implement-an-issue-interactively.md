@@ -64,7 +64,8 @@ no review pass will do it later.
 
 The branch is named `implement/issue-<N>-<slug>`, the same shape the command
 uses, so it is unambiguously this issue's implementation. Commits are small and
-reviewable, and carry `Assisted-by` above `Signed-off-by`, never
+reviewable, and carry `Assisted-by` above `Signed-off-by` (only `Signed-off-by`
+where the repository forbids attributing commits to an AI), never
 `Co-authored-by` — the doctrine in `plugins/planwerk/shared/commits.md`.
 
 After you have seen the criteria walk, the commits, and the diff, you choose

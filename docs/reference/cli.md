@@ -552,6 +552,13 @@ accumulating "Fix failing CI checks" commits. This is the default in both
 temp-dir and `--local` runs. Pass `--no-fixup` to append the fix as a fresh
 on-top follow-up commit and push without rewriting history.
 
+Each fix commit ends with `Assisted-by` above `Signed-off-by`, or with
+`Signed-off-by` alone when the repository's contribution rules on the base
+branch forbid AI attribution trailers
+([design decision #150](/explanation/design-decisions)). The fix comment names
+the model either way, so with `--no-fix-comment` in such a repository the run
+notes that nothing on the pull request discloses the assistance.
+
 ```bash
 planwerk-agent fix owner/repo#123
 planwerk-agent fix --dry-run owner/repo#123
@@ -678,7 +685,7 @@ planwerk-agent implement --wiki --capture-wiki --yes owner/repo#123
 | `--plan-model` | Model for the planning session passed to Claude Code via `--model` (e.g. `opus`, `fable`; env: `PLANWERK_PLAN_MODEL`) | `opus` |
 | `--plan-effort` | Reasoning effort for the planning session passed via `--effort` (`low`, `medium`, `high`, `xhigh`, `max`; env: `PLANWERK_PLAN_EFFORT`) | `xhigh` |
 | `--implement-model` | Model for the implement session only, passed to Claude Code via `--model`; the simplify/review/finalize passes stay on `--claude-model` (env: `PLANWERK_IMPLEMENT_MODEL`) | inherits `--claude-model` |
-| `--implement-worker-model` | Model for the `implementer` subagents the implement session delegates its work packages to. Setting it switches the session into **orchestrator mode**: the session (on `--implement-model`, e.g. `fable`) keeps the whole issue in view, delegates each work package to a subagent on this model, and verifies every delivered package against the actual diff before moving on. The subagent is defined inline via Claude Code's `--agents` flag, so the checkout stays untouched; the report's attribution names this model, and the workers' commit trailers carry their exact model id. Pass an exact model id (e.g. `claude-opus-5-5`) for exact footer attribution. Empty keeps the single-session behavior (env: `PLANWERK_IMPLEMENT_WORKER_MODEL`) | - (orchestrator mode off) |
+| `--implement-worker-model` | Model for the `implementer` subagents the implement session delegates its work packages to. Setting it switches the session into **orchestrator mode**: the session (on `--implement-model`, e.g. `fable`) keeps the whole issue in view, delegates each work package to a subagent on this model, and verifies every delivered package against the actual diff before moving on. The subagent is defined inline via Claude Code's `--agents` flag, so the checkout stays untouched; the report's attribution names this model, and the workers' commit trailers carry their exact model id, unless the repository forbids that trailer ([design decision #150](/explanation/design-decisions)). Pass an exact model id (e.g. `claude-opus-5-5`) for exact footer attribution. Empty keeps the single-session behavior (env: `PLANWERK_IMPLEMENT_WORKER_MODEL`) | - (orchestrator mode off) |
 | `--implement-worker-effort` | Reasoning effort for the `implementer` subagents in orchestrator mode (`low`, `medium`, `high`, `xhigh`, `max`); ignored without `--implement-worker-model` (env: `PLANWERK_IMPLEMENT_WORKER_EFFORT`) | `xhigh` |
 | `--verify` | After implementing, run an independent pass that checks the actual diff against the issue's Acceptance Criteria without trusting the implementer's report; any unmet criteria are then fed into the review applier and fixed on the branch before the PR opens | `false` |
 | `--no-simplify` | Skip the automatic simplify pass that folds over-engineering removals into the branch before the review phase | `false` |

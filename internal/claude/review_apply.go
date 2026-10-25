@@ -83,7 +83,7 @@ func BuildReviewApplyPrompt(ctx implement.ReviewApplyContext) string {
 4. Verify locally: build the project and run the tests (or the targeted subset covering the touched code). ` + foregroundRunLine() + ` Record the exact commands and their results under Verification in the report. If a command cannot run in this environment, say so explicitly.
 `)
 
-	sb.WriteString(foldSteps(ctx.BaseBranch, 5, "a fix for code", "changing", "the report", foldLocalTail))
+	sb.WriteString(foldSteps(ctx.BaseBranch, 5, "a fix for code", "changing", "the report", foldLocalTail(ctx.AITrailersForbiddenBy)))
 
 	sb.WriteString(`6. After folding, output a structured review report in this exact shape:
 
@@ -102,7 +102,7 @@ func BuildReviewApplyPrompt(ctx implement.ReviewApplyContext) string {
    STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT>
    (DONE = findings resolved and verified; DONE_WITH_CONCERNS = folded but with reservations a human should see; BLOCKED = could not make progress; NEEDS_CONTEXT = missing information only a human can supply. The orchestrator reads this line and stops the pass on BLOCKED or NEEDS_CONTEXT.)
 
-` + commitTrailerBlock() + `## Hard rules
+` + commitTrailerBlock(ctx.AITrailersForbiddenBy) + `## Hard rules
 
 `)
 	sb.WriteString(foldDisciplineRule(ctx.BaseBranch))

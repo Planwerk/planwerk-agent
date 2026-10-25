@@ -869,7 +869,27 @@ func passSummaryLine() string {
 // Passing Assisted-by via `--trailer` instead would place it AFTER the
 // sign-off, breaking the order. The Assisted-by format (agent name, optionally
 // `:<model id>`) follows the osism/promptcraft commit skill.
-func commitTrailerBlock() string {
+//
+// forbiddenBy is the instruction file aitrailers.ForbiddenBy named, whose rule
+// on the base branch forbids attributing commits to an AI. Empty renders the
+// Assisted-by convention unchanged; set, the block asks for the Signed-off-by
+// line alone, keeps the Co-authored-by ban, and names the file as the reason.
+// Every spelled-out commit command in the same prompt passes the same value
+// to assistedByArg, so no example contradicts the block (decision 150).
+func commitTrailerBlock(forbiddenBy string) string {
+	if forbiddenBy != "" {
+		return `## Commit trailers
+
+EVERY commit you create MUST end with exactly this one trailer (a ` + "`git commit --fixup`" + ` commit is the one exception: the autosquash discards its message):
+
+    Signed-off-by: <committer name> <committer email>
+
+- Pass ` + "`-s`" + ` to ` + "`git commit`" + ` so git appends the ` + "`Signed-off-by`" + ` line from the committer identity. It MUST be the very last line of the message.
+- Write the message about the change and nothing else: ` + "`" + forbiddenBy + "`" + ` on the base branch forbids attributing commits to an AI, so no ` + "`Assisted-by`" + ` trailer and no line naming Claude, a model, or planwerk-agent goes into it.
+- NEVER add a ` + "`Co-authored-by`" + ` trailer — not for Claude, not for planwerk-agent, not for anyone.
+
+`
+	}
 	return `## Commit trailers
 
 EVERY commit you create MUST end with exactly these two trailers, in this order (a ` + "`git commit --fixup`" + ` commit is the one exception: the autosquash discards its message):
@@ -895,7 +915,18 @@ EVERY commit you create MUST end with exactly these two trailers, in this order 
 // verb names the action in the footer's lead so it matches the command the
 // session runs ("Implemented by" for implement, "Addressed by" for address);
 // the Go renderers use the same verb for that command's artifacts.
-func attributionFooterBlock(verb string) string {
+//
+// forbiddenBy is the prompt's commitTrailerBlock argument. Set, the footer
+// stays, since with no Assisted-by trailer on the commits it is where the
+// assistance is disclosed, and the block says so instead of calling the
+// footer a mirror of that trailer (decision 150). Empty renders the block as
+// before. Finalize writes no commits and passes "", so its prompt keeps the
+// comparison.
+func attributionFooterBlock(verb, forbiddenBy string) string {
+	reason := "This mirrors the Assisted-by commit trailer."
+	if forbiddenBy != "" {
+		reason = "In this repository the commits carry no AI attribution, so this footer is where the assistance is disclosed."
+	}
 	return `## Attribution footer
 
 End every GitHub artifact you author yourself — the pull request description, any issue or PR comment, any review-thread reply — with this attribution footer as its final line, after a "---" separator:
@@ -904,7 +935,7 @@ End every GitHub artifact you author yourself — the pull request description, 
 
     _` + verb + ` ` + attribution.Tool() + ` with Claude:<your model id>_
 
-- Append your exact model id when your runtime context provides it (e.g. ` + "`with Claude:claude-opus-5-5`" + `), without a bracketed suffix such as ` + "`[1m]`" + `; otherwise write a bare ` + "`with Claude`" + ` — never guess the id. This mirrors the Assisted-by commit trailer.
+- Append your exact model id when your runtime context provides it (e.g. ` + "`with Claude:claude-opus-5-5`" + `), without a bracketed suffix such as ` + "`[1m]`" + `; otherwise write a bare ` + "`with Claude`" + ` — never guess the id. ` + reason + `
 - Keep the ` + "`[planwerk-agent]`" + ` link intact so the artifact points back at the tool that produced it.
 - Add the footer once, as the last line of the artifact — do NOT repeat it per section.
 
@@ -1152,31 +1183,50 @@ func foldSteps(baseBranch string, foldStep int, noun, verb, before, tail string)
 `+foldConflictSteps('e', before)+`%[5]s`, foldStep, baseBranch, noun, verb, tail)
 }
 
+// assistedByArg returns the Assisted-by paragraph a spelled-out `git commit`
+// command ends with, preceded by sep: " " for a one-line command, and a
+// backslash continuation for the multi-line ones. It returns "" when
+// forbiddenBy is set, so the command matches what commitTrailerBlock asks for
+// (decision 150). The result carries no %, so it is safe inside a format
+// string.
+func assistedByArg(forbiddenBy, sep string) string {
+	if forbiddenBy != "" {
+		return ""
+	}
+	return sep + `-m "Assisted-by: Claude:<your model id>"`
+}
+
 // foldLocalTail closes foldSteps for the two passes that fold on the local
 // feature branch before any pull request exists (simplify-apply, review-apply):
 // the one case in which a change becomes a commit of its own, and where the
-// rewritten commits stay.
-const foldLocalTail = `   Create a NEW standalone commit ONLY when a change genuinely belongs to no
+// rewritten commits stay. forbiddenBy is the prompt's commitTrailerBlock
+// argument.
+func foldLocalTail(forbiddenBy string) string {
+	return `   Create a NEW standalone commit ONLY when a change genuinely belongs to no
    existing commit on this branch (e.g. a regression test in a new file no
    commit introduced). That is the rare exception, not the default — and only
    then:
 
-      git commit -s -m "<concise summary>" -m "Assisted-by: Claude:<your model id>"
+      git commit -s -m "<concise summary>"` + assistedByArg(forbiddenBy, " ") + `
 
    Leave the rewritten commits on the local branch: the finalize step opens
    the pull request once the simplify and review passes are done (Hard rules).
 
 `
+}
 
 // fixStandaloneCommitTail closes foldSteps for the fix prompts: the one case in
 // which a change becomes a new commit of its own instead of a fixup.
-const fixStandaloneCommitTail = `   Create a NEW standalone commit ONLY when a change genuinely belongs to no
+// forbiddenBy is the prompt's commitTrailerBlock argument.
+func fixStandaloneCommitTail(forbiddenBy string) string {
+	return `   Create a NEW standalone commit ONLY when a change genuinely belongs to no
    existing commit on this branch (e.g. an entirely new file unrelated to any
    of them). That is the rare exception, not the default — and only then:
 
-      git commit -s -m "<concise summary>" -m "Failed checks: <comma-separated names>" -m "Assisted-by: Claude:<your model id>"
+      git commit -s -m "<concise summary>" -m "Failed checks: <comma-separated names>"` + assistedByArg(forbiddenBy, " ") + `
 
 `
+}
 
 // foldConflictSteps returns the two sub-steps every fold recipe ends with: what
 // to do when the autosquash rebase stops on a conflict, and the check that no

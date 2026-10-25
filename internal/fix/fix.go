@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/planwerk/planwerk-agent/internal/aitrailers"
 	"github.com/planwerk/planwerk-agent/internal/attribution"
 	"github.com/planwerk/planwerk-agent/internal/detect"
 	"github.com/planwerk/planwerk-agent/internal/github"
@@ -159,13 +160,14 @@ func (r *Runner) PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuil
 	catalog, hasRepoLocal := patterns.BareCatalog(pats, pr.Dir, opts.NoRepoPatterns)
 
 	prompt := build(BareContext{
-		RepoFullName:     fmt.Sprintf("%s/%s", owner, repo),
-		PRNumber:         number,
-		TechTags:         tags,
-		PatternCatalog:   catalog,
-		BundledURLBase:   patterns.BundledURLBase,
-		HasRepoLocalRefs: hasRepoLocal,
-		Fixup:            !opts.NoFixup,
+		RepoFullName:          fmt.Sprintf("%s/%s", owner, repo),
+		PRNumber:              number,
+		TechTags:              tags,
+		PatternCatalog:        catalog,
+		BundledURLBase:        patterns.BundledURLBase,
+		HasRepoLocalRefs:      hasRepoLocal,
+		Fixup:                 !opts.NoFixup,
+		AITrailersForbiddenBy: aitrailers.ForbiddenBy(pr.Dir, "origin/"+pr.BaseBranch),
 	})
 	if _, err := io.WriteString(w, prompt); err != nil {
 		return fmt.Errorf("writing prompt: %w", err)
@@ -247,6 +249,10 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 
 	// priorReport carries each iteration's report into the next one's prompt.
 	priorReport := ""
+
+	// noted records that the no-disclosure note was printed, so a run says it
+	// once, not once per iteration.
+	noted := false
 
 	for iteration := 1; iteration <= opts.MaxIterations; iteration++ {
 		_, _ = fmt.Fprintf(statusW, "\n=== Iteration %d/%d for %s#%d (head %s) ===\n",
@@ -353,26 +359,34 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		mem, cleanupMemory := patterns.MaterializeMemoryOrWarn(wiki.MemoryPages)
 
 		sks, changedSkills := skills.LoadShared(fresh.Dir, "origin/"+pr.BaseBranch)
+		forbiddenBy := aitrailers.ForbiddenBy(fresh.Dir, "origin/"+pr.BaseBranch)
+		if forbiddenBy != "" && opts.NoFixComment && !noted {
+			// The fix comment is where a fix run discloses the assistance
+			// once the trailer is gone (decision 150).
+			_, _ = fmt.Fprintf(w, "\nNote: %s on origin/%s forbids attributing commits to an AI, so the fix commits carry no Assisted-by trailer, and --no-fix-comment leaves nothing on the pull request that discloses the AI assistance.\n", forbiddenBy, pr.BaseBranch)
+			noted = true
+		}
 		fixReport, model, fixErr := r.Claude.Fix(fresh.Dir, Context{
-			RepoFullName:   fullName,
-			PRNumber:       number,
-			PRTitle:        pr.Title,
-			HeadBranch:     pr.HeadBranch,
-			HeadSHA:        fresh.HeadSHA,
-			Iteration:      iteration,
-			MaxIterations:  opts.MaxIterations,
-			PriorReport:    priorReport,
-			FailedChecks:   failed,
-			Patterns:       pats,
-			Catalog:        cat,
-			Memory:         mem,
-			MaxPatterns:    opts.MaxPatterns,
-			Skills:         sks,
-			ChangedSkills:  changedSkills,
-			StyleGuidePath: styleguide.Find(fresh.Dir),
-			Local:          opts.Local,
-			Fixup:          !opts.NoFixup,
-			BaseBranch:     pr.BaseBranch,
+			RepoFullName:          fullName,
+			PRNumber:              number,
+			PRTitle:               pr.Title,
+			HeadBranch:            pr.HeadBranch,
+			HeadSHA:               fresh.HeadSHA,
+			Iteration:             iteration,
+			MaxIterations:         opts.MaxIterations,
+			PriorReport:           priorReport,
+			FailedChecks:          failed,
+			Patterns:              pats,
+			Catalog:               cat,
+			Memory:                mem,
+			MaxPatterns:           opts.MaxPatterns,
+			Skills:                sks,
+			ChangedSkills:         changedSkills,
+			StyleGuidePath:        styleguide.Find(fresh.Dir),
+			AITrailersForbiddenBy: forbiddenBy,
+			Local:                 opts.Local,
+			Fixup:                 !opts.NoFixup,
+			BaseBranch:            pr.BaseBranch,
 		})
 		fresh.Cleanup()
 		cleanupCatalog()

@@ -42,6 +42,12 @@ type Context struct {
 	// entries, doc comments / docstrings — follows the repo's own guide.
 	// Empty when the repo ships none.
 	StyleGuidePath string
+	// AITrailersForbiddenBy is the repo-relative path of the instruction file
+	// whose rule on the base branch forbids attributing commits to an AI
+	// (aitrailers.ForbiddenBy, e.g. "AGENTS.md"). When set, the prompt asks
+	// for the Signed-off-by trailer alone and names the file; empty keeps the
+	// Assisted-by trailer (decision 150).
+	AITrailersForbiddenBy string
 	// Plan is the implementation plan the preceding read-only planning
 	// session produced. When non-empty it is embedded verbatim into the
 	// implement prompt; empty means the implement session plans for
@@ -161,6 +167,12 @@ type BareContext struct {
 	// session reads the file from its own checkout of the same repo. Empty
 	// when the repo ships none.
 	StyleGuidePath string
+	// AITrailersForbiddenBy is the repo-relative path of the instruction file
+	// whose rule on the base branch forbids attributing commits to an AI
+	// (aitrailers.ForbiddenBy, e.g. "AGENTS.md"). When set, the prompt asks
+	// for the Signed-off-by trailer alone and names the file; empty keeps the
+	// Assisted-by trailer (decision 150).
+	AITrailersForbiddenBy string
 }
 
 // BarePromptBuildFn renders a self-contained implement prompt — no issue
@@ -313,6 +325,12 @@ type SimplifyApplyContext struct {
 	// patterns.Materialize); a zero Catalog puts the bodies in the prompt.
 	Catalog     patterns.Catalog
 	MaxPatterns int
+	// AITrailersForbiddenBy is the repo-relative path of the instruction file
+	// whose rule on the base branch forbids attributing commits to an AI
+	// (aitrailers.ForbiddenBy, e.g. "AGENTS.md"). When set, the prompt asks
+	// for the Signed-off-by trailer alone and names the file; empty keeps the
+	// Assisted-by trailer (decision 150).
+	AITrailersForbiddenBy string
 }
 
 // SimplifyFinder runs the read-only ponytail-style pass over a produced diff and
@@ -379,6 +397,12 @@ type ReviewApplyContext struct {
 	// them truthfully: the review fan-out's defects (the zero value), or the
 	// independent verification's unmet Acceptance Criteria.
 	Source ReviewApplySource
+	// AITrailersForbiddenBy is the repo-relative path of the instruction file
+	// whose rule on the base branch forbids attributing commits to an AI
+	// (aitrailers.ForbiddenBy, e.g. "AGENTS.md"). When set, the prompt asks
+	// for the Signed-off-by trailer alone and names the file; empty keeps the
+	// Assisted-by trailer (decision 150).
+	AITrailersForbiddenBy string
 }
 
 // ReviewApplySource names the pass whose findings a review-apply session

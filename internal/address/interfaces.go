@@ -53,6 +53,12 @@ type Context struct {
 	// any documentation prose a resolved thread touches follows the repo's
 	// own guide. Empty when the repo ships none.
 	StyleGuidePath string
+	// AITrailersForbiddenBy is the repo-relative path of the instruction file
+	// whose rule on the base branch forbids attributing commits to an AI
+	// (aitrailers.ForbiddenBy, e.g. "AGENTS.md"). When set, the prompt asks
+	// for the Signed-off-by trailer alone and names the file; empty keeps the
+	// Assisted-by trailer (decision 150).
+	AITrailersForbiddenBy string
 	// Local marks a --local run: the session operates on the user's own
 	// checkout. The orchestrator owns the push in both modes.
 	Local bool
@@ -74,6 +80,12 @@ type BareContext struct {
 	PatternCatalog   []patterns.CatalogReference
 	BundledURLBase   string // for the prompt to mention the canonical source
 	HasRepoLocalRefs bool   // signals that LocalPath entries exist
+	// AITrailersForbiddenBy is the repo-relative path of the instruction file
+	// whose rule on the base branch forbids attributing commits to an AI
+	// (aitrailers.ForbiddenBy, e.g. "AGENTS.md"). When set, the prompt asks
+	// for the Signed-off-by trailer alone and names the file; empty keeps the
+	// Assisted-by trailer (decision 150).
+	AITrailersForbiddenBy string
 }
 
 // AddressFn is the bare-function shape the CLI passes in to wire Claude into

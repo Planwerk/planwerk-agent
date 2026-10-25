@@ -101,6 +101,11 @@ func goldenCatalog() patterns.Catalog {
 // rendered styleGuideBlock citation.
 const goldenStyleGuidePath = "STYLE_GUIDE.md"
 
+// goldenAITrailersForbiddenBy is the instruction file the *_no_ai_trailers
+// goldens and the trailer-ban tests name as forbidding AI trailers, locking the
+// file citation commitTrailerBlock renders.
+const goldenAITrailersForbiddenBy = "AGENTS.md"
+
 // goldenSkills returns a deterministic set of project-provided skills (name +
 // description, sorted by name as skills.Load returns them) so the implement,
 // fix, and address goldens lock the rendered <project-skills> block. One skill
@@ -986,6 +991,15 @@ func TestBuildImplementPrompt_StyleGuide(t *testing.T) {
 	assertGoldenPrompt(t, "implement_styleguide", BuildImplementPrompt(ctx))
 }
 
+// TestBuildImplementPrompt_NoAITrailers locks the "## Commit trailers" block
+// for a repository whose rules forbid AI trailers. The empty branch stays
+// covered by implement.golden.
+func TestBuildImplementPrompt_NoAITrailers(t *testing.T) {
+	ctx := goldenImplementContext()
+	ctx.AITrailersForbiddenBy = goldenAITrailersForbiddenBy
+	assertGoldenPrompt(t, "implement_no_ai_trailers", BuildImplementPrompt(ctx))
+}
+
 // TestBuildImplementPromptWithPlan_Golden locks the shape used when a
 // planning session preceded the implement session: the plan is embedded
 // verbatim and workflow step 3 switches from PLAN to VALIDATE.
@@ -1026,7 +1040,14 @@ func TestImplementSystemPromptGolden(t *testing.T) {
 // the worker sees neither the issue nor the plan, so everything in this golden
 // is the entirety of what every delegated work package inherits.
 func TestBuildImplementerAgentPrompt_Golden(t *testing.T) {
-	assertGoldenPrompt(t, "implementer_agent", buildImplementerAgentPrompt())
+	assertGoldenPrompt(t, "implementer_agent", buildImplementerAgentPrompt(""))
+}
+
+// TestBuildImplementerAgentPrompt_NoAITrailers locks the worker prompt for a
+// repository whose rules forbid AI trailers. The empty branch stays covered by
+// implementer_agent.golden.
+func TestBuildImplementerAgentPrompt_NoAITrailers(t *testing.T) {
+	assertGoldenPrompt(t, "implementer_agent_no_ai_trailers", buildImplementerAgentPrompt(goldenAITrailersForbiddenBy))
 }
 
 // TestBuildImplementPromptResume_Golden locks the shape used when an earlier
@@ -1250,6 +1271,15 @@ func TestBuildFixPrompt_StyleGuide(t *testing.T) {
 	assertGoldenPrompt(t, "fix_styleguide", BuildFixPrompt(ctx))
 }
 
+// TestBuildFixPrompt_NoAITrailers locks the trailer block and the standalone
+// commit command of the fold for a repository whose rules forbid AI trailers.
+// The empty branch stays covered by fix.golden.
+func TestBuildFixPrompt_NoAITrailers(t *testing.T) {
+	ctx := goldenFixContext()
+	ctx.AITrailersForbiddenBy = goldenAITrailersForbiddenBy
+	assertGoldenPrompt(t, "fix_no_ai_trailers", BuildFixPrompt(ctx))
+}
+
 // TestBuildFixPrompt_NoFixup_Golden locks the --no-fixup fix prompt: a single
 // on-top follow-up commit, a normal push, and the "NEVER force-push" hard rule.
 func TestBuildFixPrompt_NoFixup_Golden(t *testing.T) {
@@ -1349,6 +1379,15 @@ func TestBuildAddressPrompt_StyleGuide(t *testing.T) {
 	ctx := goldenAddressContext()
 	ctx.StyleGuidePath = goldenStyleGuidePath
 	assertGoldenPrompt(t, "address_styleguide", BuildAddressPrompt(ctx))
+}
+
+// TestBuildAddressPrompt_NoAITrailers locks the trailer block and the
+// per-thread commit command for a repository whose rules forbid AI trailers.
+// The empty branch stays covered by address.golden.
+func TestBuildAddressPrompt_NoAITrailers(t *testing.T) {
+	ctx := goldenAddressContext()
+	ctx.AITrailersForbiddenBy = goldenAITrailersForbiddenBy
+	assertGoldenPrompt(t, "address_no_ai_trailers", BuildAddressPrompt(ctx))
 }
 
 // TestBuildAddressPrompt_Aggregate_Golden locks the aggregate variant: fold

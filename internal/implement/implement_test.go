@@ -18,6 +18,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/capture"
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/github/githubtest"
+	"github.com/planwerk/planwerk-agent/internal/gitref/gitreftest"
 	"github.com/planwerk/planwerk-agent/internal/hygiene"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
@@ -4669,5 +4670,78 @@ func TestRun_BrainSurfaceIsResolvedForThePlanningSessionOnly(t *testing.T) {
 				t.Errorf("the implement session ran %d times with the surface %+v, want once and without a search", cl.called.Load(), cl.ctx.Brain)
 			}
 		})
+	}
+}
+
+// trailerBanFile is the instruction file the trailer-ban tests write, and
+// trailerBanAgents its text on the base branch: a rule that forbids the
+// Assisted-by trailer.
+const (
+	trailerBanFile   = "AGENTS.md"
+	trailerBanAgents = "# Rules\n\nDo not add an Assisted-by trailer to your commits.\n"
+)
+
+// trailerBanRepo returns a clone-shaped repository whose default branch
+// carries trailerBanAgents, with the working tree rewriting it the way a
+// checkout of another branch would: the ban is read at origin/HEAD.
+func trailerBanRepo(t *testing.T) string {
+	t.Helper()
+	dir := gitreftest.Repo(t, map[string]string{trailerBanFile: trailerBanAgents})
+	gitreftest.Remote(t, dir)
+	gitreftest.Write(t, dir, trailerBanFile, "# Rules\n\nRun the tests.\n")
+	return dir
+}
+
+// TestRun_ThreadsTheTrailerBanToEveryCommittingSession: a ban on AI trailers
+// on the default branch reaches every session of the run that commits — the
+// implement session, simplify-apply, review-apply, and the verification's
+// apply — so none of them adds the trailer (decision 150).
+func TestRun_ThreadsTheTrailerBanToEveryCommittingSession(t *testing.T) {
+	gh := &githubtest.Fake{
+		Issue:     sampleIssue(),
+		Dir:       trailerBanRepo(t),
+		BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
+	}
+	cl := &fakeClaude{}
+	sa := &fakeSimplifyApplier{report: "## Simplification Report\n\nSTATUS: DONE"}
+	r := simplifyRunner(gh, cl, &fakeSimplifyFinder{result: oneSimplifyFinding("internal/foo/foo.go")}, sa)
+	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
+	r.AdversarialVerifier = &fakeAdversarialVerifier{results: oneThenCleanReview(reviewTestProdFile)}
+	r.ReviewApplier = ra
+	r.Verifier = &fakeVerifier{result: oneCriterionFinding()}
+
+	if err := r.Run(io.Discard, Options{IssueRef: "owner/repo#42", Verify: true, NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if cl.ctx.AITrailersForbiddenBy != trailerBanFile {
+		t.Errorf("implement session got AITrailersForbiddenBy %q, want AGENTS.md", cl.ctx.AITrailersForbiddenBy)
+	}
+	if sa.called.Load() != 1 || sa.ctx.AITrailersForbiddenBy != trailerBanFile {
+		t.Errorf("simplify apply ran %d times with AITrailersForbiddenBy %q, want once with AGENTS.md", sa.called.Load(), sa.ctx.AITrailersForbiddenBy)
+	}
+	// One apply for the review round, one for the verification's unmet criterion.
+	if len(ra.ctxs) != 2 {
+		t.Fatalf("review applier ran %d times, want 2 (review round and verification)", len(ra.ctxs))
+	}
+	for _, ctx := range ra.ctxs {
+		if ctx.AITrailersForbiddenBy != trailerBanFile {
+			t.Errorf("review apply (source %q) got AITrailersForbiddenBy %q, want AGENTS.md", ctx.Source, ctx.AITrailersForbiddenBy)
+		}
+	}
+}
+
+func TestPrintBarePrompt_ReadsTheTrailerBan(t *testing.T) {
+	gh := &githubtest.Fake{Dir: trailerBanRepo(t)}
+	r := newRunner(gh, &fakeClaude{})
+	var got BareContext
+	build := func(ctx BareContext) string {
+		got = ctx
+		return "ok"
+	}
+	if err := r.PrintBarePrompt(io.Discard, Options{IssueRef: "owner/repo#42"}, build); err != nil {
+		t.Fatalf("PrintBarePrompt returned %v, want nil", err)
+	}
+	if got.AITrailersForbiddenBy != trailerBanFile {
+		t.Errorf("BareContext.AITrailersForbiddenBy = %q, want AGENTS.md", got.AITrailersForbiddenBy)
 	}
 }

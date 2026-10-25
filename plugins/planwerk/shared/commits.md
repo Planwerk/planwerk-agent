@@ -8,8 +8,8 @@ into the commit that caused it — and publishing that fold — is in
 ## Trailers
 
 Every commit you create must end with exactly these two trailers, in this order
-(a `git commit --fixup` commit is the one exception: the autosquash discards
-its message):
+(a `git commit --fixup` commit is exempt: the autosquash discards its
+message):
 
 ```
 Assisted-by: Claude
@@ -24,9 +24,16 @@ Signed-off-by: <committer name> <committer email>
   such as `[1m]`: it names a context window, not the model. Pass the trailer as
   the final `-m` paragraph, not via `--trailer`: git places `--trailer` values
   *after* the sign-off, which breaks the order.
+- Where the repository forbids attributing commits to an AI, its rule wins:
+  every commit ends with the `Signed-off-by` line alone, and no line of the
+  message names Claude or a model. Read `AGENTS.md`, `CLAUDE.md`,
+  `.claude/CLAUDE.md`, and `CONTRIBUTING.md` (at the root, under `.github/`, and
+  under `docs/`) as the base branch has them before your first commit. The
+  attribution footer on what you post to GitHub still names the model.
 - Never add a `Co-authored-by` trailer — not for Claude, not for planwerk-agent,
   not for anyone. The harness proposes one by default; this project records
-  assistance in `Assisted-by` instead.
+  assistance in `Assisted-by` instead, or not at all where the repository
+  forbids it.
 - Never pass `--no-verify` or `--no-gpg-sign`. A pre-commit hook that rejects
   your commit has found something; it is not an obstacle to route around.
 

@@ -16,6 +16,7 @@ import (
 
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/github/githubtest"
+	"github.com/planwerk/planwerk-agent/internal/gitref/gitreftest"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/patterns/patternstest"
 )
@@ -1103,5 +1104,100 @@ func TestRun_StatusWithTrailingReasonEscalates(t *testing.T) {
 	err := r.Run(io.Discard, Options{PRRef: "o/r#7"})
 	if err == nil || !strings.Contains(err.Error(), "escalated") {
 		t.Fatalf("Run err = %v, want an escalation error for a BLOCKED verdict with a trailing reason", err)
+	}
+}
+
+// trailerBanFile is the instruction file the trailer-ban tests write, and
+// trailerBanAgents its text on the base branch: a rule that forbids the
+// Assisted-by trailer.
+const (
+	trailerBanFile   = "AGENTS.md"
+	trailerBanAgents = "# Rules\n\nDo not add an Assisted-by trailer to your commits.\n"
+)
+
+// noDisclosureNote is the start of the line a run prints when the ban and
+// --no-fix-comment together leave the assistance undisclosed.
+const noDisclosureNote = "Note: AGENTS.md on origin/main forbids attributing commits to an AI"
+
+// checkoutsWithBase answers every FetchAndCheckout with a fresh clone-shaped
+// checkout whose base branch carries agents as AGENTS.md and whose working
+// tree, the pull request's head, rewrites it. Each call gets its own
+// repository, because a non-local run removes every checkout it is handed.
+func checkoutsWithBase(t *testing.T, agents string) func(string) (*github.PR, error) {
+	return func(string) (*github.PR, error) {
+		dir := gitreftest.Repo(t, map[string]string{trailerBanFile: agents})
+		gitreftest.Remote(t, dir)
+		gitreftest.Write(t, dir, trailerBanFile, "# Rules\n\nRun the tests.\n")
+		return &github.PR{Owner: "o", Repo: "r", Number: 7, Title: "demo", HeadBranch: "feat/x", BaseBranch: "main", HeadSHA: "old", Dir: dir}, nil
+	}
+}
+
+// TestRun_ReadsTheTrailerBanFromTheBase: the ban the base branch carries
+// reaches the fix session even though the head rewrites the file.
+func TestRun_ReadsTheTrailerBanFromTheBase(t *testing.T) {
+	gh := &githubtest.Fake{
+		FetchAndCheckoutFn: checkoutsWithBase(t, trailerBanAgents),
+		Checks:             [][]github.CheckRun{{failing(1, "test")}, {passing("test")}},
+		HeadSHAs:           []string{"new"},
+	}
+	cl := &fakeClaude{report: fixReport}
+	r := newRunner(gh, cl, &fakePrompter{})
+
+	if err := r.Run(io.Discard, Options{PRRef: "o/r#7", NoLocalPatterns: true, NoRepoPatterns: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if cl.ctx.AITrailersForbiddenBy != trailerBanFile {
+		t.Errorf("fix session got AITrailersForbiddenBy %q, want AGENTS.md from origin/main", cl.ctx.AITrailersForbiddenBy)
+	}
+}
+
+// TestRun_NotesNoDisclosureUnderNoFixComment: with the trailer gone, the fix
+// comment is the run's only disclosure, so switching it off is said once per
+// run. Without the ban, or with the comment on, nothing is said.
+func TestRun_NotesNoDisclosureUnderNoFixComment(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		agents       string
+		noFixComment bool
+		wantNotes    int
+	}{
+		{"ban and no fix comment", trailerBanAgents, true, 1},
+		{"ban with the fix comment", trailerBanAgents, false, 0},
+		{"no ban", "# Rules\n\nRun the tests.\n", true, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			failures := []github.CheckRun{failing(1, "test")}
+			gh := &githubtest.Fake{
+				FetchAndCheckoutFn: checkoutsWithBase(t, tc.agents),
+				Checks:             [][]github.CheckRun{failures, failures},
+				HeadSHAs:           []string{"s1", "s2"},
+			}
+			r := newRunner(gh, &fakeClaude{report: fixReport}, &fakePrompter{})
+
+			var buf bytes.Buffer
+			err := r.Run(&buf, Options{PRRef: "o/r#7", MaxIterations: 2, NoFixComment: tc.noFixComment, NoLocalPatterns: true, NoRepoPatterns: true})
+			if !errors.Is(err, ErrMaxIterations) {
+				t.Fatalf("Run err = %v, want ErrMaxIterations after two iterations", err)
+			}
+			if got := strings.Count(buf.String(), noDisclosureNote); got != tc.wantNotes {
+				t.Errorf("the no-disclosure note appears %d times, want %d:\n%s", got, tc.wantNotes, buf.String())
+			}
+		})
+	}
+}
+
+func TestPrintBarePrompt_ReadsTheTrailerBan(t *testing.T) {
+	gh := &githubtest.Fake{FetchAndCheckoutFn: checkoutsWithBase(t, trailerBanAgents)}
+	r := newRunner(gh, &fakeClaude{}, &fakePrompter{})
+	var got BareContext
+	build := func(ctx BareContext) string {
+		got = ctx
+		return "ok"
+	}
+	if err := r.PrintBarePrompt(io.Discard, Options{PRRef: "o/r#7"}, build); err != nil {
+		t.Fatalf("PrintBarePrompt returned %v, want nil", err)
+	}
+	if got.AITrailersForbiddenBy != trailerBanFile {
+		t.Errorf("BareContext.AITrailersForbiddenBy = %q, want AGENTS.md", got.AITrailersForbiddenBy)
 	}
 }

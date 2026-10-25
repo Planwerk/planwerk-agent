@@ -115,7 +115,7 @@ After opening the draft PR, output a report in this exact shape:
    (DONE = PR opened, or nothing to ship; DONE_WITH_CONCERNS = opened but with reservations a reviewer should see; BLOCKED = could not push or open the PR; NEEDS_CONTEXT = missing information only a human can supply.)
    Next: <on any verdict but DONE only: the single action a human takes next; omit this line on DONE>
 
-` + reportShapeBlock("DONE") + attributionFooterBlock("Implemented by") + `## Hard rules
+` + reportShapeBlock("DONE") + attributionFooterBlock("Implemented by", "") + `## Hard rules
 
 - NEVER edit code, amend commits, rebase, or change the branch's history — the diff is final. You only push and open the PR.
 - NEVER force-push. A plain push is correct — a fast-forward when an earlier interrupted run already pushed this branch.

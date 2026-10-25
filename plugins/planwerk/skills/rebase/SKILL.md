@@ -435,6 +435,6 @@ the rebase did not introduce.
   traces to a change the rebase made, and nothing else in the body moved.
 - Every thread you resolved carries a reply naming a commit or pull request in
   the upstream range, and no thread was resolved on a path match alone.
-- Every commit still carries its trailers, `Assisted-by` above `Signed-off-by`,
+- Every commit still carries its trailers in the order `commits.md` gives them,
   and no `Co-authored-by`.
 - The report is English, whatever language the conversation used.

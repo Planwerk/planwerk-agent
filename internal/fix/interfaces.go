@@ -68,6 +68,12 @@ type Context struct {
 	// docs pages — follows the repo's own guide. Empty when the repo ships
 	// none.
 	StyleGuidePath string
+	// AITrailersForbiddenBy is the repo-relative path of the instruction file
+	// whose rule on the base branch forbids attributing commits to an AI
+	// (aitrailers.ForbiddenBy, e.g. "AGENTS.md"). When set, the prompt asks
+	// for the Signed-off-by trailer alone and names the file; empty keeps the
+	// Assisted-by trailer (decision 150).
+	AITrailersForbiddenBy string
 
 	// Local marks a --local run: the fix operates on the user's own checkout
 	// (PullFFOnly each iteration) instead of a throw-away temp-dir clone. It
@@ -127,6 +133,12 @@ type BareContext struct {
 	// and publish with git push --force-with-lease; when false (--no-fixup) it
 	// appends a single on-top follow-up commit and pushes plainly.
 	Fixup bool
+	// AITrailersForbiddenBy is the repo-relative path of the instruction file
+	// whose rule on the base branch forbids attributing commits to an AI
+	// (aitrailers.ForbiddenBy, e.g. "AGENTS.md"). When set, the prompt asks
+	// for the Signed-off-by trailer alone and names the file; empty keeps the
+	// Assisted-by trailer (decision 150).
+	AITrailersForbiddenBy string
 }
 
 // BarePromptBuildFn renders a self-contained fix prompt — no failing-check

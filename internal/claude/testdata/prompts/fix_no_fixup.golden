@@ -149,7 +149,7 @@ When the fix is in production code and the existing suite did not catch the bug,
    the package's existing test file unless it has none):
 
    git add -- <the files you changed>
-   git commit -s -m "Fix failing CI checks (iteration 2)" -m "Failed checks: <comma-separated names>" -m "Assisted-by: Claude"
+   git commit -s -m "Fix failing CI checks (iteration 2)" -m "Failed checks: <comma-separated names>" -m "Assisted-by: Claude:<your model id>"
 
 3. Push to the PR head branch:
 

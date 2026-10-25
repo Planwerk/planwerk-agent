@@ -141,8 +141,9 @@ success and change nothing, and a test that never went red verified nothing.
 
 The regression test and the fix land together as one commit. Its body names the
 root cause, each ruled-out hypothesis, and the loop command, and its trailers
-are `Assisted-by` above `Signed-off-by`. After you have seen the result and the
-diff, you choose where it lands, and the first is recommended:
+are `Assisted-by` above `Signed-off-by`, or `Signed-off-by` alone where the
+repository forbids attributing commits to an AI. After you have seen the result
+and the diff, you choose where it lands, and the first is recommended:
 
 - Draft pull request: the branch is pushed and a draft pull request opened.
 - Ready pull request: the same, not draft.
