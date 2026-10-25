@@ -47,11 +47,13 @@ calls only you can make, and files one issue per work package behind your yes.
 4. **Technology Detection**: The clone is scanned for language/framework markers (Go, Python, Kubernetes, Helm, GitHub Actions, …) and patterns are filtered to those applicable.
 5. **Pattern Load**: Patterns are loaded from the embedded catalog (source: `internal/patterns/patterns/`) and `.planwerk/review_patterns/` (repo-specific) — identical sources to the review command.
 6. **Claude Audit**: Claude is instructed to apply EVERY loaded pattern to the ENTIRE current state of the codebase (not a diff) and emit concrete violations with file paths, line numbers, code snippets, and suggested fixes. Beyond patterns, it also flags BLOCKING/CRITICAL issues it encounters (security, data loss, broken error handling) and missing tests/docs matching the project's own conventions. The session emits its findings as JSON under a schema, in the format the review command uses (`BLOCKING`/`CRITICAL`/`WARNING`/`INFO` with actionability, confidence, related findings).
-7. **Output**: Findings are rendered as Markdown (default), JSON, or SARIF, with an audit-specific verdict line (`Action required` / `Improvements suggested` / `Codebase healthy`) instead of the PR merge verdict.
+7. **Finding hygiene**: Before the result is cached, the findings pass the stages `review` runs on its own findings. Each quote is first anchored to its line in the cited file; an audit never moves a finding to another file. The snippet gate then looks for each finding's quoted code in the checkout: there is no diff, so the whole checkout is the ground truth, and a quote found nowhere in it is demoted. A finding that names a missing file, cites no line and quotes nothing passes, because the file is absent. Claim verification then re-checks every BLOCKING and CRITICAL finding's claim in one read-only session on the `--finder-model` tier. A WARNING or INFO finding the snippet gate demotes, and any finding the verifier refutes, moves to the Unverified section with its reason. A BLOCKING or CRITICAL finding whose quote was not found keeps its section and shows the reason. Nothing is dropped. The counts are recorded in `gates`, the anchor's included (see [Demotion-Gate Records](/reference/output-format#demotion-gate-records)).
+8. **Output**: Findings are rendered as Markdown (default), JSON, or SARIF, with an audit-specific verdict line (`Action required` / `Improvements suggested` / `Codebase healthy`) instead of the PR merge verdict.
 
 When creating issues with `--create-issues`, the same
 [existing-issue dedupe](/how-to/analyze-a-repository#existing-issue-dedupe)
-applies as for `propose`.
+applies as for `propose`. An issue body carries the finding's claim-check and
+snippet-check notes, so a demoted finding says why it was demoted.
 
 ## Capture knowledge to the wiki
 

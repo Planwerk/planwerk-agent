@@ -17,7 +17,7 @@ planwerk-agent/
 │       └── <name>_cmd.go       # one file per subcommand (newProposeCmd, newAuditCmd, …)
 ├── internal/
 │   ├── audit/
-│   │   ├── auditor.go          # Orchestration: Repo → Patterns → Claude → Findings
+│   │   ├── auditor.go          # Orchestration: Repo → Patterns → Claude → Hygiene → Findings
 │   │   └── auditor_test.go
 │   ├── brain/
 │   │   ├── memory.go           # brain memory: print the project memory index or one page
@@ -90,11 +90,11 @@ planwerk-agent/
 │   │   ├── review.go           # Submit PR reviews via GitHub Review API; list review threads
 │   │   ├── review_test.go
 │   │   └── githubtest/         # The shared test fake for Client (imported by tests only)
-│   ├── hygiene/                # Shared finding hygiene (review + implement self-review)
+│   ├── hygiene/                # Shared finding hygiene (review + implement self-review + audit)
 │   │   ├── anchor.go           # Line anchoring on the quoted code (AnchorFindings)
 │   │   ├── merge.go            # Multi-pass merge, confidence boost, ConfirmedBy provenance
 │   │   ├── dedup.go            # File-less duplicate fold (DedupFileless)
-│   │   ├── snippets.go         # Quote-or-demote snippet gate (VerifySnippets)
+│   │   ├── snippets.go         # Quote-or-demote snippet gate (VerifySnippets, VerifySnippetsInCheckout)
 │   │   ├── claims.go           # Claim verification demotion (VerifyClaims, ClaimVerdict)
 │   │   └── ledger.go           # Changed-file coverage record (CheckFileLedger)
 │   ├── mirror/                 # brain sync: the local mirror of a repository's knowledge on GitHub

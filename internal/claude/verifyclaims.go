@@ -11,7 +11,7 @@ import (
 
 // claimVerdicts is the decode target for the claim-verification output. The
 // verdict type itself lives in internal/hygiene, the shared finding-hygiene
-// package both review and implement drive it from.
+// package that review, implement's self-review and audit drive it from.
 type claimVerdicts struct {
 	Verdicts []hygiene.ClaimVerdict `json:"verdicts"`
 }

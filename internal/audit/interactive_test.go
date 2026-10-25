@@ -156,3 +156,38 @@ func TestRunInteractiveIssueCreation_EmptyResult(t *testing.T) {
 		t.Errorf("expected friendly empty message, got: %s", buf.String())
 	}
 }
+
+// TestRenderGroupMarkdown_CarriesGateNotes: the issue --create-issues files,
+// and its preview, say why a finding was demoted, in the lines the audit
+// report uses, ahead of the problem. A snippet check that passed renders no
+// line.
+func TestRenderGroupMarkdown_CarriesGateNotes(t *testing.T) {
+	demoted := FindingGroup{
+		Pattern: "p", File: "a.go", MaxSeverity: report.SeverityCritical,
+		Findings: []report.Finding{{
+			File: "a.go", Line: 3, Severity: report.SeverityCritical, Problem: "the problem", Action: "y",
+			VerificationNote: "refuted: guarded at a.go:3",
+			SnippetCheck:     "demoted: quoted code not found in the checkout",
+		}},
+	}
+	for name, md := range map[string]string{"body": buildGroupBody(demoted, ""), "preview": buildGroupPreview(demoted)} {
+		claim := strings.Index(md, "**Claim check**: refuted: guarded at a.go:3\n\n")
+		snippet := strings.Index(md, "**Snippet check**: demoted: quoted code not found in the checkout\n\n")
+		problem := strings.Index(md, "**Problem**: the problem")
+		if claim < 0 || snippet < 0 {
+			t.Errorf("%s lacks a gate note:\n%s", name, md)
+			continue
+		}
+		if claim > problem || snippet > problem {
+			t.Errorf("%s: the gate notes must come before the problem:\n%s", name, md)
+		}
+	}
+
+	passed := FindingGroup{
+		Pattern: "p", File: "a.go", MaxSeverity: report.SeverityWarning,
+		Findings: []report.Finding{{File: "a.go", Line: 1, Severity: report.SeverityWarning, Problem: "x", SnippetCheck: report.SnippetCheckPassed}},
+	}
+	if body := buildGroupBody(passed, ""); strings.Contains(body, "**Snippet check**") || strings.Contains(body, "**Claim check**") {
+		t.Errorf("a finding that passed the gates must render no gate note:\n%s", body)
+	}
+}

@@ -220,6 +220,15 @@ planwerk-agent audit --format sarif owner/repo
 | `--capture-wiki` | Push the accepted capture pages to the wiki instead of only proposing them (off by default — a normal run is propose-only; confirms first, refuses a non-TTY run without `--yes`; env: `PLANWERK_CAPTURE_WIKI`, config: `capture.wiki`) | `false` |
 | `--yes` | Skip the `--capture-wiki` write confirmation prompt (for a non-interactive write) | `false` |
 
+Before they are cached and rendered, the findings pass the line anchor, the
+snippet gate and the claim gate that `review` runs. Each quote is anchored to
+its line in the cited file. The snippet gate searches the whole checkout for
+each quote, since an audit has no diff. Claim verification re-checks every
+BLOCKING and CRITICAL finding on the `--finder-model` tier, which adds one
+session to a run that has such a finding. A finding that fails a gate is
+demoted, never dropped. See
+[Demotion-Gate Records](/reference/output-format#demotion-gate-records).
+
 When the audit uses `--wiki`, the same read-only **capture pass** proposes new
 `review_patterns/` pages from the audit findings, deduplicated against the wiki
 and the catalog. It is **propose-only** by default — the suggestions go to stdout

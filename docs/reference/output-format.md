@@ -123,7 +123,7 @@ Each finding includes additional metadata for tooling and automation:
 | **RelatedTo** | IDs of related findings (e.g., `["B-001", "C-003"]`) |
 | **LineEnd** | End line for multi-line findings (enables line-range comments) |
 | **VerificationNote** | Set only by the claim-verification pass: why a BLOCKING/CRITICAL finding was refuted (e.g. `refuted: guarded at line 50`). A finding that carries it is demoted to `uncertain` confidence and routed to the Unverified / Low-Confidence section, and the Markdown report renders it as a `**Claim check**:` line. |
-| **SnippetCheck** | Set only by the snippet-verification gate: `passed` when the finding's quoted code was found in the changed files, or a `demoted: <reason>` string when it was not. A demoted finding is lowered to `uncertain` confidence; the Markdown report renders the reason as a `**Snippet check**:` line, while a `passed` record renders nothing. Unlike `VerificationNote` it does **not** route the finding — it is a pure record of what the gate examined. |
+| **SnippetCheck** | Set only by the snippet-verification gate. `passed`: the quote was found in the changed files, or anywhere in the checkout for an audit. `verified: quoted code found outside the changed files`: a review finding whose quote sits in a file the change did not touch. `verified: the cited path does not exist in the checkout`: an audit finding that names a missing file, cites no line and quotes nothing. `demoted: <reason>`: the quote was found nowhere, or the finding quotes nothing, and the finding is lowered to `uncertain` confidence. The Markdown report renders every value but `passed` as a `**Snippet check**:` line. Unlike `VerificationNote` it does **not** route the finding — it is a pure record of what the gate examined. |
 | **ClaimCheck** | Set only by the claim-verification gate: `confirmed`, `refuted`, or `no-verdict` (the gate ran but returned no verdict for this finding — the fail-open case). This machine token records the gate's decision; the human-readable refutation reason continues to come from `VerificationNote` (the `**Claim check**:` line), which the token does not duplicate. |
 | **LineCheck** | Set only by the line anchor: `anchored` (the model's range lies on the quoted code), `reanchored` (moved to the quoted code in the same file), `relocated` (moved to the one other changed file the review reads that holds the quote), or `unanchored` (the quote pins no single place in the head content). `--inline` posts no inline comment for an `unanchored` finding, and its [SARIF](#sarif) result has no region. It never moves a finding between report sections, and the Markdown report renders nothing for it ([Line Anchoring](/explanation/review-methodology#line-anchoring)). |
 
@@ -229,22 +229,27 @@ array records how each requested pass ended, not what it spent (see
 
 ## Demotion-Gate Records
 
-A review has two gates that can demote a finding: the snippet gate (demotes a
-finding whose quoted code is absent from the changed files) and the
-claim-verification gate (re-checks each BLOCKING/CRITICAL claim and demotes the
-ones a verifier refutes). Each gate records what it did so a run where every
-finding passed is distinguishable from one where the gate never ran.
+A review and an audit each run two gates that can demote a finding: the
+snippet gate (demotes a finding whose quoted code is absent from the changed
+files, or, for an audit, from the whole checkout) and the claim-verification
+gate (re-checks each BLOCKING/CRITICAL claim and demotes the ones a verifier
+refutes). Each gate records what it did so a run where every finding passed is
+distinguishable from one where the gate never ran.
 
 The line anchor, which runs before both gates, demotes nothing, but it records
 what it did the same way: it moves a finding's line onto the code the finding
 quotes, and it marks the findings whose quote pins no single place
-([Line Anchoring](/explanation/review-methodology#line-anchoring)).
+([Line Anchoring](/explanation/review-methodology#line-anchoring)). It runs on
+an audit too, within each finding's own file, so an audit records `anchor` as
+well, never with `anchor.relocated`
+([Applied to an audit](/explanation/review-methodology#applied-to-an-audit)).
 
 The per-finding record travels on each finding as `line_check` /
 `snippet_check` / `claim_check` (see the
 [Enriched Finding Fields](#enriched-finding-fields) table). The run-level
 counts travel in the `gates` object of the data block and the `--format json`
-output:
+output. An audit posts no data block, so its counts reach the reader through
+`--format json` and the cached result:
 
 - `anchor.examined` / `anchor.reanchored` / `anchor.relocated` /
   `anchor.unanchored` — findings with a file and a quote, and the subsets moved
@@ -256,21 +261,28 @@ output:
   three.
 - `snippet.examined` / `snippet.demoted` — findings the snippet gate checked and
   the subset it demoted.
+- `snippet.recovered_outside_diff` — review only: the findings whose quote was
+  absent from the changed files but found elsewhere in the checkout, and so
+  kept. Omitted when zero, and never set by an audit, which searches the whole
+  checkout from the start.
 - `claim.sent` / `claim.verdicts` / `claim.refuted` — findings sent to the claim
   verifier, verdicts returned, and the subset refuted. `sent > 0` with
   `verdicts: 0` is the **fail-open** case: the gate ran but the verifier returned
   nothing.
-- An **absent** gate entry means that gate never ran (an empty diff skips the
-  snippet gate; no BLOCKING/CRITICAL finding leaves nothing for the claim gate to
-  send; the anchor runs on every review, so a review result lacks `anchor` only
-  when it predates the anchor). Read a missing entry as "not recorded", never
-  as "nothing demoted".
+- An **absent** gate entry means that gate never ran. An absent `snippet`
+  means there was no readable changed file (for an audit, no readable text in
+  the checkout). An absent `claim` means no claim verifier ran: a run with no
+  BLOCKING/CRITICAL finding still records `claim.sent: 0`. The anchor runs on
+  every review and audit, so a result lacks `anchor` only when it predates the
+  anchor. Read a missing entry as "not recorded", never as "nothing demoted".
 
 The `refuted / sent` ratio accumulated across cached results and posted reports
 is the claim verifier's own no-op signal: a verifier that refutes nothing across
 many runs is agreeing rather than verifying. Data blocks and cached results
 produced before gate recording existed carry no `gates` object and no
-per-finding records.
+per-finding records. Neither does an audit result cached before the audit ran
+the gates; it is served as it was until the cache entry expires, and
+`--no-cache` re-runs it.
 
 ### Changed-File Coverage
 

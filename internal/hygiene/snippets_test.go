@@ -376,3 +376,206 @@ func TestSnippetInFile(t *testing.T) {
 		})
 	}
 }
+
+// TestVerifySnippetsInCheckout locks the audit's snippet gate: with no diff the
+// whole checkout is the ground truth, so a quote from any file passes and a
+// quote found nowhere is demoted. A finding that quotes nothing, cites no line,
+// and names a path the checkout lacks is the audit's missing-file finding and
+// is kept; every other finding that quotes nothing is demoted.
+func TestVerifySnippetsInCheckout(t *testing.T) {
+	dir := t.TempDir()
+	writeChangedFile(t, dir, "internal/foo/foo.go", "func Foo() error {\n\treturn db.Exec(query)\n}\n")
+	writeChangedFile(t, dir, "internal/bar/bar.go", "func Bar() { cache.Invalidate(key) }\n")
+
+	result := &report.ReviewResult{
+		Findings: []report.Finding{
+			// Quoted from the file it cites.
+			{Title: "own-file", File: "internal/foo/foo.go", Line: 2, Confidence: report.ConfidenceVerified, CodeSnippet: "return db.Exec(query)"},
+			// Quoted from another file in the checkout: real code, so it passes,
+			// and an audit never counts it as recovered outside a diff.
+			{Title: "other-file", File: "internal/foo/foo.go", Line: 1, Confidence: report.ConfidenceVerified, CodeSnippet: "cache.Invalidate(key)"},
+			// Nowhere in the checkout.
+			{Title: "hallucinated", File: "internal/foo/foo.go", Line: 2, Confidence: report.ConfidenceLikely, CodeSnippet: "user.DeleteAllRecords()"},
+			// The missing-file finding the audit prompt allows.
+			{Title: "missing-file", File: "CHANGELOG.md", Confidence: report.ConfidenceLikely},
+			// No quote, and the cited file exists: nothing proves the claim.
+			{Title: "no-quote-existing-file", File: "internal/foo/foo.go", Confidence: report.ConfidenceLikely},
+			// A cited line is a claim about code that should be quoted.
+			{Title: "no-quote-with-line", File: "MISSING.md", Line: 3, Confidence: report.ConfidenceLikely},
+			// A path that leaves the checkout is not evidence of anything.
+			{Title: "no-quote-escaping-path", File: "../outside.md", Confidence: report.ConfidenceLikely},
+			// Already uncertain → left alone, not counted.
+			{Title: "already-uncertain", File: "CHANGELOG.md", Confidence: report.ConfidenceUncertain},
+		},
+	}
+
+	if n := VerifySnippetsInCheckout(result, dir); n != 4 {
+		t.Errorf("demoted = %d, want 4", n)
+	}
+	wantConf := map[string]report.Confidence{
+		"own-file":               report.ConfidenceVerified,
+		"other-file":             report.ConfidenceVerified,
+		"hallucinated":           report.ConfidenceUncertain,
+		"missing-file":           report.ConfidenceLikely,
+		"no-quote-existing-file": report.ConfidenceUncertain,
+		"no-quote-with-line":     report.ConfidenceUncertain,
+		"no-quote-escaping-path": report.ConfidenceUncertain,
+		"already-uncertain":      report.ConfidenceUncertain,
+	}
+	wantCheck := map[string]string{
+		"own-file":               report.SnippetCheckPassed,
+		"other-file":             report.SnippetCheckPassed,
+		"hallucinated":           snippetReasonNotFound,
+		"missing-file":           snippetVerifiedMissingFile,
+		"no-quote-existing-file": snippetReasonNoQuote,
+		"no-quote-with-line":     snippetReasonNoQuote,
+		"no-quote-escaping-path": snippetReasonNoQuote,
+		"already-uncertain":      "",
+	}
+	for _, f := range result.Findings {
+		if f.Confidence != wantConf[f.Title] {
+			t.Errorf("%s: confidence = %q, want %q", f.Title, f.Confidence, wantConf[f.Title])
+		}
+		if f.SnippetCheck != wantCheck[f.Title] {
+			t.Errorf("%s: snippet check = %q, want %q", f.Title, f.SnippetCheck, wantCheck[f.Title])
+		}
+	}
+	if result.Gates == nil || result.Gates.Snippet == nil {
+		t.Fatalf("gate stats not recorded: %+v", result.Gates)
+	}
+	if got := *result.Gates.Snippet; got != (report.SnippetGateStats{Examined: 7, Demoted: 4}) {
+		t.Errorf("snippet stats = %+v, want {Examined:7 Demoted:4}", got)
+	}
+}
+
+// TestVerifySnippetsInCheckout_CitedFileAlwaysSearched locks the load order:
+// the checkout walk skips vendor/ (and stops at its byte budget), so a quote
+// from a cited file the walk would never reach must still pass. A finding that
+// does not cite that file gets only what the walk reads.
+func TestVerifySnippetsInCheckout_CitedFileAlwaysSearched(t *testing.T) {
+	dir := t.TempDir()
+	writeChangedFile(t, dir, "internal/foo/foo.go", "func Foo() error {\n\treturn db.Exec(query)\n}\n")
+	writeChangedFile(t, dir, "vendor/lib/lib.go", "func Vendored() { thirdParty.Call(x) }\n")
+
+	cited := &report.ReviewResult{Findings: []report.Finding{
+		{Title: "cites vendor", File: "vendor/lib/lib.go", Line: 1, Confidence: report.ConfidenceLikely, CodeSnippet: "thirdParty.Call(x)"},
+	}}
+	if n := VerifySnippetsInCheckout(cited, dir); n != 0 {
+		t.Errorf("demoted = %d, want 0 for a quote from the cited file", n)
+	}
+	if got := cited.Findings[0].SnippetCheck; got != report.SnippetCheckPassed {
+		t.Errorf("cited vendored file: snippet check = %q, want %q", got, report.SnippetCheckPassed)
+	}
+
+	uncited := &report.ReviewResult{Findings: []report.Finding{
+		{Title: "cites foo", File: "internal/foo/foo.go", Line: 2, Confidence: report.ConfidenceLikely, CodeSnippet: "thirdParty.Call(x)"},
+	}}
+	if n := VerifySnippetsInCheckout(uncited, dir); n != 1 {
+		t.Errorf("demoted = %d, want 1 when no finding cites the vendored file", n)
+	}
+	if got := uncited.Findings[0].SnippetCheck; got != snippetReasonNotFound {
+		t.Errorf("uncited vendored quote: snippet check = %q, want %q", got, snippetReasonNotFound)
+	}
+}
+
+// TestVerifySnippetsInCheckout_ReadsOnlyRegularFiles locks the read guard on an
+// untrusted checkout: a symlink is never read through, whether a finding cites
+// it or only the checkout walk meets it, and a cited file over
+// maxHaystackFileBytes is left unread, as the walk leaves it. Each quote exists
+// only behind the guard, so a read through it would pass the finding; a link
+// to /dev/zero or a pipe would have stalled the gate instead.
+func TestVerifySnippetsInCheckout_ReadsOnlyRegularFiles(t *testing.T) {
+	const secret = "leaked := readOutsideSecret(token)"
+	outside := t.TempDir()
+	writeChangedFile(t, outside, "secret.go", "package secret\n"+secret+"\n")
+	const oversized = "total := computeOversizedTotal(items)"
+	dir := t.TempDir()
+	writeChangedFile(t, dir, "a.go", "package a\n")
+	writeChangedFile(t, dir, "big.go", strings.Repeat("x", maxHaystackFileBytes)+"\n"+oversized+"\n")
+	if err := os.Symlink(filepath.Join(outside, "secret.go"), filepath.Join(dir, "link.go")); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+
+	for _, tc := range []struct {
+		name string
+		f    report.Finding
+	}{
+		{"cited symlink", report.Finding{File: "link.go", Line: 2, CodeSnippet: secret}},
+		{"symlink the walk meets", report.Finding{File: "a.go", Line: 1, CodeSnippet: secret}},
+		{"oversized cited file", report.Finding{File: "big.go", Line: 2, CodeSnippet: oversized}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.f.Title, tc.f.Confidence = tc.name, report.ConfidenceLikely
+			result := &report.ReviewResult{Findings: []report.Finding{tc.f}}
+			if n := VerifySnippetsInCheckout(result, dir); n != 1 {
+				t.Errorf("demoted = %d, want 1: the quote is readable only behind the guard", n)
+			}
+			if got := result.Findings[0].SnippetCheck; got != snippetReasonNotFound {
+				t.Errorf("snippet check = %q, want %q", got, snippetReasonNotFound)
+			}
+		})
+	}
+}
+
+// TestVerifySnippets_FallbackSkipsSymlinks: the review's checkout fallback
+// shares the audit's walk, so a symlink out of the checkout recovers nothing
+// there either.
+func TestVerifySnippets_FallbackSkipsSymlinks(t *testing.T) {
+	const secret = "leaked := readOutsideSecret(token)"
+	outside := t.TempDir()
+	writeChangedFile(t, outside, "secret.go", "package secret\n"+secret+"\n")
+	dir := t.TempDir()
+	writeChangedFile(t, dir, "a.go", "package a\n")
+	if err := os.Symlink(filepath.Join(outside, "secret.go"), filepath.Join(dir, "link.go")); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+
+	result := &report.ReviewResult{Findings: []report.Finding{
+		{Title: "outside", Confidence: report.ConfidenceLikely, CodeSnippet: secret},
+	}}
+	if n := VerifySnippets(result, dir, []string{"a.go"}); n != 1 {
+		t.Errorf("demoted = %d, want 1", n)
+	}
+	if got := result.Findings[0].SnippetCheck; got != snippetReasonNotFound {
+		t.Errorf("snippet check = %q, want %q", got, snippetReasonNotFound)
+	}
+	if result.Gates == nil || result.Gates.Snippet == nil {
+		t.Fatalf("gate stats not recorded: %+v", result.Gates)
+	}
+	if got := *result.Gates.Snippet; got != (report.SnippetGateStats{Examined: 1, Demoted: 1}) {
+		t.Errorf("snippet stats = %+v, want {Examined:1 Demoted:1}", got)
+	}
+}
+
+// TestVerifySnippetsInCheckout_EmptyCheckoutSkips: a checkout with no readable
+// text is no ground truth, so the gate demotes nothing, stamps nothing, the
+// missing-file rule included, and leaves Gates.Snippet nil.
+func TestVerifySnippetsInCheckout_EmptyCheckoutSkips(t *testing.T) {
+	result := &report.ReviewResult{
+		Findings: []report.Finding{
+			{Title: "quote", File: "a.go", Line: 1, Confidence: report.ConfidenceVerified, CodeSnippet: "anything()"},
+			{Title: "missing-file", File: "CHANGELOG.md", Confidence: report.ConfidenceLikely},
+		},
+	}
+	if n := VerifySnippetsInCheckout(result, t.TempDir()); n != 0 {
+		t.Errorf("demoted = %d, want 0 on an empty checkout", n)
+	}
+	if result.Gates != nil {
+		t.Errorf("skipped gate must not record stats, got %+v", result.Gates)
+	}
+	for _, f := range result.Findings {
+		if f.SnippetCheck != "" {
+			t.Errorf("%s: skipped gate must not stamp a finding, got %q", f.Title, f.SnippetCheck)
+		}
+	}
+	if result.Findings[0].Confidence != report.ConfidenceVerified {
+		t.Error("finding must not be demoted when there is no ground truth")
+	}
+}
+
+func TestVerifySnippetsInCheckout_NilResult(t *testing.T) {
+	// A nil result is a documented no-op; it must not panic.
+	if n := VerifySnippetsInCheckout(nil, t.TempDir()); n != 0 {
+		t.Errorf("demoted = %d, want 0 for a nil result", n)
+	}
+}

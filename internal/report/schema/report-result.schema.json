@@ -14,7 +14,7 @@
     "summary": { "type": "string" },
     "recommendation": { "type": "string" },
     "gates": {
-      "description": "Per-run counts for the review's hygiene stages: the line anchor, the two demotion gates, and the changed-file check. The anchor and the check never demote. The counts describe the whole run, not the filtered finding list. Absent when no stage ran, or on results produced before gate recording existed; an absent stage object means 'not recorded', not 'nothing demoted'.",
+      "description": "Per-run counts for the hygiene stages of a review or an audit: the line anchor, the two demotion gates, and the changed-file check, which only a review runs. The anchor and the check never demote. The counts describe the whole run, not the filtered finding list. Absent when no stage ran, or on results produced before gate recording existed; an absent stage object means 'not recorded', not 'nothing demoted'.",
       "$ref": "#/$defs/gateStats"
     },
     "passes": {
@@ -76,7 +76,7 @@
         },
         "verification_note": { "type": "string" },
         "snippet_check": {
-          "description": "The snippet gate's per-finding record: 'passed' or a 'demoted: <reason>' string. Set by the pipeline, never by the model.",
+          "description": "The snippet gate's per-finding record: 'passed', a 'verified: <how>' string, or a 'demoted: <reason>' string. Set by the pipeline, never by the model.",
           "type": "string"
         },
         "claim_check": {
@@ -134,7 +134,7 @@
         "examined": { "type": "integer" },
         "demoted": { "type": "integer" },
         "recovered_outside_diff": {
-          "description": "Findings whose quoted code was absent from the changed files but found elsewhere in the checkout, and so were kept. Absent when zero.",
+          "description": "Findings whose quoted code was absent from the changed files but found elsewhere in the checkout, and so were kept. Absent when zero, and never set by an audit.",
           "type": "integer"
         }
       }

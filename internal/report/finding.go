@@ -200,40 +200,49 @@ type Finding struct {
 	ConfirmedBy []string `json:"confirmed_by,omitempty"`
 	// VerificationNote records why the claim-verification pass refuted a
 	// BLOCKING/CRITICAL finding, paired with a demotion to uncertain confidence.
-	// It is set only by the review pipeline's claim-verification step — the model
-	// never populates it at structure time — and routes the demoted finding into
-	// the Unverified section.
+	// It is set only by the finding-hygiene gates (review, implement's
+	// self-review, audit), in their claim-verification step — the model never
+	// populates it at structure time — and routes the demoted finding into the
+	// Unverified section.
 	VerificationNote string `json:"verification_note,omitempty"`
 	// SnippetCheck records the quote-or-demote gate's per-finding decision:
 	// SnippetCheckPassed when the finding's quoted code was located in the
-	// changed files, or a "demoted: <reason>" string when it was not. It is set
-	// only by the review pipeline's snippet-verification step — the model never
-	// populates it. Unlike VerificationNote it does NOT route the finding
-	// (Unverified is unchanged); it is a pure record of what the gate examined,
-	// so a run where every finding passed is distinguishable from one where the
-	// gate never ran (which leaves it empty).
+	// changed files (anywhere in the checkout for an audit), a "verified: <how>"
+	// string for a finding verified another way (its quote found outside the
+	// changed files, in a review; its cited path absent from the checkout, in an
+	// audit), or a "demoted: <reason>" string. It is set only by the
+	// finding-hygiene gates (review, implement's self-review, audit), in their
+	// snippet-verification step — the model never populates it. Unlike
+	// VerificationNote it does NOT route the finding (Unverified is
+	// unchanged); it is a pure record of what the gate examined, so a run where
+	// every finding passed is distinguishable from one where the gate never ran
+	// (which leaves it empty).
 	SnippetCheck string `json:"snippet_check,omitempty"`
 	// ClaimCheck records the claim-verification gate's per-finding decision as a
 	// machine token: ClaimCheckConfirmed, ClaimCheckRefuted, or
 	// ClaimCheckNoVerdict (the gate ran but returned no verdict for this
-	// finding — the fail-open case). It is set only by the review pipeline's
-	// claim-verification step. The human-readable refutation reason still lives
-	// in VerificationNote; this token does not duplicate it and does not route
-	// the finding.
+	// finding — the fail-open case). It is set only by the finding-hygiene gates
+	// (review, implement's self-review, audit), in their claim-verification
+	// step. The human-readable refutation reason still lives in
+	// VerificationNote; this token does not duplicate it and does not route the
+	// finding.
 	ClaimCheck string `json:"claim_check,omitempty"`
 	// LineCheck records the line anchor's per-finding decision
 	// (hygiene.AnchorFindings): LineCheckAnchored, LineCheckReanchored,
-	// LineCheckRelocated, or LineCheckUnanchored. It is set only by the review
-	// pipeline, never by the model, and is empty for a finding the anchor did
-	// not examine. It never moves a finding between report sections; --inline
-	// posts no inline comment for a LineCheckUnanchored finding, which stays in
-	// the summary comment, and its SARIF result has no region (decision 139).
+	// LineCheckRelocated, or LineCheckUnanchored. It is set only by the
+	// finding-hygiene stages (review, implement's self-review, audit), never by
+	// the model, and is empty for a finding the anchor did not examine. An
+	// audit never relocates a finding. It never moves a finding between report
+	// sections; --inline posts no inline comment for a LineCheckUnanchored
+	// finding, which stays in the summary comment, and its SARIF result has no
+	// region (decision 139).
 	LineCheck string `json:"line_check,omitempty"`
 }
 
 // SnippetCheckPassed is the SnippetCheck value recorded on a finding whose
-// quoted code the snippet gate located in the changed files. A demotion records
-// a "demoted: <reason>" string instead.
+// quoted code the snippet gate located in the changed files, or anywhere in the
+// checkout for an audit. A demotion records a "demoted: <reason>" string
+// instead.
 const SnippetCheckPassed = "passed"
 
 // ClaimCheck token values recorded by the claim-verification gate on each
@@ -356,11 +365,12 @@ const (
 	FileUnreported = "unreported"
 )
 
-// GateStats aggregates the per-run counts of the review's hygiene stages, in
-// stage order: the line anchor, the two demotion gates, and the changed-file
-// check. The anchor and the check record and never demote. A nil per-stage
-// field means that stage did not run this run; a nil Files means the review
-// prompt listed no changed files.
+// GateStats aggregates the per-run counts of the hygiene stages of a review or
+// an audit, in stage order: the line anchor, the two demotion gates, and the
+// changed-file check, which only a review runs. The anchor and the check
+// record and never demote. A nil per-stage field means that stage did not run
+// this run; a nil Files means the review prompt listed no changed files, and
+// is always nil on an audit.
 type GateStats struct {
 	Anchor  *AnchorGateStats  `json:"anchor,omitempty"`
 	Snippet *SnippetGateStats `json:"snippet,omitempty"`
@@ -384,12 +394,14 @@ type AnchorGateStats struct {
 	Unanchored int `json:"unanchored"`
 }
 
-// SnippetGateStats records the quote-or-demote gate's per-run counts: how many
-// findings it Examined, the Demoted subset whose quoted code it could locate
-// neither in the changed files nor anywhere else in the checkout, and the
-// RecoveredOutsideDiff subset whose quoted code was absent from the changed
-// files but found elsewhere in the checkout — a verified cross-file finding that
-// is kept, not demoted. Examined and Demoted are recorded even when zero, so a
+// SnippetGateStats records the quote-or-demote gate's per-run counts, for the
+// demotion gates of a review or an audit: how many findings it Examined, the
+// Demoted subset whose quoted code it could locate neither in the changed files
+// nor anywhere else in the checkout, and the RecoveredOutsideDiff subset whose
+// quoted code was absent from the changed files but found elsewhere in the
+// checkout — a verified cross-file finding that is kept, not demoted. An audit,
+// which has no changed files and searches the whole checkout, never sets
+// RecoveredOutsideDiff. Examined and Demoted are recorded even when zero, so a
 // gate that ran but demoted nothing is distinguishable from one that never ran
 // (a nil SnippetGateStats); RecoveredOutsideDiff is omitted when zero since the
 // fallback is the exception, not the norm.

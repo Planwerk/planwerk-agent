@@ -107,7 +107,7 @@ or short form (owner/repo).`,
 			opts.Remote = deps.remoteOpts
 			opts.Wiki = resolveWikiOptions(wikiEnable, wikiDisable, cmd.Flags().Changed("wiki"), cmd.Flags().Changed("no-wiki"), wikiRef, cmd.Flags().Changed("wiki-ref"), deps.fileCfg.Wiki)
 			opts.Brain = brain.resolve(cmd.Flags(), deps.fileCfg.Brain)
-			return audit.Run(os.Stdout, opts, deps.claude.Audit, deps.claude)
+			return audit.Run(os.Stdout, opts, deps.claude.Audit, deps.claude.VerifyFindingClaims, deps.claude)
 		},
 	}
 

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -15,6 +16,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/capture"
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/github/githubtest"
+	"github.com/planwerk/planwerk-agent/internal/hygiene"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
 	"github.com/planwerk/planwerk-agent/internal/search"
@@ -1004,5 +1006,246 @@ func TestAuditRun_BrainSurfaceReachesTheAuditAndTheCacheKey(t *testing.T) {
 	}
 	if want := []search.Surface{rev1, rev2, {}, {}}; !slices.Equal(sessions, want) {
 		t.Errorf("the sessions were handed %+v, want %+v", sessions, want)
+	}
+}
+
+// writeRepoFile writes content to rel under a fake repo's checkout, so the
+// finding-hygiene gates have code to search.
+func writeRepoFile(t *testing.T, dir, rel, content string) {
+	t.Helper()
+	path := filepath.Join(dir, rel)
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+}
+
+// handlerGo is a checkout file whose line 4 the gate tests' findings quote.
+const handlerGo = "package svc\n\nfunc Handle(r Request) error {\n\treturn db.Exec(r.Query)\n}\n"
+
+// formatJSON is the --format value that renders the audit as JSON.
+const formatJSON = "json"
+
+// cachedAudit reads the audit result Run cached for sha under opts.
+func cachedAudit(t *testing.T, sha string, opts Options) report.ReviewResult {
+	t.Helper()
+	data, ok := cache.GetRaw(cache.AuditKey("owner", "repo", sha, auditPatternFlag(opts)), 0)
+	if !ok {
+		t.Fatal("the audit result was not cached")
+	}
+	var result report.ReviewResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("decoding the cached audit: %v", err)
+	}
+	return result
+}
+
+// TestAuditRun_GatesRunBeforeCache locks the finding hygiene an audit runs:
+// the line anchor, the snippet gate over the whole checkout, and claim
+// verification of the BLOCKING and CRITICAL findings, all before the cache
+// write, so a cache hit, in Markdown or JSON, serves the gated findings and the
+// run's gate counts without running a gate again.
+func TestAuditRun_GatesRunBeforeCache(t *testing.T) {
+	// Not t.Parallel(): cache.SetDir mutates a package-level variable.
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	const sha = "sha-audit-gates"
+	patternDir := seedPatternDir(t)
+	repo := fakeRepo(t, "acme", "widgets")
+	writeRepoFile(t, repo.Dir, "svc/handler.go", handlerGo)
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return repo, nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return sha, nil },
+	}
+	claudeMock := &fakeClaude{fn: func(dir string, ctx AuditContext) (*report.ReviewResult, error) {
+		return &report.ReviewResult{Summary: "s", Findings: []report.Finding{
+			{ID: "B-001", Severity: report.SeverityBlocking, Confidence: report.ConfidenceLikely, Title: "raw query", File: "svc/handler.go", Line: 4, CodeSnippet: "return db.Exec(r.Query)", Problem: "p", Action: "a"},
+			{ID: "C-001", Severity: report.SeverityCritical, Confidence: report.ConfidenceLikely, Title: "unchecked input", File: "svc/handler.go", Line: 4, CodeSnippet: "return db.Exec(r.Query)", Problem: "p", Action: "a"},
+			{ID: "W-001", Severity: report.SeverityWarning, Confidence: report.ConfidenceLikely, Title: "made-up call", File: "svc/handler.go", Line: 4, CodeSnippet: "user.DeleteAllRecords(ctx)", Problem: "p", Action: "a"},
+			{ID: "W-002", Severity: report.SeverityWarning, Confidence: report.ConfidenceLikely, Title: "no changelog", File: "CHANGELOG.md", Problem: "p", Action: "a"},
+		}}, nil
+	}}
+	var sent [][]string // the finding IDs of every verifier call, in order
+	verify := func(dir string, findings []report.Finding) ([]hygiene.ClaimVerdict, error) {
+		if dir != repo.Dir {
+			t.Errorf("verifier dir = %q, want the checkout %q", dir, repo.Dir)
+		}
+		ids := make([]string, len(findings))
+		for i, f := range findings {
+			ids[i] = f.ID
+		}
+		sent = append(sent, ids)
+		return []hygiene.ClaimVerdict{
+			{Index: 0, Verdict: "confirmed"},
+			{Index: 1, Verdict: "refuted", Reason: "guarded upstream"},
+		}, nil
+	}
+	opts := baseAuditOpts(patternDir)
+
+	var out bytes.Buffer
+	if err := (&Runner{Claude: claudeMock, GitHub: gh, VerifyClaims: verify}).Run(&out, opts); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if want := [][]string{{"B-001", "C-001"}}; !reflect.DeepEqual(sent, want) {
+		t.Errorf("verifier calls = %v, want one call with only the BLOCKING and CRITICAL findings %v", sent, want)
+	}
+
+	cached := cachedAudit(t, sha, opts)
+	wantGates := report.GateStats{
+		Anchor:  &report.AnchorGateStats{Examined: 3, Unanchored: 1},
+		Snippet: &report.SnippetGateStats{Examined: 4, Demoted: 1},
+		Claim:   &report.ClaimGateStats{Sent: 2, Verdicts: 2, Refuted: 1},
+	}
+	if cached.Gates == nil || !reflect.DeepEqual(*cached.Gates, wantGates) {
+		t.Fatalf("cached gates = %+v, want %+v", cached.Gates, wantGates)
+	}
+	byID := make(map[string]report.Finding)
+	for _, f := range cached.Findings {
+		byID[f.ID] = f
+	}
+	if f := byID["W-001"]; f.Confidence != report.ConfidenceUncertain || !strings.HasPrefix(f.SnippetCheck, "demoted:") {
+		t.Errorf("W-001 (quote found nowhere): confidence %q, snippet check %q; want uncertain and a demotion", f.Confidence, f.SnippetCheck)
+	}
+	if f := byID["W-002"]; f.Confidence != report.ConfidenceLikely || !strings.HasPrefix(f.SnippetCheck, "verified:") {
+		t.Errorf("W-002 (missing file): confidence %q, snippet check %q; want likely and a verification", f.Confidence, f.SnippetCheck)
+	}
+	if f := byID["C-001"]; f.ClaimCheck != report.ClaimCheckRefuted || f.VerificationNote != "refuted: guarded upstream" {
+		t.Errorf("C-001: claim check %q, note %q; want refuted with the verifier's reason", f.ClaimCheck, f.VerificationNote)
+	}
+	if f := byID["B-001"]; f.ClaimCheck != report.ClaimCheckConfirmed || f.SnippetCheck != report.SnippetCheckPassed || f.LineCheck != report.LineCheckAnchored {
+		t.Errorf("B-001: claim %q, snippet %q, line %q; want confirmed, passed, anchored", f.ClaimCheck, f.SnippetCheck, f.LineCheck)
+	}
+	const note = "**Claim check**: refuted: guarded upstream"
+	if !strings.Contains(out.String(), note) {
+		t.Errorf("the audit report lacks %q:\n%s", note, out.String())
+	}
+
+	// A cache hit serves the gated result: no audit session and no verifier.
+	hit := &Runner{
+		Claude: &fakeClaude{fn: func(dir string, ctx AuditContext) (*report.ReviewResult, error) {
+			t.Fatal("Audit must not be called on a cache hit")
+			return nil, nil
+		}},
+		GitHub: gh,
+		VerifyClaims: func(dir string, findings []report.Finding) ([]hygiene.ClaimVerdict, error) {
+			t.Fatal("the claim verifier must not run on a cache hit")
+			return nil, nil
+		},
+	}
+	var hitOut bytes.Buffer
+	if err := hit.Run(&hitOut, opts); err != nil {
+		t.Fatalf("cache-hit Run returned error: %v", err)
+	}
+	if !strings.Contains(hitOut.String(), note) {
+		t.Errorf("the cache-hit report lacks %q:\n%s", note, hitOut.String())
+	}
+
+	jsonOpts := opts
+	jsonOpts.Format = formatJSON
+	var jsonOut bytes.Buffer
+	if err := hit.Run(&jsonOut, jsonOpts); err != nil {
+		t.Fatalf("cache-hit JSON Run returned error: %v", err)
+	}
+	var rendered report.ReviewResult
+	if err := json.Unmarshal(jsonOut.Bytes(), &rendered); err != nil {
+		t.Fatalf("decoding --format json output: %v\n%s", err, jsonOut.String())
+	}
+	if !reflect.DeepEqual(rendered.Gates, cached.Gates) {
+		t.Errorf("--format json gates = %+v, want the cached %+v", rendered.Gates, cached.Gates)
+	}
+}
+
+// TestAuditRun_AnchorsQuotedLine: a finding whose quote sits on another line of
+// the file it cites is moved to that line before the claim verifier sees it,
+// as the review orders its gates, and the result is cached with that line.
+func TestAuditRun_AnchorsQuotedLine(t *testing.T) {
+	// Not t.Parallel(): cache.SetDir mutates a package-level variable.
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	const sha = "sha-audit-anchor"
+	patternDir := seedPatternDir(t)
+	repo := fakeRepo(t, "acme", "widgets")
+	writeRepoFile(t, repo.Dir, "svc/handler.go", handlerGo)
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return repo, nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return sha, nil },
+	}
+	claudeMock := &fakeClaude{fn: func(dir string, ctx AuditContext) (*report.ReviewResult, error) {
+		return &report.ReviewResult{Summary: "s", Findings: []report.Finding{
+			{ID: "C-001", Severity: report.SeverityCritical, Confidence: report.ConfidenceLikely, Title: "raw query", File: "svc/handler.go", Line: 40, CodeSnippet: "return db.Exec(r.Query)", Problem: "p", Action: "a"},
+		}}, nil
+	}}
+	// The place each finding had when the claim verifier was handed it.
+	type place struct {
+		line  int
+		check string
+	}
+	var verified []place
+	verify := func(dir string, findings []report.Finding) ([]hygiene.ClaimVerdict, error) {
+		for _, f := range findings {
+			verified = append(verified, place{f.Line, f.LineCheck})
+		}
+		return []hygiene.ClaimVerdict{{Index: 0, Verdict: "confirmed"}}, nil
+	}
+	opts := baseAuditOpts(patternDir)
+	if err := (&Runner{Claude: claudeMock, GitHub: gh, VerifyClaims: verify}).Run(&bytes.Buffer{}, opts); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if want := []place{{4, report.LineCheckReanchored}}; !reflect.DeepEqual(verified, want) {
+		t.Errorf("the claim verifier was handed %+v, want %+v: anchoring runs before the claim gate", verified, want)
+	}
+
+	cached := cachedAudit(t, sha, opts)
+	if len(cached.Findings) != 1 {
+		t.Fatalf("cached findings = %+v, want one", cached.Findings)
+	}
+	f := cached.Findings[0]
+	if f.File != "svc/handler.go" || f.Line != 4 || f.LineEnd != 0 || f.LineCheck != report.LineCheckReanchored {
+		t.Errorf("cached finding at %s:%d-%d (%s), want svc/handler.go:4 reanchored", f.File, f.Line, f.LineEnd, f.LineCheck)
+	}
+}
+
+// TestAuditRun_NilVerifierRecordsNoClaimGate: a Runner with no claim verifier
+// still runs the snippet gate, but records no claim gate, so the result reads
+// as "never ran" rather than "nothing refuted".
+func TestAuditRun_NilVerifierRecordsNoClaimGate(t *testing.T) {
+	// Not t.Parallel(): cache.SetDir mutates a package-level variable.
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	const sha = "sha-audit-noverifier"
+	patternDir := seedPatternDir(t)
+	repo := fakeRepo(t, "acme", "widgets")
+	writeRepoFile(t, repo.Dir, "svc/handler.go", handlerGo)
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return repo, nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return sha, nil },
+	}
+	claudeMock := &fakeClaude{fn: func(dir string, ctx AuditContext) (*report.ReviewResult, error) {
+		return &report.ReviewResult{Summary: "s", Findings: []report.Finding{
+			{ID: "C-001", Severity: report.SeverityCritical, Confidence: report.ConfidenceLikely, Title: "raw query", File: "svc/handler.go", Line: 4, CodeSnippet: "return db.Exec(r.Query)", Problem: "p", Action: "a"},
+		}}, nil
+	}}
+	opts := baseAuditOpts(patternDir)
+	if err := (&Runner{Claude: claudeMock, GitHub: gh}).Run(&bytes.Buffer{}, opts); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	cached := cachedAudit(t, sha, opts)
+	if cached.Gates == nil || cached.Gates.Snippet == nil {
+		t.Fatalf("cached gates = %+v, want the snippet gate recorded", cached.Gates)
+	}
+	if got := *cached.Gates.Snippet; got != (report.SnippetGateStats{Examined: 1}) {
+		t.Errorf("snippet stats = %+v, want {Examined:1 Demoted:0}", got)
+	}
+	if cached.Gates.Claim != nil {
+		t.Errorf("claim stats = %+v, want nil without a verifier", cached.Gates.Claim)
+	}
+	if got := cached.Findings[0].ClaimCheck; got != "" {
+		t.Errorf("claim check = %q, want unstamped without a verifier", got)
 	}
 }

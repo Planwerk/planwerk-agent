@@ -130,6 +130,14 @@ func renderFindingDetails(b *bytes.Buffer, f report.Finding, withLineHeader bool
 			fmt.Fprint(b, "### Occurrence\n\n")
 		}
 	}
+	// The gate notes, as the audit report renders them, so the preview and the
+	// filed issue say why a finding was demoted (decision 140).
+	if f.VerificationNote != "" {
+		fmt.Fprintf(b, "**Claim check**: %s\n\n", f.VerificationNote)
+	}
+	if f.SnippetCheck != "" && f.SnippetCheck != report.SnippetCheckPassed {
+		fmt.Fprintf(b, "**Snippet check**: %s\n\n", f.SnippetCheck)
+	}
 	if f.Problem != "" {
 		fmt.Fprintf(b, "**Problem**: %s\n\n", f.Problem)
 	}
