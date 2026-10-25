@@ -100,13 +100,16 @@ type sarifNotification struct {
 
 // sarifProperties is a result's property bag: the finding's own fields that
 // SARIF has no slot for. Severity keeps the four levels that the result's
-// level folds into three, and Unverified is always written, false included.
+// level folds into three, Unverified is always written, false included, and
+// LineCheck is the line anchor's record, which says why an unanchored result
+// has no region (decision 139).
 type sarifProperties struct {
 	FindingID     string `json:"finding_id,omitempty"`
 	Severity      string `json:"severity"`
 	Confidence    string `json:"confidence,omitempty"`
 	Actionability string `json:"actionability,omitempty"`
 	Unverified    bool   `json:"unverified"`
+	LineCheck     string `json:"line_check,omitempty"`
 }
 
 // RenderSARIF writes the findings Categorize keeps under minSeverity and
@@ -157,6 +160,7 @@ func (r *Renderer) RenderSARIF(result ReviewResult, minSeverity Severity, minCon
 				Confidence:    string(f.Confidence),
 				Actionability: string(f.Actionability),
 				Unverified:    f.Unverified(),
+				LineCheck:     f.LineCheck,
 			},
 		})
 	}
@@ -307,13 +311,15 @@ func sarifArtifactURI(file string) string {
 }
 
 // sarifLocationFor is f's physical location: its file, and a region only when
-// it cites a line. The region ends at LineEnd only when LineEnd lies after
+// it cites a line the line anchor did not stamp unanchored, since code
+// scanning would show that alert on a line it may not mean, as --inline would
+// (decision 139). The region ends at LineEnd only when LineEnd lies after
 // Line.
 func sarifLocationFor(f Finding) sarifLocation {
 	loc := sarifLocation{PhysicalLocation: sarifPhysicalLocation{
 		ArtifactLocation: sarifArtifactLocation{URI: sarifArtifactURI(f.File)},
 	}}
-	if f.Line > 0 {
+	if f.Line > 0 && f.LineCheck != LineCheckUnanchored {
 		region := &sarifRegion{StartLine: f.Line}
 		if f.LineEnd > f.Line {
 			region.EndLine = f.LineEnd

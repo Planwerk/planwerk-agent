@@ -38,7 +38,8 @@ comment and adds a review via the GitHub Review API only for the inline
 comments a run posts, so re-reviews do not pile up summaries. The inline
 comments follow `--min-severity` and `--min-confidence` the way the report
 does, and a finding in the report's Unverified section stays in the summary
-without an inline comment. `--resolve-outdated` also resolves the tool's own
+without an inline comment. So does a finding whose quote pins no single place
+in the reviewed code. `--resolve-outdated` also resolves the tool's own
 inline threads once GitHub marks them outdated, unless someone replied or a
 current finding still covers their lines (see
 [Resolving outdated threads](/reference/output-format#resolving-outdated-threads)).
@@ -64,7 +65,7 @@ and a note at the end of the report lists them; see
    - the planwerk-agent pattern catalog, embedded in the binary (source: `internal/patterns/patterns/`)
    - `.planwerk/review_patterns/` in the target repository (repo-specific patterns)
 4. **Claude Code Review**: a `claude -p` session runs a structured review prompt that includes persona framing, scope analysis, a two-pass checklist, suppression rules, review patterns, and the list of changed files, which the session accounts for one by one. The session reads a diff file the tool wrote beforehand rather than running `git diff` itself (see [The Diff Every Pass Reads](/explanation/review-methodology#the-diff-every-pass-reads)).
-5. **Result Aggregation**: Review results are collected, deduplicated, categorized by severity, and classified by actionability. Findings are enriched with code snippets, suggested fixes, confidence levels, and cross-references. The session's account of the changed files is compared with that list, and the report names any file it did not review ([Changed-File Coverage](/reference/output-format#changed-file-coverage)).
+5. **Result Aggregation**: Each finding's line is anchored on the code it quotes before the passes are merged ([Line Anchoring](/explanation/review-methodology#line-anchoring)). Review results are collected, deduplicated, categorized by severity, and classified by actionability. Findings are enriched with code snippets, suggested fixes, confidence levels, and cross-references. The session's account of the changed files is compared with that list, and the report names any file it did not review ([Changed-File Coverage](/reference/output-format#changed-file-coverage)).
 6. **Output**: A structured report is written to `stdout` as Markdown, JSON, or SARIF, optionally posted as a PR comment (`--post-review`), or posted as inline review comments on the PR diff (`--inline`).
 
 The cognitive patterns and checklist Claude applies are described in

@@ -91,6 +91,7 @@ planwerk-agent/
 │   │   ├── review_test.go
 │   │   └── githubtest/         # The shared test fake for Client (imported by tests only)
 │   ├── hygiene/                # Shared finding hygiene (review + implement self-review)
+│   │   ├── anchor.go           # Line anchoring on the quoted code (AnchorFindings)
 │   │   ├── merge.go            # Multi-pass merge, confidence boost, ConfirmedBy provenance
 │   │   ├── dedup.go            # File-less duplicate fold (DedupFileless)
 │   │   ├── snippets.go         # Quote-or-demote snippet gate (VerifySnippets)

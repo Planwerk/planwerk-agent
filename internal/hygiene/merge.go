@@ -1,16 +1,18 @@
 // Package hygiene holds the finding-hygiene stage that both the review and
 // implement commands run over a set of review findings before they are acted
 // on. A review run reports its findings; an implement run edits the branch to
-// resolve them. Both must first pass every finding through the same gates:
-// the multi-pass merge (with its confidence boost and ConfirmedBy provenance),
-// the file-less dedup fallback, the quote-or-demote snippet gate, and the
-// claim-verification demotion. The review command also runs CheckFileLedger,
-// a record of which changed files the review read rather than a gate, which
-// implement does not run. Keeping these in one leaf package — importing
-// only internal/report and the standard library — lets both commands share one
-// implementation instead of the reporting path owning gates the acting path
-// cannot reach. The import direction claude -> implement means implement can
-// import neither review nor claude, so the shared behavior must live here.
+// resolve them. Both must first pass every finding through the same stages:
+// the line anchor (each pass's findings placed on the code they quote, before
+// the merge), the multi-pass merge (with its confidence boost and ConfirmedBy
+// provenance), the file-less dedup fallback, the quote-or-demote snippet gate,
+// and the claim-verification demotion. The review command also runs
+// CheckFileLedger, a record of which changed files the review read rather than
+// a gate, which implement does not run. Keeping these in one leaf package —
+// importing only internal/report and the standard library — lets both commands
+// share one implementation instead of the reporting path owning gates the
+// acting path cannot reach. The import direction claude -> implement means
+// implement can import neither review nor claude, so the shared behavior must
+// live here.
 package hygiene
 
 import (
@@ -132,6 +134,8 @@ func findMatchIndex(existing []report.Finding, sf report.Finding) int {
 // and, the first time the finding crosses into multi-pass-confirmed (≥2 distinct
 // passes), boosts confidence one step. When dup carries a higher severity it is
 // adopted while preserving kept's ID and enrichment; otherwise kept is retained.
+// Either way, when the line anchor left the retained finding unanchored but
+// placed the other one, the other's lines win (see withPlace).
 func mergeFindingPair(kept, dup report.Finding) report.Finding {
 	merged := unionPasses(kept.ConfirmedBy, dup.ConfirmedBy)
 	confidence := kept.Confidence
@@ -154,11 +158,27 @@ func mergeFindingPair(kept, dup report.Finding) report.Finding {
 		dup.RelatedTo = mergeRelated(dup.RelatedTo, kept.RelatedTo)
 		dup.ConfirmedBy = merged
 		dup.Confidence = confidence
-		return dup
+		return withPlace(dup, kept)
 	}
 	kept.ConfirmedBy = merged
 	kept.Confidence = confidence
-	return kept
+	return withPlace(kept, dup)
+}
+
+// withPlace returns f with other's Line, LineEnd and LineCheck when the line
+// anchor stamped f unanchored and placed other (anchored, reanchored or
+// relocated). The two are one defect in one file, so the pass whose quote
+// pinned it decides where it is posted, and --inline still comments on it
+// (decision 139).
+func withPlace(f, other report.Finding) report.Finding {
+	if f.LineCheck != report.LineCheckUnanchored {
+		return f
+	}
+	switch other.LineCheck {
+	case report.LineCheckAnchored, report.LineCheckReanchored, report.LineCheckRelocated:
+		f.Line, f.LineEnd, f.LineCheck = other.Line, other.LineEnd, other.LineCheck
+	}
+	return f
 }
 
 // linesOverlap reports whether a's and b's line ranges intersect once each is

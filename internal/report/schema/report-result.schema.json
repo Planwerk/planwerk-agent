@@ -14,7 +14,7 @@
     "summary": { "type": "string" },
     "recommendation": { "type": "string" },
     "gates": {
-      "description": "Per-run counts for the review's two demotion gates, and the record of the changed-file check, which never demotes. The counts describe the whole run, not the filtered finding list. Absent when no gate ran and no file was checked, or on results produced before gate recording existed; an absent gate object means 'not recorded', not 'nothing demoted'.",
+      "description": "Per-run counts for the review's hygiene stages: the line anchor, the two demotion gates, and the changed-file check. The anchor and the check never demote. The counts describe the whole run, not the filtered finding list. Absent when no stage ran, or on results produced before gate recording existed; an absent stage object means 'not recorded', not 'nothing demoted'.",
       "$ref": "#/$defs/gateStats"
     },
     "passes": {
@@ -83,17 +83,47 @@
           "description": "The claim gate's per-finding record. Set by the pipeline, never by the model.",
           "type": "string",
           "enum": ["confirmed", "refuted", "no-verdict"]
+        },
+        "line_check": {
+          "description": "The line anchor's per-finding record: 'anchored' kept the model's range, 'reanchored' moved it within the file, 'relocated' moved it to another changed file, 'unanchored' found no single place for the quote at the reviewed head. Set by the pipeline, never by the model.",
+          "type": "string",
+          "enum": ["anchored", "reanchored", "relocated", "unanchored"]
         }
       }
     },
     "gateStats": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Per-run counts for each demotion gate, and the changed-file record. A missing gate object means the gate never ran this run; a missing files object means the review prompt listed no changed files.",
+      "description": "Per-run counts for each hygiene stage, and the changed-file record. A missing stage object means the stage never ran this run; a missing files object means the review prompt listed no changed files.",
       "properties": {
+        "anchor": { "$ref": "#/$defs/anchorGateStats" },
         "snippet": { "$ref": "#/$defs/snippetGateStats" },
         "claim": { "$ref": "#/$defs/claimGateStats" },
         "files": { "$ref": "#/$defs/fileGateStats" }
+      }
+    },
+    "anchorGateStats": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The line anchor's counts, taken over each pass's findings before the merge, so a defect that several passes report counts once per pass. The findings confirmed on the model's range ('anchored') are examined minus the other three.",
+      "required": ["examined", "reanchored", "unanchored"],
+      "properties": {
+        "examined": {
+          "description": "Findings that carry a file and a non-blank quote.",
+          "type": "integer"
+        },
+        "reanchored": {
+          "description": "Findings moved to the quoted code in the same file.",
+          "type": "integer"
+        },
+        "relocated": {
+          "description": "Findings moved to the one other changed file that holds the quote. Absent when zero.",
+          "type": "integer"
+        },
+        "unanchored": {
+          "description": "Findings whose quote pins no single place in the head content; they keep the model's line.",
+          "type": "integer"
+        }
       }
     },
     "snippetGateStats": {

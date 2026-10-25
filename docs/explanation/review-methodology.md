@@ -146,6 +146,57 @@ primary review and adversarial passes, which carry the whole catalog. A
 specialist that declares no areas, or whose areas match no loaded pattern, falls
 back to the full catalog.
 
+## Line Anchoring
+
+Every pass reports a line for each finding, and the model miscounts: it names
+a line a few rows off, or the old-side number of a changed hunk. Before the
+passes are merged, each finding is anchored on the code it quotes. Its
+`code_snippet` is compared line by line with the finding's file as it stands at
+the reviewed head. Whitespace, `//` comment markers, and one leading `+` from a
+quote copied out of `git diff` are ignored, and blank lines are skipped on both
+sides. A leading `-` is kept as the line's own content, as in a YAML or
+Markdown list item, so a deleted line never matches a copy of it that survives
+at the head. A quote of a replaced hunk is matched by its added lines.
+
+A quote line of at least 16 normalized characters is distinctive.
+
+- A model range that lies inside a match is kept (`anchored`).
+- So is a model range that touches no match but holds one of the quote's
+  distinctive lines, as the whole line or within it, which covers a quote with
+  an elided, trimmed, or reconstructed line (`anchored`). A whole-line copy of
+  the quote elsewhere in the file does not move it.
+- Otherwise the finding moves to the only match, or, when the quote matches in
+  several places, to the one nearest the model's line (`reanchored`).
+- A quote that its own file does not hold, not even one distinctive line
+  within a longer line, and that appears at exactly one place across the other
+  changed files moves the finding there, file and lines (`relocated`). Those
+  are the changed files the review reads: a file `--diff-exclusions` leaves out
+  is never searched, so no finding moves into it. Every finding is first
+  searched in its own file, and no finding is relocated while a file it would
+  be searched in, its own or another changed file, was left unread for its
+  size or the 32 MiB read budget: that file may hold the quote.
+- A quote with no distinctive line, such as `return nil` or an
+  `if err != nil { return err }` block, confirms a line, and moves a finding
+  only to the one place in its own file that holds it: never to the nearest of
+  several places, and never to another file.
+- A quote found nowhere, or found several times with no line to choose by,
+  keeps the model's line and is stamped `unanchored`. `--inline` posts no
+  comment for it and a [SARIF](/reference/output-format#sarif) result for it
+  has no region; it stays in the summary. Its line still keeps an outdated
+  thread it overlaps open under `--resolve-outdated`
+  ([Resolving outdated threads](/reference/output-format#resolving-outdated-threads)).
+
+Only the head content is searched, so a quote of deleted code, with its `-`
+markers, anchors nothing and every inline comment lands on the right side of
+the diff. A deleted line quoted without its `-` reads as head code and may
+still land on a copy of it the change left. Anchoring runs before the merge
+because the merge matches findings within ±3 lines. When the merge folds an
+`unanchored` finding into one that another pass placed, the folded finding
+takes the placed lines. Anchoring moves no finding between report sections.
+Each finding it examined carries `line_check`, and the run's counts, taken per
+pass before the merge, land in `gates.anchor`
+([Demotion-Gate Records](/reference/output-format#demotion-gate-records)).
+
 ## Cross-Pass Merge and Dedup
 
 When a secondary pass contributes findings (`--thorough`, `--specialists`, or a
@@ -166,9 +217,9 @@ structure-tier call groups the file-less duplicates by index; the pipeline folds
 each group in Go with the same merge semantics. The dedup call is non-fatal: if
 it fails, the findings ship unmerged.
 
-The merge, dedup, snippet-gate, and claim-verification stages live in the shared
-`internal/hygiene` package, so `implement`'s self-review runs the exact same
-hygiene the reporting path does — see [Shared with `implement`'s self-review](#shared-with-the-implement-self-review).
+The line anchor and the merge, dedup, snippet-gate, and claim-verification
+stages live in the shared `internal/hygiene` package, so `implement`'s
+self-review runs the exact same hygiene the reporting path does — see [Shared with `implement`'s self-review](#shared-with-the-implement-self-review).
 
 ## Claim Verification
 
@@ -222,12 +273,12 @@ files the pipeline counts ([design decision 138](/explanation/design-decisions))
 
 ## Shared with the `implement` self-review
 
-Everything above — the specialist fan-out, the cross-pass merge and dedup, the
-snippet gate, and claim verification — is behavior the `review` command and the
-`implement` command's self-review both run, out of the shared `internal/hygiene`
-package. The changed-file check is the exception: it runs in the `review`
-command only, since `implement`'s finders are handed no list of changed files.
-The distinction is what each command does with the result. `review`
+Everything above — the specialist fan-out, the line anchor, the cross-pass merge
+and dedup, the snippet gate, and claim verification — is behavior the `review`
+command and the `implement` command's self-review both run, out of the shared
+`internal/hygiene` package. The changed-file check is the exception: it runs in
+the `review` command only, since `implement`'s finders are handed no list of
+changed files. The distinction is what each command does with the result. `review`
 *reports*: it renders every finding, routing the ones that did not survive
 hygiene into an Unverified section a human can weigh, and under `--inline` posts
 none of those as a comment on the diff. `implement` *acts*: a
@@ -236,9 +287,11 @@ catch a hallucinated one before it becomes a commit.
 
 That difference is why the acting path treats hygiene as a gate. A finding must
 survive the same stages — merge, dedup, snippet gate, claim verification — before
-`implement`'s editing session may act on it. Findings that do not survive are
-reported (on stdout and on the issue) but never applied: the restriction is
-enforced by the harness, not requested in the editing session's prompt. Among
+`implement`'s editing session may act on it. The line anchor runs first but
+withholds nothing: it only corrects the line the editing session is handed.
+Findings that do not survive are reported (on stdout and on the issue) but
+never applied: the restriction is enforced by the harness, not requested in the
+editing session's prompt. Among
 the survivors, INFO is optional: the editing session applies an INFO finding only
 when the fix stays in the code the finding cites and changes no behavior. That
 one rule is asked in the prompt rather than enforced by the harness. Each posted

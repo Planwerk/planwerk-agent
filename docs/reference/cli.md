@@ -95,7 +95,7 @@ planwerk-agent owner/repo#123 > review.md
 | `--cache-max-age` | Reject cached entries older than this duration (`0` disables the TTL) | `720h` |
 | `--format` | Output format (`markdown`, `json`, `sarif`; see [SARIF](/reference/output-format#sarif)). `json` and `sarif` refuse `--post-review` and `--inline`, and `sarif` also refuses `--coverage-map` | `markdown` |
 | `--post-review` | Post the review as a comment on the PR (updates existing if found) | `false` |
-| `--inline` | Post findings as inline comments using the GitHub Review API; the summary goes into the PR comment `--post-review` keeps up to date (implies `--post-review`). A finding gets an inline comment only when the summary lists it in a severity section: findings below `--min-severity` or `--min-confidence` and findings in the Unverified section get none | `false` |
+| `--inline` | Post findings as inline comments using the GitHub Review API; the summary goes into the PR comment `--post-review` keeps up to date (implies `--post-review`). A finding gets an inline comment only when the summary lists it in a severity section: findings below `--min-severity` or `--min-confidence` and findings in the Unverified section get none. Neither does a finding whose quoted code pins no single place in the head content (`line_check: unanchored`); it stays in the summary | `false` |
 | `--resolve-outdated` | With `--inline`, resolve the review threads earlier runs opened once GitHub marks them outdated, unless someone replied or a current finding still covers their lines (needs write access to the repository; see [Resolving outdated threads](/reference/output-format#resolving-outdated-threads)) | `false` |
 | `--thorough` | Run an additional adversarial review pass for security and failure modes | `false` |
 | `--specialists` | Run the domain-specialist review fan-out (security, data-migration, testing, performance, api-contract, maintainability) concurrently and merge their findings. Specialists are adaptively gated (see [Adaptive specialist gating](/explanation/review-methodology#adaptive-specialist-gating)). | `false` |
@@ -738,13 +738,15 @@ posted on the issue; when the round found nothing to fix, it posts no comment,
 and the section goes to stdout only. The adversarial finder is required, and
 its failure ends the pass.
 
-The merged findings pass through the shared **finding hygiene** — multi-pass
-merge (with its confidence boost and cross-pass provenance), file-less dedup, the
-quote-or-demote snippet gate, and claim verification — and only findings that
-**survive** it are handed to the editing session. Findings that do not survive
-(an unverifiable snippet, a refuted claim) are reported on stdout and on the
-source issue but **never applied** — the restriction is enforced by the harness,
-not requested in the editing session's prompt.
+The findings pass through the shared **finding hygiene** — line anchoring on
+the quoted code (before the merge), multi-pass merge (with its confidence boost
+and cross-pass provenance), file-less dedup, the quote-or-demote snippet gate,
+and claim verification — and only findings that **survive** it are handed to
+the editing session. Anchoring withholds nothing; it only corrects the line a
+finding cites. Findings that do not survive (an unverifiable snippet, a refuted
+claim) are reported on stdout and on the source issue but **never applied** —
+the restriction is enforced by the harness, not requested in the editing
+session's prompt.
 
 It runs as a **bounded loop**: after each apply it re-reviews and, while the
 finder still reports actionable findings, fixes them again — stopping when the

@@ -125,6 +125,7 @@ Each finding includes additional metadata for tooling and automation:
 | **VerificationNote** | Set only by the claim-verification pass: why a BLOCKING/CRITICAL finding was refuted (e.g. `refuted: guarded at line 50`). A finding that carries it is demoted to `uncertain` confidence and routed to the Unverified / Low-Confidence section, and the Markdown report renders it as a `**Claim check**:` line. |
 | **SnippetCheck** | Set only by the snippet-verification gate: `passed` when the finding's quoted code was found in the changed files, or a `demoted: <reason>` string when it was not. A demoted finding is lowered to `uncertain` confidence; the Markdown report renders the reason as a `**Snippet check**:` line, while a `passed` record renders nothing. Unlike `VerificationNote` it does **not** route the finding — it is a pure record of what the gate examined. |
 | **ClaimCheck** | Set only by the claim-verification gate: `confirmed`, `refuted`, or `no-verdict` (the gate ran but returned no verdict for this finding — the fail-open case). This machine token records the gate's decision; the human-readable refutation reason continues to come from `VerificationNote` (the `**Claim check**:` line), which the token does not duplicate. |
+| **LineCheck** | Set only by the line anchor: `anchored` (the model's range lies on the quoted code), `reanchored` (moved to the quoted code in the same file), `relocated` (moved to the one other changed file the review reads that holds the quote), or `unanchored` (the quote pins no single place in the head content). `--inline` posts no inline comment for an `unanchored` finding, and its [SARIF](#sarif) result has no region. It never moves a finding between report sections, and the Markdown report renders nothing for it ([Line Anchoring](/explanation/review-methodology#line-anchoring)). |
 
 ## Machine-Readable Output
 
@@ -184,6 +185,7 @@ extraction:
   "commit_sha": "abc123",
   "findings": [],
   "gates": {
+    "anchor": { "examined": 8, "reanchored": 1, "unanchored": 1 },
     "snippet": { "examined": 8, "demoted": 2 },
     "claim": { "sent": 3, "verdicts": 3, "refuted": 1 },
     "files": {
@@ -233,11 +235,25 @@ claim-verification gate (re-checks each BLOCKING/CRITICAL claim and demotes the
 ones a verifier refutes). Each gate records what it did so a run where every
 finding passed is distinguishable from one where the gate never ran.
 
-The per-finding record travels on each finding as `snippet_check` / `claim_check`
-(see the [Enriched Finding Fields](#enriched-finding-fields) table). The
-run-level counts travel in the `gates` object of the data block and the
-`--format json` output:
+The line anchor, which runs before both gates, demotes nothing, but it records
+what it did the same way: it moves a finding's line onto the code the finding
+quotes, and it marks the findings whose quote pins no single place
+([Line Anchoring](/explanation/review-methodology#line-anchoring)).
 
+The per-finding record travels on each finding as `line_check` /
+`snippet_check` / `claim_check` (see the
+[Enriched Finding Fields](#enriched-finding-fields) table). The run-level
+counts travel in the `gates` object of the data block and the `--format json`
+output:
+
+- `anchor.examined` / `anchor.reanchored` / `anchor.relocated` /
+  `anchor.unanchored` — findings with a file and a quote, and the subsets moved
+  within their file, moved to another changed file, or left unplaced. The
+  anchor counts each pass's findings before the merge, so a defect that several
+  passes report counts once per pass: take a share of `examined`, not of the
+  reported findings. `relocated` is omitted when zero, and the findings
+  confirmed on the model's range (`anchored`) are `examined` minus the other
+  three.
 - `snippet.examined` / `snippet.demoted` — findings the snippet gate checked and
   the subset it demoted.
 - `claim.sent` / `claim.verdicts` / `claim.refuted` — findings sent to the claim
@@ -246,7 +262,9 @@ run-level counts travel in the `gates` object of the data block and the
   nothing.
 - An **absent** gate entry means that gate never ran (an empty diff skips the
   snippet gate; no BLOCKING/CRITICAL finding leaves nothing for the claim gate to
-  send). Read a missing entry as "not recorded", never as "nothing demoted".
+  send; the anchor runs on every review, so a review result lacks `anchor` only
+  when it predates the anchor). Read a missing entry as "not recorded", never
+  as "nothing demoted".
 
 The `refuted / sent` ratio accumulated across cached results and posted reports
 is the claim verifier's own no-op signal: a verifier that refutes nothing across
@@ -432,9 +450,9 @@ set `--format json` prints and in its order, as one run of the tool
 | `ruleId` | `pattern/<slug>` of the finding's pattern name: lowercased, its letters and digits kept, and each run of other characters between them turned into one `-`, so `Hardcoded secrets` gives `pattern/hardcoded-secrets`. A finding that names no pattern gets `finding`. Each rule is listed once in `tool.driver.rules`, with the pattern name as its `shortDescription` |
 | `level` | `error` for BLOCKING and CRITICAL, `warning` for WARNING, and `note` for INFO and for every finding of the Unverified / Low-Confidence section, whatever its severity |
 | `message.text` | The title, then the problem |
-| `locations[0]` | The file, as a URI relative to the repository root. `line` becomes `startLine`, and `line_end` becomes `endLine` when it ends after `line`; a finding without a line has no region |
+| `locations[0]` | The file, as a URI relative to the repository root. `line` becomes `startLine`, and `line_end` becomes `endLine` when it ends after `line`; a finding without a line has no region, and neither has one whose `line_check` is `unanchored`, since its quote pins no single place ([Line Anchoring](/explanation/review-methodology#line-anchoring)) |
 | `partialFingerprints` | `planwerkFinding/v1`: a SHA-256 over the file, the rule, and the quoted code with its whitespace collapsed (the line when no code is quoted), so the alert survives a moved line. Repeats get `#1`, `#2`, and so on |
-| `properties` | `finding_id`, `severity` (the four-level severity that `level` folds into three), `confidence`, `actionability`, and `unverified` |
+| `properties` | `finding_id`, `severity` (the four-level severity that `level` folds into three), `confidence`, `actionability`, `unverified`, and `line_check` when the line anchor examined the finding |
 
 A finding that names no file is not a result, because code scanning shows every
 result in a file. It goes to `invocations[0].toolExecutionNotifications`
@@ -464,6 +482,10 @@ planwerk-agent audit --format sarif owner/repo > audit.sarif
 With `--inline`, findings are posted as inline comments on the PR using the
 GitHub Review API, beside the summary comment `--post-review` posts:
 
+- Each finding's line is first anchored on the code it quotes
+  ([Line Anchoring](/explanation/review-methodology#line-anchoring)). A finding
+  stamped `line_check: unanchored` gets no inline comment and appears only in
+  the summary comment.
 - Each finding that maps to a line in the PR diff becomes an inline comment on
   that line, when the summary lists it in a severity section. A finding below
   `--min-severity` or `--min-confidence` gets no inline comment, and neither
@@ -519,9 +541,10 @@ opened that a later push made stale. It is off by default and refused without
 - Its original line, on the commit it was posted at, is known.
 - No finding of the current run on the same file shares a line with the
   thread's original lines, counting the findings the report or the inline
-  comments leave out. A current finding that names the file without a line
-  keeps every thread on that file open. A finding without a file keeps nothing
-  open.
+  comments leave out. An `unanchored` finding counts by the line the model
+  gave it ([Line Anchoring](/explanation/review-methodology#line-anchoring)).
+  A current finding that names the file without a line keeps every thread on
+  that file open. A finding without a file keeps nothing open.
 
 It resolves at most 50 threads per run, one at a time, a second apart; the rest
 wait for the next run. A thread it resolves never dismisses its finding on a

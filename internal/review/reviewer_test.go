@@ -421,6 +421,56 @@ func TestRenderResult_InlineReviewWithoutInlineCommentsPostsNoReview(t *testing.
 	}
 }
 
+// TestRenderResult_InlineReviewSkipsUnanchored: a finding whose quote pins no
+// single place gets no inline comment, even on a line inside the diff, and
+// stays in the summary comment (decision 139).
+func TestRenderResult_InlineReviewSkipsUnanchored(t *testing.T) {
+	t.Parallel()
+
+	var (
+		summary           string
+		submittedComments []github.ReviewComment
+	)
+	gh := &githubtest.Fake{
+		PostPRCommentFn: func(owner, repo string, number int, body string) (string, error) {
+			summary = body
+			return testSummaryURL, nil
+		},
+		SubmitPRReviewFn: func(owner, repo string, number int, commitSHA, body string, comments []github.ReviewComment) (string, error) {
+			submittedComments = comments
+			return testReviewURL, nil
+		},
+		FetchDiffFn: func(owner, repo string, number int) (string, error) {
+			return inlineTestDiff, nil
+		},
+	}
+
+	result := &report.ReviewResult{
+		Summary: "Test review",
+		Findings: []report.Finding{
+			{ID: "C-001", Severity: report.SeverityCritical, Title: "Anchored issue", File: "main.go", Line: 12, Problem: "p", Action: "a", LineCheck: report.LineCheckAnchored},
+			{ID: "C-002", Severity: report.SeverityCritical, Title: "Unanchored issue", File: "main.go", Line: 11, Problem: "p", Action: "a", LineCheck: report.LineCheckUnanchored},
+		},
+	}
+
+	if err := newTestRunner(gh).renderResult(&bytes.Buffer{}, result, inlineTestPR(), inlineTestOpts(), nil); err != nil {
+		t.Fatalf("renderResult returned error: %v", err)
+	}
+	if len(submittedComments) != 1 || submittedComments[0].Line != 12 {
+		t.Fatalf("submitted comments = %+v, want one, on line 12", submittedComments)
+	}
+	for _, c := range submittedComments {
+		if strings.Contains(c.Body, "Unanchored issue") {
+			t.Errorf("the unanchored finding got an inline comment:\n%s", c.Body)
+		}
+	}
+	// The data block lists every finding, so look at the report above it.
+	rendered, _, _ := strings.Cut(summary, "<!-- planwerk-agent-data")
+	if !strings.Contains(rendered, "### C-002: Unanchored issue") {
+		t.Errorf("the unanchored finding should stay in the summary report:\n%s", summary)
+	}
+}
+
 // TestRenderResult_InlineReviewFailureKeepsTheSummary: when the review is
 // refused, the summary comment already holds every finding and its data block,
 // so the run succeeds without posting the summary a second time.
@@ -619,6 +669,41 @@ func TestRenderResult_ResolveOutdatedReusesTheSuppressionThreads(t *testing.T) {
 	}
 }
 
+// TestRenderResult_ResolveOutdatedCountsUnanchoredFindings: an unanchored
+// finding gets no inline comment, but it is still live, so the line the model
+// gave it keeps an outdated thread it overlaps open (decisions 133 and 139).
+func TestRenderResult_ResolveOutdatedCountsUnanchoredFindings(t *testing.T) {
+	t.Parallel()
+
+	unanchored := report.Finding{
+		ID: "W-001", Severity: report.SeverityWarning, Confidence: report.ConfidenceVerified,
+		Title: "Unchecked Close", File: "kept.go", Line: 4, CodeSnippet: "defer f.Close()", Problem: "p", Action: "a",
+		LineCheck: report.LineCheckUnanchored,
+	}
+	gh := &githubtest.Fake{
+		Threads: []github.ReviewThread{
+			botThread("RT_kept", "kept.go", 3, 4),
+			botThread("RT_gone", "gone.go", 5, 5),
+		},
+		Viewer:      "github-actions[bot]",
+		FetchDiffFn: func(owner, repo string, number int) (string, error) { return inlineTestDiff, nil },
+	}
+	runner := newTestRunner(gh)
+	runner.Pause = func(time.Duration) {}
+	opts := inlineTestOpts()
+	opts.ResolveOutdated = true
+
+	if err := runner.renderResult(&bytes.Buffer{}, &report.ReviewResult{Summary: "S", Findings: []report.Finding{unanchored}}, inlineTestPR(), opts, nil); err != nil {
+		t.Fatalf("renderResult returned error: %v", err)
+	}
+	if n := gh.Count("SubmitPRReview"); n != 0 {
+		t.Errorf("SubmitPRReview calls = %d, want 0: the unanchored finding gets no inline comment", n)
+	}
+	if got := gh.Resolved(); !slices.Equal(got, []string{"RT_gone"}) {
+		t.Errorf("resolved = %v, want [RT_gone]", got)
+	}
+}
+
 // inlineCommentIDs returns the finding ID of each inline comment, read from the
 // "**<ID>: " header report.FormatInlineComment writes.
 func inlineCommentIDs(comments []github.ReviewComment) []string {
@@ -767,7 +852,8 @@ func TestRenderResult_InlineReviewAppliesReportFilters(t *testing.T) {
 
 // TestInlineReviewComments_SkippedFindingsDoNotUseTheCap pins that the filters
 // run before the maxInlineComments cap: a full cap's worth of Unverified
-// findings still leaves room for the eligible finding after them.
+// findings, and another of unanchored ones, still leave room for the eligible
+// finding after them.
 func TestInlineReviewComments_SkippedFindingsDoNotUseTheCap(t *testing.T) {
 	t.Parallel()
 
@@ -776,6 +862,13 @@ func TestInlineReviewComments_SkippedFindingsDoNotUseTheCap(t *testing.T) {
 		findings = append(findings, report.Finding{
 			ID: fmt.Sprintf("W-%03d", i+1), Severity: report.SeverityWarning, Confidence: report.ConfidenceUncertain,
 			Title: "Uncertain nit", File: "main.go", Line: 12, Problem: "p", Action: "a",
+		})
+	}
+	for i := range maxInlineComments {
+		findings = append(findings, report.Finding{
+			ID: fmt.Sprintf("W-U%02d", i+1), Severity: report.SeverityWarning, Confidence: report.ConfidenceLikely,
+			Title: "Unplaced warning", File: "main.go", Line: 12, Problem: "p", Action: "a",
+			LineCheck: report.LineCheckUnanchored,
 		})
 	}
 	findings = append(findings, report.Finding{
@@ -795,7 +888,9 @@ func TestInlineReviewComments_SkippedFindingsDoNotUseTheCap(t *testing.T) {
 // severity section (decision 129). So a finding the first run kept off the
 // diff, refuted or below --min-confidence, gets its inline comment once the
 // second run confirms it, and one refuted twice stays in the Unverified
-// section; only the one the first run posted is suppressed.
+// section; only the ones the first run listed in a severity section are
+// suppressed: the one it posted, and the one it kept off the diff because its
+// quote pins no single place (decision 139).
 func TestRenderResult_InlineReSuppressesOnlyWhatTheLastReviewListed(t *testing.T) {
 	t.Parallel()
 
@@ -808,6 +903,8 @@ func TestRenderResult_InlineReSuppressesOnlyWhatTheLastReviewListed(t *testing.T
 	refuted.VerificationNote = "refuted: guarded at line 2"
 	likely := confirmed
 	likely.Confidence = report.ConfidenceLikely
+	unanchored := confirmed
+	unanchored.LineCheck = report.LineCheckUnanchored
 
 	tests := []struct {
 		name          string
@@ -823,6 +920,7 @@ func TestRenderResult_InlineReSuppressesOnlyWhatTheLastReviewListed(t *testing.T
 		{name: "below min-confidence, then above it", minConfidence: report.ConfidenceVerified, first: likely, second: confirmed, wantSecond: []string{"C-001"}},
 		{name: "refuted twice", first: refuted, second: refuted},
 		{name: "posted, then repeated", first: confirmed, second: confirmed, wantFirst: []string{"C-001"}, wantSuppressed: true},
+		{name: "unanchored, then repeated", first: unanchored, second: unanchored, wantSuppressed: true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

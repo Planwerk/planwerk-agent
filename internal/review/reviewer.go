@@ -393,6 +393,23 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		return err
 	}
 
+	// 11. Line anchoring: place each pass's findings on the code they quote
+	// before the merges below match them by file and line. A failed pass is left
+	// out, so the counts cover the passes the report draws on, each pass's
+	// findings before they are folded; a nil entry (a gated-out or failed
+	// specialist) is skipped (decision 139). A finding is relocated only
+	// within the changed files the diff kept: no session was shown the rest,
+	// and a large one left unread would stop every relocation (decision 137).
+	secondaries := make([]*report.ReviewResult, 0, 2+len(specialistResults))
+	if advErr == nil {
+		secondaries = append(secondaries, advResult)
+	}
+	if complianceErr == nil {
+		secondaries = append(secondaries, complianceResult)
+	}
+	secondaries = append(secondaries, specialistResults...)
+	hygiene.AnchorFindings(result, pr.Dir, diffscope.Reviewable(pr.ChangedFiles, reviewDiff.Excluded), secondaries...)
+
 	if advErr != nil {
 		slog.Warn("adversarial review failed", "err", advErr)
 	} else if advResult != nil {
@@ -723,7 +740,8 @@ func (r *Runner) renderResult(w io.Writer, result *report.ReviewResult, pr *gith
 		return err
 	}
 	// The overlap veto reads the full result: a finding the report or the
-	// inline comments leave out is still live and keeps its old thread open.
+	// inline comments leave out is still live and keeps its old thread open,
+	// an unanchored one by the line the model gave (decision 139).
 	if opts.ResolveOutdated {
 		r.resolveOutdatedThreads(pr, result.Findings, threads)
 	}
@@ -745,12 +763,15 @@ func inSeveritySection(f report.Finding, minSeverity report.Severity, minConfide
 
 // inlineReviewComments turns findings into inline comments on the right side of
 // the diff, in order, at most maxInlineComments of them. A finding gets a
-// comment only when inSeveritySection admits it and its line is in diffMap. A
-// skipped finding does not count against the cap (decision 129).
+// comment only when inSeveritySection admits it, the line anchor did not
+// stamp it unanchored, and its line is in diffMap. A skipped finding does not
+// count against the cap (decisions 129 and 139).
 func inlineReviewComments(findings []report.Finding, diffMap *github.DiffMap, minSeverity report.Severity, minConfidence report.Confidence) []github.ReviewComment {
 	var comments []github.ReviewComment
 	for _, f := range findings {
-		if !inSeveritySection(f, minSeverity, minConfidence) {
+		// A finding whose quote pins no single place gets no comment on a line
+		// it may not mean; the summary comment already lists it (decision 139).
+		if !inSeveritySection(f, minSeverity, minConfidence) || f.LineCheck == report.LineCheckUnanchored {
 			continue
 		}
 		if f.File == "" || f.Line <= 0 || !diffMap.Contains(f.File, f.Line) {

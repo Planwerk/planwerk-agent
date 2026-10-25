@@ -192,6 +192,8 @@ func TestRenderSARIF_Location(t *testing.T) {
 		{ID: "W-4", Severity: SeverityWarning, Title: "no line", File: "noline.go"},
 		{ID: "W-5", Severity: SeverityWarning, Title: "escaped", File: "./a b/c.go", Line: 1},
 		{ID: "W-6", Severity: SeverityWarning, Title: "colon", File: "a:b.go", Line: 1},
+		{ID: "W-7", Severity: SeverityWarning, Title: "unanchored", File: "loose.go", Line: 5, LineEnd: 7, LineCheck: LineCheckUnanchored},
+		{ID: "W-8", Severity: SeverityWarning, Title: "reanchored", File: "moved.go", Line: 9, LineCheck: LineCheckReanchored},
 	}}
 	_, _, generic := renderSARIF(t, result, SeverityInfo, "")
 	results := genericResults(t, generic)
@@ -233,6 +235,17 @@ func TestRenderSARIF_Location(t *testing.T) {
 	}
 	if got := uri(5); got != "./a:b.go" {
 		t.Errorf("uri = %q, want ./a:b.go, which no reader takes for a scheme", got)
+	}
+	// An unanchored finding keeps its file but loses the line the anchor could
+	// not confirm; any other line_check keeps the region.
+	if r, ok := region(6); ok {
+		t.Errorf("an unanchored finding must have no region, got %v", r)
+	}
+	if got := uri(6); got != "loose.go" {
+		t.Errorf("unanchored uri = %q, want loose.go", got)
+	}
+	if r, ok := region(7); !ok || r["startLine"] != float64(9) {
+		t.Errorf("reanchored region = %v, want startLine 9", r)
 	}
 }
 
@@ -479,7 +492,7 @@ func TestRenderSARIF_Fingerprints(t *testing.T) {
 
 func TestRenderSARIF_Properties(t *testing.T) {
 	result := ReviewResult{Findings: []Finding{
-		{ID: "C-1", Severity: SeverityCritical, Confidence: ConfidenceVerified, Actionability: ActionabilityAutoFix, Title: "full", File: "a.go", Line: 1},
+		{ID: "C-1", Severity: SeverityCritical, Confidence: ConfidenceVerified, Actionability: ActionabilityAutoFix, Title: "full", File: "a.go", Line: 1, LineCheck: LineCheckReanchored},
 		{ID: "W-1", Severity: SeverityWarning, Title: "bare", File: "a.go", Line: 2},
 	}}
 	_, _, generic := renderSARIF(t, result, SeverityInfo, "")
@@ -495,13 +508,14 @@ func TestRenderSARIF_Properties(t *testing.T) {
 		"confidence":    "verified",
 		"actionability": string(ActionabilityAutoFix),
 		"unverified":    false,
+		"line_check":    LineCheckReanchored,
 	}
 	if !reflect.DeepEqual(full, want) {
 		t.Errorf("properties = %v, want %v", full, want)
 	}
 
 	bare := results[1]["properties"].(map[string]any)
-	for _, key := range []string{"confidence", "actionability"} {
+	for _, key := range []string{"confidence", "actionability", "line_check"} {
 		if _, ok := bare[key]; ok {
 			t.Errorf("properties = %v, want no empty %s", bare, key)
 		}
