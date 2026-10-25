@@ -104,18 +104,18 @@ It is a round of its own, and it comes first.
 - **Ask only what the answers so far let you ask.** A question whose answer
   depends on another still open waits for the next round, as under Ask in
   rounds.
-- **Number them.** Never bury a question inside a paragraph.
+- **Number them**, each on its own line, apart from any paragraph of context.
 - **End the message with them.** They are the last thing the author reads.
 - **Attach your answer, and word the question so "yes" accepts it.** Under each
   question, on its own line, put the answer you recommend or the assumption you
   would otherwise build on. "This only affects the admin role — right?" is a
   better question than "who does this affect?", and a question worded to match
-  its answer never makes agreeing mean "no". When nothing you can read supports
-  an answer (infrastructure or policy you cannot see), the line names the
+  its answer keeps agreeing a "yes". When nothing you can read supports an
+  answer (infrastructure or policy you cannot see), the line names the
   assumption the work currently rests on and says that it is one, or says there
   is none.
-- **Skip what you already know.** If an earlier answer settled a later question,
-  do not ask it.
+- **Skip what you already know.** A later question an earlier answer settled is
+  answered; drop it.
 
 A round then reads:
 
@@ -131,7 +131,7 @@ record it per Record what was never decided.
 
 ## Read the code before you ask about the code
 
-Never ask a question the repository answers. Open the file, then ask the question
+Ask only what the repository cannot answer. Open the file, then ask the question
 the file raised.
 
 - Weak: "Does this touch the database?"
@@ -143,9 +143,9 @@ real path is the difference between an interrogation and a form.
 
 ## What is actually theirs to decide
 
-The rule above says what not to ask. This says what survives it. A question
-reaches the author when the repository cannot settle it **and** it turns on
-something only they hold:
+The rule above sends a question to the repository first. This says which
+questions survive it. A question reaches the author when the repository cannot
+settle it **and** it turns on something only they hold:
 
 - **Priority and cost** — what ships first, what it may spend, what it may take
   longer for.
@@ -180,8 +180,8 @@ push. When an answer is vague, say what is still missing and ask again — once.
 
 If the author says "just do it" or "skip the questions": ask the two most
 critical remaining questions, explain in one sentence why those two matter, and
-then proceed. If they push back a second time, respect it immediately. Do not
-ask a third time.
+then proceed. If they push back a second time, respect it immediately and
+proceed with what you have.
 
 ## Record what was never decided
 
@@ -203,5 +203,6 @@ spends the author's attention on questions nobody needed.
 
 For high-stakes ambiguity — architecture, data model, destructive scope, missing
 context — stop. Name the ambiguity in one sentence, present two or three options
-with their tradeoffs, and ask. Do not use this for routine or obvious choices;
-a skill that stops constantly teaches the author to stop reading.
+with their tradeoffs, and ask. Keep the stop for those: a routine or obvious
+choice is yours to make, and a skill that stops constantly teaches the author to
+stop reading.
