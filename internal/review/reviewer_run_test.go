@@ -838,6 +838,128 @@ func TestRun_SkipSuppressionDropsUnchangedRepeats(t *testing.T) {
 	}
 }
 
+// TestRun_InlineSkipSuppressionLeavesRepeatsUncommented is the --inline twin of
+// TestRun_SkipSuppressionDropsUnchangedRepeats: the prior data block comes from
+// an inline review's body, the shape the GitHub Action posts (decision 128). A
+// repeat on an unchanged file gets no inline comment, while the posted data
+// block still carries the full set for the next re-review.
+func TestRun_InlineSkipSuppressionLeavesRepeatsUncommented(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	dir, firstSHA := initGitRepoTwoCommits(t)
+	pr := &github.PR{
+		Owner: "acme", Repo: "widgets", Number: 41, Title: "PR",
+		BaseBranch: "main", HeadBranch: "feature", HeadSHA: "headsha", Dir: dir,
+	}
+
+	prior := report.ReviewResult{Findings: []report.Finding{
+		{Title: "Nit A", File: "unchanged.go", Line: 5, Severity: report.SeverityWarning},
+		{Title: "Bug B", File: "changed.go", Line: 9, Severity: report.SeverityWarning},
+	}}
+	priorReview := "## Previous review\n" + report.RenderDataBlock(prior, firstSHA, report.Usage{}) + "\n<!-- planwerk-agent-inline -->"
+
+	claudeMock := &configurableClaude{
+		review: func(dir string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
+			return &report.ReviewResult{Summary: "S", Findings: []report.Finding{
+				{ID: "W-001", Title: "Nit A", File: "unchanged.go", Line: 5, Severity: report.SeverityWarning, Confidence: report.ConfidenceVerified, Problem: "p", Action: "a"},
+				{ID: "W-002", Title: "Bug B", File: "changed.go", Line: 9, Severity: report.SeverityWarning, Confidence: report.ConfidenceVerified, Problem: "p", Action: "a"},
+				{ID: "W-003", Title: "New finding", File: "new.go", Line: 1, Severity: report.SeverityWarning, Confidence: report.ConfidenceVerified, Problem: "p", Action: "a"},
+			}}, nil
+		}}
+
+	// Every file is new in the PR diff, so each finding's line maps and only
+	// suppression can keep one from becoming an inline comment.
+	var diff strings.Builder
+	for _, file := range []string{"unchanged.go", "changed.go", "new.go"} {
+		diff.WriteString("diff --git a/" + file + " b/" + file + "\n--- /dev/null\n+++ b/" + file + "\n@@ -0,0 +1,10 @@\n")
+		for range 10 {
+			diff.WriteString("+line\n")
+		}
+	}
+
+	// What the run posts, wherever it posts it: the review body and its inline
+	// comments, or a PR comment.
+	var (
+		posted   strings.Builder
+		comments []github.ReviewComment
+	)
+	gh := &githubtest.Fake{
+		FetchAndCheckoutFn:   func(ref string) (*github.PR, error) { return pr, nil },
+		FetchReviewCommentFn: func(owner, repo string, number int) (string, bool, error) { return priorReview, true, nil },
+		FetchDiffFn:          func(owner, repo string, number int) (string, error) { return diff.String(), nil },
+		SubmitPRReviewFn: func(owner, repo string, number int, commitSHA, body string, cs []github.ReviewComment) (string, error) {
+			posted.WriteString(body)
+			comments = append(comments, cs...)
+			return "https://github.com/acme/widgets/pull/41#pullrequestreview-1", nil
+		},
+		PostPRCommentFn: func(owner, repo string, number int, body string) (string, error) {
+			posted.WriteString(body)
+			return "https://github.com/acme/widgets/pull/41#issuecomment-1", nil
+		},
+	}
+	runner := &Runner{Claude: claudeMock, GitHub: gh}
+
+	opts := baseOpts()
+	opts.PostReview = true
+	opts.InlineReview = true
+
+	if err := runner.Run(&bytes.Buffer{}, opts); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	commented := map[string]int{}
+	for _, c := range comments {
+		commented[c.Path]++
+	}
+	if commented["unchanged.go"] != 0 {
+		t.Error("Nit A, previously reported on an unchanged file, must get no inline comment")
+	}
+	if commented["changed.go"] != 1 || commented["new.go"] != 1 {
+		t.Errorf("inline comments per file = %v, want one each on changed.go and new.go", commented)
+	}
+	if !strings.Contains(posted.String(), "suppressed as previously reported") {
+		t.Error("the posted review must carry the suppression note")
+	}
+	_, findings, ok := report.ParseDataBlock(posted.String())
+	if !ok {
+		t.Fatalf("the posted review carries no data block:\n%s", posted.String())
+	}
+	var titles []string
+	for _, f := range findings {
+		titles = append(titles, f.Title)
+	}
+	if want := []string{"Nit A", "Bug B", "New finding"}; !slices.Equal(titles, want) {
+		t.Errorf("data block findings = %v, want the full set %v", titles, want)
+	}
+}
+
+// TestSkipSuppressed_RefusesACommitSHAThatIsNotAnObjectName: the prior data
+// block's commit_sha becomes an argument to git diff, so a forged one that git
+// would read as an option suppresses nothing and never reaches git (decision
+// 128). Read as --output, it would write a file and hide Bug B on changed.go.
+func TestSkipSuppressed_RefusesACommitSHAThatIsNotAnObjectName(t *testing.T) {
+	dir, _ := initGitRepoTwoCommits(t)
+	written := filepath.Join(t.TempDir(), "written-by-git")
+	findings := []report.Finding{
+		{Title: "Nit A", File: "unchanged.go", Line: 5, Severity: report.SeverityWarning},
+		{Title: "Bug B", File: "changed.go", Line: 9, Severity: report.SeverityWarning},
+	}
+	prior := "## Previous review\n" + report.RenderDataBlock(report.ReviewResult{Findings: findings}, "--output="+written, report.Usage{}) + "\n<!-- planwerk-agent-inline -->"
+	gh := &githubtest.Fake{
+		FetchReviewCommentFn: func(owner, repo string, number int) (string, bool, error) { return prior, true, nil },
+	}
+	pr := &github.PR{Owner: "acme", Repo: "widgets", Number: 42, Dir: dir}
+
+	kept, suppressed := newTestRunner(gh).skipSuppressed(&report.ReviewResult{Findings: findings}, pr)
+	if len(suppressed) != 0 || len(kept) != len(findings) {
+		t.Errorf("kept %d, suppressed %+v; want every finding kept", len(kept), suppressed)
+	}
+	if _, err := os.Stat(written); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the forged commit_sha reached git as an option: stat %s = %v", written, err)
+	}
+}
+
 func TestRun_WikiDisabledLeavesRunUnchanged(t *testing.T) {
 	// With the wiki disabled (the default), ResolveWiki short-circuits without
 	// touching the network: no project memory is injected into the review

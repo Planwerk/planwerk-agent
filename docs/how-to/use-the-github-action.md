@@ -4,6 +4,8 @@ The repo ships a composite GitHub Action at the root (`action.yml`) that wraps
 the `review` command for use on pull requests. It installs Claude Code,
 downloads the planwerk-agent release binary, runs the review against the PR
 that triggered the workflow, and posts a summary plus inline review comments.
+On each later push it leaves out the findings it already posted on files the
+push did not change ([Re-reviews](/reference/output-format#re-reviews)).
 
 Minimal example workflow:
 

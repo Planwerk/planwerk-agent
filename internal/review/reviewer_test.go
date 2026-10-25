@@ -276,7 +276,9 @@ func TestRenderResult_InlineReviewFallback(t *testing.T) {
 		},
 	}
 
-	result := &report.ReviewResult{Summary: "Test"}
+	result := &report.ReviewResult{Summary: "Test", Findings: []report.Finding{
+		{ID: "W-001", Title: "Unmapped", File: "main.go", Line: 3, Severity: report.SeverityWarning, Problem: "p", Action: "a"},
+	}}
 	pr := &github.PR{Owner: "test", Repo: "repo", Number: 1, Title: "Test PR", HeadSHA: "abc123"}
 	opts := Options{
 		Format:       "markdown",
@@ -292,7 +294,16 @@ func TestRenderResult_InlineReviewFallback(t *testing.T) {
 	}
 
 	if postedBody == "" {
-		t.Error("expected fallback to PR comment after inline review failure")
+		t.Fatal("expected fallback to PR comment after inline review failure")
+	}
+	// The fallback carries the data block the inline review would have, so the
+	// next re-review still finds this run's findings.
+	if !strings.Contains(postedBody, "planwerk-agent-data") {
+		t.Fatalf("fallback comment carries no data block:\n%s", postedBody)
+	}
+	sha, findings, ok := report.ParseDataBlock(postedBody)
+	if !ok || sha != "abc123" || len(findings) != 1 || findings[0].Title != "Unmapped" {
+		t.Errorf("fallback data block = %q, %+v, %v; want the head SHA and the run's finding", sha, findings, ok)
 	}
 }
 

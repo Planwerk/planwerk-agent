@@ -264,3 +264,42 @@ GitHub Review API instead of (or in addition to) a single summary comment:
 - Findings that cannot be mapped to diff lines are included in the review summary body
 - The PR diff is fetched and parsed to validate that finding lines are within the diff (right side)
 - Implies `--post-review`
+
+## Re-reviews
+
+A posted review (`--post-review` or `--inline`) first reads the data block of
+the previous one and leaves out the findings that review already reported:
+
+- **Where the block comes from.** The most recently updated planwerk-agent post
+  on the pull request that opens with the report's `# Review:` heading and
+  carries a data block: an inline review's body or the summary comment,
+  whichever changed last. A signed post without a data block, such as the
+  capture pass's proposals comment, is passed over.
+- **Whose post counts.** Only one that the authenticated `gh` user or a
+  maintainer (`OWNER`, `MEMBER`, `COLLABORATOR`) wrote. Every post of the
+  authenticated account counts as the tool's own. Under the Actions
+  `GITHUB_TOKEN` that account is `github-actions[bot]`, which every workflow
+  and every comment-posting action in the repository posts as, so a comment
+  another of them makes from pull request text can supply the block. One that
+  puts its own text first cannot, since the post must open with the heading;
+  a verbatim copy of a pull request body that opens with the heading and ends
+  in a forged block can. In a repository that runs such a workflow, give the
+  review a token of an account nothing else posts as. A finding such a block
+  leaves out is still listed in the `[!NOTE]` alert and kept in the new data
+  block.
+- **Which block in it counts.** Only the one appended at the end of the post,
+  with nothing after it but the signature. A block that appears earlier, for
+  example in a pull request title the post quotes, is ignored.
+- **What is left out.** A current finding with the same file, line, and title as
+  one in that block, when its file has not changed since the block's
+  `commit_sha`. It is left out of the report and gets no inline comment.
+- **What is kept.** A `[!NOTE]` alert lists every finding left out, and the new
+  data block still carries all of them, so the next re-review compares against
+  the full set.
+- **When nothing is left out.** No such post exists; the lookup fails; the
+  newest such post's data block cannot be read, for example because the body
+  was truncated or its `commit_sha` is not a hex commit SHA; or the diff since
+  its `commit_sha` cannot be computed. An older post is not tried instead.
+- **How far back it looks.** The lookup reads the last 100 comments and the last
+  100 reviews, so it misses a summary comment that has more than 100 newer
+  comments after it.

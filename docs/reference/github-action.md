@@ -35,8 +35,10 @@ and outputs; for a working workflow, see
 | `info-count` | Number of `INFO` findings |
 
 Counts are extracted by parsing the `<!-- planwerk-agent-data ... -->` JSON
-block embedded in the posted PR review/comment, so they reflect the same set of
-findings the reviewer sees on the PR. The same block also carries a `usage`
-object with the Run's Claude token totals and estimated cost — see
-[Claude Usage Totals](/reference/output-format#claude-usage-totals) — available
-for extraction the same way.
+block embedded in the posted PR review/comment. The block carries every finding
+of the run, including those a re-review leaves out of the inline comments
+because an earlier review already reported them on an unchanged file (see
+[Re-reviews](/reference/output-format#re-reviews)). The same block also
+carries a `usage` object with the Run's Claude token totals and estimated cost —
+see [Claude Usage Totals](/reference/output-format#claude-usage-totals) —
+available for extraction the same way.
