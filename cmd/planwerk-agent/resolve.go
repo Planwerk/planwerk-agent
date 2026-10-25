@@ -206,6 +206,7 @@ const envClaudeInheritUserConfig = "PLANWERK_CLAUDE_INHERIT_USER_CONFIG"
 const (
 	formatMarkdown = "markdown"
 	formatJSON     = "json"
+	formatSARIF    = "sarif"
 	formatIssues   = "issues"
 )
 

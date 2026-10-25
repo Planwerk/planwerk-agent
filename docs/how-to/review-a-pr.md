@@ -22,6 +22,9 @@ planwerk-agent --inline owner/repo#123
 # Also resolve the tool's own threads a push made outdated
 planwerk-agent --inline --resolve-outdated owner/repo#123
 
+# SARIF for GitHub code scanning
+planwerk-agent --format sarif owner/repo#123 > results.sarif
+
 # Write output to file
 planwerk-agent owner/repo#123 > review.md
 ```
@@ -57,7 +60,7 @@ and a note at the end of the report lists them; see
    - `.planwerk/review_patterns/` in the target repository (repo-specific patterns)
 4. **Claude Code Review**: a `claude -p` session runs a structured review prompt that includes persona framing, scope analysis, a two-pass checklist, suppression rules, and review patterns.
 5. **Result Aggregation**: Review results are collected, deduplicated, categorized by severity, and classified by actionability. Findings are enriched with code snippets, suggested fixes, confidence levels, and cross-references.
-6. **Output**: A structured report is written to `stdout`, optionally posted as a PR comment (`--post-review`), or posted as inline review comments on the PR diff (`--inline`).
+6. **Output**: A structured report is written to `stdout` as Markdown, JSON, or SARIF, optionally posted as a PR comment (`--post-review`), or posted as inline review comments on the PR diff (`--inline`).
 
 The cognitive patterns and checklist Claude applies are described in
 [Review methodology](/explanation/review-methodology).

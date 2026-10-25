@@ -13,7 +13,7 @@ fall through to the environment variable and then the compiled-in default:
 review:
   min-severity: warning        # info | warning | critical | blocking
   max-patterns: 40             # <=0 disables truncation
-  format: markdown             # markdown | json
+  format: markdown             # markdown | json | sarif
 
 audit:
   min-severity: warning

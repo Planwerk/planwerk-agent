@@ -31,7 +31,7 @@ review:
   min-severity: warning        # info | warning | critical | blocking
   max-patterns: 40             # <=0 disables truncation
   max-findings: 25             # <=0 disables cap
-  format: markdown             # markdown | json
+  format: markdown             # markdown | json | sarif
   patterns:
     - ./custom-review-patterns
 
@@ -45,7 +45,7 @@ audit:
   issue-min-severity: critical # default: warning
   max-patterns: 40
   max-findings: 50
-  format: markdown             # markdown | json
+  format: markdown             # markdown | json | sarif
   patterns: []
 
 wiki:                          # GitHub Wiki knowledge source (review + audit + propose + elaborate + implement + fix + address + ship + brain memory + brain bootstrap + brain sync)

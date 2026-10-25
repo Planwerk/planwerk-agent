@@ -58,7 +58,7 @@ func newRootCmd(deps *runtimeDeps) *cobra.Command {
 		Use:   "planwerk-agent <pr-ref>",
 		Short: "AI-powered code review for GitHub Pull Requests",
 		Long: `planwerk-agent uses Claude Code to analyze GitHub PR changes and produces
-structured, categorized review results as Markdown or JSON output.
+structured, categorized review results as Markdown, JSON, or SARIF output.
 
 PR reference can be a URL (https://github.com/owner/repo/pull/123)
 or short form (owner/repo#123).`,
@@ -206,22 +206,13 @@ or short form (owner/repo#123).`,
 				cfg.MinConfidence = conf
 			}
 
-			switch cfg.Format {
-			case formatMarkdown, formatJSON:
-			default:
-				return fmt.Errorf("unknown format %q, supported: markdown, json", cfg.Format)
-			}
-
-			if cfg.PostReview && cfg.Format == formatJSON {
-				return fmt.Errorf("--post-review cannot be used with --format json")
+			if err := validateReviewFormat(cfg); err != nil {
+				return err
 			}
 
 			// --inline implies --post-review
 			if cfg.InlineReview {
 				cfg.PostReview = true
-			}
-			if cfg.InlineReview && cfg.Format == formatJSON {
-				return fmt.Errorf("--inline cannot be used with --format json")
 			}
 			if cfg.ResolveOutdated && !cfg.InlineReview {
 				return fmt.Errorf("--resolve-outdated requires --inline")
@@ -262,7 +253,7 @@ or short form (owner/repo#123).`,
 	flags.BoolVar(&cacheStats, "cache-stats", false, "Show cache size, age distribution, and per-command breakdown, then exit")
 	flags.StringVar(&cacheInspect, "cache-inspect", "", "Print the metadata and payload for the given cache key, then exit")
 	flags.DurationVar(&cfg.CacheMaxAge, "cache-max-age", cache.DefaultMaxAge, "Reject cached entries older than this duration (0 disables the TTL)")
-	flags.StringVar(&cfg.Format, "format", "markdown", "Output format (markdown, json)")
+	flags.StringVar(&cfg.Format, "format", "markdown", "Output format (markdown, json, sarif)")
 	flags.BoolVar(&cfg.PostReview, "post-review", false, "Post the review as a comment on the PR")
 	flags.BoolVar(&cfg.InlineReview, "inline", false, "Post findings as inline comments using the GitHub Review API; the summary goes into the PR comment --post-review keeps up to date (implies --post-review)")
 	flags.BoolVar(&cfg.ResolveOutdated, "resolve-outdated", false, "With --inline, resolve the review threads earlier runs opened once GitHub marks them outdated, unless someone replied or a current finding still covers their lines (needs write access to the repository)")
@@ -279,4 +270,30 @@ or short form (owner/repo#123).`,
 	flags.BoolVar(&showVersion, "version", false, "Show version information and exit")
 
 	return rootCmd
+}
+
+// validateReviewFormat rejects a --format the review cannot render and the
+// flags that cannot go with it: a posted comment is the Markdown report, so
+// json and sarif refuse --post-review and --inline, and a SARIF log has no
+// place for the coverage map. It returns nil for every combination it accepts.
+// The caller runs it before --inline implies --post-review, so each refusal
+// names the flag the user typed (decision 134).
+func validateReviewFormat(cfg review.Options) error {
+	switch cfg.Format {
+	case formatMarkdown:
+		return nil
+	case formatJSON, formatSARIF:
+	default:
+		return fmt.Errorf("unknown format %q, supported: markdown, json, sarif", cfg.Format)
+	}
+	if cfg.PostReview {
+		return fmt.Errorf("--post-review cannot be used with --format %s", cfg.Format)
+	}
+	if cfg.InlineReview {
+		return fmt.Errorf("--inline cannot be used with --format %s", cfg.Format)
+	}
+	if cfg.CoverageMap && cfg.Format == formatSARIF {
+		return errors.New("--coverage-map cannot be used with --format sarif: SARIF has no place for the coverage map")
+	}
+	return nil
 }

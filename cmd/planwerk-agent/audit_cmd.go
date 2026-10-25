@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -70,9 +71,9 @@ or short form (owner/repo).`,
 			}
 
 			switch auditCfg.Format {
-			case formatMarkdown, formatJSON:
+			case formatMarkdown, formatJSON, formatSARIF:
 			default:
-				return fmt.Errorf("unknown format %q, supported: markdown, json", auditCfg.Format)
+				return fmt.Errorf("unknown format %q, supported: markdown, json, sarif", auditCfg.Format)
 			}
 
 			if auditIssueMinSeverity != "" {
@@ -85,19 +86,20 @@ or short form (owner/repo).`,
 				auditCfg.IssueMinSeverity = report.SeverityWarning
 			}
 
-			if auditCfg.CreateIssues && auditCfg.Format == formatJSON {
-				return fmt.Errorf("--create-issues cannot be used with --format json")
+			if auditCfg.CreateIssues && auditCfg.Format != formatMarkdown {
+				return fmt.Errorf("--create-issues cannot be used with --format %s", auditCfg.Format)
 			}
 
 			auditCfg.CaptureWiki = resolveCaptureWiki(auditCfg.CaptureWiki, cmd.Flags().Changed("capture-wiki"), deps.fileCfg.Capture)
 
-			// Under --format json the capture render — including the interactive
-			// write confirmation — is discarded so stdout stays valid JSON. An
-			// interactive --capture-wiki run would then block on an invisible
-			// prompt. Require --yes (which skips the prompt) for the non-interactive
-			// CI combination, mirroring the --create-issues guard above.
-			if auditCfg.CaptureWiki && auditCfg.Format == formatJSON && !auditCfg.Yes {
-				return fmt.Errorf("--capture-wiki cannot be used with --format json without --yes: the wiki write confirmation cannot be shown alongside JSON output")
+			// Under --format json or sarif the capture render — including the
+			// interactive write confirmation — is discarded so stdout stays one
+			// valid document. An interactive --capture-wiki run would then block on
+			// an invisible prompt. Require --yes (which skips the prompt) for the
+			// non-interactive CI combination, mirroring the --create-issues guard
+			// above.
+			if auditCfg.CaptureWiki && auditCfg.Format != formatMarkdown && !auditCfg.Yes {
+				return fmt.Errorf("--capture-wiki cannot be used with --format %s without --yes: the wiki write confirmation cannot be shown alongside %s output", auditCfg.Format, strings.ToUpper(auditCfg.Format))
 			}
 
 			opts := auditCfg
@@ -117,7 +119,7 @@ or short form (owner/repo).`,
 	auditFlags.BoolVar(&auditCfg.NoLocalPatterns, "no-local-patterns", false, "Ignore local patterns from the tool")
 	auditFlags.BoolVar(&auditCfg.NoCache, "no-cache", false, "Ignore cache, force a fresh audit")
 	auditFlags.DurationVar(&auditCfg.CacheMaxAge, "cache-max-age", cache.DefaultMaxAge, "Reject cached entries older than this duration (0 disables the TTL)")
-	auditFlags.StringVar(&auditCfg.Format, "format", "markdown", "Output format (markdown, json)")
+	auditFlags.StringVar(&auditCfg.Format, "format", "markdown", "Output format (markdown, json, sarif)")
 	auditFlags.IntVar(&auditCfg.MaxPatterns, "max-patterns", patterns.DefaultMaxPatternsInPrompt, "Max review patterns injected into the prompt (<=0 disables truncation, env: "+envMaxPatterns+")")
 	auditFlags.IntVar(&auditCfg.MaxFindings, "max-findings", 0, "Cap on findings returned (<=0 disables cap)")
 	auditFlags.BoolVar(&auditCfg.CreateIssues, "create-issues", false, "Interactively create GitHub issues from audit findings")

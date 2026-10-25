@@ -2,6 +2,7 @@ package review
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"os"
@@ -1532,6 +1533,57 @@ func TestRun_CaptureNoCommentWithoutPostReview(t *testing.T) {
 	}
 	if cp.calls.Load() != 1 {
 		t.Fatalf("capturer called %d times, want 1", cp.calls.Load())
+	}
+}
+
+// TestRun_SARIFDiscardsTheCaptureRender: the capture pass still runs under
+// --format sarif, but its printed proposals are discarded, as under json, so
+// stdout stays one SARIF log (decision 134).
+func TestRun_SARIFDiscardsTheCaptureRender(t *testing.T) {
+	// Not t.Parallel(): cache.SetDir mutates a package-level variable.
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	pr := fakePR(t, "acme", "widgets", 53, "sha-capture-sarif")
+	gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
+	cp := &fakeCapturer{result: onePatternProposal()}
+	runner := captureRunner(t, gh, reviewFindingClaude(), cp)
+	opts := baseOpts()
+	opts.Format = "sarif"
+
+	var out bytes.Buffer
+	if err := runner.Run(&out, opts); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if cp.calls.Load() != 1 {
+		t.Fatalf("capturer called %d times, want 1: capture still runs under sarif", cp.calls.Load())
+	}
+	if strings.Contains(out.String(), "Captured knowledge proposals:") {
+		t.Errorf("the capture render must not follow the SARIF log:\n%s", out.String())
+	}
+	var doc struct {
+		Runs []struct {
+			Results []struct {
+				RuleID    string `json:"ruleId"`
+				Locations []struct {
+					PhysicalLocation struct {
+						ArtifactLocation struct {
+							URI string `json:"uri"`
+						} `json:"artifactLocation"`
+					} `json:"physicalLocation"`
+				} `json:"locations"`
+			} `json:"results"`
+		} `json:"runs"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &doc); err != nil {
+		t.Fatalf("stdout is not one JSON document: %v\n%s", err, out.String())
+	}
+	if len(doc.Runs) != 1 || len(doc.Runs[0].Results) != 1 {
+		t.Fatalf("got %+v, want one run with one result", doc.Runs)
+	}
+	res := doc.Runs[0].Results[0]
+	if res.RuleID != "finding" || len(res.Locations) != 1 || res.Locations[0].PhysicalLocation.ArtifactLocation.URI != "db.go" {
+		t.Errorf("result = %+v, want ruleId finding at db.go", res)
 	}
 }
 

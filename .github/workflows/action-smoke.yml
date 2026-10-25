@@ -65,3 +65,25 @@ jobs:
           echo "critical-count=${{ steps.review.outputs.critical-count }}"
           echo "warning-count=${{ steps.review.outputs.warning-count }}"
           echo "info-count=${{ steps.review.outputs.info-count }}"
+
+      # The format is not part of the review's cache key, so this run is
+      # served from the cache the run above wrote and costs no second review.
+      - name: Run Planwerk Agent action in SARIF mode
+        id: sarif
+        uses: ./
+        with:
+          binary-path: ${{ github.workspace }}/planwerk-agent
+          min-severity: warning
+          format: sarif
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      # Only the shape is checked: uploading needs security-events: write,
+      # which this job does not hold.
+      - name: Check the SARIF report
+        env:
+          SARIF_FILE: ${{ steps.sarif.outputs.sarif-file }}
+          FINDINGS_COUNT: ${{ steps.sarif.outputs.findings-count }}
+        run: |
+          test -s "$SARIF_FILE"
+          jq -e '.version == "2.1.0" and (.runs | length == 1) and (.runs[0].results | type == "array")' "$SARIF_FILE"
+          echo "findings-count=$FINDINGS_COUNT"

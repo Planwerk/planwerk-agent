@@ -1,6 +1,9 @@
 package report
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestCategorize(t *testing.T) {
 	findings := []Finding{
@@ -145,5 +148,28 @@ func TestHasBlockersOrCritical(t *testing.T) {
 	warningsOnly := CategorizedFindings{Warning: []Finding{{}}}
 	if warningsOnly.HasBlockersOrCritical() {
 		t.Error("warnings-only should not have blockers")
+	}
+}
+
+func TestCategorizedFindings_All(t *testing.T) {
+	cf := Categorize([]Finding{
+		{Severity: SeverityInfo, Title: "i1"},
+		{Severity: SeverityWarning, Title: "u1", Confidence: ConfidenceUncertain},
+		{Severity: SeverityWarning, Title: "w1"},
+		{Severity: SeverityCritical, Title: "c1"},
+		{Severity: SeverityBlocking, Title: "b1"},
+	}, SeverityInfo, "")
+	var got []string
+	for _, f := range cf.All() {
+		got = append(got, f.Title)
+	}
+	want := []string{"b1", "c1", "w1", "i1", "u1"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("All() = %v, want the report order %v", got, want)
+	}
+
+	// An empty set stays nil, so --format json still encodes it as null.
+	if all := (CategorizedFindings{}).All(); all != nil {
+		t.Errorf("All() of an empty set = %#v, want nil", all)
 	}
 }

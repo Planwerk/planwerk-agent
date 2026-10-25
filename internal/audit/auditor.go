@@ -18,6 +18,10 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/search"
 )
 
+// formatSARIF is the Options.Format under which the audit writes one SARIF log
+// as the whole of stdout (decision 134).
+const formatSARIF = "sarif"
+
 // Options configures the audit pipeline.
 type Options struct {
 	RepoRef          string
@@ -27,7 +31,7 @@ type Options struct {
 	NoCache          bool
 	MinSeverity      report.Severity
 	MinConfidence    report.Confidence
-	Format           string // "markdown" or "json"
+	Format           string // "markdown", "json", or "sarif"
 	Version          string
 	MaxPatterns      int             // max patterns to inject into prompt; <= 0 disables truncation
 	MaxFindings      int             // cap on findings Claude returns; <= 0 disables cap
@@ -296,10 +300,10 @@ func (r *Runner) runCapture(w io.Writer, repo *github.Repo, opts Options, result
 		return nil
 	}
 
-	// Under --format json the human-readable capture render would corrupt the JSON
-	// on stdout, so discard it; the gated write still occurs.
+	// Under --format json or sarif the human-readable capture render would
+	// corrupt the document on stdout, so discard it; the gated write still occurs.
 	out := w
-	if opts.Format == "json" {
+	if opts.Format == "json" || opts.Format == formatSARIF {
 		out = io.Discard
 	}
 
@@ -393,6 +397,8 @@ func renderAudit(w io.Writer, result *report.ReviewResult, repo *github.Repo, op
 	switch opts.Format {
 	case "json":
 		return renderer.RenderJSON(*result, opts.MinSeverity, opts.MinConfidence)
+	case formatSARIF:
+		return renderer.RenderSARIF(*result, opts.MinSeverity, opts.MinConfidence, opts.Version)
 	default:
 		renderer.RenderAuditMarkdown(*result, repoInfo, opts.MinSeverity, opts.MinConfidence, opts.Version)
 	}

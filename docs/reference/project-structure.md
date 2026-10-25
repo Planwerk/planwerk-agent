@@ -129,6 +129,8 @@ planwerk-agent/
 │   │   ├── renderer.go         # Markdown/JSON output (compact format, GitHub Alerts, audit verdicts)
 │   │   ├── renderer_test.go
 │   │   ├── audit_renderer_test.go
+│   │   ├── sarif.go            # SARIF 2.1.0 output for code scanning (--format sarif)
+│   │   ├── sarif_test.go
 │   │   ├── schema_test.go      # JSON Schema contract tests (fixtures + renderer drift guard)
 │   │   ├── schema/             # Embedded JSON Schemas for --format json output
 │   │   │   ├── schema.go       # //go:embed of the schema files
