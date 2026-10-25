@@ -5,17 +5,22 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
 // fakeClaude puts an executable named `claude` on PATH for the duration of the
 // test. body is the shell script that stands in for the CLI, so a test can
-// script an exact stdout envelope, stderr output, exit code, or a hang. Without
-// it neither runner is ever exercised against a real process, which is how the
-// timeout diagnosis and the usage accounting on a failed turn both went unseen.
+// script an exact event stream on stdout, stderr output, exit code, or a hang.
+// Without it the runner is never exercised against a real process, which is
+// how the timeout diagnosis and the usage accounting on a failed turn both went
+// unseen.
 func fakeClaude(t *testing.T, body string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -26,12 +31,13 @@ func fakeClaude(t *testing.T, body string) {
 }
 
 // failureEnvelope is what Claude Code writes to stdout when a turn fails: the
-// result envelope with is_error set, a usage block, and a non-zero exit.
-const failureEnvelope = `{"is_error":true,"subtype":"error_max_turns",` +
+// result event with is_error set and a usage block, followed by a non-zero
+// exit.
+const failureEnvelope = `{"type":"result","is_error":true,"subtype":"error_max_turns",` +
 	`"usage":{"input_tokens":1200,"output_tokens":300,"cache_read_input_tokens":40},` +
-	`"total_cost_usd":0.42}`
+	`"total_cost_usd":0.42}` + "\n"
 
-func TestRunClaude_TimeoutNamesTheDeadline(t *testing.T) {
+func TestRunSession_TimeoutNamesTheDeadline(t *testing.T) {
 	fakeClaude(t, "sleep 30\n")
 	c := NewClient(WithTimeout(200 * time.Millisecond))
 
@@ -72,7 +78,7 @@ func TestRunClaudeStream_TimeoutNamesTheDeadline(t *testing.T) {
 	}
 }
 
-func TestRunClaude_CountsUsageOfAFailedTurn(t *testing.T) {
+func TestRunSession_CountsUsageOfAFailedTurn(t *testing.T) {
 	fakeClaude(t, "cat >/dev/null\nprintf '%s' '"+failureEnvelope+"'\nexit 1\n")
 	c := NewClient()
 
@@ -115,9 +121,9 @@ func TestRunClaudeStream_CountsUsageOfAFailedTurn(t *testing.T) {
 	}
 }
 
-// TestRunClaude_UsageUncountedWhenEnvelopeCarriesNone guards the other
-// direction: a crash with no envelope must not record a phantom call.
-func TestRunClaude_UsageUncountedWhenEnvelopeCarriesNone(t *testing.T) {
+// TestRunSession_UsageUncountedWhenEnvelopeCarriesNone guards the other
+// direction: a crash with no result event must not record a phantom call.
+func TestRunSession_UsageUncountedWhenEnvelopeCarriesNone(t *testing.T) {
 	fakeClaude(t, "cat >/dev/null\necho 'unknown flag' >&2\nexit 2\n")
 	c := NewClient()
 
@@ -145,19 +151,20 @@ func TestRunClaudeStream_KeepsStderrTail(t *testing.T) {
 	}
 }
 
-// TestRunClaude_FeedsPromptOnStdin pins the invocation shape both runners
-// share: the prompt travels on stdin, never as an argument.
-func TestRunClaude_FeedsPromptOnStdin(t *testing.T) {
+// TestRunSession_FeedsPromptOnStdin pins the invocation shape: the prompt
+// travels on stdin, never as an argument, and the model id comes from the init
+// event.
+func TestRunSession_FeedsPromptOnStdin(t *testing.T) {
 	dir := t.TempDir()
 	seen := filepath.Join(dir, "stdin")
-	fakeClaude(t, "cat > "+seen+"\nprintf '%s' '{\"result\":\"ok\",\"model\":\"claude-opus-5-5\"}'\n")
+	fakeClaude(t, "cat > "+seen+"\n"+okTurn+"\n")
 	c := NewClient()
 
 	out, model, err := c.runSession(runSpec{label: "review", model: "opus", effort: "xhigh"}, "the prompt body")
 	if err != nil {
 		t.Fatalf("runSession: %v", err)
 	}
-	if out != "ok" || model != "claude-opus-5-5" {
+	if out != "ok" || model != testResolvedModel {
 		t.Errorf("out = %q, model = %q", out, model)
 	}
 	raw, err := os.ReadFile(seen)
@@ -183,17 +190,23 @@ func redirectCacheRoot(t *testing.T, root string) string {
 	return filepath.Join(base, "planwerk-agent", "structure-workdir")
 }
 
-// structureRunners are the two runners runSession forks to after it resolves
-// the structuring directory: buffered, and streaming under WithShowOutput. The
-// directory tests run on both, so resolving it below the fork fails them.
-// result is the scripted claude's successful turn in that runner's format.
+// okTurn is the script line of a successful turn: an init event naming the
+// resolved model, then a result event.
+const okTurn = `printf '%s\n' '{"type":"system","subtype":"init","model":"claude-opus-5-5"}' '{"type":"result","result":"ok"}'`
+
+// structureTurn is okTurn for a structuring session, whose result is JSON.
+const structureTurn = `printf '%s\n' '{"type":"system","subtype":"init","model":"claude-sonnet-5"}' '{"type":"result","result":"{}"}'`
+
+// structureRunners are the two ways runSession runs a session once it has
+// resolved the structuring directory: quiet, and with its events shown under
+// WithShowOutput. The directory tests run on both, so resolving it on one path
+// only fails them.
 var structureRunners = []struct {
 	name       string
 	showOutput bool
-	result     string
 }{
-	{"buffered", false, `printf '%s' '{"result":"{}","model":"claude-sonnet-5"}'`},
-	{"streaming", true, `printf '%s\n' '{"type":"result","result":"{}","model":"claude-sonnet-5"}'`},
+	{"quiet", false},
+	{"shown", true},
 }
 
 // TestRunClaudeStructure_RunsIsolatedFromTheOperatorsDirectory drives a real
@@ -210,7 +223,7 @@ func TestRunClaudeStructure_RunsIsolatedFromTheOperatorsDirectory(t *testing.T) 
 			rec := t.TempDir()
 			pwdFile := filepath.Join(rec, "pwd")
 			argvFile := filepath.Join(rec, "argv")
-			fakeClaude(t, "cat >/dev/null\npwd -P > '"+pwdFile+"'\nprintf '%s\\n' \"$@\" > '"+argvFile+"'\n"+r.result+"\n")
+			fakeClaude(t, "cat >/dev/null\npwd -P > '"+pwdFile+"'\nprintf '%s\\n' \"$@\" > '"+argvFile+"'\n"+structureTurn+"\n")
 
 			if _, _, err := NewClient(WithShowOutput(r.showOutput)).runClaudeStructure("transcribe this", "structure"); err != nil {
 				t.Fatalf("runClaudeStructure: %v", err)
@@ -284,8 +297,7 @@ func TestRunSession_KeepsTheCallersDirectory(t *testing.T) {
 	work := t.TempDir()
 
 	pwdFile := filepath.Join(t.TempDir(), "pwd")
-	fakeClaude(t, "cat >/dev/null\npwd -P > '"+pwdFile+"'\n"+
-		"printf '%s' '{\"result\":\"ok\",\"model\":\"claude-opus-5-5\"}'\n")
+	fakeClaude(t, "cat >/dev/null\npwd -P > '"+pwdFile+"'\n"+okTurn+"\n")
 
 	if _, _, err := NewClient().runSession(runSpec{dir: work, label: "review", model: "opus", effort: "xhigh"}, "prompt"); err != nil {
 		t.Fatalf("runSession: %v", err)
@@ -300,6 +312,160 @@ func TestRunSession_KeepsTheCallersDirectory(t *testing.T) {
 	}
 	if _, statErr := os.Stat(workDir); !errors.Is(statErr, fs.ErrNotExist) {
 		t.Errorf("stat %s = %v, want it absent: only a noTools spec creates the structuring directory", workDir, statErr)
+	}
+}
+
+// v4UUID matches the RFC 4122 version-4 UUID newSessionID generates.
+var v4UUID = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
+
+// TestRunSession_RecordsHowTheSessionRan drives a quiet session end to end: the
+// argv asks for the event stream and pins a fresh session id, and the pass
+// records the call, the result event's turns and denials, every tool call by
+// name, and the pinned id the stream did not repeat.
+func TestRunSession_RecordsHowTheSessionRan(t *testing.T) {
+	argvFile := filepath.Join(t.TempDir(), "argv")
+	fakeClaude(t, "cat >/dev/null\nprintf '%s\\n' \"$@\" > '"+argvFile+"'\nprintf '%s\\n' "+
+		`'{"type":"system","subtype":"init","model":"claude-opus-5-5","tools":["Read","Grep"]}' `+
+		`'{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read"},{"type":"tool_use","name":"Grep"}]}}' `+
+		`'{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read"}]}}' `+
+		`'{"type":"result","result":"ok","num_turns":3,"permission_denials":[{"tool_name":"Bash","tool_use_id":"t1","tool_input":{}}],`+
+		`"usage":{"input_tokens":100,"output_tokens":10},"total_cost_usd":0.02}'`+"\n")
+	c := NewClient()
+
+	out, model, err := c.runSession(runSpec{label: "review", model: "opus", effort: "xhigh", readOnly: true}, "prompt")
+	if err != nil {
+		t.Fatalf("runSession: %v", err)
+	}
+	if out != "ok" || model != testResolvedModel {
+		t.Errorf("out = %q, model = %q", out, model)
+	}
+
+	argv := recordedArgv(t, argvFile)
+	if i := slices.Index(argv, "--output-format"); i == -1 || !slices.Equal(argv[i+1:i+3], []string{"stream-json", "--verbose"}) {
+		t.Errorf("argv lacks --output-format stream-json --verbose: %v", argv)
+	}
+	i := slices.Index(argv, "--session-id")
+	if i == -1 || !v4UUID.MatchString(argv[i+1]) {
+		t.Fatalf("argv pins no v4 session id: %v", argv)
+	}
+
+	want := []report.PassUsage{{
+		Pass: "review", Calls: 1, InputTokens: 100, OutputTokens: 10, CostUSD: 0.02,
+		NumTurns: 3, PermissionDenials: 1,
+		ToolUses:   map[string]int{"Read": 2, "Grep": 1},
+		SessionIDs: []string{argv[i+1]},
+	}}
+	if got := c.UsageTotals().Passes; !reflect.DeepEqual(got, want) {
+		t.Errorf("Passes = %+v, want %+v", got, want)
+	}
+}
+
+// TestRunSession_ResumedTurnKeepsItsSessionID covers the completion nudge's
+// resumed turn: it continues the session it names with --resume and is never
+// pinned to a second, fresh id.
+func TestRunSession_ResumedTurnKeepsItsSessionID(t *testing.T) {
+	const id = "123e4567-e89b-42d3-a456-426614174000"
+	argvFile := filepath.Join(t.TempDir(), "argv")
+	fakeClaude(t, "cat >/dev/null\nprintf '%s\\n' \"$@\" > '"+argvFile+"'\n"+okTurn+"\n")
+
+	if _, _, err := NewClient().runSession(runSpec{label: "implement", model: "opus", effort: "xhigh", sessionID: id, resume: true}, "nudge"); err != nil {
+		t.Fatalf("runSession: %v", err)
+	}
+	argv := recordedArgv(t, argvFile)
+	if i := slices.Index(argv, "--resume"); i == -1 || argv[i+1] != id {
+		t.Errorf("argv does not resume %s: %v", id, argv)
+	}
+	if slices.Contains(argv, "--session-id") {
+		t.Errorf("a resumed turn carries --session-id: %v", argv)
+	}
+}
+
+// TestRunSession_TimedOutSessionKeepsItsID covers a session the deadline ends:
+// the timeout error is unchanged, and the pass still records the id the stream
+// announced and the tool calls made before the kill, without billing a call.
+func TestRunSession_TimedOutSessionKeepsItsID(t *testing.T) {
+	const id = "0b6f4a8e-6a4c-4c1e-9a55-3f0d2c1b7e21"
+	fakeClaude(t, "cat >/dev/null\nprintf '%s\\n' "+
+		`'{"type":"system","subtype":"init","session_id":"`+id+`"}' `+
+		`'{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash"}]}}'`+
+		"\nsleep 30\n")
+	c := NewClient(WithTimeout(time.Second))
+
+	_, _, err := c.runSession(runSpec{label: "review", model: "opus", effort: "xhigh"}, "prompt")
+	if err == nil || !strings.Contains(err.Error(), "timed out after") {
+		t.Fatalf("err = %v, want the timeout", err)
+	}
+	want := []report.PassUsage{{Pass: "review", ToolUses: map[string]int{"Bash": 1}, SessionIDs: []string{id}}}
+	if got := c.UsageTotals().Passes; !reflect.DeepEqual(got, want) {
+		t.Errorf("Passes = %+v, want %+v", got, want)
+	}
+}
+
+// emptyResultTurn is the script line of a turn that ended cleanly with an
+// empty result and no assistant text before it: an init event naming the
+// resolved model, then a successful result event without text.
+const emptyResultTurn = `printf '%s\n' '{"type":"system","subtype":"init","model":"claude-opus-5-5"}' ` +
+	`'{"type":"result","subtype":"success","is_error":false,"result":""}'`
+
+// narratedEmptyResultTurn is emptyResultTurn with an assistant text before
+// the result event.
+const narratedEmptyResultTurn = `printf '%s\n' '{"type":"system","subtype":"init","model":"claude-opus-5-5"}' ` +
+	`'{"type":"assistant","message":{"content":[{"type":"text","text":"Waiting for the tests."}]}}' ` +
+	`'{"type":"result","subtype":"success","is_error":false,"result":""}'`
+
+// TestRunSession_EmptyResultIsAnEmptyOutput covers a turn that ended cleanly
+// with an empty result, quiet and shown alike: the session returns "" with a
+// nil error and the init event's model. Without assistant text that is not a
+// "produced no result" error, and with it the text does not stand in for the
+// result.
+func TestRunSession_EmptyResultIsAnEmptyOutput(t *testing.T) {
+	for _, turn := range []struct{ name, script string }{
+		{"silent", emptyResultTurn},
+		{"narrated", narratedEmptyResultTurn},
+	} {
+		for _, sink := range []struct {
+			name       string
+			showOutput bool
+		}{{"quiet", false}, {"shown", true}} {
+			t.Run(turn.name+"/"+sink.name, func(t *testing.T) {
+				fakeClaude(t, "cat >/dev/null\n"+turn.script+"\n")
+				c := NewClient(WithShowOutput(sink.showOutput))
+
+				out, model, err := c.runSession(runSpec{label: "implement", model: "opus", effort: "xhigh"}, "prompt")
+				if err != nil {
+					t.Fatalf("runSession: %v, want the empty result without an error", err)
+				}
+				if out != "" || model != testResolvedModel {
+					t.Errorf("out = %q, model = %q, want the result event's empty text and the init model", out, model)
+				}
+				if got := c.UsageTotals().Calls; got != 1 {
+					t.Errorf("Calls = %d, want 1", got)
+				}
+			})
+		}
+	}
+}
+
+// TestRunWithCompletionNudge_ResumesASessionWithAnEmptyResult drives the
+// completion nudge against a real process whose every turn ends with an empty
+// result: the empty output fails the report gate, not the run, so the session
+// is resumed maxCompletionNudges times and its last output comes back with a
+// nil error.
+func TestRunWithCompletionNudge_ResumesASessionWithAnEmptyResult(t *testing.T) {
+	calls := filepath.Join(t.TempDir(), "calls")
+	fakeClaude(t, "cat >/dev/null\nmode=fresh\nfor a in \"$@\"; do [ \"$a\" = --resume ] && mode=resumed; done\n"+
+		"echo $mode >> '"+calls+"'\n"+emptyResultTurn+"\n")
+
+	out, _, err := NewClient().runWithCompletionNudge(runSpec{label: "implement", model: "opus", effort: "xhigh"},
+		"prompt", implementReportHeading, implementReportStatusChoices)
+	if err != nil {
+		t.Fatalf("runWithCompletionNudge: %v, want the incomplete output without an error", err)
+	}
+	if out != "" {
+		t.Errorf("out = %q, want the last turn's empty result", out)
+	}
+	if got, want := readRecorded(t, calls), "fresh\n"+strings.Repeat("resumed\n", maxCompletionNudges); got != want {
+		t.Errorf("turns = %q, want %q: a fresh turn, then one resumed turn per nudge", got, want)
 	}
 }
 

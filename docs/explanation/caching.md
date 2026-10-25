@@ -60,6 +60,9 @@ shapes the analysis itself:
   `--finder-effort`. A review by Sonnet and a review by Fable are different
   analyses of the same diff, so they are different entries. Re-running with a
   stronger model gives you that model's findings, not a hit on the weaker run.
+  `--finder-tools` is folded in when it is set, so restricting the finders'
+  tools is a different analysis, while a run that leaves it unset keeps the key
+  it had before the flag existed.
 - **The pattern sources** — the `--patterns` sources in order, whether
   `--no-repo-patterns` / `--no-local-patterns` suppressed a catalog, and
   `--max-patterns`. The loaded catalog decides what the analysis looks for, so

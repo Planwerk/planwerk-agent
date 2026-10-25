@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -49,6 +50,7 @@ func newRootCmd(deps *runtimeDeps) *cobra.Command {
 	var structureEffort string
 	var finderModel string
 	var finderEffort string
+	var finderTools string
 	var claudeInheritUserConfig bool
 	var diffExclusions bool
 	var wikiEnable, wikiDisable bool
@@ -123,6 +125,10 @@ or short form (owner/repo#123).`,
 			if err != nil {
 				return err
 			}
+			findTools, err := resolveFinderTools(finderTools, cmd.Flags().Changed("finder-tools"))
+			if err != nil {
+				return err
+			}
 
 			// Build the Claude Code client once from the resolved --claude-*
 			// flags and share it with every subcommand via deps. The implement
@@ -141,6 +147,7 @@ or short form (owner/repo#123).`,
 				claude.WithStructureEffort(structEffort),
 				claude.WithFinderModel(findModel),
 				claude.WithFinderEffort(findEffort),
+				claude.WithFinderTools(findTools),
 				claude.WithInheritUserConfig(resolveBool(claudeInheritUserConfig, cmd.Flags().Changed("claude-inherit-user-config"), envClaudeInheritUserConfig)),
 				claude.WithDiffExclusions(exclude),
 			}
@@ -153,11 +160,16 @@ or short form (owner/repo#123).`,
 			// stronger model returned the weaker one's findings for the whole
 			// TTL. The per-command pattern sources are folded in by each
 			// command, next to its own flags. The diff exclusions decide which
-			// changed files the sessions read, and are appended only when on,
-			// so a key without them is the one it was before they existed.
+			// changed files the sessions read, and the finder tool list what
+			// the finding passes can call. Each is appended only when on or
+			// set, so a key without them is the one it was before they
+			// existed.
 			fingerprint := []string{mainModel, mainEffort, structModel, structEffort, findModel, findEffort}
 			if exclude {
 				fingerprint = append(fingerprint, "diff-exclusions")
+			}
+			if len(findTools) > 0 {
+				fingerprint = append(fingerprint, "finder-tools="+strings.Join(findTools, ","))
 			}
 			cache.SetRunFingerprint(fingerprint...)
 
@@ -262,6 +274,7 @@ or short form (owner/repo#123).`,
 	persistent.StringVar(&structureEffort, "structure-effort", claude.DefaultStructureEffort, "Reasoning effort for the JSON-structuring passes (low, medium, high, xhigh, max; env: "+envStructureEffort+")")
 	persistent.StringVar(&finderModel, "finder-model", claude.DefaultFinderModel, "Model for the read-only finder passes: the adversarial pass, the domain specialists, coverage, compliance, the simplify finder, and claim verification (empty inherits --claude-model; env: "+envFinderModel+")")
 	persistent.StringVar(&finderEffort, "finder-effort", claude.DefaultFinderEffort, "Reasoning effort for the finder passes (low, medium, high, xhigh, max; empty inherits --claude-effort; env: "+envFinderEffort+")")
+	persistent.StringVar(&finderTools, "finder-tools", claude.DefaultFinderTools, "Comma-separated Claude Code built-in tools the seven passes that emit findings load (review, audit, adversarial, specialists, compliance, simplify finder, implementation verifier), e.g. Bash,Glob,Grep,Read,WebFetch,WebSearch; empty keeps Claude Code's default set; Edit, Write and NotebookEdit stay denied either way (env: "+envFinderTools+")")
 	persistent.BoolVar(&claudeInheritUserConfig, "claude-inherit-user-config", false, "Let orchestrated Claude sessions inherit your user-global ~/.claude settings and MCP servers (default: isolated for reproducible output; env: "+envClaudeInheritUserConfig+")")
 	persistent.BoolVar(&diffExclusions, "diff-exclusions", false, "Leave lock files, vendored directories, and generated files out of the diff the review and finder passes read, and list them in the report; tests outside vendored directories are never left out (env: "+envDiffExclusions+")")
 

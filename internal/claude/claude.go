@@ -1,9 +1,13 @@
 package claude
 
 import (
+	"cmp"
 	"fmt"
 	"io"
+	"maps"
+	"slices"
 	"sort"
+	"strings"
 
 	"github.com/planwerk/planwerk-agent/internal/diffscope"
 	"github.com/planwerk/planwerk-agent/internal/doccheck"
@@ -107,10 +111,10 @@ func (c *Client) runReview(dir string, rctx ReviewContext) (text, model string, 
 }
 
 // tokenUsage is a tolerant view over the per-call token counts Claude Code
-// reports on its JSON envelope (`--output-format json`) and on the streaming
-// `result` event. Absent fields decode to zero, so an older or newer CLI that
-// omits any of them degrades to a partial count rather than a parse error. The
-// counts are cumulative for the call, so they are summed directly across calls.
+// reports on the `result` event of its stream. Absent fields decode to zero,
+// so an older or newer CLI that omits any of them degrades to a partial count
+// rather than a parse error. The counts are cumulative for the call, so they
+// are summed directly across calls.
 type tokenUsage struct {
 	InputTokens         int64 `json:"input_tokens"`
 	OutputTokens        int64 `json:"output_tokens"`
@@ -156,10 +160,43 @@ func (c *Client) addUsage(label string, u tokenUsage, costUSD float64) {
 	c.usageByPass[label] = p
 }
 
+// addSessionStats folds how one session ran into the per-pass accumulator
+// under label: its turns and permission denials are added, its tool calls
+// merged into the pass's own map, and its session id appended unless the pass
+// already lists it, as a resumed completion-nudge turn reports its session's
+// id again. It never counts a call or a token, so addUsage stays the one
+// place a call is billed, and zero stats create no entry. Like addUsage it is
+// safe to call concurrently (decision 152).
+func (c *Client) addSessionStats(label string, s sessionStats) {
+	if s.isZero() {
+		return
+	}
+	c.usageMu.Lock()
+	defer c.usageMu.Unlock()
+	if c.usageByPass == nil {
+		c.usageByPass = make(map[string]report.PassUsage)
+	}
+	p := c.usageByPass[label]
+	p.Pass = label
+	p.NumTurns += s.numTurns
+	p.PermissionDenials += s.permissionDenials
+	if len(s.toolUses) > 0 && p.ToolUses == nil {
+		p.ToolUses = make(map[string]int, len(s.toolUses))
+	}
+	for name, n := range s.toolUses {
+		p.ToolUses[name] += n
+	}
+	if s.sessionID != "" && !slices.Contains(p.SessionIDs, s.sessionID) {
+		p.SessionIDs = append(p.SessionIDs, s.sessionID)
+	}
+	c.usageByPass[label] = p
+}
+
 // UsageTotals returns a snapshot of the per-Run token usage and estimated cost
 // accumulated so far, with the per-pass breakdown attached. The returned value
-// is a copy — including the Passes slice — so it is safe to read and to embed
-// in a report without the lock.
+// is a copy — including the Passes slice and each pass's ToolUses and
+// SessionIDs — so it is safe to read and to embed in a report without the
+// lock.
 func (c *Client) UsageTotals() report.Usage {
 	c.usageMu.Lock()
 	defer c.usageMu.Unlock()
@@ -172,13 +209,16 @@ func (c *Client) UsageTotals() report.Usage {
 // estimated cost (descending), then by total tokens, then by name — the order a
 // reader wants, most expensive first, and deterministic even when every entry
 // reports a zero cost (as the stub-driven tests and an older CLI both do).
-// Callers must hold usageMu.
+// Each entry's ToolUses and SessionIDs are cloned, so a later addSessionStats
+// cannot change a snapshot. Callers must hold usageMu.
 func (c *Client) snapshotPasses() []report.PassUsage {
 	if len(c.usageByPass) == 0 {
 		return nil
 	}
 	passes := make([]report.PassUsage, 0, len(c.usageByPass))
 	for _, p := range c.usageByPass {
+		p.ToolUses = maps.Clone(p.ToolUses)
+		p.SessionIDs = slices.Clone(p.SessionIDs)
 		passes = append(passes, p)
 	}
 	sort.Slice(passes, func(i, j int) bool {
@@ -204,10 +244,14 @@ const maxSummaryPasses = 8
 // LogUsageSummary writes a totals summary of the Run's Claude token usage and
 // estimated cost to w (typically os.Stderr), e.g. "claude usage: 13.4k in /
 // 4.2k out across 6 calls, est. $0.42", followed by the same figures broken
-// down per pass, most expensive first. It writes nothing when no Claude call was
-// made, so commands that exit early (--help, dry runs, print-prompt) stay
-// silent, and it omits the breakdown when a single pass accounts for the whole
-// run — there the totals line already says everything the breakdown would.
+// down per pass, most expensive first. A pass row ends in its turns and
+// permission denials (sessionSuffix), and a pass whose sessions called a tool
+// is followed by a "tools:" line with its histogram (formatToolUses); session
+// ids are left to usage.passes and the -v log. It writes nothing when no Claude
+// call was made, so commands that exit early (--help, dry runs, print-prompt)
+// stay silent, and it omits the breakdown when there is no pass, or a single
+// pass with no turns, denials or tool calls to show (passObserved): there the
+// totals line already says everything the breakdown would (decision 152).
 func (c *Client) LogUsageSummary(w io.Writer) {
 	u := c.UsageTotals()
 	if u.Calls == 0 {
@@ -215,7 +259,7 @@ func (c *Client) LogUsageSummary(w io.Writer) {
 	}
 	_, _ = fmt.Fprintf(w, "claude usage: %s in / %s out across %d calls, est. $%.2f\n",
 		humanizeTokens(u.InputTokens), humanizeTokens(u.OutputTokens), u.Calls, u.CostUSD)
-	if len(u.Passes) < 2 {
+	if len(u.Passes) == 0 || (len(u.Passes) == 1 && !passObserved(u.Passes[0])) {
 		return
 	}
 	shown := u.Passes
@@ -224,8 +268,12 @@ func (c *Client) LogUsageSummary(w io.Writer) {
 		shown, rest = shown[:maxSummaryPasses], shown[maxSummaryPasses:]
 	}
 	for _, p := range shown {
-		_, _ = fmt.Fprintf(w, "  %-24s %2d %s  %s in / %s out, est. $%.2f\n",
-			p.Pass, p.Calls, pluralCalls(p.Calls), humanizeTokens(p.InputTokens), humanizeTokens(p.OutputTokens), p.CostUSD)
+		_, _ = fmt.Fprintf(w, "  %-24s %2d %s  %s in / %s out, est. $%.2f%s\n",
+			p.Pass, p.Calls, pluralCalls(p.Calls), humanizeTokens(p.InputTokens), humanizeTokens(p.OutputTokens), p.CostUSD,
+			sessionSuffix(p.NumTurns, p.PermissionDenials))
+		if len(p.ToolUses) > 0 {
+			_, _ = fmt.Fprintf(w, "  %-24s tools: %s\n", "", formatToolUses(p.ToolUses))
+		}
 	}
 	if len(rest) > 0 {
 		var agg report.PassUsage
@@ -234,11 +282,50 @@ func (c *Client) LogUsageSummary(w io.Writer) {
 			agg.InputTokens += p.InputTokens
 			agg.OutputTokens += p.OutputTokens
 			agg.CostUSD += p.CostUSD
+			agg.NumTurns += p.NumTurns
+			agg.PermissionDenials += p.PermissionDenials
 		}
-		_, _ = fmt.Fprintf(w, "  %-24s %2d %s  %s in / %s out, est. $%.2f\n",
+		_, _ = fmt.Fprintf(w, "  %-24s %2d %s  %s in / %s out, est. $%.2f%s\n",
 			fmt.Sprintf("+%d further passes", len(rest)), agg.Calls, pluralCalls(agg.Calls),
-			humanizeTokens(agg.InputTokens), humanizeTokens(agg.OutputTokens), agg.CostUSD)
+			humanizeTokens(agg.InputTokens), humanizeTokens(agg.OutputTokens), agg.CostUSD,
+			sessionSuffix(agg.NumTurns, agg.PermissionDenials))
 	}
+}
+
+// passObserved reports whether p recorded how its sessions ran: turns,
+// permission denials or tool calls, the figures a summary row adds to the
+// totals line.
+func passObserved(p report.PassUsage) bool {
+	return p.NumTurns > 0 || p.PermissionDenials > 0 || len(p.ToolUses) > 0
+}
+
+// sessionSuffix renders the end of a summary row: ", N turns" (", 1 turn") when
+// turns is positive and ", N denied" when denials is, "" when neither is.
+func sessionSuffix(turns, denials int) string {
+	var b strings.Builder
+	switch {
+	case turns == 1:
+		b.WriteString(", 1 turn")
+	case turns > 1:
+		fmt.Fprintf(&b, ", %d turns", turns)
+	}
+	if denials > 0 {
+		fmt.Fprintf(&b, ", %d denied", denials)
+	}
+	return b.String()
+}
+
+// formatToolUses renders a tool histogram as "Read 22, Grep 9, Bash 4": the
+// most-used tool first, ties in name order.
+func formatToolUses(uses map[string]int) string {
+	names := slices.SortedFunc(maps.Keys(uses), func(a, b string) int {
+		return cmp.Or(cmp.Compare(uses[b], uses[a]), cmp.Compare(a, b))
+	})
+	parts := make([]string, 0, len(names))
+	for _, name := range names {
+		parts = append(parts, fmt.Sprintf("%s %d", name, uses[name]))
+	}
+	return strings.Join(parts, ", ")
 }
 
 // pluralCalls returns the noun that follows a call count, so a single-call pass

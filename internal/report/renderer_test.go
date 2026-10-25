@@ -745,6 +745,45 @@ func TestRenderDataBlock_IncludesUsage(t *testing.T) {
 	}
 }
 
+// TestRenderDataBlock_PassRecordsHowItsSessionsRan covers the per-pass session
+// record in usage.passes: turns, denials, the tool histogram and the session
+// ids ride along when set, a pass without them renders none of the keys, and
+// ParseDataBlock still reads the sha and the findings.
+func TestRenderDataBlock_PassRecordsHowItsSessionsRan(t *testing.T) {
+	full := ReviewResult{Findings: []Finding{
+		{ID: "W-001", Severity: SeverityWarning, Title: "Unbounded retry", File: "retry.go", Line: 7},
+	}}
+	usage := Usage{Calls: 2, Passes: []PassUsage{
+		{
+			Pass: "review", Calls: 1, NumTurns: 14, PermissionDenials: 2,
+			ToolUses:   map[string]int{"Read": 22, "Bash": 4},
+			SessionIDs: []string{"0b6f4a8e-6a4c-4c1e-9a55-3f0d2c1b7e21"},
+		},
+		{Pass: "structure", Calls: 1},
+	}}
+
+	block := RenderDataBlock(full, "head-sha", usage)
+	for _, want := range []string{
+		`"num_turns":14`,
+		`"permission_denials":2`,
+		`"tool_uses":{"Bash":4,"Read":22}`,
+		`"session_ids":["0b6f4a8e-6a4c-4c1e-9a55-3f0d2c1b7e21"]`,
+	} {
+		if !strings.Contains(block, want) {
+			t.Errorf("data block missing %q; got %q", want, block)
+		}
+	}
+	const bare = `{"pass":"structure","calls":1,"input_tokens":0,"output_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"est_cost_usd":0}`
+	if !strings.Contains(block, bare) {
+		t.Errorf("a pass without session stats must render none of their keys; want %s in %q", bare, block)
+	}
+
+	sha, findings, ok := ParseDataBlock(block)
+	if !ok || sha != "head-sha" || len(findings) != 1 || findings[0].ID != "W-001" {
+		t.Errorf("ParseDataBlock = %q, %+v, %v; want head-sha and the W-001 finding", sha, findings, ok)
+	}
+}
+
 // TestUsage_AddAndSub proves the two sum every counter and drop the per-pass
 // breakdown, and that a snapshot difference added back gives the later
 // snapshot's totals.

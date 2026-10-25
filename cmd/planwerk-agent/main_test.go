@@ -2,6 +2,9 @@ package main
 
 import (
 	"bytes"
+	"io"
+	"log/slog"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -344,5 +347,78 @@ func TestResolveEffort(t *testing.T) {
 	t.Setenv(env, "maximum")
 	if _, err := resolveEffort("", false, env, "low", true, "--finder-effort"); err == nil {
 		t.Error("invalid env value must be rejected even when empty is allowed")
+	}
+}
+
+// TestResolveFinderTools mirrors TestResolveEffort for the tool list: a set
+// flag beats the environment, the environment fills an unset flag, a blank
+// value keeps Claude Code's default set, and an invalid value from either
+// source names the flag and the variable.
+func TestResolveFinderTools(t *testing.T) {
+	t.Setenv(envFinderTools, "Bash")
+	if got, err := resolveFinderTools("Read,Grep", true); err != nil || !slices.Equal(got, []string{"Grep", "Read"}) {
+		t.Errorf("flag: got %v, %v; want [Grep Read]", got, err)
+	}
+	t.Setenv(envFinderTools, " Glob , Read ")
+	if got, err := resolveFinderTools("", false); err != nil || !slices.Equal(got, []string{"Glob", "Read"}) {
+		t.Errorf("env: got %v, %v; want [Glob Read]", got, err)
+	}
+	t.Setenv(envFinderTools, "")
+	if got, err := resolveFinderTools("", false); err != nil || got != nil {
+		t.Errorf("default: got %v, %v; want nil", got, err)
+	}
+	if got, err := resolveFinderTools("", true); err != nil || got != nil {
+		t.Errorf("explicitly empty flag: got %v, %v; want nil", got, err)
+	}
+	if _, err := resolveFinderTools("read", true); err == nil || !strings.Contains(err.Error(), "--finder-tools") || !strings.Contains(err.Error(), envFinderTools) {
+		t.Errorf("invalid flag value: got %v", err)
+	}
+	t.Setenv(envFinderTools, "Bash(git:*)")
+	if _, err := resolveFinderTools("", false); err == nil || !strings.Contains(err.Error(), "--finder-tools") || !strings.Contains(err.Error(), envFinderTools) {
+		t.Errorf("invalid env value: got %v", err)
+	}
+}
+
+// TestRootCmd_FinderToolsJoinTheFingerprintOnlyWhenSet runs the root command's
+// setup and proves the cache scoping of --finder-tools: a run without it keeps
+// the fingerprint it had before the flag existed, and a run with it, from the
+// flag or the environment, appends the sorted list and hands it to the client.
+// With --diff-exclusions on as well, the list follows "diff-exclusions".
+func TestRootCmd_FinderToolsJoinTheFingerprintOnlyWhenSet(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv(envFinderTools, "")
+	t.Setenv(envDiffExclusions, "")
+	prevLogger, prevFingerprint := slog.Default(), cache.RunFingerprint()
+	t.Cleanup(func() {
+		slog.SetDefault(prevLogger)
+		cache.SetRunFingerprint(prevFingerprint)
+	})
+
+	run := func(args ...string) (string, []string) {
+		t.Helper()
+		deps := &runtimeDeps{version: "test"}
+		root := newRootCmd(deps)
+		root.SetOut(io.Discard)
+		root.SetErr(io.Discard)
+		root.SetArgs(append([]string{"--version"}, args...))
+		if err := root.Execute(); err != nil {
+			t.Fatalf("root %v: %v", args, err)
+		}
+		return cache.RunFingerprint(), deps.claude.FinderTools()
+	}
+
+	base, tools := run()
+	if strings.Contains(base, "finder-tools") || tools != nil {
+		t.Errorf("default run: fingerprint %q, tools %v; want no finder tools in either", base, tools)
+	}
+	if fp, tools := run("--finder-tools", "Read, Grep"); fp != base+"|finder-tools=Grep,Read" || !slices.Equal(tools, []string{"Grep", "Read"}) {
+		t.Errorf("flag run: fingerprint %q, tools %v; want %q and [Grep Read]", fp, tools, base+"|finder-tools=Grep,Read")
+	}
+	t.Setenv(envFinderTools, "Read")
+	if fp, _ := run(); fp != base+"|finder-tools=Read" {
+		t.Errorf("env run: fingerprint %q, want %q", fp, base+"|finder-tools=Read")
+	}
+	if fp, _ := run("--diff-exclusions"); fp != base+"|diff-exclusions|finder-tools=Read" {
+		t.Errorf("run with both: fingerprint %q, want %q", fp, base+"|diff-exclusions|finder-tools=Read")
 	}
 }

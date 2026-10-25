@@ -13,7 +13,7 @@ import (
 func TestWithDenyRules_ContinueOrOpenTheDisallowedList(t *testing.T) {
 	c := NewClient()
 	for _, readOnly := range []bool{false, true} {
-		args := c.claudeArgs(runSpec{dir: t.TempDir(), model: "opus", effort: "xhigh", readOnly: readOnly, denyRules: []string{"Skill(skill:deploy)"}}, "json")
+		args := c.claudeArgs(runSpec{dir: t.TempDir(), model: "opus", effort: "xhigh", readOnly: readOnly, denyRules: []string{"Skill(skill:deploy)"}})
 		deny := slices.Index(args, "--disallowed-tools")
 		rule := slices.Index(args, "Skill(skill:deploy)")
 		allow := slices.Index(args, "--allowed-tools")
@@ -24,7 +24,7 @@ func TestWithDenyRules_ContinueOrOpenTheDisallowedList(t *testing.T) {
 			t.Errorf("readOnly=%v: --disallowed-tools emitted twice: %v", readOnly, args)
 		}
 	}
-	if args := c.claudeArgs(runSpec{dir: t.TempDir(), model: "opus", effort: "xhigh"}, "json"); slices.Contains(args, "--disallowed-tools") {
+	if args := c.claudeArgs(runSpec{dir: t.TempDir(), model: "opus", effort: "xhigh"}); slices.Contains(args, "--disallowed-tools") {
 		t.Errorf("a mutating session without deny rules emitted the flag: %v", args)
 	}
 }

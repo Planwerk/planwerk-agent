@@ -185,6 +185,12 @@ const envFinderModel = "PLANWERK_FINDER_MODEL"
 // (claude.DefaultFinderEffort).
 const envFinderEffort = "PLANWERK_FINDER_EFFORT"
 
+// envFinderTools overrides the built-in tool list of the seven passes that
+// emit findings (a comma-separated list such as "Bash,Glob,Grep,Read"). The
+// --finder-tools CLI flag takes precedence when explicitly set. Unset or empty
+// keeps claude.DefaultFinderTools, which is Claude Code's default set.
+const envFinderTools = "PLANWERK_FINDER_TOOLS"
+
 // envStructureModel overrides the model used by the JSON-structuring passes
 // for every subcommand (e.g. "sonnet", "opus"). The --structure-model CLI
 // flag takes precedence when explicitly set.
@@ -293,6 +299,20 @@ func resolveEffort(flag string, set bool, env, def string, allowEmpty bool, flag
 		return "", fmt.Errorf("invalid %s %q: must be one of %s (env: %s)", flagName, effort, claude.EffortLevels(), env)
 	}
 	return effort, nil
+}
+
+// resolveFinderTools resolves the --finder-tools list like resolveString and
+// parses it with claude.ParseToolList, in PersistentPreRunE before any claude
+// call, for the reason resolveEffort validates an effort there: a typo must
+// fail before the review's sessions spend their tokens. It returns nil for an
+// unset or empty value, which keeps Claude Code's default tool set.
+func resolveFinderTools(flag string, set bool) ([]string, error) {
+	value := resolveString(flag, set, envFinderTools, claude.DefaultFinderTools)
+	tools, err := claude.ParseToolList(value)
+	if err != nil {
+		return nil, fmt.Errorf("invalid --finder-tools %q: %w (env: %s)", value, err, envFinderTools)
+	}
+	return tools, nil
 }
 
 // resolveRemotePatternsTTL returns the effective remote-patterns TTL.

@@ -373,9 +373,10 @@ type AACRConfig struct {
 }
 
 // Tiers records the model and effort each tier of a run resolved to, so a
-// report says what it measured. Comparable never reads it: a candidate
-// finder tier against the baseline's is the comparison the tier
-// experiment exists for.
+// report says what it measured, and FinderTools the --finder-tools list the
+// passes that emit findings ran with, as a sorted comma list, empty when unset
+// (decision 152). Comparable never reads it: a candidate finder tier or tool
+// set against the baseline's is the comparison the experiment exists for.
 type Tiers struct {
 	ClaudeModel     string `json:"claude_model"`
 	ClaudeEffort    string `json:"claude_effort"`
@@ -383,17 +384,23 @@ type Tiers struct {
 	FinderEffort    string `json:"finder_effort"`
 	StructureModel  string `json:"structure_model"`
 	StructureEffort string `json:"structure_effort"`
+	FinderTools     string `json:"finder_tools,omitempty"`
 }
 
 // String renders the tiers as "claude <model>/<effort>, finder
-// <model>/<effort>, structure <model>/<effort>", or "(unrecorded)" for the zero
-// value a report written before the tiers were recorded decodes to.
+// <model>/<effort>, structure <model>/<effort>", followed by ", finder tools
+// <list>" when FinderTools is set, or "(unrecorded)" for the zero value a
+// report written before the tiers were recorded decodes to.
 func (t Tiers) String() string {
 	if t == (Tiers{}) {
 		return unrecorded
 	}
-	return fmt.Sprintf("claude %s/%s, finder %s/%s, structure %s/%s",
+	s := fmt.Sprintf("claude %s/%s, finder %s/%s, structure %s/%s",
 		t.ClaudeModel, t.ClaudeEffort, t.FinderModel, t.FinderEffort, t.StructureModel, t.StructureEffort)
+	if t.FinderTools != "" {
+		s += ", finder tools " + t.FinderTools
+	}
+	return s
 }
 
 // PassRecall is one pass's share of the pooled recall: Found expected findings

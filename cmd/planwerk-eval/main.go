@@ -376,8 +376,9 @@ func loadAACRCases(o aacrOptions, caseName string) ([]eval.Case, *eval.AACRConfi
 	}, nil
 }
 
-// The model and effort variables of each tier, named as the root command
-// names them. resolveTiers is the one place the eval reads them.
+// The model and effort variables of each tier, and the finder tool list,
+// named as the root command names them. resolveTiers is the one place the
+// eval reads them.
 const (
 	envClaudeModel     = "PLANWERK_CLAUDE_MODEL"
 	envClaudeEffort    = "PLANWERK_CLAUDE_EFFORT"
@@ -385,17 +386,27 @@ const (
 	envFinderEffort    = "PLANWERK_FINDER_EFFORT"
 	envStructureModel  = "PLANWERK_STRUCTURE_MODEL"
 	envStructureEffort = "PLANWERK_STRUCTURE_EFFORT"
+	envFinderTools     = "PLANWERK_FINDER_TOOLS"
 )
 
 // resolveTiers resolves the model and effort of the main, finder and
-// structure tiers from their PLANWERK_* variables. A variable that is unset
-// or only whitespace leaves the compiled-in default, and an empty finder
-// value inherits the main tier as claude.Client.FinderTier resolves it, so the
-// recorded tier is the tier that runs. It rejects an effort that is not one
-// of the levels Claude Code accepts; a compiled-in default is never invalid,
-// so an unset variable cannot fail. main calls it before the first case runs.
+// structure tiers from their PLANWERK_* variables, and the finder tool list
+// from PLANWERK_FINDER_TOOLS. A variable that is unset or only whitespace
+// leaves the compiled-in default, and an empty finder value inherits the main
+// tier as claude.Client.FinderTier resolves it, so the recorded tier is the
+// tier that runs. The tool list is recorded as claude.ParseToolList returns
+// it, sorted and comma-joined, so two spellings of one set record the same
+// value. It rejects an effort that is not one of the levels Claude Code
+// accepts and a tool list ParseToolList refuses; a compiled-in default is
+// never invalid, so an unset variable cannot fail. main calls it before the
+// first case runs.
 func resolveTiers() (eval.Tiers, error) {
 	env := func(name string) string { return strings.TrimSpace(os.Getenv(name)) }
+	rawTools := env(envFinderTools)
+	tools, err := claude.ParseToolList(rawTools)
+	if err != nil {
+		return eval.Tiers{}, fmt.Errorf("invalid %s=%q: %w", envFinderTools, rawTools, err)
+	}
 	model := cmp.Or(env(envClaudeModel), claude.DefaultClaudeModel)
 	effort := cmp.Or(env(envClaudeEffort), claude.DefaultClaudeEffort)
 	finderModel, finderEffort := claude.NewClient(
@@ -409,6 +420,7 @@ func resolveTiers() (eval.Tiers, error) {
 		FinderEffort:    finderEffort,
 		StructureModel:  cmp.Or(env(envStructureModel), claude.DefaultStructureModel),
 		StructureEffort: cmp.Or(env(envStructureEffort), claude.DefaultStructureEffort),
+		FinderTools:     strings.Join(tools, ","),
 	}
 	for _, e := range []struct{ name, value string }{
 		{envClaudeEffort, t.ClaudeEffort},
@@ -425,11 +437,13 @@ func resolveTiers() (eval.Tiers, error) {
 // buildClient constructs a Claude client on tiers, then applies the timeout,
 // inherit-user-config, diff-exclusions and show-output overrides the shipped
 // CLI honors, each only when set so the compiled-in defaults otherwise stand.
-// The model and effort variables are read in resolveTiers alone. It is the
-// minimal mirror of the root command's resolve* helpers, which are unexported
-// in cmd/planwerk-agent. Every tier option ignores an empty value, so the zero
-// Tiers yields the compiled-in defaults.
+// The model and effort variables and the finder tool list are read in
+// resolveTiers alone, which has already validated tiers.FinderTools. It is
+// the minimal mirror of the root command's resolve* helpers, which are
+// unexported in cmd/planwerk-agent. Every tier option ignores an empty value,
+// so the zero Tiers yields the compiled-in defaults.
 func buildClient(tiers eval.Tiers) (*claude.Client, error) {
+	tools, _ := claude.ParseToolList(tiers.FinderTools)
 	opts := []claude.Option{
 		claude.WithModel(tiers.ClaudeModel),
 		claude.WithEffort(tiers.ClaudeEffort),
@@ -437,6 +451,7 @@ func buildClient(tiers eval.Tiers) (*claude.Client, error) {
 		claude.WithStructureEffort(tiers.StructureEffort),
 		claude.WithFinderModel(tiers.FinderModel),
 		claude.WithFinderEffort(tiers.FinderEffort),
+		claude.WithFinderTools(tools),
 	}
 	if v := strings.TrimSpace(os.Getenv("PLANWERK_CLAUDE_TIMEOUT")); v != "" {
 		d, err := time.ParseDuration(v)
