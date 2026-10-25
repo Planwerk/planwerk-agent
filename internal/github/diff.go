@@ -50,10 +50,11 @@ func ParseDiff(rawDiff string) *DiffMap {
 			continue
 		}
 
-		// Detect new file path: "+++ b/FILE"
-		if strings.HasPrefix(line, "+++ b/") {
-			currentFile = strings.TrimPrefix(line, "+++ b/")
-			if dm.files[currentFile] == nil {
+		// Detect new file path: "+++ b/FILE", or "+++ \"b/FILE\"" when git
+		// C-quoted it
+		if strings.HasPrefix(line, "+++ b/") || strings.HasPrefix(line, "+++ \"b/") {
+			currentFile = diffHeaderPath(strings.TrimPrefix(line, "+++ "))
+			if currentFile != "" && dm.files[currentFile] == nil {
 				dm.files[currentFile] = make(map[int]bool)
 			}
 			continue
@@ -91,6 +92,23 @@ func ParseDiff(rawDiff string) *DiffMap {
 	}
 
 	return dm
+}
+
+// diffHeaderPath returns the repo-relative path a +++ header names: without
+// the b/ prefix, without the TAB git appends when the path holds a space, and
+// without the C-quoting git applies to a path holding a byte above 0x7F, a
+// double quote, a backslash, or a control character. It returns "" for a
+// quoted name that does not unquote (decision 131).
+func diffHeaderPath(name string) string {
+	name = strings.TrimSuffix(name, "\t")
+	if strings.HasPrefix(name, `"`) {
+		unquoted, err := strconv.Unquote(name)
+		if err != nil {
+			return ""
+		}
+		name = unquoted
+	}
+	return strings.TrimPrefix(name, "b/")
 }
 
 // Contains returns true if the given file:line appears in the diff on the RIGHT side.

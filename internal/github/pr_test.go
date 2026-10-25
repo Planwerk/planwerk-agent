@@ -199,6 +199,48 @@ func TestDiffNames(t *testing.T) {
 		}
 	})
 
+	t.Run("non-ASCII path", func(t *testing.T) {
+		// git's default core.quotePath=true, set in the repo config, overrides
+		// a developer's global setting, so the path comes back as stored only
+		// through the -c option. The NFC escape is what macOS git
+		// (core.precomposeUnicode) returns as well.
+		const name = "\u00e4.go"
+		dir := initGitRepoForDiff(t)
+		git(t, dir, "config", "core.quotePath", "true")
+		writeRepoFile(t, dir, name, "package x\n")
+		git(t, dir, "add", "-A")
+		git(t, dir, "commit", "-q", "-m", "third")
+
+		files, err := client.DiffNames(dir, "main")
+		if err != nil {
+			t.Fatalf("DiffNames returned error: %v", err)
+		}
+		if want := []string{"changed.go", name}; !slices.Equal(files, want) {
+			t.Fatalf("files = %q, want %q", files, want)
+		}
+	})
+
+	t.Run("whitespace at either end", func(t *testing.T) {
+		// git prints both names raw and they come first and last in its
+		// output, so any trimming of a line, or of the whole output, cuts a
+		// byte off. strings.TrimSpace also strips U+00A0 (NO-BREAK SPACE).
+		const leading, trailing = " lead.go", "trail.go "
+		dir := initGitRepoForDiff(t)
+		git(t, dir, "config", "core.quotePath", "true")
+		writeRepoFile(t, dir, leading, "package x\n")
+		writeRepoFile(t, dir, trailing, "package x\n")
+		git(t, dir, "add", "-A")
+		git(t, dir, "commit", "-q", "-m", "third")
+
+		files, err := client.DiffNames(dir, "main")
+		if err != nil {
+			t.Fatalf("DiffNames returned error: %v", err)
+		}
+		if want := []string{leading, "changed.go", trailing}; !slices.Equal(files, want) {
+			t.Fatalf("files = %q, want %q", files, want)
+		}
+	})
+
 	t.Run("missing remote", func(t *testing.T) {
 		// A repo with one commit and no refs/remotes/origin/main: the diff
 		// query fails exactly as it would on a missing remote or auth failure.

@@ -750,19 +750,21 @@ func (r *Runner) skipSuppressed(result *report.ReviewResult, pr *github.PR, minS
 
 // changedFilesSince returns the set of files changed between sha and HEAD. ok is
 // false when the diff cannot be computed (e.g. the prior SHA is not in this
-// checkout), in which case the caller must not suppress anything.
+// checkout), in which case the caller must not suppress anything. Keys are
+// the paths as stored, whitespace at either end included, so a non-ASCII path
+// matches a finding's File (decision 131).
 func changedFilesSince(dir, sha string) (map[string]bool, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), gitLogTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", "diff", "--name-only", sha, "HEAD")
+	cmd := exec.CommandContext(ctx, "git", "-c", "core.quotePath=false", "diff", "--name-only", sha, "HEAD")
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, false
 	}
 	changed := make(map[string]bool)
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if line = strings.TrimSpace(line); line != "" {
+	for _, line := range strings.Split(string(out), "\n") {
+		if line != "" {
 			changed[line] = true
 		}
 	}

@@ -58,8 +58,9 @@ func Check(repoDir, baseBranch string) []StaleDocHint {
 }
 
 // getChangedDirs returns unique directory paths of files changed in the PR.
+// A directory holding a byte above 0x7F is returned as stored (decision 131).
 func getChangedDirs(repoDir, baseBranch string) []string {
-	cmd := exec.Command("git", "diff", "--name-only", "origin/"+baseBranch+"...HEAD")
+	cmd := exec.Command("git", "-c", "core.quotePath=false", "diff", "--name-only", "origin/"+baseBranch+"...HEAD")
 	cmd.Dir = repoDir
 	out, err := cmd.Output()
 	if err != nil {
@@ -68,7 +69,7 @@ func getChangedDirs(repoDir, baseBranch string) []string {
 
 	seen := make(map[string]bool)
 	var dirs []string
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for _, line := range strings.Split(string(out), "\n") {
 		if line == "" {
 			continue
 		}
@@ -121,8 +122,9 @@ func CheckNewFeatures(repoDir, baseBranch string) []NewFeatureHint {
 }
 
 // getNewFiles returns files that were added (not just modified) in the PR.
+// A path holding a byte above 0x7F is returned as stored (decision 131).
 func getNewFiles(repoDir, baseBranch string) []string {
-	cmd := exec.Command("git", "diff", "--name-only", "--diff-filter=A", "origin/"+baseBranch+"...HEAD")
+	cmd := exec.Command("git", "-c", "core.quotePath=false", "diff", "--name-only", "--diff-filter=A", "origin/"+baseBranch+"...HEAD")
 	cmd.Dir = repoDir
 	out, err := cmd.Output()
 	if err != nil {
@@ -130,7 +132,7 @@ func getNewFiles(repoDir, baseBranch string) []string {
 	}
 
 	var files []string
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for _, line := range strings.Split(string(out), "\n") {
 		if line != "" {
 			files = append(files, line)
 		}

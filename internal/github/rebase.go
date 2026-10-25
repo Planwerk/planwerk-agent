@@ -118,15 +118,20 @@ func (Client) ResetHard(dir, ref string) error {
 
 // ConflictedFiles returns the repo-relative paths git marked as unmerged
 // (`git diff --name-only --diff-filter=U`) — the files a paused rebase needs
-// resolved before it can continue.
+// resolved before it can continue. A path is returned as stored, bytes above
+// 0x7F and whitespace at either end included; one holding a double quote, a
+// backslash, or an ASCII control character (below 0x20, or DEL) comes back
+// C-quoted. git does not quote the C1 controls or U+2028 and U+2029, so a
+// caller that lists the paths one per line cannot rely on git to hold each to
+// one line (decision 131).
 func (Client) ConflictedFiles(dir string) ([]string, error) {
-	out, err := gitCapture(dir, "diff", "--name-only", "--diff-filter=U")
+	out, err := gitCapture(dir, "-c", "core.quotePath=false", "diff", "--name-only", "--diff-filter=U")
 	if err != nil {
 		return nil, err
 	}
 	var files []string
-	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
-		if line = strings.TrimSpace(line); line != "" {
+	for _, line := range strings.Split(out, "\n") {
+		if line != "" {
 			files = append(files, line)
 		}
 	}

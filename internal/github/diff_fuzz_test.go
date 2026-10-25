@@ -19,6 +19,8 @@ func FuzzParseDiff(f *testing.F) {
 	f.Add("@@ -1,1 +1,1 @@\n not in a file\n")
 	f.Add("@@ + @@\n")
 	f.Add("+++ b/file\n@@ -0 +0 @@\n+x\n")
+	f.Add(quotedAndSpacedDiff)
+	f.Add("+++ \"b/unterminated\n@@ -0 +0 @@\n+x\n")
 
 	f.Fuzz(func(t *testing.T, raw string) {
 		dm := ParseDiff(raw)
