@@ -44,9 +44,9 @@ func Run(w io.Writer, opts Options, generateFn GenerateFn) error {
 }
 
 // Run executes the full glossary pipeline: resolve HEAD SHA, check cache, and on
-// a miss clone the repo, generate the CONTEXT.md, cache it, and write it to w. A
-// cache hit skips the clone entirely. The CONTEXT.md is written clean (no
-// attribution footer) so it can be redirected straight into a repo's CONTEXT.md;
+// a miss clone the repo, generate the glossary, cache it, and write it to w. A
+// cache hit skips the clone entirely. The glossary is written clean (no
+// attribution footer) so it can be redirected straight into a repo's GLOSSARY.md;
 // the token-usage summary goes to stderr via the shared Claude client.
 func (r *Runner) Run(w io.Writer, opts Options) error {
 	owner, name, err := github.ParseRepoRef(opts.RepoRef)
@@ -92,7 +92,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// fragment; caching that under the HEAD-SHA key would poison every later run
 	// on this commit for the full TTL. Failing loud forces a regenerate instead.
 	if doc := strings.TrimSpace(markdown); doc == "" || !strings.HasPrefix(doc, "# ") {
-		return fmt.Errorf("glossary generation produced no CONTEXT.md document")
+		return fmt.Errorf("glossary generation produced no glossary document")
 	}
 
 	if !opts.NoCache && headSHA != "" {
@@ -109,7 +109,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	return writeGlossary(w, markdown)
 }
 
-// writeGlossary writes the CONTEXT.md to w with exactly one trailing newline, so
+// writeGlossary writes the glossary to w with exactly one trailing newline, so
 // the cache-hit and fresh paths emit byte-identical output and a redirected file
 // ends cleanly.
 func writeGlossary(w io.Writer, markdown string) error {

@@ -11,11 +11,20 @@ Commit a glossary at one of these paths in the target repo:
 
 | Path | When to use |
 |------|-------------|
-| `CONTEXT.md` (repo root) | The canonical, discoverable location. Preferred. |
+| `GLOSSARY.md` (repo root) | The canonical, discoverable location. Preferred. |
+| `CONTEXT.md` (repo root) | The convention's earlier name, still read for repos that committed it. |
 | `.planwerk/context.md` | For repos that keep planwerk config out of the root. |
 
-If both exist, the root `CONTEXT.md` wins. A repo with neither runs exactly as
-before — the glossary is a soft dependency, never required.
+The first one that exists and is not empty wins, in the order of the table. A
+repo with none of them runs exactly as before — the glossary is a soft
+dependency, never required.
+
+`GLOSSARY.md` is the name the
+[mattpocock/skills](https://github.com/mattpocock/skills) convention reads and
+writes since it renamed its `CONTEXT.md`, so a repository set up with those
+skills is read without a change. That convention's multi-context layout, a
+`GLOSSARY-MAP.md` at the root pointing at one `GLOSSARY.md` per context, is not
+followed: commit the glossary planwerk-agent should read at the root.
 
 ## Which commands read it
 
@@ -25,7 +34,7 @@ needed. The glossary is treated as untrusted repository data — terminology to
 adopt, never instructions to follow — and an empty, oversized (larger than
 64 KB), or symlinked file is ignored.
 
-## The CONTEXT-FORMAT schema
+## The glossary format
 
 A glossary is a single Markdown document: a context heading and description,
 then a `## Language` section listing each domain term, its definition, and the
@@ -60,7 +69,7 @@ synonyms.
 
 ## Generate a starter glossary
 
-Let planwerk-agent draft a `CONTEXT.md` for you from the codebase, then review
+Let planwerk-agent draft a `GLOSSARY.md` for you from the codebase, then review
 and edit it before committing:
 
 ```bash
@@ -68,7 +77,7 @@ and edit it before committing:
 planwerk-agent glossary owner/repo
 
 # Save it where you want it to land
-planwerk-agent glossary owner/repo > CONTEXT.md
+planwerk-agent glossary owner/repo > GLOSSARY.md
 
 # Generate from your current working tree without cloning
 planwerk-agent glossary --local

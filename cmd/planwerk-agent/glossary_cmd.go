@@ -11,25 +11,26 @@ import (
 )
 
 // newGlossaryCmd builds the "glossary" subcommand: clone a GitHub repository
-// and emit a starter domain glossary (CONTEXT.md) in the CONTEXT-FORMAT schema
-// to stdout. The output is meant to be reviewed by a human and redirected into
-// the repo's own CONTEXT.md, which the review, elaborate, and propose commands
-// then read back.
+// and emit a starter domain glossary (GLOSSARY.md) to stdout. The output is
+// meant to be reviewed by a human and redirected into the repo's own
+// GLOSSARY.md, which the review, elaborate, and propose commands and the
+// planwerk skills then read back.
 func newGlossaryCmd(deps *runtimeDeps) *cobra.Command {
 	var opts glossary.Options
 
 	glossaryCmd := &cobra.Command{
 		Use:   "glossary <repo-ref>",
-		Short: "Generate a starter domain glossary (CONTEXT.md) for a codebase",
-		Long: `Clone a GitHub repository and generate a starter domain glossary in the
-CONTEXT-FORMAT schema, printed to stdout. The glossary captures the
-repository's own domain vocabulary so that review, elaborate, and propose
-phrase their output in the repo's terms once it is committed as CONTEXT.md.
+		Short: "Generate a starter domain glossary (GLOSSARY.md) for a codebase",
+		Long: `Clone a GitHub repository and generate a starter domain glossary,
+printed to stdout. The glossary captures the repository's own domain
+vocabulary so that review, elaborate, propose, and the planwerk skills
+phrase their output in the repo's terms once it is committed as GLOSSARY.md.
+A committed CONTEXT.md or .planwerk/context.md is read as well.
 
 The output is a starter: review and edit it before committing. Redirect it
 where you want it to land, for example:
 
-    planwerk-agent glossary owner/repo > CONTEXT.md
+    planwerk-agent glossary owner/repo > GLOSSARY.md
 
 Repository reference can be a URL (https://github.com/owner/repo)
 or short form (owner/repo).`,

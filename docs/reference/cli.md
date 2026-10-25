@@ -316,15 +316,16 @@ Action auth requirements.
 
 ## `glossary`
 
-Generate a starter domain glossary (`CONTEXT.md`) for a codebase and print it to
-stdout. The glossary captures the repository's own domain vocabulary so that
-`review`, `elaborate`, and `propose` phrase their output in the repo's terms
-once it is committed as `CONTEXT.md`. See
+Generate a starter domain glossary (`GLOSSARY.md`) for a codebase and print it
+to stdout. The glossary captures the repository's own domain vocabulary so that
+`review`, `elaborate`, `propose`, and the planwerk skills phrase their output in
+the repo's terms once it is committed as `GLOSSARY.md` (a committed `CONTEXT.md`
+or `.planwerk/context.md` is read as well). See
 [Provide a domain glossary](/how-to/provide-a-domain-glossary) for the schema and
 how the commands read it back.
 
 ```bash
-planwerk-agent glossary owner/repo > CONTEXT.md
+planwerk-agent glossary owner/repo > GLOSSARY.md
 planwerk-agent glossary --local
 ```
 

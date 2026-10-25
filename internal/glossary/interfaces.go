@@ -5,13 +5,13 @@ import "github.com/planwerk/planwerk-agent/internal/github"
 // GenerateContext is the input to the glossary-generation prompt. The
 // vocabulary is extracted from the checkout itself, so the only field the
 // prompt needs is RepoName, which seeds the "# {Context Name}" heading hint so
-// the generated CONTEXT.md is named after the repository rather than a generic
+// the generated glossary is named after the repository rather than a generic
 // placeholder.
 type GenerateContext struct {
 	RepoName string
 }
 
-// GlossaryGenerator produces a CONTEXT.md for a cloned repo via Claude. The
+// GlossaryGenerator produces a glossary for a cloned repo via Claude. The
 // glossary package depends on this interface rather than the concrete claude
 // package so tests can inject a deterministic fake. It returns the generated
 // Markdown, the resolved model id, and an error.

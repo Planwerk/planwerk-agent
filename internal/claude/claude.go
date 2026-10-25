@@ -27,7 +27,7 @@ type ReviewContext struct {
 	StaleDocs   []doccheck.StaleDocHint   // documentation files that may need updating
 	NewFeatures []doccheck.NewFeatureHint // new files that may need documentation
 	TodoContent string                    // content of TODOS.md if present
-	Glossary    string                    // repo domain glossary from CONTEXT.md / .planwerk/context.md; empty when absent
+	Glossary    string                    // repo domain glossary (glossary.LoadBody); empty when absent
 	Memory      patterns.MemoryCatalog    // wiki project memory: the pages and the directory a session reads them from; zero when absent
 	Brain       search.Surface            // the search of the local mirror the session may run; zero means no search
 }

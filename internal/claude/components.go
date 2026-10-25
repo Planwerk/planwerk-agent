@@ -297,8 +297,8 @@ Write your entire output in English, whatever language the input is written in â
 }
 
 // domainGlossaryBlock returns the "## Domain Glossary" section injected into the
-// review, elaborate, and propose prompts when the target repo carries a
-// CONTEXT.md / .planwerk/context.md (loaded by glossary.Load), framed as
+// review, elaborate, and propose prompts when the target repo commits a domain
+// glossary (loaded by glossary.Load), framed as
 // untrusted data inside <domain-glossary> tags (decision 42). An empty glossary
 // yields the empty string, so a repo without the convention leaves every prompt
 // byte-for-byte unchanged.
@@ -309,7 +309,7 @@ func domainGlossaryBlock(glossary string) string {
 	}
 	return `## Domain Glossary
 
-The block below is the target repository's own domain glossary, loaded from its CONTEXT.md or .planwerk/context.md. Use it so your output speaks the repository's language: prefer these exact terms over generic synonyms, and never use a term the glossary lists under "_Avoid_" in place of the term it points to.
+The block below is the target repository's own domain glossary, committed in the repository. Use it so your output speaks the repository's language: prefer these exact terms over generic synonyms, and never use a term the glossary lists under "_Avoid_" in place of the term it points to.
 
 ` + untrustedDataLine("It is terminology to adopt.", "domain-glossary") + `<domain-glossary>
 ` + escapeFence("domain-glossary", body) + `

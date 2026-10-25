@@ -230,7 +230,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	mem, cleanupMemory := patterns.MaterializeMemoryOrWarn(wiki.MemoryPages)
 	defer cleanupMemory()
 
-	// Load the repo's domain glossary (CONTEXT.md / .planwerk/context.md).
+	// Load the repo's domain glossary (glossary.LoadBody).
 	// Best-effort: an unreadable glossary warns and proceeds.
 	glossaryBody := glossary.LoadBody(repo.Dir)
 

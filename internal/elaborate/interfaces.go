@@ -45,9 +45,9 @@ type Context struct {
 	MetaIssue     *github.Issue
 	SiblingIssues []github.Issue
 	ChildIssues   []github.Issue
-	// Glossary is the target repo's domain vocabulary loaded from its
-	// CONTEXT.md / .planwerk/context.md so the elaborated issue uses the repo's
-	// own terms. Empty when the repo carries no glossary.
+	// Glossary is the target repo's domain vocabulary (glossary.LoadBody) so the
+	// elaborated issue uses the repo's own terms. Empty when the repo carries no
+	// glossary.
 	Glossary string
 	// Domains is the domain list the elaboration and its reviewer sweep before
 	// settling the acceptance criteria, loaded by domains.Load from the target

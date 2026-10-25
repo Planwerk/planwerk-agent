@@ -77,6 +77,33 @@ func TestLoad(t *testing.T) {
 			wantBody:   strings.TrimSpace(rootBody),
 		},
 		{
+			name: "root GLOSSARY.md is loaded and trimmed",
+			setup: func(t *testing.T, dir string) {
+				writeFile(t, dir, "GLOSSARY.md", "\n\n"+rootBody+"\n\n")
+			},
+			wantSource: "GLOSSARY.md",
+			wantBody:   strings.TrimSpace(rootBody),
+		},
+		{
+			name: "root GLOSSARY.md wins over CONTEXT.md and .planwerk/context.md",
+			setup: func(t *testing.T, dir string) {
+				writeFile(t, dir, "GLOSSARY.md", "# Glossary\n")
+				writeFile(t, dir, "CONTEXT.md", "# Root\n")
+				writeFile(t, dir, filepath.Join(".planwerk", "context.md"), "# Secondary\n")
+			},
+			wantSource: "GLOSSARY.md",
+			wantBody:   "# Glossary",
+		},
+		{
+			name: "an empty GLOSSARY.md falls through to CONTEXT.md",
+			setup: func(t *testing.T, dir string) {
+				writeFile(t, dir, "GLOSSARY.md", "  \n")
+				writeFile(t, dir, "CONTEXT.md", "# Root\n")
+			},
+			wantSource: "CONTEXT.md",
+			wantBody:   "# Root",
+		},
+		{
 			name: "secondary .planwerk/context.md is loaded when root is absent",
 			setup: func(t *testing.T, dir string) {
 				writeFile(t, dir, filepath.Join(".planwerk", "context.md"), rootBody)
@@ -172,6 +199,17 @@ func TestLoadBodyFromRef(t *testing.T) {
 		got := LoadBodyFromRef(dir, base)
 		if got != strings.TrimSpace(baseBody) {
 			t.Errorf("LoadBodyFromRef = %q, want the base body %q", got, strings.TrimSpace(baseBody))
+		}
+	})
+
+	t.Run("prefers GLOSSARY.md over CONTEXT.md at the ref", func(t *testing.T) {
+		dir := initGitRepo(t)
+		writeFile(t, dir, "GLOSSARY.md", baseBody+"\n")
+		writeFile(t, dir, "CONTEXT.md", "# Older\n")
+		base := commitAll(t, dir, "add both glossaries")
+
+		if got := LoadBodyFromRef(dir, base); got != strings.TrimSpace(baseBody) {
+			t.Errorf("LoadBodyFromRef = %q, want the GLOSSARY.md body %q", got, strings.TrimSpace(baseBody))
 		}
 	})
 

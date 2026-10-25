@@ -216,10 +216,10 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// request must not be able to rewrite the checklist it is reviewed against.
 	checklistContent := checklist.LoadFromRef(pr.Dir, "origin/"+pr.BaseBranch)
 
-	// 5b. Load the repo's domain glossary (CONTEXT.md / .planwerk/context.md)
+	// 5b. Load the repo's domain glossary (glossary.LoadBodyFromRef)
 	// from the base ref, NOT pr.Dir (the PR head checkout). Reading origin/<base>
 	// keeps the glossary maintainer-controlled: a PR cannot inject or rewrite a
-	// CONTEXT.md to smuggle instructions into the reviewer's prompt. Best-effort,
+	// glossary to smuggle instructions into the reviewer's prompt. Best-effort,
 	// mirroring the out-of-scope load: an unreadable glossary proceeds rather
 	// than failing the review.
 	glossaryBody := glossary.LoadBodyFromRef(pr.Dir, "origin/"+pr.BaseBranch)

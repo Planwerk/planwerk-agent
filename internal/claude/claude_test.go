@@ -619,7 +619,7 @@ func TestSanitizeGlossary(t *testing.T) {
 		},
 		{
 			name:  "chatty preamble before the top-level heading is dropped",
-			input: "Here is the CONTEXT.md for the repo:\n\n" + doc,
+			input: "Here is the GLOSSARY.md for the repo:\n\n" + doc,
 			want:  doc,
 		},
 		{

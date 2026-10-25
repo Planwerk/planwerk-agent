@@ -200,7 +200,7 @@ These apply the Severity Ladder to dependencies, and the ladder governs where th
 	sb.WriteString(communicationStyleBlock())
 	sb.WriteString(outputLanguageBlock())
 
-	// Domain glossary (no-op when the repo carries no CONTEXT.md)
+	// Domain glossary (no-op when the repo commits none)
 	sb.WriteString(domainGlossaryBlock(ctx.Glossary))
 
 	// Project memory from the repo's GitHub Wiki (no-op when the wiki carries

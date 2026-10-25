@@ -113,9 +113,9 @@ func TestGlossaryRun_EmptyGenerationIsRejectedAndNotCached(t *testing.T) {
 	var out bytes.Buffer
 	err := runner.Run(&out, baseGlossaryOpts())
 	if err == nil {
-		t.Fatal("expected error when generation produces no CONTEXT.md document")
+		t.Fatal("expected error when generation produces no glossary document")
 	}
-	if !strings.Contains(err.Error(), "no CONTEXT.md document") {
+	if !strings.Contains(err.Error(), "no glossary document") {
 		t.Errorf("error should explain the empty generation, got: %v", err)
 	}
 	if out.Len() != 0 {

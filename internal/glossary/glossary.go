@@ -18,8 +18,8 @@ import (
 	"time"
 )
 
-// maxGlossaryBytes caps the glossary file read into a prompt. The CONTEXT.md
-// schema is meant for a tight list of domain terms; reading an
+// maxGlossaryBytes caps the glossary file read into a prompt. The glossary
+// format is meant for a tight list of domain terms; reading an
 // attacker-supplied multi-gigabyte (or never-ending, e.g. a FIFO) file would
 // OOM the process or balloon the prompt and its API cost. An oversized file is
 // treated as absent.
@@ -30,34 +30,38 @@ const maxGlossaryBytes = 64 * 1024
 const gitShowTimeout = 30 * time.Second
 
 // glossaryLocations lists the repo-relative paths probed for a domain
-// glossary, in precedence order. The root CONTEXT.md wins over
-// .planwerk/context.md: the root file is the canonical, discoverable location
-// the upstream CONTEXT-FORMAT convention documents, while .planwerk/context.md
-// stays supported for repos that prefer to keep planwerk config out of the
-// root. This is deliberately the opposite of the .planwerk/-first order the
-// other overrides use, a nod to the external schema's convention.
+// glossary, in precedence order. The root GLOSSARY.md comes first: it is the
+// name the upstream convention (mattpocock/skills) reads and writes since it
+// renamed its CONTEXT.md, so a repo set up by those skills today carries it.
+// The root CONTEXT.md, that convention's earlier name and this tool's
+// canonical one until the rename, stays supported for the repos that committed
+// it. .planwerk/context.md comes last, for repos that prefer to keep planwerk
+// config out of the root. The root files winning is deliberately the opposite
+// of the .planwerk/-first order the other overrides use, a nod to the external
+// convention.
 var glossaryLocations = []string{
+	"GLOSSARY.md",
 	"CONTEXT.md",
 	filepath.Join(".planwerk", "context.md"),
 }
 
-// Glossary is a target repo's domain vocabulary loaded from its CONTEXT.md or
-// .planwerk/context.md. Body is the trimmed file contents fed to the prompt;
+// Glossary is a target repo's domain vocabulary loaded from the first of
+// glossaryLocations it commits. Body is the trimmed file contents fed to the prompt;
 // Source is the repo-relative path it was loaded from, for logging.
 type Glossary struct {
 	Body   string
 	Source string
 }
 
-// Load resolves the repo's domain glossary from the first of CONTEXT.md or
-// .planwerk/context.md that exists, root file first (see glossaryLocations).
-// A repo carrying neither is not an error: Load returns (nil, nil) so the
-// caller runs unchanged, mirroring patterns.RepoPatternDir and
-// propose.LoadOutOfScope. An empty or whitespace-only file is treated as
-// absent. A file larger than maxGlossaryBytes is skipped with a warning. A
-// committed symlink at either path is not followed — os.Lstat reports the link
-// itself, so a redirect outside the repo (e.g. CONTEXT.md -> /etc/passwd) is
-// treated as "no file" rather than read into the prompt.
+// Load resolves the repo's domain glossary from the first of
+// glossaryLocations that exists. A repo carrying none of them is not an
+// error: Load returns (nil, nil) so the caller runs unchanged, mirroring
+// patterns.RepoPatternDir and propose.LoadOutOfScope. An empty or
+// whitespace-only file is treated as absent. A file larger than
+// maxGlossaryBytes is skipped with a warning. A committed symlink at any of
+// the paths is not followed — os.Lstat reports the link itself, so a redirect
+// outside the repo (e.g. GLOSSARY.md -> /etc/passwd) is treated as "no file"
+// rather than read into the prompt.
 func Load(repoDir string) (*Glossary, error) {
 	for _, rel := range glossaryLocations {
 		path := filepath.Join(repoDir, rel)
@@ -110,11 +114,11 @@ func LoadBody(repoDir string) string {
 
 // LoadBodyFromRef returns the domain-glossary body committed at the given git
 // ref (e.g. "origin/main") within repoDir, or "" when that ref carries no
-// glossary. It mirrors LoadBody's precedence (CONTEXT.md, then
-// .planwerk/context.md) and its best-effort posture, but reads each file from a
-// maintainer-controlled ref via `git show` rather than from the working tree —
-// so reviewing a pull request uses the base branch's glossary, never one the PR
-// itself introduces or rewrites in its head checkout.
+// glossary. It mirrors LoadBody's precedence (glossaryLocations) and its
+// best-effort posture, but reads each file from a maintainer-controlled ref via
+// `git show` rather than from the working tree — so reviewing a pull request
+// uses the base branch's glossary, never one the PR itself introduces or
+// rewrites in its head checkout.
 //
 // `git show ref:path` emits a committed symlink's target text instead of
 // following it, so the symlink guard Load relies on is unnecessary here. A blob
