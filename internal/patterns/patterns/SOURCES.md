@@ -281,9 +281,23 @@ Lower-tier sources retained where no S/A-tier replacement covers the specific an
 | A | USE Method (Brendan Gregg) | https://www.brendangregg.com/usemethod.html | Utilization, Saturation, Errors — resource-level signal model |
 | A | Grafana Loki Documentation | https://grafana.com/docs/loki/latest/ | Log aggregation, labels-first model paired with Prometheus |
 
+### GitHub Actions
+| Tier | Source | URL | Description |
+|------|--------|-----|-------------|
+| S | Secure use reference (Security hardening for GitHub Actions) | https://docs.github.com/en/actions/reference/security/secure-use | GitHub's hardening guide: secrets, script injection, untrusted checkout, token permissions, third-party actions, self-hosted runners; the former security-hardening page redirects here |
+| S | Script injections | https://docs.github.com/en/actions/concepts/security/script-injections | Untrusted context values run as code in workflows and composite actions |
+| S | Workflow syntax: `permissions` | https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#permissions | `GITHUB_TOKEN` scopes; unlisted scopes become `none`; fork pull requests get read-only tokens |
+| S | Events that trigger workflows | https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows | `pull_request_target`, `workflow_run`, `issue_comment` semantics; no secrets for fork `pull_request` runs |
+| S | Dependency caching reference | https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching | Cache scopes, read-only cache for low-trust triggers, `cache-mode` |
+| A | GitHub Security Lab — Keeping your GitHub Actions and workflows secure Part 1: Preventing pwn requests | https://securitylab.github.com/resources/github-actions-preventing-pwn-requests/ | `pull_request_target` with a checkout of the PR head; the `pull_request` + `workflow_run` split |
+| A | GitHub Security Lab — Keeping your GitHub Actions and workflows secure Part 2: Untrusted input | https://securitylab.github.com/resources/github-actions-untrusted-input/ | The untrusted `github.event` fields; intermediate environment variables |
+| A | GitHub Security Lab — Keeping your GitHub Actions and workflows secure Part 3: How to trust your building blocks | https://securitylab.github.com/resources/github-actions-building-blocks/ | Full-SHA pinning; read-only default token |
+| A | GitHub Security Lab — Keeping your GitHub Actions and workflows secure Part 4: New vulnerability patterns and mitigation strategies | https://securitylab.github.com/resources/github-actions-new-patterns-and-mitigations/ | Jan 2025: TOCTOU on label and approval gates, cache and artifact poisoning, `workflow_run`, IssueOps |
+| A | OpenSSF Scorecard: Checks | https://github.com/ossf/scorecard/blob/main/docs/checks.md | Dangerous-Workflow and Token-Permissions definitions |
+
 ## Security
 
-Cross-cutting application-security sources. Language- and platform-specific entries (Go, Kubernetes, Helm) live in their respective sections.
+Cross-cutting application-security sources. Language- and platform-specific entries (Go, Kubernetes, Helm, GitHub Actions) live in their respective sections.
 
 | Tier | Source | URL | Description |
 |------|--------|-----|-------------|

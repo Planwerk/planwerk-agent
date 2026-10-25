@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -125,6 +126,46 @@ func TestScopeCatalog_WritesTheWholeCatalog(t *testing.T) {
 	cleanup()
 	if _, err := os.Stat(cat.Dir); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("after cleanup, stat %s = %v, want not exist", cat.Dir, err)
+	}
+}
+
+// TestScopeCatalog_WorkflowChangeInlinesTheWorkflowPattern pins the shipped
+// GitHub Actions Workflow Security pattern to the files it governs: a change
+// to a workflow or to a composite action's action.yml carries its body,
+// matched to that file, and a Go-only change lists it in the index.
+func TestScopeCatalog_WorkflowChangeInlinesTheWorkflowPattern(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	pats, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{}, []string{"go", "github-actions"})
+	if err != nil {
+		t.Fatalf("loading the embedded catalog: %v", err)
+	}
+	const name = "GitHub Actions Workflow Security"
+	isWorkflowPattern := func(p patterns.Pattern) bool { return p.Name == name }
+	if !slices.ContainsFunc(pats, isWorkflowPattern) {
+		t.Fatalf("the embedded catalog has no %q for the github-actions tag", name)
+	}
+	dir := t.TempDir()
+	for _, tc := range []struct {
+		name    string
+		files   []string
+		matched []string // the files the pattern's block names; nil: indexed
+	}{
+		{"a workflow change", []string{".github/workflows/ci.yml", "main.go"}, []string{".github/workflows/ci.yml"}},
+		{"a composite action change", []string{"action.yml"}, []string{"action.yml"}},
+		{"a Go-only change", []string{"main.go"}, nil},
+	} {
+		scope, _, cleanup := scopeCatalog(true, dir, tc.files, pats)
+		cleanup()
+		if scope == nil {
+			t.Fatalf("%s: scope = nil, want the split", tc.name)
+		}
+		inline := slices.ContainsFunc(scope.Inline, isWorkflowPattern)
+		if want := tc.matched != nil; inline != want {
+			t.Errorf("%s: %q inline = %v, want %v", tc.name, name, inline, want)
+		}
+		if got := scope.Files[name]; !slices.Equal(got, tc.matched) {
+			t.Errorf("%s: Files[%q] = %v, want %v", tc.name, name, got, tc.matched)
+		}
 	}
 }
 

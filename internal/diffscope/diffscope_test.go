@@ -136,6 +136,11 @@ func TestClassify(t *testing.T) {
 			changed: []string{"app.go", "testdata/vendor/x.go"},
 		},
 		{
+			name:    "workflows, action metadata and other YAML stay",
+			files:   map[string]string{".github/workflows/ci.yml": "# CI for every pull request.\non: pull_request\n"},
+			changed: []string{"app.go", ".github/workflows/ci.yml", "action.yml", "deploy/values.yaml"},
+		},
+		{
 			name:    "a test directory keeps its lock file",
 			changed: []string{"app.go", "tests/fixture/go.sum"},
 		},

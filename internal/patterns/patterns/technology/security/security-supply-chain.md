@@ -8,7 +8,7 @@
 
 ## What to check
 
-This pattern is the cross-cutting supply-chain baseline; container-image-specific concerns live in `Docker Image Supply Chain` and the Kubernetes-specific concerns live in `Kubernetes Supply Chain Security`.
+This pattern is the cross-cutting supply-chain baseline; container-image-specific concerns live in `Docker Image Supply Chain`, the Kubernetes-specific concerns in `Kubernetes Supply Chain Security`, and the workflow-level GitHub Actions concerns (script injection, privileged triggers, token scope, runners) in `GitHub Actions Workflow Security`.
 
 ### Source integrity
 1. The repository protects the trunk branch (required reviews, no force-push, no direct push by bots without approval) and ideally requires signed commits — git commits are not authenticated by default
