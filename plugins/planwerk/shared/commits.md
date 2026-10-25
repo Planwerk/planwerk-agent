@@ -41,6 +41,18 @@ case or relaxing an assertion; pinning a dependency backwards to dodge a
 security finding; adding a retry, a sleep, or a longer timeout to a test, or
 re-running the job, to turn a result green; `--no-verify` on a commit.
 
+## A red you forced counts once a diff shows the edit
+
+A test that fails before a fix proves the fix only when it failed for the
+reason you think. When you force that red by editing code or a fixture
+(reverting the fix, planting the bug, breaking an input), `diff` the edited
+file against a pristine copy, such as `git diff -- <file>` or a copy saved
+before the edit, and find your change in it before you trust the red. An edit
+can report success and change nothing: a `sed` address that never matched, a
+write into the wrong copy of a file, a build output that gets regenerated. A
+`grep` for the new text proves presence, not change, since the text may have
+been there already.
+
 ## References in a commit message
 
 A commit message resolves its references against the repository the commit lands

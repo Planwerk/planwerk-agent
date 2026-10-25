@@ -134,6 +134,11 @@ not `implement/issue-<N>-` on purpose: `planwerk-agent implement` resumes
 branches with that prefix, and a diagnosis branch is not a half-finished
 implementation.
 
+The regression test is watched failing before the fix and passing after it.
+When the skill has to force that red by editing code or a fixture, it first
+diffs the edited file against a pristine copy, because an edit can report
+success and change nothing, and a test that never went red verified nothing.
+
 The regression test and the fix land together as one commit. Its body names the
 root cause, each ruled-out hypothesis, and the loop command, and its trailers
 are `Assisted-by` above `Signed-off-by`. After you have seen the result and the
