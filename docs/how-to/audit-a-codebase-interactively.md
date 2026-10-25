@@ -24,7 +24,7 @@ supervision.
 |---|---|---|
 | Runs in | Your session, in your checkout | A throw-away clone, or `--local` |
 | Patterns | The checkout's `.planwerk/review_patterns/`, `--patterns` directories, and the catalog's principles as the skill carries them | The embedded catalog, the wiki, the repository, and every `--patterns` source |
-| A finding | Quoted from the file and checked against what would refute it before it reaches you | Reported as the session found it, with its confidence |
+| A finding | Quoted from the file and checked against what would refute it before it reaches you | Reported as the session found it, then anchored on the line it quotes and checked by the snippet gate and, at BLOCKING and CRITICAL, by a claim verifier; one that fails is demoted, never dropped |
 | The calls only you can make | Asked, with a recommendation | Reported at `needs-discussion` or `architectural` |
 | Product | One issue per work package, filed after you say yes | A report; `--create-issues` walks the finding groups |
 | Dead and duplicated code | Handed to [`/planwerk:cleanup`](/how-to/plan-a-codebase-cleanup) | Reported like any other finding |

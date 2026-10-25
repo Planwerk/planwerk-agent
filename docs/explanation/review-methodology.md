@@ -309,3 +309,32 @@ then, so the question a later round answers is whether the fixes hold — not th
 one the first round already asked.
 See [Review-and-Fix Pass](/how-to/implement-an-issue) for the operator's view and
 [design decision 72](/explanation/design-decisions) for the rationale.
+
+## Applied to an audit
+
+The `audit` command runs the line anchor, the snippet gate and claim
+verification on its findings too, in the same order and before the cache
+write, so a cache hit serves the gated findings. An audit has no diff, so each
+stage works from the checkout as it stands:
+
+- Each quote is anchored to its line in the finding's own file. There is no
+  relocation to another file, because an audit has no bounded set of files to
+  search.
+- The snippet gate's ground truth is the whole checkout: the files the
+  findings cite first, then every readable text file outside `.git`, `vendor`
+  and `node_modules`, up to the 32 MiB budget. The cited files go first so
+  neither the budget nor a skipped directory leaves one out. Only regular
+  files of at most 4 MiB are read: a symlink is never followed, so a committed
+  link out of the checkout, or to a device such as `/dev/zero`, neither feeds
+  nor stalls the gate. A quote found nowhere in it is demoted.
+- A finding that cites no line, quotes nothing and names a path the checkout
+  lacks is the missing-file finding the audit prompt allows. The missing path
+  is its evidence, so it passes. Any other finding that quotes nothing is
+  demoted, as in a review.
+- Claim verification is unchanged: every BLOCKING and CRITICAL finding goes
+  to the verifier in one read-only session.
+
+The `/planwerk:audit` skill verifies its own findings instead
+([design decision 121](/explanation/design-decisions)), and
+[design decision 140](/explanation/design-decisions) records why the command
+gates its findings.

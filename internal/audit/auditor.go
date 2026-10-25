@@ -13,6 +13,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/capture"
 	"github.com/planwerk/planwerk-agent/internal/detect"
 	"github.com/planwerk/planwerk-agent/internal/github"
+	"github.com/planwerk/planwerk-agent/internal/hygiene"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
 	"github.com/planwerk/planwerk-agent/internal/search"
@@ -92,6 +93,10 @@ type AuditContext struct {
 type Runner struct {
 	Claude ClaudeAuditor
 	GitHub GitHubClient
+	// VerifyClaims re-checks each BLOCKING/CRITICAL audit finding's claim
+	// against the checkout. Set by NewRunner to the Claude client's verifier;
+	// nil skips the claim gate and records nothing for it (decision 140).
+	VerifyClaims hygiene.VerifyClaimsFn
 	// Capturer runs the read-only capture pass after the audit: it proposes new
 	// wiki review patterns from the audit findings, writing nothing. Set by
 	// NewRunner; nil (or a wiki that did not resolve, or opts.NoCapture) leaves
@@ -123,28 +128,31 @@ type Runner struct {
 type resolveWikiFn func(owner, name string, wopts patterns.WikiOptions, ropts patterns.RemoteOptions) patterns.ResolvedWiki
 
 // NewRunner returns a Runner wired with the production GitHub (git/gh CLI)
-// backend, the given Claude audit function, and the proposer that backs the
-// read-only capture pass (the Claude client). A nil proposer leaves capture
-// disabled.
-func NewRunner(auditFn AuditFn, proposer capture.Proposer) *Runner {
+// backend, the given Claude audit function, the claim verifier the claim gate
+// runs, and the proposer that backs the read-only capture pass (the Claude
+// client). A nil verifyClaimsFn skips the claim gate; a nil proposer leaves
+// capture disabled.
+func NewRunner(auditFn AuditFn, verifyClaimsFn hygiene.VerifyClaimsFn, proposer capture.Proposer) *Runner {
 	return &Runner{
-		Claude:   auditFnAdapter{fn: auditFn},
-		GitHub:   github.Client{},
-		Capturer: proposer,
+		Claude:       auditFnAdapter{fn: auditFn},
+		GitHub:       github.Client{},
+		VerifyClaims: verifyClaimsFn,
+		Capturer:     proposer,
 	}
 }
 
 // Run is a package-level convenience that delegates to
-// NewRunner(auditFn, proposer).Run. Callers that need to inject alternative
-// Claude or GitHub backends should construct a Runner directly.
-func Run(w io.Writer, opts Options, auditFn AuditFn, proposer capture.Proposer) error {
-	return NewRunner(auditFn, proposer).Run(w, opts)
+// NewRunner(auditFn, verifyClaimsFn, proposer).Run. Callers that need to
+// inject alternative Claude or GitHub backends should construct a Runner
+// directly.
+func Run(w io.Writer, opts Options, auditFn AuditFn, verifyClaimsFn hygiene.VerifyClaimsFn, proposer capture.Proposer) error {
+	return NewRunner(auditFn, verifyClaimsFn, proposer).Run(w, opts)
 }
 
 // Run executes the full audit pipeline: resolve HEAD SHA, check cache, and on
-// a miss clone the repo, detect tech, load patterns, run Claude, cache, and
-// render. Cache hits skip the clone entirely so CI loops against the same
-// commit don't pay the clone cost.
+// a miss clone the repo, detect tech, load patterns, run Claude, gate the
+// findings, cache, and render. Cache hits skip the clone entirely so CI loops
+// against the same commit don't pay the clone cost.
 func (r *Runner) Run(w io.Writer, opts Options) error {
 	owner, name, err := github.ParseRepoRef(opts.RepoRef)
 	if err != nil {
@@ -261,6 +269,18 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	result.WikiRepo = wiki.Repo
 	result.WikiCommit = wiki.CommitSHA
 
+	// Finding hygiene, in the review's order and before the cache write, so a
+	// cache hit serves the gated findings and their records. An audit has no
+	// diff: each quote is anchored to its line in the finding's own file, with
+	// no other file to relocate it to, and the snippet gate searches the whole
+	// checkout, since VerifySnippets skips without changed files. The claim
+	// gate then re-checks every BLOCKING/CRITICAL finding (decision 140).
+	hygiene.AnchorFindings(result, repo.Dir, nil)
+	if n := hygiene.VerifySnippetsInCheckout(result, repo.Dir); n > 0 {
+		slog.Info("demoted audit findings failing snippet verification", "count", n)
+	}
+	hygiene.VerifyClaims(result, repo.Dir, r.VerifyClaims)
+
 	if !opts.NoCache && headSHA != "" {
 		if data, err := json.Marshal(result); err == nil {
 			if err := cache.PutRaw(cacheKey, cache.CommandAudit, data); err != nil {
@@ -330,10 +350,10 @@ func (r *Runner) runCapture(w io.Writer, repo *github.Repo, opts Options, result
 
 // applyIssueDedupe filters out findings whose grouped issue-candidate title
 // matches an existing GitHub issue (open or closed) in the target repo. Runs
-// after the cache layer so cached Claude output stays faithful to what Claude
-// returned — issue state changes take effect on every run without invalidating
-// the cache. A lister error logs a warning and skips dedupe rather than
-// failing the run.
+// after the cache layer so the cached, gated audit result is independent of
+// issue state — issue state changes take effect on every run without
+// invalidating the cache. A lister error logs a warning and skips dedupe
+// rather than failing the run.
 func (r *Runner) applyIssueDedupe(result *report.ReviewResult, owner, name string, opts Options) {
 	if opts.NoIssueDedupe || r.GitHub == nil {
 		return

@@ -7,12 +7,14 @@
 // provenance), the file-less dedup fallback, the quote-or-demote snippet gate,
 // and the claim-verification demotion. The review command also runs
 // CheckFileLedger, a record of which changed files the review read rather than
-// a gate, which implement does not run. Keeping these in one leaf package —
-// importing only internal/report and the standard library — lets both commands
-// share one implementation instead of the reporting path owning gates the
-// acting path cannot reach. The import direction claude -> implement means
-// implement can import neither review nor claude, so the shared behavior must
-// live here.
+// a gate, which implement does not run. The audit command runs the line
+// anchor, the snippet gate (VerifySnippetsInCheckout, over the whole checkout)
+// and claim verification on its findings too (decision 140). Keeping these in
+// one leaf package — importing only internal/report and the standard library —
+// lets both commands share one implementation instead of the reporting path
+// owning gates the acting path cannot reach. The import direction claude ->
+// implement means implement can import neither review nor claude, so the
+// shared behavior must live here.
 package hygiene
 
 import (

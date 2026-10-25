@@ -2,6 +2,7 @@ package hygiene
 
 import (
 	"bytes"
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -43,25 +44,69 @@ import (
 // with its SnippetCheck outcome (SnippetCheckPassed on a match, one of the
 // snippetReason* strings on a demotion), and the run-level counts land in
 // result.Gates.Snippet so a run where everything passed is distinguishable from
-// one where the gate never ran.
-//
-// When no changed-file content can be loaded (empty diff, unreadable checkout)
-// the gate is skipped entirely and nothing is demoted or recorded: without
-// ground truth a "not found" result is meaningless and would spuriously bury
-// every finding, and a nil Gates.Snippet keeps that skip visible.
+// one where the gate never ran. When no changed-file content can be loaded
+// (empty diff, unreadable checkout) the gate is skipped and records nothing.
 func VerifySnippets(result *report.ReviewResult, dir string, changedFiles []string) int {
 	if result == nil {
 		return 0
 	}
-	changedHaystack := matchable(loadChangedContent(dir, changedFiles))
-	if changedHaystack == "" {
+	// The whole-checkout fallback is built lazily, the first time a snippet
+	// misses the changed files, so the common path (every snippet quoted from
+	// the diff) never pays to walk the tree.
+	return verifySnippetsIn(result, matchable(loadChangedContent(dir, changedFiles)),
+		func() string { return matchable(loadCheckoutContent(dir)) }, nil)
+}
+
+// VerifySnippetsInCheckout runs the quote-or-demote gate on findings that come
+// from no diff, the audit's: VerifySnippets skips without changed files, so its
+// ground truth here is the whole checkout. The files the findings cite are
+// loaded first and then the rest of the checkout, because loadCheckoutContent
+// stops at maxCheckoutHaystackBytes in lexical walk order and skips vendor/ and
+// node_modules/: a cited file past the budget, or in a skipped tree, must still
+// be searched. A quote found nowhere in it is demoted, and RecoveredOutsideDiff
+// is never set. A checkout with no readable text skips the gate and records
+// nothing. Both loads read only regular files of at most maxHaystackFileBytes
+// (loadCitedContent, loadCheckoutContent): the checkout is untrusted and the
+// haystack is built on every audit, so a committed symlink to /dev/zero, to a
+// pipe, or to a file outside the checkout must neither stall the gate nor
+// verify a quote.
+//
+// A finding that quotes nothing, cites no line, and names a path the checkout
+// lacks is the missing-file finding the audit prompt allows (no CHANGELOG.md,
+// say). The missing path is its evidence, so it is stamped
+// snippetVerifiedMissingFile, counts as examined, and keeps its confidence. A
+// path that would leave the checkout is not evidence; that finding is demoted
+// like any other that quotes nothing. It returns the number of findings
+// demoted, and does nothing for a nil result (decision 140).
+func VerifySnippetsInCheckout(result *report.ReviewResult, dir string) int {
+	if result == nil {
+		return 0
+	}
+	haystack := matchable(loadCitedContent(dir, citedFiles(result.Findings)) + loadCheckoutContent(dir))
+	return verifySnippetsIn(result, haystack, nil, func(f report.Finding) bool { return citesMissingPath(dir, f) })
+}
+
+// verifySnippetsIn is the gate's loop over result's findings, shared by
+// VerifySnippets and VerifySnippetsInCheckout. haystack is the primary ground
+// truth, already in matchable form. When it is empty the gate is skipped
+// entirely and nothing is demoted or recorded: without ground truth a "not
+// found" result is meaningless and would spuriously bury every finding, and a
+// nil Gates.Snippet keeps that skip visible.
+//
+// fallback, when non-nil, returns a second haystack in matchable form. It is
+// called at most once, the first time a snippet misses haystack, and a snippet
+// it holds is stamped snippetPassedOutsideDiff and counted as
+// RecoveredOutsideDiff. A nil fallback demotes a miss straight away.
+// missingFile, when non-nil, reports whether a finding that quotes nothing
+// names a path the checkout lacks; such a finding is stamped
+// snippetVerifiedMissingFile rather than demoted. It writes result.Gates.Snippet
+// and returns the number of findings demoted.
+func verifySnippetsIn(result *report.ReviewResult, haystack string, fallback func() string, missingFile func(report.Finding) bool) int {
+	if haystack == "" {
 		return 0 // no ground truth — do not demote blindly; record nothing
 	}
-	// checkoutHaystack is the whole-checkout fallback, built lazily the first time
-	// a snippet misses the changed files so the common path (every snippet quoted
-	// from the diff) never pays to walk the tree.
-	var checkoutHaystack string
-	var checkoutTried bool
+	var fallbackHaystack string
+	var fallbackTried bool
 	examined, demoted, recovered := 0, 0, 0
 	for i := range result.Findings {
 		f := &result.Findings[i]
@@ -75,6 +120,12 @@ func VerifySnippets(result *report.ReviewResult, dir string, changedFiles []stri
 		// prose — still matches the on-disk source.
 		needle := matchableSnippet(f.CodeSnippet)
 		if needle == "" {
+			if missingFile != nil && missingFile(*f) {
+				// The absent path is the finding's evidence; there is no code
+				// to quote.
+				f.SnippetCheck = snippetVerifiedMissingFile
+				continue
+			}
 			// A finding with no quoted evidence cannot be confirmed.
 			f.Confidence = report.ConfidenceUncertain
 			f.SnippetCheck = snippetReasonNoQuote
@@ -86,18 +137,19 @@ func VerifySnippets(result *report.ReviewResult, dir string, changedFiles []stri
 		// reconstructed one, or quoted non-adjacent lines together — as long as one
 		// real distinctive line survives. See located().
 		lines := distinctiveSnippetLines(f.CodeSnippet)
-		if located(changedHaystack, needle, lines) {
+		if located(haystack, needle, lines) {
 			f.SnippetCheck = report.SnippetCheckPassed
 			continue
 		}
-		// Absent from the diff — fall back to the whole checkout so a real
-		// cross-file finding (its evidence in a file the change references but did
-		// not modify) is verified rather than demoted as hallucinated.
-		if !checkoutTried {
-			checkoutHaystack = matchable(loadCheckoutContent(dir))
-			checkoutTried = true
+		// Absent from the primary ground truth: for a review, fall back to the
+		// whole checkout so a real cross-file finding (its evidence in a file the
+		// change references but did not modify) is verified rather than demoted
+		// as hallucinated.
+		if fallback != nil && !fallbackTried {
+			fallbackHaystack = fallback()
+			fallbackTried = true
 		}
-		if checkoutHaystack != "" && located(checkoutHaystack, needle, lines) {
+		if fallbackHaystack != "" && located(fallbackHaystack, needle, lines) {
 			f.SnippetCheck = snippetPassedOutsideDiff
 			recovered++
 			continue
@@ -134,6 +186,38 @@ func SnippetInFile(dir, file, snippet string) bool {
 	return haystack != "" && (strings.Contains(haystack, needle) || strings.Contains(haystack, matchable(snippet)))
 }
 
+// citedFiles returns the distinct non-empty File of findings, in order of
+// first appearance. The paths are the model's: loadCitedContent rejects one
+// that would leave the checkout and skips one it may not read.
+func citedFiles(findings []report.Finding) []string {
+	var files []string
+	seen := make(map[string]bool)
+	for _, f := range findings {
+		if f.File == "" || seen[f.File] {
+			continue
+		}
+		seen[f.File] = true
+		files = append(files, f.File)
+	}
+	return files
+}
+
+// citesMissingPath reports whether f is the audit's missing-file finding: it
+// cites no line and names a path, inside the checkout under dir, that does not
+// exist there. A path repoPath rejects is not evidence of anything, and any
+// other Lstat error leaves the path's absence unproven, so both report false.
+func citesMissingPath(dir string, f report.Finding) bool {
+	if f.Line != 0 || f.File == "" {
+		return false
+	}
+	path, ok := repoPath(dir, f.File)
+	if !ok {
+		return false
+	}
+	_, err := os.Lstat(path)
+	return errors.Is(err, fs.ErrNotExist)
+}
+
 // snippetReason* are the SnippetCheck strings the gate stamps on a demoted
 // finding, kept as constants so the writer, the renderer, and the tests share
 // one spelling. snippetReasonNoQuote covers a finding whose quoted evidence is
@@ -151,6 +235,11 @@ const (
 // demoted; the distinct wording (vs report.SnippetCheckPassed) keeps it visible
 // that the evidence sits outside the diff.
 const snippetPassedOutsideDiff = "verified: quoted code found outside the changed files"
+
+// snippetVerifiedMissingFile is stamped on an audit finding that quotes no
+// code, cites no line, and names a path the checkout lacks: the absence is the
+// finding, so it is verified, not demoted (VerifySnippetsInCheckout).
+const snippetVerifiedMissingFile = "verified: the cited path does not exist in the checkout"
 
 // ensureGates returns result.Gates, allocating it on first use so each gate can
 // record into a shared object without the caller pre-initializing it.
@@ -175,6 +264,34 @@ func loadChangedContent(dir string, changedFiles []string) string {
 		}
 		data, err := os.ReadFile(path)
 		if err != nil {
+			continue
+		}
+		sb.Write(data)
+		sb.WriteByte('\n')
+	}
+	return sb.String()
+}
+
+// loadCitedContent reads and concatenates the files the findings cite, joined
+// like loadChangedContent's, but under the guard the anchor reads with
+// (anchorer.load), because the paths are the model's and the checkout is
+// unreviewed: only a regular file inside the checkout is read. A path repoPath
+// rejects, a symlink (which could lead out of the checkout, or to a device or
+// pipe whose read never ends), any other non-regular file, a file over
+// maxHaystackFileBytes, and binary data are all skipped.
+func loadCitedContent(dir string, cited []string) string {
+	var sb strings.Builder
+	for _, rel := range cited {
+		path, ok := repoPath(dir, rel)
+		if !ok {
+			continue
+		}
+		info, err := os.Lstat(path)
+		if err != nil || !info.Mode().IsRegular() || info.Size() > maxHaystackFileBytes {
+			continue
+		}
+		data, err := os.ReadFile(path)
+		if err != nil || looksBinary(data) {
 			continue
 		}
 		sb.Write(data)
@@ -213,7 +330,9 @@ const (
 // hallucinated — the cross-file class the changed-files haystack cannot see. It
 // walks the checkout once, skipping the version-control and dependency trees
 // that never hold reviewed source and any file that looks binary or is outsized,
-// and stops once maxCheckoutHaystackBytes is reached. Unreadable entries are
+// and stops once maxCheckoutHaystackBytes is reached. It reads regular files
+// only: a symlink is never followed, so the walk stays inside the checkout and
+// a committed link to a device or pipe cannot stall it. Unreadable entries are
 // skipped; the walk never aborts on an I/O error.
 func loadCheckoutContent(dir string) string {
 	var sb strings.Builder
@@ -225,6 +344,12 @@ func loadCheckoutContent(dir string) string {
 			if skipHaystackDir(d.Name()) {
 				return filepath.SkipDir
 			}
+			return nil
+		}
+		if !d.Type().IsRegular() {
+			// A symlink, pipe, socket or device: d.Info() would report the link
+			// itself, and os.ReadFile would follow it out of the checkout or
+			// block on a read that never ends.
 			return nil
 		}
 		if sb.Len() >= maxCheckoutHaystackBytes {
