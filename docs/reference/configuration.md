@@ -105,5 +105,5 @@ be able to stop the search.
 All keys are optional. Flags beyond `--min-severity`, `--max-patterns`,
 `--max-findings`, `--format`, and `--patterns` (the high-churn ones) remain
 CLI-only to keep the config surface small; boolean toggles like
-`--post-review`, `--inline`, `--thorough`, and `--no-cache` stay on the command
-line where they belong.
+`--post-review`, `--inline`, `--resolve-outdated`, `--thorough`, and
+`--no-cache` stay on the command line where they belong.

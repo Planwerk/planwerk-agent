@@ -884,9 +884,11 @@ func TestRun_SkipSuppressionDropsUnchangedRepeats(t *testing.T) {
 
 // TestRun_InlineSkipSuppressionLeavesRepeatsUncommented is the --inline twin of
 // TestRun_SkipSuppressionDropsUnchangedRepeats: the prior data block comes from
-// an inline review's body, the shape the GitHub Action posts (decision 128). A
-// repeat on an unchanged file gets no inline comment, while the posted data
-// block still carries the full set for the next re-review.
+// an inline review's body, the shape the GitHub Action posted before the
+// summary moved into the PR comment (decision 128). A repeat on an unchanged
+// file gets no inline comment. The summary comment carries the suppression
+// note and the full set for the next re-review, and the review carries
+// neither (decision 133).
 func TestRun_InlineSkipSuppressionLeavesRepeatsUncommented(t *testing.T) {
 	restore := cache.SetDir(t.TempDir())
 	t.Cleanup(restore)
@@ -922,23 +924,21 @@ func TestRun_InlineSkipSuppressionLeavesRepeatsUncommented(t *testing.T) {
 		}
 	}
 
-	// What the run posts, wherever it posts it: the review body and its inline
-	// comments, or a PR comment.
 	var (
-		posted   strings.Builder
-		comments []github.ReviewComment
+		summary, reviewBody string
+		comments            []github.ReviewComment
 	)
 	gh := &githubtest.Fake{
 		FetchAndCheckoutFn:   func(ref string) (*github.PR, error) { return pr, nil },
 		FetchReviewCommentFn: func(owner, repo string, number int) (string, bool, error) { return priorReview, true, nil },
 		FetchDiffFn:          func(owner, repo string, number int) (string, error) { return diff.String(), nil },
 		SubmitPRReviewFn: func(owner, repo string, number int, commitSHA, body string, cs []github.ReviewComment) (string, error) {
-			posted.WriteString(body)
+			reviewBody = body
 			comments = append(comments, cs...)
 			return "https://github.com/acme/widgets/pull/41#pullrequestreview-1", nil
 		},
 		PostPRCommentFn: func(owner, repo string, number int, body string) (string, error) {
-			posted.WriteString(body)
+			summary = body
 			return "https://github.com/acme/widgets/pull/41#issuecomment-1", nil
 		},
 	}
@@ -962,12 +962,18 @@ func TestRun_InlineSkipSuppressionLeavesRepeatsUncommented(t *testing.T) {
 	if commented["changed.go"] != 1 || commented["new.go"] != 1 {
 		t.Errorf("inline comments per file = %v, want one each on changed.go and new.go", commented)
 	}
-	if !strings.Contains(posted.String(), "suppressed as previously reported") {
-		t.Error("the posted review must carry the suppression note")
+	if n := gh.Count("PostPRComment"); n != 1 {
+		t.Errorf("PostPRComment calls = %d, want the summary once", n)
 	}
-	_, findings, ok := report.ParseDataBlock(posted.String())
+	if !strings.Contains(summary, "suppressed as previously reported") {
+		t.Error("the summary comment must carry the suppression note")
+	}
+	if strings.Contains(reviewBody, "suppressed as previously reported") || strings.Contains(reviewBody, "planwerk-agent-data") {
+		t.Errorf("the review body must carry neither the note nor a data block:\n%s", reviewBody)
+	}
+	_, findings, ok := report.ParseDataBlock(summary)
 	if !ok {
-		t.Fatalf("the posted review carries no data block:\n%s", posted.String())
+		t.Fatalf("the summary comment carries no data block:\n%s", summary)
 	}
 	var titles []string
 	for _, f := range findings {
@@ -1529,17 +1535,25 @@ func TestRun_CaptureNoCommentWithoutPostReview(t *testing.T) {
 	}
 }
 
+// TestRun_CapturePostsCommentWithPostReview: with --post-review the capture
+// proposals get a comment of their own through AddPRComment. Through
+// PostPRComment they replaced the summary comment and its data block, so the
+// next re-review found no findings to compare against (decision 133).
 func TestRun_CapturePostsCommentWithPostReview(t *testing.T) {
 	restore := cache.SetDir(t.TempDir())
 	t.Cleanup(restore)
 
 	pr := fakePR(t, "acme", "widgets", 53, "sha-comment")
-	var bodies []string
+	var summaries, captures []string
 	gh := &githubtest.Fake{
 		FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil },
 		PostPRCommentFn: func(owner, repo string, number int, body string) (string, error) {
-			bodies = append(bodies, body)
-			return "url", nil
+			summaries = append(summaries, body)
+			return "https://github.com/acme/widgets/pull/53#issuecomment-1", nil
+		},
+		AddPRCommentFn: func(owner, repo string, number int, body string) (string, error) {
+			captures = append(captures, body)
+			return "https://github.com/acme/widgets/pull/53#issuecomment-2", nil
 		},
 	}
 	cl := reviewFindingClaude()
@@ -1553,19 +1567,101 @@ func TestRun_CapturePostsCommentWithPostReview(t *testing.T) {
 	if err := runner.Run(&out, opts); err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
-	// With --post-review the review comment and the capture comment are both
-	// posted; assert one of them carries the capture proposal and its footer.
-	var captureComment string
-	for _, b := range bodies {
-		if strings.Contains(b, "review_patterns/escape-untrusted-fences.md") {
-			captureComment = b
+	if len(captures) != 1 || !strings.Contains(captures[0], "review_patterns/escape-untrusted-fences.md") {
+		t.Fatalf("AddPRComment bodies = %q, want the capture proposal once", captures)
+	}
+	if !strings.Contains(captures[0], "Capture proposals generated by") {
+		t.Errorf("capture comment missing its attribution footer:\n%s", captures[0])
+	}
+	if len(summaries) != 1 {
+		t.Fatalf("PostPRComment bodies = %d, want the summary once", len(summaries))
+	}
+	if strings.Contains(summaries[0], "review_patterns/escape-untrusted-fences.md") {
+		t.Errorf("the summary comment carries the capture proposal:\n%s", summaries[0])
+	}
+	if _, findings, ok := report.ParseDataBlock(summaries[0]); !ok || len(findings) != 1 {
+		t.Errorf("summary data block = %+v (ok=%v), want the review finding", findings, ok)
+	}
+}
+
+// TestRun_InlineSummaryFeedsTheNextRunsSuppression: the data block an --inline
+// run writes into the summary comment is the one the next run reads back
+// (decision 133). Run 2 reads run 1's summary as FetchReviewComment would find
+// it, and leaves the finding repeated on an unchanged file out of its inline
+// comments and lists it in the suppression note.
+func TestRun_InlineSummaryFeedsTheNextRunsSuppression(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	dir, firstSHA := initGitRepoTwoCommits(t)
+	repeat := report.Finding{ID: "W-001", Title: "Nit A", File: "unchanged.go", Line: 5, Severity: report.SeverityWarning, Confidence: report.ConfidenceVerified, Problem: "p", Action: "a"}
+	fresh := report.Finding{ID: "W-002", Title: "Bug B", File: "changed.go", Line: 9, Severity: report.SeverityWarning, Confidence: report.ConfidenceVerified, Problem: "p", Action: "a"}
+	claudeMock := &configurableClaude{
+		review: func(dir string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
+			return &report.ReviewResult{Summary: "S", Findings: []report.Finding{repeat, fresh}}, nil
+		}}
+
+	var diff strings.Builder
+	for _, file := range []string{"unchanged.go", "changed.go"} {
+		diff.WriteString("diff --git a/" + file + " b/" + file + "\n--- /dev/null\n+++ b/" + file + "\n@@ -0,0 +1,10 @@\n")
+		for range 10 {
+			diff.WriteString("+line\n")
 		}
 	}
-	if captureComment == "" {
-		t.Fatalf("no posted comment carried the capture proposal; bodies=%v", bodies)
+
+	run := func(headSHA, prior string) (summary string, commented map[string]int, stdout string) {
+		t.Helper()
+		// Local keeps Run's deferred Cleanup from removing the checkout both
+		// runs share.
+		pr := &github.PR{
+			Owner: "acme", Repo: "widgets", Number: 42, Title: "PR",
+			BaseBranch: "main", HeadBranch: "feature", HeadSHA: headSHA, Dir: dir, Local: true,
+		}
+		commented = map[string]int{}
+		gh := &githubtest.Fake{
+			FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil },
+			FetchReviewCommentFn: func(owner, repo string, number int) (string, bool, error) {
+				return prior, prior != "", nil
+			},
+			FetchDiffFn: func(owner, repo string, number int) (string, error) { return diff.String(), nil },
+			PostPRCommentFn: func(owner, repo string, number int, body string) (string, error) {
+				summary = body
+				return "https://github.com/acme/widgets/pull/42#issuecomment-1", nil
+			},
+			SubmitPRReviewFn: func(owner, repo string, number int, commitSHA, body string, cs []github.ReviewComment) (string, error) {
+				for _, c := range cs {
+					commented[c.Path]++
+				}
+				return "https://github.com/acme/widgets/pull/42#pullrequestreview-1", nil
+			},
+		}
+		opts := baseOpts()
+		opts.PostReview = true
+		opts.InlineReview = true
+		opts.NoCache = true
+		var out bytes.Buffer
+		if err := (&Runner{Claude: claudeMock, GitHub: gh}).Run(&out, opts); err != nil {
+			t.Fatalf("Run returned error: %v", err)
+		}
+		return summary, commented, out.String()
 	}
-	if !strings.Contains(captureComment, "Capture proposals generated by") {
-		t.Errorf("capture comment missing its attribution footer:\n%s", captureComment)
+
+	// Run 1 reviews firstSHA; only changed.go changes after it.
+	first, commented, _ := run(firstSHA, "")
+	if commented["unchanged.go"] != 1 || commented["changed.go"] != 1 {
+		t.Fatalf("run 1 inline comments per file = %v, want one each", commented)
+	}
+	sha, findings, ok := report.ParseDataBlock(first)
+	if !ok || sha != firstSHA || len(findings) != 2 {
+		t.Fatalf("run 1 summary data block = %q, %d findings (ok=%v); want %s and both findings", sha, len(findings), ok, firstSHA)
+	}
+
+	_, commented, stdout := run("headsha", first)
+	if commented["unchanged.go"] != 0 || commented["changed.go"] != 1 {
+		t.Errorf("run 2 inline comments per file = %v, want none on unchanged.go and one on changed.go", commented)
+	}
+	if !strings.Contains(stdout, "suppressed as previously reported") || !strings.Contains(stdout, "- Nit A (unchanged.go)") {
+		t.Errorf("run 2 does not list Nit A in the suppression note:\n%s", stdout)
 	}
 }
 

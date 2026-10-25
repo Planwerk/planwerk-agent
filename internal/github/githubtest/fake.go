@@ -126,6 +126,10 @@ type Fake struct {
 	ReplyErr   error
 	ResolveErr error
 
+	// Viewer is what ViewerLogin returns; ViewerErr fails it.
+	Viewer    string
+	ViewerErr error
+
 	// MergeBaseSHA is what MergeBase returns.
 	MergeBaseSHA string
 
@@ -766,6 +770,15 @@ func (f *Fake) ResolveReviewThread(threadID string) error {
 	}
 	f.setErr(i, err)
 	return err
+}
+
+func (f *Fake) ViewerLogin() (string, error) {
+	i := f.record("ViewerLogin")
+	f.setErr(i, f.ViewerErr)
+	if f.ViewerErr != nil {
+		return "", f.ViewerErr
+	}
+	return f.Viewer, nil
 }
 
 func (f *Fake) PRMergeability(owner, name string, number int) (*github.Mergeability, error) {

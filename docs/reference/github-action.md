@@ -14,14 +14,15 @@ and outputs; for a working workflow, see
 | `min-severity` | Minimum severity to report (`info`, `warning`, `critical`, `blocking`). Empty falls through to `.planwerk/config.yaml` `review.min-severity`, then to the compiled-in `info` | *(empty)* |
 | `format` | Output format written to the action log (`markdown`, `json`); posting always uses markdown. Empty falls through to `.planwerk/config.yaml` `review.format`, then to the compiled-in `markdown` | *(empty)* |
 | `max-findings` | Cap on findings returned (`0` disables cap) | `0` |
-| `post-inline` | Post inline review comments and a summary via the GitHub Review API. A finding below `min-severity` or in the summary's Unverified section gets no inline comment | `true` |
+| `post-inline` | Post findings as inline review comments and keep one summary comment up to date. A finding below `min-severity` or in the summary's Unverified section gets no inline comment | `true` |
+| `resolve-outdated` | Resolve the inline review threads earlier runs opened once GitHub marks them outdated, unless someone replied or a current finding still covers their lines (passes `--resolve-outdated`; needs `post-inline` and a token with `contents: write`). See [Resolving outdated threads](/reference/output-format#resolving-outdated-threads) | `false` |
 | `thorough` | Run the additional adversarial review pass | `false` |
 | `structure-model` | Model for the mechanical JSON-structuring passes, independent of the main review model (env: `PLANWERK_STRUCTURE_MODEL`). Empty keeps the compiled-in default (`sonnet`). | `""` |
 | `structure-effort` | Reasoning effort for the JSON-structuring passes (`low`, `medium`, `high`, `xhigh`, `max`; env: `PLANWERK_STRUCTURE_EFFORT`). Empty keeps the compiled-in default (`xhigh`). | `""` |
 | `local` | Review the repository `actions/checkout` already placed in the runner workspace (passes `--local`) instead of cloning it a second time. See [Local mode in CI](/how-to/use-the-github-action#local-mode-in-ci). | `false` |
 | `version` | planwerk-agent release tag to install (`latest` resolves to the most recent release) | `latest` |
 | `binary-path` | Path to a pre-built binary; skips the download step (used by the in-repo smoke test) | `""` |
-| `github-token` | Token used to fetch PR data and post review comments (`pull-requests: write`) | <code v-pre>${{ github.token }}</code> |
+| `github-token` | Token used to fetch PR data and post review comments (`pull-requests: write`; `contents: write` with `resolve-outdated`). Where another workflow copies pull request text into comments under the default token, pass a token of an account nothing else posts as; see [Outputs](#outputs) | <code v-pre>${{ github.token }}</code> |
 | `anthropic-api-key` | Anthropic API key consumed by Claude Code in non-interactive mode (**required**) | — |
 
 ## Outputs
@@ -35,8 +36,25 @@ and outputs; for a working workflow, see
 | `info-count` | Number of `INFO` findings |
 
 Counts are extracted by parsing the `<!-- planwerk-agent-data ... -->` JSON
-block embedded in the posted PR review/comment. The block carries every finding
-of the run, including those a re-review leaves out of the report and the inline
+block embedded in the planwerk-agent summary comment. A review carries one only
+when it predates the summary moving into that comment, or when the comment
+could not be posted; the newer of the two wins, by the comment's last edit and
+the review's submission time. Only a post that opens with the report's
+`# Review:` heading is read, and only one by the `github-token`'s own account,
+by a maintainer (`OWNER`, `MEMBER`, `COLLABORATOR`), or, when `github-token` is
+the job's own token, by `github-actions[bot]`. So a block another account
+pastes into a comment cannot set the counts. Under the job's own token,
+though, every workflow and every comment-posting action in the repository
+posts as `github-actions[bot]`. A comment one of them makes by copying a pull
+request body verbatim, when that body opens with the heading and ends in a
+forged block, can be read as the tool's own, by the counts and by the next
+re-review ([Re-reviews](/reference/output-format#re-reviews)). In a repository
+that runs such a workflow, pass `github-token` a token of an account nothing
+else posts as, such as a machine user's. The step reads the token's account
+from the GraphQL `viewer`. When GitHub refuses that lookup, as it may for a
+GitHub App's token, the step logs a note and only the other rules apply, so
+the summary a custom app's token posted is not counted. The block carries
+every finding of the run, including those a re-review leaves out of the report and the inline
 comments because an earlier review already reported them on an unchanged file
 or a resolved thread dismissed them (see
 [Re-reviews](/reference/output-format#re-reviews)), so a gate on

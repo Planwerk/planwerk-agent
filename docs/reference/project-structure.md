@@ -72,7 +72,7 @@ planwerk-agent/
 │   │   └── doccheck_test.go
 │   ├── github/
 │   │   ├── client.go           # Client: the one value every command's GitHub interface is satisfied by
-│   │   ├── comments.go         # Post/update PR comments (gh CLI)
+│   │   ├── comments.go         # Post/update the summary PR comment, resolve review threads (gh CLI)
 │   │   ├── continuation.go     # Split an oversized issue body into continuation comments, and merge them back
 │   │   ├── comments_test.go
 │   │   ├── diff.go             # Fetch and parse PR diffs (DiffMap)
@@ -85,7 +85,7 @@ planwerk-agent/
 │   │   ├── pr_test.go
 │   │   ├── repo.go             # Clone repo (gh CLI), fetch default-branch HEAD SHA (gh API)
 │   │   ├── repo_test.go
-│   │   ├── review.go           # Submit PR reviews via GitHub Review API
+│   │   ├── review.go           # Submit PR reviews via GitHub Review API; list review threads
 │   │   ├── review_test.go
 │   │   └── githubtest/         # The shared test fake for Client (imported by tests only)
 │   ├── hygiene/                # Shared finding hygiene (review + implement self-review)
@@ -140,6 +140,7 @@ planwerk-agent/
 │   ├── review/
 │   │   ├── reviewer.go         # Orchestration: PR → Claude → Report
 │   │   ├── reviewer_test.go
+│   │   ├── outdated.go         # Resolve the tool's own outdated inline review threads (--resolve-outdated)
 │   │   ├── merge.go            # Merge results from multiple review passes
 │   │   └── merge_test.go
 │   ├── search/                 # brain search: the full-text index of a mirror directory

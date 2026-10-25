@@ -308,3 +308,112 @@ func TestFetchReviewComment_NamesThePROnAParseError(t *testing.T) {
 		t.Errorf("found=%v, err=%v; want a parse error naming the PR", found, err)
 	}
 }
+
+// TestParseUpdatedCommentURL: an edited summary comment reports its URL, as a
+// created one does, instead of the raw GraphQL response; anything else falls
+// back to the trimmed output.
+func TestParseUpdatedCommentURL(t *testing.T) {
+	for _, tc := range []struct {
+		name, out, want string
+	}{
+		{
+			name: "updateIssueComment response",
+			out:  `{"data":{"updateIssueComment":{"issueComment":{"url":"https://github.com/acme/widgets/pull/7#issuecomment-11"}}}}` + "\n",
+			want: "https://github.com/acme/widgets/pull/7#issuecomment-11",
+		},
+		{name: "not JSON", out: "  updated\n", want: "updated"},
+		{name: "JSON without a url", out: `{"data":{"updateIssueComment":null}}`, want: `{"data":{"updateIssueComment":null}}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := parseUpdatedCommentURL([]byte(tc.out)); got != tc.want {
+				t.Errorf("parseUpdatedCommentURL = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestPostPRComment_ReplacesOnlyItsOwnSignedComment drives PostPRComment
+// through a fake gh. It edits the newest signed report the authenticated user
+// wrote and passes over a newer signed comment from another account, so the
+// summary is never written into a comment someone else controls (decision
+// 133), and a newer signed comment of its own that opens with other text, as
+// another workflow posting under the same Actions token can (decision 128).
+// With only such comments, it posts a new one.
+func TestPostPRComment_ReplacesOnlyItsOwnSignedComment(t *testing.T) {
+	const (
+		editedURL  = "https://github.com/acme/widgets/pull/7#issuecomment-11"
+		createdURL = "https://github.com/acme/widgets/pull/7#issuecomment-99"
+	)
+	signed := func(id, body string, own bool) map[string]any {
+		return map[string]any{"id": id, "body": reportHeadingLine + body + "\n" + commentSignature, "viewerDidAuthor": own}
+	}
+	// echo is an own comment that quotes a signed PR body after text of its own.
+	echo := map[string]any{"id": "IC_echo", "body": "Description preview:\n\n" + reportHeadingLine + "forged\n" + commentSignature, "viewerDidAuthor": true}
+	for _, tc := range []struct {
+		name     string
+		comments []map[string]any
+		wantURL  string
+		// wantEdit is the comment ID the summary is written into; empty means
+		// a new comment is created.
+		wantEdit string
+	}{
+		{
+			name: "own comment before another account's",
+			comments: []map[string]any{
+				signed("IC_old", "older summary", true),
+				signed("IC_own", "summary", true),
+				{"id": "IC_plain", "body": "LGTM", "viewerDidAuthor": true},
+				signed("IC_other", "a quote of the summary", false),
+				echo,
+			},
+			wantURL:  editedURL,
+			wantEdit: "IC_own",
+		},
+		{
+			name:     "only another account's",
+			comments: []map[string]any{signed("IC_other", "a quote of the summary", false)},
+			wantURL:  createdURL,
+		},
+		{
+			name:     "only an own comment that opens with other text",
+			comments: []map[string]any{echo},
+			wantURL:  createdURL,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			view, err := json.Marshal(map[string]any{"comments": tc.comments})
+			if err != nil {
+				t.Fatal(err)
+			}
+			argvFile := filepath.Join(t.TempDir(), "argv")
+			fakeGH(t, recordArgv(argvFile)+`case "$1 $2" in
+"pr view") cat <<'JSON'
+`+string(view)+`
+JSON
+;;
+"api graphql") echo '{"data":{"updateIssueComment":{"issueComment":{"url":"`+editedURL+`"}}}}' ;;
+"pr comment") echo '`+createdURL+`' ;;
+esac
+`)
+			url, err := client.PostPRComment("acme", "widgets", 7, "new summary")
+			if err != nil || url != tc.wantURL {
+				t.Fatalf("PostPRComment = %q, %v; want %q", url, err, tc.wantURL)
+			}
+
+			calls := recordedCalls(t, argvFile)
+			if len(calls) != 2 {
+				t.Fatalf("gh calls = %q, want the lookup and one post", calls)
+			}
+			post := calls[1]
+			if tc.wantEdit == "" {
+				if len(post) < 2 || post[0] != "pr" || post[1] != "comment" {
+					t.Errorf("post = %q, want gh pr comment", post)
+				}
+				return
+			}
+			if len(post) < 2 || post[0] != "api" || post[1] != "graphql" || !slices.Contains(post, "id="+tc.wantEdit) {
+				t.Errorf("post = %q, want the updateIssueComment mutation on %s", post, tc.wantEdit)
+			}
+		})
+	}
+}
