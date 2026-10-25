@@ -154,8 +154,8 @@ to supply them:
 - **What the other option invalidates** — the sibling sentences, checklist
   items, or assumed shape that stop being true.
 
-Ask every **Broken** item inline, numbered, at the end of your message, exactly
-as `interaction.md` prescribes for questions beyond the repository: state what
+Ask every **Broken** item inline, numbered, at the end of your message, as an
+open question (`interaction.md`, Open questions are asked inline): state what
 the spike actually found, and ask what should replace the disproven premise.
 Never offer options you invented to patch over a false premise.
 

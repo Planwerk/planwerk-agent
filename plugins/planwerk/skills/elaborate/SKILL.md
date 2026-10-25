@@ -203,7 +203,7 @@ phase to move without moving the plan. Two rules keep it honest:
 - **A score only rises when the plan changed.** Before you raise it, name the
   gap you closed and the line you changed to close it. A re-score with no edit
   behind it is invalid — the previous score stands.
-- **A round that finds nothing is a round that did not look.** If a re-score
+- **A re-score that finds nothing is a re-score that did not look.** If one
   surfaces no gap at all while the score is still below 8, you are validating
   your draft rather than doubting it. Go back to the seven checks and work one
   concrete failing example per check, or stop and report what you could not

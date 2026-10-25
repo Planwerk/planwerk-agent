@@ -274,9 +274,7 @@ Sort every surviving lead into exactly one bucket:
 Every **Author's call** item is genuinely theirs. Before you ask, run the
 tracker search of Phase 5 for each item: one the tracker already holds is
 reported as tracked, not asked. Then ask each remaining decision as its own
-question, in rounds, under `interaction.md`, One decision, one question — items
-one answer settles are one decision; two choices whose answers could differ
-never share a question.
+question, in rounds, under `interaction.md`, One decision, one question.
 
 For an exploitable vulnerability or an exposed secret, the recommended option
 is the repository's `SECURITY.md` route or a GitHub security advisory rather
