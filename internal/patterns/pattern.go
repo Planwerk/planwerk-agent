@@ -37,6 +37,9 @@ type Pattern struct {
 
 // Parse parses a pattern from its markdown content.
 // The format uses a simple frontmatter-like header with key-value pairs.
+// Every line from the first "## " heading on is kept verbatim as Body, so an
+// optional section such as "## Not a finding" reaches FormatForPrompt and the
+// catalog files unchanged (decision 144).
 func Parse(content string) (Pattern, error) {
 	scanner := bufio.NewScanner(strings.NewReader(content))
 	var p Pattern

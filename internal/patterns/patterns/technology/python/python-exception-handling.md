@@ -15,6 +15,10 @@
 4. `except Exception` is almost always too broad — catch the specific exceptions you can handle
 5. Use context managers (`with`) for resource cleanup instead of try/finally when possible
 
+## Not a finding
+
+- `except Exception` whose handler logs the exception and re-raises it with a bare `raise`: the error still reaches the caller, and the Python tutorial names this as the most common way to handle `Exception`. An `except Exception` handler that logs and carries on is still a finding.
+
 ## Why it matters
 
 Bare exception handlers mask bugs by catching `KeyboardInterrupt`, `SystemExit`, and programming errors like `AttributeError`. Silent swallowing makes debugging nearly impossible.

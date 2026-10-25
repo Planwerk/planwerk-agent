@@ -201,7 +201,7 @@ func FormatAllForPrompt(patterns []Pattern) string {
 //
 // It exists so a narrowly scoped pass can render its own area's patterns in full
 // and the rest as an index (see FormatIndexForPrompt) instead of carrying the
-// whole catalog: for a Go repo the full catalog is ~123 KB of prompt, and a
+// whole catalog: for a Go repo the full catalog is ~129 KB of prompt, and a
 // domain specialist needs a fraction of it in full. An empty areas list puts
 // everything in out, which is the "no scope declared" case and leaves the caller
 // free to fall back to the full catalog.

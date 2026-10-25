@@ -84,6 +84,14 @@ To reduce false positives, the following are explicitly suppressed:
 - Minor style preferences
 - Code that was not changed in the diff (only added or modified lines are reviewed)
 
+A review pattern can also name the cases its own checks do not cover, in a
+`## Not a finding` section beside them (see the
+[pattern format](/reference/review-patterns#pattern-format)). Those entries are
+part of the pattern's body, so every pass that carries the pattern reads them,
+the adversarial pass and the domain specialists included. The list above
+reaches only the review and the audit. Like the list, each entry names a kind
+of case, never a level of confidence.
+
 ## Test & Documentation Verification
 
 After the checklist passes, the review explicitly verifies:

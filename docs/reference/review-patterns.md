@@ -244,8 +244,8 @@ the `implement` run's plan, implement, simplify-apply, and review-apply
 sessions, `fix`, `address`, the three `rebase` sessions (conflict, analysis,
 apply), `elaborate`, `propose`, `gap-analysis`, and `review-prepared`. The
 index has one line per pattern: its file name, name, review area, severity, and
-detection hint. For a Go repository it is about 13 KB, where the bodies of its
-47 patterns are about 123 KB. The prompt tells the session to read a pattern's
+detection hint. For a Go repository it is about 13 KB, where its 47 patterns
+in full are about 129 KB. The prompt tells the session to read a pattern's
 file in full before it works in an area the pattern's hint covers. The
 `**Detection-Hint**` line is optional, so the line of a pattern without one
 tells the session to read that file before it starts.
@@ -283,6 +283,10 @@ warning and the sessions carry the bodies.
 
 <Detailed description of what to check>
 
+## Not a finding
+
+- <A case that looks like a violation and is not one, where to look instead, and when it is a finding after all>
+
 ## Why it matters
 
 <Explanation of why this pattern is important>
@@ -294,6 +298,19 @@ warning and the sessions carry the bodies.
 - **What was missed**: <What was overlooked>
 - **Fix**: <How it was fixed>
 ```
+
+`## Not a finding` is optional and sits directly after `## What to check`, beside
+the checks it qualifies. It is a bulleted list. Each entry names a concrete case
+that looks like a violation of the checks above and is not one (a generated
+file, a rule the repository's CI linter reports on a line the change adds, a
+construct the module's language version does not offer yet), where to look
+instead, and when it is a finding after all. An entry names a kind of case,
+never a level of confidence. Every line from the first `## ` heading on is the
+pattern's body, so the entries reach the finder prompts with the rest of the
+body, and the sessions that carry the index read them in the pattern's file. A
+test holds the embedded catalog's sections to that place and form. For how to
+write one, see
+[Write your own review patterns](/how-to/write-review-patterns#say-what-is-not-a-finding).
 
 ### Applies-When and Applies-To-Paths
 

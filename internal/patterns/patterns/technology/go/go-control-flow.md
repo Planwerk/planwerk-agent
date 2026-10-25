@@ -16,6 +16,10 @@
 5. Switch cases should use comma-separated values (`case ' ', '?', '&':`) instead of fall-through or repeated cases
 6. Labeled `break` should be used to exit a surrounding `for` loop from within a `switch` — a bare `break` only exits the `switch`
 
+## Not a finding
+
+- On a line the change adds, an `else` after `return` when `.golangci.yml` enables revive's `indent-error-flow`, and an `else` after `break`, `continue`, or `goto` when it enables revive's `superfluous-else`, provided a CI workflow runs golangci-lint on pull requests: that job reports it on this change. Read both files first; without them, or with the matching rule off, it is a finding.
+
 ## Why it matters
 
 Effective Go explicitly recommends eliminating unnecessary `else` blocks and using early returns so that the "happy path" flows straight down the function. Deeply nested conditionals and long if-else chains reduce readability and increase cognitive load during review.

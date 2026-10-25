@@ -16,6 +16,10 @@
 5. Tabs for indentation (gofmt default) — spaces only within lines when alignment is needed
 6. No hard line length limit — but long lines should be wrapped with an extra tab for continuation indent
 
+## Not a finding
+
+- Formatting and doc comments in a file with a line matching `^// Code generated .* DO NOT EDIT\.$` before its package clause (the `go generate` convention): the generator writes them, so review its input instead (the `.proto` file, the input a `//go:generate` line names, the template). A hand edit to such a file with no change to that input is a finding: the next generation erases it.
+
 ## Why it matters
 
 `gofmt` eliminates all formatting debates and ensures consistent code across the Go ecosystem. Doc comments become the official package documentation via `go doc` and pkg.go.dev. Missing or malformed doc comments degrade API discoverability.

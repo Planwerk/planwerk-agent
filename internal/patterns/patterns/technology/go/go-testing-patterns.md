@@ -17,6 +17,10 @@
 6. Loop variable capture: a parallel subtest (`t.Parallel()`) in a table-driven loop needs the loop variable copied (`tc := tc`) when the module's `go` directive is below `go 1.22` or absent, where every subtest otherwise observes the last iteration's value, and in any version when the loop assigns to a `tc` declared outside it (`for _, tc = range`); from `go 1.22` a loop that declares `tc` (`for _, tc := range`) gets a copy per iteration, so it is correct without the copy
 7. Prefer `testing.T.Context()` (Go 1.24+) or explicit context passing over `context.Background()` inside tests so cancellation propagates
 
+## Not a finding
+
+- A suggestion to replace `context.Background()` with `t.Context()` in a module whose `go` directive is below `go 1.24`: `testing.T.Context` arrived in Go 1.24, so the module cannot call it. A `context.Background()` whose work the test never cancels, where a `context.WithCancel` plus `t.Cleanup(cancel)` would let cancellation propagate, is still a finding.
+
 ## Why it matters
 
 Table-driven tests with subtests are the idiomatic Go testing structure and unlock `-run TestFoo/specific_case` for targeted debugging, per-subtest pass/fail reporting, and safe parallelism. Missing `t.Helper()` sends developers to the wrong source line during failures. Missing `t.Parallel()` leaves CI time on the table for large test suites. These conventions compound: a well-structured test suite is easier to extend, and mistakes in the pattern propagate across the codebase.

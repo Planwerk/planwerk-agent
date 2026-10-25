@@ -15,6 +15,12 @@
 4. Deferred functions execute in LIFO order — this matters when cleanup order is significant (e.g., unlock before close)
 5. Ignoring errors from deferred `Close()` can mask write errors on buffered I/O — use named return values to capture deferred errors when writing files
 
+## Not a finding
+
+- A resource the function returns to its caller: the caller owns its `Close`, so look for the missing one there. A resource the function drops on an error path before it returns is still its own to close.
+- `r.Body` in an `http.Handler`: the server closes the request body, and the handler need not (`net/http`, `Request.Body`). The body of a response an `http.Client` returns is the caller's to close, and a missing `Close` there is still a finding.
+- A `defer` inside a function literal the loop calls once per iteration (`for ... { func() { f := open(); defer f.Close() }() }`): it runs when that call returns, which is the extraction check 2 asks for.
+
 ## Why it matters
 
 Defer guarantees cleanup regardless of which return path is taken, preventing resource leaks. Misplaced or missing defers are a leading cause of leaked file handles, database connections, and mutex deadlocks in Go services.

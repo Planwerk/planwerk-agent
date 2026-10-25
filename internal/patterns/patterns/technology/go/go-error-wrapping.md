@@ -14,6 +14,10 @@
 3. Use `%w` (not `%v`) to preserve the error chain for `errors.Is`/`errors.As`
 4. Avoid `errors.New()` when wrapping an existing error — use `fmt.Errorf` with `%w`
 
+## Not a finding
+
+- On a line the change adds, an error string that ends with punctuation when `.golangci.yml` enables revive's `error-strings` or staticcheck's `ST1005`, and one that starts with a capital letter when it enables `ST1005`, provided a CI workflow runs golangci-lint on pull requests: that job reports it on this change. Revive's `error-strings` reports the capital only when the revive settings lower `confidence` to 0.6 or below; golangci-lint's default is 0.8. Read both files first; without them, or with the matching rule off, it is a finding.
+
 ## Why it matters
 
 Without context wrapping, error messages in logs become "file not found" instead of
