@@ -697,8 +697,8 @@ func TestRun_ThoroughMergesAdversarialFindings(t *testing.T) {
 	if !strings.Contains(body, "Adversarial-only") {
 		t.Error("merged output missing adversarial-only finding")
 	}
-	if !strings.Contains(body, "adversarial review pass") {
-		t.Error("merged summary should mention adversarial pass")
+	if !strings.Contains(body, "**Passes**: ran "+claude.PassLabelAdversarial+"\n") {
+		t.Errorf("the Summary should list the adversarial pass as ran:\n%s", body)
 	}
 }
 
@@ -745,8 +745,13 @@ func TestRun_SpecialistsFanOutAndMerge(t *testing.T) {
 	if !strings.Contains(body, "SQL injection") {
 		t.Error("merged output missing specialist-only finding")
 	}
-	if !strings.Contains(body, "specialist pass") {
-		t.Error("merged summary should mention specialist passes")
+	// Every specialist ran: an empty changed-file set fails the gate open.
+	labels := make([]string, len(claude.Specialists))
+	for i, sp := range claude.Specialists {
+		labels[i] = sp.PassLabel()
+	}
+	if !strings.Contains(body, "**Passes**: ran "+strings.Join(labels, ", ")+"\n") {
+		t.Errorf("the Summary should list every specialist as ran:\n%s", body)
 	}
 	if !strings.Contains(body, "Confirmed by") {
 		t.Error("a finding flagged by review + a specialist should be cross-pass confirmed")
@@ -1317,9 +1322,9 @@ func TestRun_CacheHitWritesNoMemoryDirectory(t *testing.T) {
 }
 
 func TestRun_AdversarialErrorDoesNotFailRun(t *testing.T) {
-	// Secondary passes (adversarial, coverage, compliance) log warnings on
-	// failure but must not abort the review — the primary result is still
-	// valid and should be rendered.
+	// Secondary passes (adversarial, coverage, compliance) must not abort the
+	// review on failure — the primary result is still valid and is rendered,
+	// with the failed pass named in the report.
 	// Not t.Parallel(): cache.SetDir mutates a package-level variable and
 	// would race with concurrent Run tests.
 	restore := cache.SetDir(t.TempDir())
@@ -1344,8 +1349,11 @@ func TestRun_AdversarialErrorDoesNotFailRun(t *testing.T) {
 	if err := runner.Run(&out, opts); err != nil {
 		t.Fatalf("Run must not fail when adversarial pass errors: %v", err)
 	}
-	if !strings.Contains(out.String(), "Primary only") {
-		t.Errorf("expected primary summary when adversarial fails, got:\n%s", out.String())
+	if !strings.Contains(out.String(), "## Summary\n\nPrimary only\n\n") {
+		t.Errorf("expected the primary summary, without a suffix, when adversarial fails, got:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "**Incomplete review**") || !strings.Contains(out.String(), "> - `"+claude.PassLabelAdversarial+"`: adversarial crashed\n") {
+		t.Errorf("expected the alert naming the failed adversarial pass, got:\n%s", out.String())
 	}
 }
 
@@ -1945,42 +1953,201 @@ func TestRun_CachedReviewRejectsUnusablePayloads(t *testing.T) {
 	}
 }
 
-// TestRun_CoverageMapFailureStaysAbsentOnCacheHit is the other half of storing
-// the map: a coverage pass that failed contributed no map, and the hit must
-// render the report the same way — without one — rather than inventing a section.
-func TestRun_CoverageMapFailureStaysAbsentOnCacheHit(t *testing.T) {
+// TestRun_FailedPassIsNotCached proves a run in which a requested pass failed
+// is rendered but not cached. The key names the passes the run asked for, so a
+// cached entry would serve the incomplete review to every later run of the same
+// commit and flags; the next run must retry every pass and cache only once they
+// succeed.
+func TestRun_FailedPassIsNotCached(t *testing.T) {
 	// Not t.Parallel(): cache.SetDir mutates a package-level variable.
 	restore := cache.SetDir(t.TempDir())
 	t.Cleanup(restore)
 
-	claudeMock := &configurableClaude{
+	security := claude.Specialist{Key: "security"}
+	failing := &configurableClaude{
 		review: func(dir string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
 			return &report.ReviewResult{Summary: "Primary"}, nil
+		},
+		adversarial: func(dir, baseBranch string) (*report.ReviewResult, error) {
+			return nil, errors.New("adversarial crashed")
 		},
 		coverage: func(dir, baseBranch string) (*report.CoverageResult, error) {
 			return nil, errors.New("coverage failed")
 		},
+		specialist: func(dir, baseBranch, key, focus string) (*report.ReviewResult, error) {
+			if key == security.Key {
+				return nil, errors.New("security timed out")
+			}
+			return &report.ReviewResult{}, nil
+		},
 	}
-	gh := &githubtest.Fake{
-		FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return fakePR(t, "acme", "widgets", 15, "sha-cov-err"), nil },
-	}
+	pr := fakePR(t, "acme", "widgets", 15, "sha-pass-failed")
+	gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
 	opts := baseOpts()
+	opts.Thorough = true
+	opts.Specialists = true
 	opts.CoverageMap = true
+	key := cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA, "thorough", "specialists", "coverage-map", baseOptsPatternFlag())
 
 	var first bytes.Buffer
-	if err := (&Runner{Claude: claudeMock, GitHub: gh}).Run(&first, opts); err != nil {
+	if err := (&Runner{Claude: failing, GitHub: gh}).Run(&first, opts); err != nil {
 		t.Fatalf("first Run returned error: %v", err)
 	}
-	if strings.Contains(first.String(), "## Test Coverage Map") {
-		t.Fatalf("a failed coverage pass must render no map:\n%s", first.String())
+	body := first.String()
+	if !strings.Contains(body, "**Incomplete review** — 3 requested pass(es) failed") {
+		t.Errorf("first run must render the alert for three failed passes:\n%s", body)
+	}
+	for _, want := range []string{
+		"> - `" + claude.PassLabelAdversarial + "`: adversarial crashed\n",
+		"> - `" + claude.PassLabelCoverage + "`: coverage failed\n",
+		"> - `" + security.PassLabel() + "`: security timed out\n",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("alert missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "## Test Coverage Map") {
+		t.Errorf("a failed coverage pass must render no map:\n%s", body)
+	}
+	if _, ok := readCachedResult(t, key); ok {
+		t.Fatal("a run with a failed pass was cached")
 	}
 
+	succeeding := &configurableClaude{
+		review: func(dir string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
+			return &report.ReviewResult{Summary: "Primary"}, nil
+		},
+		coverage: func(dir, baseBranch string) (*report.CoverageResult, error) {
+			return &report.CoverageResult{Entries: []report.CoverageEntry{{File: "main.go", Function: "Run", Rating: "★★★"}}}, nil
+		},
+	}
 	var second bytes.Buffer
-	if err := (&Runner{Claude: &configurableClaude{}, GitHub: gh}).Run(&second, opts); err != nil {
+	if err := (&Runner{Claude: succeeding, GitHub: gh}).Run(&second, opts); err != nil {
 		t.Fatalf("second Run returned error: %v", err)
 	}
-	if strings.Contains(second.String(), "## Test Coverage Map") {
-		t.Errorf("the cached run rendered a coverage map the original never had:\n%s", second.String())
+	if succeeding.reviewCalls != 1 || succeeding.coverageCalls != 1 {
+		t.Errorf("second run called Review %d and CoverageMap %d times, want 1 each: nothing was cached to serve it", succeeding.reviewCalls, succeeding.coverageCalls)
+	}
+	if strings.Contains(second.String(), "**Incomplete review**") {
+		t.Errorf("the retried run must render no alert:\n%s", second.String())
+	}
+	cached, ok := readCachedResult(t, key)
+	if !ok {
+		t.Fatal("the run whose passes all succeeded was not cached")
+	}
+	if failed := cached.FailedPasses(); len(failed) != 0 {
+		t.Errorf("cached result records failed passes %+v", failed)
+	}
+}
+
+// TestRun_FailedComplianceIsRecordedAndNotCached proves the feature-compliance
+// check, which no flag requests but a detected feature file does, is recorded
+// like the flagged passes: its failure is named in the alert with the first
+// line of its error and on the Passes line, and the run is not cached.
+func TestRun_FailedComplianceIsRecordedAndNotCached(t *testing.T) {
+	// Not t.Parallel(): cache.SetDir mutates a package-level variable.
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	pr := fakePR(t, "acme", "widgets", 17, "sha-compliance-failed")
+	// The branch names the feature, so DetectFeature picks the file.
+	pr.HeadBranch = "feature/CC-0042-thing"
+	featureDir := filepath.Join(pr.Dir, ".planwerk", "features")
+	if err := os.MkdirAll(featureDir, 0o750); err != nil {
+		t.Fatalf("creating %s: %v", featureDir, err)
+	}
+	if err := os.WriteFile(filepath.Join(featureDir, "cc.json"), []byte(`{"feature_id": "CC-0042", "title": "Thing"}`), 0o600); err != nil {
+		t.Fatalf("writing the feature file: %v", err)
+	}
+	claudeMock := &configurableClaude{
+		featureCompliance: func(dir, baseBranch string, feature *planwerk.Feature) (*report.ReviewResult, error) {
+			return nil, errors.New("compliance timed out\nstderr: the session's log")
+		},
+	}
+	gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
+
+	var out bytes.Buffer
+	if err := (&Runner{Claude: claudeMock, GitHub: gh}).Run(&out, baseOpts()); err != nil {
+		t.Fatalf("Run must not fail when the compliance check errors: %v", err)
+	}
+	if claudeMock.featureComplianceCalls != 1 {
+		t.Fatalf("FeatureCompliance calls = %d, want 1: the feature file was not detected", claudeMock.featureComplianceCalls)
+	}
+	body := out.String()
+	if !strings.Contains(body, "> - `"+claude.PassLabelCompliance+"`: compliance timed out\n") {
+		t.Errorf("expected the alert naming the failed compliance check with its first error line, got:\n%s", body)
+	}
+	if strings.Contains(body, "stderr:") {
+		t.Errorf("the alert must keep only the error's first line, got:\n%s", body)
+	}
+	if !strings.Contains(body, "**Passes**: failed "+claude.PassLabelCompliance+"\n") {
+		t.Errorf("expected the Passes line to list the compliance check as failed, got:\n%s", body)
+	}
+	if _, ok := readCachedResult(t, cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA, baseOptsPatternFlag())); ok {
+		t.Error("a run whose compliance check failed was cached")
+	}
+}
+
+// formatJSON is the --format value that renders the review as JSON.
+const formatJSON = "json"
+
+// TestRun_PassStatusInJSONAndCache proves the pass records reach --format json
+// in launch order, the adversarial pass first and then the specialists in
+// registry order with the gated-out ones included, ride the cached result, and
+// render the Passes line on a cache hit.
+func TestRun_PassStatusInJSONAndCache(t *testing.T) {
+	// Not t.Parallel(): cache.SetDir mutates a package-level variable.
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	pr := fakePR(t, "acme", "widgets", 16, "sha-pass-json")
+	// A markdown-only PR: only the NeverGate specialists run.
+	pr.ChangedFiles = []string{"README.md"}
+	gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
+	opts := baseOpts()
+	opts.Format = formatJSON
+	opts.Thorough = true
+	opts.Specialists = true
+
+	var out bytes.Buffer
+	if err := (&Runner{Claude: &configurableClaude{}, GitHub: gh}).Run(&out, opts); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	var got report.ReviewResult
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("decoding the JSON output: %v\n%s", err, out.String())
+	}
+	want := []report.PassStatus{{Pass: claude.PassLabelAdversarial, Status: report.PassStatusRan}}
+	for _, sp := range claude.Specialists {
+		status := report.PassStatusGatedOut
+		if sp.NeverGate {
+			status = report.PassStatusRan
+		}
+		want = append(want, report.PassStatus{Pass: sp.PassLabel(), Status: status})
+	}
+	if !slices.Equal(got.Passes, want) {
+		t.Errorf("JSON Passes = %+v, want %+v", got.Passes, want)
+	}
+
+	cached, ok := readCachedResult(t, cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA, "thorough", "specialists", baseOptsPatternFlag()))
+	if !ok {
+		t.Fatal("the run was not cached")
+	}
+	if !slices.Equal(cached.Passes, want) {
+		t.Errorf("cached Passes = %+v, want %+v", cached.Passes, want)
+	}
+
+	opts.Format = "markdown"
+	hitClaude := &configurableClaude{}
+	var hit bytes.Buffer
+	if err := (&Runner{Claude: hitClaude, GitHub: gh}).Run(&hit, opts); err != nil {
+		t.Fatalf("cache-hit Run returned error: %v", err)
+	}
+	if hitClaude.reviewCalls != 0 {
+		t.Errorf("Review calls = %d on what should be a cache hit, want 0", hitClaude.reviewCalls)
+	}
+	if !strings.Contains(hit.String(), "**Passes**: ran "+claude.PassLabelAdversarial+", ") {
+		t.Errorf("the cache hit should render the Passes line:\n%s", hit.String())
 	}
 }
 

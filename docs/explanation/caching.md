@@ -74,6 +74,11 @@ flags that change what is analyzed — `--thorough`, `--specialists`,
 map beside its findings so a `--coverage-map` run that hits the cache still
 renders the section it asked for.
 
+A review in which a requested pass failed is rendered and posted but not
+cached, so a transient failure (a timeout, a rate limit) does not stick to the
+commit: the next run repeats the review with every pass
+([Pass Status](/reference/output-format#pass-status)).
+
 The tool version is deliberately *not* part of the key: a new release would
 otherwise discard every entry, and `--no-cache` is the switch for re-running
 against changed prompts.

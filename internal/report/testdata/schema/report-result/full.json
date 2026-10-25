@@ -91,5 +91,10 @@
   "gates": {
     "snippet": { "examined": 3, "demoted": 1 },
     "claim": { "sent": 3, "verdicts": 3, "refuted": 1 }
-  }
+  },
+  "passes": [
+    { "pass": "adversarial", "status": "ran" },
+    { "pass": "specialist-testing", "status": "gated-out" },
+    { "pass": "specialist-security", "status": "failed", "error": "running security specialist review: claude (model opus): exit status 1" }
+  ]
 }

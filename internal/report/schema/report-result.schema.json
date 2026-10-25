@@ -16,6 +16,11 @@
     "gates": {
       "description": "Per-run counts for the review's two demotion gates. The counts describe the whole run, not the filtered finding list. Absent when neither gate ran, or on results produced before gate recording existed; an absent gate object means 'not recorded', not 'nothing demoted'.",
       "$ref": "#/$defs/gateStats"
+    },
+    "passes": {
+      "description": "How each secondary pass the run requested ended (the adversarial pass, the coverage map, the feature-compliance check, each domain specialist), named by the session label usage.passes uses. Absent when the run requested none, and on results produced before pass recording existed. The primary review is never listed: its failure fails the run.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/passStatus" }
     }
   },
   "$defs": {
@@ -102,6 +107,22 @@
         "sent": { "type": "integer" },
         "verdicts": { "type": "integer" },
         "refuted": { "type": "integer" }
+      }
+    },
+    "passStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pass", "status"],
+      "properties": {
+        "pass": { "type": "string" },
+        "status": {
+          "type": "string",
+          "enum": ["ran", "gated-out", "failed"]
+        },
+        "error": {
+          "description": "Set for a failed pass only: the first line of its error, secrets redacted, at most 200 bytes.",
+          "type": "string"
+        }
       }
     },
     "fixOption": {

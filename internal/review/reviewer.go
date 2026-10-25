@@ -316,10 +316,14 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		complianceErr    error
 		covErr           error
 	)
-	// specialistResults[i] holds the findings from claude.Specialists[i]; a nil
-	// entry means that specialist was gated out or failed (both non-fatal) and
-	// is skipped at merge.
-	var specialistResults []*report.ReviewResult
+	// specialistResults[i] holds the findings from claude.Specialists[i] and
+	// specialistStatus[i] how its pass ended; a nil result means that specialist
+	// was gated out or failed (both non-fatal), is skipped at merge, and its
+	// status says which.
+	var (
+		specialistResults []*report.ReviewResult
+		specialistStatus  []report.PassStatus
+	)
 
 	var g errgroup.Group
 	g.Go(func() error {
@@ -350,7 +354,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	}
 	if opts.Specialists {
 		g.Go(func() error {
-			specialistResults = claude.RunSpecialistFanOut(pr.ChangedFiles, func(sp claude.Specialist) (*report.ReviewResult, error) {
+			specialistResults, specialistStatus = claude.RunSpecialistFanOut(pr.ChangedFiles, func(sp claude.Specialist) (*report.ReviewResult, error) {
 				return r.Claude.SpecialistReview(pr.Dir, pr.BaseBranch, sp, pats, opts.MaxPatterns)
 			})
 			return nil
@@ -366,7 +370,6 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		hygiene.TagPass(result, hygiene.PassReview)
 		hygiene.TagPass(advResult, hygiene.PassAdversarial)
 		result = hygiene.MergeResults(result, advResult)
-		appendSummaryNote(result, "includes adversarial review pass")
 	}
 	if complianceErr != nil {
 		slog.Warn("feature compliance check failed", "err", complianceErr)
@@ -374,7 +377,6 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		hygiene.TagPass(result, hygiene.PassReview)
 		hygiene.TagPass(complianceResult, hygiene.PassCompliance)
 		result = hygiene.MergeResults(result, complianceResult)
-		appendSummaryNote(result, "includes feature-compliance pass")
 	}
 	if opts.Specialists {
 		result = mergeSpecialists(result, specialistResults)
@@ -382,6 +384,11 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	if covErr != nil {
 		slog.Warn("coverage map failed", "err", covErr)
 	}
+	// Record how each requested secondary pass ended, so the report names a
+	// failed one and the cache write below can refuse the result. Assigned
+	// unconditionally, so a value decoded from finder output never survives
+	// (decision 135).
+	result.Passes = requestedPasses(opts, feature != nil, advErr, covErr, complianceErr, specialistStatus)
 
 	// 11a. File-less dedup fallback: the fuzzy merge matcher can only anchor
 	// findings that carry a file, so cross-pass duplicates among file-less
@@ -411,9 +418,15 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	hygiene.VerifyClaims(result, pr.Dir, r.Claude.VerifyFindingClaims)
 
 	// 12. Cache the result together with the coverage map, so a later hit
-	// renders the report this run rendered rather than a subset of it.
+	// renders the report this run rendered rather than a subset of it. A run in
+	// which a requested pass failed is not cached: the key names the passes the
+	// run asked for, so a cached entry would serve the incomplete review to
+	// every later run of the same commit and flags instead of retrying the pass
+	// (decision 135).
 	if !opts.NoCache {
-		if err := writeCachedReview(cacheKey, result, coverageResult); err != nil {
+		if failed := result.FailedPasses(); len(failed) > 0 {
+			slog.Warn("not caching the review: a requested pass failed, so the next run retries it", "passes", passNames(failed))
+		} else if err := writeCachedReview(cacheKey, result, coverageResult); err != nil {
 			slog.Warn("could not cache result", "err", err)
 		}
 	}
@@ -434,6 +447,39 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	return nil
 }
 
+// requestedPasses returns how each secondary pass the run requested ended, in
+// launch order: the adversarial pass (--thorough), the coverage map
+// (--coverage-map), the feature-compliance check (compliance, a detected
+// feature file), then the specialists (--specialists) with the statuses the
+// fan-out recorded, in registry order. Each entry is named by its session
+// label. The primary review is never listed, since its failure fails the run,
+// and the result is nil when no secondary pass was requested (decision 135).
+func requestedPasses(opts Options, compliance bool, advErr, covErr, complianceErr error, specialists []report.PassStatus) []report.PassStatus {
+	var passes []report.PassStatus
+	if opts.Thorough {
+		passes = append(passes, report.NewPassStatus(claude.PassLabelAdversarial, advErr))
+	}
+	if opts.CoverageMap {
+		passes = append(passes, report.NewPassStatus(claude.PassLabelCoverage, covErr))
+	}
+	if compliance {
+		passes = append(passes, report.NewPassStatus(claude.PassLabelCompliance, complianceErr))
+	}
+	if opts.Specialists {
+		passes = append(passes, specialists...)
+	}
+	return passes
+}
+
+// passNames joins the labels of passes for a log line.
+func passNames(passes []report.PassStatus) string {
+	names := make([]string, len(passes))
+	for i, p := range passes {
+		names[i] = p.Pass
+	}
+	return strings.Join(names, ", ")
+}
+
 // cachedReview is what a review run stores: the findings, and the coverage map
 // that was rendered beside them when the run was asked for one.
 //
@@ -448,8 +494,9 @@ type cachedReview struct {
 }
 
 // writeCachedReview stores a run's result and coverage map under key. A nil
-// coverage map — the flag was off, or the pass failed — is omitted, so a hit
-// renders no coverage section either.
+// coverage map — the flag was off, or the pass returned no map — is omitted, so
+// a hit renders no coverage section either. Run never calls it for a result
+// with a failed pass, a failed coverage map included (decision 135).
 func writeCachedReview(key string, result *report.ReviewResult, coverage *report.CoverageResult) error {
 	data, err := json.Marshal(cachedReview{Result: result, Coverage: coverage})
 	if err != nil {

@@ -3487,7 +3487,7 @@ func TestRun_ReviewFirstRoundRunsSpecialistFanOut(t *testing.T) {
 	spec := &fakeSpecialistReviewer{results: []SpecialistResult{
 		{Key: "testing", Result: &report.ReviewResult{Findings: []report.Finding{
 			{Severity: report.SeverityWarning, Title: "missing error-path test", File: "internal/bar/bar.go", Problem: "no test"},
-		}}},
+		}}, Status: report.NewPassStatus(specialistTestingPass, nil)},
 	}}
 	r := reviewRunner(gh, cl, av, ra)
 	r.SpecialistReviewer = spec
@@ -3510,6 +3510,84 @@ func TestRun_ReviewFirstRoundRunsSpecialistFanOut(t *testing.T) {
 	}
 	if len(ra.ctx.Findings) != 2 {
 		t.Errorf("applier got %d findings, want 2 (adversarial + specialist merged)", len(ra.ctx.Findings))
+	}
+}
+
+// Session labels of the specialists the fan-out tests script. implement cannot
+// import claude, which owns Specialist.PassLabel.
+const (
+	specialistTestingPass  = "specialist-testing"
+	specialistSecurityPass = "specialist-security"
+	failedPassesHeading    = "### Passes that failed"
+)
+
+// failedSecuritySpecialist is the fan-out entry of a security specialist whose
+// pass timed out: no result, and a failed status.
+func failedSecuritySpecialist() SpecialistResult {
+	return SpecialistResult{Key: "security", Status: report.NewPassStatus(specialistSecurityPass, errors.New("security timed out"))}
+}
+
+// TestRun_ReviewReportsFailedSpecialist proves a first-round specialist that
+// failed is dropped without stopping the round and is named with its error in
+// the round report on stdout and on the issue.
+func TestRun_ReviewReportsFailedSpecialist(t *testing.T) {
+	gh := reviewGH(t)
+	cl := &fakeClaude{}
+	av := &fakeAdversarialVerifier{results: oneThenCleanReview(reviewTestProdFile)}
+	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
+	spec := &fakeSpecialistReviewer{results: []SpecialistResult{
+		{Key: "testing", Result: &report.ReviewResult{}, Status: report.NewPassStatus(specialistTestingPass, nil)},
+		failedSecuritySpecialist(),
+	}}
+	r := reviewRunner(gh, cl, av, ra)
+	r.SpecialistReviewer = spec
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if ra.called.Load() != 1 {
+		t.Errorf("applier ran %d times, want 1 — a failed specialist must not stop the round", ra.called.Load())
+	}
+	want := "- `" + specialistSecurityPass + "`: security timed out"
+	if !strings.Contains(buf.String(), failedPassesHeading) || !strings.Contains(buf.String(), want) {
+		t.Errorf("stdout missing the failed specialist:\n%s", buf.String())
+	}
+	if gh.Count("AddIssueComment") == 0 {
+		t.Fatal("no round report was posted")
+	}
+	if c := gh.Comments()[0]; !strings.Contains(c, failedPassesHeading) || !strings.Contains(c, want) {
+		t.Errorf("posted round report missing the failed specialist:\n%s", c)
+	}
+	if strings.Contains(buf.String(), "`"+specialistTestingPass+"`") {
+		t.Errorf("a specialist that ran must not be listed as failed:\n%s", buf.String())
+	}
+}
+
+// TestRun_ReviewNothingToFixStillNamesFailedSpecialist proves a first round that
+// found nothing still names the specialist that failed, on stdout only: that
+// path posts no issue comment.
+func TestRun_ReviewNothingToFixStillNamesFailedSpecialist(t *testing.T) {
+	gh := reviewGH(t)
+	cl := &fakeClaude{}
+	av := &fakeAdversarialVerifier{result: &report.ReviewResult{}}
+	ra := &fakeReviewApplier{report: "unused"}
+	spec := &fakeSpecialistReviewer{results: []SpecialistResult{failedSecuritySpecialist()}}
+	r := reviewRunner(gh, cl, av, ra)
+	r.SpecialistReviewer = spec
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if !strings.Contains(buf.String(), "Review found nothing to fix.") {
+		t.Errorf("stdout missing the nothing-to-fix line:\n%s", buf.String())
+	}
+	if !strings.Contains(buf.String(), failedPassesHeading) || !strings.Contains(buf.String(), "- `"+specialistSecurityPass+"`: security timed out") {
+		t.Errorf("stdout missing the failed specialist:\n%s", buf.String())
+	}
+	if gh.Count("AddIssueComment") != 0 {
+		t.Errorf("AddIssueComment ran %d times, want 0 — a round with nothing to fix posts nothing", gh.Count("AddIssueComment"))
 	}
 }
 
@@ -3553,7 +3631,8 @@ func TestRun_ReviewNilSpecialistReviewerDegrades(t *testing.T) {
 }
 
 // TestRun_ReviewSpecialistFanOutErrorDegradesToAdversarial proves a fan-out
-// failure is non-fatal: the required adversarial finder still applies.
+// failure is non-fatal: the required adversarial finder still applies, and the
+// round report names the whole fan-out as the pass that failed.
 func TestRun_ReviewSpecialistFanOutErrorDegradesToAdversarial(t *testing.T) {
 	gh := reviewGH(t)
 	cl := &fakeClaude{}
@@ -3563,8 +3642,12 @@ func TestRun_ReviewSpecialistFanOutErrorDegradesToAdversarial(t *testing.T) {
 	r := reviewRunner(gh, cl, av, ra)
 	r.SpecialistReviewer = spec
 
-	if err := r.Run(io.Discard, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
 		t.Fatalf("Run returned %v, want nil — a fan-out failure must not fail the run", err)
+	}
+	if !strings.Contains(buf.String(), failedPassesHeading) || !strings.Contains(buf.String(), "- `"+specialistsFanOutPass+"`: fan-out down") {
+		t.Errorf("round report does not name the failed fan-out:\n%s", buf.String())
 	}
 	if ra.called.Load() != 1 {
 		t.Errorf("applier ran %d times, want 1 — the adversarial finder degraded cleanly", ra.called.Load())
@@ -3827,7 +3910,7 @@ func TestRun_ReviewFilelessDedupOnlyOnMultiPass(t *testing.T) {
 	spec := &fakeSpecialistReviewer{results: []SpecialistResult{
 		{Key: "maintainability", Result: &report.ReviewResult{Findings: []report.Finding{
 			{Severity: report.SeverityWarning, Title: "dead config key", Problem: "p", Confidence: report.ConfidenceVerified},
-		}}},
+		}}, Status: report.NewPassStatus("specialist-maintainability", nil)},
 	}}
 	var dedupCalls atomic.Int32
 	r := reviewRunner(gh, cl, av, ra)

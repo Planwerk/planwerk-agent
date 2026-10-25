@@ -287,6 +287,60 @@ func TestRenderSARIF_FilelessFindingIsANotification(t *testing.T) {
 	}
 }
 
+func TestRenderSARIF_FailedPassIsANotification(t *testing.T) {
+	result := ReviewResult{
+		Findings: []Finding{{ID: "W-1", Severity: SeverityWarning, Title: "In a file", File: "a.go", Line: 3}},
+		Passes: []PassStatus{
+			{Pass: "adversarial", Status: PassStatusRan},
+			{Pass: "specialist-testing", Status: PassStatusGatedOut},
+			{Pass: "specialist-security", Status: PassStatusFailed, Error: "boom"},
+		},
+	}
+	_, typed, _ := renderSARIF(t, result, SeverityInfo, "")
+	run := typed.Runs[0]
+	if len(run.Results) != 1 || run.Results[0].Properties.FindingID != "W-1" {
+		t.Fatalf("results = %+v, want only W-1: a failed pass adds no result", run.Results)
+	}
+	inv := run.Invocations[0]
+	if !inv.ExecutionSuccessful {
+		t.Error("a failed secondary pass must not mark the run as failed")
+	}
+	want := []sarifNotification{{
+		Level:   "warning",
+		Message: sarifMessage{Text: "specialist-security failed: boom; the review is incomplete"},
+	}}
+	if !reflect.DeepEqual(inv.ToolExecutionNotifications, want) {
+		t.Errorf("notifications = %+v, want one warning for the failed pass only: %+v", inv.ToolExecutionNotifications, want)
+	}
+
+	t.Run("after the file-less notification", func(t *testing.T) {
+		result := ReviewResult{
+			Findings: []Finding{{ID: "W-2", Severity: SeverityWarning, Title: "Docs not updated"}},
+			Passes: []PassStatus{
+				{Pass: "adversarial", Status: PassStatusFailed, Error: "timed out"},
+				{Pass: "compliance", Status: PassStatusFailed, Error: "exit status 1"},
+			},
+		}
+		_, typed, _ := renderSARIF(t, result, SeverityInfo, "")
+		inv := typed.Runs[0].Invocations[0]
+		if !inv.ExecutionSuccessful {
+			t.Error("failed secondary passes must not mark the run as failed")
+		}
+		var texts []string
+		for _, n := range inv.ToolExecutionNotifications {
+			if n.Level != "warning" {
+				t.Errorf("notification %q has level %q, want warning", n.Message.Text, n.Level)
+			}
+			texts = append(texts, n.Message.Text)
+		}
+		if len(texts) != 3 || !strings.HasPrefix(texts[0], "1 finding(s) name no file") ||
+			texts[1] != "adversarial failed: timed out; the review is incomplete" ||
+			texts[2] != "compliance failed: exit status 1; the review is incomplete" {
+			t.Errorf("notifications = %q, want the file-less one, then one per failed pass in recorded order", texts)
+		}
+	})
+}
+
 func TestRenderSARIF_AppliesTheReportFilters(t *testing.T) {
 	result := ReviewResult{Findings: []Finding{
 		{ID: "I-1", Severity: SeverityInfo, Confidence: ConfidenceVerified, Title: "info", File: "a.go", Line: 1},

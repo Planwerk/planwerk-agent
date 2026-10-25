@@ -116,8 +116,10 @@ type sarifProperties struct {
 // Finding.Unverified reports becomes level note whatever its severity, so a
 // refuted claim or an uncertain nit cannot fail a check as an error. A finding
 // that names no file is not a result but a warning notification on the run's
-// invocation, because code scanning places every result in a file. The log is
-// the whole document, so the caller writes nothing else to the same writer
+// invocation, because code scanning places every result in a file. Each
+// requested pass that failed adds a warning notification of its own, so the
+// log says the review is incomplete (decision 135). The log is the whole
+// document, so the caller writes nothing else to the same writer
 // (decision 134).
 func (r *Renderer) RenderSARIF(result ReviewResult, minSeverity Severity, minConfidence Confidence, version string) error {
 	cf := Categorize(result.Findings, minSeverity, minConfidence)
@@ -168,7 +170,7 @@ func (r *Renderer) RenderSARIF(result ReviewResult, minSeverity Severity, minCon
 				InformationURI: attribution.RepoURL,
 				Rules:          rules,
 			}},
-			Invocations: []sarifInvocation{sarifInvocationFor(fileless)},
+			Invocations: []sarifInvocation{sarifInvocationFor(fileless, result.FailedPasses())},
 			Results:     results,
 		}},
 	}
@@ -178,17 +180,27 @@ func (r *Renderer) RenderSARIF(result ReviewResult, minSeverity Severity, minCon
 }
 
 // sarifInvocationFor builds the run's only invocation. executionSuccessful is
-// always true, because a run whose review failed renders nothing. fileless
-// holds a label for each finding that names no file; when there is one, the
-// invocation carries a single warning notification that names them all.
-func sarifInvocationFor(fileless []string) sarifInvocation {
+// always true, because a run whose review failed renders nothing, and a failed
+// secondary pass does not fail the run either. fileless holds a label for each
+// finding that names no file; when there is one, the invocation carries a
+// single warning notification that names them all. failed holds the requested
+// passes that failed, and each adds one warning notification after that one,
+// naming the pass by its session label with the error NewPassStatus already
+// shortened and redacted (decision 135).
+func sarifInvocationFor(fileless []string, failed []PassStatus) sarifInvocation {
 	inv := sarifInvocation{ExecutionSuccessful: true}
 	if len(fileless) > 0 {
-		inv.ToolExecutionNotifications = []sarifNotification{{
+		inv.ToolExecutionNotifications = append(inv.ToolExecutionNotifications, sarifNotification{
 			Level: sarifLevelWarning,
 			Message: sarifMessage{Text: fmt.Sprintf("%d finding(s) name no file, so code scanning cannot show them as results: %s",
 				len(fileless), strings.Join(fileless, "; "))},
-		}}
+		})
+	}
+	for _, p := range failed {
+		inv.ToolExecutionNotifications = append(inv.ToolExecutionNotifications, sarifNotification{
+			Level:   sarifLevelWarning,
+			Message: sarifMessage{Text: fmt.Sprintf("%s failed: %s; the review is incomplete", p.Pass, p.Error)},
+		})
 	}
 	return inv
 }

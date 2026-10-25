@@ -14,6 +14,19 @@ import (
 // DefaultBaseBranch is the fallback base branch name when none is specified.
 const DefaultBaseBranch = "main"
 
+// Session labels of the review's passes. Each is the label a pass's `claude -p`
+// session runs under: the run records the session's usage under it
+// (report.PassUsage) and the pass's outcome too (report.PassStatus), so a failed
+// pass's cost and its status read under one name. A specialist's is
+// Specialist.PassLabel. They are not the provenance labels findings carry in
+// ConfirmedBy, which package hygiene owns (decision 135).
+const (
+	PassLabelReview      = "review"
+	PassLabelAdversarial = "adversarial"
+	PassLabelCoverage    = "coverage"
+	PassLabelCompliance  = "compliance"
+)
+
 // ReviewContext holds all context needed to build the review prompt.
 type ReviewContext struct {
 	Patterns    []patterns.Pattern
@@ -47,7 +60,7 @@ func (c *Client) Review(dir string, ctx ReviewContext) (*report.ReviewResult, er
 // runReview invokes `claude -p` with the review prompt, returning the review's
 // JSON output and the resolved model id.
 func (c *Client) runReview(dir string, rctx ReviewContext) (text, model string, err error) {
-	return c.runClaudeFindings(dir, buildReviewPrompt(rctx), "review", rctx.Memory, rctx.Brain)
+	return c.runClaudeFindings(dir, buildReviewPrompt(rctx), PassLabelReview, rctx.Memory, rctx.Brain)
 }
 
 // tokenUsage is a tolerant view over the per-call token counts Claude Code

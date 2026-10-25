@@ -143,8 +143,7 @@ planwerk-agent/
 │   │   ├── reviewer.go         # Orchestration: PR → Claude → Report
 │   │   ├── reviewer_test.go
 │   │   ├── outdated.go         # Resolve the tool's own outdated inline review threads (--resolve-outdated)
-│   │   ├── merge.go            # Merge results from multiple review passes
-│   │   └── merge_test.go
+│   │   └── merge.go            # Merge results from multiple review passes
 │   ├── search/                 # brain search: the full-text index of a mirror directory
 │   │   ├── index.go            # index.sqlite: the schema, the version check, the refresh, the block cutting (Open)
 │   │   ├── query.go            # The ranked query and the block read (Search, Block)

@@ -30,8 +30,9 @@ func (r *Renderer) RenderJSON(result ReviewResult, minSeverity Severity, minConf
 	}
 	// Carry the run-level gate records so --format json tells the same story the
 	// posted data block does; the counts describe the whole run, not the filtered
-	// list.
+	// list. The pass records are run-level too.
 	filtered.Gates = result.Gates
+	filtered.Passes = result.Passes
 
 	enc := json.NewEncoder(r.w)
 	enc.SetIndent("", "  ")
@@ -52,14 +53,31 @@ func (r *Renderer) RenderMarkdown(result ReviewResult, pr PRInfo, minSeverity Se
 		len(cf.Blocking), len(cf.Critical), len(cf.Warning), len(cf.Info), len(cf.Unverified),
 		r.recommendationKey(cf, result.Recommendation))
 
+	r.renderFailedPasses(result.FailedPasses())
+
 	r.renderSection("BLOCKING", cf.Blocking)
 	r.renderSection("CRITICAL", cf.Critical)
 	r.renderSection("WARNING", cf.Warning)
 	r.renderSection("INFO", cf.Info)
 	r.renderUnverifiedSection(cf.Unverified)
 
-	r.renderSummary(cf, result.Summary)
+	r.renderSummary(cf, result)
 	r.renderRecommendation(cf, result.Recommendation)
+}
+
+// renderFailedPasses writes the Incomplete review alert above the findings,
+// naming each requested pass that failed with its error, so the report does not
+// read like one in which those passes found nothing. It writes nothing when
+// failed is empty (decision 135).
+func (r *Renderer) renderFailedPasses(failed []PassStatus) {
+	if len(failed) == 0 {
+		return
+	}
+	_, _ = fmt.Fprintf(r.w, "> [!WARNING]\n> **Incomplete review** — %d requested pass(es) failed and contributed nothing to this report:\n", len(failed))
+	for _, p := range failed {
+		_, _ = fmt.Fprintf(r.w, "> - `%s`: %s\n", p.Pass, p.Error)
+	}
+	_, _ = fmt.Fprint(r.w, ">\n> A review with a failed pass is never cached, so running it again retries the pass.\n\n")
 }
 
 // RenderWikiProvenance emits the "> Wiki: <repo>.wiki @ <short-sha>" header line
@@ -218,10 +236,16 @@ func fileRef(f Finding) string {
 	return f.File
 }
 
-func (r *Renderer) renderSummary(cf CategorizedFindings, summary string) {
+// renderSummary writes the Summary section: the result's summary, the Passes
+// line, and the severity counts. It takes the whole result so a run-level record
+// can add its own line here.
+func (r *Renderer) renderSummary(cf CategorizedFindings, result ReviewResult) {
 	_, _ = fmt.Fprint(r.w, "## Summary\n\n")
-	if summary != "" {
-		_, _ = fmt.Fprintf(r.w, "%s\n\n", summary)
+	if result.Summary != "" {
+		_, _ = fmt.Fprintf(r.w, "%s\n\n", result.Summary)
+	}
+	if line := passesLine(result.Passes); line != "" {
+		_, _ = fmt.Fprintf(r.w, "%s\n\n", line)
 	}
 	_, _ = fmt.Fprintln(r.w, "| Severity | Count |")
 	_, _ = fmt.Fprintln(r.w, "|----------|-------|")
@@ -233,6 +257,32 @@ func (r *Renderer) renderSummary(cf CategorizedFindings, summary string) {
 		_, _ = fmt.Fprintf(r.w, "| UNVERIFIED | %d |\n", len(cf.Unverified))
 	}
 	_, _ = fmt.Fprintln(r.w)
+}
+
+// passesLine renders the `**Passes**:` Summary line, grouping the passes as
+// ran, gated out, then failed, each group in recorded order. An empty group is
+// left out, and the line is empty when no pass was recorded (decision 135).
+func passesLine(passes []PassStatus) string {
+	var groups []string
+	for _, g := range []struct{ status, label string }{
+		{PassStatusRan, "ran"},
+		{PassStatusGatedOut, "gated out"},
+		{PassStatusFailed, "failed"},
+	} {
+		var names []string
+		for _, p := range passes {
+			if p.Status == g.status {
+				names = append(names, p.Pass)
+			}
+		}
+		if len(names) > 0 {
+			groups = append(groups, g.label+" "+strings.Join(names, ", "))
+		}
+	}
+	if len(groups) == 0 {
+		return ""
+	}
+	return "**Passes**: " + strings.Join(groups, "; ")
 }
 
 func (r *Renderer) renderRecommendation(cf CategorizedFindings, custom string) {
@@ -292,7 +342,7 @@ func (r *Renderer) RenderAuditMarkdown(result ReviewResult, repo RepoInfo, minSe
 	r.renderSection("INFO", cf.Info)
 	r.renderUnverifiedSection(cf.Unverified)
 
-	r.renderSummary(cf, result.Summary)
+	r.renderSummary(cf, result)
 	r.renderAuditVerdict(cf)
 }
 
@@ -392,11 +442,12 @@ type PassUsage struct {
 
 // dataBlockPayload is the JSON structure embedded in the HTML comment for machine consumption.
 type dataBlockPayload struct {
-	CommitSHA  string     `json:"commit_sha"`
-	WikiCommit string     `json:"wiki_commit,omitempty"`
-	Findings   []Finding  `json:"findings"`
-	Gates      *GateStats `json:"gates,omitempty"`
-	Usage      Usage      `json:"usage"`
+	CommitSHA  string       `json:"commit_sha"`
+	WikiCommit string       `json:"wiki_commit,omitempty"`
+	Findings   []Finding    `json:"findings"`
+	Gates      *GateStats   `json:"gates,omitempty"`
+	Passes     []PassStatus `json:"passes,omitempty"`
+	Usage      Usage        `json:"usage"`
 }
 
 // RenderDataBlock returns an HTML comment containing the JSON-encoded findings,
@@ -408,6 +459,7 @@ func RenderDataBlock(result ReviewResult, commitSHA string, usage Usage) string 
 		WikiCommit: result.WikiCommit,
 		Findings:   result.Findings,
 		Gates:      result.Gates,
+		Passes:     result.Passes,
 		Usage:      usage,
 	}
 	data, err := json.Marshal(payload)

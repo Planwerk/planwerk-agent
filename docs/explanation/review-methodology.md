@@ -85,9 +85,10 @@ files relevant to its domain.
 
 A file counts as source code unless it is documentation, configuration, data,
 or media (`.md`, `.yaml`, `.json`, `.png`, …). Gated-out specialists are
-skipped with a log line, so a 5-line docs-only PR runs only the two always-on
-specialists instead of all six. When the changed-file set cannot be determined,
-the gate fails open and every specialist runs.
+skipped, and the report lists them as gated out beside the ones that ran, so a
+5-line docs-only PR runs only the two always-on specialists instead of all six.
+When the changed-file set cannot be determined, the gate fails open and every
+specialist runs.
 
 The same fan-out runs inside `implement`'s self-review, on the first round of
 its review-and-fix loop (see [Shared with `implement`'s self-review](#shared-with-the-implement-self-review)).
@@ -113,6 +114,10 @@ file, their line ranges overlap within ±3 lines, and their titles share at leas
 half their tokens. A folded pair keeps the higher severity, unions its
 provenance, and — the first time a finding is confirmed by two or more distinct
 passes — has its confidence boosted one step.
+
+A secondary pass that fails does not fail the review. The merge goes on without
+it, the report names it with its error, and the result is not cached
+([Pass Status](/reference/output-format#pass-status)).
 
 Findings with no file cannot be anchored by the fuzzy matcher, so a single cheap
 structure-tier call groups the file-less duplicates by index; the pipeline folds
@@ -170,7 +175,9 @@ when the fix stays in the code the finding cites and changes no behavior. That
 one rule is asked in the prompt rather than enforced by the harness. Each posted
 round report counts what the session was handed by severity and labels every
 entry it resolved or skipped with one, so how often it applies an INFO finding
-can be read off the issue ([design decision 124](/explanation/design-decisions)). To bound
+can be read off the issue ([design decision 124](/explanation/design-decisions)). A
+specialist that fails on the first round is named, with its error, under
+`### Passes that failed` in that round's report. To bound
 the cost, `implement` runs the fan-out on the first round of its review loop only;
 later rounds re-check the applied fixes with the cheaper adversarial finder alone,
 and at a narrower scope: the first round reviews the whole branch diff, while

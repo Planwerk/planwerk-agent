@@ -37,6 +37,13 @@ const (
 	PassCompliance  = "compliance"
 )
 
+// SpecialistPass returns the provenance label a domain specialist's findings
+// carry in Finding.ConfirmedBy, "specialist:<key>", which the eval's per-pass
+// credit counts by. It is not the session label the run records the
+// specialist's usage and pass status under, "specialist-<key>"
+// (claude.Specialist.PassLabel, decision 135).
+func SpecialistPass(key string) string { return "specialist:" + key }
+
 // TagPass stamps every finding that has no provenance yet with the given pass
 // label. It is idempotent: findings already carrying a label (because they
 // originated in or were merged from another pass) are left untouched.

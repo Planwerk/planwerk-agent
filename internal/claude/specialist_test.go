@@ -13,14 +13,15 @@ import (
 
 // recordingFanOut runs RunSpecialistFanOut with a call func that records which
 // specialists were invoked (concurrency-safe) and returns a per-key result or
-// error. failKeys errors those specialists; every other invoked specialist
-// returns a distinct non-nil result. The registry-indexed result is folded to
-// its non-nil entries, as SpecialistReviews and the review command do.
-func recordingFanOut(t *testing.T, changedFiles []string, failKeys map[string]bool) (called map[string]bool, results []specResultKV) {
+// error. failKeys errors those specialists with "boom"; every other invoked
+// specialist returns a distinct non-nil result. The registry-indexed result is
+// folded to its non-nil entries, as the review command's merge does, and the
+// registry-indexed statuses are returned as they are.
+func recordingFanOut(t *testing.T, changedFiles []string, failKeys map[string]bool) (called map[string]bool, results []specResultKV, statuses []report.PassStatus) {
 	t.Helper()
 	var mu sync.Mutex
 	called = map[string]bool{}
-	out := RunSpecialistFanOut(changedFiles, func(sp Specialist) (*report.ReviewResult, error) {
+	out, statuses := RunSpecialistFanOut(changedFiles, func(sp Specialist) (*report.ReviewResult, error) {
 		mu.Lock()
 		called[sp.Key] = true
 		mu.Unlock()
@@ -34,7 +35,7 @@ func recordingFanOut(t *testing.T, changedFiles []string, failKeys map[string]bo
 			results = append(results, specResultKV{key: Specialists[i].Key, summary: r.Summary})
 		}
 	}
-	return called, results
+	return called, results, statuses
 }
 
 type specResultKV struct {
@@ -44,7 +45,7 @@ type specResultKV struct {
 
 func TestRunSpecialistFanOut_EmptyChangedFilesRunsAll(t *testing.T) {
 	// An empty changed-file set means the gate fails open: every specialist runs.
-	called, results := recordingFanOut(t, nil, nil)
+	called, results, _ := recordingFanOut(t, nil, nil)
 	if len(called) != len(Specialists) {
 		t.Errorf("called %d specialists, want all %d", len(called), len(Specialists))
 	}
@@ -65,7 +66,7 @@ func TestRunSpecialistFanOut_EmptyChangedFilesRunsAll(t *testing.T) {
 func TestRunSpecialistFanOut_GatesOutDocsOnly(t *testing.T) {
 	// A docs-only diff gates out every RelevanceAnySource / RelevanceRoutes
 	// specialist; only the NeverGate ones (security, data-migration) run.
-	called, results := recordingFanOut(t, []string{"README.md", "docs/guide.md"}, nil)
+	called, results, _ := recordingFanOut(t, []string{"README.md", "docs/guide.md"}, nil)
 
 	for _, sp := range Specialists {
 		want := sp.NeverGate
@@ -81,7 +82,7 @@ func TestRunSpecialistFanOut_GatesOutDocsOnly(t *testing.T) {
 
 func TestRunSpecialistFanOut_FailedSpecialistDropped(t *testing.T) {
 	// One specialist errors; it is dropped without sinking the rest.
-	called, results := recordingFanOut(t, nil, map[string]bool{"security": true})
+	called, results, _ := recordingFanOut(t, nil, map[string]bool{"security": true})
 	if !called["security"] {
 		t.Error("the failing specialist should still have been invoked")
 	}
@@ -93,6 +94,76 @@ func TestRunSpecialistFanOut_FailedSpecialistDropped(t *testing.T) {
 	}
 	if len(gotKeys) != len(Specialists)-1 {
 		t.Errorf("returned %d results, want %d (all but the failed one)", len(gotKeys), len(Specialists)-1)
+	}
+}
+
+// failingSpecialist is the specialist the status tests fail. It is a NeverGate
+// one, so it runs even on the docs-only diff those tests use, where the only
+// other specialist that runs is data-migration.
+const failingSpecialist = "security"
+
+// TestRunSpecialistFanOut_RecordsStatus proves the fan-out tells a gated-out
+// specialist from a failed one, which share a nil result: every status is
+// index-aligned with Specialists and named by the specialist's session label.
+func TestRunSpecialistFanOut_RecordsStatus(t *testing.T) {
+	_, _, statuses := recordingFanOut(t, []string{"README.md"}, map[string]bool{failingSpecialist: true})
+	if len(statuses) != len(Specialists) {
+		t.Fatalf("got %d statuses, want one per registered specialist (%d)", len(statuses), len(Specialists))
+	}
+	for i, sp := range Specialists {
+		want := report.PassStatus{Pass: sp.PassLabel(), Status: report.PassStatusGatedOut}
+		switch {
+		case sp.Key == failingSpecialist:
+			want = report.PassStatus{Pass: sp.PassLabel(), Status: report.PassStatusFailed, Error: "boom"}
+		case sp.NeverGate:
+			want.Status = report.PassStatusRan
+		}
+		if statuses[i] != want {
+			t.Errorf("statuses[%d] = %+v, want %+v", i, statuses[i], want)
+		}
+	}
+}
+
+// TestSpecialistReviews_ReturnsEveryStatus proves the implement seam returns an
+// entry for every registered specialist, a failed and a gated-out one included,
+// rather than only the specialists whose pass succeeded.
+func TestSpecialistReviews_ReturnsEveryStatus(t *testing.T) {
+	t.Parallel()
+	failing := Specialist{Key: failingSpecialist}.PassLabel()
+	// The fan-out calls sessionFn concurrently; it reads only its arguments.
+	c := &Client{sessionFn: func(spec runSpec, _ string) (string, string, error) {
+		if spec.label == failing {
+			return "", "", errors.New("boom")
+		}
+		return emptyFinderOutputJSON, "", nil
+	}}
+
+	got, err := c.SpecialistReviews(t.TempDir(), "main", []string{"README.md"}, nil, 0)
+	if err != nil {
+		t.Fatalf("SpecialistReviews: %v", err)
+	}
+	if len(got) != len(Specialists) {
+		t.Fatalf("got %d entries, want one per registered specialist (%d)", len(got), len(Specialists))
+	}
+	for i, sp := range Specialists {
+		sr := got[i]
+		if sr.Key != sp.Key || sr.Status.Pass != sp.PassLabel() {
+			t.Errorf("entry %d = key %q pass %q, want %q and %q", i, sr.Key, sr.Status.Pass, sp.Key, sp.PassLabel())
+		}
+		switch {
+		case sp.Key == failingSpecialist:
+			if sr.Result != nil || sr.Status.Status != report.PassStatusFailed {
+				t.Errorf("%s = result %v status %+v, want a nil result and failed", sp.Key, sr.Result, sr.Status)
+			}
+		case sp.NeverGate:
+			if sr.Result == nil || sr.Status.Status != report.PassStatusRan {
+				t.Errorf("%s = result %v status %+v, want a result and ran", sp.Key, sr.Result, sr.Status)
+			}
+		default:
+			if sr.Result != nil || sr.Status.Status != report.PassStatusGatedOut {
+				t.Errorf("%s = result %v status %+v, want a nil result and gated out", sp.Key, sr.Result, sr.Status)
+			}
+		}
 	}
 }
 

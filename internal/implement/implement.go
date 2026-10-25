@@ -1597,6 +1597,7 @@ func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx
 			_, _ = fmt.Fprintf(w, "\nReview pass could not run: %v\n", err)
 			return allFindings
 		}
+		failedSec := failedPassesSection(result.FailedPasses())
 
 		findings := result.Findings
 		if len(findings) == 0 {
@@ -1606,6 +1607,11 @@ func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx
 			} else {
 				slog.Info("review pass converged with no further findings", "issue", number, "iterations", i-1)
 				_, _ = fmt.Fprintln(w, "\nReview pass converged: no further findings.")
+			}
+			// This path posts no comment, so a failed pass is named on stdout
+			// only.
+			if failedSec != "" {
+				_, _ = fmt.Fprintf(w, "\n%s\n", failedSec)
 			}
 			return allFindings
 		}
@@ -1630,7 +1636,7 @@ func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx
 			// and end the loop: re-running the finder on an unchanged branch could
 			// only re-surface the same unverified findings, so it cannot converge.
 			slog.Info("review pass withheld every finding as unverified; nothing applied", "issue", number, "withheld", len(unverified))
-			withheld := withheldOnlyReport(unvSection)
+			withheld := appendReportSections(withheldOnlyReport(unvSection), failedSec)
 			_, _ = fmt.Fprintf(w, "\nReview report:\n%s\n", withheld)
 			r.postReviewComment(w, owner, name, number, withheld, "", i, "")
 			return allFindings
@@ -1666,7 +1672,7 @@ func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx
 			_, _ = fmt.Fprintf(w, "\nReview apply could not run: %v\n", err)
 			return allFindings
 		}
-		roundReport := appendReportSections(reviewReport, handedSection(actionable), unvSection)
+		roundReport := appendReportSections(reviewReport, handedSection(actionable), unvSection, failedSec)
 		if roundReport != "" {
 			_, _ = fmt.Fprintf(w, "\nReview report:\n%s\n", roundReport)
 			// Post the report before the escalation check so an escalated report
@@ -1794,6 +1800,11 @@ func listItem(t string) (string, bool) {
 // (only when a specialist contributed), snippet-checked, and claim-verified — the
 // same gates, in the same order, the review command runs.
 //
+// The result's Passes records how each first-round specialist ended, or the
+// whole fan-out as specialistsFanOutPass when it failed, so the round report can
+// name a specialist that failed (decision 135). The adversarial finder is not
+// recorded: its failure already fails the round.
+//
 // sinceRef is empty on the first round, which reviews the whole branch diff, and
 // carries the commit the previous round's fixes were applied on top of from the
 // second round on, which reviews only those fixes.
@@ -1802,6 +1813,7 @@ func (r *Runner) gatherReviewFindings(dir, baseBranch, sinceRef string, changedF
 	var (
 		advResult   *report.ReviewResult
 		specResults []SpecialistResult
+		passes      []report.PassStatus
 	)
 	if fanOut {
 		var (
@@ -1828,6 +1840,7 @@ func (r *Runner) gatherReviewFindings(dir, baseBranch, sinceRef string, changedF
 		if specErr != nil {
 			slog.Warn("specialist fan-out failed; continuing with the adversarial finder alone", "err", specErr)
 			specResults = nil
+			passes = append(passes, report.NewPassStatus(specialistsFanOutPass, specErr))
 		}
 	} else {
 		res, err := r.AdversarialVerifier.AdversarialReview(dir, baseBranch, sinceRef, ctx.Patterns, ctx.MaxPatterns)
@@ -1846,13 +1859,19 @@ func (r *Runner) gatherReviewFindings(dir, baseBranch, sinceRef string, changedF
 	hygiene.TagPass(result, hygiene.PassAdversarial)
 	specialistContributed := false
 	for _, sr := range specResults {
+		if sr.Status.Pass != "" {
+			passes = append(passes, sr.Status)
+		}
 		if sr.Result == nil {
 			continue
 		}
-		hygiene.TagPass(sr.Result, "specialist:"+sr.Key)
+		hygiene.TagPass(sr.Result, hygiene.SpecialistPass(sr.Key))
 		result = hygiene.MergeResults(result, sr.Result)
 		specialistContributed = true
 	}
+	// Assigned unconditionally, so a value decoded from finder output never
+	// survives.
+	result.Passes = passes
 	// Run the shared hygiene stages in the review command's order: the file-less
 	// dedup fallback (only when a secondary pass contributed), the snippet gate,
 	// then claim verification. Each is nil-tolerant via its hygiene seam.
@@ -1864,6 +1883,27 @@ func (r *Runner) gatherReviewFindings(dir, baseBranch, sinceRef string, changedF
 	}
 	hygiene.VerifyClaims(result, dir, r.VerifyClaims)
 	return result, nil
+}
+
+// specialistsFanOutPass names the whole specialist fan-out in a round's Passes
+// when SpecialistReviews itself failed, so no specialist status came back.
+const specialistsFanOutPass = "specialists"
+
+// failedPassesSection renders the self-review passes that failed this round as
+// a report section, so the round report says which domains went unreviewed
+// rather than reading like a round in which they found nothing. Empty when no
+// pass failed (decision 135).
+func failedPassesSection(failed []report.PassStatus) string {
+	if len(failed) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("### Passes that failed\n\n")
+	sb.WriteString("These self-review passes failed and contributed nothing to this round's findings:\n\n")
+	for _, p := range failed {
+		_, _ = fmt.Fprintf(&sb, "- `%s`: %s\n", p.Pass, p.Error)
+	}
+	return strings.TrimRight(sb.String(), "\n")
 }
 
 // unverifiedSection renders the findings the survive-before-apply gate withheld —
@@ -1920,10 +1960,11 @@ func handedSection(findings []report.Finding) string {
 }
 
 // appendReportSections appends the harness's own sections (the handed count,
-// the withheld findings) to an apply report, so a single posted comment carries
-// what was fixed, what the session was handed, and what was withheld. Empty
-// sections are skipped, the rest follow in argument order one blank line apart,
-// and an empty report leaves only the sections.
+// the withheld findings, the failed passes) to an apply report, so a single
+// posted comment carries what was fixed, what the session was handed, what was
+// withheld, and which passes failed. Empty sections are skipped, the rest
+// follow in argument order one blank line apart, and an empty report leaves
+// only the sections.
 func appendReportSections(applyReport string, sections ...string) string {
 	var parts []string
 	if applyReport = strings.TrimRight(applyReport, "\n"); applyReport != "" {

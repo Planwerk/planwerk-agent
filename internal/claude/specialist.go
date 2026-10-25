@@ -43,6 +43,12 @@ type Specialist struct {
 	Areas []string
 }
 
+// PassLabel returns the session label the specialist's pass runs under,
+// "specialist-<key>": the run records the pass's usage and its
+// report.PassStatus under it. The provenance label its findings carry in
+// ConfirmedBy is hygiene.SpecialistPass, "specialist:<key>" (decision 135).
+func (sp Specialist) PassLabel() string { return "specialist-" + sp.Key }
+
 // Relevance classifies which changed files a gateable specialist cares about.
 // Adaptive gating uses it to skip a specialist whose relevant paths the diff
 // never touches, cutting wall-clock and cost on small PRs.
@@ -122,24 +128,23 @@ var Specialists = []Specialist{
 }
 
 // SpecialistReviews runs the domain-specialist fan-out over the diff and returns
-// the successful results keyed by specialist, so the implement command's
-// review-and-fix pass can run the same specialists the review command does. It
-// mirrors review's fan-out: each specialist is adaptively gated by
+// one entry per registered specialist, in registry order, so the implement
+// command's review-and-fix pass can run the same specialists the review command
+// does. It mirrors review's fan-out: each specialist is adaptively gated by
 // Specialist.ShouldRun(changedFiles), the gated-in ones run concurrently, and a
 // specialist whose pass fails is logged and dropped rather than sinking the
-// rest. baseBranch scopes the diff; pats/maxPatterns ground each specialist in
-// the review-pattern catalog. The error return is always nil — per-specialist
-// failures are non-fatal — but exists so the seam can surface a fatal error in
-// future without a signature change.
+// rest. An entry's Result is nil when its specialist was gated out or failed,
+// and its Status says which. baseBranch scopes the diff; pats/maxPatterns
+// ground each specialist in the review-pattern catalog. The error return is
+// always nil — per-specialist failures are non-fatal — but exists so the seam
+// can surface a fatal error in future without a signature change.
 func (c *Client) SpecialistReviews(dir, baseBranch string, changedFiles []string, pats []patterns.Pattern, maxPatterns int) ([]implement.SpecialistResult, error) {
-	results := RunSpecialistFanOut(changedFiles, func(sp Specialist) (*report.ReviewResult, error) {
+	results, statuses := RunSpecialistFanOut(changedFiles, func(sp Specialist) (*report.ReviewResult, error) {
 		return c.SpecialistReview(dir, baseBranch, sp, pats, maxPatterns)
 	})
-	var out []implement.SpecialistResult
+	out := make([]implement.SpecialistResult, len(Specialists))
 	for i, sp := range Specialists {
-		if results[i] != nil {
-			out = append(out, implement.SpecialistResult{Key: sp.Key, Result: results[i]})
-		}
+		out[i] = implement.SpecialistResult{Key: sp.Key, Result: results[i], Status: statuses[i]}
 	}
 	return out, nil
 }
@@ -147,11 +152,14 @@ func (c *Client) SpecialistReviews(dir, baseBranch string, changedFiles []string
 // RunSpecialistFanOut is the gate/dispatch/collect core the review and
 // implement commands share. It runs call(sp) concurrently for every specialist
 // whose ShouldRun(changedFiles) is true, skips the rest (adaptive gating), and
-// drops a specialist whose call errors (logged, non-fatal). The result is
-// indexed like Specialists: a nil entry is a specialist that was gated out or
-// failed, which the callers skip at merge.
-func RunSpecialistFanOut(changedFiles []string, call func(Specialist) (*report.ReviewResult, error)) []*report.ReviewResult {
+// drops a specialist whose call errors (logged with the full error, non-fatal).
+// Both returned slices are indexed like Specialists. A nil result is a
+// specialist that was gated out or failed, which the callers skip at merge, and
+// its status says which: every status carries sp.PassLabel() and ran,
+// gated-out, or failed with the error's first line (decision 135).
+func RunSpecialistFanOut(changedFiles []string, call func(Specialist) (*report.ReviewResult, error)) ([]*report.ReviewResult, []report.PassStatus) {
 	results := make([]*report.ReviewResult, len(Specialists))
+	statuses := make([]report.PassStatus, len(Specialists))
 	var g errgroup.Group
 	running := 0
 	for i, sp := range Specialists {
@@ -159,11 +167,15 @@ func RunSpecialistFanOut(changedFiles []string, call func(Specialist) (*report.R
 			// Adaptive gating: the diff does not touch this specialist's relevant
 			// paths, so running it would only add cost.
 			slog.Info("skipping specialist; diff does not touch its relevant paths", "specialist", sp.Key)
+			statuses[i] = report.PassStatus{Pass: sp.PassLabel(), Status: report.PassStatusGatedOut}
 			continue
 		}
 		running++
 		g.Go(func() error {
+			// Each goroutine writes only its own index, and Wait orders the
+			// writes before the caller reads them.
 			res, err := call(sp)
+			statuses[i] = report.NewPassStatus(sp.PassLabel(), err)
 			if err != nil {
 				// A failed specialist must not sink the whole fan-out.
 				slog.Warn("specialist review failed", "specialist", sp.Key, "err", err)
@@ -177,7 +189,7 @@ func RunSpecialistFanOut(changedFiles []string, call func(Specialist) (*report.R
 	// The callbacks never return an error, so Wait cannot fail; the error return
 	// is discarded deliberately.
 	_ = g.Wait()
-	return results
+	return results, statuses
 }
 
 // SpecialistReview runs a single domain-focused review pass over the diff and
@@ -188,7 +200,7 @@ func RunSpecialistFanOut(changedFiles []string, call func(Specialist) (*report.R
 // to sp.Areas when it declares them; an empty catalog leaves the prompt
 // unchanged.
 func (c *Client) SpecialistReview(dir, baseBranch string, sp Specialist, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
-	raw, model, err := c.runClaudeFinderFindings(dir, buildSpecialistPrompt(baseBranch, sp, pats, maxPatterns), "specialist-"+sp.Key)
+	raw, model, err := c.runClaudeFinderFindings(dir, buildSpecialistPrompt(baseBranch, sp, pats, maxPatterns), sp.PassLabel())
 	if err != nil {
 		return nil, fmt.Errorf("running %s specialist review: %w", sp.Key, err)
 	}

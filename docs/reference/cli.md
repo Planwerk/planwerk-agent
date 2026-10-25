@@ -106,6 +106,14 @@ planwerk-agent owner/repo#123 > review.md
 | `--no-capture` | Skip the read-only capture pass that proposes new wiki review patterns from the review findings (only runs with `--wiki`; writes nothing) | `false` |
 | `--version` | Show version information and exit | `false` |
 
+The secondary passes (`--thorough`, `--specialists`, `--coverage-map`, and the
+feature-compliance check a detected feature file adds) never fail the review. A
+pass that errors is left out of the findings and named with its error in a
+`[!WARNING]` alert and in the `passes` array of the JSON output and the data
+block, and in a warning notification of a `--format sarif` log
+([Pass Status](/reference/output-format#pass-status)). The run is then not
+written to the cache, so the next run of the same commit retries it.
+
 ### Sessions that search the mirror
 
 With `--brain`, the session that plans or judges may run
@@ -723,7 +731,11 @@ and grounded in the same review-pattern catalog a later review of the diff would
 apply. The fan-out is on by default because `implement` runs unattended with
 nobody present to opt in; `--no-specialists` turns it off, and later rounds run
 the cheaper adversarial finder alone regardless, bounding the fan-out's cost to
-the first round.
+the first round. A specialist that fails is dropped from the round and named
+with its error under `### Passes that failed` in the round's report, which is
+posted on the issue; when the round found nothing to fix, it posts no comment,
+and the section goes to stdout only. The adversarial finder is required, and
+its failure ends the pass.
 
 The merged findings pass through the shared **finding hygiene** — multi-pass
 merge (with its confidence boost and cross-pass provenance), file-less dedup, the
