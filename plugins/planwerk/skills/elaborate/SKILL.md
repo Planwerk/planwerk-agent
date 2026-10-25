@@ -118,7 +118,9 @@ Do not surface cosmetic choices, naming preferences, or anything the smallest
 correct change already settles. Decide those yourself.
 
 An answer the author declined lands under Non-Goals or as an explicit assumption
-in the Description (`interaction.md`, Record what was never decided).
+in the Description (`interaction.md`, Record what was never decided). An answer
+often opens the fork behind it, so the rounds continue until nothing is left
+open (`interaction.md`, The asking is done when nothing is left open).
 
 Then offer the counterpart Phase 2 noted, when there is one, as its own
 `AskUserQuestion`: draft its body at draft depth per `cross-repo.md`, show it,
