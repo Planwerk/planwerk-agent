@@ -14,7 +14,8 @@
       "action": "Move the secret to an environment variable or secret manager.",
       "code_snippet": "const apiSecret = \"sk-live-1234\"",
       "confirmed_by": ["review", "adversarial"],
-      "claim_check": "confirmed"
+      "claim_check": "confirmed",
+      "line_check": "reanchored"
     },
     {
       "id": "C-001",
@@ -89,6 +90,7 @@
   "summary": "The change introduces authentication but ships a hardcoded secret and an SQL injection that must be fixed before merge.",
   "recommendation": "Do not merge until the BLOCKING and CRITICAL findings are resolved.",
   "gates": {
+    "anchor": { "examined": 3, "reanchored": 1, "unanchored": 1 },
     "snippet": { "examined": 3, "demoted": 1, "recovered_outside_diff": 1 },
     "claim": { "sent": 3, "verdicts": 3, "refuted": 1 },
     "files": {

@@ -163,9 +163,10 @@ func TestRenderDataBlock_IncludesGates(t *testing.T) {
 	t.Run("present when set", func(t *testing.T) {
 		full := ReviewResult{
 			Findings: []Finding{
-				{ID: "C-001", Severity: SeverityCritical, Title: "SQLi", File: "db.go", Line: 10, ClaimCheck: ClaimCheckRefuted, SnippetCheck: SnippetCheckPassed},
+				{ID: "C-001", Severity: SeverityCritical, Title: "SQLi", File: "db.go", Line: 10, ClaimCheck: ClaimCheckRefuted, SnippetCheck: SnippetCheckPassed, LineCheck: LineCheckReanchored},
 			},
 			Gates: &GateStats{
+				Anchor:  &AnchorGateStats{Examined: 3, Reanchored: 1, Unanchored: 1},
 				Snippet: &SnippetGateStats{Examined: 4, Demoted: 1},
 				Claim:   &ClaimGateStats{Sent: 2, Verdicts: 2, Refuted: 1},
 				Files: &FileGateStats{Changed: 3, Reviewed: 1, Missing: []MissingFile{
@@ -177,11 +178,12 @@ func TestRenderDataBlock_IncludesGates(t *testing.T) {
 		}
 		block := RenderDataBlock(full, "sha-gates", Usage{})
 		for _, want := range []string{
-			`"gates":{`,
+			`"gates":{"anchor":{"examined":3,"reanchored":1,"unanchored":1},"snippet":`,
 			`"snippet":{"examined":4,"demoted":1}`,
 			`"claim":{"sent":2,"verdicts":2,"refuted":1}`,
 			`"files":{"changed":3,"reviewed":1,"missing":[{"file":"go.sum","status":"skipped","reason":"generated"},{"file":"docs/a.md","status":"unreported"}]}`,
 			`"claim_check":"refuted"`,
+			`"line_check":"reanchored"`,
 		} {
 			if !strings.Contains(block, want) {
 				t.Errorf("data block missing %q; got %q", want, block)
@@ -200,8 +202,8 @@ func TestRenderDataBlock_IncludesGates(t *testing.T) {
 		if sha != "sha-gates" {
 			t.Errorf("sha = %q, want sha-gates", sha)
 		}
-		if len(findings) != 1 || findings[0].ClaimCheck != ClaimCheckRefuted {
-			t.Errorf("findings = %+v, want one finding carrying its claim_check", findings)
+		if len(findings) != 1 || findings[0].ClaimCheck != ClaimCheckRefuted || findings[0].LineCheck != LineCheckReanchored {
+			t.Errorf("findings = %+v, want one finding carrying its claim_check and line_check", findings)
 		}
 	})
 

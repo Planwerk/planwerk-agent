@@ -1796,9 +1796,10 @@ func listItem(t string) (string, bool) {
 // later review of this diff would; later rounds run the adversarial finder alone,
 // bounding the fan-out's cost. The adversarial finder is required (its
 // failure fails the round); the fan-out is best-effort (its failure degrades to
-// adversarial-only). The merged findings are tagged with provenance, deduplicated
-// (only when a specialist contributed), snippet-checked, and claim-verified — the
-// same gates, in the same order, the review command runs.
+// adversarial-only). The findings are anchored on the code they quote, then
+// tagged with provenance, merged, deduplicated (only when a specialist
+// contributed), snippet-checked, and claim-verified — the same stages, in the
+// same order, the review command runs.
 //
 // The result's Passes records how each first-round specialist ended, or the
 // whole fan-out as specialistsFanOutPass when it failed, so the round report can
@@ -1854,6 +1855,14 @@ func (r *Runner) gatherReviewFindings(dir, baseBranch, sinceRef string, changedF
 	if result == nil {
 		result = &report.ReviewResult{}
 	}
+	// Anchor every pass's findings on the code they quote before the merge
+	// matches them by file and line, as the review command does. It withholds
+	// nothing: the apply session gets the corrected lines (decision 139).
+	specs := make([]*report.ReviewResult, 0, len(specResults))
+	for _, sr := range specResults {
+		specs = append(specs, sr.Result)
+	}
+	hygiene.AnchorFindings(result, dir, changedFiles, specs...)
 	// Tag and merge exactly as the review command does, so cross-pass agreement
 	// boosts confidence and records which passes confirmed each finding.
 	hygiene.TagPass(result, hygiene.PassAdversarial)
@@ -1872,9 +1881,10 @@ func (r *Runner) gatherReviewFindings(dir, baseBranch, sinceRef string, changedF
 	// Assigned unconditionally, so a value decoded from finder output never
 	// survives.
 	result.Passes = passes
-	// Run the shared hygiene stages in the review command's order: the file-less
-	// dedup fallback (only when a secondary pass contributed), the snippet gate,
-	// then claim verification. Each is nil-tolerant via its hygiene seam.
+	// Run the rest of the shared hygiene stages in the review command's order
+	// (the anchoring ran before the merge): the file-less dedup fallback (only
+	// when a secondary pass contributed), the snippet gate, then claim
+	// verification. Each is nil-tolerant via its hygiene seam.
 	if specialistContributed {
 		hygiene.DedupFileless(result, r.DedupFindings)
 	}

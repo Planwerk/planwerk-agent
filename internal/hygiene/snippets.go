@@ -169,11 +169,11 @@ func loadChangedContent(dir string, changedFiles []string) string {
 	var sb strings.Builder
 	for _, rel := range changedFiles {
 		// Defend against path escapes from an untrusted changed-file list.
-		clean := filepath.Clean(rel)
-		if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || filepath.IsAbs(clean) {
+		path, ok := repoPath(dir, rel)
+		if !ok {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(dir, clean))
+		data, err := os.ReadFile(path)
 		if err != nil {
 			continue
 		}
@@ -181,6 +181,18 @@ func loadChangedContent(dir string, changedFiles []string) string {
 		sb.WriteByte('\n')
 	}
 	return sb.String()
+}
+
+// repoPath joins the repository-relative path rel onto dir, and reports false
+// for a path that would leave dir: "..", a "../" prefix, or an absolute path.
+// rel is untrusted, from the model or the changed-file list, so every read of a
+// file a finding or the change names goes through it.
+func repoPath(dir, rel string) (string, bool) {
+	clean := filepath.Clean(rel)
+	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || filepath.IsAbs(clean) {
+		return "", false
+	}
+	return filepath.Join(dir, clean), true
 }
 
 const (

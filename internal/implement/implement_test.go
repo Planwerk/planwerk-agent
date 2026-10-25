@@ -3869,6 +3869,37 @@ func TestRun_ReviewSnippetGateDemotesUnquotedFinding(t *testing.T) {
 	}
 }
 
+// TestRun_ReviewAnchorsFindingLine proves the self-review anchors a finding on
+// the code it quotes before the apply session sees it: the finder names line
+// 1, the quoted code sits on line 4, and the session is handed line 4.
+func TestRun_ReviewAnchorsFindingLine(t *testing.T) {
+	gh := reviewGH(t)
+	gh.ChangedFiles = []string{"foo.go"}
+	src := "package foo\n\nfunc Find(userInput string) error {\n\treturn db.Exec(buildQuery(userInput))\n}\n"
+	if err := os.WriteFile(filepath.Join(gh.Dir, "foo.go"), []byte(src), 0o600); err != nil {
+		t.Fatalf("write changed file: %v", err)
+	}
+	cl := &fakeClaude{}
+	av := &fakeAdversarialVerifier{results: []*report.ReviewResult{
+		{Findings: []report.Finding{
+			{Severity: report.SeverityCritical, Title: "SQL injection in new query", File: "foo.go", Line: 1, Problem: "p", Confidence: report.ConfidenceVerified, CodeSnippet: "return db.Exec(buildQuery(userInput))"},
+		}},
+		{},
+	}}
+	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
+	r := reviewRunner(gh, cl, av, ra)
+
+	if err := r.Run(io.Discard, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if ra.called.Load() != 1 || len(ra.ctx.Findings) != 1 {
+		t.Fatalf("applier ran %d times with %d findings, want 1/1", ra.called.Load(), len(ra.ctx.Findings))
+	}
+	if got := ra.ctx.Findings[0]; got.Line != 4 || got.LineCheck != report.LineCheckReanchored {
+		t.Errorf("applier got the finding at line %d (%q), want line 4 reanchored", got.Line, got.LineCheck)
+	}
+}
+
 // TestRun_ReviewChangedFilesErrorFailsOpen proves a ChangedFiles failure does not
 // bury findings: the gates fail open and the finding is still applied.
 func TestRun_ReviewChangedFilesErrorFailsOpen(t *testing.T) {

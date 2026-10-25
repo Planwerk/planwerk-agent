@@ -221,6 +221,14 @@ type Finding struct {
 	// in VerificationNote; this token does not duplicate it and does not route
 	// the finding.
 	ClaimCheck string `json:"claim_check,omitempty"`
+	// LineCheck records the line anchor's per-finding decision
+	// (hygiene.AnchorFindings): LineCheckAnchored, LineCheckReanchored,
+	// LineCheckRelocated, or LineCheckUnanchored. It is set only by the review
+	// pipeline, never by the model, and is empty for a finding the anchor did
+	// not examine. It never moves a finding between report sections; --inline
+	// posts no inline comment for a LineCheckUnanchored finding, which stays in
+	// the summary comment, and its SARIF result has no region (decision 139).
+	LineCheck string `json:"line_check,omitempty"`
 }
 
 // SnippetCheckPassed is the SnippetCheck value recorded on a finding whose
@@ -234,6 +242,18 @@ const (
 	ClaimCheckConfirmed = "confirmed"
 	ClaimCheckRefuted   = "refuted"
 	ClaimCheckNoVerdict = "no-verdict"
+)
+
+// LineCheck values recorded by the line anchor on each finding it examined:
+// the model's range already lay on the quoted code (anchored), it was moved to
+// the quoted code in the same file (reanchored) or in the one other changed
+// file that holds it (relocated), or the quote pins no single place in the
+// head content and the model's line was kept (unanchored).
+const (
+	LineCheckAnchored   = "anchored"
+	LineCheckReanchored = "reanchored"
+	LineCheckRelocated  = "relocated"
+	LineCheckUnanchored = "unanchored"
 )
 
 // Unverified reports whether the finding did not survive the hygiene stage and
@@ -286,13 +306,14 @@ type ReviewResult struct {
 	// payload; WikiCommit is re-attached to the machine-readable data block.
 	WikiRepo   string `json:"-"`
 	WikiCommit string `json:"-"`
-	// Gates records what the two demotion gates examined and demoted in this
-	// run, and what the changed-file check, which records and never demotes,
-	// found. Unlike the neighboring json:"-" fields it IS serialized: it rides
-	// the cached result and the machine-readable data block so the
-	// refuted/examined ratio can be computed from history rather than from a
-	// fresh run. A nil per-gate entry means that gate never ran, which keeps a
-	// clean pass distinguishable from a skipped gate.
+	// Gates records what each hygiene stage did in this run: what the line
+	// anchor moved, what the two demotion gates examined and demoted, and what
+	// the changed-file check, which records and never demotes, found. Unlike
+	// the neighboring json:"-" fields it IS serialized: it rides the cached
+	// result and the machine-readable data block so the refuted/examined ratio
+	// can be computed from history rather than from a fresh run. A nil
+	// per-stage entry means that stage never ran, which keeps a clean pass
+	// distinguishable from a skipped stage.
 	Gates *GateStats `json:"gates,omitempty"`
 	// Passes records how each secondary pass the run requested ended: the
 	// adversarial pass, the coverage map, the feature-compliance check, and each
@@ -335,14 +356,32 @@ const (
 	FileUnreported = "unreported"
 )
 
-// GateStats aggregates the per-run counts of the two demotion gates and the
-// changed-file check, which records and never demotes. A nil per-gate field
-// means that gate did not run this run; a nil Files means the review prompt
-// listed no changed files.
+// GateStats aggregates the per-run counts of the review's hygiene stages, in
+// stage order: the line anchor, the two demotion gates, and the changed-file
+// check. The anchor and the check record and never demote. A nil per-stage
+// field means that stage did not run this run; a nil Files means the review
+// prompt listed no changed files.
 type GateStats struct {
+	Anchor  *AnchorGateStats  `json:"anchor,omitempty"`
 	Snippet *SnippetGateStats `json:"snippet,omitempty"`
 	Claim   *ClaimGateStats   `json:"claim,omitempty"`
 	Files   *FileGateStats    `json:"files,omitempty"`
+}
+
+// AnchorGateStats records the line anchor's per-run counts. Examined counts the
+// findings that carry a file and a non-blank quote, in each pass before the
+// merge, so a defect that several passes report counts once per pass.
+// Reanchored, Relocated and Unanchored are disjoint subsets of it, so the
+// findings confirmed on the model's range (LineCheckAnchored) are Examined
+// minus the three. The counts are recorded even when zero, so an anchor that
+// ran but moved nothing is distinguishable from one that never ran (a nil
+// AnchorGateStats); Relocated is omitted when zero, like RecoveredOutsideDiff,
+// since a move to another file is the exception (decision 139).
+type AnchorGateStats struct {
+	Examined   int `json:"examined"`
+	Reanchored int `json:"reanchored"`
+	Relocated  int `json:"relocated,omitempty"`
+	Unanchored int `json:"unanchored"`
 }
 
 // SnippetGateStats records the quote-or-demote gate's per-run counts: how many

@@ -106,6 +106,7 @@ func TestRendererOutputMatchesSchema(t *testing.T) {
 			Summary:        "a populated summary",
 			Recommendation: "a populated recommendation",
 			Gates: &report.GateStats{
+				Anchor:  &report.AnchorGateStats{Examined: 3, Reanchored: 1, Relocated: 1, Unanchored: 1},
 				Snippet: &report.SnippetGateStats{Examined: 3, Demoted: 1, RecoveredOutsideDiff: 1},
 				Claim:   &report.ClaimGateStats{Sent: 2, Verdicts: 2, Refuted: 1},
 				Files: &report.FileGateStats{Changed: 4, Reviewed: 2, Missing: []report.MissingFile{
@@ -296,6 +297,7 @@ func populatedFinding() report.Finding {
 		VerificationNote:        "refuted: the input is already parameterized at db/users.go:80",
 		SnippetCheck:            report.SnippetCheckPassed,
 		ClaimCheck:              report.ClaimCheckRefuted,
+		LineCheck:               report.LineCheckReanchored,
 	}
 }
 

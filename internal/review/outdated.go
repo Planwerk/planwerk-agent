@@ -48,7 +48,9 @@ type liveSpans struct {
 }
 
 // newLiveSpans collects the spans of findings. A finding without a file
-// vetoes nothing; one with a file and no line marks that file unlocated.
+// vetoes nothing; one with a file and no line marks that file unlocated. A
+// finding the line anchor stamped unanchored counts by the line the model
+// gave: it is still live, though it gets no inline comment (decision 139).
 func newLiveSpans(findings []report.Finding) liveSpans {
 	live := liveSpans{ranges: map[string][][2]int{}, unlocated: map[string]bool{}}
 	for _, f := range findings {

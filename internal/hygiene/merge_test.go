@@ -362,6 +362,55 @@ func TestMergeFindingPair_PreservesSemantics(t *testing.T) {
 	}
 }
 
+// TestMergeFindingPair_KeepsTheAnchoredPlace proves the fold never loses a
+// place the line anchor pinned: an unanchored side takes the placed side's
+// lines, whichever side's other fields survive.
+func TestMergeFindingPair_KeepsTheAnchoredPlace(t *testing.T) {
+	type place struct {
+		line, lineEnd int
+		check         string
+	}
+	cases := []struct {
+		name      string
+		keptSev   report.Severity
+		dupSev    report.Severity
+		kept, dup place
+		want      place
+	}{
+		{"an unanchored kept takes the anchored dup's place", report.SeverityWarning, report.SeverityWarning,
+			place{13, 0, report.LineCheckUnanchored}, place{13, 14, report.LineCheckAnchored}, place{13, 14, report.LineCheckAnchored}},
+		{"a more severe unanchored dup takes the kept place", report.SeverityWarning, report.SeverityCritical,
+			place{12, 0, report.LineCheckReanchored}, place{14, 0, report.LineCheckUnanchored}, place{12, 0, report.LineCheckReanchored}},
+		{"an unanchored kept takes a relocated dup's place", report.SeverityWarning, report.SeverityInfo,
+			place{3, 0, report.LineCheckUnanchored}, place{5, 6, report.LineCheckRelocated}, place{5, 6, report.LineCheckRelocated}},
+		{"two unanchored sides keep the retained place", report.SeverityWarning, report.SeverityWarning,
+			place{13, 0, report.LineCheckUnanchored}, place{14, 0, report.LineCheckUnanchored}, place{13, 0, report.LineCheckUnanchored}},
+		{"an unexamined dup places nothing", report.SeverityWarning, report.SeverityWarning,
+			place{13, 0, report.LineCheckUnanchored}, place{14, 0, ""}, place{13, 0, report.LineCheckUnanchored}},
+		{"an anchored kept keeps its place", report.SeverityWarning, report.SeverityWarning,
+			place{13, 14, report.LineCheckAnchored}, place{15, 0, report.LineCheckReanchored}, place{13, 14, report.LineCheckAnchored}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			kept := report.Finding{ID: "W-002", Severity: tc.keptSev, File: "main.go", Title: "same defect",
+				Line: tc.kept.line, LineEnd: tc.kept.lineEnd, LineCheck: tc.kept.check, ConfirmedBy: []string{PassReview}}
+			dup := report.Finding{Severity: tc.dupSev, File: "main.go", Title: "same defect",
+				Line: tc.dup.line, LineEnd: tc.dup.lineEnd, LineCheck: tc.dup.check, ConfirmedBy: []string{PassAdversarial}}
+			got := mergeFindingPair(kept, dup)
+			if p := (place{got.Line, got.LineEnd, got.LineCheck}); p != tc.want {
+				t.Errorf("place = %+v, want %+v", p, tc.want)
+			}
+			wantSev := tc.keptSev
+			if severityRank[tc.dupSev] < severityRank[tc.keptSev] {
+				wantSev = tc.dupSev
+			}
+			if got.Severity != wantSev || got.ID != kept.ID {
+				t.Errorf("got %s %s, want the merge's usual pick, %s %s", got.Severity, got.ID, wantSev, kept.ID)
+			}
+		})
+	}
+}
+
 func TestTagPass_OnlyFillsEmpty(t *testing.T) {
 	r := &report.ReviewResult{
 		Findings: []report.Finding{

@@ -705,6 +705,246 @@ func TestRun_ThoroughMergesAdversarialFindings(t *testing.T) {
 	}
 }
 
+// TestRun_AnchorsFindingsBeforeMerge proves the line anchor runs before the
+// cross-pass merge: the review names line 2 for code at lines 9-10, the
+// adversarial pass names the quoted lines, and the two fold into one finding
+// on the quoted code. Without anchoring, |2-9| exceeds the merge's ±3 lines
+// and the one defect is reported twice.
+func TestRun_AnchorsFindingsBeforeMerge(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	pr := fakePR(t, "acme", "widgets", 12, "sha-anchor")
+	pr.ChangedFiles = []string{"main.go"}
+	src := strings.Join([]string{
+		"package main",             // 1
+		"",                         // 2
+		"import \"fmt\"",           // 3
+		"",                         // 4
+		"func serve(cfg config) {", // 5
+		"\tcfg.validate()",         // 6
+		"\tdefer cfg.close()",      // 7
+		"",                         // 8
+		"\tif err := runServer(cfg); err != nil {", // 9
+		"\t\tfmt.Println(err)",                     // 10
+		"\t}",                                      // 11
+		"}",                                        // 12
+	}, "\n") + "\n"
+	if err := os.WriteFile(filepath.Join(pr.Dir, "main.go"), []byte(src), 0o600); err != nil {
+		t.Fatalf("write main.go: %v", err)
+	}
+	const (
+		title   = "Server error is printed, not returned"
+		snippet = "if err := runServer(cfg); err != nil {\n\tfmt.Println(err)"
+	)
+	claudeMock := &configurableClaude{
+		review: func(dir string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
+			return &report.ReviewResult{Findings: []report.Finding{
+				{ID: "W-001", Severity: report.SeverityWarning, Title: title, File: "main.go", Line: 2, Problem: "p", Action: "a", Confidence: report.ConfidenceLikely, CodeSnippet: snippet},
+			}}, nil
+		},
+		adversarial: func(dir, baseBranch string) (*report.ReviewResult, error) {
+			return &report.ReviewResult{Findings: []report.Finding{
+				{ID: "W-001", Severity: report.SeverityWarning, Title: title, File: "main.go", Line: 9, LineEnd: 10, Problem: "p", Action: "a", Confidence: report.ConfidenceLikely, CodeSnippet: snippet},
+			}}, nil
+		},
+	}
+	gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
+	runner := &Runner{Claude: claudeMock, GitHub: gh}
+
+	opts := baseOpts()
+	opts.Thorough = true
+	if err := runner.Run(&bytes.Buffer{}, opts); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	cached, ok := readCachedResult(t, cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA, "thorough", baseOptsPatternFlag()))
+	if !ok {
+		t.Fatal("expected a cached result")
+	}
+	if len(cached.Findings) != 1 {
+		t.Fatalf("got %d findings, want the two passes' findings merged into one: %+v", len(cached.Findings), cached.Findings)
+	}
+	f := cached.Findings[0]
+	if f.Line != 9 || f.LineEnd != 10 || f.LineCheck != report.LineCheckReanchored {
+		t.Errorf("merged finding at %d-%d (%q), want 9-10 reanchored", f.Line, f.LineEnd, f.LineCheck)
+	}
+	if want := []string{hygiene.PassReview, hygiene.PassAdversarial}; !slices.Equal(f.ConfirmedBy, want) {
+		t.Errorf("confirmed_by = %v, want %v", f.ConfirmedBy, want)
+	}
+	if f.Confidence != report.ConfidenceVerified {
+		t.Errorf("confidence = %q, want the cross-pass boost to verified", f.Confidence)
+	}
+	if cached.Gates == nil || cached.Gates.Anchor == nil {
+		t.Fatalf("cached result missing anchor stats: %+v", cached.Gates)
+	}
+	if got := *cached.Gates.Anchor; got != (report.AnchorGateStats{Examined: 2, Reanchored: 1}) {
+		t.Errorf("anchor stats = %+v, want {Examined:2 Reanchored:1}", got)
+	}
+}
+
+// TestRun_MergeKeepsTheAnchoredPlace proves the merge keeps the place one
+// pass's quote pinned: the review quotes `return nil`, which occurs twice and
+// leaves it unanchored on line 7, the adversarial pass quotes lines 7-8
+// exactly, and the folded finding sits on 7-8 as anchored, so --inline still
+// comments on it.
+func TestRun_MergeKeepsTheAnchoredPlace(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	pr := fakePR(t, "acme", "widgets", 13, "sha-anchor-merge")
+	pr.ChangedFiles = []string{"main.go"}
+	src := strings.Join([]string{
+		"package main",         // 1
+		"",                     // 2
+		"func start() error {", // 3
+		"\treturn nil",         // 4
+		"}",                    // 5
+		"",                     // 6
+		"func stop() error {",  // 7
+		"\treturn nil",         // 8
+		"}",                    // 9
+	}, "\n") + "\n"
+	if err := os.WriteFile(filepath.Join(pr.Dir, "main.go"), []byte(src), 0o600); err != nil {
+		t.Fatalf("write main.go: %v", err)
+	}
+	const title = "stop swallows the shutdown error"
+	claudeMock := &configurableClaude{
+		review: func(dir string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
+			return &report.ReviewResult{Findings: []report.Finding{
+				{ID: "W-001", Severity: report.SeverityWarning, Title: title, File: "main.go", Line: 7, Problem: "p", Action: "a", Confidence: report.ConfidenceLikely, CodeSnippet: "return nil"},
+			}}, nil
+		},
+		adversarial: func(dir, baseBranch string) (*report.ReviewResult, error) {
+			return &report.ReviewResult{Findings: []report.Finding{
+				{ID: "W-001", Severity: report.SeverityWarning, Title: title, File: "main.go", Line: 7, LineEnd: 8, Problem: "p", Action: "a", Confidence: report.ConfidenceLikely, CodeSnippet: "func stop() error {\n\treturn nil"},
+			}}, nil
+		},
+	}
+	gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
+	runner := &Runner{Claude: claudeMock, GitHub: gh}
+
+	opts := baseOpts()
+	opts.Thorough = true
+	if err := runner.Run(&bytes.Buffer{}, opts); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	cached, ok := readCachedResult(t, cache.Key(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA, "thorough", baseOptsPatternFlag()))
+	if !ok {
+		t.Fatal("expected a cached result")
+	}
+	if len(cached.Findings) != 1 {
+		t.Fatalf("got %d findings, want the two passes' findings merged into one: %+v", len(cached.Findings), cached.Findings)
+	}
+	f := cached.Findings[0]
+	if f.Line != 7 || f.LineEnd != 8 || f.LineCheck != report.LineCheckAnchored {
+		t.Errorf("merged finding at %d-%d (%q), want the adversarial pass's anchored 7-8", f.Line, f.LineEnd, f.LineCheck)
+	}
+	if want := []string{hygiene.PassReview, hygiene.PassAdversarial}; !slices.Equal(f.ConfirmedBy, want) {
+		t.Errorf("confirmed_by = %v, want %v", f.ConfirmedBy, want)
+	}
+	// The counts are per pass, before the merge.
+	if cached.Gates == nil || cached.Gates.Anchor == nil || *cached.Gates.Anchor != (report.AnchorGateStats{Examined: 2, Unanchored: 1}) {
+		t.Errorf("anchor stats = %+v, want {Examined:2 Unanchored:1}", cached.Gates)
+	}
+}
+
+// TestRun_AnchorRelocatesWithinTheFilesTheDiffKept locks the relocation set
+// under --diff-exclusions: the changed files the diff kept. A lock file over
+// the anchor's per-file read limit that the diff left out stops no
+// relocation, and no finding moves into a vendored file the diff left out.
+// Without exclusions both are searched, and the unread lock file stops every
+// relocation, as decision 139 has it.
+func TestRun_AnchorRelocatesWithinTheFilesTheDiffKept(t *testing.T) {
+	// Not t.Parallel(): cache.SetDir mutates a package-level variable.
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+	t.Setenv("TMPDIR", t.TempDir())
+
+	dir := t.TempDir()
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	write := func(name, content string) {
+		t.Helper()
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+			t.Fatalf("mkdir for %s: %v", name, err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	git("init", "-q")
+	git("config", "user.email", "t@example.com")
+	git("config", "user.name", "tester")
+	write("a.go", "package app\n")
+	write("b.go", "package app\n")
+	git("add", "-A")
+	git("commit", "-q", "-m", "base")
+	git("update-ref", "refs/remotes/origin/main", git("rev-parse", "HEAD"))
+	write("a.go", "package app\n\nfunc serve() {}\n")
+	write("b.go", "package app\n\nfunc load() {\n\tcfg := readConfigurationFile(path)\n}\n")
+	write("vendor/x/codec.go", "package x\n\nfunc init() {\n\tregisterVendoredCodec(codec)\n}\n")
+	write("package-lock.json", strings.Repeat("{}\n", 2<<20)) // 6 MiB
+	git("add", "-A")
+	git("commit", "-q", "-m", "head")
+
+	const (
+		inB      = "Configuration read is unchecked"
+		inVendor = "Codec registered twice"
+	)
+	for _, exclude := range []bool{false, true} {
+		claudeMock := &configurableClaude{
+			review: func(string, claude.ReviewContext) (*report.ReviewResult, error) {
+				return &report.ReviewResult{Summary: "ok", Findings: []report.Finding{
+					{ID: "W-001", Severity: report.SeverityWarning, Title: inB, File: "a.go", Line: 3, Problem: "p", Action: "a", Confidence: report.ConfidenceLikely, CodeSnippet: "cfg := readConfigurationFile(path)"},
+					{ID: "W-002", Severity: report.SeverityWarning, Title: inVendor, File: "a.go", Line: 1, Problem: "p", Action: "a", Confidence: report.ConfidenceLikely, CodeSnippet: "registerVendoredCodec(codec)"},
+				}}, nil
+			},
+		}
+		pr := fakePR(t, "acme", "widgets", 14, "sha-anchor-excluded")
+		pr.Dir, pr.Local = dir, true
+		pr.ChangedFiles = []string{"a.go", "b.go", "package-lock.json", "vendor/x/codec.go"}
+		gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
+		opts := baseOpts()
+		opts.NoCache = true
+		opts.Format = formatJSON
+		opts.DiffExclusions = exclude
+
+		var out bytes.Buffer
+		if err := (&Runner{Claude: claudeMock, GitHub: gh}).Run(&out, opts); err != nil {
+			t.Fatalf("exclude=%v: Run returned error: %v", exclude, err)
+		}
+		var got report.ReviewResult
+		if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+			t.Fatalf("exclude=%v: decoding the JSON output: %v\n%s", exclude, err, out.String())
+		}
+		places := map[string]string{}
+		for _, f := range got.Findings {
+			places[f.Title] = fmt.Sprintf("%s %s:%d", f.LineCheck, f.File, f.Line)
+		}
+		want := map[string]string{
+			inB:      report.LineCheckUnanchored + " a.go:3",
+			inVendor: report.LineCheckUnanchored + " a.go:1",
+		}
+		if exclude {
+			want[inB] = report.LineCheckRelocated + " b.go:4"
+		}
+		if !reflect.DeepEqual(places, want) {
+			t.Errorf("exclude=%v: places = %v, want %v", exclude, places, want)
+		}
+	}
+}
+
 func TestRun_SpecialistsFanOutAndMerge(t *testing.T) {
 	restore := cache.SetDir(t.TempDir())
 	t.Cleanup(restore)
