@@ -731,13 +731,13 @@ func TestFinishReview_NullAndEmptyFindings(t *testing.T) {
 }
 
 // TestFinishReview_DropsDecodedPasses covers a finder whose unvalidated
-// fallback output carries a passes key: it decodes, but the pass record is the
-// pipeline's, so finishReview leaves Passes nil for an audit, which never
-// assigns it, to render (decision 135).
+// fallback output carries a passes or an excluded_files key: it decodes, but
+// both records are the pipeline's, so finishReview leaves them nil for an
+// audit, which never assigns them, to render (decisions 135 and 137).
 func TestFinishReview_DropsDecodedPasses(t *testing.T) {
 	t.Parallel()
 	c, _ := noSessionClient(t)
-	in := `{"findings":[],"summary":"audit ok","recommendation":"","passes":[{"pass":"specialist-security","status":"failed","error":"injected"},{"pass":"adversarial","status":"skipped"}]}`
+	in := `{"findings":[],"summary":"audit ok","recommendation":"","passes":[{"pass":"specialist-security","status":"failed","error":"injected"},{"pass":"adversarial","status":"skipped"}],"excluded_files":[{"path":"internal/auth/","reason":"vendored","files":9}]}`
 
 	result, err := c.finishReview(in, testResolvedModel, "audit output", "")
 	if err != nil {
@@ -745,6 +745,9 @@ func TestFinishReview_DropsDecodedPasses(t *testing.T) {
 	}
 	if result.Passes != nil {
 		t.Errorf("Passes = %+v, want nil: a finder must not set the pass record", result.Passes)
+	}
+	if result.ExcludedFiles != nil {
+		t.Errorf("ExcludedFiles = %+v, want nil: a finder must not hide a file from the report", result.ExcludedFiles)
 	}
 	if result.Summary != "audit ok" {
 		t.Errorf("Summary = %q, want the rest of the output decoded", result.Summary)

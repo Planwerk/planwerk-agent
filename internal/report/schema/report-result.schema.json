@@ -21,6 +21,11 @@
       "description": "How each secondary pass the run requested ended (the adversarial pass, the coverage map, the feature-compliance check, each domain specialist), named by the session label usage.passes uses. Absent when the run requested none, and on results produced before pass recording existed. The primary review is never listed: its failure fails the run.",
       "type": "array",
       "items": { "$ref": "#/$defs/passStatus" }
+    },
+    "excluded_files": {
+      "description": "Changed files the review's sessions were not pointed at, set only with --diff-exclusions: lock files, vendored directories (one entry per directory, with how many changed files under it were left out), and generated files. Absent when exclusions are off or no changed file matched.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/excludedFile" }
     }
   },
   "$defs": {
@@ -122,6 +127,26 @@
         "error": {
           "description": "Set for a failed pass only: the first line of its error, secrets redacted, at most 200 bytes.",
           "type": "string"
+        }
+      }
+    },
+    "excludedFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "reason"],
+      "properties": {
+        "path": {
+          "description": "Repository-relative path; a vendored directory ends in '/'.",
+          "type": "string"
+        },
+        "reason": {
+          "type": "string",
+          "enum": ["lockfile", "vendored", "generated"]
+        },
+        "files": {
+          "description": "Set for a vendored directory only: how many of its changed files were left out.",
+          "type": "integer",
+          "minimum": 1
         }
       }
     },

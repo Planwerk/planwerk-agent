@@ -114,6 +114,10 @@ func TestRendererOutputMatchesSchema(t *testing.T) {
 				{Pass: "specialist-testing", Status: report.PassStatusGatedOut},
 				{Pass: "specialist-security", Status: report.PassStatusFailed, Error: "boom"},
 			},
+			ExcludedFiles: []report.ExcludedFile{
+				{Path: "go.sum", Reason: report.ExcludedLockfile},
+				{Path: "vendor/", Reason: report.ExcludedVendored, Files: 3},
+			},
 		}
 		var buf bytes.Buffer
 		if err := report.NewRenderer(&buf).RenderJSON(rr, report.SeverityInfo, ""); err != nil {
@@ -195,6 +199,7 @@ func TestInvalidFinderOutputRejected(t *testing.T) {
 		"source finding count":      `{"findings":null,"summary":"","recommendation":"","source_finding_count":0}`,
 		"finding with confirmed_by": `{"findings":[{"severity":"INFO","title":"t","file":"f","problem":"p","action":"a","actionability":"auto-fix","confidence":"likely","confirmed_by":["review"]}],"summary":"","recommendation":""}`,
 		"top-level extra field":     `{"findings":null,"summary":"","recommendation":"","extra":true}`,
+		"excluded files":            `{"findings":null,"summary":"","recommendation":"","excluded_files":[{"path":"go.sum","reason":"lockfile"}]}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			if err := validate(t, sch, []byte(doc)); err == nil {
@@ -233,6 +238,8 @@ func TestInvalidDocumentRejected(t *testing.T) {
 		"unknown property":        `{"findings":null,"summary":"","recommendation":"","extra":true}`,
 		"bad pass status enum":    `{"findings":null,"summary":"","recommendation":"","passes":[{"pass":"adversarial","status":"skipped"}]}`,
 		"pass missing status":     `{"findings":null,"summary":"","recommendation":"","passes":[{"pass":"adversarial"}]}`,
+		"bad exclusion reason":    `{"findings":null,"summary":"","recommendation":"","excluded_files":[{"path":"foo_test.go","reason":"test"}]}`,
+		"vendored zero files":     `{"findings":null,"summary":"","recommendation":"","excluded_files":[{"path":"vendor/","reason":"vendored","files":0}]}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			if err := validate(t, sch, []byte(doc)); err == nil {

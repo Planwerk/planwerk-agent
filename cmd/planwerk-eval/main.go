@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -194,11 +193,11 @@ func resolveTiers() (eval.Tiers, error) {
 }
 
 // buildClient constructs a Claude client on tiers, then applies the timeout,
-// inherit-user-config and show-output overrides the shipped CLI honors, each
-// only when set so the compiled-in defaults otherwise stand. The model and
-// effort variables are read in resolveTiers alone. It is the minimal mirror of
-// the root command's resolve* helpers, which are unexported in
-// cmd/planwerk-agent. Every tier option ignores an empty value, so the zero
+// inherit-user-config, diff-exclusions and show-output overrides the shipped
+// CLI honors, each only when set so the compiled-in defaults otherwise stand.
+// The model and effort variables are read in resolveTiers alone. It is the
+// minimal mirror of the root command's resolve* helpers, which are unexported
+// in cmd/planwerk-agent. Every tier option ignores an empty value, so the zero
 // Tiers yields the compiled-in defaults.
 func buildClient(tiers eval.Tiers) (*claude.Client, error) {
 	opts := []claude.Option{
@@ -217,17 +216,40 @@ func buildClient(tiers eval.Tiers) (*claude.Client, error) {
 		opts = append(opts, claude.WithTimeout(d))
 	}
 	if v := strings.TrimSpace(os.Getenv("PLANWERK_CLAUDE_INHERIT_USER_CONFIG")); v != "" {
-		b, err := strconv.ParseBool(v)
+		b, err := parseBoolEnv("PLANWERK_CLAUDE_INHERIT_USER_CONFIG", v)
 		if err != nil {
-			return nil, fmt.Errorf("invalid PLANWERK_CLAUDE_INHERIT_USER_CONFIG=%q: %w", v, err)
+			return nil, err
 		}
 		opts = append(opts, claude.WithInheritUserConfig(b))
 	}
+	if v := strings.TrimSpace(os.Getenv("PLANWERK_DIFF_EXCLUSIONS")); v != "" {
+		b, err := parseBoolEnv("PLANWERK_DIFF_EXCLUSIONS", v)
+		if err != nil {
+			return nil, err
+		}
+		opts = append(opts, claude.WithDiffExclusions(b))
+	}
 	if v := strings.TrimSpace(os.Getenv("PLANWERK_SHOW_CLAUDE_OUTPUT")); v != "" {
-		if b, err := strconv.ParseBool(v); err == nil {
+		if b, err := parseBoolEnv("PLANWERK_SHOW_CLAUDE_OUTPUT", v); err == nil {
 			opts = append(opts, claude.WithShowOutput(b))
 		}
 	}
 
 	return claude.NewClient(opts...), nil
+}
+
+// parseBoolEnv parses the value v of the boolean environment variable name in
+// the vocabulary the shipped CLI's lookupBoolEnv reads, in any letter case:
+// 1, true, yes, on, and 0, false, no, off. Any other value is an error naming
+// the variable, so a typo fails before the first case spends tokens.
+// lookupBoolEnv lives in cmd/planwerk-agent's package main, which the eval
+// cannot import.
+func parseBoolEnv(name, v string) (bool, error) {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "yes", "on":
+		return true, nil
+	case "0", "false", "no", "off":
+		return false, nil
+	}
+	return false, fmt.Errorf("invalid %s=%q: want one of 1, true, yes, on, 0, false, no, off", name, v)
 }

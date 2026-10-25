@@ -67,6 +67,7 @@ planwerk-agent/
 │   │   ├── interfaces.go
 │   │   ├── prompt.go           # Deterministic Claude Code prompt assembler
 │   │   └── prompt_test.go
+│   ├── diffscope/              # The diff a finder session reads: the hardened git diff file and the opt-in lock/vendored/generated exclusions
 │   ├── doccheck/
 │   │   ├── doccheck.go         # Detect stale documentation files
 │   │   └── doccheck_test.go

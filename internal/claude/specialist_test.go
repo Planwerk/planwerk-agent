@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/planwerk/planwerk-agent/internal/diffscope"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
@@ -185,7 +186,7 @@ func TestSpecialistAreasSelectPatterns(t *testing.T) {
 		{Name: "Hardcoded secrets", ReviewArea: "security", Severity: "CRITICAL", DetectionHint: "h", Body: "SECURITY BODY"},
 		{Name: "Missing context", ReviewArea: "reliability", Severity: "WARNING", DetectionHint: "h", Body: "RELIABILITY BODY"},
 	}
-	got := buildSpecialistPrompt("main", Specialist{Key: "security", Areas: []string{"security"}}, pats, 0)
+	got := buildSpecialistPrompt("main", diffscope.Diff{}, Specialist{Key: "security", Areas: []string{"security"}}, pats, 0)
 
 	if !strings.Contains(got, "SECURITY BODY") {
 		t.Error("the specialist lost its own area's pattern")
@@ -203,7 +204,7 @@ func TestSpecialistAreasFallBackToFullCatalog(t *testing.T) {
 	pats := []patterns.Pattern{
 		{Name: "House rule", ReviewArea: "our-own-area", Severity: "WARNING", DetectionHint: "h", Body: "PROJECT BODY"},
 	}
-	got := buildSpecialistPrompt("main", Specialist{Key: "security", Areas: []string{"security"}}, pats, 0)
+	got := buildSpecialistPrompt("main", diffscope.Diff{}, Specialist{Key: "security", Areas: []string{"security"}}, pats, 0)
 
 	if !strings.Contains(got, "PROJECT BODY") {
 		t.Error("a catalog whose areas do not match must fall back to the full catalog, not to none")

@@ -3,6 +3,7 @@ package main
 import (
 	"cmp"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -115,7 +116,7 @@ func clearTierEnv(t *testing.T) {
 	t.Helper()
 	for _, name := range []string{
 		envClaudeModel, envClaudeEffort, envFinderModel, envFinderEffort, envStructureModel, envStructureEffort,
-		"PLANWERK_CLAUDE_TIMEOUT", "PLANWERK_CLAUDE_INHERIT_USER_CONFIG", "PLANWERK_SHOW_CLAUDE_OUTPUT",
+		"PLANWERK_CLAUDE_TIMEOUT", "PLANWERK_CLAUDE_INHERIT_USER_CONFIG", "PLANWERK_DIFF_EXCLUSIONS", "PLANWERK_SHOW_CLAUDE_OUTPUT",
 	} {
 		t.Setenv(name, "")
 	}
@@ -268,6 +269,49 @@ func TestBuildClientAppliesTheTiers(t *testing.T) {
 		t.Setenv("PLANWERK_CLAUDE_TIMEOUT", "bogus")
 		if _, err := buildClient(eval.Tiers{}); err == nil || !strings.Contains(err.Error(), "invalid PLANWERK_CLAUDE_TIMEOUT") {
 			t.Errorf("buildClient = %v, want an invalid PLANWERK_CLAUDE_TIMEOUT error", err)
+		}
+	})
+
+	t.Run("PLANWERK_DIFF_EXCLUSIONS turns the exclusions on", func(t *testing.T) {
+		clearTierEnv(t)
+		// The CLI's vocabulary (lookupBoolEnv), in any letter case.
+		for v, want := range map[string]bool{
+			"": false, "1": true, "true": true, "TRUE": true, "yes": true, "YES": true, "on": true, "On": true,
+			"0": false, "false": false, "no": false, "off": false,
+		} {
+			t.Setenv("PLANWERK_DIFF_EXCLUSIONS", v)
+			client, err := buildClient(eval.Tiers{})
+			if err != nil {
+				t.Fatalf("PLANWERK_DIFF_EXCLUSIONS=%q: buildClient = %v, want a client", v, err)
+			}
+			if got := client.DiffExclusions(); got != want {
+				t.Errorf("PLANWERK_DIFF_EXCLUSIONS=%q: DiffExclusions() = %v, want %v", v, got, want)
+			}
+		}
+	})
+
+	t.Run("a bogus PLANWERK_DIFF_EXCLUSIONS is rejected", func(t *testing.T) {
+		clearTierEnv(t)
+		// "t" is a strconv.ParseBool value the CLI does not read as true.
+		for _, v := range []string{"maybe", "t"} {
+			t.Setenv("PLANWERK_DIFF_EXCLUSIONS", v)
+			if _, err := buildClient(eval.Tiers{}); err == nil || !strings.Contains(err.Error(), fmt.Sprintf("invalid PLANWERK_DIFF_EXCLUSIONS=%q", v)) {
+				t.Errorf("PLANWERK_DIFF_EXCLUSIONS=%q: buildClient = %v, want an error naming PLANWERK_DIFF_EXCLUSIONS", v, err)
+			}
+		}
+	})
+
+	t.Run("PLANWERK_CLAUDE_INHERIT_USER_CONFIG takes the CLI's values", func(t *testing.T) {
+		clearTierEnv(t)
+		for _, v := range []string{"yes", "on", "no", "OFF"} {
+			t.Setenv("PLANWERK_CLAUDE_INHERIT_USER_CONFIG", v)
+			if _, err := buildClient(eval.Tiers{}); err != nil {
+				t.Errorf("PLANWERK_CLAUDE_INHERIT_USER_CONFIG=%q: buildClient = %v, want a client", v, err)
+			}
+		}
+		t.Setenv("PLANWERK_CLAUDE_INHERIT_USER_CONFIG", "t")
+		if _, err := buildClient(eval.Tiers{}); err == nil || !strings.Contains(err.Error(), `invalid PLANWERK_CLAUDE_INHERIT_USER_CONFIG="t"`) {
+			t.Errorf("buildClient = %v, want an error naming PLANWERK_CLAUDE_INHERIT_USER_CONFIG", err)
 		}
 	})
 }

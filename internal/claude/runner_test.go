@@ -4,12 +4,15 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/planwerk/planwerk-agent/internal/diffscope"
+	"github.com/planwerk/planwerk-agent/internal/gitref/gitreftest"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
 	"github.com/planwerk/planwerk-agent/internal/report/schema"
@@ -1173,6 +1176,8 @@ func TestAdapters_OpenTheMemoryDirectory(t *testing.T) {
 		{"Review", "review", nil, func(c *Client, mem patterns.MemoryCatalog) {
 			ctx := goldenReviewContext()
 			ctx.Memory = mem
+			// The diff directory follows the memory's; TestFinders_ReadTheWrittenDiff covers it.
+			ctx.Diff = diffscope.Diff{}
 			_, _ = c.Review("", ctx)
 		}},
 		{"Audit", "audit", nil, func(c *Client, mem patterns.MemoryCatalog) {
@@ -1414,6 +1419,163 @@ func TestFinders_SessionErrorIsWrappedAndSkipsDecode(t *testing.T) {
 	if len(*calls) != 1 {
 		t.Errorf("ran %d sessions, want only the failed finder session", len(*calls))
 	}
+}
+
+// diffTestRepo returns a checkout whose origin/develop is the base commit and
+// whose HEAD changes app.go and go.sum on top of it, the shape a pull request
+// clone has.
+func diffTestRepo(t *testing.T) string {
+	t.Helper()
+	dir := gitreftest.Repo(t, map[string]string{"app.go": "package app\n", "go.sum": "a v1 h1:x\n"})
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.com", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.com")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	base := git("rev-parse", "HEAD")
+	gitreftest.Write(t, dir, "app.go", "package app\n\nfunc Changed() {}\n")
+	gitreftest.Write(t, dir, "go.sum", "a v2 h1:y\n")
+	git("commit", "-q", "-am", "head")
+	git("update-ref", "refs/remotes/origin/develop", base)
+	return dir
+}
+
+// TestFinders_ReadTheWrittenDiff proves every diff-scoped finder reads a diff
+// file: the five finder-tier passes write one for their session, hand the
+// session its directory, name the file and what --diff-exclusions left out in
+// the prompt, record the exclusions on their result, and remove the directory
+// once the session returns. The review reads the diff its caller wrote and
+// writes none, and the audit is handed no diff directory (decision 137).
+func TestFinders_ReadTheWrittenDiff(t *testing.T) {
+	t.Parallel()
+	dir := diffTestRepo(t)
+	wantExcluded := []report.ExcludedFile{{Path: "go.sum", Reason: report.ExcludedLockfile}}
+
+	rows := []struct {
+		name string
+		run  func(c *Client) (*report.ReviewResult, error)
+	}{
+		{"AdversarialReview", func(c *Client) (*report.ReviewResult, error) {
+			return c.AdversarialReview(dir, "develop", "", nil, 0)
+		}},
+		{"SpecialistReview", func(c *Client) (*report.ReviewResult, error) {
+			return c.SpecialistReview(dir, "develop", specialistByKey(t, "security"), nil, 0)
+		}},
+		{"FeatureCompliance", func(c *Client) (*report.ReviewResult, error) {
+			return c.FeatureCompliance(dir, "develop", goldenFeature())
+		}},
+		{"SimplifyFindings", func(c *Client) (*report.ReviewResult, error) {
+			return c.SimplifyFindings(dir, "develop")
+		}},
+		{"VerifyImplementation", func(c *Client) (*report.ReviewResult, error) {
+			return c.VerifyImplementation(dir, "t", "b", "develop")
+		}},
+	}
+	for _, row := range rows {
+		t.Run(row.name, func(t *testing.T) {
+			t.Parallel()
+			var diffDir, diffText string
+			c, calls := scriptedClient(t, func(_ int, spec runSpec, _ string) (string, string, error) {
+				// Read the diff while the session runs: it must exist then.
+				for _, d := range spec.addDirs {
+					if strings.HasPrefix(filepath.Base(d), diffscope.DirPrefix) {
+						diffDir = d
+						data, err := os.ReadFile(filepath.Join(d, "branch.diff"))
+						if err != nil {
+							t.Errorf("the diff must be readable while the session runs: %v", err)
+						}
+						diffText = string(data)
+					}
+				}
+				return `{"findings":[],"summary":"","recommendation":"","excluded_files":[{"path":"app.go","reason":"generated"}]}`, "", nil
+			}, WithDiffExclusions(true))
+
+			result, err := row.run(c)
+			if err != nil {
+				t.Fatalf("adapter returned error: %v", err)
+			}
+			if diffDir == "" {
+				t.Fatalf("the session was handed no %s directory; addDirs %q", diffscope.DirPrefix, (*calls)[0].spec.addDirs)
+			}
+			if !strings.Contains(diffText, "diff --git a/app.go b/app.go") || strings.Contains(diffText, "go.sum") {
+				t.Errorf("the diff must carry app.go and leave out go.sum:\n%s", diffText)
+			}
+			prompt := (*calls)[0].prompt
+			if !strings.Contains(prompt, "The diff is in `"+filepath.Join(diffDir, "branch.diff")+"`") || !strings.Contains(prompt, "<excluded-files>\ngo.sum (lock file)\n</excluded-files>") {
+				t.Errorf("the prompt must name the diff file and the excluded go.sum:\n%s", prompt)
+			}
+			if !slices.Equal(result.ExcludedFiles, wantExcluded) {
+				t.Errorf("ExcludedFiles = %+v, want %+v, never what the session emitted", result.ExcludedFiles, wantExcluded)
+			}
+			if _, err := os.Stat(diffDir); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("after the call, stat %s = %v, want not exist", diffDir, err)
+			}
+		})
+	}
+
+	t.Run("Review reads the diff its caller wrote", func(t *testing.T) {
+		t.Parallel()
+		c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
+			return emptyFinderOutputJSON, "", nil
+		}, WithDiffExclusions(true))
+		ctx := goldenReviewContext()
+		ctx.Diff = goldenExcludedDiff()
+		result, err := c.Review(dir, ctx)
+		if err != nil {
+			t.Fatalf("Review: %v", err)
+		}
+		spec := (*calls)[0].spec
+		if !slices.Equal(nonEmptyDirs(spec.addDirs), []string{ctx.Diff.Dir}) {
+			t.Errorf("addDirs = %q, want only the caller's diff directory", spec.addDirs)
+		}
+		if !strings.Contains((*calls)[0].prompt, "The diff is in `"+ctx.Diff.File+"`") {
+			t.Error("the review prompt must name the caller's diff file")
+		}
+		if !slices.Equal(result.ExcludedFiles, ctx.Diff.Excluded) {
+			t.Errorf("ExcludedFiles = %+v, want the caller's %+v", result.ExcludedFiles, ctx.Diff.Excluded)
+		}
+	})
+
+	t.Run("Review writes no diff of its own", func(t *testing.T) {
+		t.Parallel()
+		c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
+			return emptyFinderOutputJSON, "", nil
+		}, WithDiffExclusions(true))
+		ctx := goldenReviewContext()
+		ctx.Diff = diffscope.Diff{}
+		result, err := c.Review(dir, ctx)
+		if err != nil {
+			t.Fatalf("Review: %v", err)
+		}
+		if dirs := nonEmptyDirs((*calls)[0].spec.addDirs); len(dirs) != 0 {
+			t.Errorf("addDirs = %q, want none for the zero Diff", dirs)
+		}
+		if !strings.Contains((*calls)[0].prompt, "Run `git diff origin/develop...HEAD` to see the cumulative diff") {
+			t.Error("the zero Diff must keep the git command in the review prompt")
+		}
+		if result.ExcludedFiles != nil {
+			t.Errorf("ExcludedFiles = %+v, want nil", result.ExcludedFiles)
+		}
+	})
+
+	t.Run("Audit is handed no diff directory", func(t *testing.T) {
+		t.Parallel()
+		c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
+			return emptyFinderOutputJSON, "", nil
+		}, WithDiffExclusions(true))
+		if _, err := c.Audit(dir, goldenAuditContext()); err != nil {
+			t.Fatalf("Audit: %v", err)
+		}
+		if dirs := nonEmptyDirs((*calls)[0].spec.addDirs); len(dirs) != 0 {
+			t.Errorf("addDirs = %q, want none: the audit has no diff", dirs)
+		}
+	})
 }
 
 // TestRunClaudeStructure_BuildsAToolLessSpecWithoutSchema pins the structure

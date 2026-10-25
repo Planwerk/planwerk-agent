@@ -118,9 +118,10 @@ type sarifProperties struct {
 // that names no file is not a result but a warning notification on the run's
 // invocation, because code scanning places every result in a file. Each
 // requested pass that failed adds a warning notification of its own, so the
-// log says the review is incomplete (decision 135). The log is the whole
-// document, so the caller writes nothing else to the same writer
-// (decision 134).
+// log says the review is incomplete (decision 135), and the files
+// --diff-exclusions left out add one note-level notification, so an exclusion
+// is not silent here either (decision 137). The log is the whole document, so
+// the caller writes nothing else to the same writer (decision 134).
 func (r *Renderer) RenderSARIF(result ReviewResult, minSeverity Severity, minConfidence Confidence, version string) error {
 	cf := Categorize(result.Findings, minSeverity, minConfidence)
 	rules := make([]sarifRule, 0)
@@ -170,7 +171,7 @@ func (r *Renderer) RenderSARIF(result ReviewResult, minSeverity Severity, minCon
 				InformationURI: attribution.RepoURL,
 				Rules:          rules,
 			}},
-			Invocations: []sarifInvocation{sarifInvocationFor(fileless, result.FailedPasses())},
+			Invocations: []sarifInvocation{sarifInvocationFor(fileless, result.FailedPasses(), result.ExcludedFiles)},
 			Results:     results,
 		}},
 	}
@@ -186,8 +187,11 @@ func (r *Renderer) RenderSARIF(result ReviewResult, minSeverity Severity, minCon
 // single warning notification that names them all. failed holds the requested
 // passes that failed, and each adds one warning notification after that one,
 // naming the pass by its session label with the error NewPassStatus already
-// shortened and redacted (decision 135).
-func sarifInvocationFor(fileless []string, failed []PassStatus) sarifInvocation {
+// shortened and redacted (decision 135). excluded holds what --diff-exclusions
+// left out of the diff the review read; when it is non-empty, a last
+// notification at level note names its entries as the Markdown note does, the
+// first ExcludedFilesListLimit by path and the rest as a count (decision 137).
+func sarifInvocationFor(fileless []string, failed []PassStatus, excluded []ExcludedFile) sarifInvocation {
 	inv := sarifInvocation{ExecutionSuccessful: true}
 	if len(fileless) > 0 {
 		inv.ToolExecutionNotifications = append(inv.ToolExecutionNotifications, sarifNotification{
@@ -200,6 +204,21 @@ func sarifInvocationFor(fileless []string, failed []PassStatus) sarifInvocation 
 		inv.ToolExecutionNotifications = append(inv.ToolExecutionNotifications, sarifNotification{
 			Level:   sarifLevelWarning,
 			Message: sarifMessage{Text: fmt.Sprintf("%s failed: %s; the review is incomplete", p.Pass, p.Error)},
+		})
+	}
+	if len(excluded) > 0 {
+		shown := excluded[:min(len(excluded), ExcludedFilesListLimit)]
+		entries := make([]string, len(shown))
+		for i, e := range shown {
+			entries[i] = fmt.Sprintf("%s (%s)", e.Path, e.Label())
+		}
+		if rest := len(excluded) - len(shown); rest > 0 {
+			entries = append(entries, fmt.Sprintf("and %d more", rest))
+		}
+		inv.ToolExecutionNotifications = append(inv.ToolExecutionNotifications, sarifNotification{
+			Level: sarifLevelNote,
+			Message: sarifMessage{Text: fmt.Sprintf("%d changed file(s) were left out of the diff the review read (--diff-exclusions), so no result covers them: %s",
+				ExcludedFileCount(excluded), strings.Join(entries, "; "))},
 		})
 	}
 	return inv

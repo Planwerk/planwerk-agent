@@ -12,6 +12,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/audit"
 	"github.com/planwerk/planwerk-agent/internal/brain"
 	"github.com/planwerk/planwerk-agent/internal/capture"
+	"github.com/planwerk/planwerk-agent/internal/diffscope"
 	"github.com/planwerk/planwerk-agent/internal/doccheck"
 	"github.com/planwerk/planwerk-agent/internal/elaborate"
 	"github.com/planwerk/planwerk-agent/internal/fix"
@@ -111,6 +112,29 @@ func goldenSkills() []skills.Skill {
 	}
 }
 
+// goldenDiff is a written branch diff, the form every diff-scoped finder
+// prompt takes when its diff file was written. Nothing is written to Dir.
+func goldenDiff() diffscope.Diff {
+	return diffscope.Diff{
+		Dir:   "/tmp/planwerk-agent-diff-golden",
+		File:  "/tmp/planwerk-agent-diff-golden/branch.diff",
+		Range: "origin/develop...HEAD",
+		Lines: 1234,
+	}
+}
+
+// goldenExcludedDiff is goldenDiff under --diff-exclusions: it left out a
+// generated file, a lock file, and a vendored directory.
+func goldenExcludedDiff() diffscope.Diff {
+	d := goldenDiff()
+	d.Excluded = []report.ExcludedFile{
+		{Path: "api/v1/zz_generated.deepcopy.go", Reason: report.ExcludedGenerated},
+		{Path: "go.sum", Reason: report.ExcludedLockfile},
+		{Path: "vendor/", Reason: report.ExcludedVendored, Files: 12},
+	}
+	return d
+}
+
 func goldenReviewContext() ReviewContext {
 	return ReviewContext{
 		Patterns:    goldenPatterns(),
@@ -127,6 +151,7 @@ func goldenReviewContext() ReviewContext {
 			{File: "internal/claude/prompts_golden_test.go", Description: "new test file"},
 		},
 		TodoContent: "- [ ] Add coverage map snapshot\n- [x] Add review prompt snapshot",
+		Diff:        goldenDiff(),
 	}
 }
 
@@ -223,6 +248,15 @@ func goldenElaborateContext() elaborate.Context {
 
 func TestBuildReviewPrompt_Golden(t *testing.T) {
 	assertGoldenPrompt(t, "review", buildReviewPrompt(goldenReviewContext()))
+}
+
+// TestBuildReviewPrompt_DiffExclusions locks the review scope of a run under
+// --diff-exclusions: the diff file bullet, then the bullet naming what the
+// diff left out (decision 137).
+func TestBuildReviewPrompt_DiffExclusions(t *testing.T) {
+	ctx := goldenReviewContext()
+	ctx.Diff = goldenExcludedDiff()
+	assertGoldenPrompt(t, "review_diff_excluded", buildReviewPrompt(ctx))
 }
 
 // goldenMetaIssue and goldenSiblingIssues describe the Meta/Sub-Issue
@@ -763,18 +797,25 @@ func TestBuildGlossaryPrompt_Golden(t *testing.T) {
 }
 
 func TestBuildAdversarialPrompt_Golden(t *testing.T) {
-	assertGoldenPrompt(t, "adversarial", buildAdversarialPrompt("develop", "", nil, 0))
+	assertGoldenPrompt(t, "adversarial", buildAdversarialPrompt("develop", "", goldenDiff(), nil, 0))
+}
+
+// TestBuildAdversarialPrompt_DiffExclusions locks the finder scope lines of a
+// run under --diff-exclusions, which every diff-scoped finder shares through
+// diffScopeLines (decision 137).
+func TestBuildAdversarialPrompt_DiffExclusions(t *testing.T) {
+	assertGoldenPrompt(t, "adversarial_diff_excluded", buildAdversarialPrompt("develop", "", goldenExcludedDiff(), nil, 0))
 }
 
 // TestBuildAdversarialPrompt_Patterns_Golden locks the adversarial prompt when
 // the finder is grounded in the project review-pattern catalog: the
 // <review-patterns> block appears with its grounding-not-widening framing.
 func TestBuildAdversarialPrompt_Patterns_Golden(t *testing.T) {
-	assertGoldenPrompt(t, "adversarial_patterns", buildAdversarialPrompt("develop", "", goldenPatterns(), 0))
+	assertGoldenPrompt(t, "adversarial_patterns", buildAdversarialPrompt("develop", "", goldenDiff(), goldenPatterns(), 0))
 }
 
 func TestBuildCompliancePrompt_Golden(t *testing.T) {
-	assertGoldenPrompt(t, "compliance", buildCompliancePrompt("develop", goldenFeature()))
+	assertGoldenPrompt(t, "compliance", buildCompliancePrompt("develop", goldenDiff(), goldenFeature()))
 }
 
 func TestBuildCoveragePrompt_Golden(t *testing.T) {
@@ -950,7 +991,7 @@ func TestBuildPlanPrompt_MetaDeps_Golden(t *testing.T) {
 // that keeps validation/error-handling/security/accessibility/tests off the
 // flag list.
 func TestBuildSimplifyFindPrompt_Golden(t *testing.T) {
-	assertGoldenPrompt(t, "simplify_find", buildSimplifyFindPrompt("develop"))
+	assertGoldenPrompt(t, "simplify_find", buildSimplifyFindPrompt("develop", goldenDiff()))
 }
 
 func goldenSimplifyApplyContext() implement.SimplifyApplyContext {
@@ -1397,7 +1438,7 @@ func TestBuildValidationRepairPrompt_Golden(t *testing.T) {
 // security domain: the domain-scoped framing, the shared communication/output
 // blocks, and the finding-enrichment tail.
 func TestBuildSpecialistPrompt_Golden(t *testing.T) {
-	assertGoldenPrompt(t, "specialist_security", buildSpecialistPrompt("develop", specialistByKey(t, "security"), nil, 0))
+	assertGoldenPrompt(t, "specialist_security", buildSpecialistPrompt("develop", goldenDiff(), specialistByKey(t, "security"), nil, 0))
 }
 
 // TestBuildSpecialistPrompt_EveryDomain_Golden locks the prompt of every
@@ -1409,7 +1450,7 @@ func TestBuildSpecialistPrompt_EveryDomain_Golden(t *testing.T) {
 		if sp.Key == "security" {
 			continue
 		}
-		assertGoldenPrompt(t, "specialist_"+sp.Key, buildSpecialistPrompt("develop", sp, nil, 0))
+		assertGoldenPrompt(t, "specialist_"+sp.Key, buildSpecialistPrompt("develop", goldenDiff(), sp, nil, 0))
 	}
 }
 
@@ -1419,7 +1460,7 @@ func TestBuildSpecialistPrompt_EveryDomain_Golden(t *testing.T) {
 // patterns of the areas the specialist declares — the security specialist gets
 // the security pattern, not the reliability one.
 func TestBuildSpecialistPrompt_Patterns_Golden(t *testing.T) {
-	assertGoldenPrompt(t, "specialist_security_patterns", buildSpecialistPrompt("develop", specialistByKey(t, "security"), goldenPatterns(), 0))
+	assertGoldenPrompt(t, "specialist_security_patterns", buildSpecialistPrompt("develop", goldenDiff(), specialistByKey(t, "security"), goldenPatterns(), 0))
 }
 
 // TestBuildSpecialistPrompt_UnscopedPatterns_Golden locks the fallback a
@@ -1429,7 +1470,7 @@ func TestBuildSpecialistPrompt_Patterns_Golden(t *testing.T) {
 // for the specialist added next, before anyone has decided what it covers.
 func TestBuildSpecialistPrompt_UnscopedPatterns_Golden(t *testing.T) {
 	sp := Specialist{Key: "unscoped", Focus: "Everything the catalog covers."}
-	assertGoldenPrompt(t, "specialist_unscoped_patterns", buildSpecialistPrompt("develop", sp, goldenPatterns(), 0))
+	assertGoldenPrompt(t, "specialist_unscoped_patterns", buildSpecialistPrompt("develop", goldenDiff(), sp, goldenPatterns(), 0))
 }
 
 // specialistByKey looks a specialist up by key so the goldens name the domain
@@ -1451,7 +1492,7 @@ func specialistByKey(t *testing.T, key string) Specialist {
 // framing, the change-set discovery steps, and the per-criterion classification.
 func TestBuildVerifyImplementationPrompt_Golden(t *testing.T) {
 	ctx := goldenImplementContext()
-	assertGoldenPrompt(t, "verify_implementation", buildVerifyImplementationPrompt(ctx.IssueTitle, ctx.IssueBody, "develop"))
+	assertGoldenPrompt(t, "verify_implementation", buildVerifyImplementationPrompt(ctx.IssueTitle, ctx.IssueBody, "develop", goldenDiff()))
 }
 
 func goldenBareImplementContext() implement.BareContext {

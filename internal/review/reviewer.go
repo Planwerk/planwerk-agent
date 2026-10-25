@@ -21,6 +21,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/checklist"
 	"github.com/planwerk/planwerk-agent/internal/claude"
 	"github.com/planwerk/planwerk-agent/internal/detect"
+	"github.com/planwerk/planwerk-agent/internal/diffscope"
 	"github.com/planwerk/planwerk-agent/internal/doccheck"
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/glossary"
@@ -80,6 +81,11 @@ type Options struct {
 	// issues, pull requests, and wiki (`brain search`); carries the
 	// --brain/--no-brain value. Off by default.
 	Brain bool
+	// DiffExclusions leaves the changed lock, vendored and generated files out
+	// of the diff the review session reads, and the report lists them. The CLI
+	// sets it from claude.Client.DiffExclusions, so the review session and the
+	// Client's other finder passes leave out the same files (decision 137).
+	DiffExclusions bool
 }
 
 // Runner executes the review pipeline using injected Claude and GitHub
@@ -290,6 +296,17 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	mem, cleanupMemory := patterns.MaterializeMemoryOrWarn(wiki.MemoryPages)
 	defer cleanupMemory()
 
+	// The review session's diff is written here too, and removed when Run
+	// returns. Its Excluded list is the run's excluded set: the review result
+	// records it, and the report lists it. A failed write leaves the zero
+	// Diff, whose prompt keeps the git command (decision 137).
+	reviewDiff, cleanupDiff := diffscope.MaterializeOrWarn(diffscope.Request{
+		RepoDir: pr.Dir,
+		Revs:    []string{"origin/" + pr.BaseBranch + "...HEAD"},
+		Exclude: opts.DiffExclusions,
+	})
+	defer cleanupDiff()
+
 	reviewCtx := claude.ReviewContext{
 		Patterns:    pats,
 		MaxPatterns: opts.MaxPatterns,
@@ -305,6 +322,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		Glossary:    glossaryBody,
 		Memory:      mem,
 		Brain:       surface,
+		Diff:        reviewDiff,
 	}
 
 	var (

@@ -5,6 +5,7 @@ import (
 	"io"
 	"sort"
 
+	"github.com/planwerk/planwerk-agent/internal/diffscope"
 	"github.com/planwerk/planwerk-agent/internal/doccheck"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
@@ -43,24 +44,36 @@ type ReviewContext struct {
 	Glossary    string                    // repo domain glossary (glossary.LoadBody); empty when absent
 	Memory      patterns.MemoryCatalog    // wiki project memory: the pages and the directory a session reads them from; zero when absent
 	Brain       search.Surface            // the search of the local mirror the session may run; zero means no search
+	// Diff is the diff the session reads, which the caller writes
+	// (diffscope.MaterializeOrWarn) and removes once Review returns. The zero
+	// Diff keeps the git command in the prompt (decision 137).
+	Diff diffscope.Diff
 }
 
 // Review runs the diff-review session in the given directory and returns its
 // findings. The session emits them as JSON under --json-schema with
 // schema.FinderOutput, and finishReview decodes that output (decision 109).
+// The session reads ctx.Diff and is handed its directory; Review writes no
+// diff of its own, and the result's ExcludedFiles is ctx.Diff.Excluded,
+// whatever the session emitted (decision 137).
 func (c *Client) Review(dir string, ctx ReviewContext) (*report.ReviewResult, error) {
 	rawReview, model, err := c.runReview(dir, ctx)
 	if err != nil {
 		return nil, fmt.Errorf("running review: %w", err)
 	}
 
-	return c.finishReview(rawReview, model, "review output", "")
+	res, err := c.finishReview(rawReview, model, "review output", "")
+	if err != nil {
+		return nil, err
+	}
+	res.ExcludedFiles = ctx.Diff.Excluded
+	return res, nil
 }
 
 // runReview invokes `claude -p` with the review prompt, returning the review's
 // JSON output and the resolved model id.
 func (c *Client) runReview(dir string, rctx ReviewContext) (text, model string, err error) {
-	return c.runClaudeFindings(dir, buildReviewPrompt(rctx), PassLabelReview, rctx.Memory, rctx.Brain)
+	return c.runClaudeFindings(dir, buildReviewPrompt(rctx), PassLabelReview, rctx.Memory, rctx.Brain, rctx.Diff.Dir)
 }
 
 // tokenUsage is a tolerant view over the per-call token counts Claude Code

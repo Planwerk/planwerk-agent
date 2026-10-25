@@ -3,6 +3,7 @@ package report
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -337,6 +338,52 @@ func TestRenderSARIF_FailedPassIsANotification(t *testing.T) {
 			texts[1] != "adversarial failed: timed out; the review is incomplete" ||
 			texts[2] != "compliance failed: exit status 1; the review is incomplete" {
 			t.Errorf("notifications = %q, want the file-less one, then one per failed pass in recorded order", texts)
+		}
+	})
+}
+
+func TestRenderSARIF_ExcludedFilesAreANoteNotification(t *testing.T) {
+	result := ReviewResult{
+		Findings: []Finding{{ID: "W-4", Severity: SeverityWarning, Title: "In a file", File: "a.go", Line: 3}},
+		Passes:   []PassStatus{{Pass: "adversarial", Status: PassStatusFailed, Error: "boom"}},
+		ExcludedFiles: []ExcludedFile{
+			{Path: "api/v1/zz_generated.deepcopy.go", Reason: ExcludedGenerated},
+			{Path: "go.sum", Reason: ExcludedLockfile},
+			{Path: "vendor/", Reason: ExcludedVendored, Files: 12},
+		},
+	}
+	_, typed, _ := renderSARIF(t, result, SeverityInfo, "")
+	run := typed.Runs[0]
+	if len(run.Results) != 1 || run.Results[0].Properties.FindingID != "W-4" {
+		t.Fatalf("results = %+v, want only W-4: an excluded file adds no result", run.Results)
+	}
+	inv := run.Invocations[0]
+	if !inv.ExecutionSuccessful {
+		t.Error("excluded files must not mark the run as failed")
+	}
+	want := []sarifNotification{
+		{Level: "warning", Message: sarifMessage{Text: "adversarial failed: boom; the review is incomplete"}},
+		{Level: "note", Message: sarifMessage{Text: "14 changed file(s) were left out of the diff the review read (--diff-exclusions), so no result covers them: " +
+			"api/v1/zz_generated.deepcopy.go (generated); go.sum (lock file); vendor/ (vendored, 12 files)"}},
+	}
+	if !reflect.DeepEqual(inv.ToolExecutionNotifications, want) {
+		t.Errorf("notifications = %+v, want the failed pass, then one note for the excluded files: %+v", inv.ToolExecutionNotifications, want)
+	}
+
+	t.Run("caps the list", func(t *testing.T) {
+		excluded := make([]ExcludedFile, ExcludedFilesListLimit+3)
+		for i := range excluded {
+			excluded[i] = ExcludedFile{Path: fmt.Sprintf("gen/f%02d.go", i), Reason: ExcludedGenerated}
+		}
+		_, typed, _ := renderSARIF(t, ReviewResult{ExcludedFiles: excluded}, SeverityInfo, "")
+		notes := typed.Runs[0].Invocations[0].ToolExecutionNotifications
+		if len(notes) != 1 {
+			t.Fatalf("notifications = %+v, want one", notes)
+		}
+		text := notes[0].Message.Text
+		last := fmt.Sprintf("gen/f%02d.go", ExcludedFilesListLimit-1)
+		if !strings.Contains(text, last+" (generated); and 3 more") || strings.Contains(text, fmt.Sprintf("gen/f%02d.go", ExcludedFilesListLimit)) {
+			t.Errorf("notification = %q, want %d entries then \"and 3 more\"", text, ExcludedFilesListLimit)
 		}
 	})
 }

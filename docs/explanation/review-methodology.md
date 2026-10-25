@@ -20,6 +20,48 @@ Before reviewing code quality, the tool checks for:
 - **Scope Creep**: Files changed that are unrelated to the PR title/description
 - **Missing Requirements**: Requirements from the PR description not addressed in the diff
 
+## The Diff Every Pass Reads
+
+Before a diff-scoped session starts (the review, the adversarial pass, the
+domain specialists, the feature-compliance check, the simplify finder, and the
+implementation verifier), the tool writes the diff to a file with
+`git diff --no-ext-diff --no-textconv --no-color`. A diff driver, a text
+conversion, or a color setting configured on the machine therefore cannot
+change what the reviewer sees, and a large diff is not cut down to the preview
+a long command output gets. The prompt names the file and its line count, and
+the session reads every line of it a page at a time. It takes a finding's line
+from the hunk header or the source file, because the line numbers it reads are
+the diff file's own. When the file cannot be written, the session runs
+`git diff` itself as before. The `implement` self-review reads the same file,
+which from its second round on is `git diff <pre-fix commit>`. The coverage map
+lists the changed files itself, and the audit has no diff.
+
+`--diff-exclusions` leaves three kinds of changed file out of that diff:
+
+- lock files, by name (`go.sum`, `package-lock.json`, `yarn.lock`,
+  `pnpm-lock.yaml`, `Cargo.lock`, `poetry.lock`, and their kin), which a
+  reviewer judges through the manifest beside them;
+- the changed files under a `vendor/` or `node_modules/` directory, one entry
+  per directory;
+- files whose leading comment says `Code generated … DO NOT EDIT.`, which a
+  reviewer judges through the generator input. A hand edit to such a file is
+  therefore not reviewed.
+
+A test is never left out unless it lies under a vendored directory, where it
+is third-party code like the rest of that directory. A vendor directory under a
+test directory, such as `testdata/vendor/`, is a fixture and stays. A change
+made only of files these rules match is diffed in full. The prompt lists every
+file it left out, in a fence it names as data because the pull request's author
+picks the paths, and the report lists them
+([Excluded Files](/reference/output-format#excluded-files)), so an opted-in run
+never loses a file silently.
+
+The flag is off by default because the pull request under review decides which
+of its files a rule matches: a file under any `vendor/` directory, or one that
+opens with the generated-code comment, leaves the diff by its own path or its
+own first line, so a default-on rule would let an author hide a change from
+every pass. See [design decision 137](/explanation/design-decisions).
+
 ## Three-Pass Review Checklist
 
 Claude works through a structured checklist in three passes:

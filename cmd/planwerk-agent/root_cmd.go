@@ -50,6 +50,7 @@ func newRootCmd(deps *runtimeDeps) *cobra.Command {
 	var finderModel string
 	var finderEffort string
 	var claudeInheritUserConfig bool
+	var diffExclusions bool
 	var wikiEnable, wikiDisable bool
 	var wikiRef string
 	var brain brainFlags
@@ -126,6 +127,7 @@ or short form (owner/repo#123).`,
 			mainEffort := resolveString(claudeEffort, cmd.Flags().Changed("claude-effort"), envClaudeEffort, claude.DefaultClaudeEffort)
 			structModel := resolveString(structureModel, cmd.Flags().Changed("structure-model"), envStructureModel, claude.DefaultStructureModel)
 			findModel := resolveString(finderModel, cmd.Flags().Changed("finder-model"), envFinderModel, claude.DefaultFinderModel)
+			exclude := resolveBool(diffExclusions, cmd.Flags().Changed("diff-exclusions"), envDiffExclusions)
 			deps.claudeOpts = []claude.Option{
 				claude.WithTimeout(timeout),
 				claude.WithShowOutput(resolveBool(showClaudeOutput, cmd.Flags().Changed("show-claude-output"), envShowClaudeOutput)),
@@ -136,6 +138,7 @@ or short form (owner/repo#123).`,
 				claude.WithFinderModel(findModel),
 				claude.WithFinderEffort(findEffort),
 				claude.WithInheritUserConfig(resolveBool(claudeInheritUserConfig, cmd.Flags().Changed("claude-inherit-user-config"), envClaudeInheritUserConfig)),
+				claude.WithDiffExclusions(exclude),
 			}
 			deps.claude = claude.NewClient(deps.claudeOpts...)
 
@@ -145,8 +148,14 @@ or short form (owner/repo#123).`,
 			// different analyses of the same diff — so re-running with a
 			// stronger model returned the weaker one's findings for the whole
 			// TTL. The per-command pattern sources are folded in by each
-			// command, next to its own flags.
-			cache.SetRunFingerprint(mainModel, mainEffort, structModel, structEffort, findModel, findEffort)
+			// command, next to its own flags. The diff exclusions decide which
+			// changed files the sessions read, and are appended only when on,
+			// so a key without them is the one it was before they existed.
+			fingerprint := []string{mainModel, mainEffort, structModel, structEffort, findModel, findEffort}
+			if exclude {
+				fingerprint = append(fingerprint, "diff-exclusions")
+			}
+			cache.SetRunFingerprint(fingerprint...)
 
 			// Record the build version so every attribution footer names the
 			// exact planwerk-agent build, matching the report headers and the
@@ -223,6 +232,7 @@ or short form (owner/repo#123).`,
 			opts.Remote = deps.remoteOpts
 			opts.Wiki = resolveWikiOptions(wikiEnable, wikiDisable, cmd.Flags().Changed("wiki"), cmd.Flags().Changed("no-wiki"), wikiRef, cmd.Flags().Changed("wiki-ref"), deps.fileCfg.Wiki)
 			opts.Brain = brain.resolve(cmd.Flags(), deps.fileCfg.Brain)
+			opts.DiffExclusions = deps.claude.DiffExclusions()
 			return review.Run(os.Stdout, opts, deps.claude)
 		},
 	}
@@ -240,6 +250,7 @@ or short form (owner/repo#123).`,
 	persistent.StringVar(&finderModel, "finder-model", claude.DefaultFinderModel, "Model for the read-only finder passes: the adversarial pass, the domain specialists, coverage, compliance, the simplify finder, and claim verification (empty inherits --claude-model; env: "+envFinderModel+")")
 	persistent.StringVar(&finderEffort, "finder-effort", claude.DefaultFinderEffort, "Reasoning effort for the finder passes (low, medium, high, xhigh, max; empty inherits --claude-effort; env: "+envFinderEffort+")")
 	persistent.BoolVar(&claudeInheritUserConfig, "claude-inherit-user-config", false, "Let orchestrated Claude sessions inherit your user-global ~/.claude settings and MCP servers (default: isolated for reproducible output; env: "+envClaudeInheritUserConfig+")")
+	persistent.BoolVar(&diffExclusions, "diff-exclusions", false, "Leave lock files, vendored directories, and generated files out of the diff the review and finder passes read, and list them in the report; tests outside vendored directories are never left out (env: "+envDiffExclusions+")")
 
 	flags := rootCmd.Flags()
 	flags.StringSliceVar(&cfg.PatternDirs, "patterns", nil, "Additional pattern sources: local dirs, github:owner/repo[/sub][@ref], or git+https://...[#ref[:sub]]")

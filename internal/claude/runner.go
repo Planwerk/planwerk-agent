@@ -268,11 +268,13 @@ type runSpec struct {
 	// only the implement session sets it (decision 108).
 	appendSystemPrompt string
 	// addDirs holds the directories the session may read besides its working
-	// directory: the on-disk pattern catalog directory (patterns.Materialize)
-	// and the project memory directory (patterns.MaterializeMemory), which
+	// directory: the on-disk pattern catalog directory (patterns.Materialize),
+	// the project memory directory (patterns.MaterializeMemory), which
 	// runClaudeMemory, runClaudeFindings, runClaudePlan, runClaudeBrainReview,
-	// and autoMemorySpec add. The non-empty entries follow one --add-dir, in
-	// order. A noTools
+	// and autoMemorySpec add, and the directory of the diff a finder reads
+	// (diffscope.Materialize), which runClaudeFindings and
+	// runClaudeFinderFindings add. The non-empty entries follow one --add-dir,
+	// in order. A noTools
 	// spec never honors it, because a structuring session runs in
 	// structureWorkDir with no tools and must not be handed any other
 	// directory.
@@ -454,6 +456,11 @@ type Client struct {
 	// global ~/.claude settings and MCP servers instead of running hermetically
 	// (see hermeticArgs). Set via WithInheritUserConfig (decision 45).
 	inheritUserConfig bool
+
+	// diffExclusions leaves lock, vendored and generated files out of the diff
+	// the diff-scoped finders read (diffscope.Classify). Set via
+	// WithDiffExclusions; off by default (decision 137).
+	diffExclusions bool
 
 	// sessionFn, when set, runs every session in place of the claude CLI. Only tests set it.
 	sessionFn func(spec runSpec, prompt string) (text, model string, err error)
@@ -674,6 +681,19 @@ func WithInheritUserConfig(b bool) Option {
 	return func(c *Client) { c.inheritUserConfig = b }
 }
 
+// WithDiffExclusions controls whether the diff each diff-scoped finder pass
+// reads leaves out the changed lock files, vendored directories and generated
+// files, which the pass's result then lists in ExcludedFiles. The default
+// (false) diffs every changed file (decision 137).
+func WithDiffExclusions(b bool) Option {
+	return func(c *Client) { c.diffExclusions = b }
+}
+
+// DiffExclusions reports whether WithDiffExclusions turned the exclusions on.
+// The review runner reads it to write the review session's diff with the same
+// setting the Client's other finder passes use.
+func (c *Client) DiffExclusions() bool { return c.diffExclusions }
+
 // runClaude invokes claude in the given directory in
 // claudeReadOnlyPermissionMode and returns the extracted text response along
 // with the resolved model id the session reported. Use it for the read-only
@@ -705,9 +725,11 @@ func (c *Client) runClaudeMemory(dir, prompt, label string, cat patterns.Catalog
 // whose directory the session may read (--add-dir), the zero MemoryCatalog for
 // a run without one. The session is handed no pattern catalog directory: the
 // finder prompts carry the pattern bodies. surface pre-approves `brain search`
-// for the session, the zero Surface for a session without the search.
-func (c *Client) runClaudeFindings(dir, prompt, label string, mem patterns.MemoryCatalog, surface search.Surface) (text, model string, err error) {
-	return c.runSession(runSpec{dir: dir, label: label, model: c.model, effort: c.effort, readOnly: true, jsonSchema: string(schema.FinderOutput), addDirs: []string{mem.Dir}, searchRule: surface.AllowRule()}, prompt)
+// for the session, the zero Surface for a session without the search. diffDir
+// is the directory of the diff the session reads (diffscope.Diff.Dir), "" for
+// none; the audit has no diff (decision 137).
+func (c *Client) runClaudeFindings(dir, prompt, label string, mem patterns.MemoryCatalog, surface search.Surface, diffDir string) (text, model string, err error) {
+	return c.runSession(runSpec{dir: dir, label: label, model: c.model, effort: c.effort, readOnly: true, jsonSchema: string(schema.FinderOutput), addDirs: []string{mem.Dir, diffDir}, searchRule: surface.AllowRule()}, prompt)
 }
 
 // noCatalog is what a session without a pattern catalog passes to its runner:
@@ -749,10 +771,12 @@ func (c *Client) runClaudeFinder(dir, prompt, label string) (text, model string,
 // seven passes that emit findings call it: the adversarial pass, each domain
 // specialist, the feature-compliance check, the simplify finder, and the
 // implementation verifier. The review and the audit run on --claude-model
-// through runClaudeFindings (decision 109).
-func (c *Client) runClaudeFinderFindings(dir, prompt, label string) (text, model string, err error) {
+// through runClaudeFindings (decision 109). diffDir is the directory of the
+// diff the session reads (diffscope.Diff.Dir), "" for none (decision 137).
+func (c *Client) runClaudeFinderFindings(dir, prompt, label, diffDir string) (text, model string, err error) {
 	spec := c.finderSpec(dir, label)
 	spec.jsonSchema = string(schema.FinderOutput)
+	spec.addDirs = []string{diffDir}
 	return c.runSession(spec, prompt)
 }
 
