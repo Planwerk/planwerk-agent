@@ -54,7 +54,9 @@ Do not ask about implementation details, file layout, or a step-by-step plan.
 Those belong to `elaborate`, and asking about them here teaches the author to
 answer the wrong question.
 
-Wait for the answers.
+Wait for the answers, and ask the next round until each of the four is settled
+(`interaction.md`, The asking is done when nothing is left open). "No hard
+constraint" is an answer.
 
 ## Phase 3 — Draft
 

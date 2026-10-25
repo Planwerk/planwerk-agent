@@ -178,6 +178,14 @@ artifact — into Non-Goals, into a "per the author" note, or into your closing
 message as **unresolved decisions**. A decision nobody made is not a decision you
 get to make quietly.
 
+## The asking is done when nothing is left open
+
+The questions end when every one that survived the rules above is in one of
+three states: answered by the author, declined and recorded as above, or decided
+by you with its reason stated out loud. While one is still open, the next round
+is owed; once none is, move on to the artifact. A round asked after that point
+spends the author's attention on questions nobody needed.
+
 ## Stop when you are confused
 
 For high-stakes ambiguity — architecture, data model, destructive scope, missing
