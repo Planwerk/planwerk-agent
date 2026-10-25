@@ -16,6 +16,10 @@
 5. After `recover`, log the panic value and stack trace for diagnosis — silently swallowing panics hides bugs
 6. `init()` functions may use panic for fatal configuration errors (e.g., missing required environment variables) since the program cannot proceed
 
+## Not a finding
+
+- `regexp.MustCompile`, `template.Must`, and other `Must` helpers called on a constant in a package-level `var` or in `init()`: a bad constant panics at program start and in every test run, never on a request. A `Must` call on run-time input (a request, a file, a flag) is still a finding.
+
 ## Why it matters
 
 Unrecovered panics terminate the entire process. In servers, a single panicking goroutine takes down all active connections. Library panics are especially dangerous because they violate the caller's error-handling contract. Proper recover boundaries keep failures isolated.

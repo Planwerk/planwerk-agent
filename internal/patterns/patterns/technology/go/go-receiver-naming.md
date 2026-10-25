@@ -15,6 +15,10 @@
 4. Exported names should not repeat the package name: `log.Info()` not `log.LogInfo()`
 5. Acronyms should be all-caps: `HTTPClient`, `ID`, `URL` — not `HttpClient`, `Id`, `Url`
 
+## Not a finding
+
+- On a line the change adds, a `this` or `self` receiver when `.golangci.yml` enables revive's `receiver-naming` or staticcheck's `ST1006`, and a receiver that differs from the type's other receivers when it enables `receiver-naming` or `ST1016`, provided a CI workflow runs golangci-lint on pull requests: that job reports it on this change. Staticcheck's default checks include `ST1006` and leave `ST1016` off. Read both files first; without them, or with the matching rule off, it is a finding.
+
 ## Why it matters
 
 Consistent naming is core to Go's readability philosophy. The standard library sets the convention — deviations create friction for every reader.

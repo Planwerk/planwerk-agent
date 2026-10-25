@@ -40,6 +40,47 @@ Check for missing tests.
 	}
 }
 
+// TestParse_KeepsNotAFindingSection guards the carve-outs on their way to
+// the finders: Parse keeps the whole body, so a "## Not a finding" section
+// stays in place between the checks and their rationale, and FormatForPrompt
+// carries its entries. A Parse that kept only known sections would drop them
+// from every finder prompt without an error.
+func TestParse_KeepsNotAFindingSection(t *testing.T) {
+	const entry = "- A generated file: review the generator input."
+	input := `# Review Pattern: Carve-out Pattern
+
+**Review-Area**: quality
+**Detection-Hint**: look for violations
+**Severity**: INFO
+
+## What to check
+
+1. Check one thing.
+
+## Not a finding
+
+` + entry + `
+
+## Why it matters
+
+Because.
+`
+
+	p, err := Parse(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	check := strings.Index(p.Body, "## What to check")
+	notAFinding := strings.Index(p.Body, "## Not a finding")
+	why := strings.Index(p.Body, "## Why it matters")
+	if check < 0 || notAFinding <= check || why <= notAFinding {
+		t.Errorf("Body section offsets: What to check %d, Not a finding %d, Why it matters %d; want all present in that order\n%s", check, notAFinding, why, p.Body)
+	}
+	if out := p.FormatForPrompt(); !strings.Contains(out, entry) {
+		t.Errorf("FormatForPrompt lost the Not a finding entry %q:\n%s", entry, out)
+	}
+}
+
 func TestParse_NoName(t *testing.T) {
 	_, err := Parse("just some content\nwithout a header")
 	if err == nil {

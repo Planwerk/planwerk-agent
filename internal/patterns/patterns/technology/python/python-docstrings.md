@@ -18,6 +18,11 @@
 7. Type information lives in annotations (PEP 484), not duplicated inside the docstring — see the `Python Type Hints` pattern.
 8. Examples in docstrings are runnable doctests (`>>> ...`) when the function is pure enough; otherwise they are clearly marked as illustrative.
 
+## Not a finding
+
+- A `.pyi` stub without docstrings: stubs carry types only (flake8-pyi `Y021`); the docstring belongs in the `.py` module.
+- The `@overload` (`typing.overload`) signatures of a function: the implementation after them carries the docstring (pydocstyle `D418`).
+
 ## Why it matters
 
 PEP 257 is the canonical docstring convention and the basis of every doc-generation tool in the Python ecosystem (Sphinx, mkdocs, pdoc). Skipping or paraphrasing docstrings on public API breaks generated reference docs, IDE tooltips, and onboarding flows — and the inconsistency between Google / NumPy / reST styles in the same project quietly degrades autodoc output.

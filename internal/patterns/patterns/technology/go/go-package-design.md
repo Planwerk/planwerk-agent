@@ -17,6 +17,11 @@
 6. Constructors returning the package's primary type should be named `New` (or `NewX` for multiple types in a package)
 7. Long names do not automatically improve readability — a helpful doc comment is often more valuable than an extra-long identifier
 
+## Not a finding
+
+- `GetX()` getters on protobuf messages and the calls to them: `protoc-gen-go` generates one per field, so the `Get` prefix is the generator's. A hand-written `GetX` getter is still a finding.
+- A `package <name>_test` clause in a `_test.go` file: `go test` builds it as the directory's external test package, so its underscore is the toolchain's convention. Any other underscore in a package name is still a finding.
+
 ## Why it matters
 
 Go's naming conventions are enforced by community consensus and the standard library. Names like `user.UserName` (stuttering), `GetValue()` (Java-style getter), or `my_package` (non-idiomatic) signal unfamiliarity with Go conventions and create friction for every reader.

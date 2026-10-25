@@ -19,6 +19,10 @@
 8. API versions follow stability levels: `v1alpha1` → `v1beta1` → `v1`
 9. Immutable fields in CRDs should use CEL transition rules (`x-kubernetes-validations` with `oldSelf`) to prevent mutation after creation
 
+## Not a finding
+
+- A CRD manifest that carries the `controller-gen.kubebuilder.io/version` annotation (in a Kubebuilder layout, under `config/crd/bases/`): controller-gen generates it from the `+kubebuilder` markers on the Go API types, so review the markers instead. A hand edit to the manifest with no change to the markers is a finding: the next `make manifests` erases it.
+
 ## Why it matters
 
 Following API conventions ensures interoperability with the Kubernetes ecosystem (kubectl, dashboards, operators) and reduces surprise for users familiar with native resources.

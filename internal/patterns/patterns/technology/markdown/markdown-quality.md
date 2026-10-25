@@ -37,6 +37,10 @@
 17. Markdown structure is necessary but not sufficient — content quality (Diátaxis mode coherence, code-and-doc synchronization, voice) is governed by `Documentation Structure (Diátaxis)`. Apply both
 18. New `.md` files must declare their target renderer (GitHub README, MkDocs site, Hugo, Docusaurus) so contributors know which extensions are valid
 
+## Not a finding
+
+- Heading, list, code-fence, bare-URL, and inline-HTML structure on lines the change adds, when a checked-in markdownlint config (`.markdownlint.yaml`, `.markdownlint.json`, `.markdownlint-cli2.yaml`) leaves the matching rule on (MD001, MD003, MD004, MD007, MD025, MD029, MD033, MD034, MD040) and a CI workflow runs markdownlint on pull requests: that job reports it on this change. Read both files first; without them it is a finding.
+
 ## Why it matters
 
 Markdown is the lingua franca of developer documentation, but "Markdown" is not one thing — base CommonMark, GitHub Flavored Markdown, MkDocs (with extensions), Hugo (with shortcodes), and a dozen other renderers all interpret some constructs differently. Files that render correctly on github.com may break on a docs site, and vice versa. CommonMark 0.31.2 is the unambiguous baseline; GFM is the strict superset that github.com adds on top. Every other dialect is somewhere on a spectrum. Without a documented target and an enforced linter, doc reviews collapse to subjective opinion and broken renders ship to users — code blocks without language tags look fine on GitHub but lose syntax highlighting on the docs site, multi-H1 pages break navigation generators, broken relative links work locally and 404 on production. markdownlint encodes the structural rules, Vale encodes the prose rules, and the CommonMark / GFM specs are the contract both linters check against. Reviewing Markdown changes against this baseline is cheap, mechanizable, and catches the issues that would otherwise become accumulated documentation debt.

@@ -60,6 +60,10 @@ The OWASP Top 10:2025 is the canonical web-application risk list. Walk every cat
 27. The OWASP Cheat Sheet Series has a per-topic deep dive for every category — when a finding is uncertain, the relevant cheat sheet is the canonical reference
 28. For HTTP APIs (REST/GraphQL), apply the OWASP API Security Top 10:2023 in addition — BOLA, Broken Authentication, Broken Object Property Level Authorization, Unrestricted Resource Consumption, Broken Function Level Authorization, Unrestricted Access to Sensitive Business Flows, SSRF, Security Misconfiguration, Improper Inventory Management, Unsafe Consumption of APIs
 
+## Not a finding
+
+- MD5 or SHA-1 in a non-security use that a protocol fixes or the code marks: a `Content-MD5` header (RFC 1864), a git object ID, an ETag or cache key over the server's own content, or a Python `hashlib` call with `usedforsecurity=False`. A digest that must hold against an attacker (a signature, a MAC, an integrity check on content an attacker can supply, a password hash) is still an A02 finding, whatever the code marks it.
+
 ## Why it matters
 
 The OWASP Top 10 is the most widely-adopted shorthand for web-application security risk. Every category in the 2025 edition is supported by a CVE database, a CWE family, and a long history of breach disclosures — these are not theoretical concerns, they are the failure modes that produce the actual incidents the industry sees year after year. A01 (Broken Access Control) has been #1 across multiple editions for a reason: every team writes its own authorization, and most of them get it wrong somewhere. The 2025 edition's new A10 (Mishandling of Exceptional Conditions) reflects the increasing share of incidents traced to error-path bugs — `catch (Throwable e) { /* ignore */ }` is the line that turns a recoverable failure into a silent data-corruption event. Reviewing changes against the Top 10 is not exhaustive security review, but it covers the categories that produce the highest-impact incidents per unit of review effort.
