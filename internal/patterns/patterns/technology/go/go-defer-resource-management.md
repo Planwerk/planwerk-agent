@@ -5,13 +5,13 @@
 **Severity**: WARNING
 **Category**: technology
 **Applies-When**: go
-**Sources**: Effective Go (https://go.dev/doc/effective_go#defer), Google Go Style Guide — Best Practices (https://google.github.io/styleguide/go/best-practices), Dave Cheney — Practical Go (https://dave.cheney.net/practical-go/presentations/gophercon-singapore-2019.html)
+**Sources**: Effective Go (https://go.dev/doc/effective_go#defer), Google Go Style Guide — Best Practices (https://google.github.io/styleguide/go/best-practices), Dave Cheney — Practical Go (https://dave.cheney.net/practical-go/presentations/gophercon-singapore-2019.html), Fixing For Loops in Go 1.22 (https://go.dev/blog/loopvar-preview)
 
 ## What to check
 
 1. Every resource acquisition (`Open`, `Lock`, `Begin`) must have a corresponding `defer` for cleanup (`Close`, `Unlock`, `Rollback`) placed immediately after the error check
 2. `defer` inside a loop body does not execute until the function returns — this causes resource accumulation; extract the loop body into a separate function or close explicitly
-3. Arguments to deferred functions are evaluated at `defer` time, not at execution time — watch for closures that capture loop variables or mutated state
+3. Arguments to deferred functions are evaluated at `defer` time, but a deferred closure reads the variables it captures when it runs, so it sees every later assignment to them. For a loop variable, read the module's `go` directive: from `go 1.22` each iteration gets its own copy of the variables the `for` statement declares, so each deferred closure sees its own iteration's value; below `go 1.22` (or with no `go` directive) the iterations share one variable and every closure sees the last value
 4. Deferred functions execute in LIFO order — this matters when cleanup order is significant (e.g., unlock before close)
 5. Ignoring errors from deferred `Close()` can mask write errors on buffered I/O — use named return values to capture deferred errors when writing files
 

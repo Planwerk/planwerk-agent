@@ -3,6 +3,8 @@ package patterns
 import (
 	"io/fs"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -87,5 +89,40 @@ func TestLoadEmbedded_ParsesKnownPatterns(t *testing.T) {
 		if !names[want] {
 			t.Errorf("loadEmbedded missing expected pattern %q", want)
 		}
+	}
+}
+
+// TestEmbeddedGoPatterns_GateLoopVariableClaimsOnGoDirective holds every
+// line of a Go pattern that reaches a finder prompt (its Detection-Hint
+// and each body line) and mentions a loop variable to naming the
+// module's `go` directive and the 1.22 boundary on that same line. From
+// `go 1.22` each iteration declares its own loop variables, so a capture
+// claim without the gate beside it makes a finder flag correct code in a
+// modern module; a gate kept on another line drifts away from the claim.
+func TestEmbeddedGoPatterns_GateLoopVariableClaimsOnGoDirective(t *testing.T) {
+	pats, err := loadEmbedded()
+	if err != nil {
+		t.Fatalf("loadEmbedded: %v", err)
+	}
+
+	loopVar := regexp.MustCompile(`(?i)loop[- ]variable`)
+	checked := 0
+	for _, p := range pats {
+		if !slices.Contains(p.AppliesWhen, "go") {
+			continue
+		}
+		lines := append([]string{p.DetectionHint}, strings.Split(p.Body, "\n")...)
+		for _, line := range lines {
+			if !loopVar.MatchString(line) {
+				continue
+			}
+			checked++
+			if !strings.Contains(line, "`go` directive") || !strings.Contains(line, "1.22") {
+				t.Errorf("pattern %q mentions a loop variable without the `go` directive and 1.22 on the same line:\n%s", p.Name, line)
+			}
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no Go pattern mentions a loop variable; test setup is wrong")
 	}
 }

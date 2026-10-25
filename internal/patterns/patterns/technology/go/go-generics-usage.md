@@ -5,7 +5,7 @@
 **Severity**: WARNING
 **Category**: technology
 **Applies-When**: go
-**Sources**: When To Use Generics (https://go.dev/blog/when-generics), Google Go Style Guide — Decisions (https://google.github.io/styleguide/go/decisions#generics), Learning Go 2nd Edition (https://www.oreilly.com/library/view/learning-go-2nd/9781098139285/), 100 Go Mistakes (https://www.manning.com/books/100-go-mistakes-and-how-to-avoid-them)
+**Sources**: When To Use Generics (https://go.dev/blog/when-generics), Google Go Style Guide — Decisions (https://google.github.io/styleguide/go/decisions#generics), Learning Go 2nd Edition (https://www.oreilly.com/library/view/learning-go-2nd/9781098139285/), 100 Go Mistakes (https://www.manning.com/books/100-go-mistakes-and-how-to-avoid-them), cmp package (https://pkg.go.dev/cmp)
 
 ## What to check
 
@@ -13,7 +13,7 @@
 2. If a type parameter appears only once in a function signature, an interface is usually clearer — "if you're about to write the same code twice" is the original motivation, not "if you can abstract this"
 3. Avoid generic wrappers around types that already have interface methods — if `io.Reader` already describes the contract, a generic function does not add value
 4. Don't expose type parameters through public APIs when the internal implementation is the only place that needs them; keep generics as an implementation detail where possible
-5. Type constraints should be as narrow as the code needs — use `~int` only if the function genuinely works with derived types; prefer `constraints.Ordered` or custom constraints over `any` when operations require it
+5. Type constraints should be as narrow as the code needs — use `~int` only if the function genuinely works with derived types; prefer `cmp.Ordered` (standard library from `go 1.21`; `golang.org/x/exp/constraints.Ordered` below that) or custom constraints over `any` when operations require it
 6. Watch for generic types with mixed concrete and parametric methods that could be simplified by splitting into two types
 
 ## Why it matters
