@@ -59,6 +59,11 @@ type Request struct {
 	// Exclude leaves the lock, vendored and generated files Classify names out
 	// of the diff (--diff-exclusions).
 	Exclude bool
+	// Paths limits the diff to these slash-separated paths, relative to the
+	// checkout's top level and each taken literally, as one partition of a
+	// partitioned review reads (decision 142). Exclude then classifies only the
+	// changed files among them. Empty diffs the whole tree.
+	Paths []string
 }
 
 // Diff is a diff written to disk for a session to read. The zero Diff names no
@@ -261,11 +266,12 @@ func Reviewable(files []string, excluded []report.ExcludedFile) []string {
 // is safe to call more than once. The diff is `git -c core.quotePath=false
 // --no-pager diff --no-ext-diff --no-textconv --no-color --src-prefix=a/
 // --dst-prefix=b/ <revs> --`, so neither a diff driver, a text conversion, a
-// color setting nor a prefix setting on the machine changes it, and with
-// req.Exclude it carries one `:(exclude,literal)` pathspec per entry Classify
-// returns. Every git call runs at the checkout's top level, where the paths git
-// prints start and where the pathspecs must be anchored to match them. A
-// request without a RepoDir or Revs writes nothing and returns the zero Diff.
+// color setting nor a prefix setting on the machine changes it. It carries one
+// `:(literal)` pathspec per entry of req.Paths, and with req.Exclude one
+// `:(exclude,literal)` pathspec per entry Classify returns. Every git call runs
+// at the checkout's top level, where the paths git prints start and where the
+// pathspecs must be anchored to match them. A request without a RepoDir or
+// Revs writes nothing and returns the zero Diff.
 // On a git failure, or a diff larger than 32 MiB, nothing is left behind and
 // the error names the command and git's stderr or the size cap.
 func Materialize(req Request) (Diff, func(), error) {
@@ -279,7 +285,7 @@ func Materialize(req Request) (Diff, func(), error) {
 	}
 	var excluded []report.ExcludedFile
 	if req.Exclude {
-		changed, err := changedPaths(top, req.Revs)
+		changed, err := changedPaths(top, req.Revs, req.Paths)
 		if err != nil {
 			return Diff{}, noop, err
 		}
@@ -305,7 +311,7 @@ func Materialize(req Request) (Diff, func(), error) {
 	}
 
 	file := filepath.Join(dir, fileName)
-	lines, err := writeDiff(top, file, diffArgs(req.Revs, excluded))
+	lines, err := writeDiff(top, file, diffArgs(req.Revs, req.Paths, excluded))
 	if err != nil {
 		cleanup()
 		return Diff{}, noop, err
@@ -334,19 +340,22 @@ func MaterializeOrWarn(req Request) (Diff, func()) {
 	return d, cleanup
 }
 
-// diffArgs returns the argv of the hardened diff over revs, leaving out every
-// entry of excluded. It must run at the top level: there `.` keeps the whole
-// tree in scope, and a literal pathspec takes the path as written, so a name
-// with a glob character excludes only itself. A directory pathspec excludes
-// its subtree.
-func diffArgs(revs []string, excluded []report.ExcludedFile) []string {
+// diffArgs returns the argv of the hardened diff over revs, limited to paths
+// when it holds any and leaving out every entry of excluded. It must run at the
+// top level: there `.` keeps the whole tree in scope, and a literal pathspec
+// takes the path as written, so a name with a glob character selects or
+// excludes only itself. A directory pathspec excludes its subtree.
+func diffArgs(revs, paths []string, excluded []report.ExcludedFile) []string {
 	args := []string{"-c", "core.quotePath=false", "--no-pager", "diff", "--no-ext-diff", "--no-textconv", "--no-color", "--src-prefix=a/", "--dst-prefix=b/"}
 	args = append(args, revs...)
 	args = append(args, "--")
+	args = append(args, literalPathspecs(paths)...)
 	if len(excluded) == 0 {
 		return args
 	}
-	args = append(args, ".")
+	if len(paths) == 0 {
+		args = append(args, ".")
+	}
 	for _, e := range excluded {
 		args = append(args, ":(exclude,literal)"+strings.TrimSuffix(e.Path, "/"))
 	}
@@ -362,23 +371,33 @@ func topLevel(dir string) (string, error) {
 	return strings.TrimSuffix(out.String(), "\n"), nil
 }
 
-// changedPaths lists the paths the diff over revs changes, as git prints them
-// with -z: unquoted and NUL-separated, so a name with a newline or a quote is
-// one entry.
-func changedPaths(repoDir string, revs []string) ([]string, error) {
+// literalPathspecs returns one `:(literal)` pathspec per entry of paths.
+func literalPathspecs(paths []string) []string {
+	specs := make([]string, len(paths))
+	for i, p := range paths {
+		specs[i] = ":(literal)" + p
+	}
+	return specs
+}
+
+// changedPaths lists the paths the diff over revs changes, limited to paths
+// when it holds any, as git prints them with -z: unquoted and NUL-separated,
+// so a name with a newline or a quote is one entry.
+func changedPaths(repoDir string, revs, paths []string) ([]string, error) {
 	args := append([]string{"-c", "core.quotePath=false", "diff", "--name-only", "-z"}, revs...)
 	args = append(args, "--")
+	args = append(args, literalPathspecs(paths)...)
 	var out bytes.Buffer
 	if err := runGit(repoDir, &out, args); err != nil {
 		return nil, err
 	}
-	var paths []string
+	var changed []string
 	for p := range strings.SplitSeq(out.String(), "\x00") {
 		if p != "" {
-			paths = append(paths, p)
+			changed = append(changed, p)
 		}
 	}
-	return paths, nil
+	return changed, nil
 }
 
 // writeDiff runs git with args in repoDir, writes its output to a new file at

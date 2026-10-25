@@ -73,6 +73,35 @@ and a note at the end of the report lists them; see
 The cognitive patterns and checklist Claude applies are described in
 [Review methodology](/explanation/review-methodology).
 
+## Review a large pull request
+
+When a pull request touches dozens of files, split the review so each part
+gets a session of its own:
+
+```bash
+planwerk-agent --partition-files 15 owner/repo#123
+```
+
+A pull request whose diff keeps more than 15 changed files, not counting its
+`.planwerk/` planning artifacts, is cut into partitions of at most 15 that
+follow its directories and are balanced by changed lines, and each partition
+is reviewed by its own session. Each partition costs about one review session,
+so a 60-file pull request runs at least four review sessions. The adversarial
+pass and the specialists still see the whole change, and the report records
+the partitions. To set it for a repository, add `review.partition-files` to
+`.planwerk/config.yaml` ([Configuration file](/reference/configuration#schema)).
+The GitHub Action has no input for it, and the file is loaded from the working
+directory, so the Action reads the key only when the job runs
+`actions/checkout` before it, as the
+[Local mode in CI](/how-to/use-the-github-action#local-mode-in-ci) workflow
+does. On a `pull_request` run the default checkout is the pull request's merge
+commit, so the pull request's own copy of the file applies. The
+[minimal workflow](/how-to/use-the-github-action) has no checkout step, and
+there the key does nothing. See the
+[CLI reference](/reference/cli#review-default-command) for the flag and
+[Partitioned Review](/explanation/review-methodology#partitioned-review) for how
+the sessions split the work and how their findings merge.
+
 ## Capture knowledge to the wiki
 
 When the review runs with `--wiki`, a read-only **capture pass** mines the review

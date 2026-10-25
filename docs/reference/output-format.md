@@ -306,11 +306,13 @@ The record is the review session's own account, and a session can call a file
 reviewed it never opened, so `reviewed` is an upper bound. The record never
 moves a finding or changes the verdict, and only `review` writes it: the audit
 and `implement`'s self-review list no files. The `--format json` output and the
-data block carry this record, not the session's own list. An absent `files`
+data block carry this record, not the session's own list. In a
+[partitioned review](#partitioned-reviews) each session lists and accounts for
+its own partition's files, and the record covers them all. An absent `files`
 entry means no list was given: the changed files could not be listed, none
-remained after the exclusions, or the prompt would have listed more than 200.
-The Markdown report names the missing files in the Files Not Reviewed section
-before the Summary.
+remained after the exclusions, or a review prompt would have listed more than
+200. The Markdown report names the missing files in the Files Not Reviewed
+section before the Summary.
 
 ## Pass Status
 
@@ -419,6 +421,44 @@ A [SARIF](#sarif) log names the same entries in a notification at level
 `note`. An absent `excluded_files` means the exclusions were off or no changed
 file matched them. Results cached before the field existed carry none.
 
+## Partitioned Reviews
+
+With `--partition-files N`, a pull request whose diff keeps more than N changed
+files, not counting its `.planwerk/` planning artifacts, is reviewed by one
+primary-review session per partition (see
+[Partitioned Review](/explanation/review-methodology#partitioned-review)). The
+Markdown report names them on a `**Partitions**:` line in the Summary, after the
+Passes line, with the file count of the largest partition:
+
+```markdown
+**Partitions**: 3 review sessions of at most 15 files
+```
+
+The `--format json` output carries the plan in `partitions`, in session order:
+
+```json
+"partitions": [
+  { "files": ["internal/api/handler.go", "internal/api/routes.go"], "lines": 412, "findings": 3 },
+  { "files": ["internal/store/users.go"], "lines": 96, "findings": 1 }
+]
+```
+
+- `files`: the changed files that session reviewed. The planning artifacts,
+  which the review ignores, are in no partition.
+- `lines`: their added plus deleted lines from `git diff --numstat`. A binary
+  file counts 0, and every entry is 0 when git could not count the lines.
+- `findings`: what that session returned, before the merge, the gates and the
+  filters, so the entries can add up to more findings than the report shows.
+
+An absent `partitions` means the review ran as one session: the flag was off,
+or the diff kept no more changed files than it allows, planning artifacts
+aside. Results cached before the field existed carry none. The data block
+leaves the plan out: its file lists grow with the pull request, and a summary
+comment over GitHub's 65,536-character cap is cut from its end, where the
+block sits. Nothing reads the plan back from the block. A
+[SARIF](#sarif) log carries no partition record: its results are the merged
+findings.
+
 ## JSON Schema
 
 The `--format json` output of every command is described by a JSON Schema
@@ -426,7 +466,7 @@ The `--format json` output of every command is described by a JSON Schema
 
 | Schema file | Describes | Commands |
 |-------------|-----------|----------|
-| `report-result.schema.json` | `ReviewResult` (findings, summary, recommendation) | `review`, `audit` |
+| `report-result.schema.json` | `ReviewResult` (findings, summary, recommendation, gates, passes, excluded_files, partitions) | `review`, `audit` |
 | `proposal.schema.json` | `ProposalResult` envelope (repository overview + proposals) | `propose` |
 | `rebase-analysis.schema.json` | `RebaseAnalysis` (per-commit adjustments, summary, recommendation) | `rebase` |
 

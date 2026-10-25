@@ -150,6 +150,8 @@ planwerk-agent/
 │   │   ├── outdated.go         # Resolve the tool's own outdated inline review threads (--resolve-outdated)
 │   │   ├── ledger.go           # The changed-file ledger the review prompt lists (reviewLedger)
 │   │   ├── scope.go            # The scoped catalog under --scope-patterns (scopeCatalog)
+│   │   ├── partition.go        # Partitioned review (--partition-files): the split, the per-partition sessions, the merge
+│   │   ├── partition_test.go
 │   │   └── merge.go            # Merge results from multiple review passes
 │   ├── search/                 # brain search: the full-text index of a mirror directory
 │   │   ├── index.go            # index.sqlite: the schema, the version check, the refresh, the block cutting (Open)

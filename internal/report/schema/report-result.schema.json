@@ -26,6 +26,11 @@
       "description": "Changed files the review's sessions were not pointed at, set only with --diff-exclusions: lock files, vendored directories (one entry per directory, with how many changed files under it were left out), and generated files. Absent when exclusions are off or no changed file matched.",
       "type": "array",
       "items": { "$ref": "#/$defs/excludedFile" }
+    },
+    "partitions": {
+      "description": "The partitions of a partitioned review (--partition-files), in session order: each primary-review session's files, their added plus deleted lines (0 when git could not count them), and the findings that session returned before the merge. Absent when the review ran as one session.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/reviewPartition" }
     }
   },
   "$defs": {
@@ -217,6 +222,26 @@
           "description": "Set for a vendored directory only: how many of its changed files were left out.",
           "type": "integer",
           "minimum": 1
+        }
+      }
+    },
+    "reviewPartition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["files", "lines", "findings"],
+      "properties": {
+        "files": {
+          "description": "The changed files this partition's review session reviewed.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "lines": {
+          "description": "The added plus deleted lines of those files; a binary file counts 0.",
+          "type": "integer"
+        },
+        "findings": {
+          "description": "The findings the session returned, before the merge, the gates and the filters.",
+          "type": "integer"
         }
       }
     },

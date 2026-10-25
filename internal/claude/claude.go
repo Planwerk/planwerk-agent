@@ -62,6 +62,22 @@ type ReviewContext struct {
 	// names; the review session opens its directory with --add-dir. It is zero
 	// without a Scope or with an empty Scope.Rest (decision 141).
 	Catalog patterns.Catalog
+	// Partition is the partition of a partitioned review this session reviews
+	// (--partition-files); the zero value reviews the whole pull request. The
+	// caller narrows Diff and ChangedFiles to the partition's files and keeps
+	// every other field the sessions share (decision 142).
+	Partition PartitionScope
+}
+
+// PartitionScope narrows a review session to one partition of a partitioned
+// review: the prompt's Partition section names the session's files and those
+// of the sessions running beside it. The zero value (Count < 2) is no
+// partition, and the prompt carries no such section (decision 142).
+type PartitionScope struct {
+	Index  int      // 1-based number of this session's partition
+	Count  int      // number of partitions in the review
+	Files  []string // the changed files this session reviews
+	Others []string // the changed files the other partitions review, in partition order
 }
 
 // Review runs the diff-review session in the given directory and returns its

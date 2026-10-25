@@ -23,7 +23,9 @@ import (
 // "./". A reviewed entry wins over a duplicate that says otherwise, and an
 // entry for a path the list does not hold is ignored. The review command hands
 // it the merged result, whose account is the primary review's: MergeResults
-// keeps the primary (decision 138).
+// keeps the primary (decision 138). In a partitioned review that account joins
+// every partition session's, each for its own share of the list (decision
+// 142).
 func CheckFileLedger(result *report.ReviewResult, listed []string) int {
 	if result == nil || len(listed) == 0 {
 		return 0

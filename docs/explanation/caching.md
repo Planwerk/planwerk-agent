@@ -72,9 +72,10 @@ What only shapes the *rendering* is deliberately absent. `--min-severity` and
 `--min-confidence` filter a stored payload on the way out, so asking the same
 commit for a stricter view reuses the analysis instead of repeating it. The
 flags that change what is analyzed — `--thorough`, `--specialists`,
-`--scope-patterns`, `--coverage-map` — do belong in the key, and a review entry
-stores the coverage map beside its findings so a `--coverage-map` run that hits
-the cache still renders the section it asked for.
+`--scope-patterns`, `--coverage-map`, `--partition-files` — do belong in the
+key, and a review entry stores the coverage map beside its findings so a
+`--coverage-map` run that hits the cache still renders the section it asked
+for.
 
 A review in which a requested pass failed is rendered and posted but not
 cached, so a transient failure (a timeout, a rate limit) does not stick to the

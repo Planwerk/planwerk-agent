@@ -731,14 +731,15 @@ func TestFinishReview_NullAndEmptyFindings(t *testing.T) {
 }
 
 // TestFinishReview_DropsDecodedPasses covers a finder whose unvalidated
-// fallback output carries a passes, an excluded_files or a gates key: it
-// decodes, but the three records are the pipeline's, so finishReview leaves
-// them nil for an audit, which never assigns the first two, or a review whose
-// prompt listed no files, to render (decisions 135, 137 and 138).
+// fallback output carries a passes, an excluded_files, a gates or a
+// partitions key: it decodes, but the four records are the pipeline's, so
+// finishReview leaves them nil for an audit, which never assigns the
+// passes, the excluded files or the partitions, or a review whose prompt
+// listed no files, to render (decisions 135, 137, 138 and 142).
 func TestFinishReview_DropsDecodedPasses(t *testing.T) {
 	t.Parallel()
 	c, _ := noSessionClient(t)
-	in := `{"findings":[],"summary":"audit ok","recommendation":"","passes":[{"pass":"specialist-security","status":"failed","error":"injected"},{"pass":"adversarial","status":"skipped"}],"excluded_files":[{"path":"internal/auth/","reason":"vendored","files":9}],"gates":{"files":{"changed":3,"reviewed":3}}}`
+	in := `{"findings":[],"summary":"audit ok","recommendation":"","passes":[{"pass":"specialist-security","status":"failed","error":"injected"},{"pass":"adversarial","status":"skipped"}],"excluded_files":[{"path":"internal/auth/","reason":"vendored","files":9}],"gates":{"files":{"changed":3,"reviewed":3}},"partitions":[{"files":["a.go"],"lines":1,"findings":0},{"files":["b.go"],"lines":1,"findings":0}]}`
 
 	result, err := c.finishReview(in, testResolvedModel, "audit output", "")
 	if err != nil {
@@ -752,6 +753,9 @@ func TestFinishReview_DropsDecodedPasses(t *testing.T) {
 	}
 	if result.Gates != nil {
 		t.Errorf("Gates = %+v, want nil: a finder must not write its own coverage record", result.Gates)
+	}
+	if result.Partitions != nil {
+		t.Errorf("Partitions = %+v, want nil: a finder must not write the partition record", result.Partitions)
 	}
 	if result.Summary != "audit ok" {
 		t.Errorf("Summary = %q, want the rest of the output decoded", result.Summary)

@@ -62,6 +62,7 @@ type Options struct {
 	CoverageMap     bool
 	MaxPatterns     int           // max patterns to inject into prompt; <= 0 disables truncation
 	MaxFindings     int           // cap on findings Claude returns; <= 0 disables cap
+	PartitionFiles  int           // split a PR changing more than this many files into partitions of at most this many, one primary-review session each (decision 142); <= 0 reviews it in one session
 	CacheMaxAge     time.Duration // reject cache entries older than this; <= 0 disables the TTL
 	Local           bool          // operate on the current working directory instead of cloning
 	Force           bool          // with Local, skip the dirty-working-tree confirmation prompt
@@ -195,6 +196,9 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	if opts.CoverageMap {
 		cacheFlags = append(cacheFlags, "coverage-map")
 	}
+	if opts.PartitionFiles > 0 {
+		cacheFlags = append(cacheFlags, fmt.Sprintf("partition-files=%d", opts.PartitionFiles))
+	}
 	if wiki.CommitSHA != "" {
 		cacheFlags = append(cacheFlags, "wiki="+wiki.CommitSHA)
 	}
@@ -317,19 +321,32 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 
 	// The changed files the review prompt lists and the session accounts for:
 	// the PR's file changes minus what the diff left out and the planning
-	// artifacts. A pull request with more than maxLedgerFiles of them gets no
-	// list and no record (decision 138).
+	// artifacts (decision 138).
 	ledger := reviewLedger(pr.FileChanges, reviewDiff.Excluded)
-	if len(ledger) > maxLedgerFiles {
-		slog.Info("the pull request changes more files than the review lists; file coverage is not recorded", "files", len(ledger), "max", maxLedgerFiles)
-		ledger = nil
-	}
 
 	// Under --scope-patterns the review prompt carries the bodies the files
 	// the diff kept match and indexes the rest from a catalog written here,
 	// which is removed when Run returns (decision 141).
 	scope, cat, cleanupCatalog := scopeCatalog(opts.ScopePatterns, pr.Dir, diffscope.Reviewable(pr.ChangedFiles, reviewDiff.Excluded), pats)
 	defer cleanupCatalog()
+
+	// Under --partition-files a pull request whose diff keeps more files than
+	// the flag, its planning artifacts aside, is split here, before any
+	// session runs, into partitions that each get a primary-review session of
+	// their own (decision 142).
+	toPartition := filesToPartition(pr.ChangedFiles, pr.FileChanges, reviewDiff.Excluded)
+	plan := planReviewPartitions(toPartition, pr.FileChanges, opts.PartitionFiles)
+	if len(plan) > 0 {
+		slog.Info("partitioning the review", "partitions", len(plan), "changed_files", len(toPartition), "max_files", opts.PartitionFiles)
+	}
+
+	// A session lists its own changed files, so the cap applies per session:
+	// when one would list more than maxLedgerFiles, no session gets a list and
+	// the run records none (decision 138, decision 142).
+	if n := largestSessionLedger(ledger, plan); n > maxLedgerFiles {
+		slog.Info("the pull request changes more files than the review lists; file coverage is not recorded", "files", n, "max", maxLedgerFiles)
+		ledger = nil
+	}
 
 	reviewCtx := claude.ReviewContext{
 		Patterns:     pats,
@@ -351,8 +368,14 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		Scope:        scope,
 		Catalog:      cat,
 	}
+	// One context per partition session, each with its share of the ledger;
+	// none when the review runs as one session on reviewCtx (decision 142).
+	sessions := partitionContexts(reviewCtx, plan, ledger)
 
 	var (
+		// reviewParts holds the primary review's results unmerged: one per
+		// partition session, or the single session's (decision 142).
+		reviewParts      []*report.ReviewResult
 		result           *report.ReviewResult
 		advResult        *report.ReviewResult
 		complianceResult *report.ReviewResult
@@ -372,11 +395,19 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 
 	var g errgroup.Group
 	g.Go(func() error {
+		if len(sessions) > 0 {
+			parts, err := r.reviewPartitions(pr, plan, sessions, reviewDiff.Excluded)
+			if err != nil {
+				return fmt.Errorf("claude review: %w", err)
+			}
+			reviewParts = parts
+			return nil
+		}
 		res, err := r.Claude.Review(pr.Dir, reviewCtx)
 		if err != nil {
 			return fmt.Errorf("claude review: %w", err)
 		}
-		result = res
+		reviewParts = []*report.ReviewResult{res}
 		return nil
 	})
 	if opts.Thorough {
@@ -413,10 +444,13 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// before the merges below match them by file and line. A failed pass is left
 	// out, so the counts cover the passes the report draws on, each pass's
 	// findings before they are folded; a nil entry (a gated-out or failed
-	// specialist) is skipped (decision 139). A finding is relocated only
+	// specialist) is skipped (decision 139). Each partition of a partitioned
+	// review counts as a pass of its own here, so its findings are placed
+	// before the partitions merge (decision 142). A finding is relocated only
 	// within the changed files the diff kept: no session was shown the rest,
 	// and a large one left unread would stop every relocation (decision 137).
-	secondaries := make([]*report.ReviewResult, 0, 2+len(specialistResults))
+	secondaries := make([]*report.ReviewResult, 0, len(reviewParts)+1+len(specialistResults))
+	secondaries = append(secondaries, reviewParts[1:]...)
 	if advErr == nil {
 		secondaries = append(secondaries, advResult)
 	}
@@ -424,7 +458,20 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		secondaries = append(secondaries, complianceResult)
 	}
 	secondaries = append(secondaries, specialistResults...)
-	hygiene.AnchorFindings(result, pr.Dir, diffscope.Reviewable(pr.ChangedFiles, reviewDiff.Excluded), secondaries...)
+	hygiene.AnchorFindings(reviewParts[0], pr.Dir, diffscope.Reviewable(pr.ChangedFiles, reviewDiff.Excluded), secondaries...)
+
+	// The partitions fold into one primary result before the secondary passes
+	// merge into it, and that result carries the run's excluded files as the
+	// single session's does (claude.Client.Review). The partition record is
+	// the pipeline's, so a value decoded from a session's output never
+	// survives (decision 142).
+	if len(plan) > 0 {
+		result = mergePartitions(reviewParts, plan)
+		result.ExcludedFiles = reviewDiff.Excluded
+	} else {
+		result = reviewParts[0]
+		result.Partitions = nil
+	}
 
 	if advErr != nil {
 		slog.Warn("adversarial review failed", "err", advErr)
@@ -456,8 +503,10 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// findings that carry a file, so cross-pass duplicates among file-less
 	// findings survive. When a secondary pass contributed, reconcile them with a
 	// single cheap structure-tier grouping call. Non-fatal: on failure the
-	// findings ship unmerged.
-	if opts.Thorough || opts.Specialists || feature != nil {
+	// findings ship unmerged. The partitions of a partitioned review count as
+	// contributors, since each may report the same file-less finding
+	// (decision 142).
+	if opts.Thorough || opts.Specialists || feature != nil || len(plan) > 0 {
 		hygiene.DedupFileless(result, r.Claude.DedupFindings)
 	}
 

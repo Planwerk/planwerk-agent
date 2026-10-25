@@ -30,10 +30,12 @@ func (r *Renderer) RenderJSON(result ReviewResult, minSeverity Severity, minConf
 	}
 	// Carry the run-level gate records so --format json tells the same story the
 	// posted data block does; the counts describe the whole run, not the filtered
-	// list. The pass records and the excluded files describe the run too.
+	// list. The pass records, the excluded files and the partitions describe the
+	// run too.
 	filtered.Gates = result.Gates
 	filtered.Passes = result.Passes
 	filtered.ExcludedFiles = result.ExcludedFiles
+	filtered.Partitions = result.Partitions
 
 	enc := json.NewEncoder(r.w)
 	enc.SetIndent("", "  ")
@@ -297,14 +299,17 @@ func fileRef(f Finding) string {
 }
 
 // renderSummary writes the Summary section: the result's summary, the Passes
-// line, and the severity counts. It takes the whole result so a run-level record
-// can add its own line here.
+// line, the Partitions line, and the severity counts. It takes the whole result
+// so a run-level record can add its own line here.
 func (r *Renderer) renderSummary(cf CategorizedFindings, result ReviewResult) {
 	_, _ = fmt.Fprint(r.w, "## Summary\n\n")
 	if result.Summary != "" {
 		_, _ = fmt.Fprintf(r.w, "%s\n\n", result.Summary)
 	}
 	if line := passesLine(result.Passes); line != "" {
+		_, _ = fmt.Fprintf(r.w, "%s\n\n", line)
+	}
+	if line := partitionsLine(result.Partitions); line != "" {
 		_, _ = fmt.Fprintf(r.w, "%s\n\n", line)
 	}
 	_, _ = fmt.Fprintln(r.w, "| Severity | Count |")
@@ -343,6 +348,25 @@ func passesLine(passes []PassStatus) string {
 		return ""
 	}
 	return "**Passes**: " + strings.Join(groups, "; ")
+}
+
+// partitionsLine renders the `**Partitions**:` Summary line of a partitioned
+// review: how many review sessions it ran and the file count of the largest
+// partition, which --partition-files bounds. It is empty when the review ran as
+// one session (decision 142).
+func partitionsLine(partitions []ReviewPartition) string {
+	if len(partitions) == 0 {
+		return ""
+	}
+	largest := 0
+	for _, p := range partitions {
+		largest = max(largest, len(p.Files))
+	}
+	files := "files"
+	if largest == 1 {
+		files = "file"
+	}
+	return fmt.Sprintf("**Partitions**: %d review sessions of at most %d %s", len(partitions), largest, files)
 }
 
 func (r *Renderer) renderRecommendation(cf CategorizedFindings, custom string) {
@@ -513,7 +537,10 @@ type dataBlockPayload struct {
 
 // RenderDataBlock returns an HTML comment containing the JSON-encoded findings,
 // the per-Run Claude token usage totals, and metadata for machine consumption
-// by tools like Claude Code and CI scripts.
+// by tools like Claude Code and CI scripts. It leaves out result.Partitions:
+// their file lists grow with the pull request, a summary comment over GitHub's
+// size cap is cut from its end, where the block sits, and nothing reads them
+// back from the block. --format json carries them (decision 142).
 func RenderDataBlock(result ReviewResult, commitSHA string, usage Usage) string {
 	payload := dataBlockPayload{
 		CommitSHA:     commitSHA,
