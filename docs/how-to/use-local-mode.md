@@ -13,8 +13,11 @@ This unlocks three workflows the temp-dir clone blocks:
   second clone of the same repo doubles the cold-start time and network cost.
   `--local` reuses the existing checkout. See
   [Local mode in CI](/how-to/use-the-github-action#local-mode-in-ci).
-- **Local-first iteration**: review or fix unpushed commits and experimental
-  branches without pushing them first.
+- **Local-first iteration**: `audit`, `propose`, `gap-analysis` and
+  `review-prepared` read your checkout as it is, unpushed commits and
+  experimental branches included. `review`, `fix`, `rebase` and `address` work
+  on the PR branch, which must be at the PR head, so push its commits first
+  (see **Head check** below).
 - **Post-run inspection**: after `fix` or `implement` finishes, the working
   tree it operated on is still there to `cd` into and inspect — it is never
   `rm`-ed.
@@ -33,6 +36,13 @@ This unlocks three workflows the temp-dir clone blocks:
   `working tree left on PR branch` so you know where you landed. `rebase` then
   rewrites that branch in place; pass `--push` to publish it with
   `--force-with-lease`.
+- **Head check.** After `gh pr checkout`, `HEAD` must be the commit GitHub
+  reports as the PR head. A head that moved since the metadata was read is
+  re-read and taken. A local branch carrying commits the PR does not have stops
+  `review`/`fix`/`rebase`/`address` before any session runs, and the error
+  names the remedy: push those commits, or reset the branch with
+  `gh pr checkout --force <number>`. Runs without `--local` do the same check
+  on the temp-dir clone.
 - **Dirty-tree gate.** If the working tree has uncommitted changes, `--local`
   asks for confirmation before doing anything. With `--force` it proceeds and
   logs a warning instead. In a non-interactive context (stdin is not a TTY,

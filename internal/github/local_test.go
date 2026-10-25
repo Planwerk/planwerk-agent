@@ -5,6 +5,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 )
 
@@ -103,4 +105,81 @@ func TestOpenLocalPROriginMismatch(t *testing.T) {
 	if !errors.Is(err, ErrOriginMismatch) {
 		t.Fatalf("OpenLocalPR with mismatched ref = %v, want ErrOriginMismatch", err)
 	}
+}
+
+// initLocalPRRepo is initLocalRepo for acme/widgets with two commits. It
+// returns them as first, the PR head the fake gh reports, and head, a commit
+// the PR does not have, at which the checkout stays.
+func initLocalPRRepo(t *testing.T) (dir, first, head string) {
+	t.Helper()
+	dir = initLocalRepo(t, "git@github.com:acme/widgets.git")
+	for _, msg := range []string{"pushed", "unpushed"} {
+		if out, err := exec.Command("git", "-C", dir, "commit", "-q", "--allow-empty", "-m", msg).CombinedOutput(); err != nil {
+			t.Fatalf("git commit: %v\n%s", err, out)
+		}
+	}
+	head, err := gitOutput(dir, "rev-parse", "HEAD")
+	if err != nil {
+		t.Fatalf("rev-parse HEAD: %v", err)
+	}
+	first, err = gitOutput(dir, "rev-parse", "HEAD~1")
+	if err != nil {
+		t.Fatalf("rev-parse HEAD~1: %v", err)
+	}
+	return dir, first, head
+}
+
+// TestOpenLocalPRPinsHead locks the head check OpenLocalPR runs after gh pr
+// checkout. A branch ahead of the head GitHub reports, which gh's fast-forward
+// leaves where it is, stops with ErrHeadMismatch and the --local remedy and
+// keeps its commits; a confirmed move is taken. Either way the head is re-read
+// once, with the query that read it first: the ref-less one, or the explicit
+// ref's --repo one.
+func TestOpenLocalPRPinsHead(t *testing.T) {
+	t.Run("ahead branch stops with the remedy", func(t *testing.T) {
+		dir, first, head := initLocalPRRepo(t)
+		argvFile := fakeCheckoutGH(t, "", first, first)
+
+		pr, err := client.OpenLocalPR("", LocalOptions{})
+		if !errors.Is(err, ErrHeadMismatch) {
+			t.Fatalf("err = %v, want ErrHeadMismatch", err)
+		}
+		if pr != nil {
+			t.Errorf("pr = %+v, want nil on a pin failure", pr)
+		}
+		if !strings.Contains(err.Error(), "gh pr checkout --force 7") {
+			t.Errorf("error %q does not name the gh pr checkout --force remedy", err)
+		}
+		if got, err := gitOutput(dir, "rev-parse", "HEAD"); err != nil || got != head {
+			t.Errorf("HEAD = %s (%v), want the unpushed %s kept", got, err, head)
+		}
+		views := ghCalls(t, argvFile, "pr", "view")
+		if len(views) != 2 {
+			t.Fatalf("pr view calls = %q, want the read and one re-read", views)
+		}
+		if !slices.Equal(views[1], views[0]) || slices.Contains(views[0], "--repo") {
+			t.Errorf("pr view calls = %q, want the ref-less query twice", views)
+		}
+	})
+
+	t.Run("explicit ref takes a moved head", func(t *testing.T) {
+		_, first, head := initLocalPRRepo(t)
+		argvFile := fakeCheckoutGH(t, "", first, head)
+
+		pr, err := client.OpenLocalPR("acme/widgets#7", LocalOptions{})
+		if err != nil {
+			t.Fatalf("OpenLocalPR: %v", err)
+		}
+		if pr.HeadSHA != head {
+			t.Errorf("HeadSHA = %s, want the checked-out %s", pr.HeadSHA, head)
+		}
+		views := ghCalls(t, argvFile, "pr", "view")
+		if len(views) != 2 {
+			t.Fatalf("pr view calls = %q, want the read and one re-read", views)
+		}
+		i := slices.Index(views[0], "--repo")
+		if !slices.Equal(views[1], views[0]) || i < 0 || i+1 >= len(views[0]) || views[0][i+1] != "acme/widgets" {
+			t.Errorf("pr view calls = %q, want the --repo acme/widgets query twice", views)
+		}
+	})
 }

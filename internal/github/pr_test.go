@@ -1,9 +1,11 @@
 package github
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -336,5 +338,250 @@ func TestHasCommit(t *testing.T) {
 		if client.HasCommit(dir, sha) {
 			t.Errorf("HasCommit(%q) = true, want false", sha)
 		}
+	}
+}
+
+// TestPinHead locks the head check itself (TestFetchAndCheckoutPinsHead and
+// TestOpenLocalPRPinsHead lock its wiring): a checkout at the reported head
+// passes without a re-read; a head that moved during the clone is taken once
+// the re-read confirms it; an unconfirmed mismatch fails with ErrHeadMismatch
+// and the mode's remedy; and pr.HeadSHA is left as reported on every error.
+func TestPinHead(t *testing.T) {
+	dir := initGitRepoForDiff(t)
+	head, err := client.HeadSHA(dir)
+	if err != nil {
+		t.Fatalf("HeadSHA: %v", err)
+	}
+	first, err := gitOutput(dir, "rev-parse", "HEAD~1")
+	if err != nil {
+		t.Fatalf("rev-parse HEAD~1: %v", err)
+	}
+	newPR := func(reported string) *PR {
+		return &PR{Owner: "acme", Repo: "widgets", Number: 7, HeadBranch: "feature", Dir: dir, HeadSHA: reported}
+	}
+	noRefresh := func(t *testing.T) func() (string, error) {
+		return func() (string, error) {
+			t.Fatal("refresh called, want no re-read")
+			return "", nil
+		}
+	}
+
+	t.Run("match", func(t *testing.T) {
+		pr := newPR(head)
+		if err := pinHead(pr, noRefresh(t)); err != nil {
+			t.Fatalf("pinHead: %v", err)
+		}
+		if pr.HeadSHA != head {
+			t.Errorf("HeadSHA = %s, want %s", pr.HeadSHA, head)
+		}
+	})
+
+	t.Run("moved head is adopted", func(t *testing.T) {
+		pr := newPR(first)
+		calls := 0
+		err := pinHead(pr, func() (string, error) {
+			calls++
+			return head, nil
+		})
+		if err != nil {
+			t.Fatalf("pinHead: %v", err)
+		}
+		if pr.HeadSHA != head {
+			t.Errorf("HeadSHA = %s, want the checked-out %s", pr.HeadSHA, head)
+		}
+		if calls != 1 {
+			t.Errorf("refresh calls = %d, want 1", calls)
+		}
+	})
+
+	t.Run("clone mismatch fails", func(t *testing.T) {
+		pr := newPR(first)
+		err := pinHead(pr, func() (string, error) { return first, nil })
+		if !errors.Is(err, ErrHeadMismatch) {
+			t.Fatalf("err = %v, want ErrHeadMismatch", err)
+		}
+		if pr.HeadSHA != first {
+			t.Errorf("HeadSHA = %s, want it left at %s", pr.HeadSHA, first)
+		}
+		msg := err.Error()
+		for _, want := range []string{first, head, "re-run"} {
+			if !strings.Contains(msg, want) {
+				t.Errorf("error %q does not contain %q", msg, want)
+			}
+		}
+		if strings.Contains(msg, "--local") {
+			t.Errorf("error %q names --local for a clone run", msg)
+		}
+	})
+
+	t.Run("local mismatch names the remedy", func(t *testing.T) {
+		pr := newPR(first)
+		pr.Local = true
+		err := pinHead(pr, func() (string, error) { return first, nil })
+		if !errors.Is(err, ErrHeadMismatch) {
+			t.Fatalf("err = %v, want ErrHeadMismatch", err)
+		}
+		if pr.HeadSHA != first {
+			t.Errorf("HeadSHA = %s, want it left at %s", pr.HeadSHA, first)
+		}
+		msg := err.Error()
+		for _, want := range []string{"gh pr checkout --force 7", "--local", first, head} {
+			if !strings.Contains(msg, want) {
+				t.Errorf("error %q does not contain %q", msg, want)
+			}
+		}
+	})
+
+	t.Run("re-read failure", func(t *testing.T) {
+		pr := newPR(first)
+		boom := errors.New("boom")
+		err := pinHead(pr, func() (string, error) { return "", boom })
+		if err == nil {
+			t.Fatal("pinHead returned nil, want the re-read error")
+		}
+		if errors.Is(err, ErrHeadMismatch) {
+			t.Errorf("err = %v, want a re-read error, not ErrHeadMismatch", err)
+		}
+		if !errors.Is(err, boom) {
+			t.Errorf("err = %v, want it to wrap the re-read error", err)
+		}
+		if pr.HeadSHA != first {
+			t.Errorf("HeadSHA = %s, want it left at %s", pr.HeadSHA, first)
+		}
+	})
+
+	t.Run("unresolvable HEAD", func(t *testing.T) {
+		empty := t.TempDir()
+		if out, err := exec.Command("git", "-C", empty, "init", "-q").CombinedOutput(); err != nil {
+			t.Fatalf("git init: %v\n%s", err, out)
+		}
+		pr := newPR(head)
+		pr.Dir = empty
+		err := pinHead(pr, noRefresh(t))
+		if err == nil {
+			t.Fatal("pinHead returned nil for a repository without commits")
+		}
+		if !strings.Contains(err.Error(), "rev-parse") {
+			t.Errorf("error %q does not name rev-parse", err)
+		}
+		if pr.HeadSHA != head {
+			t.Errorf("HeadSHA = %s, want it left at %s", pr.HeadSHA, head)
+		}
+	})
+}
+
+// fakeCheckoutGH puts a gh on PATH that serves FetchAndCheckout and
+// OpenLocalPR without GitHub. `repo clone` clones fixture into the target
+// directory; `pr checkout` leaves the checkout where it is, which is what
+// gh's fast-forward does to a branch that is ahead; `pr view` reports PR 7
+// with head reported on its first call and reread on every later one. It
+// returns the file every call's argv is recorded in (ghCalls reads it).
+func fakeCheckoutGH(t *testing.T, fixture, reported, reread string) string {
+	t.Helper()
+	state := t.TempDir()
+	argvFile := filepath.Join(state, "argv")
+	viewed := filepath.Join(state, "viewed")
+	fakeGH(t, recordArgv(argvFile)+`case "$1 $2" in
+"repo clone") exec git clone -q '`+fixture+`' "$4" ;;
+"pr checkout") exit 0 ;;
+"pr view")
+  sha='`+reported+`'
+  if [ -e '`+viewed+`' ]; then sha='`+reread+`'; fi
+  : > '`+viewed+`'
+  printf '{"number":7,"title":"t","body":"","headRefOid":"%s","baseRefName":"","headRefName":"feature"}\n' "$sha" ;;
+*) echo "unexpected gh call: $*" >&2; exit 1 ;;
+esac
+`)
+	return argvFile
+}
+
+// ghCalls returns the argv of every call recorded in argvFile (recordArgv)
+// whose leading arguments are sub, such as "pr", "view".
+func ghCalls(t *testing.T, argvFile string, sub ...string) [][]string {
+	t.Helper()
+	raw, err := os.ReadFile(argvFile)
+	if err != nil {
+		t.Fatalf("reading recorded argv: %v", err)
+	}
+	var calls [][]string
+	for _, call := range strings.Split(strings.TrimSuffix(string(raw), "----\n"), "----\n") {
+		argv := strings.Split(strings.TrimRight(call, "\n"), "\n")
+		if len(argv) >= len(sub) && slices.Equal(argv[:len(sub)], sub) {
+			calls = append(calls, argv)
+		}
+	}
+	return calls
+}
+
+// TestFetchAndCheckoutPinsHead locks the head check FetchAndCheckout runs on
+// its temp-dir clone: a clone at the reported head is not re-read, a moved
+// head is taken after one re-read with the first read's query, and an
+// unconfirmed mismatch fails with ErrHeadMismatch and removes the clone, which
+// the caller never receives to Cleanup.
+func TestFetchAndCheckoutPinsHead(t *testing.T) {
+	fixture := initGitRepoForDiff(t)
+	head, err := client.HeadSHA(fixture)
+	if err != nil {
+		t.Fatalf("HeadSHA: %v", err)
+	}
+	first, err := gitOutput(fixture, "rev-parse", "HEAD~1")
+	if err != nil {
+		t.Fatalf("rev-parse HEAD~1: %v", err)
+	}
+
+	for _, tc := range []struct {
+		name             string
+		reported, reread string
+		wantViews        int
+		wantMismatch     bool
+	}{
+		{name: "clone at the reported head", reported: head, reread: first, wantViews: 1},
+		{name: "moved head is adopted", reported: first, reread: head, wantViews: 2},
+		{name: "unconfirmed mismatch removes the clone", reported: first, reread: first, wantViews: 2, wantMismatch: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tmp := t.TempDir()
+			t.Setenv("TMPDIR", tmp)
+			argvFile := fakeCheckoutGH(t, fixture, tc.reported, tc.reread)
+
+			pr, err := client.FetchAndCheckout("acme/widgets#7")
+			clones := ghCalls(t, argvFile, "repo", "clone")
+			if len(clones) != 1 || len(clones[0]) < 4 || filepath.Dir(clones[0][3]) != tmp {
+				t.Fatalf("repo clone calls = %q, want one into a directory under %s", clones, tmp)
+			}
+			cloneDir := clones[0][3]
+			if tc.wantMismatch {
+				if !errors.Is(err, ErrHeadMismatch) {
+					t.Fatalf("err = %v, want ErrHeadMismatch", err)
+				}
+				if pr != nil {
+					t.Errorf("pr = %+v, want nil on a pin failure", pr)
+				}
+				if _, statErr := os.Stat(cloneDir); !os.IsNotExist(statErr) {
+					t.Errorf("clone %s left behind after the pin failure (stat: %v)", cloneDir, statErr)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("FetchAndCheckout: %v", err)
+				}
+				t.Cleanup(pr.Cleanup)
+				if pr.Dir != cloneDir {
+					t.Errorf("Dir = %s, want the clone %s", pr.Dir, cloneDir)
+				}
+				if pr.HeadSHA != head {
+					t.Errorf("HeadSHA = %s, want the checked-out %s", pr.HeadSHA, head)
+				}
+			}
+
+			views := ghCalls(t, argvFile, "pr", "view")
+			if len(views) != tc.wantViews {
+				t.Fatalf("pr view calls = %d, want %d", len(views), tc.wantViews)
+			}
+			for _, v := range views[1:] {
+				if !slices.Equal(v, views[0]) {
+					t.Errorf("re-read %q, want the first read's query %q", v, views[0])
+				}
+			}
+		})
 	}
 }

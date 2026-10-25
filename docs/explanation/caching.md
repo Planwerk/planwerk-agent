@@ -11,7 +11,10 @@ result.
 Each command derives its key from the state that would change the analysis, so
 the cache invalidates automatically when that state changes:
 
-- **Review** — the PR HEAD SHA. This avoids repeated reviews of an unchanged PR
+- **Review** — the PR head commit the checkout landed on. The run compares the
+  checked-out commit with the head the PR metadata reported and re-reads the
+  head when they differ, so a push during the clone keys the entry on the
+  commit that was reviewed. This avoids repeated reviews of an unchanged PR
   state.
 - **Propose** — the default-branch HEAD SHA, resolved via `gh api graphql` (so
   private repos work). Proposals refresh when the repo changes.

@@ -81,7 +81,7 @@ planwerk-agent/
 │   │   ├── thread.go           # Read an issue or PR with every comment, review, and commit
 │   │   ├── diff_test.go
 │   │   ├── issues.go           # Create/search GitHub issues (gh CLI)
-│   │   ├── pr.go               # Fetch PR data, checkout (gh CLI)
+│   │   ├── pr.go               # Fetch PR data, checkout (gh CLI), pin the head to the checkout
 │   │   ├── pr_test.go
 │   │   ├── repo.go             # Clone repo (gh CLI), fetch default-branch HEAD SHA (gh API)
 │   │   ├── repo_test.go
