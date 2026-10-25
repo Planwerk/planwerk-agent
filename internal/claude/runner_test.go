@@ -1031,8 +1031,10 @@ func TestClaudeArgs_NoAppendSystemPromptWhenEmpty(t *testing.T) {
 // TestAdapters_OpenTheCatalogDirectory pins which sessions are handed the
 // pattern catalog directory. Every adapter whose prompt renders the catalog
 // index passes ctx.Catalog to its session, and the completion nudge's
-// resumed turns keep it. The structuring and repair passes behind an adapter
-// get no directory, and neither does the audit session.
+// resumed turns keep it; so does the review, whose ctx.Catalog only
+// --scope-patterns sets (decision 141). The structuring and repair passes
+// behind an adapter get no directory, and neither does the audit session or
+// an unscoped review.
 func TestAdapters_OpenTheCatalogDirectory(t *testing.T) {
 	t.Parallel()
 
@@ -1108,6 +1110,19 @@ func TestAdapters_OpenTheCatalogDirectory(t *testing.T) {
 		}},
 		{"Audit", "audit", "", func(c *Client) {
 			_, _ = c.Audit("", goldenAuditContext())
+		}},
+		// The review's diff directory follows the catalog's;
+		// TestFinders_ReadTheWrittenDiff covers it.
+		{"Review", "review", "", func(c *Client) {
+			ctx := goldenReviewContext()
+			ctx.Diff = diffscope.Diff{}
+			_, _ = c.Review("", ctx)
+		}},
+		{"Review/scoped", "review", catalogDir, func(c *Client) {
+			ctx := goldenScopedReviewContext()
+			ctx.Catalog.Dir = catalogDir
+			ctx.Diff = diffscope.Diff{}
+			_, _ = c.Review("", ctx)
 		}},
 	}
 	for _, row := range rows {

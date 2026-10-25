@@ -276,6 +276,16 @@ func indexLine(p Pattern) string {
 // for structured prompt injection. If maxPatterns > 0, patterns are truncated
 // to that limit, prioritizing by severity. A value <= 0 disables truncation.
 func FormatGroupedForPrompt(pats []Pattern, maxPatterns int) string {
+	return formatGrouped(pats, maxPatterns, nil)
+}
+
+// formatGrouped is FormatGroupedForPrompt and FormatScopedForPrompt: pats,
+// truncated to maxPatterns, in one block per category. files is a
+// FileScope.Files map; a pattern with an entry in it is written inside its
+// category block in a `<patterns for="…">` block shared by the patterns that
+// matched the same files, after the patterns without one. With nil files every
+// pattern is written in order, which is FormatGroupedForPrompt's output.
+func formatGrouped(pats []Pattern, maxPatterns int, files map[string][]string) string {
 	if len(pats) == 0 {
 		return ""
 	}
@@ -299,44 +309,49 @@ func FormatGroupedForPrompt(pats []Pattern, maxPatterns int) string {
 	}
 
 	var sb strings.Builder
-
-	if len(technology) > 0 {
-		sb.WriteString("<technology-patterns>\n")
-		for _, p := range technology {
-			sb.WriteString(p.FormatForPrompt())
-			sb.WriteString("\n")
-		}
-		sb.WriteString("</technology-patterns>\n\n")
-	}
-
-	if len(design) > 0 {
-		sb.WriteString("<design-patterns>\n")
-		for _, p := range design {
-			sb.WriteString(p.FormatForPrompt())
-			sb.WriteString("\n")
-		}
-		sb.WriteString("</design-patterns>\n\n")
-	}
-
-	if len(review) > 0 {
-		sb.WriteString("<review-patterns>\n")
-		for _, p := range review {
-			sb.WriteString(p.FormatForPrompt())
-			sb.WriteString("\n")
-		}
-		sb.WriteString("</review-patterns>\n\n")
-	}
-
-	if len(general) > 0 {
-		sb.WriteString("<project-patterns>\n")
-		for _, p := range general {
-			sb.WriteString(p.FormatForPrompt())
-			sb.WriteString("\n")
-		}
-		sb.WriteString("</project-patterns>\n\n")
-	}
-
+	writeCategoryBlock(&sb, "technology-patterns", technology, files)
+	writeCategoryBlock(&sb, "design-patterns", design, files)
+	writeCategoryBlock(&sb, "review-patterns", review, files)
+	writeCategoryBlock(&sb, "project-patterns", general, files)
 	return sb.String()
+}
+
+// writeCategoryBlock writes one category block of formatGrouped to sb: the
+// <tag> line, the patterns without an entry in files, then one
+// `<patterns for="…">` block per distinct set of matched files in order of
+// first appearance, and the closing tag. It writes nothing for no patterns.
+func writeCategoryBlock(sb *strings.Builder, tag string, pats []Pattern, files map[string][]string) {
+	if len(pats) == 0 {
+		return
+	}
+	sb.WriteString("<" + tag + ">\n")
+	var keys []string
+	groups := make(map[string][]Pattern)
+	for _, p := range pats {
+		matched := files[p.Name]
+		if len(matched) == 0 {
+			sb.WriteString(p.FormatForPrompt())
+			sb.WriteString("\n")
+			continue
+		}
+		// A NUL cannot occur in a path, so it joins the files without
+		// letting two different sets share a key.
+		key := strings.Join(matched, "\x00")
+		if _, ok := groups[key]; !ok {
+			keys = append(keys, key)
+		}
+		groups[key] = append(groups[key], p)
+	}
+	for _, key := range keys {
+		group := groups[key]
+		sb.WriteString("<patterns for=" + scopeForAttr(files[group[0].Name]) + ">\n")
+		for _, p := range group {
+			sb.WriteString(p.FormatForPrompt())
+			sb.WriteString("\n")
+		}
+		sb.WriteString("</patterns>\n")
+	}
+	sb.WriteString("</" + tag + ">\n\n")
 }
 
 // CountByCategory tallies patterns by their Category field, mirroring the

@@ -281,3 +281,78 @@ func TestFormatForPrompt_Legacy(t *testing.T) {
 		t.Error("legacy pattern should not have Sources line")
 	}
 }
+
+func TestParse_AppliesToPaths(t *testing.T) {
+	input := `# Review Pattern: Docs Links
+
+**Review-Area**: documentation
+**Detection-Hint**: relative links
+**Severity**: INFO
+**Applies-To-Paths**: **/*.md, docs/** ,,
+
+## What to check
+
+Links resolve.
+`
+	p, err := Parse(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if want := []string{"**/*.md", "docs/**"}; strings.Join(p.AppliesToPaths, "|") != strings.Join(want, "|") {
+		t.Errorf("AppliesToPaths = %q, want %q", p.AppliesToPaths, want)
+	}
+	if len(p.AppliesWhen) != 0 {
+		t.Errorf("AppliesWhen = %v, want none", p.AppliesWhen)
+	}
+	if p.Body != "## What to check\n\nLinks resolve." {
+		t.Errorf("Body = %q, want the section alone", p.Body)
+	}
+}
+
+func TestPattern_MatchesFile(t *testing.T) {
+	tests := []struct {
+		name        string
+		appliesWhen []string
+		paths       []string
+		file        string
+		tags        []string
+		want        bool
+	}{
+		{"untagged matches any file", nil, nil, "a.txt", nil, true},
+		{"applies-when needs the file's tag", []string{"go"}, nil, "a.go", []string{"go"}, true},
+		{"applies-when without the tag", []string{"go"}, nil, "a.py", []string{"python"}, false},
+		{"applies-when without any tag", []string{"go"}, nil, "a.txt", nil, false},
+		{"applies-to-paths needs only a glob", nil, []string{"**/*.md"}, "docs/a.md", nil, true},
+		{"applies-to-paths without a match", nil, []string{"**/*.md"}, "a.go", []string{"go"}, false},
+		{"any glob matches", nil, []string{"**/*.markdown", "**/*.md"}, "a.md", nil, true},
+		{"both need the tag and the glob", []string{"go"}, []string{"cmd/**"}, "cmd/x.go", []string{"go"}, true},
+		{"both without the glob", []string{"go"}, []string{"cmd/**"}, "internal/x.go", []string{"go"}, false},
+		{"both without the tag", []string{"go"}, []string{"cmd/**"}, "cmd/x.py", []string{"python"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := Pattern{AppliesWhen: tt.appliesWhen, AppliesToPaths: tt.paths}
+			if got := p.MatchesFile(tt.file, tt.tags); got != tt.want {
+				t.Errorf("MatchesFile(%q, %v) = %v, want %v", tt.file, tt.tags, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAppliesToEveryFile(t *testing.T) {
+	tests := []struct {
+		name string
+		p    Pattern
+		want bool
+	}{
+		{"neither key", Pattern{}, true},
+		{"a technology", Pattern{AppliesWhen: []string{"go"}}, false},
+		{"a path", Pattern{AppliesToPaths: []string{"**/*.md"}}, false},
+		{"both", Pattern{AppliesWhen: []string{"go"}, AppliesToPaths: []string{"cmd/**"}}, false},
+	}
+	for _, tt := range tests {
+		if got := tt.p.AppliesToEveryFile(); got != tt.want {
+			t.Errorf("%s: AppliesToEveryFile() = %v, want %v", tt.name, got, tt.want)
+		}
+	}
+}

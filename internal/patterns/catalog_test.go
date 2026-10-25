@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -307,5 +308,27 @@ func TestMaterializeOrWarn_FallsBack(t *testing.T) {
 	}
 	if !strings.Contains(logBuf.String(), "writing the pattern catalog to disk failed") {
 		t.Errorf("expected a fallback warning, got:\n%s", logBuf.String())
+	}
+}
+
+func TestCatalogOnly(t *testing.T) {
+	a, b, c := Pattern{Name: "A"}, Pattern{Name: "B"}, Pattern{Name: "C"}
+	cat := Catalog{Dir: "/tmp/planwerk-agent-patterns-x", Entries: []CatalogEntry{
+		{Pattern: a, File: "a.md"}, {Pattern: b, File: "b.md"}, {Pattern: c, File: "c.md"},
+	}}
+
+	got := cat.Only([]Pattern{c, a})
+	want := Catalog{Dir: cat.Dir, Entries: []CatalogEntry{{Pattern: a, File: "a.md"}, {Pattern: c, File: "c.md"}}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Only(C, A) = %+v, want %+v (catalog order, same Dir)", got, want)
+	}
+	if got := cat.Only(nil); got.Dir != cat.Dir || len(got.Entries) != 0 {
+		t.Errorf("Only(nil) = %+v, want the Dir and no entries", got)
+	}
+	if got := (Catalog{}).Only([]Pattern{a}); !reflect.DeepEqual(got, Catalog{}) {
+		t.Errorf("zero Catalog.Only = %+v, want the zero Catalog", got)
+	}
+	if index := FormatCatalogIndex(cat.Only([]Pattern{b}), 0); !strings.HasPrefix(index, "- b.md: B (") || strings.Count(index, "\n") != 1 {
+		t.Errorf("the index of Only(B) = %q, want B's line alone", index)
 	}
 }

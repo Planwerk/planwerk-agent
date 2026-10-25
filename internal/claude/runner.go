@@ -269,9 +269,10 @@ type runSpec struct {
 	appendSystemPrompt string
 	// addDirs holds the directories the session may read besides its working
 	// directory: the on-disk pattern catalog directory (patterns.Materialize),
-	// the project memory directory (patterns.MaterializeMemory), which
+	// which runClaudeMemory, runClaudeFindings, runClaudePlan, and autoSpec
+	// add; the project memory directory (patterns.MaterializeMemory), which
 	// runClaudeMemory, runClaudeFindings, runClaudePlan, runClaudeBrainReview,
-	// and autoMemorySpec add, and the directory of the diff a finder reads
+	// and autoMemorySpec add; and the directory of the diff a finder reads
 	// (diffscope.Materialize), which runClaudeFindings and
 	// runClaudeFinderFindings add. The non-empty entries follow one --add-dir,
 	// in order. A noTools
@@ -721,15 +722,16 @@ func (c *Client) runClaudeMemory(dir, prompt, label string, cat patterns.Catalog
 // passes schema.FinderOutput to the CLI via --json-schema, so the session emits
 // its findings as JSON itself. The review and the audit call it; the other five
 // passes that emit findings run on the finder tier through
-// runClaudeFinderFindings (decision 109). mem is the project memory catalog
-// whose directory the session may read (--add-dir), the zero MemoryCatalog for
-// a run without one. The session is handed no pattern catalog directory: the
-// finder prompts carry the pattern bodies. surface pre-approves `brain search`
-// for the session, the zero Surface for a session without the search. diffDir
-// is the directory of the diff the session reads (diffscope.Diff.Dir), "" for
-// none; the audit has no diff (decision 137).
-func (c *Client) runClaudeFindings(dir, prompt, label string, mem patterns.MemoryCatalog, surface search.Surface, diffDir string) (text, model string, err error) {
-	return c.runSession(runSpec{dir: dir, label: label, model: c.model, effort: c.effort, readOnly: true, jsonSchema: string(schema.FinderOutput), addDirs: []string{mem.Dir, diffDir}, searchRule: surface.AllowRule()}, prompt)
+// runClaudeFinderFindings (decision 109). cat is the pattern catalog whose
+// directory the session may read (--add-dir); the audit, and a review without
+// --scope-patterns, pass noCatalog, because their prompts carry the bodies
+// (decision 141). mem is the project memory catalog whose directory the
+// session may read, the zero MemoryCatalog for a run without one. surface
+// pre-approves `brain search` for the session, the zero Surface for a session
+// without the search. diffDir is the directory of the diff the session reads
+// (diffscope.Diff.Dir), "" for none; the audit has no diff (decision 137).
+func (c *Client) runClaudeFindings(dir, prompt, label string, cat patterns.Catalog, mem patterns.MemoryCatalog, surface search.Surface, diffDir string) (text, model string, err error) {
+	return c.runSession(runSpec{dir: dir, label: label, model: c.model, effort: c.effort, readOnly: true, jsonSchema: string(schema.FinderOutput), addDirs: []string{cat.Dir, mem.Dir, diffDir}, searchRule: surface.AllowRule()}, prompt)
 }
 
 // noCatalog is what a session without a pattern catalog passes to its runner:

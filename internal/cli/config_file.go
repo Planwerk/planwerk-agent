@@ -112,7 +112,8 @@ func LoadFileConfig(path string) (FileConfig, bool, error) {
 // changed on the command line. minSeverity receives the raw severity string
 // so the caller can parse it with the existing flow. max-patterns is left to
 // the caller's resolver because it also folds in the PLANWERK_MAX_PATTERNS
-// environment variable.
+// environment variable. scope-patterns has no config key: the caller resolves
+// it from the flag and PLANWERK_SCOPE_PATTERNS (decision 141).
 func (f FileConfig) ApplyReview(cfg *review.Options, minSeverity *string, flagChanged func(string) bool) {
 	r := f.Review
 	if len(r.Patterns) > 0 && !flagChanged("patterns") {

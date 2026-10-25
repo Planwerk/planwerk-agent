@@ -220,6 +220,24 @@ The finder prompts carry the full pattern bodies: the `review` and `audit`
 prompts, the adversarial pass, and the domain specialists. Their findings are
 what the eval corpus scores.
 
+`review --scope-patterns` (env `PLANWERK_SCOPE_PATTERNS`, off by default)
+narrows the review prompt to the changed files the review reads; a file
+`--diff-exclusions` leaves out does not count. Each of them is tagged with the
+technologies repository-wide detection names: by name and extension, `helm`
+under a directory holding `Chart.yaml`, `github-actions` for a workflow or an
+`action.yml`, and `kubernetes` for a YAML file outside `.github/` that carries
+`apiVersion:` and `kind:`, or a Go file that imports `k8s.io/` or
+`sigs.k8s.io/`. A file's content is read only when it is a regular file inside
+the checkout. The prompt carries the body of every pattern with neither
+scoping key ([Applies-When and Applies-To-Paths](#applies-when-and-applies-to-paths))
+and of every pattern a changed file matches. Patterns that matched the same
+files sit in one `<patterns for="…">` block naming up to 20 of those files. The
+other loaded patterns are listed as the index described below, from a
+directory written for the run and opened with `--add-dir`; `--max-patterns`
+caps the bodies and the index separately. Without a changed-file list, when
+the directory cannot be written, and in a printed prompt, the review carries
+every body. The adversarial pass and the specialists are unchanged.
+
 Thirteen other prompts carry the catalog's index and a directory instead:
 the `implement` run's plan, implement, simplify-apply, and review-apply
 sessions, `fix`, `address`, the three `rebase` sessions (conflict, analysis,
@@ -254,6 +272,10 @@ warning and the sessions carry the bodies.
 **Review-Area**: <architecture|security|quality|testing|workflow|...>
 **Detection-Hint**: <Description of when/how this pattern should be detected>
 **Severity**: <BLOCKING|CRITICAL|WARNING|INFO>
+**Category**: <technology|design-principle|review>
+**Applies-When**: <Comma-separated technology tags (optional)>
+**Applies-To-Paths**: <Comma-separated path globs (optional)>
+**Sources**: <Title (URL), Title (URL), ... (optional)>
 **Occurrences**: <Number of previous findings>
 
 ## What to check
@@ -271,6 +293,24 @@ warning and the sessions carry the bodies.
 - **What was missed**: <What was overlooked>
 - **Fix**: <How it was fixed>
 ```
+
+### Applies-When and Applies-To-Paths
+
+`**Applies-When**` lists technology tags: `go`, `python`, `rust`, `java`,
+`typescript`, `javascript`, `docker`, `helm`, `kubernetes`, `github-actions`.
+A pattern that carries it is loaded only for a repository whose detection found
+one of them; a pattern without it is loaded for every repository.
+
+`**Applies-To-Paths**` lists globs over repo-relative paths, matched without
+regard to case. `**` spans directories, the other wildcards follow Go's
+[`path.Match`](https://pkg.go.dev/path#Match) within one directory level, and a
+glob cannot hold a comma, because the line separates its globs with commas. A
+glob with a malformed segment matches nothing. Only `review --scope-patterns`
+reads the key; the repository-wide load ignores it. Under that flag a pattern
+with either key keeps its body only when a changed file matches it: one of its
+tags when it lists tags, and one of its globs when it lists globs
+([How a Session Receives the Catalog](#how-a-session-receives-the-catalog)).
+`Markdown Quality` ships with `**/*.md, **/*.markdown`.
 
 ## Pattern Categories
 

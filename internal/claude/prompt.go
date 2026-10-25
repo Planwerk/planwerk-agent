@@ -66,12 +66,7 @@ Review the FULL pull request diff — every commit between origin/%s and HEAD mu
 `)
 
 	// Review patterns (grouped by category: technology, design-principle, project)
-	if len(ctx.Patterns) > 0 {
-		sb.WriteString("Apply these review patterns grouped by category. Flag violations in your review, and name the pattern (its \"Pattern:\" title) in any finding that applies one:\n\n")
-		sb.WriteString("<review-patterns>\n")
-		sb.WriteString(patterns.FormatGroupedForPrompt(ctx.Patterns, ctx.MaxPatterns))
-		sb.WriteString("</review-patterns>\n\n")
-	}
+	sb.WriteString(reviewPatternsBlock(ctx))
 
 	// Verification of claims — anti-hallucination rules
 	sb.WriteString(`## Verification of Claims
@@ -278,6 +273,51 @@ A zero-finding review is a valid outcome: when the diff is clean after the full 
 
 	sb.WriteString(findingsOutputBlock())
 
+	return sb.String()
+}
+
+// reviewPatternsLeadIn opens the review prompt's pattern section; the caller
+// adds the colon, or a sentence and then the colon.
+const reviewPatternsLeadIn = "Apply these review patterns grouped by category. Flag violations in your review, and name the pattern (its \"Pattern:\" title) in any finding that applies one"
+
+// reviewPatternsBlock renders the review prompt's pattern section, "" when
+// ctx.Patterns is empty. With a ctx.Scope (review --scope-patterns) it carries
+// the bodies of Scope.Inline, with `<patterns for="…">` blocks for the patterns
+// a changed file matched, which the lead-in introduces only when the
+// --max-patterns truncation keeps one, and lists Scope.Rest as the index of
+// ctx.Catalog.Only(Scope.Rest), whose files the session reads from
+// ctx.Catalog.Dir. Without a Scope, and when Scope.Rest has no index line
+// because no catalog was written (a failed write, a printed prompt), it
+// carries every body of ctx.Patterns, the section an unscoped review carries
+// (decision 141).
+func reviewPatternsBlock(ctx ReviewContext) string {
+	if len(ctx.Patterns) == 0 {
+		return ""
+	}
+	s := ctx.Scope
+	var index string
+	if s != nil && len(s.Rest) > 0 {
+		index = patterns.FormatCatalogIndex(ctx.Catalog.Only(s.Rest), ctx.MaxPatterns)
+	}
+	if s == nil || (len(s.Rest) > 0 && index == "") {
+		return reviewPatternsLeadIn + ":\n\n<review-patterns>\n" +
+			patterns.FormatGroupedForPrompt(ctx.Patterns, ctx.MaxPatterns) +
+			"</review-patterns>\n\n"
+	}
+	var sb strings.Builder
+	if len(s.Inline) > 0 {
+		bodies, fileBlocks := patterns.FormatScopedForPrompt(*s, ctx.MaxPatterns)
+		sb.WriteString(reviewPatternsLeadIn)
+		if fileBlocks {
+			sb.WriteString(". A <patterns for=\"…\"> block holds the patterns chosen by technology or path for the changed files it lists: apply them to those files. A pattern outside such a block applies to every changed file")
+		}
+		sb.WriteString(":\n\n<review-patterns>\n" + bodies + "</review-patterns>\n\n")
+	}
+	if index != "" {
+		sb.WriteString("The patterns indexed below match no changed file by technology or path, so this prompt lists them instead of carrying their bodies. " +
+			patternCatalogDirLine(ctx.Catalog.Dir, catalogFinder) +
+			"\n\n<review-patterns-index>\n" + index + "</review-patterns-index>\n\n")
+	}
 	return sb.String()
 }
 

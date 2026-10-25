@@ -10,6 +10,7 @@ full resolution order.
 | Variable | Overrides | Notes |
 |----------|-----------|-------|
 | `PLANWERK_MAX_PATTERNS` | `--max-patterns` | Integer; `<=0` disables truncation. Config-file value takes precedence over this variable. |
+| `PLANWERK_SCOPE_PATTERNS` | `--scope-patterns` (`review`) | Truthy values (`1`, `true`, `yes`, `on`) carry in the review prompt only the bodies of the patterns that apply to every file or that the changed files match, and list the rest as an index; falsy values (`0`, `false`, `no`, `off`) do not. Off by default. No config-file key. |
 | `PLANWERK_REMOTE_PATTERNS_TTL` | `--remote-patterns-ttl` | Duration (e.g. `24h`); `<=0` disables refresh once cached. |
 | `PLANWERK_SHOW_CLAUDE_OUTPUT` | `--show-claude-output` | Truthy values enable streaming: `1`, `true`, `yes`, `on` (case-insensitive). |
 | `PLANWERK_CLAUDE_TIMEOUT` | `--claude-timeout` | Duration (e.g. `20m`, `1h30m`); must be `> 0`. |

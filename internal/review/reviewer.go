@@ -86,6 +86,11 @@ type Options struct {
 	// sets it from claude.Client.DiffExclusions, so the review session and the
 	// Client's other finder passes leave out the same files (decision 137).
 	DiffExclusions bool
+	// ScopePatterns carries in the review prompt only the pattern bodies the
+	// changed files match and lists the rest as an index the review session
+	// reads from disk (--scope-patterns); off by default. The adversarial
+	// pass and the specialists keep the whole catalog (decision 141).
+	ScopePatterns bool
 }
 
 // Runner executes the review pipeline using injected Claude and GitHub
@@ -183,6 +188,9 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	}
 	if opts.Specialists {
 		cacheFlags = append(cacheFlags, "specialists")
+	}
+	if opts.ScopePatterns {
+		cacheFlags = append(cacheFlags, "scope-patterns")
 	}
 	if opts.CoverageMap {
 		cacheFlags = append(cacheFlags, "coverage-map")
@@ -317,6 +325,12 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		ledger = nil
 	}
 
+	// Under --scope-patterns the review prompt carries the bodies the files
+	// the diff kept match and indexes the rest from a catalog written here,
+	// which is removed when Run returns (decision 141).
+	scope, cat, cleanupCatalog := scopeCatalog(opts.ScopePatterns, pr.Dir, diffscope.Reviewable(pr.ChangedFiles, reviewDiff.Excluded), pats)
+	defer cleanupCatalog()
+
 	reviewCtx := claude.ReviewContext{
 		Patterns:     pats,
 		MaxPatterns:  opts.MaxPatterns,
@@ -334,6 +348,8 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		Brain:        surface,
 		Diff:         reviewDiff,
 		ChangedFiles: ledger,
+		Scope:        scope,
+		Catalog:      cat,
 	}
 
 	var (

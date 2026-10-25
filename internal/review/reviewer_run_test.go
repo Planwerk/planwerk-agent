@@ -2868,3 +2868,238 @@ func TestRun_NoFileChangesRecordsNothing(t *testing.T) {
 		t.Errorf("gates.files = %+v without a list, want none", cached.Gates.Files)
 	}
 }
+
+// scopePatternDir writes a pattern source with an untagged, a Go and a
+// Kubernetes pattern, plus any extra pattern files given as name -> content,
+// and returns its directory for Options.PatternDirs.
+func scopePatternDir(t *testing.T, extra map[string]string) string {
+	t.Helper()
+	dir := t.TempDir()
+	files := map[string]string{
+		"untagged.md": "# Review Pattern: Untagged Rule\n\n**Review-Area**: architecture\n**Detection-Hint**: anything\n**Severity**: INFO\n**Category**: design-principle\n\n## What to check\n\nKeep it simple.\n",
+		"go.md":       "# Review Pattern: Go Rule\n\n**Review-Area**: quality\n**Detection-Hint**: Go code\n**Severity**: WARNING\n**Category**: technology\n**Applies-When**: go\n\n## What to check\n\nWrap errors.\n",
+		"k8s.md":      "# Review Pattern: Kubernetes Rule\n\n**Review-Area**: reliability\n**Detection-Hint**: manifests\n**Severity**: WARNING\n**Category**: technology\n**Applies-When**: kubernetes\n\n## What to check\n\nSet limits.\n",
+	}
+	for name, content := range extra {
+		files[name] = content
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+func scopedNames(pats []patterns.Pattern) []string {
+	names := make([]string, len(pats))
+	for i, p := range pats {
+		names[i] = p.Name
+	}
+	slices.Sort(names)
+	return names
+}
+
+// TestRun_ScopePatternsOffCarriesNoScope locks the default: without
+// --scope-patterns the review gets no scope and no catalog, so its prompt
+// carries every body as before (decision 141).
+func TestRun_ScopePatternsOffCarriesNoScope(t *testing.T) {
+	// Not t.Parallel(): cache.SetDir mutates a package-level variable.
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	var got claude.ReviewContext
+	claudeMock := &configurableClaude{
+		review: func(_ string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
+			got = ctx
+			return &report.ReviewResult{Summary: "ok"}, nil
+		},
+	}
+	pr := fakePR(t, "acme", "widgets", 141, "sha-scope-off")
+	pr.ChangedFiles = []string{"main.go"}
+	gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
+	opts := baseOpts()
+	opts.PatternDirs = []string{scopePatternDir(t, nil)}
+
+	if err := (&Runner{Claude: claudeMock, GitHub: gh}).Run(&bytes.Buffer{}, opts); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if len(got.Patterns) != 3 {
+		t.Fatalf("ReviewContext.Patterns holds %d patterns, want the 3 loaded", len(got.Patterns))
+	}
+	if got.Scope != nil || got.Catalog.Dir != "" {
+		t.Errorf("ReviewContext.Scope = %+v, Catalog.Dir = %q; want neither without --scope-patterns", got.Scope, got.Catalog.Dir)
+	}
+}
+
+// TestRun_ScopePatternsSplitsTheCatalogByChangedFiles locks the scoped run end
+// to end: a Go change in a repository with Kubernetes manifests keeps the
+// untagged and Go bodies, indexes the Kubernetes pattern from a catalog the
+// review can read while it runs, and removes that catalog when Run returns.
+// The adversarial pass keeps the whole catalog (decision 141).
+func TestRun_ScopePatternsSplitsTheCatalogByChangedFiles(t *testing.T) {
+	// Not t.Parallel(): cache.SetDir mutates a package-level variable.
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+	t.Setenv("TMPDIR", t.TempDir())
+
+	pr := fakePR(t, "acme", "widgets", 142, "sha-scope-split")
+	for name, content := range map[string]string{
+		"go.mod":      "module example.com/x\n\ngo 1.22\n",
+		"main.go":     "package main\n",
+		"deploy.yaml": "apiVersion: apps/v1\nkind: Deployment\n",
+	} {
+		if err := os.WriteFile(filepath.Join(pr.Dir, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pr.ChangedFiles = []string{"main.go"}
+
+	var (
+		got        claude.ReviewContext
+		advPats    int
+		readDuring error
+	)
+	claudeMock := &configurableClaude{
+		review: func(_ string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
+			got = ctx
+			_, readDuring = os.Stat(ctx.Catalog.Dir)
+			return &report.ReviewResult{Summary: "ok"}, nil
+		},
+	}
+	runner := &Runner{Claude: &adversarialPatternCounter{configurableClaude: claudeMock, n: &advPats}, GitHub: &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}}
+	opts := baseOpts()
+	opts.PatternDirs = []string{scopePatternDir(t, nil)}
+	opts.ScopePatterns = true
+	opts.Thorough = true
+
+	if err := runner.Run(&bytes.Buffer{}, opts); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if got.Scope == nil {
+		t.Fatal("ReviewContext.Scope = nil, want the split")
+	}
+	if names, want := scopedNames(got.Scope.Inline), []string{"Go Rule", "Untagged Rule"}; !slices.Equal(names, want) {
+		t.Errorf("Scope.Inline = %v, want %v", names, want)
+	}
+	if names, want := scopedNames(got.Scope.Rest), []string{"Kubernetes Rule"}; !slices.Equal(names, want) {
+		t.Errorf("Scope.Rest = %v, want %v", names, want)
+	}
+	if files := got.Scope.Files["Go Rule"]; !slices.Equal(files, []string{"main.go"}) {
+		t.Errorf("Scope.Files[Go Rule] = %v, want [main.go]", files)
+	}
+	if readDuring != nil || len(got.Catalog.Entries) != 3 {
+		t.Errorf("the catalog must hold every loaded pattern and be readable during the review: stat %v, %d entries", readDuring, len(got.Catalog.Entries))
+	}
+	if _, err := os.Stat(got.Catalog.Dir); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("after Run, stat %s = %v, want not exist", got.Catalog.Dir, err)
+	}
+	if advPats != 3 {
+		t.Errorf("the adversarial pass got %d patterns, want the 3 loaded", advPats)
+	}
+}
+
+// adversarialPatternCounter is configurableClaude that records how many
+// patterns the adversarial pass was handed.
+type adversarialPatternCounter struct {
+	*configurableClaude
+	n *int
+}
+
+func (c *adversarialPatternCounter) AdversarialReview(dir, baseBranch, sinceRef string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
+	*c.n = len(pats)
+	return c.configurableClaude.AdversarialReview(dir, baseBranch, sinceRef, pats, maxPatterns)
+}
+
+// TestRun_ScopePatternsLeaveOutExcludedFiles locks the files the scope is
+// computed from: a file --diff-exclusions leaves out of the diff pulls in no
+// pattern body.
+func TestRun_ScopePatternsLeaveOutExcludedFiles(t *testing.T) {
+	// Not t.Parallel(): cache.SetDir mutates a package-level variable.
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+	t.Setenv("TMPDIR", t.TempDir())
+
+	// The branch changes changed.go and adds go.sum: a lock file is left out
+	// only beside a file that is not one.
+	dir, firstSHA := initGitRepoTwoCommits(t)
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	git("update-ref", "refs/remotes/origin/main", firstSHA)
+	if err := os.WriteFile(filepath.Join(dir, "go.sum"), []byte("a v1 h1:x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	git("add", "-A")
+	git("commit", "-q", "-m", "lock")
+	lockRule := "# Review Pattern: Lockfile Rule\n\n**Review-Area**: security\n**Detection-Hint**: lock files\n**Severity**: INFO\n**Applies-To-Paths**: **/go.sum\n\n## What to check\n\nPin hashes.\n"
+	patDir := scopePatternDir(t, map[string]string{"lock.md": lockRule})
+
+	for _, exclude := range []bool{false, true} {
+		var got claude.ReviewContext
+		claudeMock := &configurableClaude{
+			review: func(_ string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
+				got = ctx
+				return &report.ReviewResult{Summary: "ok"}, nil
+			},
+		}
+		pr := fakePR(t, "acme", "widgets", 143, "sha-scope-excluded")
+		pr.Dir, pr.Local, pr.ChangedFiles = dir, true, []string{"changed.go", "go.sum"}
+		gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
+		opts := baseOpts()
+		opts.NoCache = true
+		opts.PatternDirs = []string{patDir}
+		opts.ScopePatterns = true
+		opts.DiffExclusions = exclude
+
+		if err := (&Runner{Claude: claudeMock, GitHub: gh}).Run(&bytes.Buffer{}, opts); err != nil {
+			t.Fatalf("exclude=%v: Run returned error: %v", exclude, err)
+		}
+		if got.Scope == nil {
+			t.Fatalf("exclude=%v: Scope = nil, want the split", exclude)
+		}
+		wantGo, wantLock := []string{"changed.go", "go.sum"}, []string{"go.sum"}
+		if exclude {
+			wantGo, wantLock = []string{"changed.go"}, nil
+		}
+		if files := got.Scope.Files["Go Rule"]; !slices.Equal(files, wantGo) {
+			t.Errorf("exclude=%v: Scope.Files[Go Rule] = %v, want %v", exclude, files, wantGo)
+		}
+		if files := got.Scope.Files["Lockfile Rule"]; !slices.Equal(files, wantLock) {
+			t.Errorf("exclude=%v: Scope.Files[Lockfile Rule] = %v, want %v", exclude, files, wantLock)
+		}
+		if indexed := slices.Contains(scopedNames(got.Scope.Rest), "Lockfile Rule"); indexed != exclude {
+			t.Errorf("exclude=%v: Lockfile Rule indexed = %v, want %v", exclude, indexed, exclude)
+		}
+	}
+}
+
+// TestRun_ScopePatternsIsPartOfTheCacheKey locks the cache key: a scoped run
+// is not served an unscoped run's result, and is served its own.
+func TestRun_ScopePatternsIsPartOfTheCacheKey(t *testing.T) {
+	// Not t.Parallel(): cache.SetDir mutates a package-level variable.
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	claudeMock := &configurableClaude{}
+	gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) {
+		return fakePR(t, "acme", "widgets", 144, "sha-scope-cache"), nil
+	}}
+	runner := &Runner{Claude: claudeMock, GitHub: gh}
+	scoped := baseOpts()
+	scoped.ScopePatterns = true
+
+	for i, opts := range []Options{baseOpts(), scoped, scoped} {
+		if err := runner.Run(&bytes.Buffer{}, opts); err != nil {
+			t.Fatalf("run %d: Run returned error: %v", i+1, err)
+		}
+	}
+	if claudeMock.reviewCalls != 2 {
+		t.Errorf("Review calls = %d, want 2: the scoped run misses the unscoped entry and the second scoped run hits its own", claudeMock.reviewCalls)
+	}
+}

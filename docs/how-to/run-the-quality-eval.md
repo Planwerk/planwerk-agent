@@ -42,6 +42,8 @@ it directly for the full flag set (`go run ./cmd/planwerk-eval -h`):
 - `-thorough` adds the adversarial pass, like `review --thorough`.
 - `-specialists` adds the domain specialist fan-out, like
   `review --specialists`. It is off by default.
+- `-scope-patterns` runs the review with `review --scope-patterns`. Off by
+  default.
 - `-runs N` (default 1) runs each case N times, each run with a fresh Claude
   client, and pools the tallies of all runs.
 - `-baseline <path>` compares the run against a report written by `-json`; see
@@ -227,7 +229,8 @@ undefined ratio (recall on a clean case; any ratio with a zero denominator).
 
 Four sections follow the table:
 
-- `RUNS:` states how many runs each case had and which passes they added.
+- `RUNS:` states how many runs each case had and which passes they added,
+  and ends with `scope-patterns: yes` for a `-scope-patterns` run.
 - `TIERS:` names the model and effort the main, finder and structure tiers
   resolved to, so a report says what it measured.
 - `RECALL BY PASS` lists every pass credited with at least one seeded finding:
@@ -243,9 +246,10 @@ provenance labels (`specialist:security`), cost uses the usage labels
 (`specialist-security`).
 
 In `-json` output each case carries `found_by` and `usage` (totals over all
-runs), and the report carries `runs`, `thorough`, `specialists`, `tiers` and
-`recall_by_pass`. `tiers` holds `claude_model`, `claude_effort`,
-`finder_model`, `finder_effort`, `structure_model` and `structure_effort`.
+runs), and the report carries `runs`, `thorough`, `specialists`,
+`scope_patterns` (present when set), `tiers` and `recall_by_pass`. `tiers`
+holds `claude_model`, `claude_effort`, `finder_model`, `finder_effort`,
+`structure_model` and `structure_effort`.
 
 ## Compare a change against a baseline
 
@@ -363,3 +367,28 @@ by design: a differing finder tier is the experiment. Read the
 `BASELINE TIERS` and `CANDIDATE TIERS` lines to check each side. The claude and
 structure tiers must match, and the candidate's finder tier must be the one its
 command set.
+
+## Try the scoped pattern catalog
+
+`-scope-patterns` runs the review with `review --scope-patterns`, which carries
+only the bodies of the patterns that apply to every file or that the changed
+files match, and lists the rest as an index
+([How a Session Receives the Catalog](/reference/review-patterns#how-a-session-receives-the-catalog)).
+The flag stays off until a comparison holds. Record a baseline without it, then
+compare a run with it against that baseline:
+
+```bash
+# Baseline: without the flag
+go run ./cmd/planwerk-eval -thorough -specialists -runs 3 -json > /tmp/eval-baseline.json
+
+# Candidate: the scoped catalog
+go run ./cmd/planwerk-eval -thorough -specialists -runs 3 -scope-patterns -baseline /tmp/eval-baseline.json
+```
+
+The comparison accepts sides that differ in `-scope-patterns` by design, as it
+accepts differing finder tiers, and the candidate's `RUNS:` line shows
+`scope-patterns: yes`. The corpus is Go-only, so it exercises the split
+little. Nine of its ten cases change a `.go` file, which keeps every body but
+Markdown Quality's, so for them the comparison measures mostly the
+`<patterns for="…">` grouping. Only `irreversible-migration`, whose head
+changes a SQL file alone, moves the Go patterns to the index.

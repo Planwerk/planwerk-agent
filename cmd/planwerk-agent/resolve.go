@@ -210,6 +210,13 @@ const envClaudeInheritUserConfig = "PLANWERK_CLAUDE_INHERIT_USER_CONFIG"
 // rule matches (decision 137).
 const envDiffExclusions = "PLANWERK_DIFF_EXCLUSIONS"
 
+// envScopePatterns narrows the review prompt to the pattern bodies the changed
+// files match (review --scope-patterns). Any truthy value (1, true, yes, on)
+// enables it and any falsy value (0, false, no, off) disables it; the
+// --scope-patterns CLI flag takes precedence when explicitly set. Off by
+// default, and there is no config-file key (decision 141).
+const envScopePatterns = "PLANWERK_SCOPE_PATTERNS"
+
 // Output format identifiers accepted by the --format flag.
 const (
 	formatMarkdown = "markdown"

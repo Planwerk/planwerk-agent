@@ -1,12 +1,14 @@
 package main
 
 import (
+	"io"
 	"log/slog"
 	"os"
 
 	"github.com/planwerk/planwerk-agent/internal/claude"
 	"github.com/planwerk/planwerk-agent/internal/cli"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
+	"github.com/planwerk/planwerk-agent/internal/review"
 )
 
 // runtimeDeps carries the process-wide values every subcommand constructor
@@ -25,6 +27,10 @@ type runtimeDeps struct {
 	// claude. The implement command appends its --plan-* options to them when
 	// constructing its own client so the planning session honors both.
 	claudeOpts []claude.Option
+	// runReview, when set, runs the review the root command resolved in place
+	// of review.Run. Only tests set it, to read the resolved options without
+	// fetching a pull request or calling Claude.
+	runReview func(io.Writer, review.Options, *claude.Client) error
 }
 
 func main() {

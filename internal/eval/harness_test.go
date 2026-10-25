@@ -175,3 +175,24 @@ func TestFailedPassesError(t *testing.T) {
 		}
 	})
 }
+
+// TestReviewOptionsCarriesScopePatterns pins the mapping of a case run's
+// options onto the shipped pipeline's: each pass and the scope reach
+// review.Options, on top of a fresh, uncached JSON review.
+func TestReviewOptionsCarriesScopePatterns(t *testing.T) {
+	for _, opts := range []RunOptions{
+		{},
+		{Thorough: true},
+		{Specialists: true},
+		{ScopePatterns: true},
+		{Thorough: true, Specialists: true, ScopePatterns: true},
+	} {
+		got := reviewOptions(opts)
+		if got.Thorough != opts.Thorough || got.Specialists != opts.Specialists || got.ScopePatterns != opts.ScopePatterns {
+			t.Errorf("reviewOptions(%+v) = thorough %v, specialists %v, scope-patterns %v", opts, got.Thorough, got.Specialists, got.ScopePatterns)
+		}
+		if !got.NoCache || !got.NoCapture || got.Format != "json" || got.MinSeverity != report.SeverityInfo || got.MinConfidence != report.ConfidenceUncertain {
+			t.Errorf("reviewOptions(%+v) = %+v, want a fresh, capture-free JSON review at the lowest thresholds", opts, got)
+		}
+	}
+}

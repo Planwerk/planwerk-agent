@@ -77,9 +77,29 @@ func (c *evalGitHubClient) ViewerLogin() (string, error) { return "", nil }
 // RunOptions selects the review passes a case run adds to the primary review.
 // Thorough mirrors `review --thorough` (the adversarial pass) and Specialists
 // mirrors `review --specialists` (the domain specialist fan-out).
+// ScopePatterns mirrors `review --scope-patterns`, which narrows the primary
+// review's pattern bodies to the changed files (decision 141).
 type RunOptions struct {
-	Thorough    bool `json:"thorough"`
-	Specialists bool `json:"specialists"`
+	Thorough      bool `json:"thorough"`
+	Specialists   bool `json:"specialists"`
+	ScopePatterns bool `json:"scope_patterns,omitempty"`
+}
+
+// reviewOptions returns the review.Options a case run passes to the shipped
+// pipeline for opts: a fresh, uncached, capture-free JSON review at the lowest
+// thresholds, with the passes and the scope opts selects. RunCase adds what the
+// client decides (DiffExclusions).
+func reviewOptions(opts RunOptions) review.Options {
+	return review.Options{
+		NoCache:       true,
+		NoCapture:     true,
+		Format:        "json",
+		MinSeverity:   report.SeverityInfo,
+		MinConfidence: report.ConfidenceUncertain,
+		Thorough:      opts.Thorough,
+		Specialists:   opts.Specialists,
+		ScopePatterns: opts.ScopePatterns,
+	}
 }
 
 // Run is one review of one case: the parsed JSON review result and the token
@@ -155,18 +175,10 @@ func RunCase(client *claude.Client, c Case, opts RunOptions) (Run, error) {
 		return patterns.ResolvedWiki{}
 	}
 
-	reviewOpts := review.Options{
-		NoCache:       true,
-		NoCapture:     true,
-		Format:        "json",
-		MinSeverity:   report.SeverityInfo,
-		MinConfidence: report.ConfidenceUncertain,
-		Thorough:      opts.Thorough,
-		Specialists:   opts.Specialists,
-		// PLANWERK_DIFF_EXCLUSIONS reaches the review session as it reaches
-		// the finder passes; the corpus holds no file it leaves out.
-		DiffExclusions: client.DiffExclusions(),
-	}
+	reviewOpts := reviewOptions(opts)
+	// PLANWERK_DIFF_EXCLUSIONS reaches the review session as it reaches the
+	// finder passes; the corpus holds no file it leaves out.
+	reviewOpts.DiffExclusions = client.DiffExclusions()
 
 	var buf bytes.Buffer
 	if err := runner.Run(&buf, reviewOpts); err != nil {
