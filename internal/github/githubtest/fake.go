@@ -90,6 +90,10 @@ type Fake struct {
 	ChangedFiles    []string
 	ChangedFilesErr error
 
+	// FileChanges is what DiffFileChanges returns; FileChangesErr fails it.
+	FileChanges    []github.FileChange
+	FileChangesErr error
+
 	// ResumeState and ProgressState are what PrepareResume and
 	// CurrentFeatureProgress return; nil means nothing to resume. Their Err
 	// fields fail them.
@@ -915,6 +919,15 @@ func (f *Fake) DiffNames(dir, baseBranch string) ([]string, error) {
 		return nil, f.ChangedFilesErr
 	}
 	return f.ChangedFiles, nil
+}
+
+func (f *Fake) DiffFileChanges(dir, baseBranch string) ([]github.FileChange, error) {
+	i := f.record("DiffFileChanges", dir, baseBranch)
+	f.setErr(i, f.FileChangesErr)
+	if f.FileChangesErr != nil {
+		return nil, f.FileChangesErr
+	}
+	return f.FileChanges, nil
 }
 
 func (f *Fake) MergeBase(dir, ref1, ref2 string) (string, error) {

@@ -4,11 +4,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/planwerk/planwerk-agent/internal/detect"
+	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
@@ -98,6 +100,38 @@ func TestSetupRepoCommitsGoModInBase(t *testing.T) {
 	}
 	if got := strings.TrimSpace(gitOut("diff", "--name-only", evalBaseBranch, "HEAD")); got != "main.go" {
 		t.Errorf("files changed against %s = %q, want main.go", evalBaseBranch, got)
+	}
+}
+
+// TestSetupRepoListsFileChanges locks the changed-file list RunCase hands the
+// review: DiffFileChanges over a setupRepo checkout lists the files the head/
+// overlay changes and not the go.mod the base commit carries, so the corpus
+// runs the review prompt's Changed Files section (decision 138).
+func TestSetupRepoListsFileChanges(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	dir := writeValidCase(t, t.TempDir(), "sample")
+	writeFile(t, filepath.Join(dir, "head", "extra.go.txt"), "package main\n\nfunc extra() {}\n")
+	c, err := LoadCase(dir)
+	if err != nil {
+		t.Fatalf("LoadCase: %v", err)
+	}
+	repo := t.TempDir()
+	if _, err := setupRepo(repo, c); err != nil {
+		t.Fatalf("setupRepo: %v", err)
+	}
+
+	got, err := (github.Client{}).DiffFileChanges(repo, evalBaseBranch)
+	if err != nil {
+		t.Fatalf("DiffFileChanges: %v", err)
+	}
+	want := []github.FileChange{
+		{Path: "extra.go", Status: github.FileAdded, Added: 3},
+		{Path: "main.go", Status: github.FileModified, Added: 1, Deleted: 1},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("DiffFileChanges = %+v, want %+v", got, want)
 	}
 }
 

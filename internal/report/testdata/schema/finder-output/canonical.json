@@ -26,6 +26,10 @@
       "related_to": ["W-001"]
     }
   ],
+  "files_reviewed": [
+    { "file": "db/users.go", "status": "reviewed" },
+    { "file": "go.sum", "status": "skipped", "reason": "generated checksum file" }
+  ],
   "summary": "One critical injection to fix before merge.",
   "recommendation": "Do not merge until the injection is fixed."
 }

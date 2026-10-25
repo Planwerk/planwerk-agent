@@ -259,6 +259,36 @@ func TestBuildReviewPrompt_DiffExclusions(t *testing.T) {
 	assertGoldenPrompt(t, "review_diff_excluded", buildReviewPrompt(ctx))
 }
 
+// goldenChangedFiles is a changed-file list covering each line form of the
+// Changed Files section: a modification, an addition, a deletion, a rename and
+// a binary file.
+func goldenChangedFiles() []github.FileChange {
+	return []github.FileChange{
+		{Path: "internal/claude/prompt.go", Status: github.FileModified, Added: 42, Deleted: 7},
+		{Path: "internal/claude/prompts_golden_test.go", Status: github.FileAdded, Added: 120},
+		{Path: "internal/claude/legacy_prompt.go", Status: github.FileDeleted, Deleted: 64},
+		{Path: "docs/prompts.md", OldPath: "docs/prompt-notes.md", Status: github.FileRenamed, Added: 3, Deleted: 1},
+		{Path: "docs/images/flow.png", Status: github.FileModified, Binary: true},
+	}
+}
+
+// TestBuildReviewPrompt_ChangedFiles locks the Changed Files section and its
+// place: right under the Review Scope it narrows and before the persona. The
+// empty branch stays covered by review.golden (decision 138).
+func TestBuildReviewPrompt_ChangedFiles(t *testing.T) {
+	ctx := goldenReviewContext()
+	ctx.ChangedFiles = goldenChangedFiles()
+	got := buildReviewPrompt(ctx)
+	assertGoldenPrompt(t, "review_changed_files", got)
+	scope, files, persona := strings.Index(got, "## Review Scope"), strings.Index(got, "## Changed Files"), strings.Index(got, "You are a Staff Engineer")
+	if scope < 0 || files < scope || persona < files {
+		t.Errorf("want Review Scope, then Changed Files, then the persona; at %d, %d, %d", scope, files, persona)
+	}
+	if strings.Contains(buildReviewPrompt(goldenReviewContext()), "## Changed Files") {
+		t.Error("a review without changed files must render no Changed Files section")
+	}
+}
+
 // goldenMetaIssue and goldenSiblingIssues describe the Meta/Sub-Issue
 // neighborhood shared by the elaborate and plan "meta" goldens: the source
 // issue (#42) is a Sub Issue of Meta Issue #40, which has two other Sub Issues —

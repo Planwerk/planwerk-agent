@@ -63,8 +63,8 @@ and a note at the end of the report lists them; see
 3. **Load Review Patterns**: Patterns are loaded from two sources:
    - the planwerk-agent pattern catalog, embedded in the binary (source: `internal/patterns/patterns/`)
    - `.planwerk/review_patterns/` in the target repository (repo-specific patterns)
-4. **Claude Code Review**: a `claude -p` session runs a structured review prompt that includes persona framing, scope analysis, a two-pass checklist, suppression rules, and review patterns. The session reads a diff file the tool wrote beforehand rather than running `git diff` itself (see [The Diff Every Pass Reads](/explanation/review-methodology#the-diff-every-pass-reads)).
-5. **Result Aggregation**: Review results are collected, deduplicated, categorized by severity, and classified by actionability. Findings are enriched with code snippets, suggested fixes, confidence levels, and cross-references.
+4. **Claude Code Review**: a `claude -p` session runs a structured review prompt that includes persona framing, scope analysis, a two-pass checklist, suppression rules, review patterns, and the list of changed files, which the session accounts for one by one. The session reads a diff file the tool wrote beforehand rather than running `git diff` itself (see [The Diff Every Pass Reads](/explanation/review-methodology#the-diff-every-pass-reads)).
+5. **Result Aggregation**: Review results are collected, deduplicated, categorized by severity, and classified by actionability. Findings are enriched with code snippets, suggested fixes, confidence levels, and cross-references. The session's account of the changed files is compared with that list, and the report names any file it did not review ([Changed-File Coverage](/reference/output-format#changed-file-coverage)).
 6. **Output**: A structured report is written to `stdout` as Markdown, JSON, or SARIF, optionally posted as a PR comment (`--post-review`), or posted as inline review comments on the PR diff (`--inline`).
 
 The cognitive patterns and checklist Claude applies are described in

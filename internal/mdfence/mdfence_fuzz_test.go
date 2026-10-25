@@ -32,3 +32,30 @@ func FuzzTicks(f *testing.F) {
 		}
 	})
 }
+
+func FuzzSpan(f *testing.F) {
+	f.Add("go.sum")
+	f.Add("a`b")
+	f.Add("`x")
+	f.Add(" a ")
+	f.Add("<!-- x -->")
+
+	f.Fuzz(func(t *testing.T, s string) {
+		if s == "" {
+			return // CommonMark has no empty code span.
+		}
+		span := Span(s)
+		ticks := span[:len(span)-len(strings.TrimLeft(span, "`"))]
+		if ticks == "" || !strings.HasSuffix(span, ticks) {
+			t.Fatalf("Span(%q) = %q, want s between two equal runs of backticks", s, span)
+		}
+		// A run inside s as long as the delimiter would close the span early.
+		if strings.Contains(s, ticks) {
+			t.Fatalf("Span(%q) delimiter %q occurs inside s", s, ticks)
+		}
+		inner := span[len(ticks) : len(span)-len(ticks)]
+		if inner != s && inner != " "+s+" " {
+			t.Fatalf("Span(%q) = %q, want s itself inside the delimiters, padded by at most one space a side", s, span)
+		}
+	})
+}

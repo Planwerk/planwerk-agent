@@ -4,7 +4,9 @@
 // resolve them. Both must first pass every finding through the same gates:
 // the multi-pass merge (with its confidence boost and ConfirmedBy provenance),
 // the file-less dedup fallback, the quote-or-demote snippet gate, and the
-// claim-verification demotion. Keeping these in one leaf package — importing
+// claim-verification demotion. The review command also runs CheckFileLedger,
+// a record of which changed files the review read rather than a gate, which
+// implement does not run. Keeping these in one leaf package — importing
 // only internal/report and the standard library — lets both commands share one
 // implementation instead of the reporting path owning gates the acting path
 // cannot reach. The import direction claude -> implement means implement can

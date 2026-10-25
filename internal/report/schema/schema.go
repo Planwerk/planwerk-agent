@@ -60,7 +60,10 @@ var AddressResult []byte
 // properties are listed in the order the session fills them, its evidence
 // (location, quoted code, problem, fix) before its severity, actionability and
 // confidence labels; cliJSONSchema keeps that order on the wire and
-// findingsOutputBlock shows the same one (decision 136).
+// findingsOutputBlock shows the same one (decision 136). files_reviewed is
+// required too, right after findings: the review accounts in it for each file
+// its prompt lists, and every other pass emits [] because only the review
+// prompt lists files (decision 138).
 //
 //go:embed finder-output.schema.json
 var FinderOutput []byte

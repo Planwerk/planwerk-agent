@@ -28,6 +28,28 @@ func TestTicks(t *testing.T) {
 	}
 }
 
+func TestSpan(t *testing.T) {
+	for _, tc := range []struct {
+		name, in, want string
+	}{
+		{"plain text", "go.sum", "`go.sum`"},
+		{"run of one inside", "a`b", "``a`b``"},
+		{"longest run wins", "a``b`c", "```a``b`c```"},
+		{"leading backtick is padded", "`x", "`` `x ``"},
+		{"trailing backtick is padded", "x`", "`` x` ``"},
+		{"surrounding spaces survive the strip", " a ", "`  a  `"},
+		{"leading space is padded", " notes.md", "`  notes.md `"},
+		{"all spaces stay as they are", "  ", "`  `"},
+		{"comment marker stays inside the span", "<!-- x -->", "`<!-- x -->`"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := Span(tc.in); got != tc.want {
+				t.Errorf("Span(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestWrap(t *testing.T) {
 	for _, tc := range []struct {
 		name, in, info, want string

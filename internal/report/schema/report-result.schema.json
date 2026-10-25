@@ -14,7 +14,7 @@
     "summary": { "type": "string" },
     "recommendation": { "type": "string" },
     "gates": {
-      "description": "Per-run counts for the review's two demotion gates. The counts describe the whole run, not the filtered finding list. Absent when neither gate ran, or on results produced before gate recording existed; an absent gate object means 'not recorded', not 'nothing demoted'.",
+      "description": "Per-run counts for the review's two demotion gates, and the record of the changed-file check, which never demotes. The counts describe the whole run, not the filtered finding list. Absent when no gate ran and no file was checked, or on results produced before gate recording existed; an absent gate object means 'not recorded', not 'nothing demoted'.",
       "$ref": "#/$defs/gateStats"
     },
     "passes": {
@@ -89,10 +89,11 @@
     "gateStats": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Per-run counts for each demotion gate. A missing gate object means the gate never ran this run.",
+      "description": "Per-run counts for each demotion gate, and the changed-file record. A missing gate object means the gate never ran this run; a missing files object means the review prompt listed no changed files.",
       "properties": {
         "snippet": { "$ref": "#/$defs/snippetGateStats" },
-        "claim": { "$ref": "#/$defs/claimGateStats" }
+        "claim": { "$ref": "#/$defs/claimGateStats" },
+        "files": { "$ref": "#/$defs/fileGateStats" }
       }
     },
     "snippetGateStats": {
@@ -101,7 +102,11 @@
       "required": ["examined", "demoted"],
       "properties": {
         "examined": { "type": "integer" },
-        "demoted": { "type": "integer" }
+        "demoted": { "type": "integer" },
+        "recovered_outside_diff": {
+          "description": "Findings whose quoted code was absent from the changed files but found elsewhere in the checkout, and so were kept. Absent when zero.",
+          "type": "integer"
+        }
       }
     },
     "claimGateStats": {
@@ -112,6 +117,41 @@
         "sent": { "type": "integer" },
         "verdicts": { "type": "integer" },
         "refuted": { "type": "integer" }
+      }
+    },
+    "fileGateStats": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The changed-file check: the review session's own account of the files its prompt listed, compared with that list. It never moves a finding.",
+      "required": ["changed", "reviewed"],
+      "properties": {
+        "changed": {
+          "description": "The files the review prompt listed: the changed files minus the excluded files and the .planwerk/ planning artifacts.",
+          "type": "integer"
+        },
+        "reviewed": {
+          "description": "The listed files the session reported reading.",
+          "type": "integer"
+        },
+        "missing": {
+          "description": "Every other listed file, in listed order. Absent when the session reported reading every one.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/missingFile" }
+        }
+      }
+    },
+    "missingFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "status"],
+      "properties": {
+        "file": { "type": "string" },
+        "status": {
+          "description": "skipped: the session said it did not read the file, with its reason. unreported: its account left the file out.",
+          "type": "string",
+          "enum": ["skipped", "unreported"]
+        },
+        "reason": { "type": "string" }
       }
     },
     "passStatus": {

@@ -122,6 +122,11 @@ func (c Client) OpenLocalPR(ref string, opts LocalOptions) (*PR, error) {
 		slog.Warn("listing changed files failed; feature detection and specialist gating may be degraded", "err", err, "dir", dir, "base", pr.BaseBranch)
 	}
 	pr.ChangedFiles = changed
+	fileChanges, err := c.DiffFileChanges(dir, pr.BaseBranch)
+	if err != nil {
+		slog.Warn("listing changed-file stats failed; the review lists no changed files and records no file coverage", "err", err, "dir", dir, "base", pr.BaseBranch)
+	}
+	pr.FileChanges = fileChanges
 	return pr, nil
 }
 

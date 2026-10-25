@@ -531,15 +531,15 @@ func TestExcludedFilesSentence_CapsTheList(t *testing.T) {
 }
 
 // TestFindingsOutputBlock_RendersEachFieldOnce pins the JSON shape the finder
-// passes emit: each label, the two top-level strings, and the one "id" (the fix
-// option's; a finding carries none, since assignIDs sets it) named once, so the
-// shape cannot drift into two versions.
+// passes emit: each label, the top-level keys, the file review's status, and
+// the one "id" (the fix option's; a finding carries none, since assignIDs sets
+// it) named once, so the shape cannot drift into two versions.
 func TestFindingsOutputBlock_RendersEachFieldOnce(t *testing.T) {
 	block := findingsOutputBlock()
 	if !strings.HasPrefix(block, "## Output\n\n"+jsonSchemaOnlyLine()) {
 		t.Errorf("block must open with the Output heading and the JSON-only line:\n%s", block)
 	}
-	for _, key := range []string{`"id"`, `"severity"`, `"actionability"`, `"confidence"`, `"summary"`, `"recommendation"`} {
+	for _, key := range []string{`"id"`, `"severity"`, `"actionability"`, `"confidence"`, `"files_reviewed"`, `"status"`, `"summary"`, `"recommendation"`} {
 		if got := strings.Count(block, key); got != 1 {
 			t.Errorf("block renders %s %d times, want exactly 1", key, got)
 		}
@@ -574,20 +574,25 @@ func objectKeys(t *testing.T, raw json.RawMessage) []string {
 // the two copies of the finder output shape: the example every finder prompt
 // shows and schema.FinderOutput, which the CLI enforces with
 // additionalProperties false. At each level (the output, a finding, a fix
-// option) the example names exactly the properties the schema defines, in the
-// schema's order, so a key added to, renamed in or moved in only one of them
-// fails here rather than failing every finder session's --json-schema
-// validation or showing the session one order and enforcing another.
+// option, a file review) the example names exactly the properties the schema
+// defines, in the schema's order, so a key added to, renamed in or moved in
+// only one of them fails here rather than failing every finder session's
+// --json-schema validation or showing the session one order and enforcing
+// another. Both copies put files_reviewed right after findings (decision 138).
 func TestFindingsOutputBlock_MatchesFinderOutputSchema(t *testing.T) {
 	example := json.RawMessage(extractJSONValue(findingsOutputBlock()))
 	var output struct {
-		Findings []json.RawMessage `json:"findings"`
+		Findings      []json.RawMessage `json:"findings"`
+		FilesReviewed []json.RawMessage `json:"files_reviewed"`
 	}
 	if err := json.Unmarshal(example, &output); err != nil {
 		t.Fatalf("the block's example is not valid JSON: %v", err)
 	}
 	if len(output.Findings) != 1 {
 		t.Fatalf("the example shows %d findings, want 1", len(output.Findings))
+	}
+	if len(output.FilesReviewed) != 1 {
+		t.Fatalf("the example shows %d file reviews, want 1", len(output.FilesReviewed))
 	}
 	var finding struct {
 		FixOptions []json.RawMessage `json:"fix_options"`
@@ -615,11 +620,15 @@ func TestFindingsOutputBlock_MatchesFinderOutputSchema(t *testing.T) {
 		{"output", example, doc.Properties},
 		{"finding", output.Findings[0], doc.Defs["finding"].Properties},
 		{"fix option", finding.FixOptions[0], doc.Defs["fixOption"].Properties},
+		{"file review", output.FilesReviewed[0], doc.Defs["fileReview"].Properties},
 	} {
 		shapeKeys, schemaKeys := objectKeys(t, level.shape), objectKeys(t, level.schema)
 		if !slices.Equal(shapeKeys, schemaKeys) {
 			t.Errorf("the example's %s keys are %q, schema.FinderOutput defines %q", level.name, shapeKeys, schemaKeys)
 		}
+	}
+	if keys := objectKeys(t, doc.Properties); len(keys) < 2 || keys[0] != "findings" || keys[1] != "files_reviewed" {
+		t.Errorf("schema.FinderOutput lists its properties as %q, want files_reviewed right after findings", keys)
 	}
 }
 
