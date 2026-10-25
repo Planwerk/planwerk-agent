@@ -31,6 +31,9 @@ This unlocks three workflows the temp-dir clone blocks:
   require their issue reference (you must name the issue) — only the repository
   checkout is taken locally. When a reference **is** given explicitly, its
   owner/repo must match the cwd's `origin`, otherwise the run aborts.
+  `review --local` still needs a pull request for the branch; to review a
+  branch before it has one, or changes you have not committed, use the
+  [`/planwerk:review` skill](/how-to/review-a-change-interactively).
 - **Branch left on.** For `review`/`fix`/`rebase`/`address` the working tree is
   switched to the PR head via `gh pr checkout` (no restore afterwards). The runner logs
   `working tree left on PR branch` so you know where you landed. `rebase` then

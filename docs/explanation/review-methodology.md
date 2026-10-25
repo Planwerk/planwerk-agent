@@ -427,3 +427,18 @@ The `/planwerk:audit` skill verifies its own findings instead
 ([design decision 121](/explanation/design-decisions)), and
 [design decision 140](/explanation/design-decisions) records why the command
 gates its findings.
+
+## Before the pull request
+
+The [`/planwerk:review` skill](/how-to/review-a-change-interactively) applies
+this methodology in the author's checkout before a pull request exists: the
+persona questions, the checklist classes, the test and documentation checks,
+the suppressions, and the severity ladder. In place of the line anchor, the
+snippet gate and claim verification it checks every lead by hand, quoting the
+triggering lines from the reviewed tree and running the searches that would
+refute it. It reads the review patterns, and the checklist with its
+`.planwerk/checklist.d/` fragments, at the base, as the command does, and
+accounts for every changed file as reviewed or skipped with a reason, as the
+command's [changed-file coverage](#changed-file-coverage) does. A Go
+test fails when its ladder, its suppressions, or its checklist classes stop
+matching the review prompt's blocks.

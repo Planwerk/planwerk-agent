@@ -4,6 +4,7 @@ Task-oriented recipes for people who already know the basics. Each guide
 solves one specific problem.
 
 - [Review a pull request](/how-to/review-a-pr)
+- [Review a change interactively](/how-to/review-a-change-interactively)
 - [Analyze a repository and generate proposals](/how-to/analyze-a-repository)
 - [Audit a codebase against all patterns](/how-to/audit-a-codebase)
 - [Audit a codebase interactively](/how-to/audit-a-codebase-interactively)

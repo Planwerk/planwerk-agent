@@ -13,9 +13,9 @@ import (
 
 // pluginRoot is the Claude Code plugin this repository ships as a marketplace:
 // the interactive audit/clarify/cleanup/decide/diagnose/draft/elaborate/fix/
-// humanize/implement/meta/rebase/revisit skills. Three replaced the subcommands
-// of the same names; audit, elaborate, fix, implement, and rebase stand beside
-// theirs, which still run unattended.
+// humanize/implement/meta/rebase/review/revisit skills. Three replaced the
+// subcommands of the same names; audit, elaborate, fix, implement, rebase, and
+// review stand beside theirs, which still run unattended.
 const pluginRoot = "../../plugins/planwerk"
 
 // marketplaceManifest is the repo-root marketplace catalog Claude Code reads
@@ -25,7 +25,7 @@ const marketplaceManifest = "../../.claude-plugin/marketplace.json"
 // wantSkills is the skill set the plugin ships, in the sorted order the
 // discovered set is compared against. Adding or removing one is a deliberate
 // act, so it is pinned here rather than discovered.
-var wantSkills = []string{"audit", "clarify", "cleanup", "decide", "diagnose", "draft", "elaborate", "fix", "humanize", "implement", "meta", "rebase", "revisit"}
+var wantSkills = []string{"audit", "clarify", "cleanup", "decide", "diagnose", "draft", "elaborate", "fix", "humanize", "implement", "meta", "rebase", "review", "revisit"}
 
 // skillDirRef matches a `${CLAUDE_SKILL_DIR}/<path>` reference in a SKILL.md
 // body. Claude Code expands the variable to the skill's own directory, so every
@@ -198,8 +198,10 @@ func TestSharedDocsAreReferenced(t *testing.T) {
 // need it: draft describes an idea without planning it, humanize edits form
 // only, cleanup surveys code, and rebase reconciles two changes that already
 // exist without designing a new one. audit reads it because a recorded
-// decision can refute a finding, as it does for the audit command.
-var memorySkills = []string{"audit", "clarify", "decide", "diagnose", "elaborate", "fix", "implement", "meta", "revisit"}
+// decision can refute a finding, as it does for the audit command; review reads
+// it because the review command's session does, and a recorded decision refutes
+// a finding.
+var memorySkills = []string{"audit", "clarify", "decide", "diagnose", "elaborate", "fix", "implement", "meta", "review", "revisit"}
 
 // brainMemoryRule is the allowed-tools entry that lets a skill whose
 // allowed-tools name each Bash command it may run call
@@ -208,8 +210,8 @@ var memorySkills = []string{"audit", "clarify", "decide", "diagnose", "elaborate
 const brainMemoryRule = "Bash(planwerk-agent brain memory:*)"
 
 // TestPluginSkillsReadTheProjectMemory pins which skills read the project
-// memory: the nine that plan, judge, or change code load shared/memory.md, the
-// four others do not, and each of the nine may run the command that document
+// memory: the ten that plan, judge, or change code load shared/memory.md, the
+// four others do not, and each of the ten may run the command that document
 // gives it, through a bare Bash entry or through brainMemoryRule.
 func TestPluginSkillsReadTheProjectMemory(t *testing.T) {
 	isMemorySkill := map[string]bool{}
@@ -243,12 +245,12 @@ func TestPluginSkillsReadTheProjectMemory(t *testing.T) {
 	}
 }
 
-// freshSessionSkills are the skills whose closing handoff names another
-// /planwerk: skill. The other five hand off to a command or to nobody: revisit
-// and clarify to `planwerk-agent implement`, which starts its own sessions, fix
-// to the author or `planwerk-agent fix`, and elaborate and humanize end without
-// a next skill.
-var freshSessionSkills = []string{"audit", "cleanup", "decide", "diagnose", "draft", "implement", "meta", "rebase"}
+// freshSessionSkills are the skills whose closing handoff names a /planwerk:
+// skill: another or, for review, itself again. The other five hand off to a
+// command or to nobody: revisit and clarify to `planwerk-agent implement`,
+// which starts its own sessions, fix to the author or `planwerk-agent fix`, and
+// elaborate and humanize end without a next skill.
+var freshSessionSkills = []string{"audit", "cleanup", "decide", "diagnose", "draft", "implement", "meta", "rebase", "review"}
 
 // freshSessionHandoff is the phrase each of those handoffs carries. A chain of
 // skills run in one conversation reaches compaction sooner, and a compaction can
@@ -256,7 +258,7 @@ var freshSessionSkills = []string{"audit", "cleanup", "decide", "diagnose", "dra
 const freshSessionHandoff = "in a fresh session (`/clear` or a new `claude`)"
 
 // TestPluginSkillsHandOffInAFreshSession pins the phrase in every
-// skill-to-skill handoff, so the eight copies cannot drift apart. The body is
+// skill-to-skill handoff, so the nine copies cannot drift apart. The body is
 // matched with its whitespace collapsed, since the phrase may break across a
 // wrapped line.
 func TestPluginSkillsHandOffInAFreshSession(t *testing.T) {

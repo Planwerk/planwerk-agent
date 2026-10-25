@@ -162,7 +162,7 @@ for the elaborate skill-versus-command format.
 
 ## 7. Change-family skills and the shared docs (`skill-auditor`)
 
-Skills: `implement`, `fix`, `diagnose`, `rebase`, `humanize`.
+Skills: `implement`, `fix`, `diagnose`, `rebase`, `humanize`, `review`.
 
 Shared docs, audited line by line: `interaction.md`, `house-style.md`,
 `humanizer.md`, `memory.md`, `commits.md`, `commits-fold.md`,
@@ -170,7 +170,7 @@ Shared docs, audited line by line: `interaction.md`, `house-style.md`,
 
 Also read: `internal/skills/plugin_test.go`, the how-to page of each skill,
 and for the parity lens the rendered command prompts `implement.golden`,
-`fix.golden`, and the `rebase*.golden` set.
+`fix.golden`, `review.golden`, and the `rebase*.golden` set.
 
 ## The lens paragraph for slices 6 and 7
 

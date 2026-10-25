@@ -4,7 +4,7 @@ Make your repository's **GitHub Wiki** a source of project review patterns and
 project memory for `review`, `audit`, `propose`, `elaborate`, the `implement`
 plan step, `fix`, and `address`. `ship` hands the wiki to every `implement` and
 `fix` run it drives. The `elaborate`, `implement`, `fix`, `revisit`, `clarify`,
-`decide`, `diagnose`, `meta`, and `audit` skills read the project memory as well (see
+`decide`, `diagnose`, `meta`, `audit`, and `review` skills read the project memory as well (see
 [Read the memory from the skills](#read-the-memory-from-the-skills)).
 The wiki is human-editable through the web UI and git-versioned, so this
 knowledge evolves independently of code commits and never pollutes a diff.
@@ -103,13 +103,13 @@ The wiki is **off by default**. You opt in per run:
 
 ```bash
 # Off by default: no wiki is read
-planwerk-agent review owner/repo#123
+planwerk-agent owner/repo#123
 
 # Turn it on for one run
-planwerk-agent review --wiki owner/repo#123
+planwerk-agent --wiki owner/repo#123
 
 # Pin the wiki to a fixed commit, tag, or branch for a reproducible run
-planwerk-agent review --wiki --wiki-ref v1.4.0 owner/repo#123
+planwerk-agent --wiki --wiki-ref v1.4.0 owner/repo#123
 ```
 
 Or set defaults in `.planwerk/config.yaml`:
@@ -138,7 +138,7 @@ planwerk-agent ship --wiki owner/repo#100
 ## Read the memory from the skills
 
 The `elaborate`, `implement`, `fix`, `revisit`, `clarify`, `decide`,
-`diagnose`, `meta`, and `audit` skills read the project memory through the binary and
+`diagnose`, `meta`, `audit`, and `review` skills read the project memory through the binary and
 never clone the wiki themselves. A skill runs one command for the index and one
 per page its work touches:
 
