@@ -1337,9 +1337,10 @@ func TestBuildDedupFindingsPrompt_Golden(t *testing.T) {
 }
 
 // TestBuildClaimVerificationPrompt_Golden locks the claim-verification prompt:
-// the confirm-or-refute-the-claim framing, the "refute only with quoted
-// counter-evidence, otherwise confirm" default, the read-only rule, and the
-// per-finding verdict output shape.
+// the confirm-or-refute-the-claim framing, the three verdicts with
+// unverifiable for a claim the checkout cannot settle, the read-only rule, and
+// the per-finding output shape, which puts the verdict after its evidence and
+// reason (decision 136).
 func TestBuildClaimVerificationPrompt_Golden(t *testing.T) {
 	findings := []report.Finding{
 		{Severity: report.SeverityBlocking, Title: "SQL injection in user query", File: "db/users.go", Line: 87, Problem: "User input is concatenated into a SQL query.", CodeSnippet: "db.Query(\"... \" + id)"},

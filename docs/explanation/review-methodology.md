@@ -134,13 +134,14 @@ The snippet gate demotes a finding whose quoted code cannot be found in the
 changed files, but it verifies the *quote*, not the *claim* — a finding passes
 by quoting one real line even when its conclusion is wrong. After the snippet
 gate, a claim-verification pass re-checks every BLOCKING and CRITICAL finding
-against the checkout in one batched, read-only call. The verifier confirms or
-refutes each finding's claim and may refute *only* with concrete quoted
-counter-evidence; absent such evidence it confirms. A refuted finding is demoted
-to `uncertain` confidence with the refutation attached as a `**Claim check**`
-note, which routes it into the Unverified / Low-Confidence section rather than
-dropping it. The pass is fail-open: a failed call publishes the findings
-unchanged.
+against the checkout in one batched, read-only call. For each finding the
+verifier writes its evidence and its reason first and its verdict last:
+confirmed, refuted, or unverifiable when the checkout cannot settle the claim.
+It refutes *only* with concrete quoted counter-evidence or a named search that
+came back empty. A refuted finding is demoted to `uncertain` confidence with the
+refutation attached as a `**Claim check**` note, which routes it into the
+Unverified / Low-Confidence section rather than dropping it. The pass is
+fail-open: a failed call publishes the findings unchanged.
 
 Both gates record what they did, not only what they rejected. Each stamps every
 finding it examined with its own per-finding outcome, and each writes run-level

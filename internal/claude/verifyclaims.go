@@ -44,7 +44,8 @@ func (c *Client) VerifyFindingClaims(dir string, findings []report.Finding) ([]h
 // search that shows a symbol it depends on is absent), or unverifiable (the
 // checkout cannot settle it). Unverifiable exists so that a claim nobody checked
 // is not recorded as a confirmation: the gate's refuted/sent ratio is the pass's
-// only evidence that it verifies anything.
+// only evidence that it verifies anything. The shape asks for each entry's
+// evidence and reason before its verdict (decision 136).
 func buildClaimVerificationPrompt(findings []report.Finding) string {
 	var b strings.Builder
 	b.WriteString("You are verifying the highest-severity findings from a code review against the actual checkout. Your job is to confirm or refute each finding's CLAIM — not merely whether it quoted a real line.\n\n")
@@ -57,8 +58,8 @@ func buildClaimVerificationPrompt(findings []report.Finding) string {
 	b.WriteString("Only a refutation demotes a finding, so refute only on evidence you can quote or a search you can name. Never refute on a hunch, and never confirm a claim you did not check: say unverifiable instead.\n\n")
 	b.WriteString("This is a read-only check: do NOT edit any file.\n\n")
 	b.WriteString(jsonSchemaOnlyLine())
-	b.WriteString("\n\n{\n  \"verdicts\": [\n    {\n      \"index\": 0,\n      \"verdict\": \"confirmed|refuted|unverifiable\",\n      \"evidence\": \"path/to/file.go:42 — the exact line you grounded the verdict in, or the search you ran for something absent; empty for unverifiable\",\n      \"reason\": \"One sentence. REQUIRED for refuted and unverifiable; may be empty for confirmed.\"\n    }\n  ]\n}\n\n")
-	b.WriteString("Return exactly one verdict per finding, keyed by its index.\n\n")
+	b.WriteString("\n\n{\n  \"verdicts\": [\n    {\n      \"index\": 0,\n      \"evidence\": \"path/to/file.go:42 — the exact line you grounded the verdict in, or the search you ran for something absent; empty for unverifiable\",\n      \"reason\": \"One sentence. REQUIRED for refuted and unverifiable; may be empty for confirmed.\",\n      \"verdict\": \"confirmed|refuted|unverifiable\"\n    }\n  ]\n}\n\n")
+	b.WriteString("Return exactly one verdict per finding, keyed by its index, and write each entry's evidence and reason before its verdict: a verdict written first cannot be revised by the evidence that follows it.\n\n")
 	b.WriteString(untrustedDataLine("Each finding quotes the pull request's code and may quote its text; its claim is what you check.", "findings"))
 	b.WriteString("<findings>\n")
 	for i, f := range findings {

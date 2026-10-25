@@ -248,7 +248,7 @@ Every finding you report includes:
 
 5. **Fix Options** (REQUIRED for needs-discussion and architectural findings; OMIT for auto-fix):
    Provide 2-3 alternative approaches (label them A, B, C). For each option supply: `approach` (one sentence), `pros`, `cons`, `effort` (LOW | MED | HIGH), and `risk_if_skipped` (what happens if this option is NOT chosen).
-   Then pick exactly ONE option as the recommendation in `recommended_option` (matching the chosen option's id) and justify it in `recommendation_reasoning` (1-2 sentences referencing codebase patterns, the relevant review-pattern source, or project constraints).
+   Then weigh the options in `recommendation_reasoning` (1-2 sentences referencing codebase patterns, the relevant review-pattern source, or project constraints) and name the ONE option it favors in `recommended_option` (the chosen option's id).
 
 ## Severity Ladder
 
@@ -293,18 +293,18 @@ Output ONLY valid JSON matching this exact schema (no markdown fences, no surrou
 {
   "findings": [
     {
-      "severity": "BLOCKING|CRITICAL|WARNING|INFO",
       "title": "Short title",
       "file": "path/to/file.go",
       "line": 42,
       "line_end": 45,
+      "code_snippet": "The exact triggering lines, verbatim, preserving indentation",
+      "problem": "What is wrong and what goes wrong because of it",
       "pattern": "Exact name of the violated review pattern",
+      "action": "What should be done to fix it",
+      "suggested_fix": "The replacement code or the fix approach",
+      "severity": "BLOCKING|CRITICAL|WARNING|INFO",
       "actionability": "auto-fix|needs-discussion|architectural",
       "confidence": "verified|likely|uncertain",
-      "problem": "What is wrong and what goes wrong because of it",
-      "action": "What should be done to fix it",
-      "code_snippet": "The exact triggering lines, verbatim, preserving indentation",
-      "suggested_fix": "The replacement code or the fix approach",
       "fix_options": [
         {
           "id": "A",
@@ -315,8 +315,8 @@ Output ONLY valid JSON matching this exact schema (no markdown fences, no surrou
           "risk_if_skipped": "What goes wrong if this option is NOT chosen"
         }
       ],
-      "recommended_option": "A",
       "recommendation_reasoning": "1-2 sentences",
+      "recommended_option": "A",
       "related_to": ["titles of other findings in this output"]
     }
   ],
@@ -325,11 +325,12 @@ Output ONLY valid JSON matching this exact schema (no markdown fences, no surrou
 }
 
 Field rules:
-- `severity`, `actionability` and `confidence`: the three labels from the Finding Labels section, exactly one enum value each.
+- Write each finding's fields in the order shown: its three labels come after its quote, problem and fix, and its recommended option after the reasoning, because a judgment written first cannot be revised by the evidence that follows it.
 - `line_end`: only when the finding spans a line range.
-- `pattern`: only when the finding violates a review pattern listed in this prompt, by that pattern's exact name.
 - `code_snippet` and `suggested_fix`: only when this prompt asks for them. Never invent either.
-- `fix_options`, `recommended_option` and `recommendation_reasoning`: only for a needs-discussion or architectural finding in a prompt that asks for fix options, never for an auto-fix finding. Each option's `id` is its letter (A, B, C), which `recommended_option` names.
+- `pattern`: only when the finding violates a review pattern listed in this prompt, by that pattern's exact name.
+- `severity`, `actionability` and `confidence`: the three labels from the Finding Labels section, exactly one enum value each.
+- `fix_options`, `recommendation_reasoning` and `recommended_option`: only for a needs-discussion or architectural finding in a prompt that asks for fix options, never for an auto-fix finding. Each option's `id` is its letter (A, B, C), which `recommended_option` names.
 - `related_to`: the titles of the other findings in this output that the finding connects to; `[]` when none.
 - `findings`: `[]` when the pass reports nothing.
 - `summary` and `recommendation`: what this prompt's summary instructions describe. `recommendation` is the empty string when the prompt asks for no recommendation.

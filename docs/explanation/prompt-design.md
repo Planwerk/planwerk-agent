@@ -349,6 +349,36 @@ beside it. The banned-vocabulary line is such a guardrail: a test and a
 reviewer can check a named word, and the prose rules around it state the
 target.
 
+## The evidence before the verdict
+
+A model writes its output front to back, and a field it has written stays
+written. In a shape that asks for the verdict first, the model commits to a
+verdict and then writes the evidence for it; when the evidence says otherwise,
+it lands in the later field while the verdict stands in the earlier one.
+alibaba/open-code-review saw exactly this when it replayed recorded sessions of
+its review filter: with the comment ids before the analysis, the model wrote
+"this is a protected subject, I should not remove it" in the analysis while the
+id it had already listed stayed listed.
+
+So a shape a session fills while it judges lists the fields that carry the
+evidence before the fields that judge it, and says so in one sentence with that
+reason. A finding gives its location, quoted code, problem, and fix before its
+severity, actionability, and confidence labels, and the reasoning about its fix
+options before the option it recommends. The claim verifier gives its evidence
+and reason before its verdict, the coverage map gives the tests and the
+untested paths before the rating, and the elaborate reviewer gives the gaps
+before the score. A structuring prompt is exempt, because the judgment was made
+in the analysis it copies.
+
+Under `--json-schema` the order is part of the wire contract. The session fills
+the schema it is handed, so `schema.FinderOutput` lists a finding's properties
+in the order of `findingsOutputBlock`'s example, and
+`TestFindingsOutputBlock_MatchesFinderOutputSchema` compares the two in
+document order. `cliJSONSchema` re-encodes only the top level of the document,
+so the nested order reaches the CLI as written; re-encoding it through a Go map
+would sort the keys and put `actionability` and `confidence` before `problem`,
+which `TestCLIJSONSchema_KeepsNestedPropertyOrder` catches.
+
 ## The named failure modes
 
 The audit that pays this doctrine back across the builders looks for six
@@ -549,3 +579,13 @@ come from its `domain-modeling` skill (decision 126). What was left is the
 premise that every decision belongs to the human, which decision 88 already
 answered with the authority kinds, and the prose-only interview, which the
 plugin does not need because it runs in one harness.
+
+The field order under [*The evidence before the
+verdict*](#the-evidence-before-the-verdict) comes from
+[alibaba/open-code-review](https://github.com/alibaba/open-code-review)
+(Apache-2.0, `alibaba/open-code-review@375f64c`), whose review filter's tool
+schema carries the comment quoted there
+([decision 136](/explanation/design-decisions)). What was taken is the rule and
+its evidence. OCR keeps its order by choosing field names that Go's
+alphabetical encoding sorts into place; this repository embeds its schemas as
+documents whose nested order the encoder never touches.

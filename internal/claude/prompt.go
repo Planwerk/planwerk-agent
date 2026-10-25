@@ -227,7 +227,7 @@ Every finding you report includes:
 
 5. **Fix Options** (REQUIRED for needs-discussion and architectural findings; OMIT for auto-fix):
    Provide 2-3 alternative approaches (label them A, B, C). For each option supply: ` + "`approach`" + ` (one sentence), ` + "`pros`" + `, ` + "`cons`" + `, ` + "`effort`" + ` (LOW | MED | HIGH), and ` + "`risk_if_skipped`" + ` (what happens if this option is NOT chosen).
-   Then pick exactly ONE option as the recommendation in ` + "`recommended_option`" + ` (matching the chosen option's id) and justify it in ` + "`recommendation_reasoning`" + ` (1-2 sentences referencing codebase patterns, the relevant review-pattern source, or project constraints).
+   Then weigh the options in ` + "`recommendation_reasoning`" + ` (1-2 sentences referencing codebase patterns, the relevant review-pattern source, or project constraints) and name the ONE option it favors in ` + "`recommended_option`" + ` (the chosen option's id).
 
 `)
 
