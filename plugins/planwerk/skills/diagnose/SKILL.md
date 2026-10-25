@@ -346,7 +346,9 @@ A correct seam is a test that exercises the bug the way it happens at the real
 call site. When one exists, in this order:
 
 1. Turn the minimized repro into a failing test at that seam.
-2. Run it and watch it fail with the recorded symptom.
+2. Run it and watch it fail with the recorded symptom. A red you forced by
+   editing code or a fixture counts only once a diff shows the edit landed
+   (`commits.md`, A red you forced counts once a diff shows the edit).
 3. Apply the smallest change that removes the confirmed cause.
 4. Watch the test pass.
 5. Re-run the unminimized loop from Phase 2 and watch it go green.
