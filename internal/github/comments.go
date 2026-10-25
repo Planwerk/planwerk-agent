@@ -3,12 +3,15 @@ package github
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -191,21 +194,156 @@ func findExistingComment(repo string, number int) (string, error) {
 	return c.ID, nil
 }
 
-// FetchReviewComment returns the body of the most recent planwerk-agent
-// comment on the PR. found is false when no such comment exists. It lets the
-// review pipeline read the data block from the previous review.
+// dataBlockMarker opens the machine-readable block report.RenderDataBlock
+// appends to every posted review and report.ParseDataBlock reads back. A post
+// without it carries no findings a re-review could compare against.
+const dataBlockMarker = "<!-- planwerk-agent-data"
+
+// reportHeading opens every body this tool posts with a data block: the body
+// is the Markdown report, whose first line report.RenderMarkdown writes as
+// "# Review: <owner>/<repo>#<number>" (--post-review and --inline refuse
+// --format json). A post that opens with anything else is not one of them,
+// whoever wrote it (decision 128).
+const reportHeading = "# Review: "
+
+// priorDataBlockQuery reads the last 100 comments and the last 100 reviews of a
+// PR with the fields latestDataBlockBody selects on: the body, when it last
+// changed, and who wrote it.
+const priorDataBlockQuery = `query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      comments(last: 100) {
+        nodes { id body updatedAt viewerDidAuthor authorAssociation }
+      }
+      reviews(last: 100) {
+        nodes { id body updatedAt viewerDidAuthor authorAssociation }
+      }
+    }
+  }
+}`
+
+// postedBody is a PR comment or review as priorDataBlockQuery returns it. A
+// review carries the same author fields as a comment, so IssueComment.Trusted
+// applies to both; the embedded fields decode from the node's top level.
+type postedBody struct {
+	IssueComment
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// carriesDataBlock reports whether body is a signed planwerk-agent post that
+// carries a data block: it opens with reportHeading and holds a signature and
+// the marker. The capture pass's proposals comment is signed but carries none.
+func carriesDataBlock(body string) bool {
+	return strings.HasPrefix(body, reportHeading) &&
+		strings.Contains(body, dataBlockMarker) &&
+		(strings.Contains(body, commentSignature) || strings.Contains(body, reviewSignature))
+}
+
+// FetchReviewComment returns the body of the most recently updated
+// planwerk-agent post on the PR that carries a data block: an inline review's
+// body (SubmitPRReview) or the summary comment (PostPRComment), whichever
+// changed last. The review pipeline reads the previous review's findings from
+// it, and those decide what a re-review leaves out, so only a post the
+// authenticated user or a maintainer wrote counts (IssueComment.Trusted,
+// decisions 97 and 128). A signed post without a data block, such as the
+// capture pass's proposals comment, is passed over, and so is one that does not
+// open with reportHeading. found is false when no post qualifies. It reads the
+// last 100 comments and the last 100 reviews, so a summary comment with more
+// than 100 newer comments after it is missed.
+//
+// The author check vouches for the account, not for this tool: viewerDidAuthor
+// holds for every post the authenticated account made, and under an Actions
+// GITHUB_TOKEN that account is github-actions[bot], which every workflow in the
+// repository posts as. The heading keeps out such a post that puts text of its
+// own ahead of the PR text it copies, not a verbatim copy (decision 128).
+//
+// Nor does the check vouch for all of the post's text: the body quotes the PR
+// title and the findings, which the PR's author controls. Read the block with
+// report.ParseDataBlock, which takes only the one the post appended.
 func (Client) FetchReviewComment(owner, repo string, number int) (body string, found bool, err error) {
-	c, err := fetchExistingComment(fmt.Sprintf("%s/%s", owner, repo), number)
+	raw, err := fetchPriorDataBlockPosts(owner, repo, number)
 	if err != nil {
 		return "", false, err
 	}
-	if c.ID == "" {
-		return "", false, nil
+	body, found, err = latestDataBlockBody(raw)
+	if err != nil {
+		return "", false, fmt.Errorf("parsing comments and reviews of %s/%s#%d: %w", owner, repo, number, err)
 	}
-	return c.Body, true, nil
+	return body, found, nil
 }
 
-// fetchExistingComment returns the most recent planwerk-agent comment (id and
+// fetchPriorDataBlockPosts runs priorDataBlockQuery for the PR and returns the
+// raw response.
+func fetchPriorDataBlockPosts(owner, repo string, number int) ([]byte, error) {
+	// owner/name go through -f (verbatim string) for the reason
+	// fetchReviewThreadsPage gives.
+	args := []string{"api", "graphql",
+		"-f", "owner=" + owner,
+		"-f", "name=" + repo,
+		"-F", fmt.Sprintf("number=%d", number),
+		"-f", "query=" + priorDataBlockQuery,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "gh", args...)
+	out, err := cmd.Output()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return nil, fmt.Errorf("gh api graphql (comments and reviews): %w: %s", err, strings.TrimSpace(string(exitErr.Stderr)))
+		}
+		return nil, fmt.Errorf("gh api graphql (comments and reviews): %w", err)
+	}
+	return out, nil
+}
+
+// latestDataBlockBody decodes a priorDataBlockQuery response and returns the
+// body of the most recently updated post that carriesDataBlock and
+// IssueComment.Trusted accept; found is false when none does. On equal update
+// times a review beats a comment, and a later node an earlier one. It is pure
+// so the selection is unit-testable without gh.
+func latestDataBlockBody(raw []byte) (body string, found bool, err error) {
+	var resp struct {
+		Data struct {
+			Repository struct {
+				PullRequest struct {
+					Comments struct {
+						Nodes []postedBody `json:"nodes"`
+					} `json:"comments"`
+					Reviews struct {
+						Nodes []postedBody `json:"nodes"`
+					} `json:"reviews"`
+				} `json:"pullRequest"`
+			} `json:"repository"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return "", false, fmt.Errorf("decoding comments-and-reviews response: %w", err)
+	}
+	pr := resp.Data.Repository.PullRequest
+	var latest postedBody
+	untrusted := 0
+	for _, p := range slices.Concat(pr.Comments.Nodes, pr.Reviews.Nodes) {
+		if !carriesDataBlock(p.Body) {
+			continue
+		}
+		if !p.Trusted() {
+			untrusted++
+			continue
+		}
+		if !found || !p.UpdatedAt.Before(latest.UpdatedAt) {
+			latest = p
+			found = true
+		}
+	}
+	if untrusted > 0 {
+		slog.Info("ignoring planwerk-agent data blocks from outside the repository's maintainers", "count", untrusted)
+	}
+	return latest.Body, found, nil
+}
+
+// fetchExistingComment is PostPRComment's lookup, through findExistingComment,
+// of the comment it replaces: the most recent planwerk-agent comment (id and
 // body) on the PR, or a zero ghComment when none is found.
 func fetchExistingComment(repo string, number int) (ghComment, error) {
 	args := []string{"pr", "view", strconv.Itoa(number),

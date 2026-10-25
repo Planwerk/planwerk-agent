@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
@@ -585,7 +586,9 @@ func (r *Runner) renderResult(w io.Writer, result *report.ReviewResult, pr *gith
 		err := r.postInlineReview(displayResult, result, pr, &buf)
 		if err != nil {
 			slog.Warn("inline review failed, falling back to PR comment", "err", err)
-			_, err = r.GitHub.PostPRComment(pr.Owner, pr.Repo, pr.Number, buf.String())
+			// Carry the full data block as the inline review would have, so the
+			// next re-review finds this run's findings.
+			_, err = r.GitHub.PostPRComment(pr.Owner, pr.Repo, pr.Number, buf.String()+report.RenderDataBlock(*result, pr.HeadSHA, r.Claude.UsageTotals()))
 			if err != nil {
 				return fmt.Errorf("posting PR comment (fallback): %w", err)
 			}
@@ -677,10 +680,17 @@ func warnRedaction(source string, r redact.Result) {
 	slog.Warn("redacted secrets before sending to Claude", attrs...)
 }
 
+// hexObjectName matches the commit_sha RenderDataBlock records: a hex git object
+// name. skipSuppressed passes the prior block's SHA to git diff as an argument,
+// so it refuses anything else, such as a forged "--output=<path>" that git
+// would read as an option (decision 128).
+var hexObjectName = regexp.MustCompile(`^[0-9a-f]{7,64}$`)
+
 // skipSuppressed loads the prior review comment's data block and suppresses the
 // current findings the user already saw on a file that has not changed since.
-// On any failure (no prior comment, unparseable data block, uncomputable diff)
-// it suppresses nothing — the full set is returned.
+// On any failure (no prior comment, unparseable data block, a commit_sha that
+// is not a hex object name, uncomputable diff) it suppresses nothing — the full
+// set is returned.
 func (r *Runner) skipSuppressed(result *report.ReviewResult, pr *github.PR) (kept, suppressed []report.Finding) {
 	body, found, err := r.GitHub.FetchReviewComment(pr.Owner, pr.Repo, pr.Number)
 	if err != nil {
@@ -691,7 +701,7 @@ func (r *Runner) skipSuppressed(result *report.ReviewResult, pr *github.PR) (kep
 		return result.Findings, nil
 	}
 	priorSHA, priorFindings, ok := report.ParseDataBlock(body)
-	if !ok || priorSHA == "" || len(priorFindings) == 0 {
+	if !ok || !hexObjectName.MatchString(priorSHA) || len(priorFindings) == 0 {
 		return result.Findings, nil
 	}
 	changed, ok := changedFilesSince(pr.Dir, priorSHA)

@@ -29,6 +29,10 @@ and implies `--post-review`. For every flag, see the
 [CLI reference](/reference/cli#review-default-command); for the shape of the
 report, see [Output format](/reference/output-format).
 
+On a re-review, findings the last posted review already reported on a file that
+has not changed since are left out of the report and the inline comments; see
+[Re-reviews](/reference/output-format#re-reviews).
+
 ## How it works
 
 1. **PR Input**: The tool receives a GitHub PR as input (URL or `owner/repo#number`).
