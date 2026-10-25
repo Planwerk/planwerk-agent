@@ -115,7 +115,7 @@ planwerk-agent/
 │   │   ├── scope.go            # ScopeToFiles: the catalog split by the changed files (review --scope-patterns)
 │   │   ├── sources.go          # LoadForRepo: the one catalog loader (embedded + wiki + repo + remote)
 │   │   ├── patternstest/       # Shared test helpers for the project memory and the wiki seam (imported by tests only)
-│   │   └── patterns/           # Embedded review-pattern catalog (16 design + 67 technology + review + SOURCES.md)
+│   │   └── patterns/           # Embedded review-pattern catalog (16 design + 68 technology + review + SOURCES.md)
 │   ├── propose/
 │   │   ├── interactive.go      # Interactive GitHub issue creation flow
 │   │   ├── proposal.go         # Proposal data structure + categorization

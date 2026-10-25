@@ -83,6 +83,9 @@ func TestLoadFilteredShippedPatterns_GoProject(t *testing.T) {
 	if names["Terraform State Safety"] {
 		t.Error("Terraform State Safety should not appear for Go project")
 	}
+	if names["GitHub Actions Workflow Security"] {
+		t.Error("GitHub Actions Workflow Security should not appear for a Go project without workflows")
+	}
 }
 
 // TestLoadShippedPatterns_DocumentationDiataxis pins the cross-cutting
@@ -262,5 +265,60 @@ func TestLoadShippedPatterns_PythonDocstrings(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("missing pattern: Python Docstrings")
+	}
+}
+
+// TestLoadShippedPatterns_GitHubActionsWorkflowSecurity pins the workflow
+// security pattern to the github-actions tag, so a repository without
+// workflows, the eval corpus among them, loads the same patterns as before.
+func TestLoadShippedPatterns_GitHubActionsWorkflowSecurity(t *testing.T) {
+	root := projectRoot()
+	patsDir := filepath.Join(root, "internal", "patterns", "patterns")
+
+	pats, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{NoEmbedded: true}, []string{"go", "github-actions"}, patsDir)
+	if err != nil {
+		t.Fatalf("loading github-actions-filtered patterns: %v", err)
+	}
+
+	var gha *patterns.Pattern
+	for i := range pats {
+		if pats[i].Name == "GitHub Actions Workflow Security" {
+			gha = &pats[i]
+			break
+		}
+	}
+	if gha == nil {
+		t.Fatal("missing pattern: GitHub Actions Workflow Security")
+	}
+	if gha.ReviewArea != "security" {
+		t.Errorf("ReviewArea = %q, want security", gha.ReviewArea)
+	}
+	if gha.Category != "technology" {
+		t.Errorf("Category = %q, want technology", gha.Category)
+	}
+	if len(gha.AppliesWhen) != 1 || gha.AppliesWhen[0] != "github-actions" {
+		t.Errorf("AppliesWhen = %v, want [github-actions]", gha.AppliesWhen)
+	}
+	if gha.AppliesTo([]string{"go"}) {
+		t.Error("the pattern must not apply to a repository without workflows")
+	}
+	if gha.Severity != "CRITICAL" {
+		t.Errorf("Severity = %q, want CRITICAL", gha.Severity)
+	}
+	for _, term := range []string{"pull_request_target", "permissions:", "GITHUB_TOKEN", "$GITHUB_ENV", "cache-mode", "artifact", "self-hosted", "## Not a finding"} {
+		if !strings.Contains(gha.Body, term) {
+			t.Errorf("pattern body missing %q", term)
+		}
+	}
+	var lab, docs bool
+	for _, s := range gha.Sources {
+		if s.URL == "" {
+			t.Errorf("source %q has no URL (a comma in a title splits it)", s.Title)
+		}
+		lab = lab || strings.HasPrefix(s.URL, "https://securitylab.github.com/")
+		docs = docs || strings.HasPrefix(s.URL, "https://docs.github.com/")
+	}
+	if !lab || !docs {
+		t.Errorf("sources want a GitHub Security Lab and a GitHub Docs URL, got %+v", gha.Sources)
 	}
 }

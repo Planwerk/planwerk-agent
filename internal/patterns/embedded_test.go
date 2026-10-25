@@ -161,6 +161,7 @@ var seededNotAFinding = []string{
 	"Python Type Hints",
 	"Python Exception Handling",
 	"OWASP Top 10 Web Application Risks",
+	"GitHub Actions Workflow Security",
 	"Kubernetes API Conventions",
 	"Markdown Quality",
 	"DRY - Don't Repeat Yourself",
