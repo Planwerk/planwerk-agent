@@ -96,5 +96,10 @@
     { "pass": "adversarial", "status": "ran" },
     { "pass": "specialist-testing", "status": "gated-out" },
     { "pass": "specialist-security", "status": "failed", "error": "running security specialist review: claude (model opus): exit status 1" }
+  ],
+  "excluded_files": [
+    { "path": "api/v1/zz_generated.deepcopy.go", "reason": "generated" },
+    { "path": "go.sum", "reason": "lockfile" },
+    { "path": "vendor/", "reason": "vendored", "files": 12 }
   ]
 }

@@ -65,6 +65,8 @@ shapes the analysis itself:
   `--max-patterns`. The loaded catalog decides what the analysis looks for, so
   adding a rule directory invalidates the entry rather than serving a result
   from a run that never saw those rules.
+- **The diff exclusions** — `--diff-exclusions` decides which changed files the
+  sessions read, so a run with it and one without are different entries.
 
 What only shapes the *rendering* is deliberately absent. `--min-severity` and
 `--min-confidence` filter a stored payload on the way out, so asking the same

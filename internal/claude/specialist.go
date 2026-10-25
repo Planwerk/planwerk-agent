@@ -7,6 +7,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/planwerk/planwerk-agent/internal/diffscope"
 	"github.com/planwerk/planwerk-agent/internal/implement"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
@@ -198,23 +199,31 @@ func RunSpecialistFanOut(changedFiles []string, call func(Specialist) (*report.R
 // review-pattern catalog (maxPatterns budgets how many are rendered), injected
 // so the specialist applies the patterns that fall inside its domain — narrowed
 // to sp.Areas when it declares them; an empty catalog leaves the prompt
-// unchanged.
+// unchanged. The pass reads a diff it writes first (runDiffFinder), and its
+// result lists in ExcludedFiles what that diff left out (decision 137).
 func (c *Client) SpecialistReview(dir, baseBranch string, sp Specialist, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
-	raw, model, err := c.runClaudeFinderFindings(dir, buildSpecialistPrompt(baseBranch, sp, pats, maxPatterns), sp.PassLabel())
+	raw, model, excluded, err := c.runDiffFinder(dir, baseBranch, "", sp.PassLabel(), func(d diffscope.Diff) string {
+		return buildSpecialistPrompt(baseBranch, d, sp, pats, maxPatterns)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("running %s specialist review: %w", sp.Key, err)
 	}
-	return c.finishReview(raw, model, sp.Key+" specialist review", "specialist:"+sp.Key)
+	res, err := c.finishReview(raw, model, sp.Key+" specialist review", "specialist:"+sp.Key)
+	if err != nil {
+		return nil, err
+	}
+	res.ExcludedFiles = excluded
+	return res, nil
 }
 
-func buildSpecialistPrompt(baseBranch string, sp Specialist, pats []patterns.Pattern, maxPatterns int) string {
+func buildSpecialistPrompt(baseBranch string, d diffscope.Diff, sp Specialist, pats []patterns.Pattern, maxPatterns int) string {
 	if baseBranch == "" {
 		baseBranch = DefaultBaseBranch
 	}
 	var sb strings.Builder
 
 	fmt.Fprintf(&sb, "You are a %s specialist performing a focused code review. Review ONLY your domain.\n\n", sp.Key)
-	sb.WriteString(diffScopeLines(baseBranch))
+	sb.WriteString(diffScopeLines(baseBranch, d))
 	fmt.Fprintf(&sb, `Then review the added and modified lines in those files. A finding's cause must be in the diff; its evidence may sit in unchanged code the change now affects (a consumer it breaks, a routine a new caller makes slow), so quote that file and line.
 
 ## Your domain (%s)

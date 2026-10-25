@@ -156,6 +156,9 @@ func RunCase(client *claude.Client, c Case, opts RunOptions) (Run, error) {
 		MinConfidence: report.ConfidenceUncertain,
 		Thorough:      opts.Thorough,
 		Specialists:   opts.Specialists,
+		// PLANWERK_DIFF_EXCLUSIONS reaches the review session as it reaches
+		// the finder passes; the corpus holds no file it leaves out.
+		DiffExclusions: client.DiffExclusions(),
 	}
 
 	var buf bytes.Buffer

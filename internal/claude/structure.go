@@ -191,10 +191,12 @@ func (c *Client) finishReview(text, model, pass, tag string) (*report.ReviewResu
 	if err := c.decodeJSONWithRepairSchema(text, pass, string(schema.FinderOutput), &result); err != nil {
 		return nil, wrapWithPersistedOutput(text, err)
 	}
-	// The pipeline owns the pass record. The CLI does not validate the result
-	// fallback, so a passes key a finder emitted would otherwise reach the
-	// output of a run that never assigns one, such as an audit (decision 135).
+	// The pipeline owns the pass record and the excluded files. The CLI does
+	// not validate the result fallback, so a passes or excluded_files key a
+	// finder emitted would otherwise reach the output of a run that never
+	// assigns one, such as an audit (decisions 135 and 137).
 	result.Passes = nil
+	result.ExcludedFiles = nil
 	if err := c.repairInvalidReview(&result, pass); err != nil {
 		return nil, fmt.Errorf("%s: %w", pass, wrapWithPersistedOutput(text, err))
 	}

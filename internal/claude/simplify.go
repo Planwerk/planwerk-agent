@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/planwerk/planwerk-agent/internal/diffscope"
 	"github.com/planwerk/planwerk-agent/internal/implement"
 	"github.com/planwerk/planwerk-agent/internal/mdfence"
 	"github.com/planwerk/planwerk-agent/internal/report"
@@ -16,17 +17,26 @@ import (
 // delete/collapse list of over-engineering as structured findings. baseBranch
 // scopes the pass to changes relative to that branch. The finder never flags
 // validation, error handling, security, accessibility, tests, or assertions —
-// that hard guardrail is asserted in the prompt.
+// that hard guardrail is asserted in the prompt. The pass reads a diff it
+// writes first (runDiffFinder), and its result lists in ExcludedFiles what
+// that diff left out (decision 137).
 func (c *Client) SimplifyFindings(dir, baseBranch string) (*report.ReviewResult, error) {
-	raw, model, err := c.runClaudeFinderFindings(dir, buildSimplifyFindPrompt(baseBranch), "simplify")
+	raw, model, excluded, err := c.runDiffFinder(dir, baseBranch, "", "simplify", func(d diffscope.Diff) string {
+		return buildSimplifyFindPrompt(baseBranch, d)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("running simplify pass: %w", err)
 	}
 
-	return c.finishReview(raw, model, "simplify pass", "simplify")
+	res, err := c.finishReview(raw, model, "simplify pass", "simplify")
+	if err != nil {
+		return nil, err
+	}
+	res.ExcludedFiles = excluded
+	return res, nil
 }
 
-func buildSimplifyFindPrompt(baseBranch string) string {
+func buildSimplifyFindPrompt(baseBranch string, d diffscope.Diff) string {
 	if baseBranch == "" {
 		baseBranch = DefaultBaseBranch
 	}
@@ -34,7 +44,7 @@ func buildSimplifyFindPrompt(baseBranch string) string {
 Your job is to find over-engineering and unnecessary complexity an unattended
 implementation session introduced — and produce a delete/collapse list, not a redesign.
 
-` + diffScopeLines(baseBranch) + `Then confine the list to what this branch introduced in those files; unchanged code is context for whether a simpler form exists, never a target.
+` + diffScopeLines(baseBranch, d) + `Then confine the list to what this branch introduced in those files; unchanged code is context for whether a simpler form exists, never a target.
 
 ## The decision ladder
 For every piece of complexity, ask whether a simpler rung of this ladder would do

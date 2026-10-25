@@ -18,20 +18,36 @@ func buildReviewPrompt(ctx ReviewContext) string {
 	}
 
 	// Review scope: pin the review to the cumulative PR diff so multi-commit PRs
-	// are reviewed as a whole instead of just the latest (or first) commit.
+	// are reviewed as a whole instead of just the latest (or first) commit. A
+	// diff file the runner wrote replaces the git diff the session would run;
+	// the zero ctx.Diff keeps the command (decision 137).
 	fmt.Fprintf(&sb, `## Review Scope
 
 Review the FULL pull request diff — every commit between origin/%s and HEAD must be considered together as one cumulative change set.
 
-- Run `+"`"+`git diff origin/%s...HEAD`+"`"+` to see the cumulative diff and `+"`"+`git log origin/%s..HEAD --oneline`+"`"+` to enumerate every commit on the branch.
-- Every added/modified line in any commit on this branch is in scope, regardless of which commit introduced it.
+`, baseBranch)
+	gitLog := "`git log origin/" + baseBranch + "..HEAD --oneline`"
+	if ctx.Diff.File == "" {
+		sb.WriteString("- Run `git diff origin/" + baseBranch + "...HEAD` to see the cumulative diff and " + gitLog + " to enumerate every commit on the branch.\n")
+	} else {
+		sb.WriteString("- " + diffFileSentence(ctx.Diff) + " Run " + gitLog + " to enumerate every commit on the branch.\n")
+		if len(ctx.Diff.Excluded) > 0 {
+			sb.WriteString("- " + excludedFilesSentence(ctx.Diff) + "\n")
+		}
+	}
+	sb.WriteString(`- Every added/modified line in any commit on this branch is in scope, regardless of which commit introduced it.
 - Do NOT restrict the review to HEAD alone, to the most recent commit, to the first commit, or to the working-tree diff. All commits on the branch are part of this PR.
 - When a later commit fixes or supersedes something an earlier commit introduced, judge the final state — do not flag the intermediate state.
 - Ignore changes under .planwerk/: they are planning artifacts that are always expected in the diff, so create no findings for them. Two exceptions change how this repository is reviewed and worked on, and are findings in their own right:
   - A change to .planwerk/checklist.md or .planwerk/review_patterns/ changes the rules pull requests are reviewed against. Report it as a needs-discussion WARNING titled "Review Configuration Changed: <file>" and say which rule it adds, drops, or weakens.
   - A change to .claude/ (settings, hooks, skills, commands, agents) changes what AI agent sessions in this repository do. Report it as a needs-discussion WARNING titled "Agent Configuration Changed: <file>" and say what the change makes a session do.
 
-`, baseBranch, baseBranch, baseBranch)
+`)
+	// The files the diff left out, which the scope bullet above names, are
+	// fenced after the list rather than inside it (decision 137).
+	if ctx.Diff.File != "" && len(ctx.Diff.Excluded) > 0 {
+		sb.WriteString(excludedFilesFence(ctx.Diff))
+	}
 
 	// Staff Engineer persona
 	sb.WriteString(`You are a Staff Engineer performing a code review. Apply these thinking patterns:

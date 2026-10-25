@@ -17,6 +17,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/cache"
 	"github.com/planwerk/planwerk-agent/internal/capture"
 	"github.com/planwerk/planwerk-agent/internal/claude"
+	"github.com/planwerk/planwerk-agent/internal/diffscope"
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/github/githubtest"
 	"github.com/planwerk/planwerk-agent/internal/hygiene"
@@ -2232,5 +2233,188 @@ func TestRun_BrainSurfaceReachesTheReviewAndTheCacheKey(t *testing.T) {
 	}
 	if want := []search.Surface{rev1, rev2, {}, {}}; !slices.Equal(sessions, want) {
 		t.Errorf("the sessions were handed %+v, want %+v", sessions, want)
+	}
+}
+
+// TestRun_ListsExcludedFiles locks what a review whose diff left files out
+// reports: the Markdown carries the note naming them, --format json carries
+// excluded_files and no note, --inline posts the note and the list in the
+// living summary comment, --format sarif names them in a note-level
+// notification and carries no Markdown note, and a cache hit renders the note
+// again (decision 137).
+func TestRun_ListsExcludedFiles(t *testing.T) {
+	// Not t.Parallel(): cache.SetDir mutates a package-level variable.
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	excluded := []report.ExcludedFile{
+		{Path: "go.sum", Reason: report.ExcludedLockfile},
+		{Path: "vendor/", Reason: report.ExcludedVendored, Files: 3},
+	}
+	claudeMock := &configurableClaude{
+		review: func(dir string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
+			return &report.ReviewResult{Summary: "ok", ExcludedFiles: excluded}, nil
+		},
+	}
+	gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) {
+		return fakePR(t, "acme", "widgets", 23, "sha-excluded"), nil
+	}}
+	const note = "> [!NOTE]\n> 4 changed file(s) were left out of the diff the review read (--diff-exclusions)"
+
+	var md bytes.Buffer
+	if err := (&Runner{Claude: claudeMock, GitHub: gh}).Run(&md, baseOpts()); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !strings.Contains(md.String(), note) || !strings.Contains(md.String(), "> - `vendor/` (vendored, 3 files)\n") {
+		t.Errorf("the Markdown report must list the excluded files:\n%s", md.String())
+	}
+
+	jsonOpts := baseOpts()
+	jsonOpts.Format = formatJSON
+	jsonOpts.NoCache = true
+	var js bytes.Buffer
+	if err := (&Runner{Claude: claudeMock, GitHub: gh}).Run(&js, jsonOpts); err != nil {
+		t.Fatalf("JSON Run returned error: %v", err)
+	}
+	var got report.ReviewResult
+	if err := json.Unmarshal(js.Bytes(), &got); err != nil {
+		t.Fatalf("decoding the JSON output: %v\n%s", err, js.String())
+	}
+	if !slices.Equal(got.ExcludedFiles, excluded) {
+		t.Errorf("JSON ExcludedFiles = %+v, want %+v", got.ExcludedFiles, excluded)
+	}
+	if strings.Contains(js.String(), "[!NOTE]") {
+		t.Errorf("--format json must carry no Markdown note:\n%s", js.String())
+	}
+
+	var summary string
+	inlineGH := &githubtest.Fake{
+		FetchAndCheckoutFn: gh.FetchAndCheckoutFn,
+		PostPRCommentFn: func(owner, repo string, number int, body string) (string, error) {
+			summary = body
+			return "https://github.com/acme/widgets/pull/23#issuecomment-1", nil
+		},
+	}
+	inlineOpts := baseOpts()
+	inlineOpts.NoCache = true
+	inlineOpts.PostReview = true
+	inlineOpts.InlineReview = true
+	if err := (&Runner{Claude: claudeMock, GitHub: inlineGH}).Run(&bytes.Buffer{}, inlineOpts); err != nil {
+		t.Fatalf("inline Run returned error: %v", err)
+	}
+	if !strings.Contains(summary, note) || !strings.Contains(summary, `"excluded_files":[{"path":"go.sum","reason":"lockfile"}`) {
+		t.Errorf("the living summary comment must carry the note and the data block's excluded_files:\n%s", summary)
+	}
+
+	sarifOpts := baseOpts()
+	sarifOpts.Format = formatSARIF
+	sarifOpts.NoCache = true
+	var sarif bytes.Buffer
+	if err := (&Runner{Claude: claudeMock, GitHub: gh}).Run(&sarif, sarifOpts); err != nil {
+		t.Fatalf("SARIF Run returned error: %v", err)
+	}
+	if strings.Contains(sarif.String(), "[!NOTE]") ||
+		!strings.Contains(sarif.String(), "4 changed file(s) were left out of the diff the review read (--diff-exclusions), so no result covers them: go.sum (lock file); vendor/ (vendored, 3 files)") {
+		t.Errorf("--format sarif must name the excluded files in a notification and carry no Markdown note:\n%s", sarif.String())
+	}
+
+	hitClaude := &configurableClaude{}
+	var hit bytes.Buffer
+	if err := (&Runner{Claude: hitClaude, GitHub: gh}).Run(&hit, baseOpts()); err != nil {
+		t.Fatalf("cache-hit Run returned error: %v", err)
+	}
+	if hitClaude.reviewCalls != 0 {
+		t.Fatalf("Review calls = %d on what should be a cache hit, want 0", hitClaude.reviewCalls)
+	}
+	if !strings.Contains(hit.String(), note) {
+		t.Errorf("the cache hit must render the note again:\n%s", hit.String())
+	}
+}
+
+// TestRun_ReviewReadsTheRunsDiff locks the review session's diff: Run writes
+// it from the checkout before the review starts, with the exclusions
+// Options.DiffExclusions asks for, hands it over in ReviewContext.Diff, and
+// removes it when Run returns (decision 137).
+func TestRun_ReviewReadsTheRunsDiff(t *testing.T) {
+	// Not t.Parallel(): cache.SetDir mutates a package-level variable.
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	// checkout returns a pull request clone whose HEAD changes app.go and
+	// go.sum on top of origin/main. Run removes it with the PR, so every run
+	// gets its own.
+	checkout := func() string {
+		t.Helper()
+		dir := t.TempDir()
+		git := func(args ...string) string {
+			t.Helper()
+			cmd := exec.Command("git", args...)
+			cmd.Dir = dir
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("git %v: %v\n%s", args, err, out)
+			}
+			return strings.TrimSpace(string(out))
+		}
+		write := func(name, content string) {
+			t.Helper()
+			if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+				t.Fatalf("write %s: %v", name, err)
+			}
+		}
+		git("init", "-q")
+		git("config", "user.email", "t@example.com")
+		git("config", "user.name", "tester")
+		write("app.go", "package app\n")
+		write("go.sum", "a v1 h1:x\n")
+		git("add", "-A")
+		git("commit", "-q", "-m", "base")
+		git("update-ref", "refs/remotes/origin/main", git("rev-parse", "HEAD"))
+		write("app.go", "package app\n\nfunc New() {}\n")
+		write("go.sum", "a v2 h1:y\n")
+		git("commit", "-q", "-am", "head")
+		return dir
+	}
+
+	for _, tc := range []struct {
+		exclude      bool
+		wantExcluded []report.ExcludedFile
+	}{
+		{false, nil},
+		{true, []report.ExcludedFile{{Path: "go.sum", Reason: report.ExcludedLockfile}}},
+	} {
+		var got claude.ReviewContext
+		claudeMock := &configurableClaude{
+			review: func(_ string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
+				got = ctx
+				data, err := os.ReadFile(ctx.Diff.File)
+				if err != nil {
+					t.Errorf("the diff must be readable while the review runs: %v", err)
+				}
+				if !strings.Contains(string(data), "+func New() {}\n") || strings.Contains(string(data), "go.sum") == tc.exclude {
+					t.Errorf("exclude=%v: the diff file holds:\n%s", tc.exclude, data)
+				}
+				return &report.ReviewResult{Summary: "ok", ExcludedFiles: ctx.Diff.Excluded}, nil
+			},
+		}
+		pr := fakePR(t, "acme", "widgets", 24, "sha-diff")
+		pr.Dir = checkout()
+		gh := &githubtest.Fake{FetchAndCheckoutFn: func(ref string) (*github.PR, error) { return pr, nil }}
+		opts := baseOpts()
+		opts.NoCache = true
+		opts.DiffExclusions = tc.exclude
+
+		if err := (&Runner{Claude: claudeMock, GitHub: gh}).Run(&bytes.Buffer{}, opts); err != nil {
+			t.Fatalf("exclude=%v: Run returned error: %v", tc.exclude, err)
+		}
+		if !strings.HasPrefix(filepath.Base(got.Diff.Dir), diffscope.DirPrefix) || got.Diff.Range != "origin/main...HEAD" {
+			t.Fatalf("exclude=%v: ReviewContext.Diff = %+v, want a written origin/main...HEAD diff", tc.exclude, got.Diff)
+		}
+		if !slices.Equal(got.Diff.Excluded, tc.wantExcluded) {
+			t.Errorf("exclude=%v: Diff.Excluded = %+v, want %+v", tc.exclude, got.Diff.Excluded, tc.wantExcluded)
+		}
+		if _, err := os.Stat(got.Diff.Dir); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("exclude=%v: after Run, stat %s = %v, want not exist", tc.exclude, got.Diff.Dir, err)
+		}
 	}
 }

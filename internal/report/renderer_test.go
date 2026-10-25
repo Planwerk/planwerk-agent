@@ -3,6 +3,7 @@ package report
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -313,6 +314,116 @@ func TestRenderJSON_CarriesPasses(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got.Passes, passes) {
 		t.Errorf("Passes = %+v, want %+v", got.Passes, passes)
+	}
+}
+
+// TestRenderMarkdown_ExcludedFiles verifies the note that lists what
+// --diff-exclusions left out: it sits after the Unverified section and before
+// the Summary, names each entry with its label, counts the entries past
+// ExcludedFilesListLimit, and is absent without exclusions.
+func TestRenderMarkdown_ExcludedFiles(t *testing.T) {
+	pr := PRInfo{Owner: "acme", Repo: "widgets", Number: 7, Title: "PR"}
+	render := func(result ReviewResult) string {
+		var buf bytes.Buffer
+		NewRenderer(&buf).RenderMarkdown(result, pr, SeverityInfo, "", "v1")
+		return buf.String()
+	}
+
+	t.Run("absent without exclusions", func(t *testing.T) {
+		if got := render(ReviewResult{Summary: "ok"}); strings.Contains(got, "[!NOTE]") {
+			t.Errorf("a result without excluded files must render no note, got:\n%s", got)
+		}
+	})
+
+	t.Run("lists every entry before the Summary", func(t *testing.T) {
+		got := render(ReviewResult{
+			Summary: "ok",
+			Findings: []Finding{
+				{ID: "W-001", Severity: SeverityWarning, Title: "t", File: "f.go", Line: 1, Confidence: ConfidenceUncertain, Problem: "p", Action: "a"},
+			},
+			ExcludedFiles: []ExcludedFile{
+				{Path: "go.sum", Reason: ExcludedLockfile},
+				{Path: "vendor/", Reason: ExcludedVendored, Files: 12},
+			},
+		})
+		want := "> [!NOTE]\n> 13 changed file(s) were left out of the diff the review read (--diff-exclusions): lock files, vendored code, and generated code. Tests outside vendored directories are never left out.\n" +
+			"> - `go.sum` (lock file)\n" +
+			"> - `vendor/` (vendored, 12 files)\n\n## Summary\n"
+		at := strings.Index(got, want)
+		if at == -1 {
+			t.Fatalf("note missing or not directly before the Summary, got:\n%s", got)
+		}
+		if unverified := strings.Index(got, "## Unverified"); unverified == -1 || unverified > at {
+			t.Errorf("the note must follow the Unverified section, got:\n%s", got)
+		}
+	})
+
+	t.Run("counts the entries past the limit", func(t *testing.T) {
+		var excluded []ExcludedFile
+		for i := range ExcludedFilesListLimit + 3 {
+			excluded = append(excluded, ExcludedFile{Path: fmt.Sprintf("gen/zz_%02d.go", i), Reason: ExcludedGenerated})
+		}
+		got := render(ReviewResult{Summary: "ok", ExcludedFiles: excluded})
+		if n := strings.Count(got, " (generated)\n"); n != ExcludedFilesListLimit {
+			t.Errorf("the note names %d entries, want %d", n, ExcludedFilesListLimit)
+		}
+		if !strings.Contains(got, "> - and 3 more (the --format json output and the data block list every one)\n") {
+			t.Errorf("the note must count the entries past the limit, got:\n%s", got)
+		}
+	})
+}
+
+// TestRenderDataBlock_CarriesExcludedFiles verifies the excluded files ride
+// the data block when set and are omitted when nil, so a data block of a run
+// without exclusions stays byte-identical.
+func TestRenderDataBlock_CarriesExcludedFiles(t *testing.T) {
+	t.Run("present when set", func(t *testing.T) {
+		full := ReviewResult{
+			Passes:        []PassStatus{{Pass: "adversarial", Status: PassStatusRan}},
+			ExcludedFiles: []ExcludedFile{{Path: "vendor/", Reason: ExcludedVendored, Files: 2}},
+		}
+		block := RenderDataBlock(full, "sha-excluded", Usage{})
+		if !strings.Contains(block, `"passes":[{"pass":"adversarial","status":"ran"}],"excluded_files":[{"path":"vendor/","reason":"vendored","files":2}],"usage":`) {
+			t.Errorf("data block missing excluded_files after passes; got %q", block)
+		}
+	})
+
+	t.Run("omitted when nil", func(t *testing.T) {
+		if block := RenderDataBlock(ReviewResult{}, "plainsha", Usage{}); strings.Contains(block, `"excluded_files"`) {
+			t.Errorf("data block should omit excluded_files when unset; got %q", block)
+		}
+	})
+}
+
+// TestRenderJSON_CarriesExcludedFiles verifies --format json keeps the
+// run-level excluded files through RenderJSON's filtered copy, even when the
+// severity filter drops every finding.
+func TestRenderJSON_CarriesExcludedFiles(t *testing.T) {
+	excluded := []ExcludedFile{
+		{Path: "go.sum", Reason: ExcludedLockfile},
+		{Path: "zz_generated.go", Reason: ExcludedGenerated},
+	}
+	result := ReviewResult{
+		Summary:       "ok",
+		Findings:      []Finding{{ID: "I-001", Severity: SeverityInfo, Title: "t", File: "f.go", Problem: "p", Action: "a"}},
+		ExcludedFiles: excluded,
+	}
+	var buf bytes.Buffer
+	if err := NewRenderer(&buf).RenderJSON(result, SeverityBlocking, ""); err != nil {
+		t.Fatalf("RenderJSON: %v", err)
+	}
+	var got ReviewResult
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Fatalf("decoding RenderJSON output: %v\n%s", err, buf.String())
+	}
+	if len(got.Findings) != 0 {
+		t.Fatalf("the BLOCKING filter must drop the INFO finding, got %+v", got.Findings)
+	}
+	if !reflect.DeepEqual(got.ExcludedFiles, excluded) {
+		t.Errorf("ExcludedFiles = %+v, want %+v", got.ExcludedFiles, excluded)
+	}
+	if strings.Contains(buf.String(), "[!NOTE]") {
+		t.Errorf("the JSON output must carry no Markdown note:\n%s", buf.String())
 	}
 }
 

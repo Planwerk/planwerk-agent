@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/planwerk/planwerk-agent/internal/diffscope"
 	"github.com/planwerk/planwerk-agent/internal/planwerk"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
@@ -11,16 +12,25 @@ import (
 // FeatureCompliance runs a Claude call that checks the PR implementation against
 // all requirements, scenarios, test specifications, and acceptance criteria
 // defined in a Planwerk feature file. It returns findings for any deviations.
+// The pass reads a diff it writes first (runDiffFinder), and its result lists
+// in ExcludedFiles what that diff left out (decision 137).
 func (c *Client) FeatureCompliance(dir, baseBranch string, feature *planwerk.Feature) (*report.ReviewResult, error) {
-	rawReview, model, err := c.runClaudeFinderFindings(dir, buildCompliancePrompt(baseBranch, feature), PassLabelCompliance)
+	rawReview, model, excluded, err := c.runDiffFinder(dir, baseBranch, "", PassLabelCompliance, func(d diffscope.Diff) string {
+		return buildCompliancePrompt(baseBranch, d, feature)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("running feature compliance check: %w", err)
 	}
 
-	return c.finishReview(rawReview, model, "compliance check", "feature-compliance")
+	res, err := c.finishReview(rawReview, model, "compliance check", "feature-compliance")
+	if err != nil {
+		return nil, err
+	}
+	res.ExcludedFiles = excluded
+	return res, nil
 }
 
-func buildCompliancePrompt(baseBranch string, feature *planwerk.Feature) string {
+func buildCompliancePrompt(baseBranch string, d diffscope.Diff, feature *planwerk.Feature) string {
 	if baseBranch == "" {
 		baseBranch = DefaultBaseBranch
 	}
@@ -29,7 +39,7 @@ func buildCompliancePrompt(baseBranch string, feature *planwerk.Feature) string 
 
 	body := `You are a Requirements Engineer verifying that a PR implementation fully satisfies a Planwerk feature specification.
 
-` + diffScopeLines(baseBranch) + fmt.Sprintf(`Then examine the changed files against the feature specification below.
+` + diffScopeLines(baseBranch, d) + fmt.Sprintf(`Then examine the changed files against the feature specification below.
 
 <planwerk-feature-specification>
 %s

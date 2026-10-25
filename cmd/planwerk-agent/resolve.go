@@ -202,6 +202,14 @@ const envStructureEffort = "PLANWERK_STRUCTURE_EFFORT"
 // explicitly set. Off by default so reviews stay reproducible across machines.
 const envClaudeInheritUserConfig = "PLANWERK_CLAUDE_INHERIT_USER_CONFIG"
 
+// envDiffExclusions leaves the changed lock files, vendored directories, and
+// generated files out of the diff the review and finder passes read. Any
+// truthy value (1, true, yes, on; case-insensitive) enables it; the
+// --diff-exclusions CLI flag takes precedence when explicitly set. Off by
+// default, since the pull request under review decides which of its files a
+// rule matches (decision 137).
+const envDiffExclusions = "PLANWERK_DIFF_EXCLUSIONS"
+
 // Output format identifiers accepted by the --format flag.
 const (
 	formatMarkdown = "markdown"

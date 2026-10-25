@@ -1,10 +1,16 @@
 package main
 
 import (
+	"bytes"
+	"log/slog"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
+	"github.com/planwerk/planwerk-agent/internal/attribution"
+	"github.com/planwerk/planwerk-agent/internal/cache"
 	"github.com/planwerk/planwerk-agent/internal/elaborate"
 	"github.com/planwerk/planwerk-agent/internal/prompt"
 )
@@ -103,5 +109,64 @@ func TestCommandsRegisterTheBrainFlags(t *testing.T) {
 				t.Errorf("%s must not expose --%s: its session gets no search", name, flag)
 			}
 		}
+	}
+}
+
+// TestRootRegistersTheDiffExclusionsFlag pins --diff-exclusions as a
+// persistent flag that is off by default and names its environment variable.
+func TestRootRegistersTheDiffExclusionsFlag(t *testing.T) {
+	flag := newRootCmd(&runtimeDeps{}).PersistentFlags().Lookup("diff-exclusions")
+	if flag == nil {
+		t.Fatal("the root command must expose --diff-exclusions as a persistent flag")
+	}
+	if on, err := strconv.ParseBool(flag.DefValue); err != nil || on {
+		t.Errorf("--diff-exclusions defaults to %q, want off", flag.DefValue)
+	}
+	if !strings.Contains(flag.Usage, "env: "+envDiffExclusions) {
+		t.Errorf("--diff-exclusions usage %q does not name %s", flag.Usage, envDiffExclusions)
+	}
+}
+
+// TestRoot_DiffExclusionsReachTheClientAndTheCacheKey runs the root command's
+// pre-run through --version, which touches no backend, and checks that the
+// flag and PLANWERK_DIFF_EXCLUSIONS turn the exclusions on in the shared
+// Client and scope the cache key, while a run without them keys as before.
+func TestRoot_DiffExclusionsReachTheClientAndTheCacheKey(t *testing.T) {
+	// Not t.Parallel(): the pre-run sets the default logger, the attribution
+	// version and the cache fingerprint, which the cleanups restore.
+	prevLogger, prevFingerprint := slog.Default(), cache.RunFingerprint()
+	t.Cleanup(func() {
+		slog.SetDefault(prevLogger)
+		cache.SetRunFingerprint(prevFingerprint)
+		attribution.SetVersion("")
+	})
+
+	for _, tc := range []struct {
+		name string
+		args []string
+		env  string
+		want bool
+	}{
+		{"off by default", nil, "", false},
+		{"the flag", []string{"--diff-exclusions"}, "", true},
+		{"the environment", nil, "yes", true},
+		{"the flag wins over the environment", []string{"--diff-exclusions=false"}, "1", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(envDiffExclusions, tc.env)
+			deps := &runtimeDeps{version: "test"}
+			cmd := newRootCmd(deps)
+			cmd.SetOut(&bytes.Buffer{})
+			cmd.SetArgs(append(tc.args, "--version"))
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("Execute: %v", err)
+			}
+			if got := deps.claude.DiffExclusions(); got != tc.want {
+				t.Errorf("Client.DiffExclusions() = %v, want %v", got, tc.want)
+			}
+			if got := strings.HasSuffix(cache.RunFingerprint(), "|diff-exclusions"); got != tc.want {
+				t.Errorf("cache fingerprint %q carries diff-exclusions = %v, want %v", cache.RunFingerprint(), got, tc.want)
+			}
+		})
 	}
 }

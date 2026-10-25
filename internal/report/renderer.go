@@ -30,9 +30,10 @@ func (r *Renderer) RenderJSON(result ReviewResult, minSeverity Severity, minConf
 	}
 	// Carry the run-level gate records so --format json tells the same story the
 	// posted data block does; the counts describe the whole run, not the filtered
-	// list. The pass records are run-level too.
+	// list. The pass records and the excluded files describe the run too.
 	filtered.Gates = result.Gates
 	filtered.Passes = result.Passes
+	filtered.ExcludedFiles = result.ExcludedFiles
 
 	enc := json.NewEncoder(r.w)
 	enc.SetIndent("", "  ")
@@ -60,6 +61,7 @@ func (r *Renderer) RenderMarkdown(result ReviewResult, pr PRInfo, minSeverity Se
 	r.renderSection("WARNING", cf.Warning)
 	r.renderSection("INFO", cf.Info)
 	r.renderUnverifiedSection(cf.Unverified)
+	r.renderExcludedFiles(result.ExcludedFiles)
 
 	r.renderSummary(cf, result)
 	r.renderRecommendation(cf, result.Recommendation)
@@ -78,6 +80,25 @@ func (r *Renderer) renderFailedPasses(failed []PassStatus) {
 		_, _ = fmt.Fprintf(r.w, "> - `%s`: %s\n", p.Pass, p.Error)
 	}
 	_, _ = fmt.Fprint(r.w, ">\n> A review with a failed pass is never cached, so running it again retries the pass.\n\n")
+}
+
+// renderExcludedFiles writes the note that lists what --diff-exclusions left
+// out of the diff the review read, so an exclusion is never silent: one line
+// per entry up to ExcludedFilesListLimit, then a count of the rest. It writes
+// nothing when excluded is empty (decision 137).
+func (r *Renderer) renderExcludedFiles(excluded []ExcludedFile) {
+	if len(excluded) == 0 {
+		return
+	}
+	_, _ = fmt.Fprintf(r.w, "> [!NOTE]\n> %d changed file(s) were left out of the diff the review read (--diff-exclusions): lock files, vendored code, and generated code. Tests outside vendored directories are never left out.\n", ExcludedFileCount(excluded))
+	shown := excluded[:min(len(excluded), ExcludedFilesListLimit)]
+	for _, e := range shown {
+		_, _ = fmt.Fprintf(r.w, "> - `%s` (%s)\n", e.Path, e.Label())
+	}
+	if rest := len(excluded) - len(shown); rest > 0 {
+		_, _ = fmt.Fprintf(r.w, "> - and %d more (the --format json output and the data block list every one)\n", rest)
+	}
+	_, _ = fmt.Fprintln(r.w)
 }
 
 // RenderWikiProvenance emits the "> Wiki: <repo>.wiki @ <short-sha>" header line
@@ -442,12 +463,13 @@ type PassUsage struct {
 
 // dataBlockPayload is the JSON structure embedded in the HTML comment for machine consumption.
 type dataBlockPayload struct {
-	CommitSHA  string       `json:"commit_sha"`
-	WikiCommit string       `json:"wiki_commit,omitempty"`
-	Findings   []Finding    `json:"findings"`
-	Gates      *GateStats   `json:"gates,omitempty"`
-	Passes     []PassStatus `json:"passes,omitempty"`
-	Usage      Usage        `json:"usage"`
+	CommitSHA     string         `json:"commit_sha"`
+	WikiCommit    string         `json:"wiki_commit,omitempty"`
+	Findings      []Finding      `json:"findings"`
+	Gates         *GateStats     `json:"gates,omitempty"`
+	Passes        []PassStatus   `json:"passes,omitempty"`
+	ExcludedFiles []ExcludedFile `json:"excluded_files,omitempty"`
+	Usage         Usage          `json:"usage"`
 }
 
 // RenderDataBlock returns an HTML comment containing the JSON-encoded findings,
@@ -455,12 +477,13 @@ type dataBlockPayload struct {
 // by tools like Claude Code and CI scripts.
 func RenderDataBlock(result ReviewResult, commitSHA string, usage Usage) string {
 	payload := dataBlockPayload{
-		CommitSHA:  commitSHA,
-		WikiCommit: result.WikiCommit,
-		Findings:   result.Findings,
-		Gates:      result.Gates,
-		Passes:     result.Passes,
-		Usage:      usage,
+		CommitSHA:     commitSHA,
+		WikiCommit:    result.WikiCommit,
+		Findings:      result.Findings,
+		Gates:         result.Gates,
+		Passes:        result.Passes,
+		ExcludedFiles: result.ExcludedFiles,
+		Usage:         usage,
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {

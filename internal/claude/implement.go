@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/planwerk/planwerk-agent/internal/diffscope"
 	"github.com/planwerk/planwerk-agent/internal/implement"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
@@ -13,16 +14,25 @@ import (
 // set an implement session just produced, checking it against the issue's
 // Acceptance Criteria. It deliberately does NOT trust any implementation
 // report: it diffs the feature branch and reads the actual committed code.
-// Findings are returned for every criterion that is not fully satisfied.
+// Findings are returned for every criterion that is not fully satisfied. The
+// pass reads a diff it writes first (runDiffFinder), and its result lists in
+// ExcludedFiles what that diff left out (decision 137).
 func (c *Client) VerifyImplementation(dir, issueTitle, issueBody, baseBranch string) (*report.ReviewResult, error) {
-	raw, model, err := c.runClaudeFinderFindings(dir, buildVerifyImplementationPrompt(issueTitle, issueBody, baseBranch), "verify-implementation")
+	raw, model, excluded, err := c.runDiffFinder(dir, baseBranch, "", "verify-implementation", func(d diffscope.Diff) string {
+		return buildVerifyImplementationPrompt(issueTitle, issueBody, baseBranch, d)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("running implementation verification: %w", err)
 	}
-	return c.finishReview(raw, model, "implementation verification", "implementation-verification")
+	res, err := c.finishReview(raw, model, "implementation verification", "implementation-verification")
+	if err != nil {
+		return nil, err
+	}
+	res.ExcludedFiles = excluded
+	return res, nil
 }
 
-func buildVerifyImplementationPrompt(issueTitle, issueBody, baseBranch string) string {
+func buildVerifyImplementationPrompt(issueTitle, issueBody, baseBranch string, d diffscope.Diff) string {
 	if baseBranch == "" {
 		baseBranch = DefaultBaseBranch
 	}
@@ -35,7 +45,7 @@ Commit messages say what the implementing session meant to do; verify each crite
 
 ## Determine the change set
 You are inside a checkout currently on the implementation's feature branch.
-` + diffScopeLines(baseBranch) + `Then read the changed files; ` + "`git log origin/" + baseBranch + "..HEAD --oneline`" + ` lists the commits, and every criterion is judged against the files, not the messages.
+` + diffScopeLines(baseBranch, d) + `Then read the changed files; ` + "`git log origin/" + baseBranch + "..HEAD --oneline`" + ` lists the commits, and every criterion is judged against the files, not the messages.
 
 `)
 

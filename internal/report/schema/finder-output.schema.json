@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "FinderOutput",
-  "description": "Wire contract for every pass that emits findings (the review, the audit, the adversarial pass, the domain specialists, the feature-compliance check, the simplify finder and the implementation verifier): the JSON each such session emits, passed to the CLI via --json-schema. It mirrors report.ReviewResult minus the Go-derived and pipeline-set fields (id, fix_class, confirmed_by, verification_note, snippet_check, claim_check, and the run-level gates object) such a pass never produces. Every finding carries its severity, actionability and confidence label, each exactly one enum value.",
+  "description": "Wire contract for every pass that emits findings (the review, the audit, the adversarial pass, the domain specialists, the feature-compliance check, the simplify finder and the implementation verifier): the JSON each such session emits, passed to the CLI via --json-schema. It mirrors report.ReviewResult minus the Go-derived and pipeline-set fields (id, fix_class, confirmed_by, verification_note, snippet_check, claim_check, the run-level gates object, and the run-level excluded_files list) such a pass never produces. Every finding carries its severity, actionability and confidence label, each exactly one enum value.",
   "type": "object",
   "additionalProperties": false,
   "required": ["findings", "summary", "recommendation"],

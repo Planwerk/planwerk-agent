@@ -3,6 +3,7 @@ package claude
 import (
 	"fmt"
 
+	"github.com/planwerk/planwerk-agent/internal/diffscope"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
@@ -18,26 +19,32 @@ import (
 // changed since it rather than the whole branch, which is what the implement
 // command's review loop wants from its second round on. Empty — every other
 // caller — leaves the branch-wide scope unchanged.
+//
+// The pass reads a diff it writes first (runDiffFinder), and its result lists
+// in ExcludedFiles what that diff left out (decision 137).
 func (c *Client) AdversarialReview(dir, baseBranch, sinceRef string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
-	rawReview, model, err := c.runAdversarialReview(dir, baseBranch, sinceRef, pats, maxPatterns)
+	rawReview, model, excluded, err := c.runDiffFinder(dir, baseBranch, sinceRef, PassLabelAdversarial, func(d diffscope.Diff) string {
+		return buildAdversarialPrompt(baseBranch, sinceRef, d, pats, maxPatterns)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("running adversarial review: %w", err)
 	}
 
-	return c.finishReview(rawReview, model, "adversarial review", "adversarial-review")
+	res, err := c.finishReview(rawReview, model, "adversarial review", "adversarial-review")
+	if err != nil {
+		return nil, err
+	}
+	res.ExcludedFiles = excluded
+	return res, nil
 }
 
-func (c *Client) runAdversarialReview(dir, baseBranch, sinceRef string, pats []patterns.Pattern, maxPatterns int) (text, model string, err error) {
-	return c.runClaudeFinderFindings(dir, buildAdversarialPrompt(baseBranch, sinceRef, pats, maxPatterns), PassLabelAdversarial)
-}
-
-func buildAdversarialPrompt(baseBranch, sinceRef string, pats []patterns.Pattern, maxPatterns int) string {
+func buildAdversarialPrompt(baseBranch, sinceRef string, d diffscope.Diff, pats []patterns.Pattern, maxPatterns int) string {
 	if baseBranch == "" {
 		baseBranch = DefaultBaseBranch
 	}
-	scope := diffScopeLines(baseBranch)
+	scope := diffScopeLines(baseBranch, d)
 	if sinceRef != "" {
-		scope = fixScopeLines(sinceRef)
+		scope = fixScopeLines(sinceRef, d)
 	}
 	return `You are a security researcher and chaos engineer performing an adversarial code review.
 Your job is to find ways this code will fail in production.

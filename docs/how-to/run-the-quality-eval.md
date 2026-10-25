@@ -54,8 +54,12 @@ environment overrides the main CLI honors (`PLANWERK_CLAUDE_MODEL`,
 `PLANWERK_CLAUDE_EFFORT`, `PLANWERK_STRUCTURE_MODEL`,
 `PLANWERK_STRUCTURE_EFFORT`, `PLANWERK_FINDER_MODEL`,
 `PLANWERK_FINDER_EFFORT`, `PLANWERK_CLAUDE_TIMEOUT`,
-`PLANWERK_CLAUDE_INHERIT_USER_CONFIG`). An effort that is not one of `low`,
-`medium`, `high`, `xhigh`, `max` exits 1 before any case runs.
+`PLANWERK_CLAUDE_INHERIT_USER_CONFIG`, `PLANWERK_DIFF_EXCLUSIONS`), and the
+two switches take the values the CLI takes: `1`, `true`, `yes`, `on`, `0`,
+`false`, `no`, `off`, in any letter case. An effort that is not one of `low`,
+`medium`, `high`, `xhigh`, `max`, or a switch set to any other value exits 1
+before any case runs. The corpus holds no lock, vendored or generated file, so
+`PLANWERK_DIFF_EXCLUSIONS` leaves an eval run unchanged.
 
 ## What it measures
 

@@ -300,6 +300,12 @@ type ReviewResult struct {
 	// the result predates pass recording. The primary review is never listed,
 	// since its failure fails the run (decision 135).
 	Passes []PassStatus `json:"passes,omitempty"`
+	// ExcludedFiles lists the changed files --diff-exclusions left out of the
+	// diff the review session read. It is serialized like Gates (the cached
+	// result, the data block, --format json) and set by the pipeline, never by
+	// a session. nil means exclusions were off, no changed file matched, or the
+	// result predates the field (decision 137).
+	ExcludedFiles []ExcludedFile `json:"excluded_files,omitempty"`
 }
 
 // GateStats aggregates the per-run counts of the review's two demotion gates.

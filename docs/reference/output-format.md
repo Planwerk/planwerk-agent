@@ -301,6 +301,42 @@ entry is rendered and posted but never cached, so the next run of the same
 commit retries every pass (see
 [Caching model](/explanation/caching#what-every-key-is-scoped-to)).
 
+## Excluded Files
+
+With `--diff-exclusions`, the diff the review sessions read leaves out the
+changed lock files, the changed files under a `vendor/` or `node_modules/`
+directory, and the files whose leading comment says `Code generated … DO NOT
+EDIT.`; tests outside a vendored directory never are (see
+[The Diff Every Pass Reads](/explanation/review-methodology#the-diff-every-pass-reads)).
+The Markdown report lists them in a note between the findings and the
+Summary, one line per entry for at most 50 entries and then a count of the
+rest:
+
+```markdown
+> [!NOTE]
+> 14 changed file(s) were left out of the diff the review read (--diff-exclusions): lock files, vendored code, and generated code. Tests outside vendored directories are never left out.
+> - `api/v1/zz_generated.deepcopy.go` (generated)
+> - `go.sum` (lock file)
+> - `vendor/` (vendored, 12 files)
+```
+
+The `--format json` output and the data block carry every entry in
+`excluded_files`. Each entry has a `path`, a `reason` (`lockfile`, `vendored`,
+`generated`) and, for a vendored directory, whose `path` ends in `/`, `files`,
+the number of changed files under it that were left out:
+
+```json
+"excluded_files": [
+  { "path": "api/v1/zz_generated.deepcopy.go", "reason": "generated" },
+  { "path": "go.sum", "reason": "lockfile" },
+  { "path": "vendor/", "reason": "vendored", "files": 12 }
+]
+```
+
+A [SARIF](#sarif) log names the same entries in a notification at level
+`note`. An absent `excluded_files` means the exclusions were off or no changed
+file matched them. Results cached before the field existed carry none.
+
 ## JSON Schema
 
 The `--format json` output of every command is described by a JSON Schema
@@ -353,9 +389,12 @@ result in a file. It goes to `invocations[0].toolExecutionNotifications`
 instead: one notification at level `warning` names every such finding by ID and
 title. Each requested pass that failed adds one more `warning` notification,
 `<pass> failed: <error>; the review is incomplete`, with the label and the
-error its [Pass Status](#pass-status) entry records. `executionSuccessful` is
-`true` either way: a run whose review failed prints no log, and a failed
-secondary pass does not fail the run.
+error its [Pass Status](#pass-status) entry records. With `--diff-exclusions`, a
+last notification at level `note` names the files the diff the review read left
+out, `<path> (<reason>)` for at most 50 entries and then a count of the rest
+(see [Excluded Files](#excluded-files)). `executionSuccessful` is `true` either
+way: a run whose review failed prints no log, and a failed secondary pass does
+not fail the run.
 
 The log is the whole of stdout, so `review` refuses `--post-review`, `--inline`,
 and `--coverage-map` with `--format sarif`, and `audit` refuses

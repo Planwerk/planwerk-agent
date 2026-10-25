@@ -25,6 +25,9 @@ planwerk-agent --inline --resolve-outdated owner/repo#123
 # SARIF for GitHub code scanning
 planwerk-agent --format sarif owner/repo#123 > results.sarif
 
+# Leave lock files, vendored and generated files out of the review
+planwerk-agent --diff-exclusions owner/repo#123
+
 # Write output to file
 planwerk-agent owner/repo#123 > review.md
 ```
@@ -39,7 +42,9 @@ without an inline comment. `--resolve-outdated` also resolves the tool's own
 inline threads once GitHub marks them outdated, unless someone replied or a
 current finding still covers their lines (see
 [Resolving outdated threads](/reference/output-format#resolving-outdated-threads)).
-For every flag, see the [CLI reference](/reference/cli#review-default-command);
+With `--diff-exclusions`, the report lists every file it left out of the
+review ([Excluded Files](/reference/output-format#excluded-files)). For every
+flag, see the [CLI reference](/reference/cli#review-default-command);
 for the shape of the report, see [Output format](/reference/output-format).
 
 On a re-review, a posted review leaves out the findings the last one already
@@ -58,7 +63,7 @@ and a note at the end of the report lists them; see
 3. **Load Review Patterns**: Patterns are loaded from two sources:
    - the planwerk-agent pattern catalog, embedded in the binary (source: `internal/patterns/patterns/`)
    - `.planwerk/review_patterns/` in the target repository (repo-specific patterns)
-4. **Claude Code Review**: a `claude -p` session runs a structured review prompt that includes persona framing, scope analysis, a two-pass checklist, suppression rules, and review patterns.
+4. **Claude Code Review**: a `claude -p` session runs a structured review prompt that includes persona framing, scope analysis, a two-pass checklist, suppression rules, and review patterns. The session reads a diff file the tool wrote beforehand rather than running `git diff` itself (see [The Diff Every Pass Reads](/explanation/review-methodology#the-diff-every-pass-reads)).
 5. **Result Aggregation**: Review results are collected, deduplicated, categorized by severity, and classified by actionability. Findings are enriched with code snippets, suggested fixes, confidence levels, and cross-references.
 6. **Output**: A structured report is written to `stdout` as Markdown, JSON, or SARIF, optionally posted as a PR comment (`--post-review`), or posted as inline review comments on the PR diff (`--inline`).
 
