@@ -6,6 +6,9 @@ downloads the planwerk-agent release binary, runs the review against the PR
 that triggered the workflow, and posts a summary plus inline review comments.
 On each later push it leaves out the findings it already posted on files the
 push did not change ([Re-reviews](/reference/output-format#re-reviews)).
+Resolve a finding's inline thread to keep it out of later reports while the
+code it quotes stays unchanged. Reading the review threads needs
+`pull-requests: read`, which the `pull-requests: write` below already grants.
 
 Minimal example workflow:
 

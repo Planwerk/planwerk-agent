@@ -9,6 +9,8 @@ import (
 
 // FormatInlineComment formats a Finding as a GitHub inline review comment body.
 // For auto-fix findings with a SuggestedFix, it includes a GitHub suggestion block.
+// The body ends with the hidden finding marker a re-review reads back with
+// ParseFindingMarker to trace a resolved thread to its finding (decision 132).
 func FormatInlineComment(f Finding) string {
 	var sb strings.Builder
 
@@ -61,5 +63,6 @@ func FormatInlineComment(f Finding) string {
 		sb.WriteString("\n</details>\n")
 	}
 
+	sb.WriteString("\n" + findingMarker(f) + "\n")
 	return sb.String()
 }

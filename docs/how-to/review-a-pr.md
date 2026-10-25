@@ -31,9 +31,14 @@ Unverified section stays in the summary without an inline comment. For every
 flag, see the [CLI reference](/reference/cli#review-default-command); for the
 shape of the report, see [Output format](/reference/output-format).
 
-On a re-review, findings the last posted review already listed in a severity
-section, on a file that has not changed since, are left out of the report and
-the inline comments; see [Re-reviews](/reference/output-format#re-reviews).
+On a re-review, a posted review leaves out the findings the last one already
+listed in a severity section, on a file that has not changed since. It also
+leaves out a finding whose inline thread you resolved while the code it quotes
+stayed the same, so resolving the thread is how to dismiss a finding for later
+runs. The resolve has to come from an account other than the one that posted
+the comment. Neither kind is shown in the report or as a new inline comment,
+and a note at the end of the report lists them; see
+[Re-reviews](/reference/output-format#re-reviews).
 
 ## How it works
 

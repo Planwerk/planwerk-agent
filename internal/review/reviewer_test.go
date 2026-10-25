@@ -3,6 +3,9 @@ package review
 import (
 	"bytes"
 	"fmt"
+	"maps"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -568,6 +571,248 @@ func TestRenderResult_InlineReSuppressesOnlyWhatTheLastReviewListed(t *testing.T
 			}
 			if noted := strings.Contains(stdout, "suppressed as previously reported"); noted != tc.wantSuppressed {
 				t.Errorf("second run: suppression note = %v, want %v:\n%s", noted, tc.wantSuppressed, stdout)
+			}
+		})
+	}
+}
+
+// ownThread is a review thread planwerk-agent opened for f, the way GitHub
+// returns it: its first comment is f's inline comment as SubmitPRReview posts
+// it, inline signature included, written by author in review PRR_1.
+func ownThread(f report.Finding, author string, resolved bool, resolvedBy string) github.ReviewThread {
+	return github.ReviewThread{
+		ID:         "RT_" + f.ID,
+		IsResolved: resolved,
+		ResolvedBy: resolvedBy,
+		Path:       f.File,
+		Line:       f.Line,
+		Comments: []github.ReviewThreadComment{
+			{Author: author, Body: report.FormatInlineComment(f) + "\n<!-- planwerk-agent-inline -->", ReviewID: "PRR_1"},
+		},
+	}
+}
+
+// postedIn returns t as the review review opened it.
+func postedIn(t github.ReviewThread, review string) github.ReviewThread {
+	t.ID += "-" + review
+	t.Comments = slices.Clone(t.Comments)
+	t.Comments[0].ReviewID = review
+	return t
+}
+
+func TestDismissedFingerprints(t *testing.T) {
+	t.Parallel()
+
+	a := report.Finding{ID: "W-001", Severity: report.SeverityWarning, Title: "A", File: "a.go", CodeSnippet: "defer f.Close()", Problem: "p"}
+	b := report.Finding{ID: "W-002", Severity: report.SeverityWarning, Title: "B", File: "b.go", CodeSnippet: "db.Exec(query)", Problem: "p"}
+	reposted := report.Finding{ID: "W-003", Severity: report.SeverityWarning, Title: "C", File: "c.go", CodeSnippet: "go run()", Problem: "p"}
+	noReview := report.Finding{ID: "W-004", Severity: report.SeverityWarning, Title: "D", File: "d.go", CodeSnippet: "os.Exit(1)", Problem: "p"}
+	unmarked := ownThread(a, "planwerk-bot", true, "maintainer")
+	unmarked.Comments[0].Body = "**W-009: Posted before the marker** | WARNING\n\n<!-- planwerk-agent-inline -->"
+	foreign := ownThread(a, "alice", true, "maintainer")
+	foreign.Comments[0].Body = report.FormatInlineComment(a)
+
+	threads := []github.ReviewThread{
+		ownThread(a, "planwerk-bot", true, "maintainer"),
+		// The posting identity resolved it, compared case-insensitively: a
+		// local run's own resolve under a personal token.
+		ownThread(a, "planwerk-bot", true, "Planwerk-Bot"),
+		// GitHub names no resolver, as when the Actions bot resolves its own
+		// thread.
+		ownThread(a, "github-actions", true, ""),
+		// Not resolved; the resolver is set only to isolate the check.
+		ownThread(a, "planwerk-bot", false, "maintainer"),
+		foreign,
+		unmarked,
+		// Two findings on the same code in one review are two.
+		ownThread(b, "planwerk-bot", true, "alice"),
+		ownThread(b, "planwerk-bot", true, "maintainer"),
+		// One finding a later run posted again, its file having changed while
+		// its first thread was open, is one.
+		ownThread(reposted, "planwerk-bot", true, "maintainer"),
+		postedIn(ownThread(reposted, "planwerk-bot", true, "maintainer"), "PRR_2"),
+		postedIn(ownThread(reposted, "planwerk-bot", true, "maintainer"), "PRR_3"),
+		// A thread GitHub names no review for adds to no other.
+		postedIn(ownThread(noReview, "planwerk-bot", true, "maintainer"), ""),
+		postedIn(ownThread(noReview, "planwerk-bot", true, "maintainer"), ""),
+	}
+
+	got := dismissedFingerprints(threads)
+	want := map[string]int{
+		report.FindingFingerprint(a):        1,
+		report.FindingFingerprint(b):        2,
+		report.FindingFingerprint(reposted): 1,
+		report.FindingFingerprint(noReview): 1,
+	}
+	if !maps.Equal(got, want) {
+		t.Errorf("dismissedFingerprints = %v, want %v", got, want)
+	}
+}
+
+// TestRenderResult_ResolvedThreadDismissesFinding: a finding whose own inline
+// thread a maintainer resolved stays out of the report sections while the code
+// it quotes is unchanged, even with no prior data block and a reworded title
+// on another line. The note lists it and the data block keeps it (decision
+// 132). Each subtest breaks one condition, and the finding is reported again.
+func TestRenderResult_ResolvedThreadDismissesFinding(t *testing.T) {
+	t.Parallel()
+
+	const source = "package main\n\nfunc save(f *os.File) error {\n\tdefer f.Close()\n\treturn writeAll(f, payload)\n}\n"
+	finding := report.Finding{
+		ID: "W-001", Severity: report.SeverityWarning, Confidence: report.ConfidenceVerified,
+		Title: "Unchecked Close error", File: "main.go", Line: 4,
+		CodeSnippet: "defer f.Close()\nreturn writeAll(f, payload)", Problem: "p", Action: "a",
+	}
+	// posted is the same finding as the earlier run that opened the thread
+	// worded and placed it.
+	posted := finding
+	posted.Title = "Close error ignored"
+	posted.Line = 3
+
+	tests := []struct {
+		name          string
+		resolvedBy    string
+		unresolved    bool
+		source        string
+		threadsErr    error
+		wantDismissed bool
+	}{
+		{name: "resolved by a maintainer", resolvedBy: "maintainer", source: source, wantDismissed: true},
+		{name: "resolved by the posting account", resolvedBy: "planwerk-bot", source: source},
+		{name: "no resolver named", source: source},
+		{name: "quoted code edited", resolvedBy: "maintainer", source: strings.Replace(source, "payload", "body", 1)},
+		{name: "thread unresolved", resolvedBy: "maintainer", unresolved: true, source: source},
+		{name: "threads unavailable", resolvedBy: "maintainer", source: source, threadsErr: &mockError{"graphql: rate limited"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(tc.source), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			var postedBody string
+			gh := &githubtest.Fake{
+				Threads:    []github.ReviewThread{ownThread(posted, "planwerk-bot", !tc.unresolved, tc.resolvedBy)},
+				ThreadsErr: tc.threadsErr,
+				PostPRCommentFn: func(owner, repo string, number int, body string) (string, error) {
+					postedBody = body
+					return "https://github.com/test/repo/pull/1#issuecomment-1", nil
+				},
+			}
+			pr := &github.PR{Owner: "test", Repo: "repo", Number: 1, Title: "Test PR", HeadSHA: "abc123", Dir: dir}
+			opts := Options{Format: "markdown", MinSeverity: report.SeverityInfo, Version: "test", PostReview: true}
+			result := &report.ReviewResult{Summary: "S", Findings: []report.Finding{finding}}
+
+			var out bytes.Buffer
+			if err := newTestRunner(gh).renderResult(&out, result, pr, opts, nil); err != nil {
+				t.Fatalf("renderResult returned error: %v", err)
+			}
+			stdout := out.String()
+			if listed := strings.Contains(stdout, "### W-001: "); listed == tc.wantDismissed {
+				t.Errorf("report lists W-001 = %v, want %v:\n%s", listed, !tc.wantDismissed, stdout)
+			}
+			if noted := strings.Contains(stdout, "inline thread was resolved"); noted != tc.wantDismissed {
+				t.Errorf("dismissal note = %v, want %v:\n%s", noted, tc.wantDismissed, stdout)
+			}
+			if strings.Contains(stdout, "[!NOTE]") && !tc.wantDismissed {
+				t.Errorf("a note was written though nothing was left out:\n%s", stdout)
+			}
+			_, findings, ok := report.ParseDataBlock(postedBody)
+			if !ok || len(findings) != 1 || findings[0].ID != "W-001" {
+				t.Errorf("posted data block = %+v (ok=%v), want it to keep W-001", findings, ok)
+			}
+		})
+	}
+}
+
+// TestRenderResult_DismissedFindingGetsNoInlineComment: under --inline a
+// dismissed finding gets no new inline comment, while the review body's data
+// block still carries it.
+func TestRenderResult_DismissedFindingGetsNoInlineComment(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	const source = "package main\n\nfunc main() {\n\tfmt.Println(\"hello\")\n\tfmt.Println(\"world\")\n\tnewFunc()\n}\n"
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Both findings sit on right-side lines of inlineTestDiff.
+	dismissed := report.Finding{
+		ID: "W-001", Severity: report.SeverityWarning, Confidence: report.ConfidenceVerified,
+		Title: "Unexplained call", File: "main.go", Line: 12, CodeSnippet: "newFunc()", Problem: "p", Action: "a",
+	}
+	listed := report.Finding{
+		ID: "W-002", Severity: report.SeverityWarning, Confidence: report.ConfidenceVerified,
+		Title: "Debug output", File: "main.go", Line: 11, CodeSnippet: `fmt.Println("world")`, Problem: "p", Action: "a",
+	}
+
+	var (
+		body     string
+		comments []github.ReviewComment
+	)
+	gh := &githubtest.Fake{
+		Threads:     []github.ReviewThread{ownThread(dismissed, "github-actions", true, "maintainer")},
+		FetchDiffFn: func(owner, repo string, number int) (string, error) { return inlineTestDiff, nil },
+		SubmitPRReviewFn: func(owner, repo string, number int, commitSHA, b string, cs []github.ReviewComment) (string, error) {
+			body, comments = b, cs
+			return "https://github.com/test/repo/pull/1#pullrequestreview-1", nil
+		},
+	}
+	pr := &github.PR{Owner: "test", Repo: "repo", Number: 1, Title: "Test PR", HeadSHA: "abc123", Dir: dir}
+	opts := Options{Format: "markdown", MinSeverity: report.SeverityInfo, Version: "test", PostReview: true, InlineReview: true}
+	result := &report.ReviewResult{Summary: "S", Findings: []report.Finding{dismissed, listed}}
+
+	if err := newTestRunner(gh).renderResult(&bytes.Buffer{}, result, pr, opts, nil); err != nil {
+		t.Fatalf("renderResult returned error: %v", err)
+	}
+	if ids := inlineCommentIDs(comments); !slices.Equal(ids, []string{"W-002"}) {
+		t.Errorf("inline comment IDs = %v, want [W-002]", ids)
+	}
+	_, findings, ok := report.ParseDataBlock(body)
+	if !ok || len(findings) != 2 {
+		t.Errorf("review body data block = %+v (ok=%v), want both findings", findings, ok)
+	}
+}
+
+// TestWriteSuppressionNote pins the note's shape: one alert with a group per
+// reason. With only previously reported findings it is the note from before
+// resolved threads dismissed anything, byte for byte.
+func TestWriteSuppressionNote(t *testing.T) {
+	t.Parallel()
+
+	nit := report.Finding{Title: "Nit A", File: "unchanged.go"}
+	bug := report.Finding{Title: "Bug B", File: "changed.go"}
+	tests := []struct {
+		name string
+		s    suppressed
+		want string
+	}{
+		{
+			name: "previously reported only",
+			s:    suppressed{unchanged: []report.Finding{nit, bug}},
+			want: "> [!NOTE]\n> 2 finding(s) suppressed as previously reported on unchanged files since the last review:\n> - Nit A (unchanged.go)\n> - Bug B (changed.go)\n\n",
+		},
+		{
+			name: "dismissed only",
+			s:    suppressed{dismissed: []report.Finding{bug}},
+			want: "> [!NOTE]\n> 1 finding(s) suppressed because their inline thread was resolved and the quoted code is unchanged:\n> - Bug B (changed.go)\n\n",
+		},
+		{
+			name: "both",
+			s:    suppressed{unchanged: []report.Finding{nit}, dismissed: []report.Finding{bug}},
+			want: "> [!NOTE]\n> 1 finding(s) suppressed as previously reported on unchanged files since the last review:\n> - Nit A (unchanged.go)\n>\n" +
+				"> 1 finding(s) suppressed because their inline thread was resolved and the quoted code is unchanged:\n> - Bug B (changed.go)\n\n",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var out bytes.Buffer
+			writeSuppressionNote(&out, tc.s)
+			if got := out.String(); got != tc.want {
+				t.Errorf("note =\n%s\nwant\n%s", got, tc.want)
 			}
 		})
 	}

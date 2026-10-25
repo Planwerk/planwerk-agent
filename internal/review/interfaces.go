@@ -42,8 +42,8 @@ type ClaudeRunner interface {
 
 // GitHubClient wraps the GitHub operations the review pipeline needs:
 // fetching a PR checkout, posting and updating PR comments, submitting
-// inline reviews, and fetching the PR diff. Tests inject mock clients
-// to avoid touching the real GitHub API or gh CLI.
+// inline reviews, fetching the PR diff, and reading its review threads.
+// Tests inject mock clients to avoid touching the real GitHub API or gh CLI.
 type GitHubClient interface {
 	FetchAndCheckout(ref string) (*github.PR, error)
 	OpenLocalPR(ref string, opts github.LocalOptions) (*github.PR, error)
@@ -51,6 +51,7 @@ type GitHubClient interface {
 	SubmitPRReview(owner, repo string, number int, commitSHA, body string, comments []github.ReviewComment) (string, error)
 	FetchDiff(owner, repo string, number int) (string, error)
 	FetchReviewComment(owner, repo string, number int) (string, bool, error)
+	FetchReviewThreads(owner, repo string, number int) ([]github.ReviewThread, error)
 }
 
 // defaultClaudeRunner is the production ClaudeRunner backed by the claude

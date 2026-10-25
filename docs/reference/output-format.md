@@ -102,7 +102,7 @@ Each finding includes additional metadata for tooling and automation:
 |-------|-------------|
 | **FixClass** | `AUTO-FIX` or `ASK` — derived from Actionability, indicates whether the fix can be applied directly |
 | **Confidence** | `verified`, `likely`, or `uncertain` — how certain the reviewer is about the finding |
-| **CodeSnippet** | The relevant code fragment from the diff |
+| **CodeSnippet** | The relevant code fragment from the diff; a re-review matches findings on it (see [Re-reviews](#re-reviews)) |
 | **SuggestedFix** | Concrete replacement code for auto-fix findings |
 | **RelatedTo** | IDs of related findings (e.g., `["B-001", "C-003"]`) |
 | **LineEnd** | End line for multi-line findings (enables line-range comments) |
@@ -272,14 +272,40 @@ GitHub Review API instead of (or in addition to) a single summary comment:
 - At most 50 inline comments are posted per review; a finding the rules above
   leave out does not count toward the limit.
 - Auto-fix findings with a `SuggestedFix` use GitHub's `suggestion` syntax, enabling one-click apply
+- Each inline comment ends with two hidden markers:
+  `<!-- planwerk-agent-finding:<fingerprint> -->`, by which a re-review traces a
+  resolved thread to its finding (see [Re-reviews](#re-reviews)), and
+  `<!-- planwerk-agent-inline -->`, by which `address` skips the tool's own
+  threads
 - Findings that cannot be mapped to diff lines are included in the review summary body
 - The PR diff is fetched and parsed to validate that finding lines are within the diff (right side)
 - Implies `--post-review`
 
 ## Re-reviews
 
-A posted review (`--post-review` or `--inline`) first reads the data block of
-the previous one and leaves out the findings that review already reported:
+A posted review (`--post-review` or `--inline`) of a pull request planwerk-agent
+reviewed before leaves two kinds of finding out of the report sections and
+gives neither a new inline comment: the findings the previous review already
+reported on a file that has not changed since, and the findings dismissed in a
+resolved inline thread. A `[!NOTE]` alert at the end of the report lists both,
+in a group each. The new data block still carries every finding, so the next
+re-review can compare against them again.
+
+Two findings are the same when they name the same file and quote the same code:
+their `code_snippet`, compared with every run of whitespace collapsed to one
+space. Neither the line nor the title counts, so a finding that moved down the
+file or was reworded still matches. A finding without a `code_snippet` is
+matched on its file and title instead. Matching is one for one: each earlier
+finding leaves out at most one current finding, even when both the previous
+data block and a resolved thread name it, or when later reviews posted it again
+in threads of their own. Only a finding this run's
+`--min-severity` and `--min-confidence` would show is left out, so one below
+them never takes the place of the finding it repeats. When more current
+findings match than there are earlier ones, the least severe are left out
+first, and the most severe stay in the report.
+
+**Previously reported on an unchanged file.** The review reads the data block
+of the previous one:
 
 - **Where the block comes from.** The most recently updated planwerk-agent post
   on the pull request that opens with the report's `# Review:` heading and
@@ -301,9 +327,9 @@ the previous one and leaves out the findings that review already reported:
 - **Which block in it counts.** Only the one appended at the end of the post,
   with nothing after it but the signature. A block that appears earlier, for
   example in a pull request title the post quotes, is ignored.
-- **What is left out.** A current finding with the same file, line, and title as
-  one in that block, when its file has not changed since the block's
-  `commit_sha`. It is left out of the report and gets no inline comment.
+- **What is left out.** A current finding that is the same as one in that
+  block, when its file has not changed since the block's `commit_sha`. A
+  finding whose file changed is reported again, as a possible regression.
 - **Which block findings count.** Only those that this run's `--min-severity`
   and `--min-confidence` place in a severity section of the summary; the block
   does not record the thresholds of the run that wrote it. A block finding
@@ -311,13 +337,44 @@ the previous one and leaves out the findings that review already reported:
   out. A finding that comes back confirmed or above the thresholds is listed in
   its severity section, with `--inline` as an inline comment too, and one that
   stays Unverified is listed in the Unverified section again.
-- **What is kept.** A `[!NOTE]` alert lists every finding left out, and the new
-  data block still carries all of them, so the next re-review can compare
-  against them again.
-- **When nothing is left out.** No such post exists; the lookup fails; the
-  newest such post's data block cannot be read, for example because the body
-  was truncated or its `commit_sha` is not a hex commit SHA; or the diff since
-  its `commit_sha` cannot be computed. An older post is not tried instead.
+- **When the block leaves nothing out.** No such post exists; the lookup fails;
+  the newest such post's data block cannot be read, for example because the
+  body was truncated or its `commit_sha` is not a hex commit SHA; or the diff
+  since its `commit_sha` cannot be computed. An older post is not tried
+  instead. Resolved threads are still read.
 - **How far back it looks.** The lookup reads the last 100 comments and the last
   100 reviews, so it misses a summary comment that has more than 100 newer
   comments after it.
+
+**Dismissed in a resolved thread.** Each inline comment ends with a hidden
+`<!-- planwerk-agent-finding:<fingerprint> -->` marker. The fingerprint is the
+first 16 hex digits of the SHA-256 of the finding's identity: its file and
+whitespace-collapsed `code_snippet`, or its file and title. The review reads the
+pull request's review threads and leaves out a current finding when all of
+these hold:
+
+- **The thread is planwerk-agent's.** Its first comment carries the inline
+  signature and the finding's marker.
+- **Someone else resolved it.** The account that resolved the thread is not the
+  one that posted the comment. A thread resolved by the posting account, or one
+  GitHub names no resolver for, as when the GitHub Actions bot resolves it,
+  dismisses nothing. So when the review runs under a personal token, resolving
+  its threads with that same token dismisses nothing; the unchanged-file rule
+  above still applies.
+- **The quoted code is still there.** The finding has a `code_snippet`, and the
+  whole of it is still in the file as one block, with whitespace and `//`
+  markers ignored, and with or without the leading `+`/`-` diff markers of a
+  quote taken from the diff. This holds even when the push changed the file
+  elsewhere. An edit to the quoted lines reports the finding again, unless the
+  same code, whitespace and `//` markers aside, still appears elsewhere in the
+  file.
+
+A review posts a finding again when its file changed while its thread was
+still open, so several resolved threads can carry one finding's marker. They
+dismiss as many current findings as the most of them any single review opened:
+one finding posted by three reviews dismisses one, and two findings on the same
+code in one review dismiss two.
+
+This needs no data block. A comment posted before the marker existed dismisses
+nothing, and when the threads cannot be read, the review logs a warning and
+dismisses nothing.

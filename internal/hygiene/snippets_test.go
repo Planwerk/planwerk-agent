@@ -3,6 +3,7 @@ package hygiene
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/planwerk/planwerk-agent/internal/report"
@@ -318,6 +319,59 @@ func TestVerifySnippets_PartialLineMatch(t *testing.T) {
 			VerifySnippets(result, dir, changed)
 			if got := result.Findings[0].Confidence; got != tc.want {
 				t.Errorf("confidence = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestSnippetInFile pins the whole-snippet match a resolved thread's dismissal
+// rests on: whitespace and diff markers aside, every line of the quote must
+// still be in the file, in one block. One edited line voids it even where
+// VerifySnippets' line-level match would still pass the snippet.
+func TestSnippetInFile(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "repo")
+	const content = "func flush(f *os.File) error {\n" +
+		"\tif err := writeTrailer(f, checksum); err != nil {\n" +
+		"\t\treturn fmt.Errorf(\"flushing %s: %w\", f.Name(), err)\n" +
+		"\t}\n" +
+		"\treturn nil\n" +
+		"}\n"
+	writeChangedFile(t, dir, "main.go", content)
+	writeChangedFile(t, root, "escape.go", content)
+	// edited.go is main.go after a push that changed one line of the quote.
+	editedContent := strings.Replace(content, "checksum", "digest", 1)
+	writeChangedFile(t, dir, "edited.go", editedContent)
+	// Lists whose items start at column 0 with the '-' stripDiffMarkers would
+	// read as a diff marker.
+	writeChangedFile(t, dir, "steps.yml", "- name: Checkout\n  uses: actions/checkout@v4\n- name: Build\n  run: make\n")
+	writeChangedFile(t, dir, "README.md", "# Setup\n\n- Install Go 1.26\n- Run make plugin-validate\n+ Optional: run make eval\n")
+
+	const quote = "if err := writeTrailer(f, checksum); err != nil {\n\treturn fmt.Errorf(\"flushing %s: %w\", f.Name(), err)"
+	if !located(matchable(editedContent), matchableSnippet(quote), distinctiveSnippetLines(quote)) {
+		t.Fatal("the line-level match no longer passes the quote against edited.go, so that case below shows nothing")
+	}
+
+	for _, tc := range []struct {
+		name, dir, file, snippet string
+		want                     bool
+	}{
+		{name: "the quote as written", dir: dir, file: "main.go", snippet: quote, want: true},
+		{name: "different indentation", dir: dir, file: "main.go", snippet: "    if err := writeTrailer(f, checksum); err != nil {\n  return fmt.Errorf(\"flushing %s: %w\", f.Name(), err)", want: true},
+		{name: "leading diff markers", dir: dir, file: "main.go", snippet: "+\tif err := writeTrailer(f, checksum); err != nil {\n+\t\treturn fmt.Errorf(\"flushing %s: %w\", f.Name(), err)", want: true},
+		{name: "YAML step list quoted verbatim", dir: dir, file: "steps.yml", snippet: "- name: Checkout\n  uses: actions/checkout@v4\n- name: Build", want: true},
+		{name: "YAML step list quoted from the diff", dir: dir, file: "steps.yml", snippet: "+- name: Checkout\n+  uses: actions/checkout@v4\n+- name: Build", want: true},
+		{name: "Markdown list quoted verbatim", dir: dir, file: "README.md", snippet: "- Install Go 1.26\n- Run make plugin-validate\n+ Optional: run make eval", want: true},
+		{name: "YAML step list with a step edited", dir: dir, file: "steps.yml", snippet: "- name: Checkout\n  uses: actions/checkout@v3\n- name: Build"},
+		{name: "one line of the quote edited in the file", dir: dir, file: "edited.go", snippet: quote},
+		{name: "missing file", dir: dir, file: "gone.go", snippet: quote},
+		{name: "path leaving dir", dir: dir, file: "../escape.go", snippet: quote},
+		{name: "empty snippet", dir: dir, file: "main.go", snippet: " \n\t"},
+		{name: "empty dir", dir: "", file: "main.go", snippet: quote},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := SnippetInFile(tc.dir, tc.file, tc.snippet); got != tc.want {
+				t.Errorf("SnippetInFile(%q, %q, %q) = %v, want %v", tc.dir, tc.file, tc.snippet, got, tc.want)
 			}
 		})
 	}

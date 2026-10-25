@@ -63,6 +63,10 @@ func (c *evalGitHubClient) FetchReviewComment(string, string, int) (string, bool
 	return "", false, nil
 }
 
+func (c *evalGitHubClient) FetchReviewThreads(string, string, int) ([]github.ReviewThread, error) {
+	return nil, nil
+}
+
 // RunOptions selects the review passes a case run adds to the primary review.
 // Thorough mirrors `review --thorough` (the adversarial pass) and Specialists
 // mirrors `review --specialists` (the domain specialist fan-out).

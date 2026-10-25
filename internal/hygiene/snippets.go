@@ -110,6 +110,30 @@ func VerifySnippets(result *report.ReviewResult, dir string, changedFiles []stri
 	return demoted
 }
 
+// SnippetInFile reports whether the whole of snippet is still in the current
+// content of file under dir, compared in the gate's matchable form: whitespace
+// and // line-comment markers are ignored, and the snippet matches with or
+// without the leading +/- diff markers matchableSnippet strips, since a line of
+// the file can begin with one itself, as a YAML or Markdown list item does.
+// Unlike VerifySnippets it needs the snippet as one contiguous block; one
+// surviving distinctive line is not enough, because the question is whether
+// the quoted code is unchanged, not whether it is real. It finds the block
+// anywhere in the file, not only where the finding pointed. An empty dir or
+// snippet, a file path that leaves dir, and an unreadable file all return
+// false. A re-review asks it before a resolved thread may dismiss a finding
+// (decision 132).
+func SnippetInFile(dir, file, snippet string) bool {
+	if dir == "" {
+		return false
+	}
+	needle := matchableSnippet(snippet)
+	if needle == "" {
+		return false
+	}
+	haystack := matchable(loadChangedContent(dir, []string{file}))
+	return haystack != "" && (strings.Contains(haystack, needle) || strings.Contains(haystack, matchable(snippet)))
+}
+
 // snippetReason* are the SnippetCheck strings the gate stamps on a demoted
 // finding, kept as constants so the writer, the renderer, and the tests share
 // one spelling. snippetReasonNoQuote covers a finding whose quoted evidence is

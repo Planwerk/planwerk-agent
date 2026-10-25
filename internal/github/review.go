@@ -15,15 +15,15 @@ type ReviewComment struct {
 	Path      string `json:"path"`
 	Line      int    `json:"line"`                 // absolute line number on RIGHT side
 	Side      string `json:"side"`                 // "RIGHT" for new-file lines
-	StartLine int    `json:"start_line,omitempty"`  // for multi-line comments
-	StartSide string `json:"start_side,omitempty"`  // "RIGHT" when StartLine is set
+	StartLine int    `json:"start_line,omitempty"` // for multi-line comments
+	StartSide string `json:"start_side,omitempty"` // "RIGHT" when StartLine is set
 	Body      string `json:"body"`
 }
 
 // ReviewRequest represents the payload for creating a PR review.
 type ReviewRequest struct {
 	Body     string          `json:"body"`
-	Event    string          `json:"event"`     // "COMMENT"
+	Event    string          `json:"event"` // "COMMENT"
 	CommitID string          `json:"commit_id"`
 	Comments []ReviewComment `json:"comments"`
 }
@@ -37,6 +37,9 @@ type ReviewThreadComment struct {
 	Author    string
 	Body      string
 	CreatedAt string
+	// ReviewID is the node ID of the pull request review the comment was
+	// posted in. It is empty when GitHub names no review.
+	ReviewID string
 }
 
 // ReviewThread is a PR review thread: a chain of inline comments anchored to a
@@ -48,6 +51,10 @@ type ReviewThread struct {
 	ID         string
 	IsResolved bool
 	IsOutdated bool
+	// ResolvedBy is the login of the user who resolved the thread. It is empty
+	// when the thread is unresolved or GitHub names no user, as for a bot or a
+	// deleted account.
+	ResolvedBy string
 	Path       string
 	Line       int
 	DiffHunk   string
@@ -69,7 +76,11 @@ type reviewThreadsResponse struct {
 						ID         string `json:"id"`
 						IsResolved bool   `json:"isResolved"`
 						IsOutdated bool   `json:"isOutdated"`
-						Comments   struct {
+						// ResolvedBy stays zero for a JSON null.
+						ResolvedBy struct {
+							Login string `json:"login"`
+						} `json:"resolvedBy"`
+						Comments struct {
 							Nodes []struct {
 								Author struct {
 									Login string `json:"login"`
@@ -79,6 +90,10 @@ type reviewThreadsResponse struct {
 								Path      string `json:"path"`
 								Line      int    `json:"line"`
 								DiffHunk  string `json:"diffHunk"`
+								// PullRequestReview stays zero for a JSON null.
+								PullRequestReview struct {
+									ID string `json:"id"`
+								} `json:"pullRequestReview"`
 							} `json:"nodes"`
 						} `json:"comments"`
 					} `json:"nodes"`
@@ -89,8 +104,9 @@ type reviewThreadsResponse struct {
 }
 
 // reviewThreadsQuery pages a PR's review threads, carrying each thread's
-// resolved/outdated status and its full comment chain (with the anchored file,
-// line, and diff hunk on each comment).
+// resolved/outdated status, the login of the user who resolved it, and its full
+// comment chain (with the anchored file, line, and diff hunk, and the review it
+// was posted in, on each comment).
 const reviewThreadsQuery = `query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
@@ -100,8 +116,9 @@ const reviewThreadsQuery = `query($owner: String!, $name: String!, $number: Int!
           id
           isResolved
           isOutdated
+          resolvedBy { login }
           comments(first: 100) {
-            nodes { author { login } body createdAt path line diffHunk }
+            nodes { author { login } body createdAt path line diffHunk pullRequestReview { id } }
           }
         }
       }
@@ -111,9 +128,10 @@ const reviewThreadsQuery = `query($owner: String!, $name: String!, $number: Int!
 
 // FetchReviewThreads returns every review thread on the PR via the GitHub
 // GraphQL API, following pagination so a PR with more than 100 threads is fully
-// covered. Each thread carries its resolved/outdated status, the full comment
-// chain, and the file/line/diff-hunk the thread is anchored to. Use
-// FilterReviewThreads to drop resolved threads and the tool's own findings.
+// covered. Each thread carries its resolved/outdated status, who resolved it,
+// the full comment chain with the review each comment was posted in, and the
+// file/line/diff-hunk the thread is anchored to. Use FilterReviewThreads to drop resolved threads and the tool's own
+// findings, and IsOwnThread to keep only the latter.
 func (Client) FetchReviewThreads(owner, repo string, number int) ([]ReviewThread, error) {
 	var all []ReviewThread
 	cursor := ""
@@ -179,12 +197,14 @@ func parseReviewThreads(raw []byte) (threads []ReviewThread, hasNextPage bool, e
 			ID:         n.ID,
 			IsResolved: n.IsResolved,
 			IsOutdated: n.IsOutdated,
+			ResolvedBy: n.ResolvedBy.Login,
 		}
 		for _, c := range n.Comments.Nodes {
 			t.Comments = append(t.Comments, ReviewThreadComment{
 				Author:    c.Author.Login,
 				Body:      c.Body,
 				CreatedAt: c.CreatedAt,
+				ReviewID:  c.PullRequestReview.ID,
 			})
 		}
 		if len(n.Comments.Nodes) > 0 {
@@ -214,12 +234,20 @@ func FilterReviewThreads(threads []ReviewThread, includeResolved bool) []ReviewT
 		if t.IsResolved && !includeResolved {
 			continue
 		}
-		if strings.Contains(t.Comments[0].Body, reviewSignature) {
+		if IsOwnThread(t) {
 			continue
 		}
 		out = append(out, t)
 	}
 	return out
+}
+
+// IsOwnThread reports whether t is one of planwerk-agent's inline findings: its
+// first comment carries the inline signature signReviewComments stamps on every
+// inline comment. A signature in a reply does not count, and a thread with no
+// comments is not one.
+func IsOwnThread(t ReviewThread) bool {
+	return len(t.Comments) > 0 && strings.Contains(t.Comments[0].Body, reviewSignature)
 }
 
 // signReviewComments returns a copy of comments with planwerk-agent's inline

@@ -7,8 +7,10 @@ import (
 )
 
 // reviewThreadsPage is a representative GraphQL response carrying two threads
-// (one unresolved with a two-comment chain, one resolved) and a next-page
-// cursor, so parseReviewThreads is exercised on flattening and pagination.
+// (one unresolved with a two-comment chain from two reviews and a null
+// resolver, one resolved by a named user whose comment names no review) and a
+// next-page cursor, so parseReviewThreads is exercised on flattening and
+// pagination.
 const reviewThreadsPage = `{
   "data": {
     "repository": {
@@ -20,6 +22,7 @@ const reviewThreadsPage = `{
               "id": "RT_1",
               "isResolved": false,
               "isOutdated": false,
+              "resolvedBy": null,
               "comments": {
                 "nodes": [
                   {
@@ -28,7 +31,8 @@ const reviewThreadsPage = `{
                     "createdAt": "2026-06-01T10:00:00Z",
                     "path": "internal/foo/bar.go",
                     "line": 42,
-                    "diffHunk": "@@ -40,3 +40,3 @@\n-old\n+new"
+                    "diffHunk": "@@ -40,3 +40,3 @@\n-old\n+new",
+                    "pullRequestReview": { "id": "PRR_1" }
                   },
                   {
                     "author": { "login": "author" },
@@ -36,7 +40,8 @@ const reviewThreadsPage = `{
                     "createdAt": "2026-06-01T11:00:00Z",
                     "path": "internal/foo/bar.go",
                     "line": 42,
-                    "diffHunk": "@@ -40,3 +40,3 @@\n-old\n+new"
+                    "diffHunk": "@@ -40,3 +40,3 @@\n-old\n+new",
+                    "pullRequestReview": { "id": "PRR_2" }
                   }
                 ]
               }
@@ -45,6 +50,7 @@ const reviewThreadsPage = `{
               "id": "RT_2",
               "isResolved": true,
               "isOutdated": true,
+              "resolvedBy": { "login": "maintainer" },
               "comments": {
                 "nodes": [
                   {
@@ -53,7 +59,8 @@ const reviewThreadsPage = `{
                     "createdAt": "2026-06-01T09:00:00Z",
                     "path": "internal/foo/baz.go",
                     "line": 7,
-                    "diffHunk": "@@ -5,2 +5,2 @@"
+                    "diffHunk": "@@ -5,2 +5,2 @@",
+                    "pullRequestReview": null
                   }
                 ]
               }
@@ -98,6 +105,29 @@ func TestParseReviewThreads(t *testing.T) {
 
 	if !threads[1].IsResolved || !threads[1].IsOutdated {
 		t.Errorf("second thread should be resolved and outdated, got %+v", threads[1])
+	}
+
+	// A null resolvedBy leaves ResolvedBy empty; a named resolver is kept.
+	if first.ResolvedBy != "" || threads[1].ResolvedBy != "maintainer" {
+		t.Errorf("ResolvedBy = [%q, %q], want [\"\", \"maintainer\"]", first.ResolvedBy, threads[1].ResolvedBy)
+	}
+
+	// Each comment keeps the review it was posted in; a null review leaves
+	// ReviewID empty.
+	if got := []string{first.Comments[0].ReviewID, first.Comments[1].ReviewID, threads[1].Comments[0].ReviewID}; got[0] != "PRR_1" || got[1] != "PRR_2" || got[2] != "" {
+		t.Errorf("ReviewID = %q, want [PRR_1 PRR_2 \"\"]", got)
+	}
+}
+
+// TestReviewThreadsQuery_SelectsResolverAndReview: the query selects the two
+// fields a re-review's dismissals read (decision 132). parseReviewThreads
+// leaves either empty when the query stops asking for it, which its fixture
+// test cannot notice.
+func TestReviewThreadsQuery_SelectsResolverAndReview(t *testing.T) {
+	for _, sel := range []string{"resolvedBy { login }", "pullRequestReview { id }"} {
+		if !strings.Contains(reviewThreadsQuery, sel) {
+			t.Errorf("reviewThreadsQuery does not select %q", sel)
+		}
 	}
 }
 
@@ -152,6 +182,27 @@ func TestFilterReviewThreads_SkipsInlineSignature(t *testing.T) {
 	got := FilterReviewThreads(threads, false)
 	if len(got) != 1 || got[0].ID != "human" {
 		t.Errorf("filter = %+v, want only the human thread (the tool's own inline comment is skipped)", got)
+	}
+}
+
+// TestIsOwnThread: only a signature in the thread's first comment marks it as
+// one of the tool's own; a reply that carries it does not.
+func TestIsOwnThread(t *testing.T) {
+	signed := "**C-1: SQL injection** | CRITICAL\n" + reviewSignature
+	for _, tc := range []struct {
+		name   string
+		thread ReviewThread
+		want   bool
+	}{
+		{name: "signature in the first comment", thread: ReviewThread{Comments: []ReviewThreadComment{{Body: signed}, {Body: "fixed"}}}, want: true},
+		{name: "signature only in a reply", thread: ReviewThread{Comments: []ReviewThreadComment{{Body: "please rename"}, {Body: signed}}}},
+		{name: "no comments", thread: ReviewThread{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := IsOwnThread(tc.thread); got != tc.want {
+				t.Errorf("IsOwnThread = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
 
