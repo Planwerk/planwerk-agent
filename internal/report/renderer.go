@@ -24,14 +24,10 @@ func NewRenderer(w io.Writer) *Renderer {
 func (r *Renderer) RenderJSON(result ReviewResult, minSeverity Severity, minConfidence Confidence) error {
 	cf := Categorize(result.Findings, minSeverity, minConfidence)
 	filtered := ReviewResult{
+		Findings:       cf.All(),
 		Summary:        result.Summary,
 		Recommendation: result.Recommendation,
 	}
-	filtered.Findings = append(filtered.Findings, cf.Blocking...)
-	filtered.Findings = append(filtered.Findings, cf.Critical...)
-	filtered.Findings = append(filtered.Findings, cf.Warning...)
-	filtered.Findings = append(filtered.Findings, cf.Info...)
-	filtered.Findings = append(filtered.Findings, cf.Unverified...)
 	// Carry the run-level gate records so --format json tells the same story the
 	// posted data block does; the counts describe the whole run, not the filtered
 	// list.

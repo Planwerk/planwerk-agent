@@ -31,12 +31,13 @@ import (
 )
 
 const (
-	// repoURL is planwerk-agent's repository, linked from every footer so the
-	// artifact points back at the tool that produced it.
-	repoURL = "https://github.com/planwerk/planwerk-agent"
+	// RepoURL is planwerk-agent's repository, linked from every footer and
+	// named as the SARIF tool's informationUri, so the artifact points back at
+	// the tool that produced it.
+	RepoURL = "https://github.com/planwerk/planwerk-agent"
 
 	// Link is the Markdown link to the repository embedded in the footers.
-	Link = "[planwerk-agent](" + repoURL + ")"
+	Link = "[planwerk-agent](" + RepoURL + ")"
 
 	// assistantMarker is the stable, model-independent prefix of the assistant
 	// attribution clause. AssistantWith appends ":<model id>" to it when a model

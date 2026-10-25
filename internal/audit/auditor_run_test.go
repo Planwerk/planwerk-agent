@@ -2,6 +2,7 @@ package audit
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -562,6 +563,61 @@ func TestAuditRun_CaptureProposes(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "Captured knowledge proposals:") {
 		t.Errorf("missing the capture proposals on stdout:\n%s", out.String())
+	}
+}
+
+// TestAuditRun_SARIFIsTheWholeOutput: under --format sarif the audit prints one
+// SARIF log and nothing else; the capture pass still runs, but its printed
+// proposals are discarded, as under json (decision 134).
+func TestAuditRun_SARIFIsTheWholeOutput(t *testing.T) {
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+
+	patternDir := seedPatternDir(t)
+	gh := &githubtest.Fake{
+		CloneRepoFn:         func(ref string) (*github.Repo, error) { return fakeRepo(t, "acme", "widgets"), nil },
+		DefaultBranchHEADFn: func(owner, name string) (string, error) { return "sha-cap-sarif", nil },
+	}
+	cp := &fakeCapturer{result: onePatternProposal()}
+	runner := captureAuditRunner(t, gh, findingAuditClaude(), cp)
+	opts := baseAuditOpts(patternDir)
+	opts.Format = "sarif"
+
+	var out bytes.Buffer
+	if err := runner.Run(&out, opts); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if cp.calls.Load() != 1 {
+		t.Fatalf("capturer called %d times, want 1: capture still runs under sarif", cp.calls.Load())
+	}
+	if strings.Contains(out.String(), "Captured knowledge proposals:") {
+		t.Errorf("the capture render must not follow the SARIF log:\n%s", out.String())
+	}
+	var doc struct {
+		Runs []struct {
+			Results []struct {
+				Locations []struct {
+					PhysicalLocation struct {
+						ArtifactLocation struct {
+							URI string `json:"uri"`
+						} `json:"artifactLocation"`
+						Region struct {
+							StartLine int `json:"startLine"`
+						} `json:"region"`
+					} `json:"physicalLocation"`
+				} `json:"locations"`
+			} `json:"results"`
+		} `json:"runs"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &doc); err != nil {
+		t.Fatalf("stdout is not one JSON document: %v\n%s", err, out.String())
+	}
+	if len(doc.Runs) != 1 || len(doc.Runs[0].Results) != 1 || len(doc.Runs[0].Results[0].Locations) != 1 {
+		t.Fatalf("got %+v, want one run with one located result", doc.Runs)
+	}
+	loc := doc.Runs[0].Results[0].Locations[0].PhysicalLocation
+	if loc.ArtifactLocation.URI != "db.go" || loc.Region.StartLine != 3 {
+		t.Errorf("location = %+v, want db.go at line 3", loc)
 	}
 }
 

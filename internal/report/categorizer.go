@@ -69,6 +69,19 @@ func sortByConfidence(findings []Finding) {
 	})
 }
 
+// All returns every categorized finding in report order: Blocking, Critical,
+// Warning, Info, then Unverified, each bucket in its sorted order. It is the
+// list --format json and --format sarif print. It returns nil when every bucket
+// is empty, so an empty JSON findings list still encodes as null.
+func (cf CategorizedFindings) All() []Finding {
+	var all []Finding
+	all = append(all, cf.Blocking...)
+	all = append(all, cf.Critical...)
+	all = append(all, cf.Warning...)
+	all = append(all, cf.Info...)
+	return append(all, cf.Unverified...)
+}
+
 func (cf CategorizedFindings) Total() int {
 	return len(cf.Blocking) + len(cf.Critical) + len(cf.Warning) + len(cf.Info) + len(cf.Unverified)
 }

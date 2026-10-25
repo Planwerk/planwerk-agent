@@ -258,6 +258,42 @@ planwerk-agent schema review > report-result.schema.json
 check-jsonschema --schemafile report-result.schema.json review.json
 ```
 
+## SARIF
+
+`--format sarif` on `review` and `audit` writes one
+[SARIF 2.1.0](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html)
+log to stdout, for GitHub code scanning; for the workflow that uploads it, see
+[Upload findings to code scanning](/how-to/use-the-github-action#upload-findings-to-code-scanning).
+The log holds the findings `--min-severity` and `--min-confidence` keep, the
+set `--format json` prints and in its order, as one run of the tool
+`planwerk-agent`.
+
+| SARIF field | Filled from |
+|-------------|-------------|
+| `ruleId` | `pattern/<slug>` of the finding's pattern name: lowercased, its letters and digits kept, and each run of other characters between them turned into one `-`, so `Hardcoded secrets` gives `pattern/hardcoded-secrets`. A finding that names no pattern gets `finding`. Each rule is listed once in `tool.driver.rules`, with the pattern name as its `shortDescription` |
+| `level` | `error` for BLOCKING and CRITICAL, `warning` for WARNING, and `note` for INFO and for every finding of the Unverified / Low-Confidence section, whatever its severity |
+| `message.text` | The title, then the problem |
+| `locations[0]` | The file, as a URI relative to the repository root. `line` becomes `startLine`, and `line_end` becomes `endLine` when it ends after `line`; a finding without a line has no region |
+| `partialFingerprints` | `planwerkFinding/v1`: a SHA-256 over the file, the rule, and the quoted code with its whitespace collapsed (the line when no code is quoted), so the alert survives a moved line. Repeats get `#1`, `#2`, and so on |
+| `properties` | `finding_id`, `severity` (the four-level severity that `level` folds into three), `confidence`, `actionability`, and `unverified` |
+
+A finding that names no file is not a result, because code scanning shows every
+result in a file. It goes to `invocations[0].toolExecutionNotifications`
+instead: one notification at level `warning` names every such finding by ID and
+title. `executionSuccessful` is `true`, since a run whose review failed prints
+no log.
+
+The log is the whole of stdout, so `review` refuses `--post-review`, `--inline`,
+and `--coverage-map` with `--format sarif`, and `audit` refuses
+`--create-issues`, and `--capture-wiki` without `--yes`. With `--wiki` the
+capture pass still runs, and its printed proposals are discarded, as under
+`--format json`.
+
+```bash
+planwerk-agent --format sarif owner/repo#123 > results.sarif
+planwerk-agent audit --format sarif owner/repo > audit.sarif
+```
+
 ## Inline Review Mode (`--inline`)
 
 With `--inline`, findings are posted as inline comments on the PR using the

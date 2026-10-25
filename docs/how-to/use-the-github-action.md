@@ -70,6 +70,62 @@ against the checkout's `origin` and switches the working tree to the PR head via
 `gh pr checkout`. The default stays `false` so existing workflows are
 unaffected. See [Use local mode](/how-to/use-local-mode) for the full semantics.
 
+## Upload findings to code scanning
+
+With `format: sarif` the action writes the review as a SARIF report to a file
+and names it in the `sarif-file` output, and
+`github/codeql-action/upload-sarif` turns it into code scanning alerts on the
+pull request and under **Security → Code scanning**:
+
+```yaml
+name: Planwerk Agent code scanning
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: read
+  security-events: write # upload-sarif
+  actions: read # upload-sarif, private repositories only
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: Planwerk/planwerk-agent@<commit-sha> # vX.Y.Z
+        id: review
+        with:
+          version: vX.Y.Z
+          local: true
+          format: sarif
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+      - uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        if: steps.review.outputs.sarif-file != ''
+        with:
+          sarif_file: ${{ steps.review.outputs.sarif-file }}
+          category: planwerk-agent
+```
+
+A SARIF run posts nothing. `post-inline` is skipped, because the comment the
+action posts is the Markdown report; the alerts take the place of the inline
+comments, and the count outputs count the results of the SARIF report.
+`local: true` reviews the checkout and leaves it on the pull request head, so
+`upload-sarif` reads the files at the commit the review read and uploads the
+analysis for that commit, under `refs/pull/<number>/head`; the alerts' lines
+are the lines the review cites. A workflow whose checkout stays on the merge
+commit, as it does without `local: true`, uploads the analysis for the merge
+commit instead, so a change on the base branch above a finding in the same file
+shifts its line. `category` names the analysis, so an upload under another
+category, such as one of an `audit` run, does not replace it.
+
+Code scanning has to be available for the repository: it is on a public
+repository, and a private one needs GitHub Code Security. A pull request from a
+fork gets no secrets and a read-only token, so the review has no API key and the
+upload no write access. For how each finding maps to a SARIF result, see
+[SARIF](/reference/output-format#sarif).
+
 ## Resolve outdated threads
 
 A push that rewrites the lines an inline comment sat on leaves its thread

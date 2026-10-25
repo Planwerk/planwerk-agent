@@ -2,6 +2,7 @@ package review
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"os"
@@ -151,6 +152,79 @@ func TestRenderResult_NoPost(t *testing.T) {
 
 	if out.Len() == 0 {
 		t.Error("expected output to be written to writer")
+	}
+}
+
+// TestRenderResult_SARIFIsTheWholeOutput: under --format sarif the log is the
+// only thing on stdout. The coverage map, which follows the JSON document under
+// --format json, is left out, and nothing reaches GitHub, not even the prior
+// review's read: the command refuses --post-review and --inline with sarif, and
+// renderResult returns the log ahead of the code those flags reach, so each
+// case sets one of them to prove the early return holds (decision 134).
+func TestRenderResult_SARIFIsTheWholeOutput(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		inline bool
+	}{
+		{name: "post-review"},
+		{name: "inline", inline: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			gh := &githubtest.Fake{
+				PostPRCommentFn: func(owner, repo string, number int, body string) (string, error) {
+					t.Fatal("a SARIF run must not post a PR comment")
+					return "", nil
+				},
+				SubmitPRReviewFn: func(owner, repo string, number int, commitSHA, body string, comments []github.ReviewComment) (string, error) {
+					t.Fatal("a SARIF run must not submit a review")
+					return "", nil
+				},
+				FetchReviewCommentFn: func(owner, repo string, number int) (string, bool, error) {
+					t.Fatal("a SARIF run must not read the prior review")
+					return "", false, nil
+				},
+				FetchReviewThreadsFn: func(owner, repo string, number int) ([]github.ReviewThread, error) {
+					t.Fatal("a SARIF run must not read the review threads")
+					return nil, nil
+				},
+			}
+			result := &report.ReviewResult{
+				Summary: "One finding",
+				Findings: []report.Finding{
+					{ID: "W-1", Severity: report.SeverityWarning, Title: "raw SQL", File: "db.go", Line: 3, Problem: "p", Action: "a"},
+				},
+			}
+			coverage := &report.CoverageResult{Entries: []report.CoverageEntry{
+				{Function: "Query", File: "db.go", Rating: "GAP"},
+			}}
+			pr := &github.PR{Owner: "test", Repo: "repo", Number: 1, Title: "Test PR"}
+			opts := Options{
+				Format:       "sarif",
+				MinSeverity:  report.SeverityInfo,
+				Version:      "test",
+				PostReview:   !tc.inline,
+				InlineReview: tc.inline,
+			}
+
+			var out bytes.Buffer
+			if err := newTestRunner(gh).renderResult(&out, result, pr, opts, coverage); err != nil {
+				t.Fatalf("renderResult returned error: %v", err)
+			}
+			var doc map[string]any
+			if err := json.Unmarshal(out.Bytes(), &doc); err != nil {
+				t.Fatalf("stdout is not one JSON document: %v\n%s", err, out.String())
+			}
+			if !strings.Contains(out.String(), `"version": "2.1.0"`) {
+				t.Errorf("stdout is not a SARIF 2.1.0 log:\n%s", out.String())
+			}
+			if strings.Contains(out.String(), "Test Coverage Map") {
+				t.Errorf("the coverage map must not follow the SARIF log:\n%s", out.String())
+			}
+		})
 	}
 }
 

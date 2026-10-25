@@ -34,6 +34,10 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/workspace"
 )
 
+// formatSARIF is the Options.Format under which the review writes one SARIF
+// log as the whole of stdout and posts nothing (decision 134).
+const formatSARIF = "sarif"
+
 type Options struct {
 	PRRef           string
 	PatternDirs     []string
@@ -507,10 +511,10 @@ func (r *Runner) runCapture(w io.Writer, pr *github.PR, opts Options, result *re
 		}
 	}
 
-	// Under --format json the human-readable capture render would corrupt the JSON
-	// on stdout, so discard it; the PR comment still occurs.
+	// Under --format json or sarif the human-readable capture render would
+	// corrupt the document on stdout, so discard it.
 	out := w
-	if opts.Format == "json" {
+	if opts.Format == "json" || opts.Format == formatSARIF {
 		out = io.Discard
 	}
 
@@ -540,6 +544,14 @@ func (r *Runner) renderResult(w io.Writer, result *report.ReviewResult, pr *gith
 	// rule should make the model name the specific blocking finding instead.
 	if len(result.Findings) > 0 && report.IsBoilerplateRecommendation(result.Recommendation) {
 		slog.Warn("review recommendation is generic — the model did not name a specific finding", "recommendation", result.Recommendation)
+	}
+
+	// SARIF is the whole of stdout, so it returns ahead of the suppression
+	// read, the coverage map and every posting branch: the map and the
+	// suppression note are Markdown, and the command refuses to post a SARIF
+	// run (decision 134).
+	if opts.Format == formatSARIF {
+		return report.NewRenderer(w).RenderSARIF(*result, opts.MinSeverity, opts.MinConfidence, opts.Version)
 	}
 
 	// Persistent skip-suppression: when re-reviewing a PR, drop findings the user

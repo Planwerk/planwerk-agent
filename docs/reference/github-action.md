@@ -12,9 +12,9 @@ and outputs; for a working workflow, see
 | `pr-ref` | PR reference (URL, `owner/repo#number`, or bare PR number for the current repo) | the PR that triggered the workflow |
 | `patterns` | Comma-separated additional pattern directories | `""` |
 | `min-severity` | Minimum severity to report (`info`, `warning`, `critical`, `blocking`). Empty falls through to `.planwerk/config.yaml` `review.min-severity`, then to the compiled-in `info` | *(empty)* |
-| `format` | Output format written to the action log (`markdown`, `json`); posting always uses markdown. Empty falls through to `.planwerk/config.yaml` `review.format`, then to the compiled-in `markdown` | *(empty)* |
+| `format` | Output format (`markdown`, `json`, `sarif`). `markdown` and `json` go to the action log; `sarif` goes to a file named by the `sarif-file` output. Posting always uses markdown, so `post-inline` is ignored for `json` and `sarif`. The action decides by this input, so set `sarif` here rather than in `.planwerk/config.yaml`. Empty falls through to `.planwerk/config.yaml` `review.format`, then to the compiled-in `markdown` | *(empty)* |
 | `max-findings` | Cap on findings returned (`0` disables cap) | `0` |
-| `post-inline` | Post findings as inline review comments and keep one summary comment up to date. A finding below `min-severity` or in the summary's Unverified section gets no inline comment | `true` |
+| `post-inline` | Post findings as inline review comments and keep one summary comment up to date. A finding below `min-severity` or in the summary's Unverified section gets no inline comment. Ignored when `format` is `json` or `sarif` | `true` |
 | `resolve-outdated` | Resolve the inline review threads earlier runs opened once GitHub marks them outdated, unless someone replied or a current finding still covers their lines (passes `--resolve-outdated`; needs `post-inline` and a token with `contents: write`). See [Resolving outdated threads](/reference/output-format#resolving-outdated-threads) | `false` |
 | `thorough` | Run the additional adversarial review pass | `false` |
 | `structure-model` | Model for the mechanical JSON-structuring passes, independent of the main review model (env: `PLANWERK_STRUCTURE_MODEL`). Empty keeps the compiled-in default (`sonnet`). | `""` |
@@ -34,6 +34,7 @@ and outputs; for a working workflow, see
 | `critical-count` | Number of `CRITICAL` findings |
 | `warning-count` | Number of `WARNING` findings |
 | `info-count` | Number of `INFO` findings |
+| `sarif-file` | Path of the SARIF 2.1.0 report when `format: sarif`, empty otherwise; see [Upload findings to code scanning](/how-to/use-the-github-action#upload-findings-to-code-scanning) |
 
 Counts are extracted by parsing the `<!-- planwerk-agent-data ... -->` JSON
 block embedded in the planwerk-agent summary comment. A review carries one only
@@ -62,3 +63,7 @@ or a resolved thread dismissed them (see
 carries a `usage` object with the Run's Claude token totals and estimated cost —
 see [Claude Usage Totals](/reference/output-format#claude-usage-totals) —
 available for extraction the same way.
+
+With `format: sarif` nothing is posted, so the counts come from the SARIF
+report instead: the results it holds, counted by each result's `severity`
+property, which leaves out the findings that name no file.

@@ -30,3 +30,28 @@ func TestAuditCmd_CaptureWikiWithJSONRequiresYes(t *testing.T) {
 		t.Fatalf("expected the capture-wiki/json guard error, got %v", err)
 	}
 }
+
+func TestAuditCmd_SARIFRefusesCreateIssues(t *testing.T) {
+	// The issue-creation prompt would be written into the SARIF document on
+	// stdout, so the combination is refused at parse time, as with json.
+	_, err := runAuditCmd(t, "--create-issues", "--format", "sarif", testRepoRef)
+	if err == nil || !strings.Contains(err.Error(), "--create-issues cannot be used with --format sarif") {
+		t.Fatalf("expected the create-issues/sarif guard error, got %v", err)
+	}
+}
+
+func TestAuditCmd_CaptureWikiWithSARIFRequiresYes(t *testing.T) {
+	// Under --format sarif the capture render is discarded as under json, so
+	// the interactive write confirmation would be invisible.
+	_, err := runAuditCmd(t, "--capture-wiki", "--format", "sarif", testRepoRef)
+	if err == nil || !strings.Contains(err.Error(), "--capture-wiki cannot be used with --format sarif without --yes") {
+		t.Fatalf("expected the capture-wiki/sarif guard error, got %v", err)
+	}
+}
+
+func TestAuditCmd_RejectsUnknownFormat(t *testing.T) {
+	_, err := runAuditCmd(t, "--format", "yaml", testRepoRef)
+	if err == nil || !strings.Contains(err.Error(), `unknown format "yaml"`) || !strings.Contains(err.Error(), "sarif") {
+		t.Fatalf("expected an unknown-format error that lists sarif, got %v", err)
+	}
+}

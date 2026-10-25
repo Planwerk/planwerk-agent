@@ -19,7 +19,7 @@ inputs:
     required: false
     default: ''
   format:
-    description: 'Output format written to the action log (markdown, json). Posting to the PR always uses markdown. Empty keeps the repository''s .planwerk/config.yaml review.format, or the compiled-in default (markdown).'
+    description: 'Output format (markdown, json, sarif). markdown and json are written to the action log; sarif is written to a file named by the sarif-file output, for github/codeql-action/upload-sarif. Posting to the PR always uses markdown, so post-inline is ignored for json and sarif. The action decides by this input, so set sarif here rather than in .planwerk/config.yaml. Empty keeps the repository''s .planwerk/config.yaml review.format, or the compiled-in default (markdown).'
     required: false
     default: ''
   max-findings:
@@ -27,7 +27,7 @@ inputs:
     required: false
     default: '0'
   post-inline:
-    description: 'Post findings as inline review comments via the GitHub Review API and keep one summary comment up to date. Ignored when format=json.'
+    description: 'Post findings as inline review comments via the GitHub Review API and keep one summary comment up to date. Ignored when format is json or sarif.'
     required: false
     default: 'true'
   resolve-outdated:
@@ -82,6 +82,9 @@ outputs:
   info-count:
     description: 'Number of INFO findings.'
     value: ${{ steps.parse.outputs.info-count }}
+  sarif-file:
+    description: 'Path of the SARIF 2.1.0 report when format=sarif, empty otherwise; pass it to github/codeql-action/upload-sarif.'
+    value: ${{ steps.review.outputs.sarif-file }}
 
 runs:
   using: 'composite'
@@ -144,6 +147,7 @@ runs:
         "$workdir/planwerk-agent" --version
 
     - name: Run review
+      id: review
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token }}
@@ -189,14 +193,17 @@ runs:
         fi
 
         if [ "$POST_INLINE" = "true" ]; then
-          if [ "$FORMAT" = "json" ]; then
-            echo "post-inline=true is incompatible with format=json — skipping inline posting" >&2
-          else
-            args+=(--inline)
-            if [ "$RESOLVE_OUTDATED" = "true" ]; then
-              args+=(--resolve-outdated)
-            fi
-          fi
+          case "$FORMAT" in
+            json|sarif)
+              echo "post-inline=true is incompatible with format=$FORMAT — skipping inline posting" >&2
+              ;;
+            *)
+              args+=(--inline)
+              if [ "$RESOLVE_OUTDATED" = "true" ]; then
+                args+=(--resolve-outdated)
+              fi
+              ;;
+          esac
         elif [ "$RESOLVE_OUTDATED" = "true" ]; then
           echo "resolve-outdated=true needs post-inline=true; skipping it" >&2
         fi
@@ -222,7 +229,16 @@ runs:
           done
         fi
 
-        planwerk-agent "${args[@]}" "$PR_REF"
+        # The SARIF document is the whole of stdout, so it goes to a file
+        # instead of the log; progress stays on stderr. RUNNER_TEMP keeps the
+        # --local working tree clean.
+        if [ "$FORMAT" = "sarif" ]; then
+          sarif_file="$RUNNER_TEMP/planwerk-agent.sarif"
+          planwerk-agent "${args[@]}" "$PR_REF" > "$sarif_file"
+          echo "sarif-file=$sarif_file" >> "$GITHUB_OUTPUT"
+        else
+          planwerk-agent "${args[@]}" "$PR_REF"
+        fi
 
     - name: Parse findings counts
       id: parse
@@ -232,8 +248,38 @@ runs:
         GH_TOKEN: ${{ inputs.github-token }}
         DEFAULT_TOKEN: ${{ inputs.github-token == github.token }}
         PR_REF: ${{ inputs.pr-ref }}
+        FORMAT: ${{ inputs.format }}
+        SARIF_FILE: ${{ steps.review.outputs.sarif-file }}
       run: |
         set -euo pipefail
+
+        # In SARIF mode nothing is posted, so a data block on the PR would be
+        # an earlier run's: count the results of the report this run wrote,
+        # by each result's severity property.
+        if [ "$FORMAT" = "sarif" ]; then
+          if [ -z "$SARIF_FILE" ] || [ ! -s "$SARIF_FILE" ]; then
+            echo "No SARIF report was written; emitting empty counts." >&2
+            {
+              echo "findings-count="
+              echo "blocking-count="
+              echo "critical-count="
+              echo "warning-count="
+              echo "info-count="
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          count() {
+            jq --arg sev "$1" '[.runs[].results[] | select($sev == "" or .properties.severity == $sev)] | length' "$SARIF_FILE"
+          }
+          {
+            echo "findings-count=$(count "")"
+            echo "blocking-count=$(count BLOCKING)"
+            echo "critical-count=$(count CRITICAL)"
+            echo "warning-count=$(count WARNING)"
+            echo "info-count=$(count INFO)"
+          } >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
 
         if [[ "$PR_REF" =~ ^https?://github.com/([^/]+)/([^/]+)/pull/([0-9]+) ]]; then
           owner="${BASH_REMATCH[1]}"

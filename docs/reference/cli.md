@@ -67,6 +67,9 @@ planwerk-agent owner/repo#123
 # Post review as inline comments on the PR
 planwerk-agent --inline owner/repo#123
 
+# SARIF for GitHub code scanning
+planwerk-agent --format sarif owner/repo#123 > results.sarif
+
 # Write output to file
 planwerk-agent owner/repo#123 > review.md
 ```
@@ -89,7 +92,7 @@ planwerk-agent owner/repo#123 > review.md
 | `--cache-stats` | Show cache size, age distribution, and per-command breakdown, then exit | `false` |
 | `--cache-inspect` | Print the metadata and payload for the given cache key, then exit | - |
 | `--cache-max-age` | Reject cached entries older than this duration (`0` disables the TTL) | `720h` |
-| `--format` | Output format (`markdown`, `json`) | `markdown` |
+| `--format` | Output format (`markdown`, `json`, `sarif`; see [SARIF](/reference/output-format#sarif)). `json` and `sarif` refuse `--post-review` and `--inline`, and `sarif` also refuses `--coverage-map` | `markdown` |
 | `--post-review` | Post the review as a comment on the PR (updates existing if found) | `false` |
 | `--inline` | Post findings as inline comments using the GitHub Review API; the summary goes into the PR comment `--post-review` keeps up to date (implies `--post-review`). A finding gets an inline comment only when the summary lists it in a severity section: findings below `--min-severity` or `--min-confidence` and findings in the Unverified section get none | `false` |
 | `--resolve-outdated` | With `--inline`, resolve the review threads earlier runs opened once GitHub marks them outdated, unless someone replied or a current finding still covers their lines (needs write access to the repository; see [Resolving outdated threads](/reference/output-format#resolving-outdated-threads)) | `false` |
@@ -179,6 +182,7 @@ ones worth a pull request filed as issues behind your yes, use the
 planwerk-agent audit owner/repo
 planwerk-agent audit --min-severity warning owner/repo
 planwerk-agent audit --format json owner/repo
+planwerk-agent audit --format sarif owner/repo
 ```
 
 | Flag | Description | Default |
@@ -195,7 +199,7 @@ planwerk-agent audit --format json owner/repo
 | `--brain` | Let the read-only session search the local mirror of the repository's issues, pull requests, and wiki with [`brain search`](#brain-search) (off by default: everyone who can comment on the repository wrote the mirrored text; env: `PLANWERK_BRAIN`). See [Sessions that search the mirror](#sessions-that-search-the-mirror). | `false` |
 | `--no-brain` | Do not let the sessions search the local mirror (overrides `--brain`) | `false` |
 | `--cache-max-age` | Reject cached entries older than this duration (`0` disables the TTL) | `720h` |
-| `--format` | Output format (`markdown`, `json`) | `markdown` |
+| `--format` | Output format (`markdown`, `json`, `sarif`; see [SARIF](/reference/output-format#sarif)). `json` and `sarif` refuse `--create-issues`, and `--capture-wiki` without `--yes` | `markdown` |
 | `--max-patterns` | Max review patterns injected into the prompt (`<=0` disables truncation; env: `PLANWERK_MAX_PATTERNS`) | `0` (unlimited) |
 | `--max-findings` | Cap on findings returned (`<=0` disables cap) | `0` |
 | `--create-issues` | Interactively create GitHub issues from audit findings | `false` |
