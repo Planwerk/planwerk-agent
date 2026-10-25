@@ -231,13 +231,19 @@ func pinHead(pr *PR, refresh func() (string, error)) error {
 // and an error wrapping git's stderr, so callers can log the cause before
 // degrading gracefully. It is exported so the implement command's review pass
 // can adaptively gate its specialist fan-out on the branch's changed files.
+// A path is returned as stored, bytes above 0x7F and whitespace at either end
+// included; one holding a double quote, a backslash, or an ASCII control
+// character (below 0x20, or DEL) comes back C-quoted and matches no file. git
+// does not quote the C1 controls or U+2028 and U+2029, so a caller that lists
+// the paths one per line cannot rely on git to hold each to one line
+// (decision 131).
 func (Client) DiffNames(dir, baseBranch string) ([]string, error) {
 	if dir == "" || baseBranch == "" {
 		return nil, nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), gitRemoteTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", "diff", "--name-only", "origin/"+baseBranch+"...HEAD")
+	cmd := exec.CommandContext(ctx, "git", "-c", "core.quotePath=false", "diff", "--name-only", "origin/"+baseBranch+"...HEAD")
 	cmd.Dir = dir
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -246,8 +252,8 @@ func (Client) DiffNames(dir, baseBranch string) ([]string, error) {
 		return nil, fmt.Errorf("git diff --name-only origin/%s...HEAD: %w: %s", baseBranch, err, strings.TrimSpace(stderr.String()))
 	}
 	var files []string
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if line = strings.TrimSpace(line); line != "" {
+	for _, line := range strings.Split(string(out), "\n") {
+		if line != "" {
 			files = append(files, line)
 		}
 	}

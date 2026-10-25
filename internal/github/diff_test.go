@@ -143,6 +143,77 @@ func TestParseDiff_RenamedFile(t *testing.T) {
 	}
 }
 
+// quotedAndSpacedDiff is a pull request diff in the form GitHub serves it:
+// git C-quotes a name holding a byte above 0x7F, and ends a ---/+++ line with
+// a TAB when the name holds a space, quoted or not. The "+++ not a header"
+// line is an added line whose text starts with "++ ".
+const quotedAndSpacedDiff = "diff --git a/docs/my file.md b/docs/my file.md\n" +
+	"index a973874..d8d53d0 100644\n" +
+	"--- a/docs/my file.md\t\n" +
+	"+++ b/docs/my file.md\t\n" +
+	"@@ -1 +1,3 @@\n" +
+	" # Title\n" +
+	"+More.\n" +
+	"+++ not a header\n" +
+	"diff --git \"a/\\303\\244.go\" \"b/\\303\\244.go\"\n" +
+	"index 823aafd..b54dead 100644\n" +
+	"--- \"a/\\303\\244.go\"\n" +
+	"+++ \"b/\\303\\244.go\"\n" +
+	"@@ -1 +1,2 @@\n" +
+	" package x\n" +
+	"+// added\n" +
+	"diff --git \"a/\\303\\244 b.go\" \"b/\\303\\244 b.go\"\n" +
+	"new file mode 100644\n" +
+	"index 0000000..823aafd\n" +
+	"--- /dev/null\n" +
+	"+++ \"b/\\303\\244 b.go\"\t\n" +
+	"@@ -0,0 +1 @@\n" +
+	"+package x\n"
+
+func TestParseDiff_QuotedAndSpacedPaths(t *testing.T) {
+	dm := ParseDiff(quotedAndSpacedDiff)
+
+	const nonASCII = "\u00e4.go"
+	if !dm.Contains(nonASCII, 2) {
+		t.Errorf("%q line 2 should be in diff (quoted +++ name)", nonASCII)
+	}
+	if !dm.Contains("docs/my file.md", 2) {
+		t.Error("docs/my file.md line 2 should be in diff (TAB after a spaced name)")
+	}
+	if dm.Contains("docs/my file.md\t", 2) {
+		t.Error("the trailing TAB should not be part of the file name")
+	}
+	if !dm.Contains("docs/my file.md", 3) {
+		t.Error(`an added line starting with "++ " should stay a hunk line`)
+	}
+	const quotedSpaced = "\u00e4 b.go"
+	if !dm.Contains(quotedSpaced, 1) {
+		t.Errorf("%q line 1 should be in diff (TAB stripped before unquoting)", quotedSpaced)
+	}
+}
+
+func TestDiffHeaderPath(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"plain", "b/main.go", "main.go"},
+		{"spaced", "b/docs/my file.md\t", "docs/my file.md"},
+		{"quoted non-ASCII", "\"b/\\303\\244.go\"", "\u00e4.go"},
+		{"quoted and spaced", "\"b/\\303\\244 b.go\"\t", "\u00e4 b.go"},
+		{"quoted escapes", "\"b/tab\\ttab and \\\"quote\\\".go\"", "tab\ttab and \"quote\".go"},
+		{"unterminated quote", "\"b/broken.go", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := diffHeaderPath(tt.in); got != tt.want {
+				t.Errorf("diffHeaderPath(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestDiffMap_Contains_NilSafety(t *testing.T) {
 	var dm *DiffMap
 	if dm.Contains("any.go", 1) {

@@ -2,8 +2,12 @@ package doccheck
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
 	"testing"
+
+	"github.com/planwerk/planwerk-agent/internal/gitref/gitreftest"
 )
 
 func TestFindDocFiles(t *testing.T) {
@@ -60,6 +64,39 @@ func TestGetChangedDirs(t *testing.T) {
 	dirs := getChangedDirs("/nonexistent", "main")
 	if dirs != nil {
 		t.Error("expected nil for nonexistent dir")
+	}
+}
+
+// TestChangedDirsAndNewFiles_NonASCIIPath sets git's default
+// core.quotePath=true in the repo config, where it overrides a developer's
+// global setting, so the paths come back as stored only through the -c
+// option. The root file's leading space puts it first in git's output, where
+// trimming the output would cut it off.
+func TestChangedDirsAndNewFiles_NonASCIIPath(t *testing.T) {
+	const docsDir = "d\u00f6cs" // NFC, as macOS git (core.precomposeUnicode) also returns it
+	const leading = " lead.go"
+	dir := gitreftest.Repo(t, map[string]string{"README.md": "# r\n"})
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.com", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.com")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	git("config", "core.quotePath", "true")
+	git("update-ref", "refs/remotes/origin/main", "HEAD")
+	gitreftest.Write(t, dir, docsDir+"/neu.go", "package x\n")
+	gitreftest.Write(t, dir, leading, "package x\n")
+	git("add", "-A")
+	git("commit", "-q", "-m", "add")
+
+	if got, want := getChangedDirs(dir, "main"), []string{docsDir}; !slices.Equal(got, want) {
+		t.Errorf("getChangedDirs = %q, want %q", got, want)
+	}
+	if got, want := getNewFiles(dir, "main"), []string{leading, docsDir + "/neu.go"}; !slices.Equal(got, want) {
+		t.Errorf("getNewFiles = %q, want %q", got, want)
 	}
 }
 

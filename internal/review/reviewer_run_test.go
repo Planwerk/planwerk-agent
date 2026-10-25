@@ -96,6 +96,50 @@ func TestGetCommitLog(t *testing.T) {
 	})
 }
 
+// TestChangedFilesSince_NonASCIIPath covers the re-review whose push changed
+// a non-ASCII file: under git's default quoting the set held only the quoted
+// name, so suppression read the finding's file as unchanged and hid it.
+// Setting core.quotePath=true in the repo config overrides a developer's
+// global setting, so the test fails without the -c option. The two names with
+// whitespace at an end show that no byte of a path is trimmed:
+// strings.TrimSpace also strips U+00A0 (NO-BREAK SPACE).
+func TestChangedFilesSince_NonASCIIPath(t *testing.T) {
+	const name = "\u00e4.go"
+	const leading, trailing = " lead.go", "nbsp.go\u00a0"
+	dir, firstSHA := initGitRepoTwoCommits(t)
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	git("config", "core.quotePath", "true")
+	for _, n := range []string{name, leading, trailing} {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte("package x\n"), 0o600); err != nil {
+			t.Fatalf("write %s: %v", n, err)
+		}
+	}
+	git("add", "-A")
+	git("commit", "-q", "-m", "third")
+
+	changed, ok := changedFilesSince(dir, firstSHA)
+	if !ok {
+		t.Fatal("changedFilesSince ok = false, want true")
+	}
+	for _, want := range []string{name, leading, trailing, "changed.go"} {
+		if !changed[want] {
+			t.Errorf("changed = %v, want %q in it", changed, want)
+		}
+	}
+	for _, absent := range []string{"unchanged.go", "lead.go", "nbsp.go"} {
+		if changed[absent] {
+			t.Errorf("changed = %v, want %q absent", changed, absent)
+		}
+	}
+}
+
 func TestRun_CommitLogFailureLogsWarning(t *testing.T) {
 	// Not t.Parallel(): cache.SetDir mutates a package-level variable and
 	// would race with concurrent Run tests.

@@ -193,6 +193,39 @@ func TestStartRebaseConflictThenAbort(t *testing.T) {
 	}
 }
 
+// TestConflictedFiles_NonASCIIPath sets git's default core.quotePath=true in
+// the repo config, where it overrides a developer's global setting, so the
+// path comes back as stored only through the -c option. The name ends in
+// U+00A0 (NO-BREAK SPACE), which strings.TrimSpace would cut off.
+func TestConflictedFiles_NonASCIIPath(t *testing.T) {
+	const name = "\u00e4.txt\u00a0" // NFC, as macOS git (core.precomposeUnicode) also returns it
+	dir, _, _ := initRebaseRepo(t)
+	git(t, dir, "config", "core.quotePath", "true")
+	advanceOrigin(t, dir, name, "line1\n", "add file")
+
+	git(t, dir, "checkout", "-q", "-b", "feature")
+	writeRepoFile(t, dir, name, "FEATURE\n")
+	git(t, dir, "add", ".")
+	git(t, dir, "commit", "-q", "-m", "feature edit")
+
+	advanceOrigin(t, dir, name, "UPSTREAM\n", "upstream edit")
+	git(t, dir, "checkout", "-q", "feature")
+
+	state, err := client.StartRebase(dir, "main")
+	if err != nil {
+		t.Fatalf("StartRebase: %v", err)
+	}
+	if !state.Conflicted {
+		t.Fatalf("state = %+v, want Conflicted", state)
+	}
+	if len(state.ConflictedFiles) != 1 || state.ConflictedFiles[0] != name {
+		t.Errorf("ConflictedFiles = %q, want [%q]", state.ConflictedFiles, name)
+	}
+	if err := client.RebaseAbort(dir); err != nil {
+		t.Fatalf("RebaseAbort: %v", err)
+	}
+}
+
 func TestResetHard(t *testing.T) {
 	dir, _, _ := initRebaseRepo(t)
 	orig := gitOut(t, dir, "rev-parse", "HEAD")
