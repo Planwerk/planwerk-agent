@@ -102,6 +102,7 @@ func TestRunGuardsSpendNoTokens(t *testing.T) {
 		{"-judge without -aacr", "", 1, aacrOptions{judge: true}, "-judge needs -aacr"},
 		{"-aacr-sample without -aacr", "", 1, aacrOptions{sample: 2, aacrSampleSet: true}, "-aacr-sample needs -aacr"},
 		{"-aacr-cache without -aacr", "", 1, aacrOptions{cacheDir: filepath.Join(dir, "cache"), aacrCacheSet: true}, "-aacr-cache needs -aacr"},
+		{"-verifier-sample without -verifier-bench", "", 1, with(func(o *aacrOptions) { o.verifierSampleSet = true }), "-verifier-sample needs -verifier-bench"},
 		{"-aacr-sample 0", "", 1, with(func(o *aacrOptions) { o.sample = 0 }), "-aacr-sample must be at least 1, got 0"},
 		{"a missing export", "", 1, with(func(o *aacrOptions) { o.export = filepath.Join(dir, "missing-export.json") }), "reading AACR-Bench export"},
 		{"an explicit -corpus with -aacr", "", 1, with(func(o *aacrOptions) { o.corpusSet = true }), "-aacr and -corpus"},
@@ -140,6 +141,83 @@ func TestRunGuardsSpendNoTokens(t *testing.T) {
 			t.Errorf("run = %v, want the fetch of the named case to fail", err)
 		}
 	})
+}
+
+func TestVerifierBenchConflicts(t *testing.T) {
+	if err := verifierBenchConflicts(map[string]bool{}); err != nil {
+		t.Errorf("no flag set = %v, want nil", err)
+	}
+	for _, name := range []string{"baseline", "case", "corpus", "runs", "thorough", "specialists", "aacr-sample", "judge", "scope-patterns"} {
+		t.Run("-"+name+" is refused", func(t *testing.T) {
+			err := verifierBenchConflicts(map[string]bool{name: true, "aacr": true})
+			if want := "-" + name + " does not apply to -verifier-bench"; err == nil || err.Error() != want {
+				t.Errorf("verifierBenchConflicts = %v, want %q", err, want)
+			}
+		})
+	}
+	t.Run("the bench's own flags pass", func(t *testing.T) {
+		set := map[string]bool{"aacr": true, "aacr-cache": true, "verifier-bench": true, "verifier-sample": true, "json": true}
+		if err := verifierBenchConflicts(set); err != nil {
+			t.Errorf("verifierBenchConflicts = %v, want nil", err)
+		}
+	})
+	t.Run("the first refused flag is named", func(t *testing.T) {
+		if err := verifierBenchConflicts(map[string]bool{"judge": true, "runs": true}); err == nil || !strings.HasPrefix(err.Error(), "-runs ") {
+			t.Errorf("verifierBenchConflicts = %v, want -runs named first", err)
+		}
+	})
+}
+
+// TestRunVerifierBenchGuardsSpendNoTokens locks that runVerifierBench rejects
+// a bad invocation before its first checkout, as TestRunGuardsSpendNoTokens
+// does for run. The valid export fails in buildClient on the bogus timeout,
+// which runs before the first fetch, and PATH holds neither git nor claude.
+func TestRunVerifierBenchGuardsSpendNoTokens(t *testing.T) {
+	t.Setenv("PLANWERK_CLAUDE_TIMEOUT", "bogus")
+	t.Setenv("PATH", t.TempDir())
+
+	dir := t.TempDir()
+	write := func(name, rows string) string {
+		t.Helper()
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte("["+rows+"]"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+		return path
+	}
+	const row = `{"project_main_language": "Go", "pr_url": "https://github.com/acme/widget/pull/7",
+		"pr_source_commit": "1111111111111111111111111111111111111111", "pr_target_commit": "2222222222222222222222222222222222222222",
+		"note": "a race", "path": "store.go", "side": %q, "from_line": 4, "to_line": 6, "category": %q, "context": "Diff Level", "label": 1}`
+	valid := write("dataset.json", fmt.Sprintf(row, "right", "Code Defect"))
+	// A right-side verified comment keeps the export loadable; neither row is
+	// one the gate would see.
+	ineligible := write("ineligible.json", fmt.Sprintf(row, "right", "Maintainability and Readability")+","+fmt.Sprintf(row, "left", "Code Defect"))
+
+	tests := []struct {
+		name     string
+		path     string
+		perLabel int
+		want     string
+	}{
+		{"no -aacr", "", 20, "-verifier-bench needs -aacr <dataset.json>"},
+		{"-verifier-sample 0", valid, 0, "-verifier-sample must be at least 1, got 0"},
+		{"a missing export", filepath.Join(dir, "missing.json"), 20, "reading AACR-Bench export"},
+		{"an export with no eligible comment", ineligible, 20, "no AACR-Bench comment is eligible for the verifier bench"},
+		// The row that passes the guards proves the premise: the client is
+		// built, and fails, before the first fetch.
+		{"a valid export builds the client before any fetch", valid, 20, "invalid PLANWERK_CLAUDE_TIMEOUT"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := runVerifierBench(tt.path, filepath.Join(dir, "cache"), tt.perLabel, eval.Tiers{}, false)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("runVerifierBench = %v, want an error containing %q", err, tt.want)
+			}
+		})
+	}
+	if _, err := os.Stat(filepath.Join(dir, "cache")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("stat cache = %v, want no cache created by a run that stopped at a guard", err)
+	}
 }
 
 // The tier a test selects in place of a compiled-in default, the effort no

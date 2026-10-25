@@ -201,7 +201,7 @@ func groupAACRRows(rows []AACRRow) ([]*AACRSource, error) {
 		if src == nil {
 			src = &AACRSource{
 				URL: url, Owner: owner, Repo: repo, Number: number,
-				CloneURL: fmt.Sprintf("https://github.com/%s/%s.git", owner, repo),
+				CloneURL: aacrCloneURL(owner, repo),
 				BaseSHA:  r.SourceCommit, HeadSHA: r.TargetCommit, Language: r.Language,
 			}
 			byURL[url] = src
@@ -239,6 +239,11 @@ func parseAACRURL(u string) (owner, repo string, number int, err error) {
 		}
 	}
 	return owner, repo, number, nil
+}
+
+// aacrCloneURL returns the URL a benchmark repository is fetched from.
+func aacrCloneURL(owner, repo string) string {
+	return fmt.Sprintf("https://github.com/%s/%s.git", owner, repo)
 }
 
 // normalizeAACRRow checks one row's fields and normalizes it: both commits

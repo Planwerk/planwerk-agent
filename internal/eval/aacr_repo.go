@@ -49,12 +49,31 @@ func prepareAACR(root string, cases []Case, depths []int, log io.Writer) error {
 			continue
 		}
 		_, _ = fmt.Fprintf(log, "preparing %s (%s/%s#%d) ...\n", c.Name, src.Owner, src.Repo, src.Number)
-		store := filepath.Join(abs, src.Owner, src.Repo, strconv.Itoa(src.Number)+".git")
+		store := aacrStorePath(abs, src.Owner, src.Repo, src.Number)
 		if err := prepareStore(store, src, depths); err != nil {
 			errs = append(errs, fmt.Errorf("case %s (%s): %w", c.Name, src.URL, err))
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// aacrStorePath returns the bare repository one pull request's commits are
+// cached in under root: root/<owner>/<repo>/<number>.git. PrepareAACR and the
+// verifier bench (CheckoutAACRHead) share it, so either reuses what the other
+// fetched.
+func aacrStorePath(root, owner, repo string, number int) string {
+	return filepath.Join(root, owner, repo, strconv.Itoa(number)+".git")
+}
+
+// initAACRStore creates the bare repository store and its parent directories.
+// A store that already exists keeps its objects and refs: git init only
+// reinitializes it.
+func initAACRStore(store string) error {
+	if err := os.MkdirAll(filepath.Dir(store), 0o750); err != nil {
+		return err
+	}
+	_, err := gitRun(filepath.Dir(store), gitTimeout, nil, "init", "--bare", "-q", store)
+	return err
 }
 
 // prepareStore makes store a bare repository that holds src's two commits and
@@ -65,10 +84,7 @@ func prepareAACR(root string, cases []Case, depths []int, log io.Writer) error {
 // revision by SHA, but --deepen leaves it at depth 1, while --depth fetches
 // its ancestry.
 func prepareStore(store string, src *AACRSource, depths []int) error {
-	if err := os.MkdirAll(filepath.Dir(store), 0o750); err != nil {
-		return err
-	}
-	if _, err := gitRun(filepath.Dir(store), gitTimeout, nil, "init", "--bare", "-q", store); err != nil {
+	if err := initAACRStore(store); err != nil {
 		return err
 	}
 	mergeBase, err := gitRun(store, aacrGitTimeout, nil, "merge-base", src.BaseSHA, src.HeadSHA)
@@ -105,12 +121,8 @@ func setupAACRRepo(dir string, src *AACRSource) (headSHA string, changed []strin
 	if src.Store == "" || src.MergeBase == "" {
 		return "", nil, errors.New("the benchmark repository is not prepared; run PrepareAACR first")
 	}
-	if err := initRepo(dir); err != nil {
+	if err := initAACRRepo(dir, src.Store); err != nil {
 		return "", nil, err
-	}
-	alternates := filepath.Join(dir, ".git", "objects", "info", "alternates")
-	if err := os.WriteFile(alternates, []byte(filepath.Join(src.Store, "objects")+"\n"), 0o600); err != nil {
-		return "", nil, fmt.Errorf("linking the benchmark cache: %w", err)
 	}
 
 	base, err := gitRun(dir, gitTimeout, nil, "commit-tree", "--no-gpg-sign", "-m", "base", src.MergeBase+"^{tree}")
@@ -146,4 +158,18 @@ func setupAACRRepo(dir string, src *AACRSource) (headSHA string, changed []strin
 		return "", nil, err
 	}
 	return headSHA, changed, nil
+}
+
+// initAACRRepo runs initRepo in dir and links store's objects into it through
+// objects/info/alternates, so the repository reads the cached commits without
+// copying them. store must be absolute.
+func initAACRRepo(dir, store string) error {
+	if err := initRepo(dir); err != nil {
+		return err
+	}
+	alternates := filepath.Join(dir, ".git", "objects", "info", "alternates")
+	if err := os.WriteFile(alternates, []byte(filepath.Join(store, "objects")+"\n"), 0o600); err != nil {
+		return fmt.Errorf("linking the benchmark cache: %w", err)
+	}
+	return nil
 }

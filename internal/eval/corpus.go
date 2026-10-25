@@ -2,8 +2,9 @@
 // materializes a labeled corpus of seeded-bug cases into throwaway git repos,
 // runs the shipped review pipeline against each, and scores the findings for
 // precision, recall, F1, and severity accuracy. It never runs in unit CI —
-// RunCase invokes the real claude CLI and spends tokens; only the loader, the
-// scorer, the baseline comparison and the repo setup are unit-tested.
+// RunCase and RunVerifierBench invoke the real claude CLI and spend tokens;
+// only the loader, the scorer, the baseline comparison, the repo setup, and
+// the verifier bench's sampling, mapping and tally are unit-tested.
 //
 // # Corpus storage
 //
@@ -26,6 +27,10 @@
 // (aacr_repo.go). Their expected findings are the comments experts verified,
 // matched on line overlap alone or with a same-concern judgement (ScoreRun,
 // JudgeRun), and their repos never get the go.mod (decision 147).
+//
+// RunVerifierBench sends AACR-Bench's expert-labeled review comments to the
+// claim verifier and tallies its verdicts per label (see verifierbench.go,
+// decision 148).
 package eval
 
 import (
