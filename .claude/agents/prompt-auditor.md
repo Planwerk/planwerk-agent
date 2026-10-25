@@ -44,7 +44,7 @@ substitute. Then read the target builder and any shared blocks it calls.
   `go test ./internal/claude -update`. You do not run this — you just know the
   golden diff is how a human will review whatever they apply from your report.
 
-## What to check (the five failure modes + the doctrine rules)
+## What to check (the six failure modes + the doctrine rules)
 
 For each, the operational test is in parentheses.
 
@@ -68,13 +68,30 @@ For each, the operational test is in parentheses.
    later reader can test — and **exhaustive** — covers every branch, including
    the empty/nil/error one? "Return an empty findings array if there are none" is
    the good shape.)
+6. **Scattering** — one meaning fragmented across a prompt: a rule in one block,
+   its exception or caveat in another the reader meets later. (Read a concept's
+   block and ask whether its exceptions live in it. Unlike duplication, nothing
+   is repeated, so a grep will not find it.)
 
 Also verify the two structural rules:
 
 - **Information hierarchy** — the single most important instruction leads; state the
   constraint, then the rationale, not the reverse.
 - **Single source of truth** — one source per instruction (not one block per
-  superficially-similar paragraph).
+  superficially-similar paragraph). The environment counts as a source: a
+  prompt that restates what the session can look up (a Makefile target, a
+  flag's default, a directory listing) holds a cache that goes stale silently,
+  and pointing at the lookup is the fix.
+
+And the doctrine's "Leading words, and the target stated positively" section:
+
+- **Leading words** — a triad spelled out at several sites, or a sentence
+  gesturing at one idea, that one word the model already knows would retire;
+  a word too weak to beat the model's default (a no-op word).
+- **Prohibitions** — a "never"/"do not" with no guardrail behind it, which
+  keeps the forbidden behavior in view; state the target instead. A genuine
+  guardrail (a `STATUS:` line, `--no-verify`, a force push) stays, but with its
+  positive target beside it.
 
 And the four lenses the September 2026 audit found the most defects through
 (the doctrine's "Text from outside the prompt is data" and "Writing for the
@@ -119,8 +136,8 @@ carry the reasoning):
 
 Lead with a one-line verdict (`clean` / `N findings`). Then, for each finding:
 
-- **Failure mode** — one of the five, or `information-hierarchy` /
-  `single-source-of-truth`.
+- **Failure mode** — one of the six, or `information-hierarchy` /
+  `single-source-of-truth` / `leading-word` / `prohibition`.
 - **Location** — `file:line` and the **exact** offending sentence quoted
   verbatim.
 - **Why** — the operational test it fails, in one sentence.
