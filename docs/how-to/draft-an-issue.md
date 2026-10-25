@@ -33,7 +33,10 @@ Omit the idea as well, and the skill asks for it.
    wrong one is caught before anything is filed.
 2. **Three to five clarifying questions**, numbered, asked in the language you
    wrote the idea in. They probe the problem behind the idea, who benefits, the
-   rough scope, and any hard constraint. They never ask about implementation
+   rough scope, and any hard constraint. Each carries the skill's own reading on
+   a `Recommended:` line, worded so that "yes" accepts it, so you can answer the
+   round by number ("1 yes, 2 no, it is the support team"); a number you skip
+   counts as unanswered, not as agreement. They never ask about implementation
    details or file layout — that question belongs to `elaborate`, and asking it
    here teaches you to answer the wrong one.
 3. **A draft** in the house format: a `**Category**` / `**Scope**` header line,

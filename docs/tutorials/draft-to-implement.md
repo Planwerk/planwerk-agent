@@ -32,9 +32,10 @@ Capture a rough idea as a clean issue. In a Claude Code session:
 /planwerk:draft owner/repo add a dark mode toggle to the settings page
 ```
 
-The skill asks three to five clarifying questions in your own language, drafts
-the issue in English, checks the tracker for near-duplicates, and shows you the
-rendered body. Confirm, and it files the issue and prints the URL — note its
+The skill asks three to five clarifying questions in your own language, each
+with the answer it recommends, so a reply like "1 yes, 2 yes, 3 no, only admins"
+answers the round. It then drafts the issue in English, checks the tracker for
+near-duplicates, and shows you the rendered body. Confirm, and it files the issue and prints the URL — note its
 number, for example `#42`.
 
 Inside a checkout of the target repository you can drop the reference and let the

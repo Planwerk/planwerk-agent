@@ -68,8 +68,11 @@ options, never drop, merge, or silently defer one to fit. Split the choice into
 several sequential calls instead. The author's option set is not yours to trim.
 
 When the tool is unavailable, ask the same thing in prose, ending your message
-with the numbered questions. Prose is a weaker gate: for anything irreversible,
-require the author to type back the explicit choice, and re-ask on a vague reply.
+with the numbered questions, laid out as under Open questions are asked inline:
+the options, then the recommended one on its own line, worded so "yes" accepts
+it. Prose is a weaker gate: for anything irreversible, a bare "yes" is not
+enough. Require the author to type back the explicit choice, and re-ask on a
+vague reply.
 
 ### Ask in rounds
 
@@ -103,10 +106,28 @@ It is a round of its own, and it comes first.
   rounds.
 - **Number them.** Never bury a question inside a paragraph.
 - **End the message with them.** They are the last thing the author reads.
-- **State your assumptions out loud.** "I am assuming this only affects the admin
-  role — is that right?" is a better question than "who does this affect?".
+- **Attach your answer, and word the question so "yes" accepts it.** Under each
+  question, on its own line, put the answer you recommend or the assumption you
+  would otherwise build on. "This only affects the admin role — right?" is a
+  better question than "who does this affect?", and a question worded to match
+  its answer never makes agreeing mean "no". When nothing you can read supports
+  an answer (infrastructure or policy you cannot see), the line names the
+  assumption the work currently rests on and says that it is one, or says there
+  is none.
 - **Skip what you already know.** If an earlier answer settled a later question,
   do not ask it.
+
+A round then reads:
+
+```
+1. <the question, worded so "yes" accepts the line below>
+   Recommended: <your answer, or the assumption you would build on>
+2. …
+```
+
+The author can answer it by number: "1 yes, 2 no, auditors too". A number the
+reply skips is unanswered, not accepted. Ask it again in the next round, or
+record it per Record what was never decided.
 
 ## Read the code before you ask about the code
 
