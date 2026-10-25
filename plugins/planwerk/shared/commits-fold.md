@@ -51,6 +51,9 @@ them. Only then:
 git commit -s -m "<concise summary>" -m "<one line of context>" -m "Assisted-by: Claude"
 ```
 
+Drop the `Assisted-by` paragraph where `commits.md` says the repository forbids
+it.
+
 ## Publishing a fold
 
 ```bash

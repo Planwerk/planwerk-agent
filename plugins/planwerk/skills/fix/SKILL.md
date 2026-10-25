@@ -267,6 +267,6 @@ the author, or to `planwerk-agent fix <pr-ref>` for the unattended loop.
 - The push targets the PR's own head branch, with `--force-with-lease`.
 - After a fold, no SHA left in the PR body points at a commit the fold replaced,
   and nothing else in that body was edited.
-- Every commit ends with `Assisted-by` and then `Signed-off-by`, and carries no
+- Every commit ends with the trailers `commits.md` asks for, and carries no
   `Co-authored-by`.
 - The report is English, whatever language the conversation used.

@@ -91,8 +91,9 @@ inline via Claude Code's --agents flag, so the target checkout stays untouched
 and the session stays hermetic; the workers inherit auto mode, so the
 classifier keeps vetting their actions. The report's attribution then names the
 worker model — the model that wrote the code — and the workers' commit trailers
-carry their exact model id. Without the flag the implement session writes the
-code itself, exactly as before.
+carry their exact model id, unless the repository's contribution rules forbid
+that trailer. Without the flag the implement session writes the code itself,
+exactly as before.
 
 After the implement session the implementation report is posted back onto the
 source issue as a comment on every run — including runs where nothing was

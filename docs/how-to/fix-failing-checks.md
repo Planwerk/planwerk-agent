@@ -99,8 +99,9 @@ You choose, and the first is recommended:
 The rebase is bounded by `git merge-base`, never by `origin/<base>` itself, so a
 base branch that moved since you branched is not silently rebased onto. Only the
 branch's own commits are ever rewritten, and the push is always leased. Commits
-carry `Assisted-by` above `Signed-off-by`, and never `Co-authored-by`. That
-doctrine lives in `plugins/planwerk/shared/commits.md`, and a Go test
+carry `Assisted-by` above `Signed-off-by`, or `Signed-off-by` alone where the
+repository forbids attributing commits to an AI, and never `Co-authored-by`.
+That doctrine lives in `plugins/planwerk/shared/commits.md`, and a Go test
 (`TestSharedCommitsDocMatchesFoldDiscipline`) fails when it and the `fix` command's
 prompt disagree.
 

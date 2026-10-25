@@ -14,6 +14,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/planwerk/planwerk-agent/internal/aitrailers"
 	"github.com/planwerk/planwerk-agent/internal/detect"
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
@@ -203,6 +204,14 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		return nil
 	}
 
+	// The thread replies and the report comment are where an address run
+	// discloses the assistance once the trailer is gone (decision 150).
+	if !opts.Reply && opts.NoAddressComment {
+		if forbiddenBy := aitrailers.ForbiddenBy(pr.Dir, "origin/"+pr.BaseBranch); forbiddenBy != "" {
+			_, _ = fmt.Fprintf(w, "Note: %s on origin/%s forbids attributing commits to an AI, so the follow-up commits carry no Assisted-by trailer, and with --no-reply and --no-address-comment nothing on the pull request discloses the AI assistance.\n", forbiddenBy, pr.BaseBranch)
+		}
+	}
+
 	// The wiki is resolved only for a run that dispatches a session: a run
 	// with nothing to address, a dry run, and a printed prompt returned above.
 	wiki := r.ResolveWiki(owner, repo, opts.Wiki, opts.Remote)
@@ -383,21 +392,22 @@ func pickByID(w io.Writer, threads []github.ReviewThread, ids []string) []github
 // contextFor assembles the Claude prompt context for a unit of work.
 func (r *Runner) contextFor(opts Options, pr *github.PR, threads []github.ReviewThread, pats []patterns.Pattern, cat patterns.Catalog, mem patterns.MemoryCatalog, sks []skills.Skill, changedSkills []string) Context {
 	return Context{
-		RepoFullName:       fmt.Sprintf("%s/%s", pr.Owner, pr.Repo),
-		PRNumber:           pr.Number,
-		PRTitle:            pr.Title,
-		HeadBranch:         pr.HeadBranch,
-		BaseBranch:         pr.BaseBranch,
-		Threads:            threads,
-		OneCommitPerThread: opts.OneCommitPerThread,
-		Patterns:           pats,
-		Catalog:            cat,
-		Memory:             mem,
-		MaxPatterns:        opts.MaxPatterns,
-		Skills:             sks,
-		ChangedSkills:      changedSkills,
-		StyleGuidePath:     styleguide.Find(pr.Dir),
-		Local:              opts.Local,
+		RepoFullName:          fmt.Sprintf("%s/%s", pr.Owner, pr.Repo),
+		PRNumber:              pr.Number,
+		PRTitle:               pr.Title,
+		HeadBranch:            pr.HeadBranch,
+		BaseBranch:            pr.BaseBranch,
+		Threads:               threads,
+		OneCommitPerThread:    opts.OneCommitPerThread,
+		Patterns:              pats,
+		Catalog:               cat,
+		Memory:                mem,
+		MaxPatterns:           opts.MaxPatterns,
+		Skills:                sks,
+		ChangedSkills:         changedSkills,
+		StyleGuidePath:        styleguide.Find(pr.Dir),
+		AITrailersForbiddenBy: aitrailers.ForbiddenBy(pr.Dir, "origin/"+pr.BaseBranch),
+		Local:                 opts.Local,
 	}
 }
 

@@ -24,12 +24,12 @@ const sharedCommitsDoc = "../../plugins/planwerk/shared/commits.md"
 const sharedCommitsFoldDoc = "../../plugins/planwerk/shared/commits-fold.md"
 
 // TestSharedCommitsDocMatchesTrailerBlock fails when the shared commit doctrine
-// and commitTrailerBlock() stop agreeing on the trailer convention. Each marker
+// and commitTrailerBlock stop agreeing on the trailer convention. Each marker
 // is a distinct rule, so a failure names the rule that went missing rather than
 // reporting that two blobs differ.
 func TestSharedCommitsDocMatchesTrailerBlock(t *testing.T) {
 	doc := readSharedDoc(t, sharedCommitsDoc)
-	block := commitTrailerBlock()
+	block := commitTrailerBlock("")
 
 	for _, tc := range []struct {
 		rule   string
@@ -46,8 +46,18 @@ func TestSharedCommitsDocMatchesTrailerBlock(t *testing.T) {
 			t.Errorf("%s: %s does not mention %q", tc.rule, sharedCommitsDoc, tc.marker)
 		}
 		if !strings.Contains(block, tc.marker) {
-			t.Errorf("%s: commitTrailerBlock() does not mention %q", tc.rule, tc.marker)
+			t.Errorf("%s: commitTrailerBlock(\"\") does not mention %q", tc.rule, tc.marker)
 		}
+	}
+
+	// A repository that forbids AI trailers wins over the convention, in the
+	// skills as in the prompts (decision 150).
+	const ban = "forbids attributing commits to an AI"
+	if !strings.Contains(doc, ban) {
+		t.Errorf("the repository's ban on AI trailers wins: %s does not mention %q", sharedCommitsDoc, ban)
+	}
+	if banned := commitTrailerBlock(goldenAITrailersForbiddenBy); !strings.Contains(banned, ban) {
+		t.Errorf("the repository's ban on AI trailers wins: commitTrailerBlock(%q) does not mention %q", goldenAITrailersForbiddenBy, ban)
 	}
 }
 

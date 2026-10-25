@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/planwerk/planwerk-agent/internal/aitrailers"
 	"github.com/planwerk/planwerk-agent/internal/detect"
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
@@ -63,12 +64,13 @@ func (r *Runner) PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuil
 	catalog, hasRepoLocal := patterns.BareCatalog(pats, pr.Dir, opts.NoRepoPatterns)
 
 	prompt := build(BareContext{
-		RepoFullName:     fmt.Sprintf("%s/%s", owner, repo),
-		PRNumber:         number,
-		TechTags:         tags,
-		PatternCatalog:   catalog,
-		BundledURLBase:   patterns.BundledURLBase,
-		HasRepoLocalRefs: hasRepoLocal,
+		RepoFullName:          fmt.Sprintf("%s/%s", owner, repo),
+		PRNumber:              number,
+		TechTags:              tags,
+		PatternCatalog:        catalog,
+		BundledURLBase:        patterns.BundledURLBase,
+		HasRepoLocalRefs:      hasRepoLocal,
+		AITrailersForbiddenBy: aitrailers.ForbiddenBy(pr.Dir, "origin/"+pr.BaseBranch),
 	})
 	if _, err := io.WriteString(w, prompt); err != nil {
 		return fmt.Errorf("writing prompt: %w", err)

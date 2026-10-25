@@ -15,6 +15,7 @@ import (
 
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/github/githubtest"
+	"github.com/planwerk/planwerk-agent/internal/gitref/gitreftest"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/patterns/patternstest"
 	"github.com/planwerk/planwerk-agent/internal/report"
@@ -813,4 +814,93 @@ func itoa(n int) string {
 		n /= 10
 	}
 	return string(b)
+}
+
+// trailerBanFile is the instruction file the trailer-ban tests write, and
+// trailerBanAgents its text on the base branch: a rule that forbids the
+// Assisted-by trailer.
+const (
+	trailerBanFile   = "AGENTS.md"
+	trailerBanAgents = "# Rules\n\nDo not add an Assisted-by trailer to your commits.\n"
+)
+
+// noDisclosureNote is the start of the line a run prints when the ban,
+// --no-reply, and --no-address-comment together leave the assistance
+// undisclosed.
+const noDisclosureNote = "Note: AGENTS.md on origin/main forbids attributing commits to an AI"
+
+// checkoutWithBase returns a clone-shaped checkout whose base branch carries
+// agents as AGENTS.md and whose working tree, the pull request's head,
+// rewrites it.
+func checkoutWithBase(t *testing.T, agents string) string {
+	t.Helper()
+	dir := gitreftest.Repo(t, map[string]string{trailerBanFile: agents})
+	gitreftest.Remote(t, dir)
+	gitreftest.Write(t, dir, trailerBanFile, "# Rules\n\nRun the tests.\n")
+	return dir
+}
+
+// TestRun_ReadsTheTrailerBanFromTheBase: the ban the base branch carries
+// reaches every address session even though the head rewrites the file.
+func TestRun_ReadsTheTrailerBanFromTheBase(t *testing.T) {
+	gh := &githubtest.Fake{
+		PR:      github.PR{HeadBranch: "feat/x", BaseBranch: "main"},
+		Dir:     checkoutWithBase(t, trailerBanAgents),
+		Threads: sampleThreads(),
+	}
+	cl := &fakeClaude{results: []*report.AddressResult{doneResult(threadID1), doneResult(threadID2)}}
+	r := newRunner(gh, cl)
+
+	opts := baseOpts("o/r#1")
+	opts.All = true
+	if err := r.Run(io.Discard, opts); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if len(cl.ctxs) != 2 {
+		t.Fatalf("Claude.Address called %d times, want 2 (one per thread)", len(cl.ctxs))
+	}
+	for i, ctx := range cl.ctxs {
+		if ctx.AITrailersForbiddenBy != trailerBanFile {
+			t.Errorf("session %d got AITrailersForbiddenBy %q, want AGENTS.md from origin/main", i+1, ctx.AITrailersForbiddenBy)
+		}
+	}
+}
+
+// TestRun_NotesNoDisclosureWithoutReplyOrComment: with the trailer gone, the
+// thread replies and the report comment are the run's disclosure, so switching
+// off both is said. Switching off only one, or no ban, says nothing.
+func TestRun_NotesNoDisclosureWithoutReplyOrComment(t *testing.T) {
+	for _, tc := range []struct {
+		name             string
+		agents           string
+		reply            bool
+		noAddressComment bool
+		wantNotes        int
+	}{
+		{"ban, no reply, no comment", trailerBanAgents, false, true, 1},
+		{"ban, replies on", trailerBanAgents, true, true, 0},
+		{"ban, comment on", trailerBanAgents, false, false, 0},
+		{"no ban", "# Rules\n\nRun the tests.\n", false, true, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			gh := &githubtest.Fake{
+				PR:      github.PR{HeadBranch: "feat/x", BaseBranch: "main"},
+				Dir:     checkoutWithBase(t, tc.agents),
+				Threads: sampleThreads()[:1],
+			}
+			r := newRunner(gh, &fakeClaude{results: []*report.AddressResult{doneResult(threadID1)}})
+
+			opts := baseOpts("o/r#1")
+			opts.All = true
+			opts.Reply = tc.reply
+			opts.NoAddressComment = tc.noAddressComment
+			var buf bytes.Buffer
+			if err := r.Run(&buf, opts); err != nil {
+				t.Fatalf("Run returned %v, want nil", err)
+			}
+			if got := strings.Count(buf.String(), noDisclosureNote); got != tc.wantNotes {
+				t.Errorf("the no-disclosure note appears %d times, want %d:\n%s", got, tc.wantNotes, buf.String())
+			}
+		})
+	}
 }

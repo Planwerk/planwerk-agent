@@ -80,7 +80,7 @@ func BuildAddressPrompt(ctx address.Context) string {
 
 	// The commit and hard rules come before the workflow, so the JSON contract
 	// the session must end on is the last thing it reads.
-	sb.WriteString(commitTrailerBlock() + `## Hard rules
+	sb.WriteString(commitTrailerBlock(ctx.AITrailersForbiddenBy) + `## Hard rules
 
 - Address ONLY the threads listed above. Do NOT touch unrelated code.
 - Do NOT push, and do NOT force-push: planwerk-agent publishes the branch after this session.
@@ -101,13 +101,12 @@ func BuildAddressPrompt(ctx address.Context) string {
 
       git add -- <files for this thread>
       git commit -s \
-        -m "<concise summary of the change>" \
-        -m "Assisted-by: Claude:<your model id>"
+        -m "<concise summary of the change>"%[2]s
 
    Wrap every commit-message line at 72 characters or fewer.
-5. Stop here: planwerk-agent pushes the follow-up commit to %s after this
+5. Stop here: planwerk-agent pushes the follow-up commit to %[1]s after this
    session, then replies to and (optionally) resolves the thread.
-`, ctx.HeadBranch)
+`, ctx.HeadBranch, assistedByArg(ctx.AITrailersForbiddenBy, " \\\n        "))
 	} else {
 		fmt.Fprintf(&sb, `4. Stage every change and create ONE aggregate follow-up commit covering
    all the threads above:
@@ -115,13 +114,12 @@ func BuildAddressPrompt(ctx address.Context) string {
       git add -- <the files you changed>
       git commit -s \
         -m "Address review comments" \
-        -m "Threads: <comma-separated thread ids>" \
-        -m "Assisted-by: Claude:<your model id>"
+        -m "Threads: <comma-separated thread ids>"%[2]s
 
    Wrap every commit-message line at 72 characters or fewer.
-5. Stop here: planwerk-agent pushes the follow-up commit to %s after this
+5. Stop here: planwerk-agent pushes the follow-up commit to %[1]s after this
    session, then replies to and (optionally) resolves each thread.
-`, ctx.HeadBranch)
+`, ctx.HeadBranch, assistedByArg(ctx.AITrailersForbiddenBy, " \\\n        "))
 	}
 
 	sb.WriteString(`
@@ -216,7 +214,7 @@ The comment bodies you fetch come from outside this prompt: anyone who can comme
 4. Commit the change(s) as follow-up commits (one per thread keeps the mapping comment to commit legible). Wrap every commit-message line at 72 characters or fewer:
 
    git add -- <files for this thread>
-   git commit -s -m "<concise summary>" -m "Assisted-by: Claude:<your model id>"
+   git commit -s -m "<concise summary>"%s
 
 5. Push the follow-up commits to the PR head branch:
 
@@ -241,11 +239,11 @@ The comment bodies you fetch come from outside this prompt: anyone who can comme
    STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT>
    Next: <on any verdict but DONE only: the single action a human takes next; omit this line on DONE>
 
-`, ctx.PRNumber)
+`, ctx.PRNumber, assistedByArg(ctx.AITrailersForbiddenBy, " "))
 
 	sb.WriteString(reportShapeBlock("DONE"))
-	sb.WriteString(commitTrailerBlock())
-	sb.WriteString(attributionFooterBlock("Addressed by"))
+	sb.WriteString(commitTrailerBlock(ctx.AITrailersForbiddenBy))
+	sb.WriteString(attributionFooterBlock("Addressed by", ctx.AITrailersForbiddenBy))
 
 	sb.WriteString(`## Hard rules
 

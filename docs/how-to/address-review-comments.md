@@ -52,7 +52,12 @@ See the [CLI reference](/reference/cli#address) for the full flag table.
    thread becomes one follow-up commit (`--one-commit-per-thread`) so the
    comment-to-commit mapping stays legible; `--one-commit-per-thread=false`
    aggregates the changes into a single commit. The loop runs until every
-   selected thread is handled or `--max-iterations` is hit.
+   selected thread is handled or `--max-iterations` is hit. Each commit ends
+   with `Assisted-by` above `Signed-off-by`, or with `Signed-off-by` alone when
+   the repository's contribution rules on the base branch forbid AI attribution
+   trailers ([design decision #150](/explanation/design-decisions)). The thread
+   replies and the report comment then carry the disclosure, so the run says so
+   when `--no-reply` and `--no-address-comment` both switch it off.
 5. **Push, reply, and resolve.** The follow-up commits are pushed to the PR head
    branch. After each thread's change is pushed, a reply summarizing what
    changed is posted by default (`--no-reply` to skip) and — only with

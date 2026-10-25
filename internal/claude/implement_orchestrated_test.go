@@ -59,8 +59,29 @@ func TestImplementAgentsJSON_DefinesImplementerOnWorkerModel(t *testing.T) {
 	if def.Description == "" {
 		t.Error("implementer description is empty; the orchestrator matches agents by description")
 	}
-	if def.Prompt != buildImplementerAgentPrompt() {
-		t.Error("implementer prompt differs from buildImplementerAgentPrompt()")
+	if def.Prompt != buildImplementerAgentPrompt("") {
+		t.Error("implementer prompt differs from buildImplementerAgentPrompt(\"\")")
+	}
+}
+
+// TestImplementAgentsJSON_CarriesTheTrailerBan pins that the worker learns the
+// repository's ban on AI trailers: the workers make the commits, and they never
+// see the orchestrator's prompt.
+func TestImplementAgentsJSON_CarriesTheTrailerBan(t *testing.T) {
+	ctx := goldenImplementContext()
+	ctx.WorkerModel = testWorkerModel
+	ctx.AITrailersForbiddenBy = goldenAITrailersForbiddenBy
+
+	raw, err := implementAgentsJSON(ctx)
+	if err != nil {
+		t.Fatalf("implementAgentsJSON returned %v, want nil", err)
+	}
+	var defs map[string]agentDefinition
+	if err := json.Unmarshal([]byte(raw), &defs); err != nil {
+		t.Fatalf("emitted --agents value is not valid JSON: %v\n%s", err, raw)
+	}
+	if defs[implementerAgentName].Prompt != buildImplementerAgentPrompt(goldenAITrailersForbiddenBy) {
+		t.Error("implementer prompt differs from buildImplementerAgentPrompt(goldenAITrailersForbiddenBy)")
 	}
 }
 
@@ -105,7 +126,7 @@ func TestImplementAttributionModel(t *testing.T) {
 // carry the worker's exact model id), the branch/push prohibitions (the
 // orchestrator owns the branch and the delivery), and the scope discipline.
 func TestBuildImplementerAgentPrompt_CarriesTheNonNegotiables(t *testing.T) {
-	prompt := buildImplementerAgentPrompt()
+	prompt := buildImplementerAgentPrompt("")
 	for _, want := range []string{
 		"exactly ONE work package",
 		"Assisted-by: Claude",

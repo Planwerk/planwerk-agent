@@ -20,6 +20,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/planwerk/planwerk-agent/internal/aitrailers"
 	"github.com/planwerk/planwerk-agent/internal/attribution"
 	"github.com/planwerk/planwerk-agent/internal/capture"
 	"github.com/planwerk/planwerk-agent/internal/detect"
@@ -339,14 +340,15 @@ func (r *Runner) PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuil
 	catalog, hasRepoLocal := patterns.BareCatalog(pats, repo.Dir, opts.NoRepoPatterns)
 
 	prompt := build(BareContext{
-		RepoFullName:     fullName,
-		IssueNumber:      number,
-		TechTags:         tags,
-		PatternCatalog:   catalog,
-		BundledURLBase:   patterns.BundledURLBase,
-		HasRepoLocalRefs: hasRepoLocal,
-		Skills:           skills.Load(repo.Dir),
-		StyleGuidePath:   styleguide.Find(repo.Dir),
+		RepoFullName:          fullName,
+		IssueNumber:           number,
+		TechTags:              tags,
+		PatternCatalog:        catalog,
+		BundledURLBase:        patterns.BundledURLBase,
+		HasRepoLocalRefs:      hasRepoLocal,
+		Skills:                skills.Load(repo.Dir),
+		StyleGuidePath:        styleguide.Find(repo.Dir),
+		AITrailersForbiddenBy: aitrailers.ForbiddenBy(repo.Dir, "origin/HEAD"),
 	})
 	if _, err := io.WriteString(w, prompt); err != nil {
 		return fmt.Errorf("writing prompt: %w", err)
@@ -516,6 +518,9 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	defer cleanupCatalog()
 	ctx.Skills = skills.Load(repo.Dir)
 	ctx.StyleGuidePath = styleguide.Find(repo.Dir)
+	// The trailer rule is read at origin/HEAD, the default branch the pull
+	// request will target, never from the checkout (decision 150).
+	ctx.AITrailersForbiddenBy = aitrailers.ForbiddenBy(repo.Dir, "origin/HEAD")
 	ctx.Domains = domains.Load(repo.Dir)
 
 	if planEnabled {
@@ -1309,13 +1314,14 @@ func (r *Runner) runVerification(w io.Writer, dir string, ctx Context) {
 
 	slog.Info("feeding verification findings into the review applier", "findings", len(gaps))
 	verifyReport, _, err := r.ReviewApplier.ApplyReview(dir, ReviewApplyContext{
-		RepoFullName: ctx.RepoFullName,
-		BaseBranch:   branch.BaseBranch,
-		Findings:     gaps,
-		Patterns:     ctx.Patterns,
-		Catalog:      ctx.Catalog,
-		MaxPatterns:  ctx.MaxPatterns,
-		Source:       ReviewApplySourceVerification,
+		RepoFullName:          ctx.RepoFullName,
+		BaseBranch:            branch.BaseBranch,
+		Findings:              gaps,
+		Patterns:              ctx.Patterns,
+		Catalog:               ctx.Catalog,
+		MaxPatterns:           ctx.MaxPatterns,
+		Source:                ReviewApplySourceVerification,
+		AITrailersForbiddenBy: ctx.AITrailersForbiddenBy,
 	})
 	if err != nil {
 		slog.Warn("verification apply failed", "err", err)
@@ -1397,12 +1403,13 @@ func (r *Runner) runSimplify(w io.Writer, dir, owner, name string, number int, c
 	}
 
 	simplifyReport, model, err := r.SimplifyApplier.ApplySimplifications(dir, SimplifyApplyContext{
-		RepoFullName: ctx.RepoFullName,
-		BaseBranch:   branch.BaseBranch,
-		Findings:     kept,
-		Patterns:     ctx.Patterns,
-		Catalog:      ctx.Catalog,
-		MaxPatterns:  ctx.MaxPatterns,
+		RepoFullName:          ctx.RepoFullName,
+		BaseBranch:            branch.BaseBranch,
+		Findings:              kept,
+		Patterns:              ctx.Patterns,
+		Catalog:               ctx.Catalog,
+		MaxPatterns:           ctx.MaxPatterns,
+		AITrailersForbiddenBy: ctx.AITrailersForbiddenBy,
 	})
 	if err != nil {
 		slog.Warn("simplify apply failed", "err", err)
@@ -1660,12 +1667,13 @@ func (r *Runner) runReview(w io.Writer, dir, owner, name string, number int, ctx
 		}
 		slog.Info("handing review findings to the apply session", "issue", number, "iteration", i, "handed", len(actionable), "info", infoHanded)
 		reviewReport, model, err := r.ReviewApplier.ApplyReview(dir, ReviewApplyContext{
-			RepoFullName: ctx.RepoFullName,
-			BaseBranch:   branch.BaseBranch,
-			Findings:     actionable,
-			Patterns:     ctx.Patterns,
-			Catalog:      ctx.Catalog,
-			MaxPatterns:  ctx.MaxPatterns,
+			RepoFullName:          ctx.RepoFullName,
+			BaseBranch:            branch.BaseBranch,
+			Findings:              actionable,
+			Patterns:              ctx.Patterns,
+			Catalog:               ctx.Catalog,
+			MaxPatterns:           ctx.MaxPatterns,
+			AITrailersForbiddenBy: ctx.AITrailersForbiddenBy,
 		})
 		if err != nil {
 			slog.Warn("review apply failed", "iteration", i, "err", err)

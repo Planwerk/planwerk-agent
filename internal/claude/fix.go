@@ -130,7 +130,7 @@ func BuildFixPrompt(ctx fix.Context) string {
 `)
 
 	if ctx.Fixup {
-		sb.WriteString(foldSteps(ctx.BaseBranch, 2, "a fix for code", "fixing", "pushing", fixStandaloneCommitTail))
+		sb.WriteString(foldSteps(ctx.BaseBranch, 2, "a fix for code", "fixing", "pushing", fixStandaloneCommitTail(ctx.AITrailersForbiddenBy)))
 		fmt.Fprintf(&sb, "3. Publish the rewritten branch:\n\n"+
 			"      git push --force-with-lease origin HEAD:%[2]s\n\n"+
 			"   The autosquash rebase rewrote the branch's commit SHAs, so a plain push is\n"+
@@ -164,7 +164,7 @@ func BuildFixPrompt(ctx fix.Context) string {
 			"   files you changed and create ONE follow-up commit (a regression test goes into\n"+
 			"   the package's existing test file unless it has none):\n\n"+
 			"   git add -- <the files you changed>\n"+
-			"   git commit -s -m \"Fix failing CI checks (iteration %d)\" -m \"Failed checks: <comma-separated names>\" -m \"Assisted-by: Claude\"\n\n"+
+			"   git commit -s -m \"Fix failing CI checks (iteration %d)\" -m \"Failed checks: <comma-separated names>\""+assistedByArg(ctx.AITrailersForbiddenBy, " ")+"\n\n"+
 			"3. Push to the PR head branch:\n\n"+
 			"   git push origin HEAD:%s\n\n",
 			ctx.Iteration, ctx.HeadBranch)
@@ -205,7 +205,7 @@ func BuildFixPrompt(ctx fix.Context) string {
    (DONE = every check fixed and its command passing locally; DONE_WITH_CONCERNS = pushed, but with a fix you could not run locally or another reservation a human should see; BLOCKED = could not make progress; NEEDS_CONTEXT = missing information only a human can supply. DONE and DONE_WITH_CONCERNS mean you pushed a commit: every STOP in this prompt, and a run with nothing to commit, is BLOCKED, or NEEDS_CONTEXT when only a human can supply the missing fact. The orchestrator reads this line and stops the loop on BLOCKED or NEEDS_CONTEXT.)
    Next: <on any verdict but DONE only: the single action a human takes next; omit this line on DONE>
 
-` + reportShapeBlock("DONE") + commitTrailerBlock() + `## Hard rules
+` + reportShapeBlock("DONE") + commitTrailerBlock(ctx.AITrailersForbiddenBy) + `## Hard rules
 
 `)
 
@@ -307,7 +307,7 @@ gh run view <run-id> --repo %s --log-failed
    git fetch origin <base>
 
    Use the printed name wherever <base> appears below.
-`+foldSteps("<base>", 4, "a fix for code", "fixing", "pushing", fixStandaloneCommitTail)+`5. Publish the rewritten branch:
+`+foldSteps("<base>", 4, "a fix for code", "fixing", "pushing", fixStandaloneCommitTail(ctx.AITrailersForbiddenBy))+`5. Publish the rewritten branch:
 
       git push --force-with-lease origin HEAD
 
@@ -352,7 +352,7 @@ gh run view <run-id> --repo %s --log-failed
 			"   files you changed and create ONE follow-up commit (a regression test goes into\n" +
 			"   the package's existing test file unless it has none):\n\n" +
 			"   git add -- <the files you changed>\n" +
-			"   git commit -s -m \"Fix failing CI checks\" -m \"Failed checks: <comma-separated names>\" -m \"Assisted-by: Claude:<your model id>\"\n\n" +
+			"   git commit -s -m \"Fix failing CI checks\" -m \"Failed checks: <comma-separated names>\"" + assistedByArg(ctx.AITrailersForbiddenBy, " ") + "\n\n" +
 			"4. Push back to the PR's head branch:\n\n" +
 			"   git push origin HEAD\n\n")
 	}
@@ -385,7 +385,7 @@ gh run view <run-id> --repo %s --log-failed
    (DONE = every check fixed and its command passing locally; DONE_WITH_CONCERNS = pushed, but with a fix you could not run locally or another reservation a human should see; BLOCKED = could not make progress; NEEDS_CONTEXT = missing information only a human can supply. DONE and DONE_WITH_CONCERNS mean you pushed a commit: every STOP in this prompt, and a run with nothing to commit, is BLOCKED, or NEEDS_CONTEXT when only a human can supply the missing fact.)
    Next: <on any verdict but DONE only: the single action a human takes next; omit this line on DONE>
 
-` + reportShapeBlock("DONE") + commitTrailerBlock() + `## Hard rules
+` + reportShapeBlock("DONE") + commitTrailerBlock(ctx.AITrailersForbiddenBy) + `## Hard rules
 
 `)
 

@@ -122,7 +122,8 @@ For EVERY finding, include: the Acceptance Criterion it concerns (quote it in th
 // classifier. The returned model then names the worker model — the model that
 // wrote the code — rather than the orchestrating session's model, so the
 // report's attribution footer credits the implementing model (the workers'
-// own commit trailers already carry their exact model id).
+// own commit trailers already carry their exact model id, unless the
+// repository forbids that trailer, decision 150).
 //
 // The session's system prompt also carries ImplementSystemPrompt (decision
 // 108).
@@ -147,7 +148,8 @@ func (c *Client) Implement(dir string, ctx implement.Context) (string, string, e
 // existed. The worker attribution carries the configured value (an alias like
 // "opus", or an exact id when the operator passed one) because the envelope
 // only ever resolves the session's own model; the workers' commit trailers
-// name their exact model id regardless (see commitTrailerBlock).
+// name their exact model id regardless (see commitTrailerBlock), unless the
+// repository forbids that trailer (decision 150).
 func implementAttributionModel(ctx implement.Context, sessionModel string) string {
 	if ctx.WorkerModel != "" {
 		return ctx.WorkerModel
@@ -193,7 +195,7 @@ func implementAgentsJSON(ctx implement.Context) (string, error) {
 	raw, err := json.Marshal(map[string]agentDefinition{
 		implementerAgentName: {
 			Description: "Implements exactly one delegated work package of a GitHub issue end-to-end — code, tests, docs — committed on the current feature branch.",
-			Prompt:      buildImplementerAgentPrompt(),
+			Prompt:      buildImplementerAgentPrompt(ctx.AITrailersForbiddenBy),
 			Model:       ctx.WorkerModel,
 			Effort:      effort,
 		},
@@ -210,10 +212,12 @@ func implementAgentsJSON(ctx implement.Context) (string, error) {
 // neither the issue nor the plan nor the orchestrator's prompt — so everything
 // it must honor unconditionally (the baseline principles, the commit-trailer
 // convention, the hard rules) is repeated here, while everything task-specific
-// arrives in the per-delegation brief the orchestrator writes. The prompt is
-// static by design: a deterministic --agents value keeps the orchestrated
-// invocation reproducible and lets a golden test lock it.
-func buildImplementerAgentPrompt() string {
+// arrives in the per-delegation brief the orchestrator writes. The prompt
+// depends only on forbiddenBy, the commitTrailerBlock argument
+// (aitrailers.ForbiddenBy's result for the repository), so the --agents value
+// stays deterministic per repository: the orchestrated invocation is
+// reproducible, and two goldens lock it (decision 150).
+func buildImplementerAgentPrompt(forbiddenBy string) string {
 	var sb strings.Builder
 	sb.WriteString(`You are a Staff Engineer implementing exactly ONE work package of a larger GitHub issue, inside a checkout of the target repository. An orchestrator session delegated this package to you; the task brief you received is your entire contract — you cannot see the orchestrator's context, the issue, or the plan, so treat the brief as authoritative and complete. If the brief is missing something you need, say so in your result instead of guessing.
 
@@ -234,7 +238,7 @@ func buildImplementerAgentPrompt() string {
 
 `)
 	sb.WriteString(docProseBlock())
-	sb.WriteString(commitTrailerBlock())
+	sb.WriteString(commitTrailerBlock(forbiddenBy))
 	sb.WriteString(`## Hard rules
 
 ` + noSkipHooksLine() + `- NEVER weaken, skip, or delete tests to go green; fix the root cause.
@@ -414,7 +418,7 @@ You run fully autonomously, with no human in the loop and a bounded budget, so a
 
 When you hit a circuit breaker, halt immediately and emit STATUS: PARTIAL when a partial but reviewable change already exists — at least one work package is done and committed but others remain (commit what you have on the branch; no pull request is opened for it, and a follow-up run resumes the branch to finish the rest), STATUS: DONE_WITH_CONCERNS when every work package is in fact complete but you have reservations a reviewer should see, or STATUS: BLOCKED when nothing shippable was produced. A stopped run that explains why is worth far more than an exhausted budget. The circuit breakers are the ONLY legitimate route to PARTIAL.
 
-` + reportShapeBlock("DONE") + commitTrailerBlock() + implementRationalizationsBlock() + `## Hard rules
+` + reportShapeBlock("DONE") + commitTrailerBlock(ctx.AITrailersForbiddenBy) + implementRationalizationsBlock() + `## Hard rules
 
 ` + noSkipHooksLine() + `- NEVER weaken, skip, or delete tests to make the suite green; fix the root cause.
 - NEVER widen types to Any/interface{}/unknown to silence the type-checker.
@@ -647,7 +651,7 @@ You run fully autonomously, with no human in the loop and a bounded budget, so a
 
 When you hit a circuit breaker, halt immediately and emit STATUS: PARTIAL when a partial but reviewable change already exists — at least one work package is done and committed but others remain (push what you have but open NO pull request; a follow-up session on the same branch finishes the rest), STATUS: DONE_WITH_CONCERNS when every work package is in fact complete but you have reservations a reviewer should see, or STATUS: BLOCKED when nothing shippable was produced. A stopped run that explains why is worth far more than an exhausted budget. The circuit breakers are the ONLY legitimate route to PARTIAL.
 
-` + reportShapeBlock("DONE") + commitTrailerBlock() + attributionFooterBlock("Implemented by") + implementRationalizationsBlock() + `## Hard rules
+` + reportShapeBlock("DONE") + commitTrailerBlock(ctx.AITrailersForbiddenBy) + attributionFooterBlock("Implemented by", ctx.AITrailersForbiddenBy) + implementRationalizationsBlock() + `## Hard rules
 
 ` + noSkipHooksLine() + `- NEVER weaken, skip, or delete tests to make the suite green; fix the root cause.
 - NEVER widen types to Any/interface{}/unknown to silence the type-checker.

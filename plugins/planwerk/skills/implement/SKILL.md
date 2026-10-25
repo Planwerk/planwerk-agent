@@ -221,7 +221,7 @@ single thing that unblocks the work.
   against the list in `commits.md`, hunk by hunk.
 - The work is complete: no follow-up issue invented, no second pull request, no
   remainder quietly dropped.
-- Every commit ends with `Assisted-by` and then `Signed-off-by`, and carries no
+- Every commit ends with the trailers `commits.md` asks for, and carries no
   `Co-authored-by`. The push targets the feature branch only.
 - The pull request closes the issue with `Closes #N`, qualified per
   `github.md` when the issue lives in another repository.
