@@ -477,7 +477,7 @@ func TestBuildAnalysisPrompt_OutOfScope(t *testing.T) {
 	assertGoldenPrompt(t, "analysis_out_of_scope", buildAnalysisPrompt(ctx))
 }
 
-// goldenGlossary returns a representative CONTEXT.md body — a context heading,
+// goldenGlossary returns a representative glossary body — a context heading,
 // a "## Language" section, and one "**Term**:" / "_Avoid_:" entry — so the
 // domain-glossary block snapshots cover the rendered shape, including the
 // untrusted-data framing and the <domain-glossary> wrapper.
@@ -490,7 +490,7 @@ func goldenGlossary() string {
 }
 
 // TestBuildReviewPrompt_Glossary locks the "## Domain Glossary" block injected
-// into the review prompt when the target repo carries a CONTEXT.md. The empty
+// into the review prompt when the target repo commits a glossary. The empty
 // branch stays covered by review.golden.
 func TestBuildReviewPrompt_Glossary(t *testing.T) {
 	ctx := goldenReviewContext()

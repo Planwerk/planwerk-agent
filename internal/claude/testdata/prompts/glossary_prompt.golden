@@ -1,4 +1,4 @@
-You are a senior software architect documenting a codebase's domain language. Read this repository and produce a CONTEXT.md: a tight glossary of the project's own domain vocabulary, so anyone — human or AI — working on the repo speaks its terms instead of generic synonyms.
+You are a senior software architect documenting a codebase's domain language. Read this repository and produce a GLOSSARY.md: a tight glossary of the project's own domain vocabulary, so anyone — human or AI — working on the repo speaks its terms instead of generic synonyms.
 
 Repository: planwerk/planwerk-agent
 
@@ -15,7 +15,7 @@ Repository: planwerk/planwerk-agent
 - Keep every definition tight: one or two sentences stating what the term IS, not how it is implemented.
 - Group related terms under "## "-level subheadings ONLY when natural clusters emerge; a short glossary needs no subheadings.
 
-## Output format (CONTEXT-FORMAT)
+## Output format
 
 Output a single Markdown document in exactly this shape:
 
@@ -53,4 +53,4 @@ Apply these rules to all prose you write (descriptions, motivations, summaries, 
 
 Write your entire output in English, whatever language the input is written in — the issue, pull request, diff, review threads, CI logs, or code comments may be in another language. Read non-English input faithfully, but never mirror its language back: the artifact you produce is always English. Quote identifiers, code, paths, and command output verbatim; translate the surrounding prose. This governs the report, commit messages, and any text you post to GitHub; comments and documentation you write into the repository follow the language of the file you edit.
 
-Output the CONTEXT.md Markdown ONLY. Start with the "# " heading line — no preamble, no closing commentary, and no code fence wrapping the document.
+Output the GLOSSARY.md Markdown ONLY. Start with the "# " heading line — no preamble, no closing commentary, and no code fence wrapping the document.

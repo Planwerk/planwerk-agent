@@ -8,13 +8,13 @@ import (
 )
 
 // buildGlossaryPrompt constructs the prompt that asks Claude to explore the
-// checkout and emit a starter CONTEXT.md in the upstream CONTEXT-FORMAT schema:
+// checkout and emit a starter GLOSSARY.md in the upstream glossary format:
 // a single-context glossary of the repository's own domain-specific vocabulary.
 // The output feeds the `glossary` command's stdout, so the prompt ends with a
 // hard "output the Markdown only" instruction; sanitizeGlossary is the
 // belt-and-braces that strips any preamble the model emits anyway.
 //
-// The CONTEXT-FORMAT rules are carried verbatim — be opinionated (pick one term,
+// The format's rules are carried verbatim — be opinionated (pick one term,
 // list the rest under "_Avoid_"), keep definitions tight, and include ONLY
 // context-specific terms (no general programming concepts) — because those rules
 // are what keep the artifact a domain glossary rather than a generic dictionary.
@@ -23,7 +23,7 @@ import (
 func buildGlossaryPrompt(ctx glossary.GenerateContext) string {
 	var sb strings.Builder
 
-	sb.WriteString(`You are a senior software architect documenting a codebase's domain language. Read this repository and produce a CONTEXT.md: a tight glossary of the project's own domain vocabulary, so anyone — human or AI — working on the repo speaks its terms instead of generic synonyms.
+	sb.WriteString(`You are a senior software architect documenting a codebase's domain language. Read this repository and produce a GLOSSARY.md: a tight glossary of the project's own domain vocabulary, so anyone — human or AI — working on the repo speaks its terms instead of generic synonyms.
 
 `)
 
@@ -44,7 +44,7 @@ func buildGlossaryPrompt(ctx glossary.GenerateContext) string {
 - Keep every definition tight: one or two sentences stating what the term IS, not how it is implemented.
 - Group related terms under "## "-level subheadings ONLY when natural clusters emerge; a short glossary needs no subheadings.
 
-## Output format (CONTEXT-FORMAT)
+## Output format
 
 Output a single Markdown document in exactly this shape:
 
@@ -64,7 +64,7 @@ Repeat the "**{Term}**:" / "_Avoid_:" pair for each term. Omit the "_Avoid_:" li
 	sb.WriteString(proseStyleBlock())
 	sb.WriteString(outputLanguageBlock())
 
-	sb.WriteString(`Output the CONTEXT.md Markdown ONLY. Start with the "# " heading line — no preamble, no closing commentary, and no code fence wrapping the document.`)
+	sb.WriteString(`Output the GLOSSARY.md Markdown ONLY. Start with the "# " heading line — no preamble, no closing commentary, and no code fence wrapping the document.`)
 
 	return sb.String()
 }

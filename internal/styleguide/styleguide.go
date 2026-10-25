@@ -20,7 +20,7 @@ import (
 // locations are the places a STYLE_GUIDE.md can live, in precedence order;
 // the first hit wins. The root file wins over .planwerk/ (the canonical,
 // discoverable location beats the tool-specific one — the glossary's
-// CONTEXT.md precedence), followed by the generic docs/ and .github/
+// root-first precedence), followed by the generic docs/ and .github/
 // fallbacks. Entries are slash-separated repo-relative paths — the exact
 // form the prompt cites — and joined onto repoDir per-OS in Find.
 var locations = []string{
