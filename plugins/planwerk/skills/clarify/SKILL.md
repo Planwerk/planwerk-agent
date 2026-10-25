@@ -165,8 +165,8 @@ Ask each decision as its own question, in rounds, under the rules in
 Order the decisions by blast radius, largest first. An answer that discards half
 the plan makes the smaller questions moot, and asking those first spends the
 author's attention on work that will not exist. Such a decision is a round of
-its own (`interaction.md`, Ask in rounds); the decisions it cannot moot share
-the round after it.
+its own (`interaction.md`, Ask in rounds); the decisions its answer leaves
+standing go into the rounds after it, by the same rule.
 
 Two things belong in every such question, and only `clarify` is in a position to
 supply them:

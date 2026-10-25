@@ -208,8 +208,8 @@ steps: give the author one step at a time, and ask for the observed output after
 each.
 
 When no loop can be built, stop. List every construction you tried and why each
-one failed, then ask the author inline, under the open-question rules in
-`interaction.md`, for:
+one failed, then ask the author inline, as one question under the open-question
+rules in `interaction.md`, which of these they can provide; any one is enough:
 
 1. access to an environment that reproduces the bug,
 2. a redacted captured artifact: a log, a HAR file, a core dump, or a screen
@@ -305,7 +305,7 @@ hypothesis was already ruled out, or that an area changed recently.
 
 ## Phase 5 — Instrument
 
-Each probe tests one prediction, and each round changes one variable. The probe
+Each probe tests one prediction, and changes one variable. The probe
 is whatever shows the seam that separates two hypotheses with the least noise:
 a debugger or REPL where the environment has one, a targeted log at that seam
 otherwise. A log of everything, grepped afterwards, is not a probe; it tests no

@@ -88,7 +88,8 @@ Skip this phase entirely when the repository has no map, or when no entry's
 
 Otherwise, name the entry that matched and the condition it met, then ask with
 `AskUserQuestion` whether to file the counterpart alongside this issue. One
-question per counterpart repository, never a batch. Draft its body too, so the
+question per counterpart repository, asked together in one round
+(`interaction.md`, Ask in rounds), never one question covering two. Draft its body too, so the
 author is accepting something concrete rather than an intention.
 
 ## Phase 6 — Confirm, then file

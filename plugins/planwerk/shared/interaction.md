@@ -67,67 +67,65 @@ Every option set follows this shape:
 options, never drop, merge, or silently defer one to fit. Split the choice into
 several sequential calls instead. The author's option set is not yours to trim.
 
-When the tool is unavailable, ask the same thing in prose, ending your message
-with the numbered questions, laid out as under Open questions are asked inline:
-the options, then the recommended one on its own line, worded so "yes" accepts
-it. Prose is a weaker gate: for anything irreversible, a bare "yes" is not
-enough. Require the author to type back the explicit choice, and re-ask on a
-vague reply.
-
-### Ask in rounds
-
-When several decisions are open at once, ask them in rounds. A round holds
-every open decision whose prerequisites are already settled: the ones you can
-ask now without guessing at an answer you have not heard yet. A decision whose
-options, or whose relevance, turn on another decision still open belongs to a
-later round. When you are unsure whether two decisions depend on each other,
-the second one waits.
-
-Put a round into one `AskUserQuestion` call, each decision its own question.
-The tool takes up to four questions per call, so a round of five or more
-continues in the next call. Then wait for the answers and recompute what they
-settled: ask the next round from what they unblocked, and drop a question an
-answer made moot, saying which answer did. When an answer changes the premise
-of a question that shared its round, ask that question again in the next
-round, on the new premise.
-
-A decision that could discard the work the others are about — throw away half
-the plan, rule the issue out of scope — is a prerequisite of every one of them.
-It is a round of its own, and it comes first.
+When the tool is unavailable, ask the same thing in prose, in the layout under
+Open questions are asked inline, with its `Options:` line. Prose is a weaker
+gate: for anything irreversible, a bare "yes" is not enough. Require the author
+to type back the explicit choice, and re-ask on a vague reply.
 
 ## Open questions are asked inline
 
 `AskUserQuestion` is for picking from a known set. For open-ended interrogation —
 "what problem is behind this idea?" — ask inline in the chat:
 
-- **Three to five questions per round, at most.** Highest ambiguity first.
-- **Ask only what the answers so far let you ask.** A question whose answer
-  depends on another still open waits for the next round, as under Ask in
-  rounds.
+- **At most five questions per round**, highest ambiguity first. A later round
+  holds only what the answers unblocked, however few.
 - **Number them**, each on its own line, apart from any paragraph of context.
 - **End the message with them.** They are the last thing the author reads.
 - **Attach your answer, and word the question so "yes" accepts it.** Under each
   question, on its own line, put the answer you recommend or the assumption you
-  would otherwise build on. "This only affects the admin role — right?" is a
-  better question than "who does this affect?", and a question worded to match
-  its answer keeps agreeing a "yes". When nothing you can read supports an
-  answer (infrastructure or policy you cannot see), the line names the
-  assumption the work currently rests on and says that it is one, or says there
-  is none.
+  would otherwise build on, so that "yes" always means agreement: "This only
+  affects the admin role — right?" is a better question than "who does this
+  affect?". When nothing you can read supports an answer (infrastructure or
+  policy you cannot see, a symptom only the reporter saw), name the assumption
+  the work currently rests on and say that it is one. When there is none either,
+  write `none` with the reason, and ask the question open: the reply has to
+  supply the answer, because a "yes" cannot.
 - **Skip what you already know.** A later question an earlier answer settled is
   answered; drop it.
 
 A round then reads:
 
 ```
-1. <the question, worded so "yes" accepts the line below>
-   Recommended: <your answer, or the assumption you would build on>
+1. <the question, worded so "yes" accepts the Recommended line>
+   Options: <only for a choice from a known set, as in the prose fallback>
+   Recommended: <your answer or assumption, or "none: <why>">
 2. …
 ```
 
 The author can answer it by number: "1 yes, 2 no, auditors too". A number the
-reply skips is unanswered, not accepted. Ask it again in the next round, or
-record it per Record what was never decided.
+reply skips is unanswered, not accepted: ask it once more in the next round, and
+when the next reply skips it too, record it per Record what was never decided.
+
+## Ask in rounds
+
+When several questions are open at once, decisions and open questions alike,
+ask them in rounds. A round holds every open question whose prerequisites are
+already settled: the ones you can ask now without guessing at an answer you have
+not heard yet. A question whose options, or whose relevance, turn on another one
+still open belongs to a later round. When you are unsure whether two depend on
+each other, the second one waits.
+
+A round's decisions go into one `AskUserQuestion` call, each its own question;
+the tool takes up to four questions per call, so a fifth continues in the next
+call. A round's open questions go inline, as above, once the call has returned.
+Then wait for the answers and recompute what they settled: ask the next round
+from what they unblocked, and drop a question an answer made moot, saying which
+answer did. When an answer changes the premise of a question that shared its
+round, ask that question again in the next round, on the new premise.
+
+A decision that could discard the work the others are about — throw away half
+the plan, rule the issue out of scope — is a prerequisite of every one of them.
+It is a round of its own, and it comes first.
 
 ## Read the code before you ask about the code
 
@@ -135,8 +133,9 @@ Ask only what the repository cannot answer. Open the file, then ask the question
 the file raised.
 
 - Weak: "Does this touch the database?"
-- Strong: "This needs a new column on `orders` (`internal/store/orders.go:41`), or
-  a separate table. Which?"
+- Strong: "This needs a new column on `orders` (`internal/store/orders.go:41`),
+  or a separate table. I recommend the column: every reader of an order already
+  loads that row."
 
 This applies to any skill running inside a checkout. A question grounded in a
 real path is the difference between an interrogation and a form.
@@ -163,15 +162,18 @@ author their attention is cheap, and the next real question gets skimmed.
 ## Check what the author says against the code and the glossary
 
 When the author states how something works, check the code before you build on
-it. Where the code disagrees, the disagreement is the question: "You describe
-cancelling one line item, but `cancelOrder` (`internal/orders/cancel.go:52`)
-voids the whole order. Which is right?"
+it, inside a checkout of the repository the work is about; without one, take the
+description as the premise and say that it is one. Where the code disagrees, the
+disagreement is the question: "You describe cancelling one line item, but
+`cancelOrder` (`internal/orders/cancel.go:52`) voids the whole order. The plan
+keeps whole-order cancellation, as the code does — right?"
 
 When the author uses a word the domain glossary (`house-style.md`, Domain
 glossary) defines differently, or lists under `_Avoid_`, ask which they mean
 before you write it down: "The glossary defines *cancellation* as voiding a
-whole order; you seem to mean removing one line. Which is it?" The answer goes
-into the artifact in the glossary's term.
+whole order; you mean removing one line, which it has no term for. I will write
+*line removal* and propose it as an entry — right?" The answer goes into the
+artifact in the glossary's term.
 
 ## Push once, then push again
 
@@ -195,8 +197,10 @@ get to make quietly.
 
 The questions end when every one that survived the rules above is in one of
 three states: answered by the author, declined and recorded as above, or decided
-by you with its reason stated out loud. While one is still open, the next round
-is owed; once none is, move on to the artifact. A round asked after that point
+by you with its reason stated out loud. A question counts as declined once the
+author has skipped it twice, or answered it vaguely after the one re-ask Push
+once, then push again allows. While one is still open, the next round is owed;
+once none is, move on to the artifact. A round asked after that point
 spends the author's attention on questions nobody needed.
 
 ## Stop when you are confused

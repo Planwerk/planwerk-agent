@@ -274,8 +274,8 @@ none of these is the rebase's, and the report names them as left open with the
 reason. A thread marked `isOutdated` is not thereby settled; outdated means the
 diff moved, not that the request was met.
 
-Each settled thread is one proposal for the author, grouped into one
-`AskUserQuestion` when they share one piece of evidence: resolve it with a
+Each settled thread is one proposal for the author, grouped into one question
+when they share one piece of evidence: resolve it with a
 reply naming the commit or pull request that settled it, in `owner/repo#N` or
 `owner/repo@<sha>` form, or leave it open. Recommend the resolve when the
 evidence is a merged pull request that closed the issue the thread named, and
