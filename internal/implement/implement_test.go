@@ -3553,7 +3553,7 @@ func TestRun_ReviewNilSpecialistReviewerDegrades(t *testing.T) {
 }
 
 // TestRun_ReviewSpecialistFanOutErrorDegradesToAdversarial proves a fan-out
-// failure is non-fatal: the load-bearing adversarial finder still applies.
+// failure is non-fatal: the required adversarial finder still applies.
 func TestRun_ReviewSpecialistFanOutErrorDegradesToAdversarial(t *testing.T) {
 	gh := reviewGH(t)
 	cl := &fakeClaude{}

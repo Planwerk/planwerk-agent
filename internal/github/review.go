@@ -242,7 +242,7 @@ func signReviewComments(comments []ReviewComment) []ReviewComment {
 // using the GitHub REST API via gh.
 //
 // The signature goes on the review body AND on every inline comment. Only the
-// latter is load-bearing: GitHub exposes an inline comment as a review thread
+// latter is required: GitHub exposes an inline comment as a review thread
 // but never hands the review body along with it, so FilterReviewThreads — which
 // reads a thread's first comment — can recognize the tool's own findings only
 // if the marker travels with the comment. Without it, `address` offers every

@@ -182,7 +182,7 @@ and every restatement of `interaction.md`. Fragility versus freedom: `gh`
 writes, history rewrites, pushes, body formats, the fold keep exact scripts;
 reading a codebase, scoring a draft, deciding a split, forming hypotheses,
 resolving a conflict's intent are judgment work. The five failure modes per
-file, with byte sizes and where the load-bearing instruction sits; each
+file, with byte sizes and where the most important instruction sits; each
 skill's completion criterion tested for checkable and exhaustive (the author
 says no, nothing found, `gh` fails, CI still red, conflict unresolvable).
 Volatile specifics: every path, command, flag, `gh` field, and `planwerk-agent`

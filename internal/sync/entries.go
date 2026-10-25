@@ -74,7 +74,7 @@ func ReadWikiEntries(wikiDir string) ([]Entry, error) {
 		}
 		for _, f := range files {
 			// Skip directories, symlinks, and non-markdown entries. The symlink
-			// guard is load-bearing: the wiki is world-editable, so a *.md symlink
+			// guard is required: the wiki is world-editable, so a *.md symlink
 			// pointing at e.g. ~/.ssh/id_ed25519 would otherwise be followed by the
 			// read below and its target fed into the prompt (and, under --prune,
 			// proposed for deletion). os.DirEntry reports the entry's own type

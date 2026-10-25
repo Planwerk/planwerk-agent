@@ -40,5 +40,5 @@ Drop an entry only when the finding is fixed or withdrawn, and say which.
 
 Findings the auditors returned that the synthesis rejected, with the reason
 (the line no longer exists, the exception is documented in the components
-header, the rule is load-bearing on the target model). A dropped finding
+header, the target model needs the rule). A dropped finding
 that comes back next time is a sign the lens needs a sharper test.

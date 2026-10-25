@@ -11,7 +11,7 @@ import (
 // relations.go renders for a headless elaborate or plan session, and the
 // elaborate and implement skills, which read the same edges from the shared
 // neighborhood query. A rule that holds on one surface and not another plans
-// a Sub Issue against a sibling that has not delivered yet, so the load-bearing
+// a Sub Issue against a sibling that has not delivered yet, so the key
 // phrases are pinned across all three, the way shared_crossrepo_test.go pins
 // the cross-repository reference rule.
 const implementSkillDoc = "../../plugins/planwerk/skills/implement/SKILL.md"

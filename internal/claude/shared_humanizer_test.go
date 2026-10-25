@@ -55,7 +55,7 @@ func TestSharedHumanizerDocMatchesPromptBlocks(t *testing.T) {
 // TestSharedHumanizerDocMatchesBannedVocabulary fails when the vocabulary ban
 // diverges between the shared docs and bannedVocabularyLine(). The words are a
 // sample, not the list: one marker per source list that was merged (the
-// original gstack/econ set and the humanizer additions), plus the two
+// original gstack/econ set and the humanizer additions), plus the three
 // qualified entries whose qualifier keeps the ban from over-triggering.
 func TestSharedHumanizerDocMatchesBannedVocabulary(t *testing.T) {
 	surfaces := map[string]string{
@@ -71,6 +71,7 @@ func TestSharedHumanizerDocMatchesBannedVocabulary(t *testing.T) {
 		"a testament to",
 		"leverage (as a verb)",
 		"robust (outside its statistical sense)",
+		"load-bearing (outside its structural sense)",
 	} {
 		for name, text := range surfaces {
 			if !strings.Contains(flow(text), flow(marker)) {

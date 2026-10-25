@@ -397,7 +397,7 @@ type IssueCommentLister interface {
 
 // CompleteIssueBody replaces issue.Body with the whole document when the body
 // continues in comments, and leaves it alone otherwise. The comment read is
-// load-bearing once the body says it is continued: a failure is returned, not
+// required once the body says it is continued: a failure is returned, not
 // logged, because every caller is about to plan or implement against the body
 // and a silently truncated plan is the failure this exists to prevent.
 func CompleteIssueBody(gh IssueCommentLister, issue *Issue) error {

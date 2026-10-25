@@ -68,9 +68,10 @@ enduring, enhance, foster, furthermore, garner, groundbreaking, interplay,
 intricate, landscape (as an abstract noun), multifaceted, notably, nuanced,
 pivotal, showcase, tapestry, a testament to, underscore (as a verb), vibrant,
 leverage (as a verb), robust (outside its statistical sense), shed light on,
-pave the way. These words are not wrong individually; they cluster in machine
-prose, and each has a plainer neighbor. The ban governs prose, never
-identifiers, quoted code, or existing API names cited verbatim.
+pave the way, load-bearing (outside its structural sense). These words are not
+wrong individually; they cluster in machine prose, and each has a plainer
+neighbor. The ban governs prose, never identifiers, quoted code, or existing
+API names cited verbatim.
 
 **Copula avoidance.** Write "is", "has", "does". Machine prose dodges the plain
 copula with "serves as", "stands as", "acts as", "boasts", "features",

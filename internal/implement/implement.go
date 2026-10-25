@@ -408,7 +408,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 
 	// A body over GitHub's cap continues in comments. Read it whole before
 	// anything plans or verifies against it: a criterion in a continuation is
-	// still a criterion. Load-bearing, like the plan-reuse lookup — a plan made
+	// still a criterion. Required, like the plan-reuse lookup — a plan made
 	// from a truncated body is wrong, not shorter.
 	if err := github.CompleteIssueBody(r.GitHub, issue); err != nil {
 		return err
@@ -892,7 +892,7 @@ func (r *Runner) confirmUnelaborated(w io.Writer, fullName string, number int) e
 // operator and run through planEscalation, so a previously posted STATUS:
 // BLOCKED / NEEDS_CONTEXT plan still aborts before any code is written.
 //
-// Reading the comments is treated as load-bearing, not best-effort: if the
+// Reading the comments is treated as required, not best-effort: if the
 // lookup fails we abort rather than silently paying for a fresh planning pass
 // the operator may not expect. --no-plan-reuse (skip the lookup) and --no-plan
 // (skip planning) are the escape hatches when GitHub is unreachable.
@@ -1788,7 +1788,7 @@ func listItem(t string) (string, bool) {
 // domain-specialist fan-out concurrently (unless --no-specialists or no
 // SpecialistReviewer is wired), so the self-review checks the same domains a
 // later review of this diff would; later rounds run the adversarial finder alone,
-// bounding the fan-out's cost. The adversarial finder is load-bearing (its
+// bounding the fan-out's cost. The adversarial finder is required (its
 // failure fails the round); the fan-out is best-effort (its failure degrades to
 // adversarial-only). The merged findings are tagged with provenance, deduplicated
 // (only when a specialist contributed), snippet-checked, and claim-verified — the
@@ -1818,7 +1818,7 @@ func (r *Runner) gatherReviewFindings(dir, baseBranch, sinceRef string, changedF
 		})
 		g.Go(func() error {
 			// The fan-out is non-fatal: its error is captured and handled after Wait
-			// so it never sinks the load-bearing adversarial finder.
+			// so it never sinks the required adversarial finder.
 			specResults, specErr = r.SpecialistReviewer.SpecialistReviews(dir, baseBranch, changedFiles, ctx.Patterns, ctx.MaxPatterns)
 			return nil
 		})

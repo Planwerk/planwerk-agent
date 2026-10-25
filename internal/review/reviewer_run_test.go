@@ -995,7 +995,7 @@ func TestRun_CacheHitWritesNoMemoryDirectory(t *testing.T) {
 func TestRun_AdversarialErrorDoesNotFailRun(t *testing.T) {
 	// Secondary passes (adversarial, coverage, compliance) log warnings on
 	// failure but must not abort the review — the primary result is still
-	// load-bearing and should be rendered.
+	// valid and should be rendered.
 	// Not t.Parallel(): cache.SetDir mutates a package-level variable and
 	// would race with concurrent Run tests.
 	restore := cache.SetDir(t.TempDir())

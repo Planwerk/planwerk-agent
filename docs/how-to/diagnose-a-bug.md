@@ -67,7 +67,7 @@ Because the loop command is whatever reproduces the bug, the skill declares
 unrestricted `Bash`, as `fix` and `implement` do.
 
 Once the loop goes red on the reported symptom on three consecutive runs, the
-skill shrinks the repro until every remaining element is load-bearing, and
+skill shrinks the repro until every remaining element is needed for the bug, and
 bisects when the report names a last-good version or commit. A loop that stays
 green means the bug does not reproduce here, and the skill never proceeds to a
 fix on it.

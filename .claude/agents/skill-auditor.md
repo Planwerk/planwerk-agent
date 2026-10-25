@@ -126,7 +126,7 @@ each finding:
 
 End with the smallest ordered set of edits that clears the audit-edits, then
 the behavioral-changes as a separate list, then a table: skill → bytes →
-shared docs referenced → description length → load-bearing instruction on the
+shared docs referenced → description length → most important instruction on the
 first screen (yes/no) → sibling command (yes/no). If a file is clean, say so
 and stop: do not invent findings to look productive.
 

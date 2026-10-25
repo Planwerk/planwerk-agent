@@ -37,7 +37,7 @@ itself a stale answer.
 ## What clarify does not do
 
 - It never edits the implementation plan comment, and above all never its
-  `STATUS:` line. Phase 5 explains why that rule is load-bearing.
+  `STATUS:` line. Phase 5 explains what breaks without it.
 - It never plans. It removes the underspecification that stopped the planner; the
   next planning session writes the plan.
 - It never changes an issue's **depth**. A draft-depth issue is clarified as a
