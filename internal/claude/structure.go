@@ -182,14 +182,19 @@ func structure[T any](c *Client, prompt, runLabel, decodeLabel string) (*T, erro
 // findings (decision 109): the JSON decode with the structure tier's repair
 // backstop, the schema repair of any finding that still fails validation, the
 // pass's pattern tag on every finding that carries none (skipped when tag is
-// empty), stable IDs, and the model that produced the pass. pass names the pass
-// in the decode and repair errors; a final failure persists text and names the
-// saved file.
+// empty), stable IDs, and the model that produced the pass. The result never
+// carries Passes: the caller that runs the passes assigns it. pass names the
+// pass in the decode and repair errors; a final failure persists text and names
+// the saved file.
 func (c *Client) finishReview(text, model, pass, tag string) (*report.ReviewResult, error) {
 	var result report.ReviewResult
 	if err := c.decodeJSONWithRepairSchema(text, pass, string(schema.FinderOutput), &result); err != nil {
 		return nil, wrapWithPersistedOutput(text, err)
 	}
+	// The pipeline owns the pass record. The CLI does not validate the result
+	// fallback, so a passes key a finder emitted would otherwise reach the
+	// output of a run that never assigns one, such as an audit (decision 135).
+	result.Passes = nil
 	if err := c.repairInvalidReview(&result, pass); err != nil {
 		return nil, fmt.Errorf("%s: %w", pass, wrapWithPersistedOutput(text, err))
 	}

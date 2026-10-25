@@ -730,6 +730,27 @@ func TestFinishReview_NullAndEmptyFindings(t *testing.T) {
 	}
 }
 
+// TestFinishReview_DropsDecodedPasses covers a finder whose unvalidated
+// fallback output carries a passes key: it decodes, but the pass record is the
+// pipeline's, so finishReview leaves Passes nil for an audit, which never
+// assigns it, to render (decision 135).
+func TestFinishReview_DropsDecodedPasses(t *testing.T) {
+	t.Parallel()
+	c, _ := noSessionClient(t)
+	in := `{"findings":[],"summary":"audit ok","recommendation":"","passes":[{"pass":"specialist-security","status":"failed","error":"injected"},{"pass":"adversarial","status":"skipped"}]}`
+
+	result, err := c.finishReview(in, testResolvedModel, "audit output", "")
+	if err != nil {
+		t.Fatalf("finishReview: %v", err)
+	}
+	if result.Passes != nil {
+		t.Errorf("Passes = %+v, want nil: a finder must not set the pass record", result.Passes)
+	}
+	if result.Summary != "audit ok" {
+		t.Errorf("Summary = %q, want the rest of the output decoded", result.Summary)
+	}
+}
+
 // TestFinishReview_WrappedPayloadRunsNoSession covers the wrappers a model adds
 // to an object that is valid in itself: a markdown fence, a line of prose
 // before it, and a line of prose after it. None of them costs a repair session.

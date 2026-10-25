@@ -2,6 +2,7 @@ package report
 
 import (
 	"bytes"
+	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
@@ -208,6 +209,111 @@ func TestRenderDataBlock_IncludesGates(t *testing.T) {
 			t.Errorf("data block should omit gates when unset; got %q", block)
 		}
 	})
+}
+
+// TestRenderMarkdown_Passes verifies the Markdown report lists the recorded
+// pass statuses on a Summary line and names a failed pass with its error in an
+// alert above the findings, and that a result without pass records renders
+// neither.
+func TestRenderMarkdown_Passes(t *testing.T) {
+	pr := PRInfo{Owner: "acme", Repo: "widgets", Number: 7, Title: "PR"}
+	render := func(result ReviewResult) string {
+		var buf bytes.Buffer
+		NewRenderer(&buf).RenderMarkdown(result, pr, SeverityInfo, "", "v1")
+		return buf.String()
+	}
+	const alert = "**Incomplete review**"
+
+	t.Run("nothing without pass records", func(t *testing.T) {
+		got := render(ReviewResult{Summary: "ok"})
+		if strings.Contains(got, "**Passes**") || strings.Contains(got, alert) {
+			t.Errorf("a result without pass records must render no Passes line and no alert, got:\n%s", got)
+		}
+	})
+
+	t.Run("ran and gated out without an alert", func(t *testing.T) {
+		got := render(ReviewResult{Summary: "ok", Passes: []PassStatus{
+			{Pass: "adversarial", Status: PassStatusRan},
+			{Pass: "specialist-testing", Status: PassStatusGatedOut},
+			{Pass: "specialist-security", Status: PassStatusRan},
+		}})
+		if !strings.Contains(got, "ok\n\n**Passes**: ran adversarial, specialist-security; gated out specialist-testing\n\n| Severity |") {
+			t.Errorf("Passes line missing or misplaced in the Summary, got:\n%s", got)
+		}
+		if strings.Contains(got, alert) {
+			t.Errorf("no pass failed, so no alert may render, got:\n%s", got)
+		}
+	})
+
+	t.Run("a failed pass raises the alert above the findings", func(t *testing.T) {
+		got := render(ReviewResult{
+			Summary: "ok",
+			Findings: []Finding{
+				{ID: "B-001", Severity: SeverityBlocking, Title: "t", File: "f.go", Line: 1, Confidence: ConfidenceVerified, Problem: "p", Action: "a"},
+			},
+			Passes: []PassStatus{
+				{Pass: "adversarial", Status: PassStatusRan},
+				{Pass: "specialist-security", Status: PassStatusFailed, Error: "boom"},
+			},
+		})
+		wantAlert := "> [!WARNING]\n> " + alert + " — 1 requested pass(es) failed and contributed nothing to this report:\n> - `specialist-security`: boom\n"
+		at := strings.Index(got, wantAlert)
+		if at == -1 {
+			t.Fatalf("alert missing, got:\n%s", got)
+		}
+		if blocking := strings.Index(got, "## BLOCKING"); blocking == -1 || at > blocking {
+			t.Errorf("the alert must come before the BLOCKING section, got:\n%s", got)
+		}
+		if !strings.Contains(got, "**Passes**: ran adversarial; failed specialist-security\n") {
+			t.Errorf("Passes line must list the failed pass, got:\n%s", got)
+		}
+	})
+}
+
+// TestRenderDataBlock_IncludesPasses verifies the pass records ride the data
+// block when set, are omitted when nil, and leave the SHA+findings round-trip
+// intact.
+func TestRenderDataBlock_IncludesPasses(t *testing.T) {
+	t.Run("present when set", func(t *testing.T) {
+		full := ReviewResult{
+			Findings: []Finding{{ID: "C-001", Severity: SeverityCritical, Title: "SQLi", File: "db.go", Line: 10}},
+			Passes:   []PassStatus{{Pass: "adversarial", Status: PassStatusFailed, Error: "boom"}},
+		}
+		block := RenderDataBlock(full, "sha-passes", Usage{})
+		if !strings.Contains(block, `"passes":[{"pass":"adversarial","status":"failed","error":"boom"}]`) {
+			t.Errorf("data block missing the passes array; got %q", block)
+		}
+		sha, findings, ok := ParseDataBlock(block)
+		if !ok || sha != "sha-passes" || len(findings) != 1 {
+			t.Errorf("ParseDataBlock = %q, %+v, %v; want sha-passes and one finding", sha, findings, ok)
+		}
+	})
+
+	t.Run("omitted when nil", func(t *testing.T) {
+		if block := RenderDataBlock(ReviewResult{}, "plainsha", Usage{}); strings.Contains(block, `"passes":[`) {
+			t.Errorf("data block should omit passes when unset; got %q", block)
+		}
+	})
+}
+
+// TestRenderJSON_CarriesPasses verifies --format json keeps the run-level pass
+// records through RenderJSON's filtered copy.
+func TestRenderJSON_CarriesPasses(t *testing.T) {
+	passes := []PassStatus{
+		{Pass: "adversarial", Status: PassStatusRan},
+		{Pass: "coverage", Status: PassStatusFailed, Error: "boom"},
+	}
+	var buf bytes.Buffer
+	if err := NewRenderer(&buf).RenderJSON(ReviewResult{Summary: "ok", Passes: passes}, SeverityInfo, ""); err != nil {
+		t.Fatalf("RenderJSON: %v", err)
+	}
+	var got ReviewResult
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Fatalf("decoding RenderJSON output: %v\n%s", err, buf.String())
+	}
+	if !reflect.DeepEqual(got.Passes, passes) {
+		t.Errorf("Passes = %+v, want %+v", got.Passes, passes)
+	}
 }
 
 // TestRenderAuditMarkdown_WikiProvenance verifies the audit header carries the

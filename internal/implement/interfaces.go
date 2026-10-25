@@ -259,21 +259,25 @@ func (a adversarialFnAdapter) AdversarialReview(dir, baseBranch, sinceRef string
 }
 
 // SpecialistResult pairs a domain specialist's key with the findings its pass
-// produced, so the review-and-fix pass can tag each specialist's findings with
-// its provenance label before merging them. It is the implement-side shape of
-// the claude fan-out's output; a fan-out that gated a specialist out or whose
-// pass failed simply omits it from the returned slice.
+// produced and how the pass ended, so the review-and-fix pass can tag each
+// specialist's findings with its provenance label before merging them and name
+// a specialist that failed in the round's report. It is the implement-side shape
+// of the claude fan-out's output, one entry per registered specialist: Result is
+// nil when the specialist was gated out or its pass failed, and Status says
+// which (decision 135).
 type SpecialistResult struct {
 	Key    string
 	Result *report.ReviewResult
+	Status report.PassStatus
 }
 
 // SpecialistReviewer runs the domain-specialist fan-out over the produced diff,
-// returning the successful, adaptively-gated results. The review-and-fix pass
-// runs it on the loop's first round only (paired with the adversarial finder) to
-// widen the self-review to the same domains the review command checks, then
-// bounds the cost by running the cheaper adversarial finder alone on later
-// rounds. The production implementation is claude.Client.SpecialistReviews; a
+// returning every registered specialist with its status, the gated-out and
+// failed ones included, and the findings of those that ran. The review-and-fix
+// pass runs it on the loop's first round only (paired with the adversarial
+// finder) to widen the self-review to the same domains the review command
+// checks, then bounds the cost by running the cheaper adversarial finder alone
+// on later rounds. The production implementation is claude.Client.SpecialistReviews; a
 // nil SpecialistReviewer (or opts.NoSpecialists) leaves the fan-out disabled and
 // the round runs the adversarial finder alone.
 type SpecialistReviewer interface {

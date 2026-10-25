@@ -12,7 +12,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/planwerk/planwerk-agent/internal/claude"
@@ -90,51 +89,29 @@ type Run struct {
 	Usage  report.Usage
 }
 
-// passFailures wraps the pipeline's Claude runner and records the error of
-// every adversarial or specialist pass that fails. The pipeline logs such a
-// failure and goes on without the pass, so the run would score the lost pass
-// as one that found nothing; RunCase errors instead. The specialists run
-// concurrently, hence the mutex.
-type passFailures struct {
-	review.ClaudeRunner
-
-	mu   sync.Mutex
-	errs []error
-}
-
-func (p *passFailures) AdversarialReview(dir, baseBranch, sinceRef string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
-	res, err := p.ClaudeRunner.AdversarialReview(dir, baseBranch, sinceRef, pats, maxPatterns)
-	p.record(err)
-	return res, err
-}
-
-func (p *passFailures) SpecialistReview(dir, baseBranch string, sp claude.Specialist, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
-	res, err := p.ClaudeRunner.SpecialistReview(dir, baseBranch, sp, pats, maxPatterns)
-	p.record(err)
-	return res, err
-}
-
-func (p *passFailures) record(err error) {
-	if err == nil {
-		return
+// failedPassesError names each requested pass the review recorded as failed,
+// with its error, or returns nil when none did. The pipeline drops a failed
+// pass and goes on, so scoring the run would count the lost pass as one that
+// found nothing (decisions 106 and 135).
+func failedPassesError(result report.ReviewResult) error {
+	failed := result.FailedPasses()
+	if len(failed) == 0 {
+		return nil
 	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.errs = append(p.errs, err)
-}
-
-// err joins the recorded failures, or returns nil when every pass succeeded.
-func (p *passFailures) err() error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return errors.Join(p.errs...)
+	msgs := make([]string, len(failed))
+	for i, p := range failed {
+		msgs[i] = p.Pass + ": " + p.Error
+	}
+	return errors.New(strings.Join(msgs, "; "))
 }
 
 // RunCase materializes c into a throwaway git repo, runs the shipped review
 // pipeline against it with the passes opts selects, and returns the parsed JSON
 // review result with the run's usage. It returns an error only for harness
-// failures (git, materialization, pipeline, a failed adversarial or specialist
-// pass, JSON), never for a low-quality result, which is scored, not errored.
+// failures (git, materialization, pipeline, JSON, and a requested pass the
+// result records as failed: the adversarial pass, a specialist, the
+// feature-compliance check, the coverage map), never for a low-quality result,
+// which is scored, not errored.
 //
 // client must be fresh: Usage is client.UsageTotals() read after the pipeline
 // returns, which is cumulative over the client's life, so a reused client folds
@@ -165,8 +142,6 @@ func RunCase(client *claude.Client, c Case, opts RunOptions) (Run, error) {
 	}
 
 	runner := review.NewRunner(client)
-	failures := &passFailures{ClaudeRunner: runner.Claude}
-	runner.Claude = failures
 	runner.GitHub = &evalGitHubClient{pr: pr}
 	// Keep the run hermetic: never resolve a real wiki (no clone, no network).
 	runner.ResolveWiki = func(string, string, patterns.WikiOptions, patterns.RemoteOptions) patterns.ResolvedWiki {
@@ -187,13 +162,13 @@ func RunCase(client *claude.Client, c Case, opts RunOptions) (Run, error) {
 	if err := runner.Run(&buf, reviewOpts); err != nil {
 		return Run{}, fmt.Errorf("case %s: review pipeline: %w", c.Name, err)
 	}
-	if err := failures.err(); err != nil {
-		return Run{}, fmt.Errorf("case %s: a review pass failed, and scoring the run would count it as a miss: %w", c.Name, err)
-	}
 
 	var result report.ReviewResult
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
 		return Run{}, fmt.Errorf("case %s: parsing review JSON: %w", c.Name, err)
+	}
+	if err := failedPassesError(result); err != nil {
+		return Run{}, fmt.Errorf("case %s: a review pass failed, and scoring the run would count it as a miss: %w", c.Name, err)
 	}
 	return Run{Result: result, Usage: client.UsageTotals()}, nil
 }

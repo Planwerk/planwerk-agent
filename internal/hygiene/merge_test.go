@@ -393,8 +393,8 @@ func TestMergeResults_DoesNotMutateSummary(t *testing.T) {
 		},
 	}
 
-	// The summary note is the caller's responsibility (review.appendSummaryNote),
-	// so a single fold must leave the summary untouched.
+	// The record of which passes ran is the caller's (ReviewResult.Passes), so a
+	// single fold must leave the summary untouched.
 	result := MergeResults(primary, adv)
 	if result.Summary != "Clean review" {
 		t.Errorf("MergeResults must not mutate summary, got %q", result.Summary)

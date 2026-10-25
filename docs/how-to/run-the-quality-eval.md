@@ -97,8 +97,11 @@ The exit code is non-zero **only** on a harness error (bad corpus, git failure,
 pipeline or JSON error) — **never** because the scores are low. A low score is a
 signal to read, not a build break. A run in which the adversarial pass or a
 specialist fails is a harness error too: the pipeline drops a failed pass and
-goes on, so the score would count the lost pass as one that found nothing. A
-failed run is retried once, and a second failure ends the eval.
+goes on, so the score would count the lost pass as one that found nothing. The
+harness reads the failure from the `passes` array of the review's JSON output
+([Pass Status](/reference/output-format#pass-status)), which also covers a
+failed feature-compliance check. A failed run is retried once, and a second
+failure ends the eval.
 
 ## The corpus layout
 

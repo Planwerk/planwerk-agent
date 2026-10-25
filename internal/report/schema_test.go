@@ -109,6 +109,11 @@ func TestRendererOutputMatchesSchema(t *testing.T) {
 				Snippet: &report.SnippetGateStats{Examined: 3, Demoted: 1},
 				Claim:   &report.ClaimGateStats{Sent: 2, Verdicts: 2, Refuted: 1},
 			},
+			Passes: []report.PassStatus{
+				{Pass: "adversarial", Status: report.PassStatusRan},
+				{Pass: "specialist-testing", Status: report.PassStatusGatedOut},
+				{Pass: "specialist-security", Status: report.PassStatusFailed, Error: "boom"},
+			},
 		}
 		var buf bytes.Buffer
 		if err := report.NewRenderer(&buf).RenderJSON(rr, report.SeverityInfo, ""); err != nil {
@@ -226,6 +231,8 @@ func TestInvalidDocumentRejected(t *testing.T) {
 		"bad severity enum":       `{"findings":[{"id":"X-1","severity":"FATAL","title":"t","file":"f","problem":"p","action":"a"}],"summary":"","recommendation":""}`,
 		"missing required action": `{"findings":[{"id":"X-1","severity":"INFO","title":"t","file":"f","problem":"p"}],"summary":"","recommendation":""}`,
 		"unknown property":        `{"findings":null,"summary":"","recommendation":"","extra":true}`,
+		"bad pass status enum":    `{"findings":null,"summary":"","recommendation":"","passes":[{"pass":"adversarial","status":"skipped"}]}`,
+		"pass missing status":     `{"findings":null,"summary":"","recommendation":"","passes":[{"pass":"adversarial"}]}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			if err := validate(t, sch, []byte(doc)); err == nil {

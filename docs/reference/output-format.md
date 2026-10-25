@@ -171,6 +171,7 @@ extraction:
     "snippet": { "examined": 8, "demoted": 2 },
     "claim": { "sent": 3, "verdicts": 3, "refuted": 1 }
   },
+  "passes": [{ "pass": "adversarial", "status": "ran" }],
   "usage": {
     "calls": 6,
     "input_tokens": 13400,
@@ -197,9 +198,11 @@ extraction:
 it, and an inline review is submitted against it as `commit_id`.
 
 `est_cost_usd` is the literal estimate Claude Code reports, summed across calls —
-not a recomputed tokens × price figure. `passes` carries the same six counters
-per pass, ordered as in the stderr breakdown and complete (never truncated); it
-is omitted when no pass was recorded.
+not a recomputed tokens × price figure. `usage.passes` carries the same six
+counters per pass, ordered as in the stderr breakdown and complete (never
+truncated); it is omitted when no pass was recorded. The top-level `passes`
+array records how each requested pass ended, not what it spent (see
+[Pass Status](#pass-status)).
 
 ## Demotion-Gate Records
 
@@ -229,6 +232,74 @@ is the claim verifier's own no-op signal: a verifier that refutes nothing across
 many runs is agreeing rather than verifying. Data blocks and cached results
 produced before gate recording existed carry no `gates` object and no
 per-finding records.
+
+## Pass Status
+
+A review records how each secondary pass it requested ended:
+
+- `adversarial` with `--thorough`
+- `coverage` with `--coverage-map`
+- `compliance` when a Planwerk feature file is detected
+- `specialist-<key>` for each domain specialist with `--specialists`, in
+  registry order
+
+The primary review is never listed: its failure fails the run.
+
+| `status` | Meaning |
+|----------|---------|
+| `ran` | The pass returned, and its findings (possibly none) were merged. |
+| `gated-out` | [Adaptive gating](/explanation/review-methodology#adaptive-specialist-gating) skipped the specialist, since the diff touches none of its paths. |
+| `failed` | The pass errored and contributed nothing. `error` holds the first line of the error, secrets redacted, cut to at most 200 bytes; the full error stays in the log. |
+
+The Markdown report lists the statuses on a `**Passes**:` line in the Summary,
+in the order ran, gated out, failed. When a pass failed, an alert above the
+findings names it with its error:
+
+```markdown
+> [!WARNING]
+> **Incomplete review** — 1 requested pass(es) failed and contributed nothing to this report:
+> - `specialist-security`: running security specialist review: claude (model opus): timed out after 1h0m0s (--claude-timeout)
+>
+> A review with a failed pass is never cached, so running it again retries the pass.
+
+## BLOCKING (1)
+
+...
+
+## Summary
+
+The PR introduces user authentication ...
+
+**Passes**: ran adversarial, specialist-data-migration; gated out specialist-testing, specialist-performance, specialist-api-contract, specialist-maintainability; failed specialist-security
+```
+
+The same records travel in the `passes` array of the `--format json` output and
+of the data block, and a [SARIF](#sarif) log names each failed pass in a
+warning notification:
+
+```json
+"passes": [
+  { "pass": "adversarial", "status": "ran" },
+  {
+    "pass": "specialist-security",
+    "status": "failed",
+    "error": "running security specialist review: claude (model opus): timed out after 1h0m0s (--claude-timeout)"
+  },
+  { "pass": "specialist-data-migration", "status": "ran" },
+  { "pass": "specialist-testing", "status": "gated-out" }
+]
+```
+
+`pass` is the label [`usage.passes`](#claude-usage-totals) records the pass's
+sessions under, so a failed pass's cost and its sessions are found under the
+same name. It is not the `confirmed_by` provenance label: a specialist's
+findings carry `specialist:<key>` there.
+
+An absent `passes` array means the run requested no secondary pass, or the
+result was produced before pass recording existed. A result with a `failed`
+entry is rendered and posted but never cached, so the next run of the same
+commit retries every pass (see
+[Caching model](/explanation/caching#what-every-key-is-scoped-to)).
 
 ## JSON Schema
 
@@ -280,8 +351,11 @@ set `--format json` prints and in its order, as one run of the tool
 A finding that names no file is not a result, because code scanning shows every
 result in a file. It goes to `invocations[0].toolExecutionNotifications`
 instead: one notification at level `warning` names every such finding by ID and
-title. `executionSuccessful` is `true`, since a run whose review failed prints
-no log.
+title. Each requested pass that failed adds one more `warning` notification,
+`<pass> failed: <error>; the review is incomplete`, with the label and the
+error its [Pass Status](#pass-status) entry records. `executionSuccessful` is
+`true` either way: a run whose review failed prints no log, and a failed
+secondary pass does not fail the run.
 
 The log is the whole of stdout, so `review` refuses `--post-review`, `--inline`,
 and `--coverage-map` with `--format sarif`, and `audit` refuses

@@ -293,6 +293,13 @@ type ReviewResult struct {
 	// per-gate entry means that gate never ran, which keeps a clean pass
 	// distinguishable from a skipped gate.
 	Gates *GateStats `json:"gates,omitempty"`
+	// Passes records how each secondary pass the run requested ended: the
+	// adversarial pass, the coverage map, the feature-compliance check, and each
+	// domain specialist. It is serialized like Gates (the cached result, the data
+	// block, --format json). nil means the run requested no secondary pass, or
+	// the result predates pass recording. The primary review is never listed,
+	// since its failure fails the run (decision 135).
+	Passes []PassStatus `json:"passes,omitempty"`
 }
 
 // GateStats aggregates the per-run counts of the review's two demotion gates.

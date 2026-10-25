@@ -61,8 +61,10 @@ or a resolved thread dismissed them (see
 [Re-reviews](/reference/output-format#re-reviews)), so a gate on
 `blocking-count` still sees them. The same block also
 carries a `usage` object with the Run's Claude token totals and estimated cost —
-see [Claude Usage Totals](/reference/output-format#claude-usage-totals) —
-available for extraction the same way.
+see [Claude Usage Totals](/reference/output-format#claude-usage-totals) — and a
+`passes` array recording whether each requested pass ran, was gated out, or
+failed ([Pass Status](/reference/output-format#pass-status)), both available for
+extraction the same way.
 
 With `format: sarif` nothing is posted, so the counts come from the SARIF
 report instead: the results it holds, counted by each result's `severity`
