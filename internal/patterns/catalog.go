@@ -112,6 +112,25 @@ func catalogFileName(name string, used map[string]bool) string {
 	return file
 }
 
+// Only returns the catalog narrowed to the entries whose pattern is named in
+// pats: the same Dir, those entries in catalog order. The zero Catalog stays
+// zero. It lets one directory written for a whole loaded catalog back an index
+// of part of it, as the review prompt's index of the patterns no changed file
+// matches is (decision 141).
+func (c Catalog) Only(pats []Pattern) Catalog {
+	names := make(map[string]bool, len(pats))
+	for _, p := range pats {
+		names[p.Name] = true
+	}
+	out := Catalog{Dir: c.Dir}
+	for _, e := range c.Entries {
+		if names[e.Pattern.Name] {
+			out.Entries = append(out.Entries, e)
+		}
+	}
+	return out
+}
+
 // FormatCatalogIndex renders one line per catalog entry: the entry's file name
 // followed by the same name, area, severity and detection hint
 // FormatIndexForPrompt shows. A session reads the index to decide which files

@@ -347,8 +347,12 @@ func RenderTable(w io.Writer, rep Report) {
 	_, _ = fmt.Fprintln(w, "A clean case seeds no bug: recall is undefined (n/a) and every finding is a false positive.")
 
 	_, _ = fmt.Fprintln(w)
-	_, _ = fmt.Fprintf(w, "RUNS: %d per case (thorough: %s, specialists: %s)\n",
-		rep.Runs, yesNo(rep.Thorough), yesNo(rep.Specialists))
+	scope := ""
+	if rep.ScopePatterns {
+		scope = ", scope-patterns: yes"
+	}
+	_, _ = fmt.Fprintf(w, "RUNS: %d per case (thorough: %s, specialists: %s%s)\n",
+		rep.Runs, yesNo(rep.Thorough), yesNo(rep.Specialists), scope)
 	_, _ = fmt.Fprintf(w, "TIERS: %s\n", rep.Tiers)
 	renderPassRecall(w, rep.Passes)
 	renderCostPerRun(w, rep)

@@ -113,6 +113,11 @@ func TestLoadShippedPatterns_DocumentationDiataxis(t *testing.T) {
 	if len(doc.AppliesWhen) != 0 {
 		t.Errorf("AppliesWhen = %v, want empty (must apply to every project)", doc.AppliesWhen)
 	}
+	// The review prompt applies it to comment-only code changes too, so
+	// --scope-patterns must keep its body for every changed file.
+	if len(doc.AppliesToPaths) != 0 {
+		t.Errorf("AppliesToPaths = %v, want empty (must apply to every changed file)", doc.AppliesToPaths)
+	}
 	if doc.Severity == "" {
 		t.Error("Severity must be set")
 	}
@@ -122,6 +127,38 @@ func TestLoadShippedPatterns_DocumentationDiataxis(t *testing.T) {
 		if !strings.Contains(doc.Body, mode) {
 			t.Errorf("pattern body missing Diátaxis mode %q", mode)
 		}
+	}
+}
+
+// TestLoadShippedPatterns_MarkdownQualityAppliesToMarkdown pins the one
+// shipped pattern that names paths: under --scope-patterns its body is kept
+// for a changed Markdown file, and it still loads for every repository.
+func TestLoadShippedPatterns_MarkdownQualityAppliesToMarkdown(t *testing.T) {
+	root := projectRoot()
+	patsDir := filepath.Join(root, "internal", "patterns", "patterns")
+
+	all, err := patterns.LoadFilteredWithOptions(patterns.LoadOptions{NoEmbedded: true}, []string{"go"}, patsDir)
+	if err != nil {
+		t.Fatalf("loading shipped patterns: %v", err)
+	}
+	var md *patterns.Pattern
+	for i := range all {
+		if all[i].Name == "Markdown Quality" {
+			md = &all[i]
+			break
+		}
+	}
+	if md == nil {
+		t.Fatal("missing pattern: Markdown Quality (it must load for a Go repository)")
+	}
+	if got := strings.Join(md.AppliesToPaths, ", "); got != "**/*.md, **/*.markdown" {
+		t.Errorf("AppliesToPaths = %q, want **/*.md, **/*.markdown", got)
+	}
+	if len(md.AppliesWhen) != 0 {
+		t.Errorf("AppliesWhen = %v, want empty", md.AppliesWhen)
+	}
+	if !md.MatchesFile("docs/guide.markdown", nil) || md.MatchesFile("main.go", []string{"go"}) {
+		t.Error("Markdown Quality must match a Markdown file and no Go file")
 	}
 }
 

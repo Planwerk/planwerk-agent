@@ -111,6 +111,7 @@ planwerk-agent/
 │   │   ├── loader.go           # Load patterns from directories
 │   │   ├── pattern.go          # Pattern data structure + parsing
 │   │   ├── pattern_test.go
+│   │   ├── scope.go            # ScopeToFiles: the catalog split by the changed files (review --scope-patterns)
 │   │   ├── sources.go          # LoadForRepo: the one catalog loader (embedded + wiki + repo + remote)
 │   │   ├── patternstest/       # Shared test helpers for the project memory and the wiki seam (imported by tests only)
 │   │   └── patterns/           # Embedded review-pattern catalog (16 design + 67 technology + review + SOURCES.md)
@@ -148,6 +149,7 @@ planwerk-agent/
 │   │   ├── reviewer_test.go
 │   │   ├── outdated.go         # Resolve the tool's own outdated inline review threads (--resolve-outdated)
 │   │   ├── ledger.go           # The changed-file ledger the review prompt lists (reviewLedger)
+│   │   ├── scope.go            # The scoped catalog under --scope-patterns (scopeCatalog)
 │   │   └── merge.go            # Merge results from multiple review passes
 │   ├── search/                 # brain search: the full-text index of a mirror directory
 │   │   ├── index.go            # index.sqlite: the schema, the version check, the refresh, the block cutting (Open)

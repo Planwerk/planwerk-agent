@@ -4,6 +4,7 @@
 **Detection-Hint**: `.md` / `.markdown` files; non-CommonMark constructs that render only on GitHub (or only outside it), inconsistent heading levels, multiple H1s per page, fenced code blocks without a language tag, hard-tab indentation in lists, ordered-list numbering that drifts, broken or relative links that resolve only locally, raw HTML mixed with Markdown without need, no markdownlint or Vale configuration in the repo
 **Severity**: INFO
 **Category**: technology
+**Applies-To-Paths**: **/*.md, **/*.markdown
 **Sources**: CommonMark Spec — current (https://spec.commonmark.org/current/), CommonMark Spec 0.31.2 (https://spec.commonmark.org/0.31.2/), CommonMark Project Home (https://commonmark.org/), GitHub Flavored Markdown Spec (https://github.github.com/gfm/), markdownlint Rules (https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md), Vale (https://vale.sh/docs/), Diátaxis Framework (https://diataxis.fr)
 
 ## What to check

@@ -250,6 +250,43 @@ func TestBuildReviewPrompt_Golden(t *testing.T) {
 	assertGoldenPrompt(t, "review", buildReviewPrompt(goldenReviewContext()))
 }
 
+// goldenScopedReviewContext is goldenReviewContext under --scope-patterns: a
+// third pattern for Kubernetes joins the catalog, the changed files are two Go
+// files, and the catalog was written, so the Go and untagged bodies stay in
+// the prompt and the Kubernetes pattern is listed in the index. Nothing is
+// written to the catalog's Dir.
+func goldenScopedReviewContext() ReviewContext {
+	ctx := goldenReviewContext()
+	ctx.Patterns = append(ctx.Patterns, patterns.Pattern{
+		Name:          "Unbounded pod resources",
+		ReviewArea:    "reliability",
+		DetectionHint: "containers without CPU or memory limits",
+		Severity:      "WARNING",
+		Category:      "technology",
+		AppliesWhen:   []string{"kubernetes"},
+		Body:          "## Rule\nEvery container MUST set CPU and memory limits.",
+	})
+	files := []string{"cmd/main.go", "internal/x.go"}
+	scope := patterns.ScopeToFiles(ctx.Patterns, files, map[string][]string{"cmd/main.go": {"go"}, "internal/x.go": {"go"}})
+	ctx.Scope = &scope
+	ctx.Catalog = patterns.Catalog{
+		Dir: "/tmp/planwerk-agent-patterns-golden",
+		Entries: []patterns.CatalogEntry{
+			{Pattern: ctx.Patterns[0], File: "hardcoded-secrets.md"},
+			{Pattern: ctx.Patterns[1], File: "missing-context-context-parameter.md"},
+			{Pattern: ctx.Patterns[2], File: "unbounded-pod-resources.md"},
+		},
+	}
+	return ctx
+}
+
+// TestBuildReviewPrompt_Scoped_Golden locks the review prompt's pattern section
+// under --scope-patterns: the bodies the changed files match, grouped in a
+// <patterns for> block, and the index of the rest (decision 141).
+func TestBuildReviewPrompt_Scoped_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "review_scoped", buildReviewPrompt(goldenScopedReviewContext()))
+}
+
 // TestBuildReviewPrompt_DiffExclusions locks the review scope of a run under
 // --diff-exclusions: the diff file bullet, then the bullet naming what the
 // diff left out (decision 137).

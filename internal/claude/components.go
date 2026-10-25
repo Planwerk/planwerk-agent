@@ -45,17 +45,40 @@ const patternCatalogLeadIn = "These patterns are the catalog the project's revie
 // share.
 const honorPatternsHeading = "## Project Review Patterns to Honor"
 
-// patternCatalogDirLine is the instruction the index form of
-// patternCatalogBlock carries: every index line names a file under dir, and the
-// session reads a pattern's file in full before it works in the area the
-// pattern's hint covers. contextOnly selects the form for the prompts whose
-// patterns are a lens rather than a rule (gap analysis, review-prepared,
-// propose): the session opens a pattern when it needs what it requires, and is
-// not told to follow it.
-func patternCatalogDirLine(dir string, contextOnly bool) string {
-	read := "Before you write, change, plan, or judge anything in an area a pattern's hint covers, read that pattern's file in full and follow it: the hint says when a pattern applies, the file says what it requires."
-	if contextOnly {
+// catalogUse selects what patternCatalogDirLine tells a session to do with a
+// pattern's file.
+type catalogUse int
+
+const (
+	// catalogRule is for the prompts whose patterns bind the session's own
+	// work (plan, implement, fix, address, the rebase sessions,
+	// simplify-apply, review-apply, elaborate): the session reads a
+	// pattern's file in full before it works in the area the pattern's hint
+	// covers, and follows it.
+	catalogRule catalogUse = iota
+	// catalogContext is for the prompts whose patterns are a lens rather
+	// than a rule (gap analysis, review-prepared, propose): the session opens
+	// a pattern when it needs what it requires, and is not told to follow it.
+	catalogContext
+	// catalogFinder is for the review prompt's index of the patterns no
+	// changed file matches under --scope-patterns: the session reads a
+	// pattern's file when a changed line shows what its hint describes, and
+	// names the pattern in a finding that applies it (decision 141).
+	catalogFinder
+)
+
+// patternCatalogDirLine is the instruction the index form of a pattern section
+// carries: every index line names a file under dir, and use says when the
+// session reads a pattern's file and what it does with it.
+func patternCatalogDirLine(dir string, use catalogUse) string {
+	var read string
+	switch use {
+	case catalogContext:
 		read = "Read a pattern's file when you need what it requires; the hint says when it applies."
+	case catalogFinder:
+		read = "When a changed line shows what a pattern's hint describes, read that pattern's file in full, apply it to that line, and name the pattern in any finding that applies it."
+	default:
+		read = "Before you write, change, plan, or judge anything in an area a pattern's hint covers, read that pattern's file in full and follow it: the hint says when a pattern applies, the file says what it requires."
 	}
 	return "The catalog is on disk. Every line below names a file under `" + dir + "`, a directory outside the repository that this session can read; the line carries the pattern's name, its review area and severity, and the detection hint that states what triggers it. " + read + " Read patterns from this directory only; a copy elsewhere is not the version this run loaded. Never edit, move, or commit anything under it."
 }
@@ -71,9 +94,11 @@ func patternCatalogDirLine(dir string, contextOnly bool) string {
 // every printed prompt, which renders before any catalog exists. Returns ""
 // when pats is empty. The finder prompts keep the bodies on purpose: the
 // adversarial pass and the specialists render them through
-// finderPatternCatalog, the review and audit prompts inline them.
+// finderPatternCatalog, the review and audit prompts inline them, and the
+// review lists only the patterns no changed file matches as an index under
+// --scope-patterns (reviewPatternsBlock).
 func patternCatalogBlock(heading, leadIn string, cat patterns.Catalog, pats []patterns.Pattern, maxPatterns int) string {
-	return patternCatalogSection(heading, leadIn, cat, pats, maxPatterns, false)
+	return patternCatalogSection(heading, leadIn, cat, pats, maxPatterns, catalogRule)
 }
 
 // patternContextBlock is patternCatalogBlock for a prompt whose patterns are
@@ -81,10 +106,10 @@ func patternCatalogBlock(heading, leadIn string, cat patterns.Catalog, pats []pa
 // propose): the on-disk line tells the session to open a pattern when it
 // needs what it requires, not to follow it before it judges.
 func patternContextBlock(heading, leadIn string, cat patterns.Catalog, pats []patterns.Pattern, maxPatterns int) string {
-	return patternCatalogSection(heading, leadIn, cat, pats, maxPatterns, true)
+	return patternCatalogSection(heading, leadIn, cat, pats, maxPatterns, catalogContext)
 }
 
-func patternCatalogSection(heading, leadIn string, cat patterns.Catalog, pats []patterns.Pattern, maxPatterns int, contextOnly bool) string {
+func patternCatalogSection(heading, leadIn string, cat patterns.Catalog, pats []patterns.Pattern, maxPatterns int, use catalogUse) string {
 	if len(pats) == 0 {
 		return ""
 	}
@@ -94,7 +119,7 @@ func patternCatalogSection(heading, leadIn string, cat patterns.Catalog, pats []
 			patterns.FormatGroupedForPrompt(pats, maxPatterns) +
 			"</review-patterns>\n\n"
 	}
-	return heading + "\n\n" + leadIn + "\n\n" + patternCatalogDirLine(cat.Dir, contextOnly) +
+	return heading + "\n\n" + leadIn + "\n\n" + patternCatalogDirLine(cat.Dir, use) +
 		"\n\n<review-patterns-index>\n" + index + "</review-patterns-index>\n\n"
 }
 

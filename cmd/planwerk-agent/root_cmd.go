@@ -190,6 +190,7 @@ or short form (owner/repo#123).`,
 			}
 
 			deps.fileCfg.ApplyReview(&cfg, &minSeverity, cmd.Flags().Changed)
+			cfg.ScopePatterns = resolveBool(cfg.ScopePatterns, cmd.Flags().Changed("scope-patterns"), envScopePatterns)
 
 			maxPatterns, err := resolveMaxPatterns(cfg.MaxPatterns, cmd.Flags().Changed("max-patterns"), deps.fileCfg.Review.MaxPatterns)
 			if err != nil {
@@ -233,7 +234,11 @@ or short form (owner/repo#123).`,
 			opts.Wiki = resolveWikiOptions(wikiEnable, wikiDisable, cmd.Flags().Changed("wiki"), cmd.Flags().Changed("no-wiki"), wikiRef, cmd.Flags().Changed("wiki-ref"), deps.fileCfg.Wiki)
 			opts.Brain = brain.resolve(cmd.Flags(), deps.fileCfg.Brain)
 			opts.DiffExclusions = deps.claude.DiffExclusions()
-			return review.Run(os.Stdout, opts, deps.claude)
+			run := review.Run
+			if deps.runReview != nil {
+				run = deps.runReview
+			}
+			return run(os.Stdout, opts, deps.claude)
 		},
 	}
 
@@ -272,6 +277,7 @@ or short form (owner/repo#123).`,
 	flags.BoolVar(&cfg.Specialists, "specialists", false, "Run the domain-specialist review fan-out (security, data-migration, testing, performance, api-contract, maintainability) concurrently and merge their findings")
 	flags.BoolVar(&cfg.CoverageMap, "coverage-map", false, "Generate test coverage map for changed functions")
 	flags.IntVar(&cfg.MaxPatterns, "max-patterns", patterns.DefaultMaxPatternsInPrompt, "Max review patterns injected into the prompt (<=0 disables truncation, env: "+envMaxPatterns+")")
+	flags.BoolVar(&cfg.ScopePatterns, "scope-patterns", false, "Carry only the review-pattern bodies that apply to every file or whose technology or path matches a changed file and list the rest as an index the review session reads from disk (experimental, off until make eval holds; env: "+envScopePatterns+")")
 	flags.IntVar(&cfg.MaxFindings, "max-findings", 0, "Cap on findings returned (<=0 disables cap)")
 	flags.BoolVar(&cfg.Local, "local", false, "Operate on the current working directory instead of cloning into a temp dir")
 	flags.BoolVar(&cfg.Force, "force", false, "With --local, skip the confirmation prompt when the working tree is dirty")

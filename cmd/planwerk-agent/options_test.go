@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -11,8 +12,10 @@ import (
 
 	"github.com/planwerk/planwerk-agent/internal/attribution"
 	"github.com/planwerk/planwerk-agent/internal/cache"
+	"github.com/planwerk/planwerk-agent/internal/claude"
 	"github.com/planwerk/planwerk-agent/internal/elaborate"
 	"github.com/planwerk/planwerk-agent/internal/prompt"
+	"github.com/planwerk/planwerk-agent/internal/review"
 )
 
 func TestElaborateUpdateMode(t *testing.T) {
@@ -166,6 +169,83 @@ func TestRoot_DiffExclusionsReachTheClientAndTheCacheKey(t *testing.T) {
 			}
 			if got := strings.HasSuffix(cache.RunFingerprint(), "|diff-exclusions"); got != tc.want {
 				t.Errorf("cache fingerprint %q carries diff-exclusions = %v, want %v", cache.RunFingerprint(), got, tc.want)
+			}
+		})
+	}
+}
+
+// TestReviewRegistersScopePatterns pins --scope-patterns as a flag of the
+// review command alone: off by default, naming its environment variable, and
+// neither persistent nor exposed by another command (decision 141).
+func TestReviewRegistersScopePatterns(t *testing.T) {
+	deps := &runtimeDeps{}
+	root := newRootCmd(deps)
+	flag := root.Flags().Lookup("scope-patterns")
+	if flag == nil {
+		t.Fatal("the review command must expose --scope-patterns")
+	}
+	if on, err := strconv.ParseBool(flag.DefValue); err != nil || on {
+		t.Errorf("--scope-patterns defaults to %q, want off", flag.DefValue)
+	}
+	if !strings.Contains(flag.Usage, "env: "+envScopePatterns) || envScopePatterns != "PLANWERK_SCOPE_PATTERNS" {
+		t.Errorf("--scope-patterns usage %q does not name PLANWERK_SCOPE_PATTERNS", flag.Usage)
+	}
+	if root.PersistentFlags().Lookup("scope-patterns") != nil {
+		t.Error("--scope-patterns must not be persistent: no subcommand runs the review prompt")
+	}
+	audit := newAuditCmd(deps)
+	root.AddCommand(audit)
+	if audit.Flags().Lookup("scope-patterns") != nil || audit.InheritedFlags().Lookup("scope-patterns") != nil {
+		t.Error("audit must not expose --scope-patterns")
+	}
+}
+
+// TestRoot_ScopePatternsReachTheReviewOptions runs the review command on a pull
+// request with a review that only records its options, and checks that the
+// flag and PLANWERK_SCOPE_PATTERNS turn --scope-patterns on in them, and that
+// an explicit flag wins over the environment. A --version run would not do:
+// it returns before the review options are resolved.
+func TestRoot_ScopePatternsReachTheReviewOptions(t *testing.T) {
+	// Not t.Parallel(): the pre-run sets the default logger, the attribution
+	// version and the cache fingerprint, which the cleanups restore, and the
+	// test changes the working directory so no config file is read.
+	t.Chdir(t.TempDir())
+	prevLogger, prevFingerprint := slog.Default(), cache.RunFingerprint()
+	t.Cleanup(func() {
+		slog.SetDefault(prevLogger)
+		cache.SetRunFingerprint(prevFingerprint)
+		attribution.SetVersion("")
+	})
+
+	for _, tc := range []struct {
+		name string
+		args []string
+		env  string
+		want bool
+	}{
+		{"off by default", nil, "", false},
+		{"the flag", []string{"--scope-patterns"}, "", true},
+		{"the environment", nil, "1", true},
+		{"the flag wins over the environment", []string{"--scope-patterns=false"}, "1", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(envScopePatterns, tc.env)
+			var got []review.Options
+			deps := &runtimeDeps{version: "test", runReview: func(_ io.Writer, opts review.Options, _ *claude.Client) error {
+				got = append(got, opts)
+				return nil
+			}}
+			cmd := newRootCmd(deps)
+			cmd.SetOut(&bytes.Buffer{})
+			cmd.SetArgs(append(tc.args, testRepoRef+"#1"))
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("Execute: %v", err)
+			}
+			if len(got) != 1 {
+				t.Fatalf("the review ran %d times, want once", len(got))
+			}
+			if got[0].ScopePatterns != tc.want {
+				t.Errorf("review options carry ScopePatterns = %v, want %v", got[0].ScopePatterns, tc.want)
 			}
 		})
 	}

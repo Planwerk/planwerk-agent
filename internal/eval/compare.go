@@ -90,7 +90,9 @@ func LoadReport(path string) (Report, error) {
 // over the named cases, or nil when it can. Both sides need MinCompareRuns
 // runs, the same passes, and the same set of cases in any order, and the
 // baseline needs a recall: over clean cases alone no check can fail. main calls
-// it before the first case runs, so a mismatch spends no tokens.
+// it before the first case runs, so a mismatch spends no tokens. ScopePatterns,
+// like the tiers, is never compared: a candidate with -scope-patterns against
+// a baseline without it is the experiment (decision 141).
 func Comparable(baseline Report, cfg Config, cases []string) error {
 	if baseline.Runs < MinCompareRuns || cfg.Runs < MinCompareRuns {
 		return fmt.Errorf("a comparison needs at least %d runs per side (baseline %d, this run %d); re-run with -runs %d",

@@ -20,8 +20,13 @@ type Pattern struct {
 	Severity      string
 	Category      string   // "technology", "design-principle", "review", or "" (general/legacy)
 	AppliesWhen   []string // technology tags; empty = always applies
-	Sources       []Source
-	Body          string
+	// AppliesToPaths are the globs (matchPathGlob) over the repo-relative
+	// paths of the changed files that a pattern governs, from its
+	// "**Applies-To-Paths**:" line. Only `review --scope-patterns` reads them
+	// (ScopeToFiles); the repository-wide load ignores them (decision 141).
+	AppliesToPaths []string
+	Sources        []Source
+	Body           string
 	// FilePath is the absolute path the loader read this pattern from, when
 	// known. Empty for patterns parsed from in-memory strings (tests, etc.).
 	// Consumers like the bare-prompt URL builder use this to map a loaded
@@ -72,6 +77,16 @@ func Parse(content string) (Pattern, error) {
 					tag = strings.TrimSpace(tag)
 					if tag != "" {
 						p.AppliesWhen = append(p.AppliesWhen, tag)
+					}
+				}
+				continue
+			}
+			if strings.HasPrefix(line, "**Applies-To-Paths**:") {
+				raw := extractValue(line, "**Applies-To-Paths**:")
+				for _, glob := range strings.Split(raw, ",") {
+					glob = strings.TrimSpace(glob)
+					if glob != "" {
+						p.AppliesToPaths = append(p.AppliesToPaths, glob)
 					}
 				}
 				continue
@@ -135,6 +150,32 @@ func (p Pattern) AppliesTo(tags []string) bool {
 	}
 	for _, required := range p.AppliesWhen {
 		if tagSet[required] {
+			return true
+		}
+	}
+	return false
+}
+
+// AppliesToEveryFile reports whether the pattern names neither a technology
+// nor a path, so that ScopeToFiles keeps its body for every changed file.
+func (p Pattern) AppliesToEveryFile() bool {
+	return len(p.AppliesWhen) == 0 && len(p.AppliesToPaths) == 0
+}
+
+// MatchesFile reports whether the pattern governs the changed file at the
+// repo-relative slash path name, whose technology tags are tags
+// (detect.FileTechnologies): one of its AppliesWhen tags is among tags, as
+// AppliesTo decides, and, when it has AppliesToPaths, one of them matches
+// name (decision 141).
+func (p Pattern) MatchesFile(name string, tags []string) bool {
+	if !p.AppliesTo(tags) {
+		return false
+	}
+	if len(p.AppliesToPaths) == 0 {
+		return true
+	}
+	for _, glob := range p.AppliesToPaths {
+		if matchPathGlob(glob, name) {
 			return true
 		}
 	}

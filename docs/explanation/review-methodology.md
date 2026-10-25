@@ -144,7 +144,10 @@ patterns. The rest are patterns the prompt already tells the pass not to act on,
 since it reviews ONLY its domain — and they are still applied in full by the
 primary review and adversarial passes, which carry the whole catalog. A
 specialist that declares no areas, or whose areas match no loaded pattern, falls
-back to the full catalog.
+back to the full catalog. Under `review --scope-patterns`, the primary review
+carries in full only the patterns that apply to every file or that its changed
+files match, and an index of the rest it can open (see
+[How a Session Receives the Catalog](/reference/review-patterns#how-a-session-receives-the-catalog)).
 
 ## Line Anchoring
 

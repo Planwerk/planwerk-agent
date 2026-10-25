@@ -452,6 +452,12 @@ func TestRenderTableSections(t *testing.T) {
 		t.Errorf("the line after %q is not the TIERS line:\n%s", runsLine, out)
 	}
 
+	var scoped strings.Builder
+	RenderTable(&scoped, BuildReport(scored, Config{Runs: 3, RunOptions: RunOptions{Thorough: true, ScopePatterns: true}, Tiers: sampleTiers()}))
+	if want := "RUNS: 3 per case (thorough: yes, specialists: no, scope-patterns: yes)\n"; !strings.Contains(scoped.String(), want) {
+		t.Errorf("a -scope-patterns run lacks %q:\n%s", want, scoped.String())
+	}
+
 	_, cost, ok := strings.Cut(out, "COST PER RUN")
 	if !ok {
 		t.Fatalf("no COST PER RUN section:\n%s", out)

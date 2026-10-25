@@ -3,6 +3,7 @@ package detect
 import (
 	"bufio"
 	"encoding/json"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -19,17 +20,34 @@ const maxYAMLScan = 20
 // maxYAMLLines is the maximum number of lines to read per YAML file.
 const maxYAMLLines = 50
 
+// manifestTags maps the base name of a manifest file to the technology tag it
+// marks. Technologies tags a repository by it and FileTechnologies a changed
+// file, so the two detectors cannot drift apart on a name. package.json and
+// tsconfig.json are not in it: Technologies weighs them, since a docs-only
+// package.json tags nothing and TypeScript wins over JavaScript.
+var manifestTags = map[string]string{
+	"go.mod":              "go",
+	"go.work":             "go",
+	"pyproject.toml":      "python",
+	"setup.py":            "python",
+	"requirements.txt":    "python",
+	"Pipfile":             "python",
+	"Cargo.toml":          "rust",
+	"Dockerfile":          "docker",
+	"docker-compose.yml":  "docker",
+	"docker-compose.yaml": "docker",
+	"pom.xml":             "java",
+	"build.gradle":        "java",
+	"build.gradle.kts":    "java",
+	"Chart.yaml":          "helm",
+}
+
 // Technologies scans the given directory and returns a sorted list of
 // technology tags describing the project (e.g. "go", "kubernetes", "python").
 func Technologies(dir string) []string {
 	tags := make(map[string]bool)
 
 	var (
-		hasGo          bool
-		hasPython      bool
-		hasRust        bool
-		hasDocker      bool
-		hasJava        bool
 		hasPackageJSON bool
 		hasTSConfig    bool
 	)
@@ -63,25 +81,16 @@ func Technologies(dir string) []string {
 
 		name := d.Name()
 
+		if tag, ok := manifestTags[name]; ok {
+			tags[tag] = true
+		}
 		switch name {
-		case "go.mod", "go.work":
-			hasGo = true
-		case "pyproject.toml", "setup.py", "requirements.txt", "Pipfile":
-			hasPython = true
-		case "Cargo.toml":
-			hasRust = true
-		case "Dockerfile", "docker-compose.yml", "docker-compose.yaml":
-			hasDocker = true
-		case "pom.xml", "build.gradle", "build.gradle.kts":
-			hasJava = true
 		case "package.json":
 			if !isDocsOnlyPackageJSON(path) {
 				hasPackageJSON = true
 			}
 		case "tsconfig.json":
 			hasTSConfig = true
-		case "Chart.yaml":
-			tags["helm"] = true
 		}
 
 		if !tags["kubernetes"] && yamlScanned < maxYAMLScan {
@@ -96,21 +105,6 @@ func Technologies(dir string) []string {
 		return nil
 	})
 
-	if hasGo {
-		tags["go"] = true
-	}
-	if hasPython {
-		tags["python"] = true
-	}
-	if hasRust {
-		tags["rust"] = true
-	}
-	if hasDocker {
-		tags["docker"] = true
-	}
-	if hasJava {
-		tags["java"] = true
-	}
 	if hasTSConfig {
 		tags["typescript"] = true
 	} else if hasPackageJSON {
@@ -146,8 +140,14 @@ func looksLikeKubernetes(path string) bool {
 		return false
 	}
 	defer func() { _ = f.Close() }()
+	return hasKubernetesMarkers(f)
+}
 
-	scanner := bufio.NewScanner(f)
+// hasKubernetesMarkers is looksLikeKubernetes over an open reader: it reads at
+// most maxYAMLLines lines and reports whether lines starting with
+// "apiVersion:" and "kind:" are both among them.
+func hasKubernetesMarkers(r io.Reader) bool {
+	scanner := bufio.NewScanner(r)
 	hasAPIVersion := false
 	hasKind := false
 	lines := 0

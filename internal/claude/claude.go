@@ -53,6 +53,15 @@ type ReviewContext struct {
 	// session accounts for in files_reviewed, which the caller checks with
 	// hygiene.CheckFileLedger; empty renders no section (decision 138).
 	ChangedFiles []github.FileChange
+	// Scope is the split of Patterns by the changed files under review
+	// --scope-patterns (patterns.ScopeToFiles): the prompt carries the bodies
+	// of Scope.Inline and lists Scope.Rest as an index of Catalog. nil renders
+	// every body (decision 141).
+	Scope *patterns.FileScope
+	// Catalog is the on-disk catalog whose entries the index of Scope.Rest
+	// names; the review session opens its directory with --add-dir. It is zero
+	// without a Scope or with an empty Scope.Rest (decision 141).
+	Catalog patterns.Catalog
 }
 
 // Review runs the diff-review session in the given directory and returns its
@@ -78,7 +87,7 @@ func (c *Client) Review(dir string, ctx ReviewContext) (*report.ReviewResult, er
 // runReview invokes `claude -p` with the review prompt, returning the review's
 // JSON output and the resolved model id.
 func (c *Client) runReview(dir string, rctx ReviewContext) (text, model string, err error) {
-	return c.runClaudeFindings(dir, buildReviewPrompt(rctx), PassLabelReview, rctx.Memory, rctx.Brain, rctx.Diff.Dir)
+	return c.runClaudeFindings(dir, buildReviewPrompt(rctx), PassLabelReview, rctx.Catalog, rctx.Memory, rctx.Brain, rctx.Diff.Dir)
 }
 
 // tokenUsage is a tolerant view over the per-call token counts Claude Code

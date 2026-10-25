@@ -28,6 +28,7 @@ func main() {
 	caseName := flag.String("case", "", "run a single case by directory name (default: all cases)")
 	thorough := flag.Bool("thorough", false, "run the adversarial (thorough) review pass too")
 	specialists := flag.Bool("specialists", false, "run the domain specialist fan-out too")
+	scopePatterns := flag.Bool("scope-patterns", false, "run the review with --scope-patterns (the pattern bodies chosen from the changed files)")
 	runs := flag.Int("runs", 1, "run each case N times, each with a fresh client, and pool the scores")
 	baseline := flag.String("baseline", "", fmt.Sprintf("compare against a report written by -json (at least %d runs per side)", eval.MinCompareRuns))
 	jsonOut := flag.Bool("json", false, "emit the score report as JSON instead of a table")
@@ -38,7 +39,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "planwerk-eval:", err)
 		os.Exit(1)
 	}
-	cfg := eval.Config{Runs: *runs, RunOptions: eval.RunOptions{Thorough: *thorough, Specialists: *specialists}, Tiers: tiers}
+	cfg := eval.Config{Runs: *runs, RunOptions: eval.RunOptions{Thorough: *thorough, Specialists: *specialists, ScopePatterns: *scopePatterns}, Tiers: tiers}
 	if err := run(*corpusDir, *caseName, *baseline, cfg, *jsonOut); err != nil {
 		fmt.Fprintln(os.Stderr, "planwerk-eval:", err)
 		os.Exit(1)

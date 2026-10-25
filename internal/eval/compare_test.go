@@ -170,6 +170,7 @@ func TestComparable(t *testing.T) {
 		want     []string // substrings of the error; nil means comparable
 	}{
 		{"same set in another order is comparable", base, cfg, []string{"b", "a"}, nil},
+		{"a scope-patterns candidate is the experiment, not a mismatch", base, Config{Runs: 3, RunOptions: RunOptions{Thorough: true, ScopePatterns: true}}, []string{"a", "b"}, nil},
 		{"one baseline run is too few", Report{Config: Config{Runs: 1, RunOptions: RunOptions{Thorough: true}}, Cases: base.Cases}, cfg, []string{"a", "b"},
 			[]string{"at least 3 runs per side", "(baseline 1, this run 3)", "re-run with -runs 3"}},
 		{"one candidate run is too few", base, Config{Runs: 1, RunOptions: RunOptions{Thorough: true}}, []string{"a", "b"},
