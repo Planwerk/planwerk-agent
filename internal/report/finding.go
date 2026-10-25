@@ -257,6 +257,19 @@ func (f Finding) Unverified() bool {
 	return f.VerificationNote != "" || f.Severity == SeverityWarning || f.Severity == SeverityInfo
 }
 
+// MeetsThresholds reports whether f has a known severity and passes the
+// minSeverity and minConfidence thresholds. Categorize leaves out every finding
+// that fails it, so such a finding appears in no section of the rendered
+// report; the inline review applies the same test before it posts a comment.
+// An empty minConfidence imposes no threshold; an empty minSeverity admits only
+// BLOCKING, as Severity.MeetsMinimum does.
+func (f Finding) MeetsThresholds(minSeverity Severity, minConfidence Confidence) bool {
+	if _, ok := severityOrder[f.Severity]; !ok {
+		return false
+	}
+	return f.Severity.MeetsMinimum(minSeverity) && f.Confidence.MeetsMinimum(minConfidence)
+}
+
 type ReviewResult struct {
 	Findings       []Finding `json:"findings"`
 	Summary        string    `json:"summary"`

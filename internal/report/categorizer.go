@@ -26,13 +26,7 @@ type CategorizedFindings struct {
 func Categorize(findings []Finding, minSeverity Severity, minConfidence Confidence) CategorizedFindings {
 	var cf CategorizedFindings
 	for _, f := range findings {
-		if _, ok := severityOrder[f.Severity]; !ok {
-			continue // skip unknown severity
-		}
-		if !f.Severity.MeetsMinimum(minSeverity) {
-			continue
-		}
-		if !f.Confidence.MeetsMinimum(minConfidence) {
+		if !f.MeetsThresholds(minSeverity, minConfidence) {
 			continue
 		}
 		// Findings that did not survive the hygiene stage are demoted to the

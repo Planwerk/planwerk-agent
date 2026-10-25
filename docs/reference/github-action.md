@@ -14,7 +14,7 @@ and outputs; for a working workflow, see
 | `min-severity` | Minimum severity to report (`info`, `warning`, `critical`, `blocking`). Empty falls through to `.planwerk/config.yaml` `review.min-severity`, then to the compiled-in `info` | *(empty)* |
 | `format` | Output format written to the action log (`markdown`, `json`); posting always uses markdown. Empty falls through to `.planwerk/config.yaml` `review.format`, then to the compiled-in `markdown` | *(empty)* |
 | `max-findings` | Cap on findings returned (`0` disables cap) | `0` |
-| `post-inline` | Post inline review comments and a summary via the GitHub Review API | `true` |
+| `post-inline` | Post inline review comments and a summary via the GitHub Review API. A finding below `min-severity` or in the summary's Unverified section gets no inline comment | `true` |
 | `thorough` | Run the additional adversarial review pass | `false` |
 | `structure-model` | Model for the mechanical JSON-structuring passes, independent of the main review model (env: `PLANWERK_STRUCTURE_MODEL`). Empty keeps the compiled-in default (`sonnet`). | `""` |
 | `structure-effort` | Reasoning effort for the JSON-structuring passes (`low`, `medium`, `high`, `xhigh`, `max`; env: `PLANWERK_STRUCTURE_EFFORT`). Empty keeps the compiled-in default (`xhigh`). | `""` |

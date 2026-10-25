@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -536,7 +537,7 @@ func (r *Runner) renderResult(w io.Writer, result *report.ReviewResult, pr *gith
 	displayResult := result
 	var suppressed []report.Finding
 	if opts.PostReview || opts.InlineReview {
-		if kept, supp := r.skipSuppressed(result, pr); len(supp) > 0 {
+		if kept, supp := r.skipSuppressed(result, pr, opts.MinSeverity, opts.MinConfidence); len(supp) > 0 {
 			filtered := *result
 			filtered.Findings = kept
 			displayResult = &filtered
@@ -582,8 +583,9 @@ func (r *Runner) renderResult(w io.Writer, result *report.ReviewResult, pr *gith
 	if opts.InlineReview {
 		slog.Info("posting inline review with GitHub Review API")
 		// Inline comments come from the display set (no new comments for
-		// suppressed findings); the data block carries the full result.
-		err := r.postInlineReview(displayResult, result, pr, &buf)
+		// suppressed findings) under the report's thresholds; the data block
+		// carries the full result.
+		err := r.postInlineReview(displayResult, result, pr, opts.MinSeverity, opts.MinConfidence, &buf)
 		if err != nil {
 			slog.Warn("inline review failed, falling back to PR comment", "err", err)
 			// Carry the full data block as the inline review would have, so the
@@ -612,25 +614,30 @@ func (r *Runner) renderResult(w io.Writer, result *report.ReviewResult, pr *gith
 // maxInlineComments is the conservative limit for inline comments per review.
 const maxInlineComments = 50
 
-func (r *Runner) postInlineReview(displayResult, fullResult *report.ReviewResult, pr *github.PR, summaryBuf *bytes.Buffer) error {
-	// 1. Fetch the diff
-	rawDiff, err := r.GitHub.FetchDiff(pr.Owner, pr.Repo, pr.Number)
-	if err != nil {
-		return fmt.Errorf("fetching diff: %w", err)
-	}
+// inSeveritySection reports whether the rendered summary lists f in one of its
+// severity sections under minSeverity and minConfidence: one below either
+// threshold is in no section, and one Finding.Unverified reports is in the
+// Unverified section. It decides both which findings get an inline comment and
+// which of a prior review's findings a re-review counts as already reported, so
+// the two cannot drift (decision 129).
+func inSeveritySection(f report.Finding, minSeverity report.Severity, minConfidence report.Confidence) bool {
+	return f.MeetsThresholds(minSeverity, minConfidence) && !f.Unverified()
+}
 
-	// 2. Parse the diff into a map
-	diffMap := github.ParseDiff(rawDiff)
-
-	// 3. Partition findings into inline-eligible and body-only. Suppressed
-	// findings are excluded from inline comments (displayResult), but the data
-	// block below is built from the full result.
-	var inlineComments []github.ReviewComment
-	for _, f := range displayResult.Findings {
+// inlineReviewComments turns findings into inline comments on the right side of
+// the diff, in order, at most maxInlineComments of them. A finding gets a
+// comment only when inSeveritySection admits it and its line is in diffMap. A
+// skipped finding does not count against the cap (decision 129).
+func inlineReviewComments(findings []report.Finding, diffMap *github.DiffMap, minSeverity report.Severity, minConfidence report.Confidence) []github.ReviewComment {
+	var comments []github.ReviewComment
+	for _, f := range findings {
+		if !inSeveritySection(f, minSeverity, minConfidence) {
+			continue
+		}
 		if f.File == "" || f.Line <= 0 || !diffMap.Contains(f.File, f.Line) {
 			continue
 		}
-		if len(inlineComments) >= maxInlineComments {
+		if len(comments) >= maxInlineComments {
 			break
 		}
 
@@ -646,8 +653,25 @@ func (r *Runner) postInlineReview(displayResult, fullResult *report.ReviewResult
 			comment.StartSide = "RIGHT"
 			comment.Line = f.LineEnd
 		}
-		inlineComments = append(inlineComments, comment)
+		comments = append(comments, comment)
 	}
+	return comments
+}
+
+func (r *Runner) postInlineReview(displayResult, fullResult *report.ReviewResult, pr *github.PR, minSeverity report.Severity, minConfidence report.Confidence, summaryBuf *bytes.Buffer) error {
+	// 1. Fetch the diff
+	rawDiff, err := r.GitHub.FetchDiff(pr.Owner, pr.Repo, pr.Number)
+	if err != nil {
+		return fmt.Errorf("fetching diff: %w", err)
+	}
+
+	// 2. Parse the diff into a map
+	diffMap := github.ParseDiff(rawDiff)
+
+	// 3. Pick the findings that get an inline comment. Suppressed findings are
+	// already out of displayResult; the data block below is built from the full
+	// result.
+	inlineComments := inlineReviewComments(displayResult.Findings, diffMap, minSeverity, minConfidence)
 
 	// 4. Build the review summary body with data block (full result).
 	dataBlock := report.RenderDataBlock(*fullResult, pr.HeadSHA, r.Claude.UsageTotals())
@@ -688,10 +712,16 @@ var hexObjectName = regexp.MustCompile(`^[0-9a-f]{7,64}$`)
 
 // skipSuppressed loads the prior review comment's data block and suppresses the
 // current findings the user already saw on a file that has not changed since.
+// The block carries every finding of the prior run, but only the ones
+// inSeveritySection admits count as seen: one the thresholds hid, or one the
+// summary listed as Unverified, was never reported as a finding to act on, so
+// it suppresses nothing and is reported when it comes back confirmed (decision
+// 129). The block does not record the prior run's thresholds; minSeverity and
+// minConfidence, this run's, stand in for them.
 // On any failure (no prior comment, unparseable data block, a commit_sha that
 // is not a hex object name, uncomputable diff) it suppresses nothing — the full
 // set is returned.
-func (r *Runner) skipSuppressed(result *report.ReviewResult, pr *github.PR) (kept, suppressed []report.Finding) {
+func (r *Runner) skipSuppressed(result *report.ReviewResult, pr *github.PR, minSeverity report.Severity, minConfidence report.Confidence) (kept, suppressed []report.Finding) {
 	body, found, err := r.GitHub.FetchReviewComment(pr.Owner, pr.Repo, pr.Number)
 	if err != nil {
 		slog.Warn("could not fetch prior review comment; skipping suppression", "err", err)
@@ -701,6 +731,9 @@ func (r *Runner) skipSuppressed(result *report.ReviewResult, pr *github.PR) (kep
 		return result.Findings, nil
 	}
 	priorSHA, priorFindings, ok := report.ParseDataBlock(body)
+	priorFindings = slices.DeleteFunc(priorFindings, func(p report.Finding) bool {
+		return !inSeveritySection(p, minSeverity, minConfidence)
+	})
 	if !ok || !hexObjectName.MatchString(priorSHA) || len(priorFindings) == 0 {
 		return result.Findings, nil
 	}

@@ -259,7 +259,15 @@ check-jsonschema --schemafile report-result.schema.json review.json
 With `--inline`, findings are posted as inline comments on the PR using the
 GitHub Review API instead of (or in addition to) a single summary comment:
 
-- Each finding that maps to a line in the PR diff becomes an inline comment on that line
+- Each finding that maps to a line in the PR diff becomes an inline comment on
+  that line, when the summary lists it in a severity section. A finding below
+  `--min-severity` or `--min-confidence` gets no inline comment, and neither
+  does one in the Unverified / Low-Confidence section: an uncertain WARNING or
+  INFO finding, or a BLOCKING or CRITICAL finding the claim verifier refuted.
+  Both kinds stay out of the diff, and the Unverified ones remain in the review
+  summary.
+- At most 50 inline comments are posted per review; a finding the rules above
+  leave out does not count toward the limit.
 - Auto-fix findings with a `SuggestedFix` use GitHub's `suggestion` syntax, enabling one-click apply
 - Findings that cannot be mapped to diff lines are included in the review summary body
 - The PR diff is fetched and parsed to validate that finding lines are within the diff (right side)
@@ -293,9 +301,16 @@ the previous one and leaves out the findings that review already reported:
 - **What is left out.** A current finding with the same file, line, and title as
   one in that block, when its file has not changed since the block's
   `commit_sha`. It is left out of the report and gets no inline comment.
+- **Which block findings count.** Only those that this run's `--min-severity`
+  and `--min-confidence` place in a severity section of the summary; the block
+  does not record the thresholds of the run that wrote it. A block finding
+  below them, or one in the Unverified / Low-Confidence section, leaves nothing
+  out. A finding that comes back confirmed or above the thresholds is listed in
+  its severity section, with `--inline` as an inline comment too, and one that
+  stays Unverified is listed in the Unverified section again.
 - **What is kept.** A `[!NOTE]` alert lists every finding left out, and the new
-  data block still carries all of them, so the next re-review compares against
-  the full set.
+  data block still carries all of them, so the next re-review can compare
+  against them again.
 - **When nothing is left out.** No such post exists; the lookup fails; the
   newest such post's data block cannot be read, for example because the body
   was truncated or its `commit_sha` is not a hex commit SHA; or the diff since
