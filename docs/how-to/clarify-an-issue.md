@@ -77,7 +77,10 @@ Two things only `clarify` can add:
   fixtures that stop being true.
 
 Decisions arrive largest blast radius first, because an answer that discards half
-the plan makes the smaller questions moot.
+the plan makes the smaller questions moot. They come in rounds: each round holds
+every decision whose prerequisites you have already settled, so independent
+decisions reach you together in one prompt, while a decision that hangs on an
+open answer waits for the next round instead of guessing at it.
 
 ## The answers go in the body, not the plan
 

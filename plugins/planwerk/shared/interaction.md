@@ -44,14 +44,14 @@ something is a fact about that text, not a step you take.
 
 ## One decision, one question
 
-Never batch decisions into a single question, and never dump a list of findings
-and ask "what do you think?". Each real choice gets its own `AskUserQuestion`
-call, with a recommendation.
+Each real choice is its own question, with a recommendation. A list of findings
+followed by "what do you think?" is not a question, and neither is one question
+that bundles several decisions.
 
 Items that share one answer are one decision. When a single choice settles
 several of them — every symbol one exported package would lose, say — ask it
-once and name every item it covers. Two choices whose answers could differ
-never share a question.
+once and name every item it covers. Two choices whose answers could differ are
+two questions.
 
 Every option set follows this shape:
 
@@ -63,13 +63,34 @@ Every option set follows this shape:
 - **Say what breaks if we pick wrong.** One sentence, in outcome terms: what the
   reader of the issue loses, what the implementer builds by mistake.
 
-`AskUserQuestion` caps a call at four options. With five or more real options,
-never drop, merge, or silently defer one to fit. Split into several sequential
-calls instead. The author's option set is not yours to trim.
+`AskUserQuestion` caps a question at four options. With five or more real
+options, never drop, merge, or silently defer one to fit. Split the choice into
+several sequential calls instead. The author's option set is not yours to trim.
 
 When the tool is unavailable, ask the same thing in prose, ending your message
 with the numbered questions. Prose is a weaker gate: for anything irreversible,
 require the author to type back the explicit choice, and re-ask on a vague reply.
+
+### Ask in rounds
+
+When several decisions are open at once, ask them in rounds. A round holds
+every open decision whose prerequisites are already settled: the ones you can
+ask now without guessing at an answer you have not heard yet. A decision whose
+options, or whose relevance, turn on another decision still open belongs to a
+later round. When you are unsure whether two decisions depend on each other,
+the second one waits.
+
+Put a round into one `AskUserQuestion` call, each decision its own question.
+The tool takes up to four questions per call, so a round of five or more
+continues in the next call. Then wait for the answers and recompute what they
+settled: ask the next round from what they unblocked, and drop a question an
+answer made moot, saying which answer did. When an answer changes the premise
+of a question that shared its round, ask that question again in the next
+round, on the new premise.
+
+A decision that could discard the work the others are about — throw away half
+the plan, rule the issue out of scope — is a prerequisite of every one of them.
+It is a round of its own, and it comes first.
 
 ## Open questions are asked inline
 
@@ -77,6 +98,9 @@ require the author to type back the explicit choice, and re-ask on a vague reply
 "what problem is behind this idea?" — ask inline in the chat:
 
 - **Three to five questions per round, at most.** Highest ambiguity first.
+- **Ask only what the answers so far let you ask.** A question whose answer
+  depends on another still open waits for the next round, as under Ask in
+  rounds.
 - **Number them.** Never bury a question inside a paragraph.
 - **End the message with them.** They are the last thing the author reads.
 - **State your assumptions out loud.** "I am assuming this only affects the admin

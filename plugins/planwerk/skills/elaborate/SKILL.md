@@ -110,8 +110,8 @@ guesses. These are the decisions worth an author's time:
 - Scope that the issue implies but never states, where guessing wrong means
   building the wrong thing.
 
-Ask each as its own `AskUserQuestion`, cite the concrete `path:line` that raised
-it, and recommend one option. A question that names a real file is the
+Ask each as its own question, in rounds (`interaction.md`, Ask in rounds), cite
+the concrete `path:line` that raised it, and recommend one option. A question that names a real file is the
 difference between an interrogation and a form.
 
 Do not surface cosmetic choices, naming preferences, or anything the smallest

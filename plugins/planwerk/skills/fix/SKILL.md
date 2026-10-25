@@ -130,8 +130,8 @@ missing import, a formatter's diff, a type annotation the checker demands — no
 of these is a decision. Asking about them teaches the author to stop reading your
 questions.
 
-Four forks are real, and each is the author's: one `AskUserQuestion` per fork,
-in the option shape `interaction.md` gives under "One decision, one question":
+Four forks are real, and each is the author's: one question per fork, in the
+option shape `interaction.md` gives under "One decision, one question":
 
 1. **The production code is wrong, or the test encodes behavior that is no
    longer wanted.** This is the fork the unattended loop cannot see, because
