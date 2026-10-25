@@ -12,11 +12,18 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
-// lineTolerance is the maximum absolute line distance for a predicted finding to
-// match an expected one. Reviewers cite the symptom line, not always the exact
-// seeded line, so a small window avoids penalizing a correct catch off by a line
-// or two.
+// lineTolerance is the largest gap, in lines, between a predicted finding's
+// line range and an expected one's for the two to match. Reviewers cite the
+// symptom line, not always the exact seeded line, so a small window avoids
+// penalizing a correct catch off by a line or two.
 const lineTolerance = 3
+
+// MatchRule names the rule ScoreCase tallies by: matches, and the one-to-one
+// pairing over it (pairFindings). Change the value whenever either changes. A
+// report records it, and Comparable refuses a baseline scored under another
+// rule, because the same predictions tally differently under each (decision
+// 146).
+const MatchRule = "range-overlap"
 
 // Score is the raw match tally for one case (or, aggregated, the whole corpus).
 // The ratio methods return (value, defined): a ratio over a zero denominator is
@@ -48,6 +55,16 @@ func (s Score) Recall() (float64, bool) {
 		return 0, false
 	}
 	return float64(s.TP) / float64(den), true
+}
+
+// F1 is 2TP/(2TP+FP+FN), the harmonic mean of precision and recall over the
+// pooled tallies; undefined when nothing was expected, like Recall, and 0 when
+// something was expected and nothing matched.
+func (s Score) F1() (float64, bool) {
+	if s.TP+s.FN == 0 {
+		return 0, false
+	}
+	return float64(2*s.TP) / float64(2*s.TP+s.FP+s.FN), true
 }
 
 // SeverityAccuracy is SeverityMatches/TP; undefined when nothing matched.
@@ -93,9 +110,13 @@ func ScoreRuns(c Case, runs []Run) Scored {
 }
 
 // ScoreCase compares the predicted findings against the case's expected findings
-// and returns the tally. Matching is greedy one-to-one from the expected side:
-// each expected finding claims the first not-yet-claimed prediction that matches
-// it (same file, line within tolerance, keyword present). Unclaimed predictions
+// and returns the tally. A prediction is a candidate for an expected finding
+// when it matches it (same file, line ranges within tolerance, keyword present),
+// and pairFindings pairs the two sides one to one so that as many expected
+// findings as possible claim a candidate. TP, FP and FN therefore do not depend
+// on the order the findings come in, and a match rule that admits more
+// candidates never lowers TP. Where an expected finding has a choice, the
+// pairing tries the candidates with its severity first. Unclaimed predictions
 // are false positives; unclaimed expected findings are false negatives.
 //
 // FoundBy credits each expected finding once to every pass in the union of
@@ -106,42 +127,85 @@ func ScoreRuns(c Case, runs []Run) Scored {
 // both, so a pass's recall can exceed the pooled recall.
 func ScoreCase(c Case, result report.ReviewResult) Score {
 	preds := result.Findings
-	claimed := make([]bool, len(preds))
+	exps := c.Expected.Findings
 	s := Score{Clean: c.Expected.Clean}
 
-	for _, exp := range c.Expected.Findings {
+	candidates := make([][]int, len(exps))
+	for e, exp := range exps {
 		for pass := range passesMatching(preds, exp) {
 			if s.FoundBy == nil {
 				s.FoundBy = make(map[string]int)
 			}
 			s.FoundBy[pass]++
 		}
-		matchIdx := -1
+		var otherSeverity []int
 		for i := range preds {
-			if claimed[i] {
+			if !matches(preds[i], exp) {
 				continue
 			}
-			if matches(preds[i], exp) {
-				matchIdx = i
-				break
+			if sameSeverity(preds[i], exp) {
+				candidates[e] = append(candidates[e], i)
+			} else {
+				otherSeverity = append(otherSeverity, i)
 			}
 		}
-		if matchIdx < 0 {
-			s.FN++
+		candidates[e] = append(candidates[e], otherSeverity...)
+	}
+
+	for i, e := range pairFindings(len(preds), candidates) {
+		if e < 0 {
+			s.FP++
 			continue
 		}
-		claimed[matchIdx] = true
 		s.TP++
-		if strings.EqualFold(strings.TrimSpace(string(preds[matchIdx].Severity)), strings.TrimSpace(exp.Severity)) {
+		if sameSeverity(preds[i], exps[e]) {
 			s.SeverityMatches++
 		}
 	}
-	for i := range preds {
-		if !claimed[i] {
-			s.FP++
+	s.FN = len(exps) - s.TP
+	return s
+}
+
+// sameSeverity reports whether a prediction carries the expected finding's
+// severity, ignoring case and surrounding space.
+func sameSeverity(pred report.Finding, exp ExpectedFinding) bool {
+	return strings.EqualFold(strings.TrimSpace(string(pred.Severity)), strings.TrimSpace(exp.Severity))
+}
+
+// pairFindings pairs each expected finding with at most one of its candidate
+// predictions, and each of the nPreds predictions with at most one expected
+// finding, so that as many expected findings as possible are paired: a maximum
+// bipartite matching by augmenting paths (Kuhn's algorithm). candidates[e] lists
+// the predictions expected finding e may claim, in the order it tries them. It
+// returns, per prediction, the index of the expected finding that claimed it,
+// or -1.
+func pairFindings(nPreds int, candidates [][]int) []int {
+	claimedBy := make([]int, nPreds)
+	for i := range claimedBy {
+		claimedBy[i] = -1
+	}
+	for e := range candidates {
+		augment(e, candidates, claimedBy, make([]bool, nPreds))
+	}
+	return claimedBy
+}
+
+// augment looks for a prediction expected finding e can claim: an unclaimed
+// candidate, or a claimed one whose claimant can move on to another candidate
+// of its own. seen marks the predictions this search has tried. It reports
+// whether e was paired, and on success updates claimedBy along the path.
+func augment(e int, candidates [][]int, claimedBy []int, seen []bool) bool {
+	for _, i := range candidates[e] {
+		if seen[i] {
+			continue
+		}
+		seen[i] = true
+		if claimedBy[i] < 0 || augment(claimedBy[i], candidates, claimedBy, seen) {
+			claimedBy[i] = e
+			return true
 		}
 	}
-	return s
+	return false
 }
 
 // passesMatching returns the union of ConfirmedBy over every prediction that
@@ -165,13 +229,16 @@ func passesMatching(preds []report.Finding, exp ExpectedFinding) map[string]bool
 }
 
 // matches reports whether a predicted finding satisfies the match rule for an
-// expected one: same file, line within lineTolerance, and at least one expected
-// keyword present (case-insensitively) in the predicted title or problem.
+// expected one: same file, the predicted line range within lineTolerance of the
+// expected one (see lineSpan), and at least one expected keyword present
+// (case-insensitively) in the predicted title or problem.
 func matches(pred report.Finding, exp ExpectedFinding) bool {
 	if normPath(pred.File) != normPath(exp.File) {
 		return false
 	}
-	if abs(pred.Line-exp.Line) > lineTolerance {
+	ps, pe := lineSpan(pred.Line, pred.LineEnd)
+	es, ee := lineSpan(exp.Line, exp.LineEnd)
+	if ps > ee+lineTolerance || pe < es-lineTolerance {
 		return false
 	}
 	haystack := strings.ToLower(pred.Title + "\n" + pred.Problem)
@@ -188,11 +255,15 @@ func normPath(p string) string {
 	return strings.TrimSpace(strings.ReplaceAll(p, "\\", "/"))
 }
 
-func abs(n int) int {
-	if n < 0 {
-		return -n
+// lineSpan returns the inclusive range [line, lineEnd], where a lineEnd of 0 or
+// one before line stands for line alone. A line of 0 or less marks a finding
+// with no location, as elsewhere in the pipeline, so its lineEnd is ignored and
+// the span is that line alone.
+func lineSpan(line, lineEnd int) (start, end int) {
+	if line <= 0 {
+		return line, line
 	}
-	return n
+	return line, max(line, lineEnd)
 }
 
 // CaseScore is the JSON/text-facing view of one case's (or the aggregate's)
@@ -208,6 +279,7 @@ type CaseScore struct {
 	SeverityMatches  int            `json:"severity_matches"`
 	Precision        *float64       `json:"precision"`
 	Recall           *float64       `json:"recall"`
+	F1               *float64       `json:"f1"`
 	SeverityAccuracy *float64       `json:"severity_accuracy"`
 	FoundBy          map[string]int `json:"found_by,omitempty"`
 	Usage            report.Usage   `json:"usage"`
@@ -239,7 +311,7 @@ type Tiers struct {
 // value a report written before the tiers were recorded decodes to.
 func (t Tiers) String() string {
 	if t == (Tiers{}) {
-		return "(unrecorded)"
+		return unrecorded
 	}
 	return fmt.Sprintf("claude %s/%s, finder %s/%s, structure %s/%s",
 		t.ClaudeModel, t.ClaudeEffort, t.FinderModel, t.FinderEffort, t.StructureModel, t.StructureEffort)
@@ -254,11 +326,13 @@ type PassRecall struct {
 	Recall *float64 `json:"recall"`
 }
 
-// Report is the full scored corpus: the run configuration, per-case rows, the
-// corpus-wide aggregate, the recall credited to each pass, and, when the run
-// was compared against a baseline, the comparison.
+// Report is the full scored corpus: the run configuration, the match rule its
+// findings were scored by (MatchRule), per-case rows, the corpus-wide
+// aggregate, the recall credited to each pass, and, when the run was compared
+// against a baseline, the comparison.
 type Report struct {
 	Config
+	Match      string       `json:"match"`
 	Cases      []CaseScore  `json:"cases"`
 	Aggregate  CaseScore    `json:"aggregate"`
 	Passes     []PassRecall `json:"recall_by_pass"`
@@ -269,7 +343,7 @@ type Report struct {
 // aggregate by summing the raw tallies (not by averaging per-case ratios, which
 // would double-weight small cases) and the usage of every case.
 func BuildReport(scored []Scored, cfg Config) Report {
-	rep := Report{Config: cfg}
+	rep := Report{Config: cfg, Match: MatchRule}
 	var agg Score
 	var usage report.Usage
 	for _, sc := range scored {
@@ -322,6 +396,9 @@ func toCaseScore(name, desc string, s Score) CaseScore {
 	if v, ok := s.Recall(); ok {
 		cs.Recall = &v
 	}
+	if v, ok := s.F1(); ok {
+		cs.F1 = &v
+	}
 	if v, ok := s.SeverityAccuracy(); ok {
 		cs.SeverityAccuracy = &v
 	}
@@ -329,22 +406,25 @@ func toCaseScore(name, desc string, s Score) CaseScore {
 }
 
 // RenderTable writes the report as an aligned text table. Undefined ratios show
-// as "n/a"; a clean case's recall is always undefined and is noted in the
-// footer. The table is followed by the run configuration and its tiers, the
+// as "n/a"; a clean case's recall and F1 are always undefined, as the footer
+// notes. The table is followed by the run configuration and its tiers, the
 // recall by pass, and the cost per run, where every value is a total divided by
 // the runs.
 func RenderTable(w io.Writer, rep Report) {
-	const header = "%-22s  %5s  %3s  %3s  %3s  %9s  %7s  %8s\n"
-	const row = "%-22s  %5s  %3d  %3d  %3d  %9s  %7s  %8s\n"
-	_, _ = fmt.Fprintf(w, header, "CASE", "CLEAN", "TP", "FP", "FN", "PRECISION", "RECALL", "SEV-ACC")
+	const header = "%-22s  %5s  %3s  %3s  %3s  %9s  %7s  %4s  %8s\n"
+	const row = "%-22s  %5s  %3d  %3d  %3d  %9s  %7s  %4s  %8s\n"
+	head := fmt.Sprintf(header, "CASE", "CLEAN", "TP", "FP", "FN", "PRECISION", "RECALL", "F1", "SEV-ACC")
+	_, _ = io.WriteString(w, head)
 	for _, c := range rep.Cases {
 		writeRow(w, row, c)
 	}
-	_, _ = fmt.Fprintln(w, strings.Repeat("-", 74))
+	// The rule is as wide as the header row, its newline aside.
+	_, _ = fmt.Fprintln(w, strings.Repeat("-", len(head)-1))
 	writeRow(w, row, rep.Aggregate)
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintln(w, "PRECISION = TP/(TP+FP), RECALL = TP/(TP+FN), SEV-ACC = severity matches/TP.")
-	_, _ = fmt.Fprintln(w, "A clean case seeds no bug: recall is undefined (n/a) and every finding is a false positive.")
+	_, _ = fmt.Fprintln(w, "F1 = 2TP/(2TP+FP+FN), the harmonic mean of PRECISION and RECALL.")
+	_, _ = fmt.Fprintln(w, "A clean case seeds no bug: recall and F1 are undefined (n/a) and every finding is a false positive.")
 
 	_, _ = fmt.Fprintln(w)
 	scope := ""
@@ -406,7 +486,7 @@ func renderCostPerRun(w io.Writer, rep Report) {
 
 func writeRow(w io.Writer, format string, c CaseScore) {
 	_, _ = fmt.Fprintf(w, format, truncate(c.Name, 22), yesNo(c.Clean), c.TP, c.FP, c.FN,
-		pct(c.Precision), pct(c.Recall), pct(c.SeverityAccuracy))
+		pct(c.Precision), pct(c.Recall), pct(c.F1), pct(c.SeverityAccuracy))
 }
 
 func yesNo(b bool) string {
@@ -419,6 +499,11 @@ func yesNo(b bool) string {
 // notApplicable marks an undefined ratio or a change with no base in the
 // rendered report.
 const notApplicable = "n/a"
+
+// unrecorded names a value that a report written before the value was recorded
+// decodes to empty: the tiers in the rendered report, the match rule in
+// Comparable's error.
+const unrecorded = "(unrecorded)"
 
 // pct formats an optional ratio as a percentage, or "n/a" when undefined.
 func pct(v *float64) string {

@@ -2,6 +2,7 @@
   "runs": 4,
   "thorough": false,
   "specialists": true,
+  "match": "range-overlap",
   "cases": [
     {
       "name": "sql-injection",
@@ -13,6 +14,7 @@
       "severity_matches": 2,
       "precision": 0.75,
       "recall": 0.75,
+      "f1": 0.75,
       "severity_accuracy": 0.6666666666666666,
       "found_by": {
         "review": 3,
@@ -47,6 +49,7 @@
       "severity_matches": 0,
       "precision": 0,
       "recall": null,
+      "f1": null,
       "severity_accuracy": null,
       "usage": {
         "calls": 0,
@@ -67,6 +70,7 @@
     "severity_matches": 2,
     "precision": 0.6,
     "recall": 0.75,
+    "f1": 0.6666666666666666,
     "severity_accuracy": 0.6666666666666666,
     "found_by": {
       "review": 3,

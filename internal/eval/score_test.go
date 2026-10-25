@@ -23,9 +23,23 @@ func pfBy(file string, line int, sev report.Severity, title, problem string, pas
 	return f
 }
 
+// pfSpan builds a predicted finding over the lines [line, lineEnd].
+func pfSpan(file string, line, lineEnd int, sev report.Severity, title, problem string) report.Finding {
+	f := pf(file, line, sev, title, problem)
+	f.LineEnd = lineEnd
+	return f
+}
+
 // ef builds an expected finding.
 func ef(file string, line int, sev string, keywords ...string) ExpectedFinding {
 	return ExpectedFinding{File: file, Line: line, Severity: sev, Keywords: keywords}
+}
+
+// efSpan builds an expected finding over the lines [line, lineEnd].
+func efSpan(file string, line, lineEnd int, sev string, keywords ...string) ExpectedFinding {
+	f := ef(file, line, sev, keywords...)
+	f.LineEnd = lineEnd
+	return f
 }
 
 // caseWith builds a Case whose Expected has the given clean flag and findings.
@@ -98,6 +112,80 @@ func TestScoreCase(t *testing.T) {
 			wantFN: 1, wantFP: 1,
 		},
 		{
+			// Under a rule reading only the start line, 10 is 10 lines off 20.
+			name:        "a predicted range covering the expected line matches",
+			c:           caseWith(false, ef("a.go", 20, "WARNING", "leak")),
+			preds:       []report.Finding{pfSpan("a.go", 10, 30, report.SeverityWarning, "leak", "leaks")},
+			wantTP:      1,
+			wantSevHit:  1,
+			wantFoundBy: map[string]int{"review": 1},
+		},
+		{
+			name:        "a predicted range ending within tolerance before the expected line matches",
+			c:           caseWith(false, ef("a.go", 20, "WARNING", "leak")),
+			preds:       []report.Finding{pfSpan("a.go", 10, 17, report.SeverityWarning, "leak", "leaks")},
+			wantTP:      1,
+			wantSevHit:  1,
+			wantFoundBy: map[string]int{"review": 1},
+		},
+		{
+			name:   "a predicted range ending beyond tolerance misses",
+			c:      caseWith(false, ef("a.go", 20, "WARNING", "leak")),
+			preds:  []report.Finding{pfSpan("a.go", 10, 16, report.SeverityWarning, "leak", "leaks")},
+			wantFN: 1, wantFP: 1,
+		},
+		{
+			name:        "an expected range matches a prediction inside it",
+			c:           caseWith(false, efSpan("a.go", 20, 30, "WARNING", "leak")),
+			preds:       []report.Finding{pf("a.go", 25, report.SeverityWarning, "leak", "leaks")},
+			wantTP:      1,
+			wantSevHit:  1,
+			wantFoundBy: map[string]int{"review": 1},
+		},
+		{
+			name:        "a prediction within tolerance past the expected range's end matches",
+			c:           caseWith(false, efSpan("a.go", 20, 30, "WARNING", "leak")),
+			preds:       []report.Finding{pf("a.go", 33, report.SeverityWarning, "leak", "leaks")},
+			wantTP:      1,
+			wantSevHit:  1,
+			wantFoundBy: map[string]int{"review": 1},
+		},
+		{
+			name:   "a prediction beyond tolerance past the expected range's end misses",
+			c:      caseWith(false, efSpan("a.go", 20, 30, "WARNING", "leak")),
+			preds:  []report.Finding{pf("a.go", 34, report.SeverityWarning, "leak", "leaks")},
+			wantFN: 1, wantFP: 1,
+		},
+		{
+			name:   "a line_end before line stands for line alone",
+			c:      caseWith(false, ef("a.go", 14, "WARNING", "leak")),
+			preds:  []report.Finding{pfSpan("a.go", 10, 5, report.SeverityWarning, "leak", "leaks")},
+			wantFN: 1, wantFP: 1,
+		},
+		{
+			// Read as written, [10, 5] would end 7 lines before 12.
+			name:        "a line_end before line still matches within tolerance of line",
+			c:           caseWith(false, ef("a.go", 12, "WARNING", "leak")),
+			preds:       []report.Finding{pfSpan("a.go", 10, 5, report.SeverityWarning, "leak", "leaks")},
+			wantTP:      1,
+			wantSevHit:  1,
+			wantFoundBy: map[string]int{"review": 1},
+		},
+		{
+			// Swapped into [5, 10], the range would reach 6.
+			name:   "a line_end before line is not swapped into a range",
+			c:      caseWith(false, ef("a.go", 6, "WARNING", "leak")),
+			preds:  []report.Finding{pfSpan("a.go", 10, 5, report.SeverityWarning, "leak", "leaks")},
+			wantFN: 1, wantFP: 1,
+		},
+		{
+			// Line 0 means no location; [0, 40] would cover 30.
+			name:   "an unlocated prediction ignores its line_end",
+			c:      caseWith(false, ef("a.go", 30, "WARNING", "leak")),
+			preds:  []report.Finding{pfSpan("a.go", 0, 40, report.SeverityWarning, "leak", "leaks")},
+			wantFN: 1, wantFP: 1,
+		},
+		{
 			name:        "keyword case-insensitive in problem",
 			c:           caseWith(false, ef("a.go", 10, "BLOCKING", "Injection")),
 			preds:       []report.Finding{pf("a.go", 10, report.SeverityBlocking, "SQL issue", "possible INJECTION via concat")},
@@ -114,6 +202,38 @@ func TestScoreCase(t *testing.T) {
 			wantTP: 1, wantFN: 1, wantSevHit: 1,
 			// The credit counts every match, claimed or not: the pass saw both.
 			wantFoundBy: map[string]int{"review": 2},
+		},
+		{
+			// Claiming the first match in order, the leak line would take the
+			// wide range and leave the race line nothing.
+			name: "a wide prediction gives way to a narrower one listed after it",
+			c:    caseWith(false, ef("a.go", 20, "WARNING", "leak"), ef("a.go", 6, "WARNING", "race")),
+			preds: []report.Finding{
+				pfSpan("a.go", 5, 40, report.SeverityWarning, "race and leak", "both"),
+				pf("a.go", 20, report.SeverityWarning, "leak", "leaks"),
+			},
+			wantTP: 2, wantSevHit: 2,
+			wantFoundBy: map[string]int{"review": 2},
+		},
+		{
+			name: "a wide prediction gives way to a narrower one listed before it",
+			c:    caseWith(false, ef("a.go", 20, "WARNING", "leak"), ef("a.go", 6, "WARNING", "race")),
+			preds: []report.Finding{
+				pf("a.go", 20, report.SeverityWarning, "leak", "leaks"),
+				pfSpan("a.go", 5, 40, report.SeverityWarning, "race and leak", "both"),
+			},
+			wantTP: 2, wantSevHit: 2,
+			wantFoundBy: map[string]int{"review": 2},
+		},
+		{
+			name: "a duplicate with the expected severity takes the claim",
+			c:    caseWith(false, ef("a.go", 10, "CRITICAL", "leak")),
+			preds: []report.Finding{
+				pf("a.go", 10, report.SeverityWarning, "leak", "leaks"),
+				pf("a.go", 11, report.SeverityCritical, "leak", "leaks"),
+			},
+			wantTP: 1, wantFP: 1, wantSevHit: 1,
+			wantFoundBy: map[string]int{"review": 1},
 		},
 		{
 			name: "partial recall and precision",
@@ -220,6 +340,8 @@ func TestScoreRatios(t *testing.T) {
 		wantDefined(t, "precision", p, ok, true, 1.0)
 		r, ok := s.Recall()
 		wantDefined(t, "recall", r, ok, true, 1.0)
+		f, ok := s.F1()
+		wantDefined(t, "f1", f, ok, true, 1.0)
 		a, ok := s.SeverityAccuracy()
 		wantDefined(t, "sev-acc", a, ok, true, 1.0)
 	})
@@ -230,6 +352,9 @@ func TestScoreRatios(t *testing.T) {
 		wantDefined(t, "precision", p, ok, true, 1.0/3.0)
 		r, ok := s.Recall()
 		wantDefined(t, "recall", r, ok, true, 0.5)
+		// 2/(2+2+1), the harmonic mean of 1/3 and 1/2.
+		f, ok := s.F1()
+		wantDefined(t, "f1", f, ok, true, 0.4)
 		a, ok := s.SeverityAccuracy()
 		wantDefined(t, "sev-acc", a, ok, true, 0.0)
 	})
@@ -241,6 +366,9 @@ func TestScoreRatios(t *testing.T) {
 		_, ok = s.Recall()
 		if ok {
 			t.Error("recall must be undefined for a clean case")
+		}
+		if _, ok := s.F1(); ok {
+			t.Error("f1 must be undefined for a clean case")
 		}
 		_, ok = s.SeverityAccuracy()
 		if ok {
@@ -256,6 +384,18 @@ func TestScoreRatios(t *testing.T) {
 		if _, ok := s.Recall(); ok {
 			t.Error("recall must be undefined with no expected findings")
 		}
+		if _, ok := s.F1(); ok {
+			t.Error("f1 must be undefined with no expected findings")
+		}
+	})
+
+	t.Run("nothing predicted on a seeded case: precision undefined, F1 zero", func(t *testing.T) {
+		s := Score{FN: 1}
+		if _, ok := s.Precision(); ok {
+			t.Error("precision must be undefined with no predictions")
+		}
+		f, ok := s.F1()
+		wantDefined(t, "f1", f, ok, true, 0.0)
 	})
 }
 
@@ -287,6 +427,16 @@ func TestBuildReportAggregate(t *testing.T) {
 	if agg.SeverityAccuracy == nil || math.Abs(*agg.SeverityAccuracy-1.0) > 1e-9 {
 		t.Errorf("aggregate sev-acc = %v, want 1.0", agg.SeverityAccuracy)
 	}
+	// F1 = 2/(2+4+1) = 2/7: the clean case's false positive counts too.
+	if agg.F1 == nil || math.Abs(*agg.F1-2.0/7) > 1e-9 {
+		t.Errorf("aggregate f1 = %v, want 2/7", agg.F1)
+	}
+	if rep.Cases[2].F1 != nil {
+		t.Errorf("clean case f1 = %v, want nil", *rep.Cases[2].F1)
+	}
+	if rep.Match != MatchRule {
+		t.Errorf("Match = %q, want %q", rep.Match, MatchRule)
+	}
 }
 
 func TestCaseScoreUndefinedRatiosAreNil(t *testing.T) {
@@ -294,8 +444,8 @@ func TestCaseScoreUndefinedRatiosAreNil(t *testing.T) {
 	// must leave the pointers nil so JSON serializes them as null / the table
 	// prints "n/a".
 	cs := toCaseScore("clean", "", Score{Clean: true})
-	if cs.Precision != nil || cs.Recall != nil || cs.SeverityAccuracy != nil {
-		t.Errorf("undefined ratios must be nil, got p=%v r=%v s=%v", cs.Precision, cs.Recall, cs.SeverityAccuracy)
+	if cs.Precision != nil || cs.Recall != nil || cs.F1 != nil || cs.SeverityAccuracy != nil {
+		t.Errorf("undefined ratios must be nil, got p=%v r=%v f1=%v s=%v", cs.Precision, cs.Recall, cs.F1, cs.SeverityAccuracy)
 	}
 }
 
@@ -456,6 +606,22 @@ func TestRenderTableSections(t *testing.T) {
 	RenderTable(&scoped, BuildReport(scored, Config{Runs: 3, RunOptions: RunOptions{Thorough: true, ScopePatterns: true}, Tiers: sampleTiers()}))
 	if want := "RUNS: 3 per case (thorough: yes, specialists: no, scope-patterns: yes)\n"; !strings.Contains(scoped.String(), want) {
 		t.Errorf("a -scope-patterns run lacks %q:\n%s", want, scoped.String())
+	}
+
+	// The F1 column sits between RECALL and SEV-ACC, and the rule under the
+	// case rows is as wide as the header.
+	head := lineStarting(t, out, "CASE ")
+	if !strings.Contains(head, "  F1  ") {
+		t.Errorf("header = %q, want an F1 column", head)
+	}
+	if f := strings.Fields(lineStarting(t, out, "priced ")); !slices.Equal(f, []string{"priced", "no", "3", "0", "0", "100%", "100%", "100%", "100%"}) {
+		t.Errorf("case row = %v, want [priced no 3 0 0 100%% 100%% 100%% 100%%]\n%s", f, out)
+	}
+	if rule := lineStarting(t, out, "---"); len(rule) != len(head) {
+		t.Errorf("rule is %d wide, header %d:\n%s", len(rule), len(head), out)
+	}
+	if !strings.Contains(out, "F1 = 2TP/(2TP+FP+FN)") {
+		t.Errorf("footer lacks the F1 formula:\n%s", out)
 	}
 
 	_, cost, ok := strings.Cut(out, "COST PER RUN")

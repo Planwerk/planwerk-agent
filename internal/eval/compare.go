@@ -29,12 +29,14 @@ const (
 )
 
 // Comparison is a candidate report judged against a baseline: the verdict, one
-// check per judged metric, the recall by pass on both sides, each side's cost
-// per run, and the tiers each side ran on. Cost is reported beside the verdict
-// and never decides it.
+// check per judged metric, the pooled F1 on both sides, which the verdict never
+// reads (decision 146), the recall by pass on both sides, each side's cost per
+// run, and the tiers each side ran on. Cost is reported beside the verdict and
+// never decides it.
 type Comparison struct {
 	Verdict        string      `json:"verdict"`
 	Checks         []Check     `json:"checks"`
+	F1             RatioPair   `json:"f1"`
 	Passes         []PassDelta `json:"recall_by_pass"`
 	Baseline       RunCost     `json:"baseline"`
 	Candidate      RunCost     `json:"candidate"`
@@ -51,6 +53,13 @@ type Check struct {
 	Candidate *float64 `json:"candidate"`
 	Floor     *float64 `json:"floor"`
 	Held      bool     `json:"held"`
+}
+
+// RatioPair is one aggregate ratio on both sides, reported beside the checks
+// with no floor; nil on a side where it is undefined.
+type RatioPair struct {
+	Baseline  *float64 `json:"baseline"`
+	Candidate *float64 `json:"candidate"`
 }
 
 // PassDelta is one pass's recall on both sides, nil on a side that credits
@@ -88,11 +97,13 @@ func LoadReport(path string) (Report, error) {
 
 // Comparable returns why baseline cannot be compared with a run made under cfg
 // over the named cases, or nil when it can. Both sides need MinCompareRuns
-// runs, the same passes, and the same set of cases in any order, and the
-// baseline needs a recall: over clean cases alone no check can fail. main calls
-// it before the first case runs, so a mismatch spends no tokens. ScopePatterns,
-// like the tiers, is never compared: a candidate with -scope-patterns against
-// a baseline without it is the experiment (decision 141).
+// runs, the same passes, the same set of cases in any order, and the baseline
+// must be scored by MatchRule, because the same predictions tally differently
+// under another rule (decision 146). The baseline also needs a recall: over
+// clean cases alone no check can fail. main calls it before the first case
+// runs, so a mismatch spends no tokens. ScopePatterns, like the tiers, is
+// never compared: a candidate with -scope-patterns against a baseline without
+// it is the experiment (decision 141).
 func Comparable(baseline Report, cfg Config, cases []string) error {
 	if baseline.Runs < MinCompareRuns || cfg.Runs < MinCompareRuns {
 		return fmt.Errorf("a comparison needs at least %d runs per side (baseline %d, this run %d); re-run with -runs %d",
@@ -101,6 +112,13 @@ func Comparable(baseline Report, cfg Config, cases []string) error {
 	if baseline.Thorough != cfg.Thorough || baseline.Specialists != cfg.Specialists {
 		return fmt.Errorf("baseline ran with thorough=%t specialists=%t, this run with thorough=%t specialists=%t; compare like with like",
 			baseline.Thorough, baseline.Specialists, cfg.Thorough, cfg.Specialists)
+	}
+	if baseline.Match != MatchRule {
+		rule := baseline.Match
+		if rule == "" {
+			rule = unrecorded
+		}
+		return fmt.Errorf("baseline was scored by match rule %s, this harness scores by %s; record the baseline with this harness", rule, MatchRule)
 	}
 	base := nameSet(caseNames(baseline.Cases))
 	cand := nameSet(cases)
@@ -115,8 +133,9 @@ func Comparable(baseline Report, cfg Config, cases []string) error {
 
 // Compare judges candidate against baseline under the rule on the aggregate
 // row: recall no lower than the baseline's, precision and severity accuracy at
-// most their tolerance lower. It returns Comparable's error when the reports
-// cannot be compared.
+// most their tolerance lower. The pooled F1 of both sides is copied beside the
+// checks and never decides the verdict. It returns Comparable's error when the
+// reports cannot be compared.
 func Compare(baseline, candidate Report) (Comparison, error) {
 	if err := Comparable(baseline, candidate.Config, caseNames(candidate.Cases)); err != nil {
 		return Comparison{}, err
@@ -129,6 +148,7 @@ func Compare(baseline, candidate Report) (Comparison, error) {
 			check("precision", b.Precision, c.Precision, precisionTolerance),
 			check("severity_accuracy", b.SeverityAccuracy, c.SeverityAccuracy, severityTolerance),
 		},
+		F1:             RatioPair{Baseline: b.F1, Candidate: c.F1},
 		Passes:         passDeltas(baseline.Passes, candidate.Passes),
 		Baseline:       runCost(baseline),
 		Candidate:      runCost(candidate),
@@ -208,9 +228,10 @@ func nameSet(names []string) []string {
 }
 
 // RenderComparison writes the verdict, the BASELINE TIERS and CANDIDATE TIERS
-// lines, one row per check, the recall by pass on both sides, and both sides'
-// cost per run with the relative change. Ratios carry one decimal so a
-// candidate a fraction of a point off its floor reads differently from it.
+// lines, one row per check, an f1 row marked not judged, the recall by pass on
+// both sides, and both sides' cost per run with the relative change. Ratios
+// carry one decimal so a candidate a fraction of a point off its floor reads
+// differently from it.
 func RenderComparison(w io.Writer, cmp Comparison) {
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintf(w, "VERDICT: %s\n", cmp.Verdict)
@@ -229,6 +250,7 @@ func RenderComparison(w io.Writer, cmp Comparison) {
 		}
 		_, _ = fmt.Fprintf(w, "%-*s  %9s  %9s  %9s  %s\n", labelWidth, c.Metric, pct1(c.Baseline), pct1(c.Candidate), pct1(c.Floor), result)
 	}
+	_, _ = fmt.Fprintf(w, "%-*s  %9s  %9s  %9s  %s\n", labelWidth, "f1", pct1(cmp.F1.Baseline), pct1(cmp.F1.Candidate), notApplicable, "not judged")
 
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintf(w, "%-*s  %9s  %9s  %10s\n", labelWidth, "PASS RECALL", "BASELINE", "CANDIDATE", "DELTA")

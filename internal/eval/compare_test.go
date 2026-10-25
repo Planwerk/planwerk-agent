@@ -17,10 +17,11 @@ import (
 func ratio(v float64) *float64 { return &v }
 
 // comparableReport builds a report the rule can judge: three runs over case
-// "a" with the given aggregate ratios.
+// "a", scored by MatchRule, with the given aggregate ratios.
 func comparableReport(recall, precision, sevAcc *float64) Report {
 	return Report{
 		Config:    Config{Runs: 3},
+		Match:     MatchRule,
 		Cases:     []CaseScore{{Name: "a"}},
 		Aggregate: CaseScore{Name: "AGGREGATE", Recall: recall, Precision: precision, SeverityAccuracy: sevAcc},
 	}
@@ -89,11 +90,18 @@ func TestLoadReport(t *testing.T) {
 		}{
 			{"recall", agg.Recall, 0.75},
 			{"precision", agg.Precision, 0.6},
+			{"f1", agg.F1, 2.0 / 3},
 			{"severity_accuracy", agg.SeverityAccuracy, 2.0 / 3},
 		} {
 			if r.got == nil || math.Abs(*r.got-r.want) > 1e-9 {
 				t.Errorf("aggregate %s = %v, want %v", r.metric, r.got, r.want)
 			}
+		}
+		if got.Match != MatchRule {
+			t.Errorf("Match = %q, want %q", got.Match, MatchRule)
+		}
+		if got.Cases[1].F1 != nil {
+			t.Errorf("clean case f1 = %v, want null", *got.Cases[1].F1)
 		}
 		if want := (RunCost{PromptTokens: 1110, OutputTokens: 30, CostUSD: 0.375}); runCost(got) != want {
 			t.Errorf("runCost = %+v, want %+v", runCost(got), want)
@@ -157,6 +165,7 @@ func TestLoadReport(t *testing.T) {
 func TestComparable(t *testing.T) {
 	base := Report{
 		Config:    Config{Runs: 3, RunOptions: RunOptions{Thorough: true}},
+		Match:     MatchRule,
 		Cases:     []CaseScore{{Name: "b"}, {Name: "a"}},
 		Aggregate: CaseScore{Recall: ratio(1)},
 	}
@@ -181,8 +190,12 @@ func TestComparable(t *testing.T) {
 			[]string{"baseline ran with thorough=true specialists=false", "this run with thorough=true specialists=true", "compare like with like"}},
 		{"different case sets", base, cfg, []string{"c", "a"},
 			[]string{"baseline covers cases [a b], this run covers [a c]", "compare like with like"}},
-		{"only clean cases leave no check that could fail", Report{Config: base.Config, Cases: []CaseScore{{Name: "a", Clean: true}}}, cfg, []string{"a"},
+		{"only clean cases leave no check that could fail", Report{Config: base.Config, Match: MatchRule, Cases: []CaseScore{{Name: "a", Clean: true}}}, cfg, []string{"a"},
 			[]string{"baseline has no recall", "its cases [a] seed no bug", "include a case that seeds one"}},
+		{"a baseline with no recorded match rule", Report{Config: base.Config, Cases: base.Cases, Aggregate: base.Aggregate}, cfg, []string{"a", "b"},
+			[]string{"baseline was scored by match rule (unrecorded)", "this harness scores by range-overlap", "record the baseline with this harness"}},
+		{"a baseline scored by another match rule", Report{Config: base.Config, Match: "line", Cases: base.Cases, Aggregate: base.Aggregate}, cfg, []string{"a", "b"},
+			[]string{"match rule line,", "record the baseline with this harness"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -350,6 +363,35 @@ func TestCompareFloors(t *testing.T) {
 	}
 }
 
+// TestCompareF1IsNotJudged locks that F1 is reported beside the checks and
+// never decides the verdict: an F1 drop with recall held and precision at its
+// floor still holds.
+func TestCompareF1IsNotJudged(t *testing.T) {
+	base := comparableReport(ratio(0.9), ratio(0.9), ratio(0.9))
+	base.Aggregate.F1 = ratio(0.9)
+	cand := comparableReport(ratio(0.9), ratio(0.80), ratio(0.9))
+	cand.Aggregate.F1 = ratio(0.847)
+
+	got, err := Compare(base, cand)
+	if err != nil {
+		t.Fatalf("Compare: %v", err)
+	}
+	if got.Verdict != VerdictHeld {
+		t.Errorf("Verdict = %s, want %s", got.Verdict, VerdictHeld)
+	}
+	if want := (RatioPair{Baseline: ratio(0.9), Candidate: ratio(0.847)}); !reflect.DeepEqual(got.F1, want) {
+		t.Errorf("F1 = {%v %v}, want {0.9 0.847}", got.F1.Baseline, got.F1.Candidate)
+	}
+	if len(got.Checks) != 3 {
+		t.Errorf("Checks = %+v, want the 3 of decision 106", got.Checks)
+	}
+	for _, c := range got.Checks {
+		if c.Metric == "f1" {
+			t.Errorf("Checks hold an f1 check: %+v", c)
+		}
+	}
+}
+
 func TestCompareIncomparable(t *testing.T) {
 	cand := comparableReport(ratio(1), ratio(1), ratio(1))
 	cand.Runs = 1
@@ -397,6 +439,7 @@ func TestRenderComparison(t *testing.T) {
 	cmp.Candidate = RunCost{PromptTokens: 750, OutputTokens: 10, CostUSD: 2.5}
 	cmp.Passes = []PassDelta{{Pass: "review", Baseline: ratio(0.8), Candidate: ratio(0.75)}}
 	cmp.BaselineTiers = sampleTiers()
+	cmp.F1 = RatioPair{Baseline: ratio(0.818), Candidate: nil}
 
 	var buf strings.Builder
 	RenderComparison(&buf, cmp)
@@ -426,6 +469,13 @@ func TestRenderComparison(t *testing.T) {
 	}
 	if f := strings.Fields(lineOf("recall ")); f[len(f)-1] != "held" || f[1] != "90.0%" {
 		t.Errorf("recall line = %q, want 90.0%% held", lineOf("recall "))
+	}
+	// The f1 row follows the checks, has no floor, and is never judged.
+	if f := strings.Fields(lineOf("f1 ")); f[1] != "81.8%" || f[2] != notApplicable || !strings.HasSuffix(lineOf("f1 "), "  not judged") {
+		t.Errorf("f1 line = %q, want 81.8%%, n/a and not judged", lineOf("f1 "))
+	}
+	if sev, f1, passes := strings.Index(out, "\nseverity_accuracy "), strings.Index(out, "\nf1 "), strings.Index(out, "\nPASS RECALL "); sev < 0 || sev >= f1 || f1 >= passes {
+		t.Errorf("want severity_accuracy, f1, PASS RECALL in that order:\n%s", out)
 	}
 	if !strings.Contains(lineOf("review "), "-5.0 pts") {
 		t.Errorf("review delta line = %q, want -5.0 pts", lineOf("review "))
