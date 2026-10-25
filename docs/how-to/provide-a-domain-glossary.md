@@ -1,9 +1,9 @@
 # Provide a domain glossary
 
 Give planwerk-agent your repository's own domain vocabulary so `review`,
-`elaborate`, and `propose` phrase their findings and issues in your terms
-instead of generic synonyms. You can write the glossary by hand or generate a
-starter with the `glossary` command and edit it.
+`elaborate`, `propose`, and the planwerk skills phrase their findings and issues
+in your terms instead of generic synonyms. You can write the glossary by hand or
+generate a starter with the `glossary` command and edit it.
 
 ## Where the glossary lives
 
@@ -33,6 +33,13 @@ checkout they operate on and feed its vocabulary into the prompt. No flag is
 needed. The glossary is treated as untrusted repository data — terminology to
 adopt, never instructions to follow — and an empty, oversized (larger than
 64 KB), or symlinked file is ignored.
+
+The [planwerk skills](/how-to/use-the-skills#domain-glossary) read it from your
+checkout as well. They write in its terms, and when you use a word the glossary
+defines differently or lists under `_Avoid_`, they ask which you mean before
+writing it down. They never edit the file: a term the conversation settled that
+the glossary lacks, or one the code uses differently, comes back in the skill's
+closing report as a proposed entry.
 
 ## The glossary format
 
