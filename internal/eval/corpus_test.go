@@ -138,6 +138,14 @@ func TestLoadCaseErrors(t *testing.T) {
 				writeFile(t, filepath.Join(dir, "expected.json"), `{"clean": false, "findings": [{"file": "main.go", "line": 1, "severity": "WARNING"}]}`)
 			},
 		},
+		{
+			name: "line_end before line",
+			setup: func(t *testing.T, dir string) {
+				writeFile(t, filepath.Join(dir, "base", "main.go.txt"), "package main\n")
+				writeFile(t, filepath.Join(dir, "head", "main.go.txt"), "package main\n")
+				writeFile(t, filepath.Join(dir, "expected.json"), `{"clean": false, "findings": [{"file": "main.go", "line": 5, "line_end": 4, "severity": "WARNING", "keywords": ["x"]}]}`)
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -148,6 +156,19 @@ func TestLoadCaseErrors(t *testing.T) {
 				t.Fatalf("LoadCase(%s) = nil error, want error", tt.name)
 			}
 		})
+	}
+}
+
+func TestLoadCaseLineEnd(t *testing.T) {
+	dir := writeValidCase(t, t.TempDir(), "ranged")
+	writeFile(t, filepath.Join(dir, "expected.json"), `{"clean": false, "findings": [{"file": "main.go", "line": 1, "line_end": 3, "severity": "WARNING", "keywords": ["bug"]}]}`)
+
+	c, err := LoadCase(dir)
+	if err != nil {
+		t.Fatalf("LoadCase: %v", err)
+	}
+	if got := c.Expected.Findings[0]; got.Line != 1 || got.LineEnd != 3 {
+		t.Errorf("finding spans %d-%d, want 1-3", got.Line, got.LineEnd)
 	}
 }
 
@@ -190,6 +211,9 @@ func TestShippedCorpusValid(t *testing.T) {
 			}
 			if f.Line < 1 || f.Line > lines {
 				t.Errorf("case %s: expected finding at %s:%d, but the file has %d lines", c.Name, f.File, f.Line, lines)
+			}
+			if f.LineEnd != 0 && f.LineEnd > lines {
+				t.Errorf("case %s: expected finding at %s:%d-%d, but the file has %d lines", c.Name, f.File, f.Line, f.LineEnd, lines)
 			}
 		}
 	}

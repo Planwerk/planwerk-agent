@@ -2,7 +2,7 @@
 
 Measure how well the review pipeline actually finds bugs. `make eval` runs the
 **shipped** review pipeline against a small labeled corpus of seeded-bug cases
-and scores the findings for precision, recall, and severity accuracy.
+and scores the findings for precision, recall, F1, and severity accuracy.
 
 > [!IMPORTANT]
 > The eval invokes the **real** `claude` CLI and **spends tokens**. It needs an
@@ -72,12 +72,29 @@ each predicted finding against the case's expected findings and tallies:
 
 - **Precision** = TP / (TP + FP) — of the findings reported, how many were real.
 - **Recall** = TP / (TP + FN) — of the seeded bugs, how many were caught.
+- **F1** = 2·TP / (2·TP + FP + FN) — the harmonic mean of precision and
+  recall, the single number benchmarks such as AACR-Bench publish. It is
+  undefined where recall is, on a clean case, and 0 on a seeded case where
+  nothing matched.
 - **Severity accuracy** = severity matches / TP — of the matched findings, how
   many were labeled with the expected severity.
 
 A predicted finding **matches** an expected one when it is in the same file,
-within ±3 lines, and at least one expected keyword appears (case-insensitively)
-in the predicted title or problem text.
+its line range comes within 3 lines of the expected range, and at least one
+expected keyword appears (case-insensitively) in the predicted title or
+problem text. A range runs from `line` to `line_end`, and a finding without
+`line_end` covers its `line` alone, so for two single lines the window is ±3.
+A prediction spanning lines 5 to 20 matches an expected finding anywhere from
+line 2 to line 23.
+
+Each expected finding claims at most one prediction, and each prediction is
+claimed at most once. The harness pairs them so that as many expected findings
+as possible are matched. A wide prediction that matches two seeded bugs, next
+to a narrower one that matches only the first, is paired with the second, so
+both bugs count. TP, FP and FN therefore do not depend on the order the
+findings come in. Where an expected finding has several matches, one with the
+expected severity is tried first. The report names this rule in `match`
+(`range-overlap`).
 
 With `-runs N` every tally is summed over the N runs of a case, so each ratio
 is a pooled ratio: three runs of a one-bug case count as three expected
@@ -163,6 +180,9 @@ is a route file, so that case keeps its handler under `handlers/`.
 }
 ```
 
+A seeded bug that spans several lines may add `line_end`, the last line of
+its range; it must not be before `line`.
+
 A **clean** case seeds no bug (`"clean": true`, no findings). It measures false
 positives: every finding the pipeline reports on it is an FP, and its recall is
 undefined (there is nothing to recall) — the table prints `n/a`.
@@ -176,8 +196,9 @@ undefined (there is nothing to recall) — the table prints `n/a`.
    case).
 3. Write `expected.json`. For a non-clean case declare at least one expected
    finding; each finding needs a `file` and at least one `keyword`. Pick
-   keywords a reviewer would plausibly use, and anchor `line` at the buggy line
-   (the ±3 window absorbs small drift).
+   keywords a reviewer would plausibly use, anchor `line` at the buggy line,
+   and add `line_end` when the defect spans several lines (the ±3 window
+   absorbs small drift).
 4. Verify the corpus loads: `go test ./internal/eval/...` runs the loader and a
    check that the shipped corpus is well-formed — no tokens spent.
 5. Score it: `make eval EVAL_ARGS="-case <name>"`.
@@ -191,15 +212,16 @@ it.
 ## Read the scores
 
 ```
-CASE                    CLEAN   TP   FP   FN  PRECISION   RECALL   SEV-ACC
-goroutine-leak             no    3    0    0       100%     100%      100%
-clean-refactor            yes    0    2    0         0%      n/a       n/a
+CASE                    CLEAN   TP   FP   FN  PRECISION   RECALL    F1   SEV-ACC
+goroutine-leak             no    3    0    0       100%     100%  100%      100%
+clean-refactor            yes    0    2    0         0%      n/a   n/a       n/a
 ...
---------------------------------------------------------------------------
-AGGREGATE                  no   27    9    3        75%      90%       78%
+--------------------------------------------------------------------------------
+AGGREGATE                  no   27    9    3        75%      90%   82%       78%
 
 PRECISION = TP/(TP+FP), RECALL = TP/(TP+FN), SEV-ACC = severity matches/TP.
-A clean case seeds no bug: recall is undefined (n/a) and every finding is a false positive.
+F1 = 2TP/(2TP+FP+FN), the harmonic mean of PRECISION and RECALL.
+A clean case seeds no bug: recall and F1 are undefined (n/a) and every finding is a false positive.
 
 RUNS: 3 per case (thorough: yes, specialists: yes)
 TIERS: claude opus/xhigh, finder opus/xhigh, structure sonnet/xhigh
@@ -225,7 +247,8 @@ AGGREGATE                      140.0        4120000         190000    $21.00
 The aggregate row sums the raw tallies across cases (it does not average the
 per-case ratios, which would over-weight small cases). Watch the aggregate over
 time; individual cases are noisy because the model is stochastic. `n/a` marks an
-undefined ratio (recall on a clean case; any ratio with a zero denominator).
+undefined ratio (recall and F1 on a clean case; any ratio with a zero
+denominator).
 
 Four sections follow the table:
 
@@ -245,11 +268,12 @@ The two sections spell the pass labels differently. Recall uses the
 provenance labels (`specialist:security`), cost uses the usage labels
 (`specialist-security`).
 
-In `-json` output each case carries `found_by` and `usage` (totals over all
-runs), and the report carries `runs`, `thorough`, `specialists`,
-`scope_patterns` (present when set), `tiers` and `recall_by_pass`. `tiers`
-holds `claude_model`, `claude_effort`, `finder_model`, `finder_effort`,
-`structure_model` and `structure_effort`.
+In `-json` output each case and the aggregate carry `precision`, `recall`,
+`f1` and `severity_accuracy` (null where undefined), `found_by` and `usage`
+(totals over all runs), and the report carries `runs`, `thorough`,
+`specialists`, `scope_patterns` (present when set), `tiers`, `match` and
+`recall_by_pass`. `tiers` holds `claude_model`, `claude_effort`,
+`finder_model`, `finder_effort`, `structure_model` and `structure_effort`.
 
 ## Compare a change against a baseline
 
@@ -257,12 +281,15 @@ A change is judged against the commit it branches from by one rule (decision
 106):
 
 - Both sides ran at least 3 times per case, with the same `-thorough` and
-  `-specialists` flags, over the same cases, and at least one case seeds a
-  bug. Over clean cases alone no check can fail.
+  `-specialists` flags, over the same cases, scored by the same match rule,
+  and at least one case seeds a bug. Over clean cases alone no check can
+  fail.
 - Pooled recall is not below the baseline's. Recall gets no tolerance.
 - Pooled precision and pooled severity accuracy are each at most 10 points
   below the baseline's (with a 1e-9 slack for rounding).
 - A metric that is undefined on either side has no floor and holds (`n/a`).
+- Pooled F1 is printed beside the checks as `not judged` and never decides
+  the verdict (decision 146).
 - Cost is printed beside the verdict and never decides it.
 
 The verdict is `HELD` when every check holds and `REGRESSED` otherwise. Record
@@ -282,13 +309,20 @@ export the credential, open one shell with `make toolbox-shell`, and run both
 commands in it. The container is removed when the shell exits, so a baseline
 in its `/tmp` does not survive into a second `make` call.
 
-The harness loads the baseline and checks the runs, flags and cases before the
-first case runs, so a mismatch exits 1 without spending tokens. A baseline
-from before the harness recorded its runs is rejected with `records no runs`.
+The harness loads the baseline and checks the runs, flags, match rule and
+cases before the first case runs, so a mismatch exits 1 without spending
+tokens. A baseline from before the harness recorded its runs is rejected with
+`records no runs`, and one scored before the match rule was recorded, or by
+another rule, with `match rule`.
+
+A change to the match rule leaves every earlier baseline incomparable. To
+judge a pipeline change that lands together with one, record the baseline on
+the base commit with the scoring commit cherry-picked onto it.
+
 After the table, the comparison prints the verdict, the tiers each side ran
-on, one row per check, the recall of each pass on both sides, and both sides'
-cost per run. A baseline written before the tiers were recorded prints
-`(unrecorded)` on its tier line.
+on, one row per check, an `f1` row the verdict never reads, the recall of each
+pass on both sides, and both sides' cost per run. A baseline written before
+the tiers were recorded prints `(unrecorded)` on its tier line.
 
 ```
 VERDICT: HELD
@@ -299,6 +333,7 @@ METRIC                         BASELINE  CANDIDATE      FLOOR  RESULT
 recall                            90.0%      93.3%      90.0%  held
 precision                         75.0%      71.8%      65.0%  held
 severity_accuracy                 77.8%      78.6%      67.8%  held
+f1                                81.8%      81.2%        n/a  not judged
 
 PASS RECALL                    BASELINE  CANDIDATE       DELTA
 review                            83.3%      86.7%    +3.3 pts
@@ -311,9 +346,9 @@ est USD                              $21.00         $18.65    -11.2%
 ```
 
 With `-json` the same data is in the report's `comparison` field, the tiers
-under `baseline_tiers` and `candidate_tiers`. A
-`REGRESSED` verdict does not change the exit code (decision 59): it is for a
-person to read before the change lands.
+under `baseline_tiers` and `candidate_tiers` and both sides' F1 under `f1`
+(`baseline`, `candidate`). A `REGRESSED` verdict does not change the exit code
+(decision 59): it is for a person to read before the change lands.
 
 > [!TIP]
 > A behavioral prompt change — anything that alters what the reviewer flags or
@@ -321,7 +356,8 @@ person to read before the change lands.
 > description, so a precision or recall regression is visible rather than
 > discovered in production. Run the recipe in
 > [Compare a change against a baseline](#compare-a-change-against-a-baseline)
-> and paste the verdict, its checks, the pass deltas and the cost lines.
+> and paste the verdict, its checks, the f1 row, the pass deltas and the cost
+> lines.
 
 ## Try a candidate finder tier
 

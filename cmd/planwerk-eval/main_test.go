@@ -74,7 +74,8 @@ func TestRunGuardsSpendNoTokens(t *testing.T) {
 	write("corpus/sample/expected.json", `{"description": "seeded", "clean": false, "findings": [{"file": "main.go", "line": 1, "severity": "WARNING", "keywords": ["bug"]}]}`)
 	corpus := filepath.Join(dir, "corpus")
 	thorough := write("thorough.json", `{"runs": 3, "thorough": true, "cases": [{"name": "sample"}], "aggregate": {"recall": 1}}`)
-	comparable := write("comparable.json", `{"runs": 3, "cases": [{"name": "sample"}], "aggregate": {"recall": 1}}`)
+	comparable := write("comparable.json", fmt.Sprintf(`{"runs": 3, "match": %q, "cases": [{"name": "sample"}], "aggregate": {"recall": 1}}`, eval.MatchRule))
+	unrecordedMatch := write("unrecorded-match.json", `{"runs": 3, "cases": [{"name": "sample"}], "aggregate": {"recall": 1}}`)
 
 	tests := []struct {
 		name     string
@@ -86,6 +87,7 @@ func TestRunGuardsSpendNoTokens(t *testing.T) {
 		{"a missing baseline", filepath.Join(dir, "missing.json"), 3, "reading baseline"},
 		{"a baseline run with other passes", thorough, 3, "compare like with like"},
 		{"a baseline with too few runs on this side", comparable, 1, "at least 3 runs per side"},
+		{"a baseline with no recorded match rule", unrecordedMatch, 3, "match rule"},
 		// The two rows that pass the guards prove the premise: the first client
 		// build fails, so no row can reach a model.
 		{"no baseline passes the guards", "", 1, "invalid PLANWERK_CLAUDE_TIMEOUT"},
