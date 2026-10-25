@@ -39,6 +39,33 @@ func TestFindingUnverified(t *testing.T) {
 	}
 }
 
+func TestFindingMeetsThresholds(t *testing.T) {
+	tests := []struct {
+		name    string
+		f       Finding
+		minSev  Severity
+		minConf Confidence
+		want    bool
+	}{
+		{"unknown severity fails every threshold", Finding{Severity: Severity("MAJOR"), Confidence: ConfidenceVerified}, SeverityInfo, "", false},
+		{"info below a warning minimum", Finding{Severity: SeverityInfo, Confidence: ConfidenceVerified}, SeverityWarning, "", false},
+		{"warning at a warning minimum", Finding{Severity: SeverityWarning, Confidence: ConfidenceVerified}, SeverityWarning, "", true},
+		{"likely below a verified minimum", Finding{Severity: SeverityCritical, Confidence: ConfidenceLikely}, SeverityInfo, ConfidenceVerified, false},
+		{"verified at a verified minimum", Finding{Severity: SeverityCritical, Confidence: ConfidenceVerified}, SeverityInfo, ConfidenceVerified, true},
+		{"uncertain with no confidence minimum", Finding{Severity: SeverityWarning, Confidence: ConfidenceUncertain}, SeverityInfo, "", true},
+		// An unset confidence ranks with likely (Confidence.Rank).
+		{"unset confidence at a likely minimum", Finding{Severity: SeverityWarning}, SeverityInfo, ConfidenceLikely, true},
+		{"unset confidence below a verified minimum", Finding{Severity: SeverityWarning}, SeverityInfo, ConfidenceVerified, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.f.MeetsThresholds(tc.minSev, tc.minConf); got != tc.want {
+				t.Errorf("MeetsThresholds(%q, %q) = %v, want %v", tc.minSev, tc.minConf, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestParseSeverity(t *testing.T) {
 	tests := []struct {
 		input   string

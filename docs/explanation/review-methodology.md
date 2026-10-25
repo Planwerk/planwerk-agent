@@ -155,7 +155,8 @@ snippet gate, and claim verification — is behavior the `review` command and th
 `implement` command's self-review both run, out of the shared `internal/hygiene`
 package. The distinction is what each command does with the result. `review`
 *reports*: it renders every finding, routing the ones that did not survive
-hygiene into an Unverified section a human can weigh. `implement` *acts*: a
+hygiene into an Unverified section a human can weigh, and under `--inline` posts
+none of those as a comment on the diff. `implement` *acts*: a
 second session edits the branch to resolve findings, unattended, with no human to
 catch a hallucinated one before it becomes a commit.
 

@@ -2,6 +2,8 @@ package review
 
 import (
 	"bytes"
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -176,6 +178,18 @@ func TestRenderResult_PostReviewError(t *testing.T) {
 	}
 }
 
+// inlineTestDiff puts main.go lines 10-13 on the right side of the PR diff.
+const inlineTestDiff = `diff --git a/main.go b/main.go
+index abc..def 100644
+--- a/main.go
++++ b/main.go
+@@ -10,3 +10,4 @@ func main() {
+ 	fmt.Println("hello")
+ 	fmt.Println("world")
++	newFunc()
+ }
+`
+
 func TestRenderResult_InlineReview(t *testing.T) {
 	t.Parallel()
 
@@ -188,16 +202,7 @@ func TestRenderResult_InlineReview(t *testing.T) {
 			return "https://github.com/test/repo/pull/1#discussion_r123", nil
 		},
 		FetchDiffFn: func(owner, repo string, number int) (string, error) {
-			return `diff --git a/main.go b/main.go
-index abc..def 100644
---- a/main.go
-+++ b/main.go
-@@ -10,3 +10,4 @@ func main() {
- 	fmt.Println("hello")
- 	fmt.Println("world")
-+	newFunc()
- }
-`, nil
+			return inlineTestDiff, nil
 		},
 	}
 
@@ -304,6 +309,267 @@ func TestRenderResult_InlineReviewFallback(t *testing.T) {
 	sha, findings, ok := report.ParseDataBlock(postedBody)
 	if !ok || sha != "abc123" || len(findings) != 1 || findings[0].Title != "Unmapped" {
 		t.Errorf("fallback data block = %q, %+v, %v; want the head SHA and the run's finding", sha, findings, ok)
+	}
+}
+
+// inlineCommentIDs returns the finding ID of each inline comment, read from the
+// "**<ID>: " header report.FormatInlineComment writes.
+func inlineCommentIDs(comments []github.ReviewComment) []string {
+	ids := make([]string, 0, len(comments))
+	for _, c := range comments {
+		id, _, _ := strings.Cut(strings.TrimPrefix(c.Body, "**"), ":")
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+// TestRenderResult_InlineReviewAppliesReportFilters pins that --inline comments
+// only on the findings the summary lists in a severity section (decision 129).
+// A finding below --min-severity or --min-confidence is in no section and gets
+// no comment; an Unverified one stays in the summary's Unverified section and
+// gets none either. The data block keeps every finding for the next re-review.
+func TestRenderResult_InlineReviewAppliesReportFilters(t *testing.T) {
+	t.Parallel()
+
+	// Every finding sits on main.go:12, a right-side line of inlineTestDiff, so
+	// only the filters can keep one from becoming an inline comment.
+	onDiff := func(id string, sev report.Severity, conf report.Confidence, title string) report.Finding {
+		return report.Finding{ID: id, Severity: sev, Confidence: conf, Title: title, File: "main.go", Line: 12, Problem: "Problem", Action: "Fix it"}
+	}
+	snippetDemoted := onDiff("W-001", report.SeverityWarning, report.ConfidenceUncertain, "Quote not found")
+	snippetDemoted.SnippetCheck = "demoted: quoted code not found in the checkout"
+	refuted := onDiff("C-002", report.SeverityCritical, report.ConfidenceUncertain, "Refuted claim")
+	refuted.VerificationNote = "refuted: guarded at line 50"
+
+	tests := []struct {
+		name          string
+		minSeverity   report.Severity
+		minConfidence report.Confidence
+		findings      []report.Finding
+		wantInline    []string
+		// wantUnverified lists the IDs the stdout report shows in its
+		// Unverified / Low-Confidence section.
+		wantUnverified []string
+		// wantAbsent lists the IDs the stdout report leaves out entirely.
+		wantAbsent []string
+	}{
+		{
+			name:        "unverified findings stay in the summary",
+			minSeverity: report.SeverityInfo,
+			findings: []report.Finding{
+				onDiff("C-001", report.SeverityCritical, report.ConfidenceVerified, "Verified bug"),
+				snippetDemoted,
+				refuted,
+				// Uncertain without a refutation: it keeps its severity section,
+				// and with it its inline comment.
+				onDiff("B-001", report.SeverityBlocking, report.ConfidenceUncertain, "Unconfirmed blocker"),
+			},
+			wantInline:     []string{"C-001", "B-001"},
+			wantUnverified: []string{"W-001", "C-002"},
+		},
+		{
+			name:        "min-severity",
+			minSeverity: report.SeverityWarning,
+			findings: []report.Finding{
+				onDiff("W-003", report.SeverityWarning, report.ConfidenceLikely, "Likely warning"),
+				onDiff("I-001", report.SeverityInfo, report.ConfidenceVerified, "Verified note"),
+			},
+			wantInline: []string{"W-003"},
+			wantAbsent: []string{"I-001"},
+		},
+		{
+			name:          "min-confidence",
+			minSeverity:   report.SeverityInfo,
+			minConfidence: report.ConfidenceVerified,
+			findings: []report.Finding{
+				onDiff("C-001", report.SeverityCritical, report.ConfidenceVerified, "Verified bug"),
+				onDiff("C-003", report.SeverityCritical, report.ConfidenceLikely, "Likely bug"),
+			},
+			wantInline: []string{"C-001"},
+			wantAbsent: []string{"C-003"},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var submittedBody string
+			var submittedComments []github.ReviewComment
+			gh := &githubtest.Fake{
+				SubmitPRReviewFn: func(owner, repo string, number int, commitSHA, body string, comments []github.ReviewComment) (string, error) {
+					submittedBody = body
+					submittedComments = comments
+					return "https://github.com/test/repo/pull/1#discussion_r123", nil
+				},
+				FetchDiffFn: func(owner, repo string, number int) (string, error) {
+					return inlineTestDiff, nil
+				},
+			}
+			result := &report.ReviewResult{Summary: "Test review", Findings: tc.findings}
+			pr := &github.PR{Owner: "test", Repo: "repo", Number: 1, Title: "Test PR", HeadSHA: "abc123"}
+			opts := Options{
+				Format:        "markdown",
+				Version:       "test",
+				PostReview:    true,
+				InlineReview:  true,
+				MinSeverity:   tc.minSeverity,
+				MinConfidence: tc.minConfidence,
+			}
+
+			var out bytes.Buffer
+			if err := newTestRunner(gh).renderResult(&out, result, pr, opts, nil); err != nil {
+				t.Fatalf("renderResult returned error: %v", err)
+			}
+
+			if got := inlineCommentIDs(submittedComments); !slices.Equal(got, tc.wantInline) {
+				t.Errorf("inline comment IDs = %v, want %v", got, tc.wantInline)
+			}
+
+			// Assert on stdout, not on the review body: the data block's JSON
+			// names every finding.
+			stdout := out.String()
+			if len(tc.wantUnverified) > 0 {
+				header := fmt.Sprintf("## Unverified / Low-Confidence (%d)", len(tc.wantUnverified))
+				_, section, ok := strings.Cut(stdout, header)
+				if !ok {
+					t.Fatalf("stdout has no %q section:\n%s", header, stdout)
+				}
+				for _, id := range tc.wantUnverified {
+					if !strings.Contains(section, "### "+id+": ") {
+						t.Errorf("%s is missing from the Unverified section:\n%s", id, section)
+					}
+				}
+			}
+			for _, id := range tc.wantAbsent {
+				if strings.Contains(stdout, id) {
+					t.Errorf("stdout shows %s, which the thresholds leave out:\n%s", id, stdout)
+				}
+			}
+
+			_, prior, ok := report.ParseDataBlock(submittedBody)
+			if !ok || len(prior) != len(tc.findings) {
+				t.Errorf("data block = %d findings (ok=%v), want all %d", len(prior), ok, len(tc.findings))
+			}
+		})
+	}
+}
+
+// TestInlineReviewComments_SkippedFindingsDoNotUseTheCap pins that the filters
+// run before the maxInlineComments cap: a full cap's worth of Unverified
+// findings still leaves room for the eligible finding after them.
+func TestInlineReviewComments_SkippedFindingsDoNotUseTheCap(t *testing.T) {
+	t.Parallel()
+
+	var findings []report.Finding
+	for i := range maxInlineComments {
+		findings = append(findings, report.Finding{
+			ID: fmt.Sprintf("W-%03d", i+1), Severity: report.SeverityWarning, Confidence: report.ConfidenceUncertain,
+			Title: "Uncertain nit", File: "main.go", Line: 12, Problem: "p", Action: "a",
+		})
+	}
+	findings = append(findings, report.Finding{
+		ID: "W-LAST", Severity: report.SeverityWarning, Confidence: report.ConfidenceLikely,
+		Title: "Likely warning", File: "main.go", Line: 12, Problem: "p", Action: "a",
+	})
+
+	got := inlineReviewComments(findings, github.ParseDiff(inlineTestDiff), report.SeverityInfo, "")
+	if ids := inlineCommentIDs(got); !slices.Equal(ids, []string{"W-LAST"}) {
+		t.Errorf("inline comment IDs = %v, want [W-LAST]", ids)
+	}
+}
+
+// TestRenderResult_InlineReSuppressesOnlyWhatTheLastReviewListed runs two
+// --inline reviews of the same unchanged file. A re-review counts a prior
+// finding as already reported only when the last summary listed it in a
+// severity section (decision 129). So a finding the first run kept off the
+// diff, refuted or below --min-confidence, gets its inline comment once the
+// second run confirms it, and one refuted twice stays in the Unverified
+// section; only the one the first run posted is suppressed.
+func TestRenderResult_InlineReSuppressesOnlyWhatTheLastReviewListed(t *testing.T) {
+	t.Parallel()
+
+	confirmed := report.Finding{
+		ID: "C-001", Severity: report.SeverityCritical, Confidence: report.ConfidenceVerified,
+		Title: "Bug R", File: "unchanged.go", Line: 5, Problem: "p", Action: "a",
+	}
+	refuted := confirmed
+	refuted.Confidence = report.ConfidenceUncertain
+	refuted.VerificationNote = "refuted: guarded at line 2"
+	likely := confirmed
+	likely.Confidence = report.ConfidenceLikely
+
+	tests := []struct {
+		name          string
+		minConfidence report.Confidence
+		first, second report.Finding
+		// wantFirst and wantSecond are the inline comment IDs each run posts.
+		wantFirst, wantSecond []string
+		// wantSuppressed is whether the second run suppresses its finding as
+		// previously reported instead of listing it.
+		wantSuppressed bool
+	}{
+		{name: "refuted, then confirmed", first: refuted, second: confirmed, wantSecond: []string{"C-001"}},
+		{name: "below min-confidence, then above it", minConfidence: report.ConfidenceVerified, first: likely, second: confirmed, wantSecond: []string{"C-001"}},
+		{name: "refuted twice", first: refuted, second: refuted},
+		{name: "posted, then repeated", first: confirmed, second: confirmed, wantFirst: []string{"C-001"}, wantSuppressed: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// The first run reviews firstSHA, and only changed.go changes after
+			// it, so the second run sees unchanged.go unchanged.
+			dir, firstSHA := initGitRepoTwoCommits(t)
+			pr := &github.PR{Owner: "test", Repo: "repo", Number: 1, Title: "Test PR", HeadSHA: firstSHA, Dir: dir}
+			var (
+				lastBody string
+				comments []github.ReviewComment
+			)
+			gh := &githubtest.Fake{
+				// The second run reads the review the first one submitted.
+				FetchReviewCommentFn: func(owner, repo string, number int) (string, bool, error) {
+					return lastBody, lastBody != "", nil
+				},
+				FetchDiffFn: func(owner, repo string, number int) (string, error) {
+					return "diff --git a/unchanged.go b/unchanged.go\n--- /dev/null\n+++ b/unchanged.go\n@@ -0,0 +1,10 @@\n" + strings.Repeat("+line\n", 10), nil
+				},
+				SubmitPRReviewFn: func(owner, repo string, number int, commitSHA, body string, cs []github.ReviewComment) (string, error) {
+					lastBody, comments = body, cs
+					return "https://github.com/test/repo/pull/1#pullrequestreview-1", nil
+				},
+			}
+			opts := Options{
+				Format:        "markdown",
+				Version:       "test",
+				PostReview:    true,
+				InlineReview:  true,
+				MinSeverity:   report.SeverityInfo,
+				MinConfidence: tc.minConfidence,
+			}
+			review := func(f report.Finding) (ids []string, stdout string) {
+				comments = nil
+				var out bytes.Buffer
+				result := &report.ReviewResult{Summary: "S", Findings: []report.Finding{f}}
+				if err := newTestRunner(gh).renderResult(&out, result, pr, opts, nil); err != nil {
+					t.Fatalf("renderResult returned error: %v", err)
+				}
+				return inlineCommentIDs(comments), out.String()
+			}
+
+			if got, _ := review(tc.first); !slices.Equal(got, tc.wantFirst) {
+				t.Fatalf("first run: inline comment IDs = %v, want %v", got, tc.wantFirst)
+			}
+			got, stdout := review(tc.second)
+			if !slices.Equal(got, tc.wantSecond) {
+				t.Errorf("second run: inline comment IDs = %v, want %v", got, tc.wantSecond)
+			}
+			if listed := strings.Contains(stdout, "### C-001: "); listed == tc.wantSuppressed {
+				t.Errorf("second run: report lists C-001 = %v, want %v:\n%s", listed, !tc.wantSuppressed, stdout)
+			}
+			if noted := strings.Contains(stdout, "suppressed as previously reported"); noted != tc.wantSuppressed {
+				t.Errorf("second run: suppression note = %v, want %v:\n%s", noted, tc.wantSuppressed, stdout)
+			}
+		})
 	}
 }
 

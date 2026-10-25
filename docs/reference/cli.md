@@ -91,7 +91,7 @@ planwerk-agent owner/repo#123 > review.md
 | `--cache-max-age` | Reject cached entries older than this duration (`0` disables the TTL) | `720h` |
 | `--format` | Output format (`markdown`, `json`) | `markdown` |
 | `--post-review` | Post the review as a comment on the PR (updates existing if found) | `false` |
-| `--inline` | Post review with inline comments using the GitHub Review API (implies `--post-review`) | `false` |
+| `--inline` | Post review with inline comments using the GitHub Review API (implies `--post-review`). A finding gets an inline comment only when the summary lists it in a severity section: findings below `--min-severity` or `--min-confidence` and findings in the Unverified section get none | `false` |
 | `--thorough` | Run an additional adversarial review pass for security and failure modes | `false` |
 | `--specialists` | Run the domain-specialist review fan-out (security, data-migration, testing, performance, api-contract, maintainability) concurrently and merge their findings. Specialists are adaptively gated (see [Adaptive specialist gating](/explanation/review-methodology#adaptive-specialist-gating)). | `false` |
 | `--coverage-map` | Generate a test coverage map for changed functions | `false` |

@@ -951,7 +951,7 @@ func TestSkipSuppressed_RefusesACommitSHAThatIsNotAnObjectName(t *testing.T) {
 	}
 	pr := &github.PR{Owner: "acme", Repo: "widgets", Number: 42, Dir: dir}
 
-	kept, suppressed := newTestRunner(gh).skipSuppressed(&report.ReviewResult{Findings: findings}, pr)
+	kept, suppressed := newTestRunner(gh).skipSuppressed(&report.ReviewResult{Findings: findings}, pr, report.SeverityInfo, "")
 	if len(suppressed) != 0 || len(kept) != len(findings) {
 		t.Errorf("kept %d, suppressed %+v; want every finding kept", len(kept), suppressed)
 	}

@@ -25,13 +25,15 @@ planwerk-agent owner/repo#123 > review.md
 
 `--post-review` posts (and updates) a single summary comment on the PR;
 `--inline` posts findings as inline review comments via the GitHub Review API
-and implies `--post-review`. For every flag, see the
-[CLI reference](/reference/cli#review-default-command); for the shape of the
-report, see [Output format](/reference/output-format).
+and implies `--post-review`. The inline comments follow `--min-severity` and
+`--min-confidence` the way the report does, and a finding in the report's
+Unverified section stays in the summary without an inline comment. For every
+flag, see the [CLI reference](/reference/cli#review-default-command); for the
+shape of the report, see [Output format](/reference/output-format).
 
-On a re-review, findings the last posted review already reported on a file that
-has not changed since are left out of the report and the inline comments; see
-[Re-reviews](/reference/output-format#re-reviews).
+On a re-review, findings the last posted review already listed in a severity
+section, on a file that has not changed since, are left out of the report and
+the inline comments; see [Re-reviews](/reference/output-format#re-reviews).
 
 ## How it works
 
