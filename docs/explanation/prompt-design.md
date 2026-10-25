@@ -475,3 +475,13 @@ sprawl [decision 79](./design-decisions.md) removed from the specialists, and
 the rule that a line must be earned applies to a borrowed line as much as to one
 we wrote. The adaptation is the doctrine working: an idea arrives as a question
 bank and lands as a checkable, exhaustive completion criterion.
+
+Three interview rules in `interaction.md` come from the `grilling` skill of
+mattpocock/skills: asking the open decisions in rounds of the ones whose
+prerequisites are settled, wording an inline question so that "yes" accepts its
+recommendation, and ending the questions when nothing is left open
+([decision 125](./design-decisions.md)). The glossary checks in the same file
+come from its `domain-modeling` skill (decision 126). What was left is the
+premise that every decision belongs to the human, which decision 88 already
+answered with the authority kinds, and the prose-only interview, which the
+plugin does not need because it runs in one harness.
