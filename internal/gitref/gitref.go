@@ -18,7 +18,9 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -54,6 +56,57 @@ func Show(repoDir, ref, rel string, maxBytes int) (string, bool) {
 		return "", false
 	}
 	return string(out), true
+}
+
+// File is a regular file directly in a directory: its base name and its size
+// in bytes.
+type File struct {
+	Name string
+	Size int64
+}
+
+// ListFiles lists the regular files directly in the directory rel as it stands
+// at ref, in tree order, which for files is file-name byte order, the order
+// os.ReadDir sorts by. Subdirectories, symlinks, and submodules are left out;
+// read a listed file with Show(repoDir, ref, rel+"/"+Name, …). Unlike
+// Materialize, which runs git archive and so honors ref's .gitattributes
+// (export-ignore drops a path, export-subst rewrites it), ListFiles and Show
+// read the tree as committed. It returns nil when ref is empty, rel is absent
+// at ref, or git fails, every case a caller treats as "nothing there".
+func ListFiles(repoDir, ref, rel string) []File {
+	if ref == "" {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
+	defer cancel()
+	dir := filepath.ToSlash(filepath.Clean(rel))
+	// --full-tree resolves dir from the repository root, as Show's ref:path
+	// does; the trailing slash lists the directory's entries rather than the
+	// directory itself; -l adds each blob's size; -z prints each name as
+	// stored, unquoted, so it can be passed back to Show.
+	cmd := exec.CommandContext(ctx, "git", "ls-tree", "-z", "-l", "--full-tree", ref, "--", dir+"/")
+	cmd.Dir = repoDir
+	out, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+	var files []File
+	for _, record := range strings.Split(string(out), "\x00") {
+		// <mode> <type> <object> <size>\t<path>; 100644 and 100755 are the
+		// regular-file modes, 120000 a symlink, 160000 a submodule.
+		meta, name, found := strings.Cut(record, "\t")
+		fields := strings.Fields(meta)
+		if !found || len(fields) != 4 || fields[1] != "blob" ||
+			(fields[0] != "100644" && fields[0] != "100755") || path.Dir(name) != dir {
+			continue
+		}
+		size, err := strconv.ParseInt(fields[3], 10, 64)
+		if err != nil {
+			continue
+		}
+		files = append(files, File{Name: path.Base(name), Size: size})
+	}
+	return files
 }
 
 // Materialize writes the directory rel, as it stands at ref, into a fresh

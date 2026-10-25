@@ -9,6 +9,7 @@ solves one specific problem.
 - [Audit a codebase interactively](/how-to/audit-a-codebase-interactively)
 - [Provide a domain glossary](/how-to/provide-a-domain-glossary)
 - [Customize the domain sweep](/how-to/customize-the-domain-sweep)
+- [Customize the review checklist](/how-to/customize-the-review-checklist)
 - [Use the GitHub Wiki as a knowledge source](/how-to/use-the-github-wiki)
 - [Bootstrap the project memory from a repository's history](/how-to/bootstrap-the-project-memory)
 - [Mirror a repository's issues, pull requests, and wiki](/how-to/mirror-a-repository)

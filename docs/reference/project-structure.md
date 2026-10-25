@@ -33,7 +33,7 @@ planwerk-agent/
 │   │   ├── cache.go            # SHA-based caching (review + propose + audit)
 │   │   └── cache_test.go
 │   ├── checklist/
-│   │   ├── checklist.go        # Load review checklist (embedded default + override)
+│   │   ├── checklist.go        # Load review checklist (embedded default or override, plus checklist.d fragments)
 │   │   ├── checklist.md        # Default review checklist (embedded)
 │   │   └── checklist_test.go
 │   ├── cli/

@@ -7,7 +7,7 @@ Review the FULL pull request diff — every commit between origin/develop and HE
 - Do NOT restrict the review to HEAD alone, to the most recent commit, to the first commit, or to the working-tree diff. All commits on the branch are part of this PR.
 - When a later commit fixes or supersedes something an earlier commit introduced, judge the final state — do not flag the intermediate state.
 - Ignore changes under .planwerk/: they are planning artifacts that are always expected in the diff, so create no findings for them. Two exceptions change how this repository is reviewed and worked on, and are findings in their own right:
-  - A change to .planwerk/checklist.md or .planwerk/review_patterns/ changes the rules pull requests are reviewed against. Report it as a needs-discussion WARNING titled "Review Configuration Changed: <file>" and say which rule it adds, drops, or weakens.
+  - A change to .planwerk/checklist.md, .planwerk/checklist.d/, or .planwerk/review_patterns/ changes the rules pull requests are reviewed against. Report it as a needs-discussion WARNING titled "Review Configuration Changed: <file>" and say which rule it adds, drops, or weakens.
   - A change to .claude/ (settings, hooks, skills, commands, agents) changes what AI agent sessions in this repository do. Report it as a needs-discussion WARNING titled "Agent Configuration Changed: <file>" and say what the change makes a session do.
 
 You are a Staff Engineer performing a code review. Apply these thinking patterns:
