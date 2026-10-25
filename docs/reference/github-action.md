@@ -20,8 +20,9 @@ and outputs; for a working workflow, see
 | `structure-model` | Model for the mechanical JSON-structuring passes, independent of the main review model (env: `PLANWERK_STRUCTURE_MODEL`). Empty keeps the compiled-in default (`sonnet`). | `""` |
 | `structure-effort` | Reasoning effort for the JSON-structuring passes (`low`, `medium`, `high`, `xhigh`, `max`; env: `PLANWERK_STRUCTURE_EFFORT`). Empty keeps the compiled-in default (`xhigh`). | `""` |
 | `local` | Review the repository `actions/checkout` already placed in the runner workspace (passes `--local`) instead of cloning it a second time. See [Local mode in CI](/how-to/use-the-github-action#local-mode-in-ci). | `false` |
-| `version` | planwerk-agent release tag to install (`latest` resolves to the most recent release) | `latest` |
-| `binary-path` | Path to a pre-built binary; skips the download step (used by the in-repo smoke test) | `""` |
+| `claude-code-version` | Claude Code version the action installs from npm (`@anthropic-ai/claude-code@<version>`). The default is the version this release of the action is tested with; planwerk-agent needs v2.1.306 or newer. `latest` installs the newest release; an empty value fails the step | `2.1.306` |
+| `version` | planwerk-agent release tag to install (`latest` resolves to the most recent release). The archive is checked against the release's checksums file before it is unpacked; its name drops the tag's leading `v` (`planwerk-agent_0.3.0_checksums.txt` for `v0.3.0`). A missing file, a missing entry, or a different SHA-256 fails the step | `latest` |
+| `binary-path` | Path to a pre-built binary, used as given: no download and no checksum check (used by the in-repo smoke test) | `""` |
 | `github-token` | Token used to fetch PR data and post review comments (`pull-requests: write`; `contents: write` with `resolve-outdated`). Where another workflow copies pull request text into comments under the default token, pass a token of an account nothing else posts as; see [Outputs](#outputs) | <code v-pre>${{ github.token }}</code> |
 | `anthropic-api-key` | Anthropic API key consumed by Claude Code in non-interactive mode (**required**) | — |
 
@@ -69,3 +70,19 @@ extraction the same way.
 With `format: sarif` nothing is posted, so the counts come from the SARIF
 report instead: the results it holds, counted by each result's `severity`
 property, which leaves out the findings that name no file.
+
+## What the action installs
+
+The action's steps are shell scripts that call no other action, so pinning
+`Planwerk/planwerk-agent` to a commit fixes every step. Two inputs choose what
+those steps download:
+
+| Download | Pinned by | Checked |
+|----------|-----------|---------|
+| Claude Code, through `npm install -g @anthropic-ai/claude-code@<version>` | `claude-code-version` (default `2.1.306`) | npm never lets a published version be republished, so the version fixes the bytes. The review step sets `DISABLE_AUTOUPDATER=1`, so the installed version is the one that runs |
+| The planwerk-agent release archive, through `gh release download` | `version` (default `latest`) | The archive's SHA-256 must match its entry in the same release's checksums file (`planwerk-agent_0.3.0_checksums.txt` for `v0.3.0`), or the step fails before it unpacks anything. This catches a truncated or swapped archive, not a release whose checksums file was replaced along with it |
+
+The repository's own workflows pin every action to a commit as well, and
+`tools/verify-action-pins.sh` enforces that on each pull request. For how to
+pin the action in your workflow, see
+[Pin the action and what it installs](/how-to/use-the-github-action#pin-the-action-and-what-it-installs).

@@ -41,10 +41,13 @@ override TOOLBOX := 0
 endif
 
 # Go and golangci-lint are read from the files CI reads them from, so the
-# toolbox cannot drift from CI. Node matches the plugin job's major.
+# toolbox cannot drift from CI. Node matches the plugin job's major. Claude
+# Code matches the action's claude-code-version default and the plugin job,
+# and Renovate moves all three together (renovate.json).
 TOOLBOX_GO_VERSION := $(shell sed -n 's/^go //p' go.mod)
 TOOLBOX_GOLANGCI_LINT_VERSION := $(shell sed -n 's/^ *version: *//p' .github/workflows/lint.yml)
 TOOLBOX_NODE_VERSION ?= 24
+# renovate: datasource=npm depName=@anthropic-ai/claude-code
 TOOLBOX_CLAUDE_CODE_VERSION ?= 2.1.306
 
 TOOLBOX_BUILD_ARGS := \
@@ -144,6 +147,7 @@ vet:
 	go vet ./...
 
 lint:
+	bash tools/verify-action-pins.sh
 	golangci-lint run
 
 # Validate the Claude Code plugin marketplace this repo ships, the plugin

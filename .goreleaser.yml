@@ -36,6 +36,13 @@ archives:
       - completions/*
       - docs/man/*.1
 
+# goreleaser's default, stated because two readers depend on the name:
+# action.yml downloads this file by name to verify the archive before it
+# unpacks it, and release.yml exports it as the SLSA subjects.
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+  algorithm: sha256
+
 brews:
   - repository:
       owner: planwerk

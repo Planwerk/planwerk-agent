@@ -1,6 +1,46 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
+    "config:recommended",
+    "helpers:pinGitHubActionDigestsToSemver"
+  ],
+  "packageRules": [
+    {
+      "description": "slsa-verifier verifies the generator's ref, so it is called by its vX.Y.Z tag, never by a SHA.",
+      "matchManagers": ["github-actions"],
+      "matchPackageNames": ["slsa-framework/slsa-github-generator"],
+      "pinDigests": false
+    },
+    {
+      "description": "Claude Code ships most days; take its releases once a week.",
+      "matchPackageNames": ["@anthropic-ai/claude-code"],
+      "schedule": ["before 4am on monday"]
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "A version on the line below a '# renovate: datasource=<datasource> depName=<name>' comment.",
+      "managerFilePatterns": [
+        "/^Makefile$/",
+        "/^action\\.yml$/",
+        "/^\\.github/workflows/[^/]+\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "#\\s*renovate:\\s*datasource=(?<datasource>\\S+)\\s+depName=(?<depName>\\S+)\\s*\\n[^\\n]*?[:=]\\s*['\"]?(?<currentValue>v?\\d+\\.\\d+\\.\\d+)['\"]?"
+      ]
+    },
+    {
+      "customType": "regex",
+      "description": "The claude-code-version default the action reference states, so the page moves with action.yml: the first pattern takes a line from the input's name on, the second the backticked version in it. The minimum the page names is not backticked and stays.",
+      "managerFilePatterns": ["/^docs/reference/github-action\\.md$/"],
+      "matchStringsStrategy": "recursive",
+      "matchStrings": [
+        "`claude-code-version` [^\\n]*",
+        "`(?<currentValue>\\d+\\.\\d+\\.\\d+)`"
+      ],
+      "datasourceTemplate": "npm",
+      "depNameTemplate": "@anthropic-ai/claude-code"
+    }
   ]
 }

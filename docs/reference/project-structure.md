@@ -5,7 +5,7 @@ planwerk-agent/
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml              # Test, Build, Vet on push/PR
-│       ├── lint.yml            # golangci-lint
+│       ├── lint.yml            # golangci-lint and the action pin check on PRs
 │       └── release.yml         # GoReleaser on tag push
 ├── cmd/
 │   └── planwerk-agent/
@@ -216,9 +216,10 @@ planwerk-agent/
 │           ├── rebase/
 │           └── revisit/
 ├── tools/
-│   └── toolbox/
-│       ├── Dockerfile          # Toolbox image every make target runs in (Go, golangci-lint, claude)
-│       └── run.sh              # Starts the toolbox container around the checkout
+│   ├── toolbox/
+│   │   ├── Dockerfile          # Toolbox image every make target runs in (Go, golangci-lint, claude)
+│   │   └── run.sh              # Starts the toolbox container around the checkout
+│   └── verify-action-pins.sh   # Fails on a uses: not pinned to a commit SHA
 ├── Makefile
 ├── go.mod
 ├── go.sum
@@ -240,9 +241,10 @@ planwerk-agent/
 
 ### Lint (`lint.yml`)
 
-- **Trigger**: Push to `main`, Pull Requests
+- **Trigger**: Pull Requests
 - **Jobs**:
   - `lint`: `golangci-lint run`
+  - `action-pins`: `tools/verify-action-pins.sh`
 
 ### Release (`release.yml`)
 

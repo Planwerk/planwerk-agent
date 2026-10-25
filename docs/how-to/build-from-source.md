@@ -104,6 +104,8 @@ The image is tagged `planwerk-agent-toolbox:<digest>`, where the digest covers
 the Dockerfile and every build argument. Editing the Dockerfile, moving the Go
 version in `go.mod`, bumping golangci-lint in the lint workflow, or changing
 `TOOLBOX_CLAUDE_CODE_VERSION` in the Makefile yields a new tag, and the next
-`make` rebuilds. An unchanged checkout finds its image by name and starts
-immediately. Old tags are not pruned automatically; `make toolbox-clean`
-removes them.
+`make` rebuilds. Renovate moves `TOOLBOX_CLAUDE_CODE_VERSION` together with
+the action's `claude-code-version` default and the plugin job's Claude Code
+(`renovate.json`), so each bump is one pull request and one new tag. An
+unchanged checkout finds its image by name and starts immediately. Old tags
+are not pruned automatically; `make toolbox-clean` removes them.
