@@ -160,6 +160,19 @@ do not make a question for the author; they make a decision you owe them, stated
 out loud with its reason. Escalating a choice you could have made teaches the
 author their attention is cheap, and the next real question gets skimmed.
 
+## Check what the author says against the code and the glossary
+
+When the author states how something works, check the code before you build on
+it. Where the code disagrees, the disagreement is the question: "You describe
+cancelling one line item, but `cancelOrder` (`internal/orders/cancel.go:52`)
+voids the whole order. Which is right?"
+
+When the author uses a word the domain glossary (`house-style.md`, Domain
+glossary) defines differently, or lists under `_Avoid_`, ask which they mean
+before you write it down: "The glossary defines *cancellation* as voiding a
+whole order; you seem to mean removing one line. Which is it?" The answer goes
+into the artifact in the glossary's term.
+
 ## Push once, then push again
 
 The first answer is the polished one. The real answer comes after the second

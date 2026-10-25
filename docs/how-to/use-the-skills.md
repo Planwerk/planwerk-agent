@@ -399,6 +399,17 @@ checkout's config has a `wiki:` section. See
 for the pages themselves and the [CLI reference](/reference/cli#brain) for the
 command.
 
+## Domain glossary
+
+A repository can commit its own domain vocabulary as `GLOSSARY.md` (or
+`CONTEXT.md`, or `.planwerk/context.md`); see
+[Provide a domain glossary](/how-to/provide-a-domain-glossary). Every skill
+reads it from the checkout and names things by its terms. When you use a word
+the glossary defines differently, or lists under `_Avoid_`, the skill asks which
+you mean before it writes the word down, and it does the same when you describe
+behavior the code contradicts. The skills never edit the glossary; a term worth
+adding comes back in the closing report as a proposed entry.
+
 ## Declare the repositories that follow this one
 
 Work in one repository often implies work in another: a service changes its API

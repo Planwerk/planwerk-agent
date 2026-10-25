@@ -104,10 +104,9 @@ base reproduces code that no longer exists.
 
 Read the project's own context when it exists. `.planwerk/review_patterns/` is
 the catalog this project reviews itself against, and the fix must not introduce
-code it flags. The domain glossary is `CONTEXT.md` in the repository root, or
-`.planwerk/context.md` when the root file is absent; use its terms. When neither
-the patterns nor a glossary exist, proceed without them and say nothing about
-it. Read the project memory per `memory.md`. A recorded decision can explain
+code it flags; without one, proceed and say nothing about it. Read the domain
+glossary per `house-style.md`, Domain glossary. Read the project memory per
+`memory.md`. A recorded decision can explain
 why the code behaves as reported, and the fix must not contradict one.
 
 Record the reported symptom verbatim: the error text, the wrong output, or the
