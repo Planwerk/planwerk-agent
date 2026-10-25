@@ -19,7 +19,8 @@ const maxLedgerFiles = 200
 // planwerkDir holds the planning artifacts the review ignores, and
 // ledgerKeptPlanwerk the paths under it that change how the repository is
 // reviewed or worked on, which the review prompt calls findings in their own
-// right: the checklist, its appended parts, and the review patterns.
+// right: the checklist, the .planwerk/checklist.d/ files appended to it
+// (decision 145), and the review patterns.
 const planwerkDir = ".planwerk/"
 
 var ledgerKeptPlanwerk = []string{".planwerk/checklist.md", ".planwerk/checklist.d/", ".planwerk/review_patterns/"}
@@ -27,7 +28,7 @@ var ledgerKeptPlanwerk = []string{".planwerk/checklist.md", ".planwerk/checklist
 // reviewLedger returns the changed files the review prompt lists and the
 // changed-file check counts, in git's order: files minus every path the run's
 // diff left out (excluded, diffscope.IsExcluded) and minus the .planwerk/
-// planning artifacts other than the checklist and the review patterns. Each
+// planning artifacts other than the paths ledgerKeptPlanwerk names. Each
 // Path and OldPath goes through ledgerPath, so the prompt, the check and the
 // report all use the same sanitized string. The result is a slice of its own,
 // nil when no file remains (decision 138).

@@ -72,6 +72,12 @@ Claude works through a structured checklist in three passes:
 | **Pass 2 — Semantic** | Requires tracing beyond the diff | Enum Completeness, Conditional Side Effects, Type Coercion, Test Coverage for New Code, Documentation Completeness |
 | **Pass 3 — Informational** | Checked if time permits | Magic Numbers, Dead Code, Test Quality, Performance, API Contract, View/Frontend, Time Window |
 
+The checklist above is the embedded default. A repository can replace it with
+`.planwerk/checklist.md` and append its own items with Markdown files under
+`.planwerk/checklist.d/`. Both are read from the pull request's base branch,
+and the review reports a change to either as `Review Configuration Changed`.
+See [Customize the review checklist](/how-to/customize-the-review-checklist).
+
 ## Suppressions
 
 To reduce false positives, the following are explicitly suppressed:
@@ -326,11 +332,13 @@ The review prompt lists the files the pull request changes, right under its
 scope: one line per file with its path, how it changed (added, modified,
 deleted, renamed or copied from another path, type-changed) and its added and
 removed line counts. The list leaves out the files `--diff-exclusions` left out
-of the diff and the `.planwerk/` planning artifacts, but keeps the checklist
-and the review patterns, since a change to those is a finding. The prompt asks
-for every listed file to get its own pass over its diff, a test, a document, a
-deleted file and the smaller half of a pair (an interface beside its
-implementation) included, and for an account of each in `files_reviewed`:
+of the diff and the `.planwerk/` planning artifacts, but keeps
+`.planwerk/checklist.md`, the `.planwerk/checklist.d/` files appended to it
+(see [Customize the review checklist](/how-to/customize-the-review-checklist))
+and `.planwerk/review_patterns/`, since a change to those is a finding. The
+prompt asks for every listed file to get its own pass over its diff, a test, a
+document, a deleted file and the smaller half of a pair (an interface beside
+its implementation) included, and for an account of each in `files_reviewed`:
 reviewed, or skipped with a reason.
 
 After the gates, the pipeline compares the account with the list and records

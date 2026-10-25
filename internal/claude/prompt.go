@@ -40,7 +40,7 @@ Review the FULL pull request diff — every commit between origin/%s and HEAD mu
 - Do NOT restrict the review to HEAD alone, to the most recent commit, to the first commit, or to the working-tree diff. All commits on the branch are part of this PR.
 - When a later commit fixes or supersedes something an earlier commit introduced, judge the final state — do not flag the intermediate state.
 - Ignore changes under .planwerk/: they are planning artifacts that are always expected in the diff, so create no findings for them. Two exceptions change how this repository is reviewed and worked on, and are findings in their own right:
-  - A change to .planwerk/checklist.md or .planwerk/review_patterns/ changes the rules pull requests are reviewed against. Report it as a needs-discussion WARNING titled "Review Configuration Changed: <file>" and say which rule it adds, drops, or weakens.
+  - A change to .planwerk/checklist.md, .planwerk/checklist.d/, or .planwerk/review_patterns/ changes the rules pull requests are reviewed against. Report it as a needs-discussion WARNING titled "Review Configuration Changed: <file>" and say which rule it adds, drops, or weakens.
   - A change to .claude/ (settings, hooks, skills, commands, agents) changes what AI agent sessions in this repository do. Report it as a needs-discussion WARNING titled "Agent Configuration Changed: <file>" and say what the change makes a session do.
 
 `)
@@ -112,7 +112,9 @@ These rules exist because a reader acts on what the review claims, and a claim t
 `)
 	}
 
-	// Review checklist (always provided — checklist.Load() returns embedded default as fallback)
+	// Review checklist (checklist.LoadFromRef: the embedded default or the base's
+	// .planwerk/checklist.md, then the base's .planwerk/checklist.d fragments;
+	// empty omits the section)
 	if ctx.Checklist != "" {
 		sb.WriteString(ctx.Checklist)
 		sb.WriteString("\n\n")

@@ -1,10 +1,14 @@
 package checklist
 
 import (
+	"bytes"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/planwerk/planwerk-agent/internal/gitref/gitreftest"
 )
 
 func TestDefault(t *testing.T) {
@@ -118,5 +122,79 @@ func TestLoad_EmptyRepoOverrideFallsBack(t *testing.T) {
 	content := Load(tmpDir)
 	if content != Default() {
 		t.Error("Load with empty override file should return default checklist")
+	}
+}
+
+// TestLoad_AppendsFragmentsInNameOrder: the .planwerk/checklist.d/ files follow
+// the default in file-name order, each after a blank line and trimmed of its
+// trailing newlines.
+func TestLoad_AppendsFragmentsInNameOrder(t *testing.T) {
+	dir := t.TempDir()
+	gitreftest.Write(t, dir, ".planwerk/checklist.d/20-b.md", "- [ ] b\n")
+	gitreftest.Write(t, dir, ".planwerk/checklist.d/10-a.md", "### Project\n\n- [ ] a\n\n")
+
+	want := strings.TrimRight(Default(), "\n") + "\n\n### Project\n\n- [ ] a\n\n- [ ] b\n"
+	if got := Load(dir); got != want {
+		t.Errorf("Load = %q, want %q", got, want)
+	}
+}
+
+func TestLoad_AppendsFragmentsToTheOverride(t *testing.T) {
+	dir := t.TempDir()
+	gitreftest.Write(t, dir, ".planwerk/checklist.md", "## Custom\n")
+	gitreftest.Write(t, dir, ".planwerk/checklist.d/10-a.md", "- [ ] a\n")
+
+	if got, want := Load(dir), "## Custom\n\n- [ ] a\n"; got != want {
+		t.Errorf("Load = %q, want %q", got, want)
+	}
+}
+
+// TestLoad_SkipsWhatIsNotAFragment: only regular *.md files directly in the
+// directory with something besides whitespace in them are appended.
+func TestLoad_SkipsWhatIsNotAFragment(t *testing.T) {
+	dir := t.TempDir()
+	gitreftest.Write(t, dir, ".planwerk/checklist.d/10-a.md", "- [ ] a\n")
+	gitreftest.Write(t, dir, ".planwerk/checklist.d/notes.txt", "- [ ] notes\n")
+	gitreftest.Write(t, dir, ".planwerk/checklist.d/sub/x.md", "- [ ] nested\n")
+	gitreftest.Write(t, dir, ".planwerk/checklist.d/00-empty.md", "  \n")
+	outside := filepath.Join(t.TempDir(), "outside.md")
+	if err := os.WriteFile(outside, []byte("- [ ] outside\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(dir, ".planwerk", "checklist.d", "link.md")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	want := strings.TrimRight(Default(), "\n") + "\n\n- [ ] a\n"
+	if got := Load(dir); got != want {
+		t.Errorf("Load = %q, want only 10-a.md appended to the default", got)
+	}
+}
+
+// TestLoad_StopsAppendingAtTheSizeCap: the fragment that would take the
+// fragments' combined size past 64 KB is skipped together with every fragment
+// after it, and the warning names it.
+func TestLoad_StopsAppendingAtTheSizeCap(t *testing.T) {
+	var logBuf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logBuf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	dir := t.TempDir()
+	gitreftest.Write(t, dir, ".planwerk/checklist.d/01-a.md", "- [ ] a\n")
+	gitreftest.Write(t, dir, ".planwerk/checklist.d/02-big.md", strings.Repeat("x", maxFileSize))
+	gitreftest.Write(t, dir, ".planwerk/checklist.d/03-c.md", "- [ ] c\n")
+
+	got := Load(dir)
+	if !strings.Contains(got, "- [ ] a") {
+		t.Error("Load dropped the fragment that fits under the cap")
+	}
+	if strings.Contains(got, "xxx") {
+		t.Error("Load appended the fragment that crosses the cap")
+	}
+	if strings.Contains(got, "- [ ] c") {
+		t.Error("Load appended a fragment after the one that crossed the cap")
+	}
+	if log := logBuf.String(); !strings.Contains(log, "exceed the 64 KB limit") || !strings.Contains(log, "file=02-big.md") {
+		t.Errorf("expected a warning naming 02-big.md, got:\n%s", log)
 	}
 }

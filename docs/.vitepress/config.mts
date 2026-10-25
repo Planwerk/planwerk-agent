@@ -137,6 +137,10 @@ export default defineConfig({
               link: '/how-to/customize-the-domain-sweep',
             },
             {
+              text: 'Customize the review checklist',
+              link: '/how-to/customize-the-review-checklist',
+            },
+            {
               text: 'Configure the project',
               link: '/how-to/configure-the-project',
             },

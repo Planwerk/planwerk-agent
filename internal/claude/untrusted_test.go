@@ -63,6 +63,9 @@ func TestReviewPrompt_FramesAndFencesPullRequestText(t *testing.T) {
 	if !strings.Contains(got, "Review Configuration Changed: <file>") || !strings.Contains(got, "Agent Configuration Changed: <file>") {
 		t.Error("review prompt lost the exceptions to the .planwerk/ ignore rule")
 	}
+	if !strings.Contains(got, ".planwerk/checklist.d/") {
+		t.Error("review prompt does not flag a change to the checklist fragments")
+	}
 }
 
 // TestReviewPrompt_FencesChangedFiles: a changed path, which the pull request's

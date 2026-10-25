@@ -37,7 +37,7 @@ type ReviewContext struct {
 	BaseBranch  string // PR base branch; empty falls back to DefaultBaseBranch
 	PRTitle     string
 	PRBody      string
-	Checklist   string                    // external checklist content (empty = use built-in)
+	Checklist   string                    // the review checklist as checklist.LoadFromRef composed it; empty omits the section
 	CommitLog   string                    // git log output for scope drift detection
 	StaleDocs   []doccheck.StaleDocHint   // documentation files that may need updating
 	NewFeatures []doccheck.NewFeatureHint // new files that may need documentation
