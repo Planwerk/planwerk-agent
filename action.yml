@@ -50,12 +50,17 @@ inputs:
     description: 'Operate on the repository already checked out by actions/checkout (passes --local) instead of cloning it a second time into a temp dir. Skips the redundant clone — the runner workspace already holds the repo. Requires an authenticated gh and a clean working tree.'
     required: false
     default: 'false'
+  claude-code-version:
+    description: 'Claude Code (@anthropic-ai/claude-code) version to install from npm. The default is the version this release of the action is tested with; planwerk-agent needs v2.1.306 or newer. "latest" installs the newest release.'
+    required: false
+    # renovate: datasource=npm depName=@anthropic-ai/claude-code
+    default: '2.1.306'
   version:
-    description: 'planwerk-agent release tag to install (e.g. v0.3.0). Use "latest" to resolve to the most recent release. Ignored when binary-path is set.'
+    description: 'planwerk-agent release tag to install (e.g. v0.3.0). Use "latest" to resolve to the most recent release. Ignored when binary-path is set. The archive is checked against the SHA-256 the release lists in its checksums file, whose name drops the tag''s leading v (planwerk-agent_0.3.0_checksums.txt for v0.3.0), before it is unpacked.'
     required: false
     default: 'latest'
   binary-path:
-    description: 'Path to a pre-built planwerk-agent binary. When set, the download step is skipped — useful for testing the action against a development build of the binary.'
+    description: 'Path to a pre-built planwerk-agent binary. When set, the download step and its checksum check are skipped — useful for testing the action against a development build of the binary.'
     required: false
     default: ''
   github-token:
@@ -91,9 +96,15 @@ runs:
   steps:
     - name: Install Claude Code
       shell: bash
+      env:
+        CLAUDE_CODE_VERSION: ${{ inputs.claude-code-version }}
       run: |
         set -euo pipefail
-        npm install -g @anthropic-ai/claude-code
+        if [ -z "$CLAUDE_CODE_VERSION" ]; then
+          echo "claude-code-version is empty: name a version such as 2.1.306, or latest" >&2
+          exit 1
+        fi
+        npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
         claude --version
 
     - name: Install planwerk-agent
@@ -134,14 +145,42 @@ runs:
         fi
         ver="${tag#v}"
         asset="planwerk-agent_${ver}_${os}_${arch}.tar.gz"
+        # .goreleaser.yml's checksum.name_template names this file.
+        sums="planwerk-agent_${ver}_checksums.txt"
 
         workdir="$RUNNER_TEMP/planwerk-agent"
         mkdir -p "$workdir"
-        echo "Downloading $asset from release $tag"
+        echo "Downloading $asset and $sums from release $tag"
         gh release download "$tag" \
           --repo planwerk/planwerk-agent \
           --pattern "$asset" \
+          --pattern "$sums" \
           --dir "$workdir"
+
+        # Unpack only an archive whose SHA-256 matches the release's entry,
+        # and fail closed on anything else. gh downloads the pattern that
+        # matches without complaint when the other matches nothing, so the
+        # checksums file is checked for by name. This catches a truncated or
+        # swapped archive, not a release whose checksums file was replaced
+        # along with it.
+        if [ ! -f "$workdir/$sums" ]; then
+          echo "release $tag has no $sums; cannot verify $asset" >&2
+          exit 1
+        fi
+        expected=$(awk -v a="$asset" '$2 == a { print $1 }' "$workdir/$sums")
+        if [ -z "$expected" ]; then
+          echo "$sums lists no checksum for $asset" >&2
+          exit 1
+        fi
+        if command -v sha256sum >/dev/null 2>&1; then
+          actual=$(sha256sum "$workdir/$asset" | awk '{ print $1 }')
+        else
+          actual=$(shasum -a 256 "$workdir/$asset" | awk '{ print $1 }')
+        fi
+        if [ "$actual" != "$expected" ]; then
+          echo "checksum mismatch for $asset: release lists $expected, download is $actual" >&2
+          exit 1
+        fi
         tar -xzf "$workdir/$asset" -C "$workdir"
         echo "$workdir" >> "$GITHUB_PATH"
         "$workdir/planwerk-agent" --version
@@ -163,6 +202,9 @@ runs:
         STRUCTURE_EFFORT: ${{ inputs.structure-effort }}
         PATTERNS: ${{ inputs.patterns }}
         LOCAL: ${{ inputs.local }}
+        # The installed Claude Code is the pin; the auto-updater must not
+        # replace it mid-run.
+        DISABLE_AUTOUPDATER: '1'
       run: |
         set -euo pipefail
         if [ -z "${PR_REF:-}" ]; then
