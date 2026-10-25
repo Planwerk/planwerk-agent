@@ -279,6 +279,7 @@ or short form (owner/repo#123).`,
 	flags.IntVar(&cfg.MaxPatterns, "max-patterns", patterns.DefaultMaxPatternsInPrompt, "Max review patterns injected into the prompt (<=0 disables truncation, env: "+envMaxPatterns+")")
 	flags.BoolVar(&cfg.ScopePatterns, "scope-patterns", false, "Carry only the review-pattern bodies that apply to every file or whose technology or path matches a changed file and list the rest as an index the review session reads from disk (experimental, off until make eval holds; env: "+envScopePatterns+")")
 	flags.IntVar(&cfg.MaxFindings, "max-findings", 0, "Cap on findings returned (<=0 disables cap)")
+	flags.IntVar(&cfg.PartitionFiles, "partition-files", 0, "Split a pull request that changes more than N files into partitions of at most N files, grouped by directory and balanced by changed lines, each reviewed by its own concurrent review session; the adversarial pass and the specialists still review the whole pull request (<=0 reviews it in one session)")
 	flags.BoolVar(&cfg.Local, "local", false, "Operate on the current working directory instead of cloning into a temp dir")
 	flags.BoolVar(&cfg.Force, "force", false, "With --local, skip the confirmation prompt when the working tree is dirty")
 	flags.BoolVar(&cfg.NoCapture, "no-capture", false, "Skip the read-only capture pass that proposes new wiki review patterns from the review findings (only runs with --wiki; writes nothing)")

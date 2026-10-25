@@ -326,6 +326,75 @@ func TestBuildReviewPrompt_ChangedFiles(t *testing.T) {
 	}
 }
 
+// TestBuildReviewPrompt_PartitionFirst locks the Partition section of the
+// first session of a partitioned review run without a changed-file list: it
+// follows the Review Scope, fences the session's own files in
+// <partition-files> beside the other sessions' files, and hands partition 1
+// the findings no partition owns. The unpartitioned prompt stays covered by
+// review.golden (decision 142).
+func TestBuildReviewPrompt_PartitionFirst(t *testing.T) {
+	ctx := goldenReviewContext()
+	ctx.Partition = PartitionScope{
+		Index:  1,
+		Count:  3,
+		Files:  []string{"internal/claude/prompt.go", "internal/claude/prompts_golden_test.go"},
+		Others: []string{"README.md", "internal/patterns/load.go"},
+	}
+	got := buildReviewPrompt(ctx)
+	assertGoldenPrompt(t, "review_partition_first", got)
+	scope, partition, persona := strings.Index(got, "## Review Scope"), strings.Index(got, "## Partition 1 of 3"), strings.Index(got, "You are a Staff Engineer")
+	if scope < 0 || partition < scope || persona < partition {
+		t.Errorf("want Review Scope, then the Partition section, then the persona; at %d, %d, %d", scope, partition, persona)
+	}
+}
+
+// TestBuildReviewPrompt_Partition locks a later session of a partitioned
+// review with a changed-file list: the Changed Files section lists its
+// partition, the Partition section follows it and fences only the other
+// sessions' files, and partition 1 keeps the findings no partition owns
+// (decision 142).
+func TestBuildReviewPrompt_Partition(t *testing.T) {
+	ctx := goldenReviewContext()
+	ctx.ChangedFiles = []github.FileChange{
+		{Path: "README.md", Status: github.FileModified, Added: 3, Deleted: 1},
+		{Path: "internal/patterns/load.go", Status: github.FileModified, Added: 10, Deleted: 2},
+	}
+	ctx.Partition = PartitionScope{
+		Index:  2,
+		Count:  3,
+		Files:  []string{"README.md", "internal/patterns/load.go"},
+		Others: []string{"internal/claude/prompt.go", "internal/claude/prompts_golden_test.go"},
+	}
+	got := buildReviewPrompt(ctx)
+	assertGoldenPrompt(t, "review_partition", got)
+	files, partition := strings.Index(got, "## Changed Files"), strings.Index(got, "## Partition 2 of 3")
+	if files < 0 || partition < files {
+		t.Errorf("want the Changed Files section, then the Partition section; at %d, %d", files, partition)
+	}
+	if strings.Contains(got, "<partition-files>") {
+		t.Error("with a changed-file list the session's own files are the listed ones, so no <partition-files> fence may render")
+	}
+}
+
+// TestPartitionScopeBlock_DiffSentence pins that the Partition section says
+// the diff file holds the partition's files only when the session reads one;
+// a session whose diff could not be written runs git diff over the whole pull
+// request (decision 142).
+func TestPartitionScopeBlock_DiffSentence(t *testing.T) {
+	const sentence = "The diff file the scope above names holds the changes to this partition's files only."
+	ctx := ReviewContext{Partition: PartitionScope{Index: 2, Count: 2, Files: []string{"b.go"}, Others: []string{"a.go"}}}
+	if got := partitionScopeBlock(ctx); strings.Contains(got, sentence) || !strings.Contains(got, "## Partition 2 of 2") {
+		t.Errorf("without a diff file the section must render without the diff sentence, got:\n%s", got)
+	}
+	ctx.Diff = goldenDiff()
+	if got := partitionScopeBlock(ctx); !strings.Contains(got, sentence) {
+		t.Errorf("with a diff file the section must say it holds the partition's files only, got:\n%s", got)
+	}
+	if got := partitionScopeBlock(ReviewContext{Diff: goldenDiff()}); got != "" {
+		t.Errorf("a session that reviews the whole pull request gets no Partition section, got:\n%s", got)
+	}
+}
+
 // goldenMetaIssue and goldenSiblingIssues describe the Meta/Sub-Issue
 // neighborhood shared by the elaborate and plan "meta" goldens: the source
 // issue (#42) is a Sub Issue of Meta Issue #40, which has two other Sub Issues —

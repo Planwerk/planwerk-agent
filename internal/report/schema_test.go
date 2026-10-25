@@ -123,6 +123,10 @@ func TestRendererOutputMatchesSchema(t *testing.T) {
 				{Path: "go.sum", Reason: report.ExcludedLockfile},
 				{Path: "vendor/", Reason: report.ExcludedVendored, Files: 3},
 			},
+			Partitions: []report.ReviewPartition{
+				{Files: []string{"a.go"}, Lines: 12, Findings: 1},
+				{Files: []string{"b/c.go", "b/d.go"}, Lines: 0, Findings: 0},
+			},
 		}
 		var buf bytes.Buffer
 		if err := report.NewRenderer(&buf).RenderJSON(rr, report.SeverityInfo, ""); err != nil {

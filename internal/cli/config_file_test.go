@@ -38,6 +38,7 @@ review:
   min-severity: warning
   max-patterns: 30
   max-findings: 20
+  partition-files: 15
   format: markdown
   patterns:
     - ./custom-review-patterns
@@ -69,6 +70,9 @@ audit:
 	}
 	if got := derefInt(cfg.Review.MaxFindings); got != 20 {
 		t.Fatalf("review.max-findings = %d, want 20", got)
+	}
+	if got := derefInt(cfg.Review.PartitionFiles); got != 15 {
+		t.Fatalf("review.partition-files = %d, want 15", got)
 	}
 	if !reflect.DeepEqual(cfg.Review.Patterns, []string{"./custom-review-patterns"}) {
 		t.Fatalf("review.patterns = %v", cfg.Review.Patterns)
@@ -247,10 +251,11 @@ func TestLoadFileConfigEmptyFile(t *testing.T) {
 
 func TestApplyReviewFillsUnsetFlags(t *testing.T) {
 	fc := FileConfig{Review: ReviewFileConfig{
-		Patterns:    []string{"./from-config"},
-		MinSeverity: ptr(sevWarning),
-		Format:      ptr("json"),
-		MaxFindings: ptrInt(42),
+		Patterns:       []string{"./from-config"},
+		MinSeverity:    ptr(sevWarning),
+		Format:         ptr("json"),
+		MaxFindings:    ptrInt(42),
+		PartitionFiles: ptrInt(15),
 	}}
 	cfg := review.Options{Format: "markdown"}
 	var sev string
@@ -268,19 +273,24 @@ func TestApplyReviewFillsUnsetFlags(t *testing.T) {
 	if cfg.MaxFindings != 42 {
 		t.Fatalf("MaxFindings = %d, want 42", cfg.MaxFindings)
 	}
+	if cfg.PartitionFiles != 15 {
+		t.Fatalf("PartitionFiles = %d, want 15", cfg.PartitionFiles)
+	}
 }
 
 func TestApplyReviewKeepsFlagValues(t *testing.T) {
 	fc := FileConfig{Review: ReviewFileConfig{
-		Patterns:    []string{"./from-config"},
-		MinSeverity: ptr(sevWarning),
-		Format:      ptr("json"),
-		MaxFindings: ptrInt(42),
+		Patterns:       []string{"./from-config"},
+		MinSeverity:    ptr(sevWarning),
+		Format:         ptr("json"),
+		MaxFindings:    ptrInt(42),
+		PartitionFiles: ptrInt(15),
 	}}
 	cfg := review.Options{
-		PatternDirs: []string{"./from-flag"},
-		Format:      "markdown",
-		MaxFindings: 7,
+		PatternDirs:    []string{"./from-flag"},
+		Format:         "markdown",
+		MaxFindings:    7,
+		PartitionFiles: 4,
 	}
 	sev := sevCritical
 	// All flags changed — file config must not overwrite anything.
@@ -297,6 +307,9 @@ func TestApplyReviewKeepsFlagValues(t *testing.T) {
 	}
 	if cfg.MaxFindings != 7 {
 		t.Fatalf("MaxFindings = %d, want 7", cfg.MaxFindings)
+	}
+	if cfg.PartitionFiles != 4 {
+		t.Fatalf("PartitionFiles = %d, want the flag value 4", cfg.PartitionFiles)
 	}
 }
 

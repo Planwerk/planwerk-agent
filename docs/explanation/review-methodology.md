@@ -149,6 +149,64 @@ carries in full only the patterns that apply to every file or that its changed
 files match, and an index of the rest it can open (see
 [How a Session Receives the Catalog](/reference/review-patterns#how-a-session-receives-the-catalog)).
 
+## Partitioned Review
+
+One review session reads the whole pull request
+([design decision 1](/explanation/design-decisions)), and on a change of
+dozens of files that session reads some files closely and skims the rest, as
+the [changed-file record](#changed-file-coverage) shows. `--partition-files N`
+(config `review.partition-files`), off by default, splits a pull request whose
+diff keeps more than N changed files into partitions and gives each one a
+primary-review session of its own.
+
+The split is computed in Go before any session runs, from the paths and the
+line counts alone. The changed files the diff keeps (after
+`--diff-exclusions`), without the `.planwerk/` planning artifacts the review
+ignores, are sorted by directory, then path, and cut into runs that stay inside
+one directory. The paths are the ones git prints unquoted, so a session's diff
+holds a file whose name git would quote. The runs are packed in order into
+partitions of at most N files and at most a line budget: the pull request's
+added plus deleted lines spread evenly over ceil(files / N) partitions. A file
+larger than the budget gets a partition of its own, and when git could not
+count the lines only the file cap applies. The same files always give the same
+partitions.
+
+The partition sessions run at most four at a time, beside the secondary passes.
+Each reads a diff of its own files, a renamed file paired with its old path as
+in the whole diff, and its prompt lists its partition (in the Changed Files
+section when there is one) and the files the other sessions review. It reviews
+its partition in full, reads another session's file where one of its own
+depends on it (a caller, a changed signature, a test), and reports a defect it
+finds there too. Partition 1 also reports the findings that belong to no
+partition: those about the pull request as a whole that carry no file (a
+missing requirement, commit coherence, a TODO), and those on a file no
+partition holds, such as a stale document the change did not touch. The other
+partitions report findings on the listed files.
+
+Each partition's findings are [anchored](#line-anchoring) like a pass of their
+own. Then the partitions fold together under the one `review` label, so two
+partitions that report the same defect merge into one finding without the
+confidence boost two passes earn. The recommendation is the strongest verdict
+any partition gave (do not merge, then merge after fixes, then a verdict it
+cannot read, then merge). On a tie the first partition that returned findings
+gives it, so a clean partition's `merge because the review found no issues`
+never ends a report that lists another's findings. The summaries are joined in
+partition order. The file-less dedup runs even without a secondary pass, and
+the snippet gate, the claim check and the changed-file record run once on the
+merged set. The record joins every session's account, and its 200-file cap
+applies per session. The adversarial pass, the specialists, the coverage map
+and the compliance check review the whole pull request, as without the flag. A
+failed partition fails the review, since a report that lost one would claim
+coverage it does not have, and the partitions that had not started are skipped.
+
+Each partition costs one review prompt, pattern catalog included, and
+`--max-findings` caps each session rather than the run. The report records the
+plan ([Partitioned Reviews](/reference/output-format#partitioned-reviews)). The
+flag stays off by default until the [quality eval](/how-to/run-the-quality-eval)
+measures it on multi-file cases: every case of its corpus changes one file, so
+partitioning never triggers there
+([design decision 142](/explanation/design-decisions)).
+
 ## Line Anchoring
 
 Every pass reports a line for each finding, and the model miscounts: it names
@@ -203,7 +261,8 @@ pass before the merge, land in `gates.anchor`
 ## Cross-Pass Merge and Dedup
 
 When a secondary pass contributes findings (`--thorough`, `--specialists`, or a
-feature-compliance pass), the pipeline folds them into the primary review. Two
+feature-compliance pass), or the partitions of a partitioned review do, the
+pipeline folds them into the primary review. Two
 independently worded passes almost never produce byte-identical titles, so the
 merge matches *fuzzily*: two findings fold together when they share the same
 file, their line ranges overlap within ±3 lines, and their titles share at least
@@ -270,9 +329,10 @@ before the Summary ([Changed-File Coverage](/reference/output-format#changed-fil
 The record never moves a finding, because a session can call a file reviewed
 it never opened: it shows the reader where the findings cannot come from, not
 proof of where they do. A pull request with more than 200 listed files gets no
-list and no record. The list is handed to the session rather than left for it
-to work out, because the check needs the session to answer for exactly the
-files the pipeline counts ([design decision 138](/explanation/design-decisions)).
+list and no record, unless it is [partitioned](#partitioned-review) so that no
+session lists more than 200. The list is handed to the session rather than left
+for it to work out, because the check needs the session to answer for exactly
+the files the pipeline counts ([design decision 138](/explanation/design-decisions)).
 
 ## Shared with the `implement` self-review
 

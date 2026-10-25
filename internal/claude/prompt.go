@@ -51,8 +51,11 @@ Review the FULL pull request diff — every commit between origin/%s and HEAD mu
 	}
 
 	// Changed files: the list the session accounts for in files_reviewed,
-	// right under the scope it narrows (decision 138).
-	sb.WriteString(changedFilesBlock(ctx.ChangedFiles))
+	// right under the scope it narrows (decision 138), then the partition a
+	// session of a partitioned review is narrowed to (decision 142).
+	partitioned := ctx.Partition.Count >= 2
+	sb.WriteString(changedFilesBlock(ctx.ChangedFiles, partitioned))
+	sb.WriteString(partitionScopeBlock(ctx))
 
 	// Staff Engineer persona
 	sb.WriteString(`You are a Staff Engineer performing a code review. Apply these thinking patterns:
@@ -328,9 +331,11 @@ func reviewPatternsBlock(ctx ReviewContext) string {
 // returns "" for no files. The list is the denominator hygiene.CheckFileLedger
 // checks the session's account against, and it is handed to the session
 // rather than left for it to look up because the check needs the session to
-// answer for exactly the files Go counts (decision 138). Only the review lists
-// files, so the block lives here rather than in components.go.
-func changedFilesBlock(files []github.FileChange) string {
+// answer for exactly the files Go counts (decision 138). In a session of a
+// partitioned review (partitioned) the files are that session's partition of
+// them, and the section says so (decision 142). Only the review lists files,
+// so the block lives here rather than in components.go.
+func changedFilesBlock(files []github.FileChange, partitioned bool) string {
 	if len(files) == 0 {
 		return ""
 	}
@@ -338,10 +343,59 @@ func changedFilesBlock(files []github.FileChange) string {
 	for i, f := range files {
 		lines[i] = changedFileLine(f)
 	}
+	which := "These are the files this pull request changes"
+	if partitioned {
+		which = "These are the changed files this session reviews, its partition of the files this pull request changes"
+	}
 	return "## Changed Files\n\n" +
 		fencedData("changed-files", "", strings.Join(lines, "\n")) + "\n" +
 		untrustedDataLine("Use it as the list of files this review accounts for.", "changed-files") +
-		"These are the files this pull request changes, each with how it changed and its added and removed line counts. Give every listed file its own pass over its diff, whatever its size or role: a test, a document, a configuration file, a deleted file, and the smaller half of a pair (an interface beside its implementation, a schema beside the code that reads it) each get one, because a defect there ships as surely as one in the main file. Account for each listed file once in `files_reviewed`, by its path exactly as listed: `reviewed` once you have read its diff, or `skipped` with the reason you did not read it. The report names every file you skip or leave out of `files_reviewed` as not reviewed, with your reason.\n\n"
+		which + ", each with how it changed and its added and removed line counts. Give every listed file its own pass over its diff, whatever its size or role: a test, a document, a configuration file, a deleted file, and the smaller half of a pair (an interface beside its implementation, a schema beside the code that reads it) each get one, because a defect there ships as surely as one in the main file. Account for each listed file once in `files_reviewed`, by its path exactly as listed: `reviewed` once you have read its diff, or `skipped` with the reason you did not read it. The report names every file you skip or leave out of `files_reviewed` as not reviewed, with your reason.\n\n"
+}
+
+// partitionScopeBlock renders the review prompt's Partition section, which
+// narrows the Review Scope above it to the partition ctx.Partition names: the
+// session reviews its own files in full, reads the files the sessions beside
+// it review where its own depend on them and reports a defect it finds there,
+// and only partition 1 reports the findings no partition owns. With a Changed
+// Files section (ctx.ChangedFiles) the session's own files are the ones listed
+// there and only <other-changed-files> is fenced; without one, a
+// <partition-files> fence lists them. When the session reads a diff file
+// (ctx.Diff), the section says that file holds its own files only. It returns
+// "" for a session that reviews the whole pull request (Count < 2), so an
+// unpartitioned prompt is unchanged. Only the review is partitioned, so the
+// block lives here rather than in components.go (decision 142).
+func partitionScopeBlock(ctx ReviewContext) string {
+	p := ctx.Partition
+	if p.Count < 2 {
+		return ""
+	}
+	listed := len(ctx.ChangedFiles) > 0
+	own := "<partition-files>"
+	if listed {
+		own = "<changed-files> above"
+	}
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "## Partition %[1]d of %[2]d\n\nThis session reviews partition %[1]d of the %[2]d the changed files are split into: review every file in %[3]s in full, across every commit the scope above names. Sessions running beside this one review the files in <other-changed-files>, and the findings of all %[2]d are merged.", p.Index, p.Count, own)
+	if ctx.Diff.File != "" {
+		sb.WriteString(" The diff file the scope above names holds the changes to this partition's files only.")
+	}
+	sb.WriteString("\n\n")
+	if listed {
+		sb.WriteString(fencedData("other-changed-files", "", strings.Join(p.Others, "\n")) + "\n")
+		sb.WriteString(untrustedDataLine("Use it to know which changed files the other sessions review.", "other-changed-files"))
+	} else {
+		sb.WriteString(fencedData("partition-files", "", strings.Join(p.Files, "\n")))
+		sb.WriteString(fencedData("other-changed-files", "", strings.Join(p.Others, "\n")) + "\n")
+		sb.WriteString(untrustedDataLine("Use it to know which changed files this session reviews and which the other sessions do.", "partition-files", "other-changed-files"))
+	}
+	sb.WriteString("Read a file in <other-changed-files> when a file of your partition depends on it (a caller, a changed signature, a test), and report a defect you find there too: findings two sessions share are merged into one.\n\n")
+	if p.Index == 1 {
+		sb.WriteString("This session also reports the findings that belong to no partition: those about the pull request as a whole that carry no file (Missing Requirement, Commit Coherence, TODO Completed, New TODO Needed), and those on a file in neither list, such as a stale document the diff did not touch. Judge them across every changed file.\n\n")
+	} else {
+		sb.WriteString("Partition 1 reports the findings that belong to no partition: those that carry no file, and those on a file in neither list. Every finding this session reports carries a file from one of the two lists.\n\n")
+	}
+	return sb.String()
 }
 
 // changedFileLine renders one file of the Changed Files list as

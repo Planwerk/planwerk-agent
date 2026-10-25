@@ -250,3 +250,26 @@ func TestRoot_ScopePatternsReachTheReviewOptions(t *testing.T) {
 		})
 	}
 }
+
+// TestReviewRegistersPartitionFiles pins --partition-files as a flag of the
+// review command alone: 0, one session, by default, and neither persistent nor
+// exposed by another command (decision 142).
+func TestReviewRegistersPartitionFiles(t *testing.T) {
+	deps := &runtimeDeps{}
+	root := newRootCmd(deps)
+	flag := root.Flags().Lookup("partition-files")
+	if flag == nil {
+		t.Fatal("the review command must expose --partition-files")
+	}
+	if flag.DefValue != "0" {
+		t.Errorf("--partition-files defaults to %q, want 0", flag.DefValue)
+	}
+	if root.PersistentFlags().Lookup("partition-files") != nil {
+		t.Error("--partition-files must not be persistent: no subcommand partitions a review")
+	}
+	audit := newAuditCmd(deps)
+	root.AddCommand(audit)
+	if audit.Flags().Lookup("partition-files") != nil || audit.InheritedFlags().Lookup("partition-files") != nil {
+		t.Error("audit must not expose --partition-files")
+	}
+}

@@ -110,5 +110,9 @@
     { "path": "api/v1/zz_generated.deepcopy.go", "reason": "generated" },
     { "path": "go.sum", "reason": "lockfile" },
     { "path": "vendor/", "reason": "vendored", "files": 12 }
+  ],
+  "partitions": [
+    { "files": ["config/auth.go", "config/auth_test.go"], "lines": 412, "findings": 2 },
+    { "files": ["db/users.go", "handlers/session.go"], "lines": 96, "findings": 1 }
   ]
 }

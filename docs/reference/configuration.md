@@ -31,6 +31,7 @@ review:
   min-severity: warning        # info | warning | critical | blocking
   max-patterns: 40             # <=0 disables truncation
   max-findings: 25             # <=0 disables cap
+  partition-files: 15          # <=0 reviews a PR in one session
   format: markdown             # markdown | json | sarif
   patterns:
     - ./custom-review-patterns
@@ -103,7 +104,15 @@ index, and a session runs it in the checkout under review, whose file must not
 be able to stop the search.
 
 All keys are optional. Flags beyond `--min-severity`, `--max-patterns`,
-`--max-findings`, `--format`, and `--patterns` (the high-churn ones) remain
-CLI-only to keep the config surface small; boolean toggles like
-`--post-review`, `--inline`, `--resolve-outdated`, `--thorough`, and
-`--no-cache` stay on the command line where they belong.
+`--max-findings`, `--format`, `--patterns` (the high-churn ones), and the
+review's `--partition-files` remain CLI-only to keep the config surface small;
+boolean toggles like `--post-review`, `--inline`, `--resolve-outdated`,
+`--thorough`, and `--no-cache` stay on the command line where they belong.
+`review.partition-files` has a key because how large a repository's pull
+requests run is a property of the repository, and the key is how a CI run opts
+in. The GitHub Action has no input for it and reads the key only when the job
+runs `actions/checkout` before the action, since the file is loaded from the
+working directory; on a `pull_request` run the default checkout is the pull
+request's merge commit, so its own copy of the file applies. In the minimal
+workflow of [Use the GitHub Action](/how-to/use-the-github-action), which has
+no checkout step, the key does nothing.

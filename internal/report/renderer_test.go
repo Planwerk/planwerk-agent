@@ -440,6 +440,109 @@ func TestRenderJSON_CarriesExcludedFiles(t *testing.T) {
 	}
 }
 
+// TestRenderMarkdown_Partitions verifies a partitioned review names its
+// sessions on a Summary line after the Passes line, sized by its largest
+// partition, and that a review run as one session renders no such line
+// (decision 142).
+func TestRenderMarkdown_Partitions(t *testing.T) {
+	pr := PRInfo{Owner: "acme", Repo: "widgets", Number: 7, Title: "PR"}
+	render := func(result ReviewResult) string {
+		var buf bytes.Buffer
+		NewRenderer(&buf).RenderMarkdown(result, pr, SeverityInfo, "", "v1")
+		return buf.String()
+	}
+
+	if got := render(ReviewResult{Summary: "ok"}); strings.Contains(got, "**Partitions**") {
+		t.Errorf("a review run as one session must render no Partitions line, got:\n%s", got)
+	}
+
+	got := render(ReviewResult{
+		Summary: "ok",
+		Passes:  []PassStatus{{Pass: "adversarial", Status: PassStatusRan}},
+		Partitions: []ReviewPartition{
+			{Files: []string{"a/1.go", "a/2.go"}, Lines: 40, Findings: 1},
+			{Files: []string{"b/1.go", "b/2.go", "b/3.go"}, Lines: 35},
+			{Files: []string{"c/1.go"}, Lines: 300, Findings: 2},
+		},
+	})
+	if !strings.Contains(got, "ok\n\n**Passes**: ran adversarial\n\n**Partitions**: 3 review sessions of at most 3 files\n\n| Severity |") {
+		t.Errorf("Partitions line missing or misplaced in the Summary, got:\n%s", got)
+	}
+
+	single := render(ReviewResult{Partitions: []ReviewPartition{{Files: []string{"a.go"}}, {Files: []string{"b.go"}}}})
+	if !strings.Contains(single, "**Partitions**: 2 review sessions of at most 1 file\n") {
+		t.Errorf("partitions of one file each must read \"at most 1 file\", got:\n%s", single)
+	}
+}
+
+// TestRenderDataBlock_LeavesOutPartitions verifies the data block of a
+// partitioned review is the block of the same review run as one session: the
+// partition plan, whose file lists grow with the pull request, stays out of
+// the summary comment GitHub caps in size, so truncation never cuts the block
+// off a large partitioned review, and the SHA+findings round-trip is intact
+// (decision 142).
+func TestRenderDataBlock_LeavesOutPartitions(t *testing.T) {
+	single := ReviewResult{
+		Findings:      []Finding{{ID: "C-001", Severity: SeverityCritical, Title: "SQLi", File: "db/users.go", Line: 10}},
+		ExcludedFiles: []ExcludedFile{{Path: "go.sum", Reason: ExcludedLockfile}},
+	}
+	partitioned := single
+	for p := range 30 {
+		files := make([]string, 50)
+		for i := range files {
+			files[i] = fmt.Sprintf("internal/service/handlers/package%02d/handler%02d.go", p, i)
+		}
+		partitioned.Partitions = append(partitioned.Partitions, ReviewPartition{Files: files, Lines: 412, Findings: 1})
+	}
+
+	block := RenderDataBlock(partitioned, "sha-partitions", Usage{})
+	if want := RenderDataBlock(single, "sha-partitions", Usage{}); block != want {
+		t.Errorf("data block of a 1,500-file partitioned review = %d bytes, want the %d-byte block of the same review run as one session", len(block), len(want))
+	}
+	sha, findings, ok := ParseDataBlock(block)
+	if !ok || sha != "sha-partitions" || len(findings) != 1 {
+		t.Errorf("ParseDataBlock = %q, %+v, %v; want sha-partitions and one finding", sha, findings, ok)
+	}
+}
+
+// TestRenderJSON_CarriesPartitions verifies --format json keeps the run-level
+// partition plan through RenderJSON's filtered copy, even when the severity
+// filter drops every finding, and leaves the key out for a review run as one
+// session (decision 142).
+func TestRenderJSON_CarriesPartitions(t *testing.T) {
+	partitions := []ReviewPartition{
+		{Files: []string{"a.go"}, Lines: 7, Findings: 1},
+		{Files: []string{"b.go", "c.go"}, Lines: 9, Findings: 0},
+	}
+	render := func(result ReviewResult) []byte {
+		var buf bytes.Buffer
+		if err := NewRenderer(&buf).RenderJSON(result, SeverityBlocking, ""); err != nil {
+			t.Fatalf("RenderJSON: %v", err)
+		}
+		return buf.Bytes()
+	}
+
+	out := render(ReviewResult{
+		Summary:    "ok",
+		Findings:   []Finding{{ID: "I-001", Severity: SeverityInfo, Title: "t", File: "a.go", Problem: "p", Action: "a"}},
+		Partitions: partitions,
+	})
+	var got ReviewResult
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatalf("decoding RenderJSON output: %v\n%s", err, out)
+	}
+	if len(got.Findings) != 0 {
+		t.Fatalf("the BLOCKING filter must drop the INFO finding, got %+v", got.Findings)
+	}
+	if !reflect.DeepEqual(got.Partitions, partitions) {
+		t.Errorf("Partitions = %+v, want %+v", got.Partitions, partitions)
+	}
+
+	if out := render(ReviewResult{Summary: "ok"}); bytes.Contains(out, []byte(`"partitions"`)) {
+		t.Errorf("an unpartitioned result must carry no partitions key:\n%s", out)
+	}
+}
+
 // TestRenderMarkdown_FilesNotReviewed verifies the section that names the
 // listed files the review did not report reading: it follows the excluded-files
 // note and precedes the Summary, gives a skipped file its reason on one line,

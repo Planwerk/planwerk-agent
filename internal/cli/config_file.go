@@ -61,11 +61,12 @@ type CaptureFileConfig struct {
 }
 
 type ReviewFileConfig struct {
-	Patterns    []string `yaml:"patterns"`
-	MinSeverity *string  `yaml:"min-severity"`
-	Format      *string  `yaml:"format"`
-	MaxPatterns *int     `yaml:"max-patterns"`
-	MaxFindings *int     `yaml:"max-findings"`
+	Patterns       []string `yaml:"patterns"`
+	MinSeverity    *string  `yaml:"min-severity"`
+	Format         *string  `yaml:"format"`
+	MaxPatterns    *int     `yaml:"max-patterns"`
+	MaxFindings    *int     `yaml:"max-findings"`
+	PartitionFiles *int     `yaml:"partition-files"`
 }
 
 type ProposeFileConfig struct {
@@ -113,7 +114,8 @@ func LoadFileConfig(path string) (FileConfig, bool, error) {
 // so the caller can parse it with the existing flow. max-patterns is left to
 // the caller's resolver because it also folds in the PLANWERK_MAX_PATTERNS
 // environment variable. scope-patterns has no config key: the caller resolves
-// it from the flag and PLANWERK_SCOPE_PATTERNS (decision 141).
+// it from the flag and PLANWERK_SCOPE_PATTERNS (decision 141). partition-files
+// has a key and no environment variable, like max-findings (decision 142).
 func (f FileConfig) ApplyReview(cfg *review.Options, minSeverity *string, flagChanged func(string) bool) {
 	r := f.Review
 	if len(r.Patterns) > 0 && !flagChanged("patterns") {
@@ -127,6 +129,9 @@ func (f FileConfig) ApplyReview(cfg *review.Options, minSeverity *string, flagCh
 	}
 	if r.MaxFindings != nil && !flagChanged("max-findings") {
 		cfg.MaxFindings = *r.MaxFindings
+	}
+	if r.PartitionFiles != nil && !flagChanged("partition-files") {
+		cfg.PartitionFiles = *r.PartitionFiles
 	}
 }
 

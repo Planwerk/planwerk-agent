@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -392,6 +393,42 @@ func TestMaterialize_ExcludeOffKeepsEveryFile(t *testing.T) {
 	}
 	if d.Excluded != nil {
 		t.Errorf("Excluded = %+v, want nil without Exclude", d.Excluded)
+	}
+}
+
+// TestMaterialize_PathsLimitTheDiff pins Request.Paths: the diff holds only the
+// named files, each taken literally so a glob character selects only itself,
+// and Exclude classifies only the changed files among them (decision 142).
+func TestMaterialize_PathsLimitTheDiff(t *testing.T) {
+	t.Parallel()
+	dir, _ := branchRepo(t,
+		map[string]string{"a/x.go": "package a\n", "b/y.go": "package b\n", "c1.go": "package c\n", "c[1].go": "package c\n", "go.sum": "a v1\n", "vendor/v/v.go": "package v\n"},
+		map[string]string{"a/x.go": "package a\n\nvar X = 1\n", "b/y.go": "package b\n\nvar Y = 1\n", "c1.go": "package c\n\nvar C1 = 1\n", "c[1].go": "package c\n\nvar C = 1\n", "go.sum": "a v2\n", "vendor/v/v.go": "package v\n\nvar V = 1\n"},
+	)
+
+	d, cleanup, err := Materialize(Request{RepoDir: dir, Revs: []string{"origin/main...HEAD"}, Exclude: true, Paths: []string{"a/x.go", "c[1].go", "go.sum"}})
+	if err != nil {
+		t.Fatalf("Materialize: %v", err)
+	}
+	defer cleanup()
+	got := readDiff(t, d)
+	for _, file := range []string{"a/x.go", "c[1].go"} {
+		if !strings.Contains(got, "diff --git a/"+file+" b/"+file+"\n") {
+			t.Errorf("the diff must carry the named file %s:\n%s", file, got)
+		}
+	}
+	for _, file := range []string{"b/y.go", "c1.go", "go.sum", "vendor/"} {
+		if strings.Contains(got, file) {
+			t.Errorf("the diff must leave out %s, which is not named or is excluded:\n%s", file, got)
+		}
+	}
+	if want := []report.ExcludedFile{{Path: "go.sum", Reason: report.ExcludedLockfile}}; !reflect.DeepEqual(d.Excluded, want) {
+		t.Errorf("Excluded = %+v, want %+v: a vendored file outside Paths is not this diff's to leave out", d.Excluded, want)
+	}
+	args := diffArgs([]string{"origin/main...HEAD"}, []string{"a/x.go", "c[1].go"}, d.Excluded)
+	want := []string{"origin/main...HEAD", "--", ":(literal)a/x.go", ":(literal)c[1].go", ":(exclude,literal)go.sum"}
+	if len(args) < len(want) || !slices.Equal(args[len(args)-len(want):], want) {
+		t.Errorf("diffArgs = %q, want it to end in %q: the named paths in place of `.`", args, want)
 	}
 }
 

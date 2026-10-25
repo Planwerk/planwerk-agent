@@ -344,6 +344,24 @@ type ReviewResult struct {
 	// the data block carry the Gates.Files record rather than this list
 	// (decision 138).
 	FilesReviewed []FileReview `json:"files_reviewed,omitempty"`
+	// Partitions lists the partitions of a partitioned review (--partition-files)
+	// in session order. It rides the cached result and --format json but not
+	// the data block, which its file lists would grow with the pull request
+	// (RenderDataBlock). It is set by the pipeline, never by a session. nil
+	// means the review ran as one session, or the result predates the field
+	// (decision 142).
+	Partitions []ReviewPartition `json:"partitions,omitempty"`
+}
+
+// ReviewPartition records one partition of a partitioned review: the changed
+// files one primary-review session was scoped to, their added plus deleted
+// lines as git counted them (0 when git could not count them; a binary file
+// counts 0), and how many findings that session returned before the merge, the
+// gates and the filters (decision 142).
+type ReviewPartition struct {
+	Files    []string `json:"files"`
+	Lines    int      `json:"lines"`
+	Findings int      `json:"findings"`
 }
 
 // FileReview is one entry of a finder's files_reviewed account: a file its
