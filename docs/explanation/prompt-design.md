@@ -436,11 +436,15 @@ the same way, and a verifier that agrees with everything is not verifying. It is
 a no-op wearing a Claude call.
 
 You cannot settle that by re-reading the prompt. You settle it by counting: the
-pass logs `sent`, `verdicts`, and `refuted` on every run (`claimStats` in
-`internal/review/reviewer.go`). A refutation rate that stays at zero across real
-runs is the evidence that the pass has stopped earning its tokens, and the
-signal to sharpen it or delete it. Instrumenting a suspicion is cheap, and
-rewriting a prompt on one is how a hedge gets written.
+pass records `sent`, `verdicts`, and `refuted` on every run in `gates.claim`,
+written by `hygiene.VerifyClaims`. A refutation rate that stays at zero across
+real runs is the evidence that the pass has stopped earning its tokens, and the
+signal to sharpen it or delete it. On labeled data the count says more:
+[`planwerk-eval -verifier-bench`](/how-to/run-the-quality-eval#measure-the-claim-verifier)
+sends the verifier review comments experts rejected and ones they confirmed,
+and a verifier that refutes both at the same rate is not telling them apart.
+Instrumenting a suspicion is cheap, and rewriting a prompt on one is how a
+hedge gets written.
 
 A contradiction is a different matter from a suspicion. The verifier's
 definition of "refuted" included "the cited symbol is not there", while its

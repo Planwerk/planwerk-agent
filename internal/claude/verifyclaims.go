@@ -17,11 +17,11 @@ type claimVerdicts struct {
 }
 
 // VerifyFindingClaims re-checks each finding's CLAIM (not merely its quoted
-// snippet) against the checkout. It runs on the main tier because it must read
-// the cited code — read-only is harness-enforced (design decision #46) — and
-// returns one verdict per finding it judged, keyed by index into findings. The
-// caller demotes refuted findings rather than dropping them; decodeJSONWithRepair
-// backstops malformed output. An empty batch needs no call.
+// snippet) against the checkout. It runs on the finder tier (runClaudeFinder,
+// decision 79) and reads the cited code — read-only is harness-enforced (design
+// decision #46) — and returns one verdict per finding it judged, keyed by index
+// into findings. The caller demotes refuted findings rather than dropping them;
+// decodeJSONWithRepair backstops malformed output. An empty batch needs no call.
 func (c *Client) VerifyFindingClaims(dir string, findings []report.Finding) ([]hygiene.ClaimVerdict, error) {
 	if len(findings) == 0 {
 		return nil, nil

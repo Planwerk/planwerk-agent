@@ -1,6 +1,8 @@
 // Command planwerk-eval is a dev-only harness that scores the review pipeline's
 // output quality against a labeled seeded-bug corpus or, with -aacr, against a
-// sample of AACR-Bench's real pull requests. It is kept out of the shipped
+// sample of AACR-Bench's real pull requests. With -verifier-bench it scores no
+// review: it measures the claim verifier on AACR-Bench's expert-labeled
+// comments instead (decision 148). It is kept out of the shipped
 // planwerk-agent CLI on purpose: it invokes the real claude CLI and spends
 // tokens, so it never runs in unit CI. Run it via `make eval`.
 //
@@ -9,7 +11,8 @@
 // read, not a build break. The same holds for -baseline: a REGRESSED verdict
 // is printed beside the scores, and only a baseline that cannot be loaded or
 // compared is an error. A benchmark run is never compared against a baseline:
-// -baseline refuses it (decision 147).
+// -baseline refuses it (decision 147). The verifier bench follows the same
+// rule: its refute rates are printed, never exited on.
 package main
 
 import (
@@ -24,6 +27,7 @@ import (
 
 	"github.com/planwerk/planwerk-agent/internal/claude"
 	"github.com/planwerk/planwerk-agent/internal/eval"
+	"github.com/planwerk/planwerk-agent/internal/hygiene"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
@@ -40,9 +44,26 @@ func main() {
 	aacrSample := flag.Int("aacr-sample", 10, "with -aacr, the number of pull requests to sample, stratified by language and context")
 	aacrCache := flag.String("aacr-cache", eval.DefaultAACRCacheDir(), "with -aacr, the directory the benchmark repositories are fetched into")
 	judge := flag.Bool("judge", false, "with -aacr, also ask the structure tier whether each line-overlapping pair raises the same concern")
+	verifierBench := flag.Bool("verifier-bench", false, "measure the claim verifier on AACR-Bench's labeled comments instead of scoring the review (needs -aacr)")
+	verifierSample := flag.Int("verifier-sample", 20, "comments drawn per label for -verifier-bench")
 	flag.Parse()
-	set := make(map[string]bool)
-	flag.Visit(func(f *flag.Flag) { set[f.Name] = true })
+	set := setFlags()
+
+	if *verifierBench {
+		err := verifierBenchConflicts(set)
+		var tiers eval.Tiers
+		if err == nil {
+			tiers, err = resolveTiers()
+		}
+		if err == nil {
+			err = runVerifierBench(*aacr, *aacrCache, *verifierSample, tiers, *jsonOut)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "planwerk-eval:", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	tiers, err := resolveTiers()
 	if err != nil {
@@ -53,6 +74,7 @@ func main() {
 	bench := aacrOptions{
 		export: *aacr, sample: *aacrSample, cacheDir: *aacrCache, judge: *judge,
 		corpusSet: set["corpus"], aacrSampleSet: set["aacr-sample"], aacrCacheSet: set["aacr-cache"],
+		verifierSampleSet: set["verifier-sample"],
 	}
 	if err := run(*corpusDir, *caseName, *baseline, cfg, bench, *jsonOut); err != nil {
 		fmt.Fprintln(os.Stderr, "planwerk-eval:", err)
@@ -62,23 +84,28 @@ func main() {
 
 // aacrOptions carries the AACR-Bench flags: the export to sample (empty for a
 // corpus run), the sample size, the cache directory, whether to judge each
-// pair, and whether -corpus, -aacr-sample and -aacr-cache were given
-// explicitly. The zero value runs the corpus.
+// pair, and whether -corpus, -aacr-sample, -aacr-cache and -verifier-sample
+// were given explicitly. The zero value runs the corpus.
 type aacrOptions struct {
-	export        string
-	sample        int
-	cacheDir      string
-	judge         bool
-	corpusSet     bool
-	aacrSampleSet bool
-	aacrCacheSet  bool
+	export            string
+	sample            int
+	cacheDir          string
+	judge             bool
+	corpusSet         bool
+	aacrSampleSet     bool
+	aacrCacheSet      bool
+	verifierSampleSet bool
 }
 
 // check rejects a combination of the AACR-Bench flags, and of them with
 // caseName, that cannot run or that would leave a flag given explicitly
-// ignored: -aacr-sample, -aacr-cache and -judge on a corpus run, and
-// -aacr-sample beside -case, which picks any candidate of the export.
+// ignored: -verifier-sample, which a run that scores the review ignores,
+// -aacr-sample, -aacr-cache and -judge on a corpus run, and -aacr-sample
+// beside -case, which picks any candidate of the export.
 func (o aacrOptions) check(caseName string) error {
+	if o.verifierSampleSet {
+		return errors.New("-verifier-sample needs -verifier-bench")
+	}
 	if o.export == "" {
 		switch {
 		case o.judge:
@@ -210,10 +237,10 @@ func run(corpusDir, caseName, baselinePath string, cfg eval.Config, aacr aacrOpt
 	return nil
 }
 
-// maxRunAttempts bounds the attempts at one run of one case, and at judging
-// one run. A second attempt keeps one transient failure (a timeout, a
-// malformed reply) from discarding every run the eval already paid for; a
-// second failure ends the eval.
+// maxRunAttempts bounds the attempts at one run of one case, at judging one
+// run, and at one call of the verifier bench. A second attempt keeps one
+// transient failure (a timeout, a malformed reply) from discarding every run
+// the eval already paid for; a second failure ends the eval.
 const maxRunAttempts = 2
 
 // retry calls attempt until it succeeds or maxRunAttempts attempts have failed,
@@ -231,6 +258,75 @@ func retry[T any](attempt func() (T, error)) (T, error) {
 		}
 	}
 	return zero, err
+}
+
+// setFlags returns the names of the flags the command line set.
+func setFlags() map[string]bool {
+	set := make(map[string]bool)
+	flag.Visit(func(f *flag.Flag) { set[f.Name] = true })
+	return set
+}
+
+// verifierBenchRefuses lists the flags -verifier-bench refuses, in the order
+// verifierBenchConflicts checks them: each selects or shapes review runs, and
+// the bench makes none.
+var verifierBenchRefuses = []string{"baseline", "case", "corpus", "runs", "thorough", "specialists", "aacr-sample", "judge", "scope-patterns"}
+
+// verifierBenchConflicts returns an error naming the first flag of
+// verifierBenchRefuses that set holds, so a flag the bench would ignore is
+// not taken for one it honors.
+func verifierBenchConflicts(set map[string]bool) error {
+	for _, name := range verifierBenchRefuses {
+		if set[name] {
+			return fmt.Errorf("-%s does not apply to -verifier-bench", name)
+		}
+	}
+	return nil
+}
+
+// runVerifierBench measures the claim verifier on perLabel comments of each
+// expert label drawn from the AACR-Bench export at datasetPath, checking each
+// revision out of the cache under cacheDir (decision 148). It checks its
+// arguments, loads and samples the export, and builds the client before the
+// first checkout, so a bad invocation or PLANWERK_* variable fails before any
+// fetch or call. One client verifies every comment, so its cumulative usage
+// is the bench's cost. Each verifier call is retried once; a second failure
+// ends the bench.
+func runVerifierBench(datasetPath, cacheDir string, perLabel int, tiers eval.Tiers, jsonOut bool) error {
+	if datasetPath == "" {
+		return errors.New("-verifier-bench needs -aacr <dataset.json>")
+	}
+	if perLabel < 1 {
+		return fmt.Errorf("-verifier-sample must be at least 1, got %d", perLabel)
+	}
+	exp, err := eval.LoadAACR(datasetPath)
+	if err != nil {
+		return err
+	}
+	sample, excluded := eval.SampleVerifierComments(exp.Rows, perLabel)
+	if len(sample) == 0 {
+		return errors.New("no AACR-Bench comment is eligible for the verifier bench")
+	}
+	client, err := buildClient(tiers)
+	if err != nil {
+		return err
+	}
+	checkout := func(prURL, commit string) (string, func(), error) {
+		return eval.CheckoutAACRHead(cacheDir, prURL, commit)
+	}
+	verify := func(dir string, findings []report.Finding) ([]hygiene.ClaimVerdict, error) {
+		return retry(func() ([]hygiene.ClaimVerdict, error) { return client.VerifyFindingClaims(dir, findings) })
+	}
+	rep, err := eval.RunVerifierBench(sample, checkout, verify, os.Stderr)
+	if err != nil {
+		return err
+	}
+	rep.PerLabel, rep.Excluded, rep.Tiers, rep.Usage = perLabel, excluded, tiers, client.UsageTotals()
+	if jsonOut {
+		return eval.RenderVerifierJSON(os.Stdout, rep)
+	}
+	eval.RenderVerifierTable(os.Stdout, rep)
+	return nil
 }
 
 // judgeWith returns the eval.SameIntentFunc that asks client whether a

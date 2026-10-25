@@ -197,3 +197,29 @@ func TestVerifyClaims_UnverifiableIsNotAConfirmation(t *testing.T) {
 		t.Errorf("unverifiable finding: check=%q confidence=%q, want no-verdict and unchanged confidence", got.ClaimCheck, got.Confidence)
 	}
 }
+
+// TestClassifyVerdict pins the mapping the gate and the eval's verifier bench
+// share: the two verdicts that change what the gate does are matched ignoring
+// case and surrounding space, and every other value, a near miss included,
+// lets the finding through as a confirmation.
+func TestClassifyVerdict(t *testing.T) {
+	tests := []struct {
+		raw  string
+		want string
+	}{
+		{"refuted", VerdictRefuted},
+		{" Refuted ", VerdictRefuted},
+		{"REFUTED", VerdictRefuted},
+		{"unverifiable", VerdictUnverifiable},
+		{"Unverifiable\n", VerdictUnverifiable},
+		{"confirmed", VerdictConfirmed},
+		{"", VerdictConfirmed},
+		{"likely", VerdictConfirmed},
+		{"refute", VerdictConfirmed},
+	}
+	for _, tt := range tests {
+		if got := ClassifyVerdict(tt.raw); got != tt.want {
+			t.Errorf("ClassifyVerdict(%q) = %q, want %q", tt.raw, got, tt.want)
+		}
+	}
+}

@@ -27,6 +27,32 @@ type ClaimVerdict struct {
 // VerifyClaimsFn makes VerifyClaims a no-op.
 type VerifyClaimsFn func(dir string, findings []report.Finding) ([]ClaimVerdict, error)
 
+// The three verdicts the claim verifier's prompt asks for
+// (buildClaimVerificationPrompt in internal/claude/verifyclaims.go), and the
+// three decisions ClassifyVerdict maps a raw verdict to.
+const (
+	VerdictConfirmed    = "confirmed"
+	VerdictRefuted      = "refuted"
+	VerdictUnverifiable = "unverifiable"
+)
+
+// ClassifyVerdict maps a verifier's raw verdict to the decision the gate takes
+// on it: VerdictRefuted or VerdictUnverifiable when raw is one of them, ignoring
+// case and surrounding space, and VerdictConfirmed for any other value. The
+// decision is binary, so an off-enum verdict that lets the finding through
+// counts as a confirmation. VerifyClaims and the eval's verifier bench both
+// call it, so the bench measures the decision the gate takes (decision 148).
+func ClassifyVerdict(raw string) string {
+	v := strings.TrimSpace(raw)
+	switch {
+	case strings.EqualFold(v, VerdictRefuted):
+		return VerdictRefuted
+	case strings.EqualFold(v, VerdictUnverifiable):
+		return VerdictUnverifiable
+	}
+	return VerdictConfirmed
+}
+
 // VerifyClaims re-checks each BLOCKING/CRITICAL finding's claim against the
 // checkout at dir. It batches every such finding into one verify call; for each
 // verdict the verifier refutes it demotes the finding to uncertain confidence
@@ -80,15 +106,15 @@ func VerifyClaims(result *report.ReviewResult, dir string, verify VerifyClaimsFn
 			continue // ignore an out-of-range index the model may return
 		}
 		fi := selectedIdx[v.Index]
-		if strings.EqualFold(strings.TrimSpace(v.Verdict), "unverifiable") {
+		switch ClassifyVerdict(v.Verdict) {
+		case VerdictUnverifiable:
 			// The verifier could not check the claim: the finding passes
 			// unchanged, recorded as no-verdict so it does not count as a
 			// confirmation in the gate's own no-op signal.
 			continue
-		}
-		if !strings.EqualFold(strings.TrimSpace(v.Verdict), "refuted") {
-			// The gate's decision is binary; an off-enum verdict that lets the
-			// finding through records as a confirmation.
+		case VerdictConfirmed:
+			// An off-enum verdict lands here too: it lets the finding through,
+			// so it records as a confirmation.
 			result.Findings[fi].ClaimCheck = report.ClaimCheckConfirmed
 			continue
 		}

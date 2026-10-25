@@ -33,7 +33,7 @@ type ClaudeRunner interface {
 	DedupFindings(findings []report.Finding) ([][]int, error)
 	// VerifyFindingClaims re-checks each finding's claim against the checkout at
 	// dir, returning one verdict per finding it judged (keyed by index). It reads
-	// the cited code, so it runs on the main tier.
+	// the cited code, on the finder tier.
 	VerifyFindingClaims(dir string, findings []report.Finding) ([]hygiene.ClaimVerdict, error)
 	// UsageTotals reports the per-Run Claude token usage and estimated cost
 	// accumulated across this runner's calls, for embedding in the data block.

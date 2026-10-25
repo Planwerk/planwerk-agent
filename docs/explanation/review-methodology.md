@@ -326,6 +326,13 @@ instead of dying in a log line. See
 [Demotion-Gate Records](/reference/output-format#demotion-gate-records) for the
 recorded shape.
 
+The ratio from real runs cannot say whether a refuted finding was wrong,
+because a real finding carries no label. `planwerk-eval -verifier-bench`
+measures that on AACR-Bench's expert-labeled review comments: it compares the
+refute rate on comments experts rejected with the rate on comments they
+confirmed. See
+[Measure the claim verifier](/how-to/run-the-quality-eval#measure-the-claim-verifier).
+
 ## Changed-File Coverage
 
 The review prompt lists the files the pull request changes, right under its

@@ -10,8 +10,8 @@ can also score a sample of AACR-Bench, a benchmark of real pull requests; see
 > The eval invokes the **real** `claude` CLI and **spends tokens**. It needs an
 > authenticated Claude Code install and network access. It is deliberately kept
 > out of `make test` and CI — it never runs in unit CI. Only the loader, the
-> scorer, the baseline comparison and the repo setup are unit-tested (no model
-> calls).
+> scorer, the baseline comparison, the repo setup, and the verifier bench's
+> sampling, mapping and tally are unit-tested (no model calls).
 >
 > `make` runs the eval inside the toolbox container, whose `claude` cannot see
 > your host login: export `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`
@@ -58,6 +58,10 @@ it directly for the full flag set (`go run ./cmd/planwerk-eval -h`):
 - `-aacr-cache <dir>` sets where the benchmark repositories are fetched to,
   and `-judge` also asks whether each line-overlapping pair raises the same
   concern; see [Run against AACR-Bench](#run-against-aacr-bench).
+- `-verifier-bench` measures the claim verifier on AACR-Bench's labeled
+  comments instead of scoring the review, with `-verifier-sample N` (default
+  20) comments per label; see
+  [Measure the claim verifier](#measure-the-claim-verifier).
 
 The Claude model, effort, and timeout come from the same `PLANWERK_*`
 environment overrides the main CLI honors (`PLANWERK_CLAUDE_MODEL`,
@@ -416,6 +420,107 @@ A benchmark run is never the gate of decision 106: `-baseline` refuses an
 AACR-Bench report on either side. Compare two benchmark reports by eye, and
 only when their `sha256`, `sample` and `match` agree.
 
+## Measure the claim verifier
+
+Real runs record what the claim verifier did in `gates.claim`: how many
+findings it was sent and how many it refuted. A real finding carries no
+label, so that ratio cannot say whether a refuted finding was wrong.
+AACR-Bench can: experts confirmed 1,505 of its comments (`label` 1) and
+rejected 640 (`label` 0). `-verifier-bench` sends the verifier a sample of
+both and reports how often it refutes each. It scores no review.
+
+```bash
+# 20 comments per label, as a table
+go run ./cmd/planwerk-eval -verifier-bench -aacr ~/aacr-bench.json
+
+# 50 per label, as JSON
+go run ./cmd/planwerk-eval -verifier-bench -aacr ~/aacr-bench.json -verifier-sample 50 -json > /tmp/verifier.json
+```
+
+Download the export as [Run against AACR-Bench](#run-against-aacr-bench)
+describes.
+
+> [!NOTE]
+> Under the toolbox, the export and the cache must sit on a path the container
+> mounts, as for `-aacr`: put the export in the checkout without committing it
+> and pass `-aacr-cache /cache/planwerk-eval-aacr`.
+
+### What the bench sends
+
+- **The draw.** Only right-side comments with a valid line range in the
+  `Code Defect` or `Security Vulnerability` category are drawn. Those are the
+  claims the severity ladder rates BLOCKING or CRITICAL, the only ones the
+  claim gate sends. Today's export holds 332 of them with label 0 and 757 with
+  label 1, on 189 pull requests. Each label's comments are ordered by a
+  SHA-256 of their pull request, path, lines and text, and the first N are
+  drawn, so a rerun draws the same comments and a larger sample contains the
+  smaller.
+- **The finding.** Each comment becomes a CRITICAL finding: its first line is
+  the title, the comment is the problem, and its lines at `pr_target_commit`
+  are the quoted code. `pr_target_commit` is the revision the comment was made
+  on, and `pr_source_commit` is the pull request's base. The label never
+  reaches the verifier.
+- **The checkout.** Each pull request's revision is checked out once, from the
+  cache `-aacr` fills (`-aacr-cache`). A revision the cache lacks is fetched
+  by SHA at depth 1, so the first run needs git and network.
+- **The calls.** A pull request's comments go to the verifier at most five per
+  call, on the finder tier: `PLANWERK_FINDER_MODEL` and
+  `PLANWERK_FINDER_EFFORT` move it. The bench prints the number of calls
+  before the first checkout. The default sample makes 32 calls on today's
+  export, each a finder-tier session on a real repository.
+
+### Read the verifier report
+
+```
+LABEL               SENT  CONFIRMED  REFUTED  UNVERIFIABLE  NO-VERDICT  REFUTED%  UNVERIFIABLE%
+0 expert-rejected     19          9        6             3           1       32%            16%
+1 expert-confirmed    20         16        2             2           0       10%            10%
+-----------------------------------------------------------------------------------------------
+ALL                   39         25        8             5           1       21%            13%
+
+REFUTED% = refuted/sent: the share the gate would demote. UNVERIFIABLE% = unverifiable/sent.
+A verifier that tells the labels apart refutes label 0 far more often than label 1.
+
+SAMPLE: 20 per label; 1056 rows not eligible; 1 skipped
+  SKIPPED https://github.com/acme/widget/pull/41 src/cache.rs:88-91 (label 0): lines 88-91 past the end of src/cache.rs (84 lines)
+TIERS: claude opus/xhigh, finder opus/xhigh, structure sonnet/xhigh (the verifier runs on the finder tier)
+COST: 32 calls, 4700000 prompt tokens, 160000 output tokens, $24.10
+```
+
+- `REFUTED%` is the share of the comments sent that the gate would demote. A
+  verifier that tells the labels apart refutes label 0 far more often than
+  label 1; equal rates mean it does not.
+- `REFUTED%` on label 1 is the rate at which the gate would demote a correct
+  finding.
+- `UNVERIFIABLE` counts the comments the verifier said the checkout cannot
+  settle. `NO-VERDICT` counts those it returned nothing for, the case in which
+  the gate fails open. A verdict outside the three counts as confirmed, as in
+  the gate: both classify a verdict with the same function. A comment the
+  verifier answers twice keeps the outcome the gate would act on, so a
+  refutation stands.
+- Experts also reject comments that are true but not worth raising, so even a
+  perfect verifier would not refute every label-0 comment.
+
+A revision that cannot be fetched, or lines its file does not have, skip the
+comment: the report lists it under `SKIPPED` with the reason, and `SENT` can
+fall below the sample. A failed verifier call is retried once, and a second
+failure exits 1. Low rates never change the exit code. `-baseline`, `-case`,
+`-corpus`, `-runs`, `-thorough`, `-specialists`, `-aacr-sample`, `-judge` and
+`-scope-patterns` shape review runs, which the bench does not make: each
+exits 1 before anything runs. So does `-verifier-sample` without
+`-verifier-bench`, which a review run would ignore.
+
+In `-json` output the report carries `per_label`, `excluded` (the rows not
+eligible), `tiers`, `labels[]` and `all`, `skipped[]`, `samples[]` and
+`usage`. Each entry of `labels[]` holds `label`, `sent`, `confirmed`,
+`refuted`, `unverifiable`, `no_verdict`, `refute_rate` and
+`unverifiable_rate`, and `all` the same counts over both labels; a rate is
+null when nothing was sent. `skipped[]` holds `pr_url`, `file`, `line_start`,
+`line_end`, `label` and `reason`. `samples[]` holds every comment sent, with
+`pr_url`, `commit`, `file`, `line_start`, `line_end`, `label`, `category`,
+`context`, its `outcome` (`confirmed`, `refuted`, `unverifiable` or
+`no-verdict`), and the verifier's `verdict`, `evidence` and `reason`.
+
 ## Compare a change against a baseline
 
 A change is judged against the commit it branches from by one rule (decision
@@ -506,7 +611,10 @@ The read-only finder passes share one tier, set by `PLANWERK_FINDER_MODEL`
 and `PLANWERK_FINDER_EFFORT`. The corpus runs three of them: the adversarial
 pass, the domain specialists and claim verification. The coverage map, the
 feature-compliance check, the simplify finder and the implementation verifier
-run on the same tier, but no case measures them.
+run on the same tier, but no case measures them. `-verifier-bench` measures
+claim verification alone, so a candidate finder tier can be checked against
+its refute rates as well; see
+[Measure the claim verifier](#measure-the-claim-verifier).
 
 To measure whether a cheaper tier keeps the recall, record a baseline with
 neither variable set, then compare each candidate against it with one or both
