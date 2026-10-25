@@ -21,20 +21,32 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/review"
 )
 
-// evalBaseBranch is the base branch the corpus repos are built on and the
-// review pipeline diffs against.
-const evalBaseBranch = "main"
+// evalBaseBranch is the base branch every eval repo is built on and the
+// review pipeline diffs against, and evalHeadBranch the branch the reviewed
+// change is checked out on.
+const (
+	evalBaseBranch = "main"
+	evalHeadBranch = "eval/head"
+)
 
 // gitTimeout bounds each git subprocess in the harness setup.
 const gitTimeout = 60 * time.Second
 
-// evalGoMod is the go.mod ensureGoMod writes into every eval repo, so
+// gitWaitDelay bounds how long a gitRun call may still block once git has
+// exited or its timeout has killed it. The remote helper a fetch starts
+// inherits git's stderr and outlives a killed git, so Wait would keep reading
+// the pipe until the helper ends, which on a stalled connection is never;
+// this long after, Wait closes it instead (diffscope.gitWaitDelay).
+const gitWaitDelay = 2 * time.Second
+
+// evalGoMod is the go.mod ensureGoMod writes into every corpus repo, so
 // technology detection tags the repo "go" and the review loads the Go patterns
-// a real Go repository gets (decision 106).
+// a real Go repository gets (decision 106). An AACR-Bench repo is a real
+// repository and gets none: decision 106 applies to the corpus only.
 const evalGoMod = "module planwerk-eval/corpus\n\ngo 1.22\n"
 
 // evalGitHubClient is a review.GitHubClient stub for the eval harness. It hands
-// the pipeline a pre-built local PR rooted at the corpus repo and no-ops every
+// the pipeline a pre-built local PR rooted at the case's repo and no-ops every
 // posting/fetching method — no gh CLI, no network. The PR is marked Local so the
 // pipeline's deferred pr.Cleanup never deletes the repo; the harness removes the
 // temp dir itself.
@@ -103,10 +115,13 @@ func reviewOptions(opts RunOptions) review.Options {
 }
 
 // Run is one review of one case: the parsed JSON review result and the token
-// usage the run spent.
+// usage the run spent. Verdicts holds JudgeRun's answers for an AACR-Bench run
+// judged under -judge, keyed by the pair's indices; nil means the run was not
+// judged, and ScoreRun then matches on lines alone.
 type Run struct {
-	Result report.ReviewResult
-	Usage  report.Usage
+	Result   report.ReviewResult
+	Usage    report.Usage
+	Verdicts map[PairKey]bool
 }
 
 // failedPassesError names each requested pass the review recorded as failed,
@@ -125,13 +140,14 @@ func failedPassesError(result report.ReviewResult) error {
 	return errors.New(strings.Join(msgs, "; "))
 }
 
-// RunCase materializes c into a throwaway git repo, runs the shipped review
-// pipeline against it with the passes opts selects, and returns the parsed JSON
-// review result with the run's usage. It returns an error only for harness
-// failures (git, materialization, pipeline, JSON, and a requested pass the
-// result records as failed: the adversarial pass, a specialist, the
-// feature-compliance check, the coverage map), never for a low-quality result,
-// which is scored, not errored.
+// RunCase builds c's repository in a throwaway directory (checkoutCase), runs
+// the shipped review pipeline against it with the passes opts selects, and
+// returns the parsed JSON review result with the run's usage. An AACR-Bench
+// case must have been through PrepareAACR. It returns an error only for
+// harness failures (git, materialization, pipeline, JSON, and a requested
+// pass the result records as failed: the adversarial pass, a specialist, the
+// feature-compliance check, the coverage map), never for a low-quality
+// result, which is scored, not errored.
 //
 // client must be fresh: Usage is client.UsageTotals() read after the pipeline
 // returns, which is cumulative over the client's life, so a reused client folds
@@ -143,29 +159,9 @@ func RunCase(client *claude.Client, c Case, opts RunOptions) (Run, error) {
 	}
 	defer func() { _ = os.RemoveAll(repoDir) }()
 
-	changed, err := setupRepo(repoDir, c)
+	pr, err := checkoutCase(repoDir, c)
 	if err != nil {
 		return Run{}, fmt.Errorf("case %s: %w", c.Name, err)
-	}
-	// The review prompt lists these files and the run records which the
-	// session read, as on a real pull request (decision 138).
-	fileChanges, err := (github.Client{}).DiffFileChanges(repoDir, evalBaseBranch)
-	if err != nil {
-		return Run{}, fmt.Errorf("case %s: listing changed files: %w", c.Name, err)
-	}
-
-	pr := &github.PR{
-		Owner:        "planwerk-eval",
-		Repo:         "corpus",
-		Number:       1,
-		Title:        c.Expected.Description,
-		HeadSHA:      "eval-head",
-		BaseBranch:   evalBaseBranch,
-		HeadBranch:   "eval/head",
-		Dir:          repoDir,
-		ChangedFiles: changed,
-		FileChanges:  fileChanges,
-		Local:        true,
 	}
 
 	runner := review.NewRunner(client)
@@ -177,7 +173,8 @@ func RunCase(client *claude.Client, c Case, opts RunOptions) (Run, error) {
 
 	reviewOpts := reviewOptions(opts)
 	// PLANWERK_DIFF_EXCLUSIONS reaches the review session as it reaches the
-	// finder passes; the corpus holds no file it leaves out.
+	// finder passes. The corpus holds no file it leaves out; an AACR-Bench
+	// pull request can.
 	reviewOpts.DiffExclusions = client.DiffExclusions()
 
 	var buf bytes.Buffer
@@ -195,27 +192,75 @@ func RunCase(client *claude.Client, c Case, opts RunOptions) (Run, error) {
 	return Run{Result: result, Usage: client.UsageTotals()}, nil
 }
 
+// checkoutCase builds c's repository in repoDir and returns the local pull
+// request the stub client hands the pipeline: the corpus trees (setupRepo)
+// under a placeholder owner and number for a corpus case, the benchmark
+// revision (setupAACRRepo) under its real owner, repository and number for an
+// AACR-Bench case. An AACR-Bench pull request has no title or body: the export
+// holds no title, and the reference comments must not reach the review
+// prompt, which fences the title in. Either pull request carries the
+// FileChanges FetchAndCheckout would list, so the review prompt lists the
+// changed files and the run records which the session read, as on a real
+// pull request (decision 138).
+func checkoutCase(repoDir string, c Case) (*github.PR, error) {
+	if src := c.AACR; src != nil {
+		headSHA, changed, err := setupAACRRepo(repoDir, src)
+		if err != nil {
+			return nil, err
+		}
+		// origin/main carries the merge base's tree and HEAD the revision's,
+		// so these are the revision's own changes.
+		fileChanges, err := (github.Client{}).DiffFileChanges(repoDir, evalBaseBranch)
+		if err != nil {
+			return nil, fmt.Errorf("listing changed files: %w", err)
+		}
+		return &github.PR{
+			Owner:  src.Owner,
+			Repo:   src.Repo,
+			Number: src.Number,
+			// The harness's own head commit, which HEAD is, not the export's
+			// pr_target_commit.
+			HeadSHA:      headSHA,
+			BaseBranch:   evalBaseBranch,
+			HeadBranch:   evalHeadBranch,
+			Dir:          repoDir,
+			ChangedFiles: changed,
+			FileChanges:  fileChanges,
+			Local:        true,
+		}, nil
+	}
+
+	changed, err := setupRepo(repoDir, c)
+	if err != nil {
+		return nil, err
+	}
+	fileChanges, err := (github.Client{}).DiffFileChanges(repoDir, evalBaseBranch)
+	if err != nil {
+		return nil, fmt.Errorf("listing changed files: %w", err)
+	}
+	return &github.PR{
+		Owner:        "planwerk-eval",
+		Repo:         "corpus",
+		Number:       1,
+		Title:        c.Expected.Description,
+		HeadSHA:      "eval-head",
+		BaseBranch:   evalBaseBranch,
+		HeadBranch:   "eval/head",
+		Dir:          repoDir,
+		ChangedFiles: changed,
+		FileChanges:  fileChanges,
+		Local:        true,
+	}, nil
+}
+
 // setupRepo builds a git repo in dir: base/ committed on main together with a
 // go.mod (see ensureGoMod), an origin/main ref pointing at that commit (so the
 // pipeline's `git diff origin/main` scoping resolves), then head/ overlaid and
 // committed on a feature branch. It returns the repo-relative paths overlaid
 // from head/ (the changed-files set the PR carries).
 func setupRepo(dir string, c Case) ([]string, error) {
-	// Force the first commit onto main regardless of the user's init.defaultBranch.
-	if err := git(dir, "init"); err != nil {
+	if err := initRepo(dir); err != nil {
 		return nil, err
-	}
-	if err := git(dir, "symbolic-ref", "HEAD", "refs/heads/"+evalBaseBranch); err != nil {
-		return nil, err
-	}
-	for _, kv := range [][2]string{
-		{"user.email", "eval@planwerk.invalid"},
-		{"user.name", "planwerk-eval"},
-		{"commit.gpgsign", "false"},
-	} {
-		if err := git(dir, "config", kv[0], kv[1]); err != nil {
-			return nil, err
-		}
 	}
 
 	if _, err := materialize(filepath.Join(c.Dir, "base"), dir); err != nil {
@@ -255,9 +300,32 @@ func setupRepo(dir string, c Case) ([]string, error) {
 	return changed, nil
 }
 
+// initRepo runs git init in dir with HEAD on main, whatever the user's
+// init.defaultBranch, and sets the committer identity and unsigned commits the
+// harness's own commits need.
+func initRepo(dir string) error {
+	if err := git(dir, "init"); err != nil {
+		return err
+	}
+	if err := git(dir, "symbolic-ref", "HEAD", "refs/heads/"+evalBaseBranch); err != nil {
+		return err
+	}
+	for _, kv := range [][2]string{
+		{"user.email", "eval@planwerk.invalid"},
+		{"user.name", "planwerk-eval"},
+		{"commit.gpgsign", "false"},
+	} {
+		if err := git(dir, "config", kv[0], kv[1]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // ensureGoMod writes evalGoMod to dir/go.mod when no go.mod exists there, and
 // leaves an existing one untouched. setupRepo calls it before the base commit,
-// so the file never appears in the changed-files set.
+// so the file never appears in the changed-files set; setupAACRRepo never
+// calls it.
 func ensureGoMod(dir string) error {
 	f, err := os.OpenFile(filepath.Join(dir, "go.mod"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if errors.Is(err, fs.ErrExist) {
@@ -338,17 +406,31 @@ func materializedName(name string) string {
 	return name
 }
 
-// git runs a git subprocess in dir, wrapping any failure with the command and
-// git's stderr so a setup failure names its cause.
+// git runs a git subprocess in dir under gitTimeout, wrapping any failure with
+// the command and git's stderr so a setup failure names its cause.
 func git(dir string, args ...string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
+	_, err := gitRun(dir, gitTimeout, nil, args...)
+	return err
+}
+
+// gitRun runs a git subprocess in dir under timeout, and gitWaitDelay past it,
+// with env added to the process environment, and returns its stdout with
+// surrounding space trimmed. A failure is wrapped with the command and git's
+// stderr, as git wraps it.
+func gitRun(dir string, timeout time.Duration, env []string, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
-	var stderr bytes.Buffer
+	cmd.WaitDelay = gitWaitDelay
+	if len(env) > 0 {
+		cmd.Env = append(os.Environ(), env...)
+	}
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
+		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
 	}
-	return nil
+	return strings.TrimSpace(stdout.String()), nil
 }

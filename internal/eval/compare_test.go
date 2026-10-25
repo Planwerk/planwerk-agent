@@ -196,6 +196,11 @@ func TestComparable(t *testing.T) {
 			[]string{"baseline was scored by match rule (unrecorded)", "this harness scores by range-overlap", "record the baseline with this harness"}},
 		{"a baseline scored by another match rule", Report{Config: base.Config, Match: "line", Cases: base.Cases, Aggregate: base.Aggregate}, cfg, []string{"a", "b"},
 			[]string{"match rule line,", "record the baseline with this harness"}},
+		// Otherwise comparable on both sides, so the refusal is the AACR-Bench one.
+		{"an AACR-Bench baseline", withAACR(base), cfg, []string{"a", "b"},
+			[]string{"an AACR-Bench report is a periodic benchmark", "never a baseline or a candidate", "decision 106 compares corpus runs"}},
+		{"an AACR-Bench candidate", base, withAACR(Report{Config: cfg}).Config, []string{"a", "b"},
+			[]string{"an AACR-Bench report is a periodic benchmark", "never a baseline or a candidate"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -220,6 +225,13 @@ func TestComparable(t *testing.T) {
 			}
 		})
 	}
+}
+
+// withAACR returns rep marked as an AACR-Bench run, scored by the line rule.
+func withAACR(rep Report) Report {
+	rep.AACR = &AACRConfig{Export: "dataset.json", Sample: 2, Candidates: 196}
+	rep.Match = MatchLine
+	return rep
 }
 
 func TestCompare(t *testing.T) {

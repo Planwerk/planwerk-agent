@@ -1,17 +1,20 @@
 // Command planwerk-eval is a dev-only harness that scores the review pipeline's
-// output quality against a labeled seeded-bug corpus. It is kept out of the
-// shipped planwerk-agent CLI on purpose: it invokes the real claude CLI and
-// spends tokens, so it never runs in unit CI. Run it via `make eval`.
+// output quality against a labeled seeded-bug corpus or, with -aacr, against a
+// sample of AACR-Bench's real pull requests. It is kept out of the shipped
+// planwerk-agent CLI on purpose: it invokes the real claude CLI and spends
+// tokens, so it never runs in unit CI. Run it via `make eval`.
 //
 // It exits non-zero only on a harness error (bad corpus, git failure, pipeline
 // or JSON error) — never because scores are low. A low score is a signal to
 // read, not a build break. The same holds for -baseline: a REGRESSED verdict
 // is printed beside the scores, and only a baseline that cannot be loaded or
-// compared is an error.
+// compared is an error. A benchmark run is never compared against a baseline:
+// -baseline refuses it (decision 147).
 package main
 
 import (
 	"cmp"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -21,6 +24,7 @@ import (
 
 	"github.com/planwerk/planwerk-agent/internal/claude"
 	"github.com/planwerk/planwerk-agent/internal/eval"
+	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
 func main() {
@@ -32,7 +36,13 @@ func main() {
 	runs := flag.Int("runs", 1, "run each case N times, each with a fresh client, and pool the scores")
 	baseline := flag.String("baseline", "", fmt.Sprintf("compare against a report written by -json (at least %d runs per side)", eval.MinCompareRuns))
 	jsonOut := flag.Bool("json", false, "emit the score report as JSON instead of a table")
+	aacr := flag.String("aacr", "", "score an AACR-Bench sample instead of the corpus: path to a downloaded dataset.json export")
+	aacrSample := flag.Int("aacr-sample", 10, "with -aacr, the number of pull requests to sample, stratified by language and context")
+	aacrCache := flag.String("aacr-cache", eval.DefaultAACRCacheDir(), "with -aacr, the directory the benchmark repositories are fetched into")
+	judge := flag.Bool("judge", false, "with -aacr, also ask the structure tier whether each line-overlapping pair raises the same concern")
 	flag.Parse()
+	set := make(map[string]bool)
+	flag.Visit(func(f *flag.Flag) { set[f.Name] = true })
 
 	tiers, err := resolveTiers()
 	if err != nil {
@@ -40,17 +50,72 @@ func main() {
 		os.Exit(1)
 	}
 	cfg := eval.Config{Runs: *runs, RunOptions: eval.RunOptions{Thorough: *thorough, Specialists: *specialists, ScopePatterns: *scopePatterns}, Tiers: tiers}
-	if err := run(*corpusDir, *caseName, *baseline, cfg, *jsonOut); err != nil {
+	bench := aacrOptions{
+		export: *aacr, sample: *aacrSample, cacheDir: *aacrCache, judge: *judge,
+		corpusSet: set["corpus"], aacrSampleSet: set["aacr-sample"], aacrCacheSet: set["aacr-cache"],
+	}
+	if err := run(*corpusDir, *caseName, *baseline, cfg, bench, *jsonOut); err != nil {
 		fmt.Fprintln(os.Stderr, "planwerk-eval:", err)
 		os.Exit(1)
 	}
 }
 
-func run(corpusDir, caseName, baselinePath string, cfg eval.Config, jsonOut bool) error {
+// aacrOptions carries the AACR-Bench flags: the export to sample (empty for a
+// corpus run), the sample size, the cache directory, whether to judge each
+// pair, and whether -corpus, -aacr-sample and -aacr-cache were given
+// explicitly. The zero value runs the corpus.
+type aacrOptions struct {
+	export        string
+	sample        int
+	cacheDir      string
+	judge         bool
+	corpusSet     bool
+	aacrSampleSet bool
+	aacrCacheSet  bool
+}
+
+// check rejects a combination of the AACR-Bench flags, and of them with
+// caseName, that cannot run or that would leave a flag given explicitly
+// ignored: -aacr-sample, -aacr-cache and -judge on a corpus run, and
+// -aacr-sample beside -case, which picks any candidate of the export.
+func (o aacrOptions) check(caseName string) error {
+	if o.export == "" {
+		switch {
+		case o.judge:
+			return errors.New("-judge needs -aacr: the corpus matches on keywords")
+		case o.aacrSampleSet:
+			return errors.New("-aacr-sample needs -aacr")
+		case o.aacrCacheSet:
+			return errors.New("-aacr-cache needs -aacr")
+		}
+		return nil
+	}
+	if o.corpusSet {
+		return errors.New("-aacr and -corpus each name the cases to score; pass one")
+	}
+	if o.aacrSampleSet && caseName != "" {
+		return errors.New("-aacr-sample and -case each choose the cases to score; pass one")
+	}
+	if o.sample < 1 {
+		return fmt.Errorf("-aacr-sample must be at least 1, got %d", o.sample)
+	}
+	return nil
+}
+
+func run(corpusDir, caseName, baselinePath string, cfg eval.Config, aacr aacrOptions, jsonOut bool) error {
 	if cfg.Runs < 1 {
 		return fmt.Errorf("-runs must be at least 1, got %d", cfg.Runs)
 	}
-	cases, err := loadCases(corpusDir, caseName)
+	if err := aacr.check(caseName); err != nil {
+		return err
+	}
+	var cases []eval.Case
+	var err error
+	if aacr.export != "" {
+		cases, cfg.AACR, err = loadAACRCases(aacr, caseName)
+	} else {
+		cases, err = loadCases(corpusDir, caseName)
+	}
 	if err != nil {
 		return err
 	}
@@ -73,6 +138,25 @@ func run(corpusDir, caseName, baselinePath string, cfg eval.Config, jsonOut bool
 		baseline = &b
 	}
 
+	if cfg.AACR != nil {
+		// Fetch every sampled repository before the first client is built, so
+		// a pull request that cannot be fetched spends no tokens.
+		if err := eval.PrepareAACR(aacr.cacheDir, cases, os.Stderr); err != nil {
+			return err
+		}
+	}
+	// One client judges every run, so its cumulative usage is the judge's
+	// cost.
+	var judgeClient *claude.Client
+	var judge eval.SameIntentFunc
+	if aacr.judge {
+		if judgeClient, err = buildClient(cfg.Tiers); err != nil {
+			return err
+		}
+		judge = judgeWith(judgeClient)
+	}
+
+	var judged eval.JudgeTally
 	scored := make([]eval.Scored, 0, len(cases))
 	for _, c := range cases {
 		runs := make([]eval.Run, 0, cfg.Runs)
@@ -89,12 +173,24 @@ func run(corpusDir, caseName, baselinePath string, cfg eval.Config, jsonOut bool
 			if err != nil {
 				return err
 			}
+			if judge != nil {
+				fmt.Fprintf(os.Stderr, "judging case %s (run %d/%d) ...\n", c.Name, i, cfg.Runs)
+				t, err := retry(func() (eval.JudgeTally, error) { return eval.JudgeRun(c, &r, judge) })
+				if err != nil {
+					return err
+				}
+				judged.Pairs += t.Pairs
+				judged.Same += t.Same
+			}
 			runs = append(runs, r)
 		}
 		scored = append(scored, eval.ScoreRuns(c, runs))
 	}
 
 	rep := eval.BuildReport(scored, cfg)
+	if judgeClient != nil {
+		rep.Judge = &eval.JudgeSummary{Pairs: judged.Pairs, Same: judged.Same, Usage: judgeClient.UsageTotals()}
+	}
 	if baseline != nil {
 		// A REGRESSED verdict is printed for a person to read, never exited on:
 		// the exit code reports harness errors only (decision 59).
@@ -114,17 +210,19 @@ func run(corpusDir, caseName, baselinePath string, cfg eval.Config, jsonOut bool
 	return nil
 }
 
-// maxRunAttempts bounds the attempts at one run of one case. A second attempt
-// keeps one transient failure (a timeout, a malformed reply) from discarding
-// every run the eval already paid for; a second failure ends the eval.
+// maxRunAttempts bounds the attempts at one run of one case, and at judging
+// one run. A second attempt keeps one transient failure (a timeout, a
+// malformed reply) from discarding every run the eval already paid for; a
+// second failure ends the eval.
 const maxRunAttempts = 2
 
 // retry calls attempt until it succeeds or maxRunAttempts attempts have failed,
 // and returns the last attempt's error when none succeeded.
-func retry(attempt func() (eval.Run, error)) (eval.Run, error) {
+func retry[T any](attempt func() (T, error)) (T, error) {
+	var zero T
 	var err error
 	for n := 1; n <= maxRunAttempts; n++ {
-		var r eval.Run
+		var r T
 		if r, err = attempt(); err == nil {
 			return r, nil
 		}
@@ -132,7 +230,15 @@ func retry(attempt func() (eval.Run, error)) (eval.Run, error) {
 			fmt.Fprintf(os.Stderr, "planwerk-eval: %v; retrying\n", err)
 		}
 	}
-	return eval.Run{}, err
+	return zero, err
+}
+
+// judgeWith returns the eval.SameIntentFunc that asks client whether a
+// prediction raises the same concern as an AACR-Bench reference comment.
+func judgeWith(client *claude.Client) eval.SameIntentFunc {
+	return func(pred report.Finding, exp eval.ExpectedFinding) (bool, error) {
+		return client.JudgeSameIntent(claude.SameIntentPair{Path: exp.File, From: exp.Line, To: exp.LineEnd, Reference: exp.Comment, Finding: pred})
+	}
 }
 
 // loadCases loads the whole corpus, or a single case when caseName is set.
@@ -145,6 +251,33 @@ func loadCases(corpusDir, caseName string) ([]eval.Case, error) {
 		return []eval.Case{c}, nil
 	}
 	return eval.LoadCorpus(corpusDir)
+}
+
+// loadAACRCases loads the AACR-Bench export o names and returns the case
+// caseName names among all its candidates, or else o.sample of them
+// (eval.SampleAACR), with the report's record of what was scored.
+func loadAACRCases(o aacrOptions, caseName string) ([]eval.Case, *eval.AACRConfig, error) {
+	exp, err := eval.LoadAACR(o.export)
+	if err != nil {
+		return nil, nil, err
+	}
+	var cases []eval.Case
+	if caseName != "" {
+		c, err := eval.FindAACRCase(exp.Cases, caseName)
+		if err != nil {
+			return nil, nil, err
+		}
+		cases = []eval.Case{c}
+	} else {
+		cases = eval.SampleAACR(exp.Cases, o.sample)
+	}
+	return cases, &eval.AACRConfig{
+		Export:     filepath.Base(o.export),
+		SHA256:     exp.SHA256,
+		Sample:     len(cases),
+		Candidates: len(exp.Cases),
+		Judge:      o.judge,
+	}, nil
 }
 
 // The model and effort variables of each tier, named as the root command

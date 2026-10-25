@@ -16,9 +16,16 @@
 // the trees land in the throwaway repo as real .go files. Any file NOT ending in
 // .go.txt (e.g. a .sql migration) is copied verbatim.
 //
-// A case never ships a go.mod: the harness writes one into each throwaway
-// repo's base commit (ensureGoMod), so technology detection sees a Go
-// repository.
+// A case never ships a go.mod: the harness writes one into each corpus repo's
+// base commit (ensureGoMod), so technology detection sees a Go repository.
+//
+// # AACR-Bench
+//
+// A second case source, a downloaded AACR-Bench export (see aacr.go), builds
+// cases from real pull requests in real repositories, fetched into a cache
+// (aacr_repo.go). Their expected findings are the comments experts verified,
+// matched on line overlap alone or with a same-concern judgement (ScoreRun,
+// JudgeRun), and their repos never get the go.mod (decision 147).
 package eval
 
 import (
@@ -37,13 +44,19 @@ const expectedFileName = "expected.json"
 // report, over the lines [Line, LineEnd]; a LineEnd of 0 stands for Line alone.
 // A predicted finding matches it under the rules in score.go: same file, line
 // ranges within tolerance, and at least one keyword present in the predicted
-// text.
+// text. An AACR-Bench case's findings are matched on line overlap instead
+// (ScoreRun).
+//
+// Comment is the reference review comment an external benchmark labels, which
+// the -judge matcher compares a prediction against; the corpus leaves it
+// empty.
 type ExpectedFinding struct {
 	File     string   `json:"file"`
 	Line     int      `json:"line"`
 	LineEnd  int      `json:"line_end,omitempty"`
 	Severity string   `json:"severity"`
 	Keywords []string `json:"keywords"`
+	Comment  string   `json:"comment,omitempty"`
 }
 
 // Expected is the parsed expected.json for a corpus case. A clean case seeds no
@@ -55,12 +68,14 @@ type Expected struct {
 	Findings    []ExpectedFinding `json:"findings"`
 }
 
-// Case is a loaded, validated corpus case. Dir is the absolute path to the case
-// directory (which holds base/, head/, and expected.json).
+// Case is a loaded, validated case. Dir is the absolute path to a corpus
+// case's directory (which holds base/, head/, and expected.json). AACR is the
+// pull request of a case LoadAACR built, and nil for a corpus case.
 type Case struct {
 	Name     string
 	Dir      string
 	Expected Expected
+	AACR     *AACRSource
 }
 
 // LoadCorpus loads and validates every case directory directly under root,
