@@ -35,6 +35,8 @@ type LocalOptions struct {
 //     from the explicit ref (rejected when its owner/name != origin).
 //  4. `gh pr checkout <number>` to switch the working tree to the PR head.
 //  5. `git fetch origin <base>` so origin/<base> exists for the diff query.
+//  6. Pin HeadSHA to the checked-out commit (pinHead); a local branch
+//     carrying commits the PR does not have fails with ErrHeadMismatch.
 //
 // The returned PR has Local: true, so PR.Cleanup never deletes the cwd.
 func (c Client) OpenLocalPR(ref string, opts LocalOptions) (*PR, error) {
@@ -55,10 +57,18 @@ func (c Client) OpenLocalPR(ref string, opts LocalOptions) (*PR, error) {
 
 	pr := &PR{Owner: originOwner, Repo: originName, Dir: dir, Local: true}
 
+	// refresh re-reads the head with the query that read it first: the
+	// branch inference still resolves the same PR after the checkout, and
+	// origin's owner/name may not be the repository gh inferred.
+	var refresh func() (string, error)
 	if ref == "" {
 		meta, err := ghLocalPRView(dir)
 		if err != nil {
 			return nil, fmt.Errorf("no PR reference given and could not infer one from the current branch; pass an explicit PR reference: %w", err)
+		}
+		refresh = func() (string, error) {
+			m, err := ghLocalPRView(dir)
+			return m.HeadRefOid, err
 		}
 		pr.Number = meta.Number
 		pr.Title = meta.Title
@@ -79,6 +89,10 @@ func (c Client) OpenLocalPR(ref string, opts LocalOptions) (*PR, error) {
 		if err != nil {
 			return nil, fmt.Errorf("fetching PR metadata: %w", err)
 		}
+		refresh = func() (string, error) {
+			m, err := ghJSON(fmt.Sprintf("%s/%s", owner, repo), number)
+			return m.HeadRefOid, err
+		}
 		pr.Owner = owner
 		pr.Repo = repo
 		pr.Number = number
@@ -98,6 +112,11 @@ func (c Client) OpenLocalPR(ref string, opts LocalOptions) (*PR, error) {
 		return nil, err
 	}
 
+	// The working tree stays on the PR branch on a pin failure, as on the
+	// other post-checkout failures.
+	if err := pinHead(pr, refresh); err != nil {
+		return nil, err
+	}
 	changed, err := c.DiffNames(dir, pr.BaseBranch)
 	if err != nil {
 		slog.Warn("listing changed files failed; feature detection and specialist gating may be degraded", "err", err, "dir", dir, "base", pr.BaseBranch)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -23,13 +24,19 @@ const (
 	gitRemoteTimeout = 2 * time.Minute
 )
 
+// ErrHeadMismatch is returned when a pull request's checkout is not at the
+// head GitHub reports for it, even after pinHead re-read that head. Exported
+// so the CLI (and tests) can match against it with errors.Is, like
+// ErrOriginMismatch.
+var ErrHeadMismatch = errors.New("checkout is not at the pull request head")
+
 type PR struct {
 	Owner        string
 	Repo         string
 	Number       int
 	Title        string
 	Body         string
-	HeadSHA      string
+	HeadSHA      string   // commit checked out in Dir; pinHead verifies it against the head GitHub reports
 	BaseBranch   string   // base branch name (e.g. "main")
 	HeadBranch   string   // head branch name (e.g. "feature/CC-0042")
 	Dir          string   // local checkout directory (temp dir, caller must clean up)
@@ -134,7 +141,9 @@ func gitOutput(dir string, args ...string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// FetchAndCheckout retrieves PR metadata and checks out the PR locally into a temp directory.
+// FetchAndCheckout retrieves PR metadata and checks out the PR locally into a
+// temp directory, then pins HeadSHA to the checked-out commit (pinHead). On a
+// pin failure the temp directory is removed before the error is returned.
 func (c Client) FetchAndCheckout(ref string) (*PR, error) {
 	owner, repo, number, err := ParseRef(ref)
 	if err != nil {
@@ -166,6 +175,13 @@ func (c Client) FetchAndCheckout(ref string) (*PR, error) {
 		return nil, fmt.Errorf("checking out PR: %w", err)
 	}
 	pr.Dir = dir
+	if err := pinHead(pr, func() (string, error) {
+		m, err := ghJSON(fullName, number)
+		return m.HeadRefOid, err
+	}); err != nil {
+		_ = os.RemoveAll(dir)
+		return nil, fmt.Errorf("pinning the PR head: %w", err)
+	}
 	changed, err := c.DiffNames(dir, pr.BaseBranch)
 	if err != nil {
 		slog.Warn("listing changed files failed; feature detection and specialist gating may be degraded", "err", err, "dir", dir, "base", pr.BaseBranch)
@@ -173,6 +189,40 @@ func (c Client) FetchAndCheckout(ref string) (*PR, error) {
 	pr.ChangedFiles = changed
 
 	return pr, nil
+}
+
+// pinHead verifies that the commit checked out in pr.Dir is the pull
+// request's head and makes pr.HeadSHA name it. It compares `git rev-parse
+// HEAD` with pr.HeadSHA and calls refresh, at most once and only on a
+// mismatch, for the head GitHub reports now. When that names the checked-out
+// commit, the branch moved between the metadata read and the checkout:
+// pr.HeadSHA takes that commit and a warning logs both SHAs. When it does
+// not, the error wraps ErrHeadMismatch and, for a Local PR, names the
+// remedy. pr.HeadSHA is unchanged on every error (decision 130).
+func pinHead(pr *PR, refresh func() (string, error)) error {
+	head, err := gitOutput(pr.Dir, "rev-parse", "HEAD")
+	if err != nil {
+		return fmt.Errorf("resolving the checked-out head: %w", err)
+	}
+	if head == pr.HeadSHA {
+		return nil
+	}
+	current, err := refresh()
+	if err != nil {
+		return fmt.Errorf("re-reading the head of %s/%s#%d: %w", pr.Owner, pr.Repo, pr.Number, err)
+	}
+	if current != head {
+		if pr.Local {
+			return fmt.Errorf("%w: %s/%s#%d reports head %s, but the local checkout is at %s; if the branch carries commits the pull request does not have, push them or reset the branch to the pull request head with gh pr checkout --force %d; then re-run (or run without --local)",
+				ErrHeadMismatch, pr.Owner, pr.Repo, pr.Number, current, head, pr.Number)
+		}
+		return fmt.Errorf("%w: %s/%s#%d reports head %s, but the checkout is at %s; the branch may have moved again, re-run",
+			ErrHeadMismatch, pr.Owner, pr.Repo, pr.Number, current, head)
+	}
+	slog.Warn("pull request head moved between the metadata read and the checkout; using the checked-out commit",
+		"pr", fmt.Sprintf("%s/%s#%d", pr.Owner, pr.Repo, pr.Number), "reported", pr.HeadSHA, "head", head)
+	pr.HeadSHA = head
+	return nil
 }
 
 // DiffNames returns repo-relative paths of files changed between the base

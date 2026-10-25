@@ -134,7 +134,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	}
 	defer pr.Cleanup()
 
-	slog.Info("checked out PR", "dir", pr.Dir)
+	slog.Info("checked out PR", "dir", pr.Dir, "head", pr.HeadSHA)
 	if opts.Local {
 		slog.Info("working tree left on PR branch", "branch", pr.HeadBranch, "dir", pr.Dir)
 	}

@@ -38,7 +38,7 @@ the inline comments; see [Re-reviews](/reference/output-format#re-reviews).
 ## How it works
 
 1. **PR Input**: The tool receives a GitHub PR as input (URL or `owner/repo#number`).
-2. **Checkout**: The PR is checked out locally (diff between base and head). PR title and description are fetched for scope analysis.
+2. **Checkout**: The PR is checked out locally (diff between base and head). The checked-out commit is verified against the head GitHub reports: when the branch was pushed to during the clone, the newer commit is the one reviewed, cached, and named in the posted review (the data block's `commit_sha` and an inline review's `commit_id`). PR title and description are fetched for scope analysis.
 3. **Load Review Patterns**: Patterns are loaded from two sources:
    - the planwerk-agent pattern catalog, embedded in the binary (source: `internal/patterns/patterns/`)
    - `.planwerk/review_patterns/` in the target repository (repo-specific patterns)

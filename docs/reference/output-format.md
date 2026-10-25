@@ -192,6 +192,9 @@ for CI extraction, alongside the findings:
 }
 ```
 
+`commit_sha` is the commit the review checked out and read: the cache key names
+it, and an inline review is submitted against it as `commit_id`.
+
 `est_cost_usd` is the literal estimate Claude Code reports, summed across calls —
 not a recomputed tokens × price figure. `passes` carries the same six counters
 per pass, ordered as in the stderr breakdown and complete (never truncated); it

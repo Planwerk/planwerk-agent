@@ -32,7 +32,8 @@ request body the rewrite left stale.
 1. **Resolve the PR.** Without `--local` the PR head is cloned into a temp dir;
    with `--local` the command operates on the current checkout (see
    [Use local mode](/how-to/use-local-mode)). The dirty-tree gate and `--force`
-   apply in local mode.
+   apply in local mode. In both modes the checked-out commit must be the PR's
+   head; the fork point and the `--dry-run` restore are taken from it.
 2. **Fetch the base and pin the fork point.** The base branch (`--onto`,
    default `main`) is fetched fresh, and the PR's original merge-base is
    recorded before any rewrite.
