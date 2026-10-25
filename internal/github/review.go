@@ -30,13 +30,21 @@ type ReviewRequest struct {
 
 const reviewSignature = "<!-- planwerk-agent-inline -->"
 
+// botTypename is the GraphQL __typename of an actor that is an app's bot
+// account, such as the github-actions account an Actions token posts as.
+const botTypename = "Bot"
+
 // ReviewThreadComment is a single comment within a PR review thread, flattened
 // for the address command: the author login, the comment body, and when it was
 // created. The full chain is what Claude needs to understand the reviewer's ask.
 type ReviewThreadComment struct {
-	Author    string
-	Body      string
-	CreatedAt string
+	Author string
+	// AuthorIsBot is true when GitHub types the author as a Bot, as it does the
+	// github-actions account an Actions token posts under. Only an app can post
+	// as one.
+	AuthorIsBot bool
+	Body        string
+	CreatedAt   string
 	// ReviewID is the node ID of the pull request review the comment was
 	// posted in. It is empty when GitHub names no review.
 	ReviewID string
@@ -57,8 +65,18 @@ type ReviewThread struct {
 	ResolvedBy string
 	Path       string
 	Line       int
-	DiffHunk   string
-	Comments   []ReviewThreadComment
+	// OriginalLine and OriginalStartLine are the thread's last and first line
+	// on the commit its first comment was posted at, which stay put when a push
+	// makes the thread outdated. Either is 0 when GitHub returns null, as it
+	// does for the start line of a single-line thread.
+	OriginalLine      int
+	OriginalStartLine int
+	DiffHunk          string
+	// CommentCount is the number of comments the thread holds. Comments carries
+	// at most the first 100 of them, so a caller that must see the whole chain
+	// compares the two.
+	CommentCount int
+	Comments     []ReviewThreadComment
 }
 
 // reviewThreadsResponse is the GraphQL envelope returned by FetchReviewThreads
@@ -80,10 +98,16 @@ type reviewThreadsResponse struct {
 						ResolvedBy struct {
 							Login string `json:"login"`
 						} `json:"resolvedBy"`
-						Comments struct {
-							Nodes []struct {
+						// OriginalLine and OriginalStartLine stay 0 for a JSON
+						// null.
+						OriginalLine      int `json:"originalLine"`
+						OriginalStartLine int `json:"originalStartLine"`
+						Comments          struct {
+							TotalCount int `json:"totalCount"`
+							Nodes      []struct {
 								Author struct {
-									Login string `json:"login"`
+									Login    string `json:"login"`
+									Typename string `json:"__typename"`
 								} `json:"author"`
 								Body      string `json:"body"`
 								CreatedAt string `json:"createdAt"`
@@ -104,9 +128,10 @@ type reviewThreadsResponse struct {
 }
 
 // reviewThreadsQuery pages a PR's review threads, carrying each thread's
-// resolved/outdated status, the login of the user who resolved it, and its full
-// comment chain (with the anchored file, line, and diff hunk, and the review it
-// was posted in, on each comment).
+// resolved/outdated status, the login of the user who resolved it, its lines on
+// the commit it was posted at, its comment count, and its full comment chain
+// (with the author's type, the anchored file, line, and diff hunk, and the
+// review it was posted in, on each comment).
 const reviewThreadsQuery = `query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
@@ -117,8 +142,11 @@ const reviewThreadsQuery = `query($owner: String!, $name: String!, $number: Int!
           isResolved
           isOutdated
           resolvedBy { login }
+          originalLine
+          originalStartLine
           comments(first: 100) {
-            nodes { author { login } body createdAt path line diffHunk pullRequestReview { id } }
+            totalCount
+            nodes { author { login __typename } body createdAt path line diffHunk pullRequestReview { id } }
           }
         }
       }
@@ -129,9 +157,11 @@ const reviewThreadsQuery = `query($owner: String!, $name: String!, $number: Int!
 // FetchReviewThreads returns every review thread on the PR via the GitHub
 // GraphQL API, following pagination so a PR with more than 100 threads is fully
 // covered. Each thread carries its resolved/outdated status, who resolved it,
-// the full comment chain with the review each comment was posted in, and the
-// file/line/diff-hunk the thread is anchored to. Use FilterReviewThreads to drop resolved threads and the tool's own
-// findings, and IsOwnThread to keep only the latter.
+// its original lines and comment count, the first 100 comments of its chain
+// with the review each was posted in and whether a bot wrote it, and the
+// file/line/diff-hunk the thread is anchored to. Use FilterReviewThreads to
+// drop resolved threads and the tool's own findings, and IsOwnThread to keep
+// only the latter.
 func (Client) FetchReviewThreads(owner, repo string, number int) ([]ReviewThread, error) {
 	var all []ReviewThread
 	cursor := ""
@@ -194,17 +224,21 @@ func parseReviewThreads(raw []byte) (threads []ReviewThread, hasNextPage bool, e
 	rt := resp.Data.Repository.PullRequest.ReviewThreads
 	for _, n := range rt.Nodes {
 		t := ReviewThread{
-			ID:         n.ID,
-			IsResolved: n.IsResolved,
-			IsOutdated: n.IsOutdated,
-			ResolvedBy: n.ResolvedBy.Login,
+			ID:                n.ID,
+			IsResolved:        n.IsResolved,
+			IsOutdated:        n.IsOutdated,
+			ResolvedBy:        n.ResolvedBy.Login,
+			OriginalLine:      n.OriginalLine,
+			OriginalStartLine: n.OriginalStartLine,
+			CommentCount:      n.Comments.TotalCount,
 		}
 		for _, c := range n.Comments.Nodes {
 			t.Comments = append(t.Comments, ReviewThreadComment{
-				Author:    c.Author.Login,
-				Body:      c.Body,
-				CreatedAt: c.CreatedAt,
-				ReviewID:  c.PullRequestReview.ID,
+				Author:      c.Author.Login,
+				AuthorIsBot: c.Author.Typename == botTypename,
+				Body:        c.Body,
+				CreatedAt:   c.CreatedAt,
+				ReviewID:    c.PullRequestReview.ID,
 			})
 		}
 		if len(n.Comments.Nodes) > 0 {
@@ -250,6 +284,40 @@ func IsOwnThread(t ReviewThread) bool {
 	return len(t.Comments) > 0 && strings.Contains(t.Comments[0].Body, reviewSignature)
 }
 
+// integrationRefusal is the message GitHub refuses a request with when it
+// comes from a GitHub App's token, an Actions token among them.
+const integrationRefusal = "Resource not accessible by integration"
+
+// ErrViewerRefused is wrapped by ViewerLogin's error when GitHub refused the
+// lookup with integrationRefusal, which tells the caller the token is an app's
+// even though its login is unread. Any other failure says nothing about the
+// token. Exported so the review runner can match against it with errors.Is,
+// like ErrHeadMismatch (decision 133).
+var ErrViewerRefused = errors.New("login lookup refused to an app token")
+
+// ViewerLogin returns the login gh is authenticated as, read from the GraphQL
+// viewer. An app's installation token, such as an Actions token, may be
+// refused the lookup; the error then wraps ErrViewerRefused. Callers must
+// treat any other error as an unknown identity, which may be a personal
+// token's, and trust nothing on its account.
+func (Client) ViewerLogin() (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "gh", "api", "graphql",
+		"-f", "query=query { viewer { login } }",
+		"--jq", ".data.viewer.login",
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if strings.Contains(msg, integrationRefusal) {
+			return "", fmt.Errorf("gh api graphql (viewer): %s: %w: %w", msg, ErrViewerRefused, err)
+		}
+		return "", fmt.Errorf("gh api graphql (viewer): %s: %w", msg, err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 // signReviewComments returns a copy of comments with planwerk-agent's inline
 // signature appended to every body, leaving the input untouched. Splitting it
 // out of SubmitPRReview keeps the marker that FilterReviewThreads depends on
@@ -268,6 +336,10 @@ func signReviewComments(comments []ReviewComment) []ReviewComment {
 
 // SubmitPRReview creates a Pull Request Review with inline comments
 // using the GitHub REST API via gh.
+//
+// The review pipeline posts the summary through PostPRComment and calls this
+// only for a review with inline comments, or with the summary itself when that
+// comment failed (decision 133).
 //
 // The signature goes on the review body AND on every inline comment. Only the
 // latter is required: GitHub exposes an inline comment as a review thread

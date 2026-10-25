@@ -27,9 +27,13 @@ inputs:
     required: false
     default: '0'
   post-inline:
-    description: 'Post inline review comments via the GitHub Review API along with a summary comment. Ignored when format=json.'
+    description: 'Post findings as inline review comments via the GitHub Review API and keep one summary comment up to date. Ignored when format=json.'
     required: false
     default: 'true'
+  resolve-outdated:
+    description: 'Resolve the inline review threads earlier runs opened once GitHub marks them outdated, unless someone replied or a current finding still covers their lines (passes --resolve-outdated). Needs post-inline and a token with `contents: write`; without it the run logs a warning and the review still succeeds.'
+    required: false
+    default: 'false'
   thorough:
     description: 'Run the additional adversarial review pass.'
     required: false
@@ -55,7 +59,7 @@ inputs:
     required: false
     default: ''
   github-token:
-    description: 'Token used to fetch PR data and post review comments. Needs `pull-requests: write` and `contents: read`.'
+    description: 'Token used to fetch PR data and post review comments. Needs `pull-requests: write` and `contents: read` (`contents: write` with resolve-outdated).'
     required: false
     default: ${{ github.token }}
   anthropic-api-key:
@@ -149,6 +153,7 @@ runs:
         MIN_SEVERITY: ${{ inputs.min-severity }}
         MAX_FINDINGS: ${{ inputs.max-findings }}
         POST_INLINE: ${{ inputs.post-inline }}
+        RESOLVE_OUTDATED: ${{ inputs.resolve-outdated }}
         THOROUGH: ${{ inputs.thorough }}
         STRUCTURE_MODEL: ${{ inputs.structure-model }}
         STRUCTURE_EFFORT: ${{ inputs.structure-effort }}
@@ -188,7 +193,12 @@ runs:
             echo "post-inline=true is incompatible with format=json — skipping inline posting" >&2
           else
             args+=(--inline)
+            if [ "$RESOLVE_OUTDATED" = "true" ]; then
+              args+=(--resolve-outdated)
+            fi
           fi
+        elif [ "$RESOLVE_OUTDATED" = "true" ]; then
+          echo "resolve-outdated=true needs post-inline=true; skipping it" >&2
         fi
         if [ "$THOROUGH" = "true" ]; then
           args+=(--thorough)
@@ -220,6 +230,7 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token }}
+        DEFAULT_TOKEN: ${{ inputs.github-token == github.token }}
         PR_REF: ${{ inputs.pr-ref }}
       run: |
         set -euo pipefail
@@ -248,12 +259,34 @@ runs:
           exit 0
         fi
 
-        body=$(gh api "repos/$owner/$repo/pulls/$number/reviews" \
-          --jq 'map(select(.body and (.body | contains("planwerk-agent-data")))) | sort_by(.submitted_at) | last | (.body // "")')
-        if [ -z "$body" ]; then
-          body=$(gh api "repos/$owner/$repo/issues/$number/comments" \
-            --jq 'map(select(.body and (.body | contains("planwerk-agent-data")))) | sort_by(.created_at) | last | (.body // "")')
+        # The summary comment is edited on every run, so its updated_at is
+        # the last run's time. A review carries a data block only from before
+        # the summary moved into that comment, or when the comment could not
+        # be posted. Read both, every page, and take the newest. Only a post
+        # that opens with the report's heading, by the token's own account,
+        # a maintainer or, under the job's own token, the Actions bot counts,
+        # so a block another account pasted into a comment cannot set the
+        # counts. Every workflow posts as the Actions bot under the job's own
+        # token, so under any other token the tool's posts are never the
+        # bot's. GraphQL may name an app's account with or without the [bot]
+        # suffix REST gives it, so both forms match. When the login cannot be
+        # read, as GitHub may refuse it to an app's token, the other rules
+        # still apply.
+        bot=""
+        if [ "$DEFAULT_TOKEN" = "true" ]; then
+          bot="github-actions[bot]"
         fi
+        me=$(gh api graphql -f query='query { viewer { login } }' --jq .data.viewer.login 2>/dev/null || true)
+        if [ -z "$me" ]; then
+          echo "Could not read the token's login; counting only posts by ${bot:+$bot and }maintainers." >&2
+        fi
+        with_block='.[] | select(.body and (.body | startswith("# Review: ")) and (.body | contains("planwerk-agent-data")) and (($me != "" and (.user.login == $me or .user.login == ($me + "[bot]"))) or ($bot != "" and .user.login == $bot) or .author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR"))'
+        body=$( {
+          gh api --paginate "repos/$owner/$repo/pulls/$number/reviews" \
+            | jq --arg me "$me" --arg bot "$bot" "$with_block | {t: .submitted_at, body}"
+          gh api --paginate "repos/$owner/$repo/issues/$number/comments" \
+            | jq --arg me "$me" --arg bot "$bot" "$with_block | {t: .updated_at, body}"
+        } | jq -rs 'sort_by(.t) | last | (.body // "")' )
 
         json=$(printf '%s' "$body" | awk '/planwerk-agent-data/{flag=1; next} /-->/{flag=0} flag')
 

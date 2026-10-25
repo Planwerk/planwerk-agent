@@ -90,6 +90,20 @@ func TestFake_RecordsSuccessfulPostsOnly(t *testing.T) {
 	}
 }
 
+func TestFake_ViewerLoginScriptsValueAndError(t *testing.T) {
+	f := &Fake{Viewer: "octocat"}
+	if login, err := f.ViewerLogin(); err != nil || login != "octocat" {
+		t.Errorf("ViewerLogin = %q, %v; want octocat", login, err)
+	}
+	f.ViewerErr = errors.New("forbidden")
+	if login, err := f.ViewerLogin(); err == nil || login != "" {
+		t.Errorf("ViewerLogin = %q, %v; want the scripted error alone", login, err)
+	}
+	if calls := f.Calls("ViewerLogin"); len(calls) != 2 || calls[1].Err == nil {
+		t.Errorf("ViewerLogin calls = %+v, want two, the second failed", calls)
+	}
+}
+
 func TestFake_SequencesRepeatTheirLastEntry(t *testing.T) {
 	f := &Fake{HeadSHAs: []string{"a", "b"}, RebaseStates: []github.RebaseState{{Conflicted: true}}}
 	var got []string

@@ -53,6 +53,10 @@ func (c *evalGitHubClient) PostPRComment(string, string, int, string) (string, e
 	return "", nil
 }
 
+func (c *evalGitHubClient) AddPRComment(string, string, int, string) (string, error) {
+	return "", nil
+}
+
 func (c *evalGitHubClient) SubmitPRReview(string, string, int, string, string, []github.ReviewComment) (string, error) {
 	return "", nil
 }
@@ -66,6 +70,10 @@ func (c *evalGitHubClient) FetchReviewComment(string, string, int) (string, bool
 func (c *evalGitHubClient) FetchReviewThreads(string, string, int) ([]github.ReviewThread, error) {
 	return nil, nil
 }
+
+func (c *evalGitHubClient) ResolveReviewThread(string) error { return nil }
+
+func (c *evalGitHubClient) ViewerLogin() (string, error) { return "", nil }
 
 // RunOptions selects the review passes a case run adds to the primary review.
 // Thorough mirrors `review --thorough` (the adversarial pass) and Specialists

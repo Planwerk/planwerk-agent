@@ -54,9 +54,20 @@ var truncationNotice = fmt.Sprintf(
 	maxCommentLen,
 )
 
-// PostPRComment posts a comment on a GitHub pull request via the gh CLI.
-// It detects and replaces any previous planwerk-agent comment on the same PR.
-// Bodies exceeding maxCommentLen are truncated.
+// PostPRComment posts a comment on a GitHub pull request via the gh CLI and
+// returns its URL. It replaces the most recent comment on the PR that opens
+// with reportHeading, carries commentSignature, and that the authenticated gh
+// user wrote, and creates one when there is none, so a PR holds one such
+// comment however often it is reviewed (decision 12). Bodies exceeding
+// maxCommentLen are truncated.
+//
+// That comment is the review summary of both --post-review and --inline, with
+// the data block a re-review reads (decision 133), so body must be the
+// Markdown report: one that opens with anything else is never found again,
+// and each call would post a new comment. PostPRComment is the only
+// poster that signs with commentSignature: a second one would overwrite the
+// summary and its data block, which is why the capture pass posts through
+// AddPRComment.
 func (Client) PostPRComment(owner, repo string, number int, body string) (string, error) {
 	fullName := fmt.Sprintf("%s/%s", owner, repo)
 	body = truncateComment(body + "\n" + commentSignature)
@@ -92,8 +103,10 @@ func (Client) PostPRComment(owner, repo string, number int, body string) (string
 // quoting. Unlike PostPRComment it carries no planwerk-agent signature and
 // never replaces a prior comment: each call appends a fresh comment. The fix
 // loop uses it to record one comment per pushed fix iteration, so the history
-// of what each follow-up commit changed survives on the PR. (`gh issue
-// comment` rejects PR numbers, so the fix path cannot reuse AddIssueComment.)
+// of what each follow-up commit changed survives on the PR, and the review's
+// capture pass posts its proposals with it, beside the summary comment. (`gh
+// issue comment` rejects PR numbers, so the fix path cannot reuse
+// AddIssueComment.)
 func (Client) AddPRComment(owner, repo string, number int, body string) (string, error) {
 	fullName := fmt.Sprintf("%s/%s", owner, repo)
 	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
@@ -179,13 +192,16 @@ func truncateComment(body string) string {
 	return body[:cutPoint] + suffix
 }
 
+// ghComment is a PR comment as `gh pr view --json comments` returns it, with
+// the fields fetchExistingComment selects on.
 type ghComment struct {
-	ID   string `json:"id"`
-	Body string `json:"body"`
+	ID              string `json:"id"`
+	Body            string `json:"body"`
+	ViewerDidAuthor bool   `json:"viewerDidAuthor"`
 }
 
 // findExistingComment returns the node ID of the prior planwerk-agent comment
-// on the PR, or "" when none exists.
+// on the PR that the authenticated gh user wrote, or "" when none exists.
 func findExistingComment(repo string, number int) (string, error) {
 	c, err := fetchExistingComment(repo, number)
 	if err != nil {
@@ -232,7 +248,8 @@ type postedBody struct {
 
 // carriesDataBlock reports whether body is a signed planwerk-agent post that
 // carries a data block: it opens with reportHeading and holds a signature and
-// the marker. The capture pass's proposals comment is signed but carries none.
+// the marker. The capture pass's proposals comment carries none; it was signed
+// while the pass posted it through PostPRComment.
 func carriesDataBlock(body string) bool {
 	return strings.HasPrefix(body, reportHeading) &&
 		strings.Contains(body, dataBlockMarker) &&
@@ -343,47 +360,62 @@ func latestDataBlockBody(raw []byte) (body string, found bool, err error) {
 }
 
 // fetchExistingComment is PostPRComment's lookup, through findExistingComment,
-// of the comment it replaces: the most recent planwerk-agent comment (id and
-// body) on the PR, or a zero ghComment when none is found.
+// of the comment it replaces: the most recent comment on the PR that opens with
+// reportHeading, carries commentSignature, and that the authenticated gh user
+// wrote, or a zero ghComment when none is found. A signed comment from any
+// other account is passed over, so the summary is never written into a comment
+// someone else controls, and so is one of the account's own that opens with
+// other text, as another workflow's comment under the same Actions token can;
+// FetchReviewComment applies the same checks to the data block it reads back
+// (decisions 128 and 133).
 func fetchExistingComment(repo string, number int) (ghComment, error) {
 	args := []string{"pr", "view", strconv.Itoa(number),
 		"--repo", repo,
 		"--json", "comments",
-		"--jq", `.comments[] | select(.body | contains("` + commentSignature + `")) | {id, body}`,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "gh", args...)
-	out, err := cmd.CombinedOutput()
+	out, err := cmd.Output()
 	if err != nil {
-		return ghComment{}, fmt.Errorf("gh pr view comments: %s: %w", strings.TrimSpace(string(out)), err)
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return ghComment{}, fmt.Errorf("gh pr view comments: %s: %w", strings.TrimSpace(string(exitErr.Stderr)), err)
+		}
+		return ghComment{}, fmt.Errorf("gh pr view comments: %w", err)
 	}
-
-	output := strings.TrimSpace(string(out))
-	if output == "" {
-		return ghComment{}, nil
+	c, err := latestOwnSignedComment(out)
+	if err != nil {
+		return ghComment{}, fmt.Errorf("parsing comments of %s#%d: %w", repo, number, err)
 	}
+	return c, nil
+}
 
-	// Take the last matching comment (most recent).
+// latestOwnSignedComment decodes a `gh pr view --json comments` response and
+// returns the last comment, the most recent one, that opens with reportHeading,
+// carries commentSignature, and that the authenticated gh user wrote, or a zero
+// ghComment when none does. It is pure so the selection is unit-testable
+// without gh.
+func latestOwnSignedComment(raw []byte) (ghComment, error) {
+	var resp struct {
+		Comments []ghComment `json:"comments"`
+	}
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return ghComment{}, fmt.Errorf("decoding comments: %w", err)
+	}
 	var last ghComment
-	for _, line := range strings.Split(output, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
+	for _, c := range resp.Comments {
+		if c.ViewerDidAuthor && strings.HasPrefix(c.Body, reportHeading) && strings.Contains(c.Body, commentSignature) {
+			last = c
 		}
-		var c ghComment
-		if err := json.Unmarshal([]byte(line), &c); err != nil {
-			continue
-		}
-		last = c
 	}
-
 	return last, nil
 }
 
-// editComment updates an existing comment by its node ID.
-// Uses GraphQL variables to avoid injection via commentID or body.
+// editComment updates an existing comment by its node ID and returns the
+// comment's URL (parseUpdatedCommentURL). Uses GraphQL variables to avoid
+// injection via commentID or body.
 func editComment(repo, commentID, body string) (string, error) {
 	query := `mutation($id: ID!, $body: String!) { updateIssueComment(input: {id: $id, body: $body}) { issueComment { url } } }`
 
@@ -399,5 +431,25 @@ func editComment(repo, commentID, body string) (string, error) {
 		return "", fmt.Errorf("gh api graphql (update comment): %s: %w", strings.TrimSpace(string(out)), err)
 	}
 
-	return strings.TrimSpace(string(out)), nil
+	return parseUpdatedCommentURL(out), nil
+}
+
+// parseUpdatedCommentURL returns the comment URL of an updateIssueComment
+// response, so an edited summary comment reports a link as a created one does.
+// It falls back to the trimmed raw output when that does not decode or names
+// no URL.
+func parseUpdatedCommentURL(out []byte) string {
+	var resp struct {
+		Data struct {
+			UpdateIssueComment struct {
+				IssueComment struct {
+					URL string `json:"url"`
+				} `json:"issueComment"`
+			} `json:"updateIssueComment"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(out, &resp); err != nil || resp.Data.UpdateIssueComment.IssueComment.URL == "" {
+		return strings.TrimSpace(string(out))
+	}
+	return resp.Data.UpdateIssueComment.IssueComment.URL
 }

@@ -158,9 +158,10 @@ accumulate together. At most eight rows are
 shown; the rest are summed into a trailing `+N further passes` line, so the
 breakdown always accounts for the whole run.
 
-When a review is posted (`--post-review` / `--inline`), the same totals are
-embedded in the `<!-- planwerk-agent-data ... -->` comment as a `usage` object
-for CI extraction, alongside the findings:
+When a review is posted, the same totals are embedded as a `usage` object in
+the `<!-- planwerk-agent-data ... -->` block of the summary comment that both
+`--post-review` and `--inline` post, alongside the findings, for CI
+extraction:
 
 ```json
 {
@@ -260,7 +261,7 @@ check-jsonschema --schemafile report-result.schema.json review.json
 ## Inline Review Mode (`--inline`)
 
 With `--inline`, findings are posted as inline comments on the PR using the
-GitHub Review API instead of (or in addition to) a single summary comment:
+GitHub Review API, beside the summary comment `--post-review` posts:
 
 - Each finding that maps to a line in the PR diff becomes an inline comment on
   that line, when the summary lists it in a severity section. A finding below
@@ -277,9 +278,64 @@ GitHub Review API instead of (or in addition to) a single summary comment:
   resolved thread to its finding (see [Re-reviews](#re-reviews)), and
   `<!-- planwerk-agent-inline -->`, by which `address` skips the tool's own
   threads
-- Findings that cannot be mapped to diff lines are included in the review summary body
+- The summary comment carries the whole report, the findings that do not map
+  to a diff line among them, and the `<!-- planwerk-agent-data ... -->` block.
+  It is the same single comment `--post-review` posts, edited in place on every
+  run, so a pull request reviewed ten times has one summary. Only a comment the
+  authenticated `gh` account wrote that opens with the report's `# Review:`
+  heading is edited. A signed comment from another account, or one of its own
+  that opens with other text, as another workflow's comment under the same
+  Actions token can, is left alone, and a new summary comment is posted
+  instead.
+- A run adds a review only when it has inline comments to post. The review's
+  body names the comment count and the head commit and links the summary
+  comment.
+- When the summary comment cannot be posted, the review carries the summary
+  and the data block instead, and is posted even without inline comments.
+  When the review cannot be posted, the summary comment already holds every
+  finding, and the run succeeds.
 - The PR diff is fetched and parsed to validate that finding lines are within the diff (right side)
 - Implies `--post-review`
+
+### Resolving outdated threads
+
+With `--resolve-outdated` (the GitHub Action's `resolve-outdated` input),
+an `--inline` run resolves, after posting, the inline threads earlier runs
+opened that a later push made stale. It is off by default and refused without
+`--inline`. It resolves a thread only when all of these hold:
+
+- GitHub marks the thread outdated, and it is not resolved yet.
+- Its first comment carries the inline signature and was posted by the
+  account `gh` is authenticated as, or by a bot account when GitHub refuses
+  to name that account to a GitHub App's token (an Actions token may refuse
+  the lookup). A run under a personal token therefore resolves only the
+  threads that token's runs opened. When the account cannot be read for any
+  other reason, such as a timeout, the run logs a warning and resolves
+  nothing.
+- It holds no other comment. planwerk-agent never replies in a thread it
+  opened, so any reply keeps the thread open, and so does a thread with more
+  comments than the 100 the lookup reads.
+- Its original line, on the commit it was posted at, is known.
+- No finding of the current run on the same file shares a line with the
+  thread's original lines, counting the findings the report or the inline
+  comments leave out. A current finding that names the file without a line
+  keeps every thread on that file open. A finding without a file keeps nothing
+  open.
+
+It resolves at most 50 threads per run, one at a time, a second apart; the rest
+wait for the next run. A thread it resolves never dismisses its finding on a
+later run (see [Re-reviews](#re-reviews)): the account that resolved it is the
+one that posted it, or GitHub names none.
+
+Resolving needs write access to the repository, `contents: write` for an
+Actions token. When GitHub refuses a resolve, the run logs a warning, stops
+resolving for this run, and the review still succeeds.
+
+Each resolved thread is logged at info level with its file and original line.
+Each thread kept open is logged at debug level (`-v`) with its reason
+(`partial_view`, `not_ours`, `unverified_author`, `replied`,
+`unlocatable_path`, `no_line`, or `overlap`), and a closing info line counts the
+threads checked, the candidates, those resolved, and the kept-open reasons.
 
 ## Re-reviews
 

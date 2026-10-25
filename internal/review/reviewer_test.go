@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/planwerk/planwerk-agent/internal/claude"
 	"github.com/planwerk/planwerk-agent/internal/github"
@@ -193,23 +194,10 @@ index abc..def 100644
  }
 `
 
-func TestRenderResult_InlineReview(t *testing.T) {
-	t.Parallel()
-
-	var submittedBody string
-	var submittedComments []github.ReviewComment
-	gh := &githubtest.Fake{
-		SubmitPRReviewFn: func(owner, repo string, number int, commitSHA, body string, comments []github.ReviewComment) (string, error) {
-			submittedBody = body
-			submittedComments = comments
-			return "https://github.com/test/repo/pull/1#discussion_r123", nil
-		},
-		FetchDiffFn: func(owner, repo string, number int) (string, error) {
-			return inlineTestDiff, nil
-		},
-	}
-
-	result := &report.ReviewResult{
+// inlineTestResult holds one finding on a right-side line of inlineTestDiff
+// and one outside the diff.
+func inlineTestResult() *report.ReviewResult {
+	return &report.ReviewResult{
 		Summary: "Test review",
 		Findings: []report.Finding{
 			{
@@ -235,83 +223,325 @@ func TestRenderResult_InlineReview(t *testing.T) {
 			},
 		},
 	}
-	pr := &github.PR{Owner: "test", Repo: "repo", Number: 1, Title: "Test PR", HeadSHA: "abc123"}
-	opts := Options{
+}
+
+// testSummaryURL and testReviewURL are the URLs the fakes answer a posted
+// summary comment and a submitted review with.
+const (
+	testSummaryURL = "https://github.com/test/repo/pull/1#issuecomment-1"
+	testReviewURL  = "https://github.com/test/repo/pull/1#pullrequestreview-1"
+)
+
+// inlineTestHeadSHA is the head commit inlineTestPR is posted at.
+const inlineTestHeadSHA = "abc123"
+
+// inlineTestPR is the pull request the inline tests post on.
+func inlineTestPR() *github.PR {
+	return &github.PR{Owner: "test", Repo: "repo", Number: 1, Title: "Test PR", HeadSHA: inlineTestHeadSHA}
+}
+
+// inlineTestOpts are the Options of an --inline run.
+func inlineTestOpts() Options {
+	return Options{
 		Format:       "markdown",
 		MinSeverity:  report.SeverityInfo,
 		Version:      "test",
 		PostReview:   true,
 		InlineReview: true,
 	}
+}
+
+// TestRenderResult_InlineReview: the report and its data block go into the
+// summary comment, and the review carries only the inline comments and a body
+// that names their count and the head commit and links that comment (decision
+// 133).
+func TestRenderResult_InlineReview(t *testing.T) {
+	t.Parallel()
+
+	const summaryURL = "https://github.com/test/repo/pull/1#issuecomment-123"
+	var (
+		summary, submittedBody string
+		submittedComments      []github.ReviewComment
+		posts                  []string
+	)
+	gh := &githubtest.Fake{
+		PostPRCommentFn: func(owner, repo string, number int, body string) (string, error) {
+			posts = append(posts, "PostPRComment")
+			summary = body
+			return summaryURL, nil
+		},
+		SubmitPRReviewFn: func(owner, repo string, number int, commitSHA, body string, comments []github.ReviewComment) (string, error) {
+			posts = append(posts, "SubmitPRReview")
+			submittedBody = body
+			submittedComments = comments
+			return testReviewURL, nil
+		},
+		FetchDiffFn: func(owner, repo string, number int) (string, error) {
+			return inlineTestDiff, nil
+		},
+	}
+	pr := inlineTestPR()
 
 	var out bytes.Buffer
-	if err := newTestRunner(gh).renderResult(&out, result, pr, opts, nil); err != nil {
+	if err := newTestRunner(gh).renderResult(&out, inlineTestResult(), pr, inlineTestOpts(), nil); err != nil {
 		t.Fatalf("renderResult returned error: %v", err)
 	}
 
-	if submittedBody == "" {
-		t.Error("expected inline review to be submitted")
+	if !strings.HasPrefix(summary, out.String()) {
+		t.Errorf("summary comment does not start with the report:\n%s", summary)
+	}
+	if sha, findings, ok := report.ParseDataBlock(summary); !ok || sha != inlineTestHeadSHA || len(findings) != 2 {
+		t.Errorf("summary data block = %q, %d findings (ok=%v); want abc123 and both findings", sha, len(findings), ok)
 	}
 
-	// Only the finding in the diff should become an inline comment
-	if len(submittedComments) != 1 {
-		t.Fatalf("expected 1 inline comment, got %d", len(submittedComments))
+	// Only the finding in the diff becomes an inline comment.
+	if len(submittedComments) != 1 || submittedComments[0].Path != "main.go" {
+		t.Fatalf("inline comments = %+v, want one on main.go", submittedComments)
 	}
-	if submittedComments[0].Path != "main.go" {
-		t.Errorf("inline comment path = %q, want %q", submittedComments[0].Path, "main.go")
+	for _, want := range []string{"1 inline comment(s) at " + inlineTestHeadSHA, "(" + summaryURL + ")"} {
+		if !strings.Contains(submittedBody, want) {
+			t.Errorf("review body %q lacks %q", submittedBody, want)
+		}
 	}
-
-	// Data block should be in the body
-	if !strings.Contains(submittedBody, "planwerk-agent-data") {
-		t.Error("submitted body should contain data block")
+	if strings.Contains(submittedBody, "planwerk-agent-data") || strings.Contains(submittedBody, "Issue outside diff") {
+		t.Errorf("review body repeats the summary:\n%s", submittedBody)
+	}
+	// The summary goes first, so on a first run it sits above the review.
+	if want := []string{"PostPRComment", "SubmitPRReview"}; !slices.Equal(posts, want) {
+		t.Errorf("posts = %v, want %v", posts, want)
 	}
 }
 
-func TestRenderResult_InlineReviewFallback(t *testing.T) {
+// TestRenderResult_InlineReviewWithoutInlineCommentsPostsNoReview: a run with
+// nothing to place on the diff updates the summary comment and posts no
+// review, so re-reviews do not pile up summaries. A diff that cannot be
+// fetched places nothing either.
+func TestRenderResult_InlineReviewWithoutInlineCommentsPostsNoReview(t *testing.T) {
 	t.Parallel()
 
-	var postedBody string
+	for _, tc := range []struct {
+		name    string
+		diff    string
+		diffErr error
+	}{
+		{name: "every finding outside the diff", diff: "diff --git a/x.go b/x.go\n--- a/x.go\n+++ b/x.go\n@@ -1 +1 @@\n-a\n+b\n"},
+		{name: "the diff cannot be fetched", diffErr: &mockError{"HTTP 502"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			gh := &githubtest.Fake{
+				FetchDiffFn: func(owner, repo string, number int) (string, error) { return tc.diff, tc.diffErr },
+			}
+			pr := inlineTestPR()
+			if err := newTestRunner(gh).renderResult(&bytes.Buffer{}, inlineTestResult(), pr, inlineTestOpts(), nil); err != nil {
+				t.Fatalf("renderResult returned error: %v", err)
+			}
+			if n := gh.Count("SubmitPRReview"); n != 0 {
+				t.Errorf("SubmitPRReview calls = %d, want 0", n)
+			}
+			if n := gh.Count("PostPRComment"); n != 1 {
+				t.Errorf("PostPRComment calls = %d, want 1", n)
+			}
+		})
+	}
+}
+
+// TestRenderResult_InlineReviewFailureKeepsTheSummary: when the review is
+// refused, the summary comment already holds every finding and its data block,
+// so the run succeeds without posting the summary a second time.
+func TestRenderResult_InlineReviewFailureKeepsTheSummary(t *testing.T) {
+	t.Parallel()
+
 	gh := &githubtest.Fake{
-		PostPRCommentFn: func(owner, repo string, number int, body string) (string, error) {
-			postedBody = body
-			return "https://github.com/test/repo/pull/1#issuecomment-456", nil
-		},
 		SubmitPRReviewFn: func(owner, repo string, number int, commitSHA, body string, comments []github.ReviewComment) (string, error) {
 			return "", &mockError{"API error"}
 		},
 		FetchDiffFn: func(owner, repo string, number int) (string, error) {
-			return "", nil
+			return inlineTestDiff, nil
 		},
 	}
+	pr := inlineTestPR()
 
-	result := &report.ReviewResult{Summary: "Test", Findings: []report.Finding{
-		{ID: "W-001", Title: "Unmapped", File: "main.go", Line: 3, Severity: report.SeverityWarning, Problem: "p", Action: "a"},
-	}}
-	pr := &github.PR{Owner: "test", Repo: "repo", Number: 1, Title: "Test PR", HeadSHA: "abc123"}
-	opts := Options{
-		Format:       "markdown",
-		MinSeverity:  report.SeverityInfo,
-		Version:      "test",
-		PostReview:   true,
-		InlineReview: true,
-	}
-
-	var out bytes.Buffer
-	if err := newTestRunner(gh).renderResult(&out, result, pr, opts, nil); err != nil {
+	if err := newTestRunner(gh).renderResult(&bytes.Buffer{}, inlineTestResult(), pr, inlineTestOpts(), nil); err != nil {
 		t.Fatalf("renderResult returned error: %v", err)
 	}
+	if n := gh.Count("SubmitPRReview"); n != 1 {
+		t.Errorf("SubmitPRReview calls = %d, want 1", n)
+	}
+	comments := gh.Comments()
+	if len(comments) != 1 {
+		t.Fatalf("posted comments = %d, want the summary once", len(comments))
+	}
+	sha, findings, ok := report.ParseDataBlock(comments[0])
+	if !ok || sha != inlineTestHeadSHA || len(findings) != 2 {
+		t.Errorf("summary data block = %q, %d findings (ok=%v); want abc123 and both findings", sha, len(findings), ok)
+	}
+}
 
-	if postedBody == "" {
-		t.Fatal("expected fallback to PR comment after inline review failure")
+// TestRenderResult_InlineSummaryFailureMovesTheSummaryIntoTheReview: when the
+// summary comment is refused, the review carries the report and the data
+// block, as an inline review did before the summary moved, so the next
+// re-review still finds this run's findings.
+func TestRenderResult_InlineSummaryFailureMovesTheSummaryIntoTheReview(t *testing.T) {
+	t.Parallel()
+
+	var submittedBody string
+	gh := &githubtest.Fake{
+		CommentErr: &mockError{"comments disabled"},
+		SubmitPRReviewFn: func(owner, repo string, number int, commitSHA, body string, comments []github.ReviewComment) (string, error) {
+			submittedBody = body
+			return testReviewURL, nil
+		},
+		FetchDiffFn: func(owner, repo string, number int) (string, error) {
+			return inlineTestDiff, nil
+		},
 	}
-	// The fallback carries the data block the inline review would have, so the
-	// next re-review still finds this run's findings.
-	if !strings.Contains(postedBody, "planwerk-agent-data") {
-		t.Fatalf("fallback comment carries no data block:\n%s", postedBody)
+	pr := inlineTestPR()
+
+	var out bytes.Buffer
+	if err := newTestRunner(gh).renderResult(&out, inlineTestResult(), pr, inlineTestOpts(), nil); err != nil {
+		t.Fatalf("renderResult returned error: %v", err)
 	}
-	sha, findings, ok := report.ParseDataBlock(postedBody)
-	if !ok || sha != "abc123" || len(findings) != 1 || findings[0].Title != "Unmapped" {
-		t.Errorf("fallback data block = %q, %+v, %v; want the head SHA and the run's finding", sha, findings, ok)
+	if !strings.HasPrefix(submittedBody, out.String()) {
+		t.Errorf("review body does not start with the report:\n%s", submittedBody)
+	}
+	if sha, findings, ok := report.ParseDataBlock(submittedBody); !ok || sha != inlineTestHeadSHA || len(findings) != 2 {
+		t.Errorf("review data block = %q, %d findings (ok=%v); want abc123 and both findings", sha, len(findings), ok)
+	}
+}
+
+// TestRenderResult_InlineBothPostsFailReturnsError: the run fails only when
+// neither the summary comment nor the review reached the PR, and the error
+// names both.
+func TestRenderResult_InlineBothPostsFailReturnsError(t *testing.T) {
+	t.Parallel()
+
+	gh := &githubtest.Fake{
+		CommentErr: &mockError{"comments disabled"},
+		SubmitPRReviewFn: func(owner, repo string, number int, commitSHA, body string, comments []github.ReviewComment) (string, error) {
+			return "", &mockError{"reviews disabled"}
+		},
+		FetchDiffFn: func(owner, repo string, number int) (string, error) {
+			return inlineTestDiff, nil
+		},
+	}
+	pr := inlineTestPR()
+
+	err := newTestRunner(gh).renderResult(&bytes.Buffer{}, inlineTestResult(), pr, inlineTestOpts(), nil)
+	if err == nil {
+		t.Fatal("expected an error when both posts fail")
+	}
+	for _, want := range []string{"summary comment: comments disabled", "review: reviews disabled"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q lacks %q", err, want)
+		}
+	}
+}
+
+// TestInlineReviewBody links the summary comment only by an https URL without
+// whitespace, and names it otherwise.
+func TestInlineReviewBody(t *testing.T) {
+	t.Parallel()
+
+	const sha = "0123456789abcdef0123456789abcdef01234567"
+	for _, tc := range []struct {
+		name, url, want string
+	}{
+		{
+			name: "https URL",
+			url:  "https://github.com/o/r/pull/1#issuecomment-5",
+			want: "planwerk-agent posted 3 inline comment(s) at 0123456. The summary and every finding are in [the planwerk-agent comment](https://github.com/o/r/pull/1#issuecomment-5).",
+		},
+		{
+			name: "not a URL",
+			url:  `{"data":{}}`,
+			want: "planwerk-agent posted 3 inline comment(s) at 0123456. The summary and every finding are in the planwerk-agent comment on this pull request.",
+		},
+		{
+			name: "URL followed by text",
+			url:  "https://github.com/o/r/pull/1#issuecomment-5 (edited)",
+			want: "planwerk-agent posted 3 inline comment(s) at 0123456. The summary and every finding are in the planwerk-agent comment on this pull request.",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := inlineReviewBody(3, sha, tc.url); got != tc.want {
+				t.Errorf("inlineReviewBody =\n%s\nwant\n%s", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestRenderResult_ResolveOutdatedOffByDefault: an --inline run without
+// --resolve-outdated resolves nothing and never reads the login, even with a
+// thread every guard would let go. It counts resolves rather than thread
+// reads, because the suppression reads the threads anyway.
+func TestRenderResult_ResolveOutdatedOffByDefault(t *testing.T) {
+	t.Parallel()
+
+	gh := &githubtest.Fake{
+		Threads:     []github.ReviewThread{botThread("RT_1", "gone.go", 5, 5)},
+		Viewer:      "planwerk-bot",
+		FetchDiffFn: func(owner, repo string, number int) (string, error) { return inlineTestDiff, nil },
+	}
+	pr := inlineTestPR()
+	if err := newTestRunner(gh).renderResult(&bytes.Buffer{}, inlineTestResult(), pr, inlineTestOpts(), nil); err != nil {
+		t.Fatalf("renderResult returned error: %v", err)
+	}
+	if n := gh.Count("ResolveReviewThread"); n != 0 {
+		t.Errorf("ResolveReviewThread calls = %d, want 0", n)
+	}
+	if n := gh.Count("ViewerLogin"); n != 0 {
+		t.Errorf("ViewerLogin calls = %d, want 0", n)
+	}
+}
+
+// TestRenderResult_ResolveOutdatedReusesTheSuppressionThreads: with
+// --resolve-outdated the run resolves from the threads the suppression already
+// read, with one read in all, and checks them against the full result: a
+// finding the suppression left out still keeps its thread open.
+func TestRenderResult_ResolveOutdatedReusesTheSuppressionThreads(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "kept.go"), []byte("package x\n\nfunc f() {\n\tdefer f.Close()\n}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// A maintainer resolved dismissed's thread, so the suppression leaves it
+	// out of the report; its old outdated thread on kept.go:4 must stay open.
+	dismissed := report.Finding{
+		ID: "W-001", Severity: report.SeverityWarning, Confidence: report.ConfidenceVerified,
+		Title: "Unchecked Close", File: "kept.go", Line: 4, CodeSnippet: "defer f.Close()", Problem: "p", Action: "a",
+	}
+	gh := &githubtest.Fake{
+		Threads: []github.ReviewThread{
+			ownThread(dismissed, "github-actions", true, "maintainer"),
+			botThread("RT_kept", "kept.go", 3, 4),
+			botThread("RT_gone", "gone.go", 5, 5),
+		},
+		Viewer:      "github-actions[bot]",
+		FetchDiffFn: func(owner, repo string, number int) (string, error) { return inlineTestDiff, nil },
+	}
+	runner := newTestRunner(gh)
+	runner.Pause = func(time.Duration) {}
+	pr := inlineTestPR()
+	pr.Dir = dir
+	opts := inlineTestOpts()
+	opts.ResolveOutdated = true
+
+	var out bytes.Buffer
+	if err := runner.renderResult(&out, &report.ReviewResult{Summary: "S", Findings: []report.Finding{dismissed}}, pr, opts, nil); err != nil {
+		t.Fatalf("renderResult returned error: %v", err)
+	}
+	if !strings.Contains(out.String(), "inline thread was resolved") {
+		t.Fatalf("the suppression did not dismiss W-001:\n%s", out.String())
+	}
+	if got := gh.Resolved(); !slices.Equal(got, []string{"RT_gone"}) {
+		t.Errorf("resolved = %v, want [RT_gone]", got)
+	}
+	if n := gh.Count("FetchReviewThreads"); n != 1 {
+		t.Errorf("FetchReviewThreads calls = %d, want 1", n)
 	}
 }
 
@@ -330,7 +560,8 @@ func inlineCommentIDs(comments []github.ReviewComment) []string {
 // only on the findings the summary lists in a severity section (decision 129).
 // A finding below --min-severity or --min-confidence is in no section and gets
 // no comment; an Unverified one stays in the summary's Unverified section and
-// gets none either. The data block keeps every finding for the next re-review.
+// gets none either. The summary comment's data block keeps every finding for
+// the next re-review.
 func TestRenderResult_InlineReviewAppliesReportFilters(t *testing.T) {
 	t.Parallel()
 
@@ -396,11 +627,14 @@ func TestRenderResult_InlineReviewAppliesReportFilters(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			var submittedBody string
+			var summary string
 			var submittedComments []github.ReviewComment
 			gh := &githubtest.Fake{
+				PostPRCommentFn: func(owner, repo string, number int, body string) (string, error) {
+					summary = body
+					return testSummaryURL, nil
+				},
 				SubmitPRReviewFn: func(owner, repo string, number int, commitSHA, body string, comments []github.ReviewComment) (string, error) {
-					submittedBody = body
 					submittedComments = comments
 					return "https://github.com/test/repo/pull/1#discussion_r123", nil
 				},
@@ -428,8 +662,8 @@ func TestRenderResult_InlineReviewAppliesReportFilters(t *testing.T) {
 				t.Errorf("inline comment IDs = %v, want %v", got, tc.wantInline)
 			}
 
-			// Assert on stdout, not on the review body: the data block's JSON
-			// names every finding.
+			// Assert on stdout, not on the summary comment: the data block's
+			// JSON names every finding.
 			stdout := out.String()
 			if len(tc.wantUnverified) > 0 {
 				header := fmt.Sprintf("## Unverified / Low-Confidence (%d)", len(tc.wantUnverified))
@@ -449,7 +683,7 @@ func TestRenderResult_InlineReviewAppliesReportFilters(t *testing.T) {
 				}
 			}
 
-			_, prior, ok := report.ParseDataBlock(submittedBody)
+			_, prior, ok := report.ParseDataBlock(summary)
 			if !ok || len(prior) != len(tc.findings) {
 				t.Errorf("data block = %d findings (ok=%v), want all %d", len(prior), ok, len(tc.findings))
 			}
@@ -529,16 +763,20 @@ func TestRenderResult_InlineReSuppressesOnlyWhatTheLastReviewListed(t *testing.T
 				comments []github.ReviewComment
 			)
 			gh := &githubtest.Fake{
-				// The second run reads the review the first one submitted.
+				// The second run reads the summary comment the first one posted.
 				FetchReviewCommentFn: func(owner, repo string, number int) (string, bool, error) {
 					return lastBody, lastBody != "", nil
+				},
+				PostPRCommentFn: func(owner, repo string, number int, body string) (string, error) {
+					lastBody = body
+					return testSummaryURL, nil
 				},
 				FetchDiffFn: func(owner, repo string, number int) (string, error) {
 					return "diff --git a/unchanged.go b/unchanged.go\n--- /dev/null\n+++ b/unchanged.go\n@@ -0,0 +1,10 @@\n" + strings.Repeat("+line\n", 10), nil
 				},
 				SubmitPRReviewFn: func(owner, repo string, number int, commitSHA, body string, cs []github.ReviewComment) (string, error) {
-					lastBody, comments = body, cs
-					return "https://github.com/test/repo/pull/1#pullrequestreview-1", nil
+					comments = cs
+					return testReviewURL, nil
 				},
 			}
 			opts := Options{
@@ -698,7 +936,7 @@ func TestRenderResult_ResolvedThreadDismissesFinding(t *testing.T) {
 				ThreadsErr: tc.threadsErr,
 				PostPRCommentFn: func(owner, repo string, number int, body string) (string, error) {
 					postedBody = body
-					return "https://github.com/test/repo/pull/1#issuecomment-1", nil
+					return testSummaryURL, nil
 				},
 			}
 			pr := &github.PR{Owner: "test", Repo: "repo", Number: 1, Title: "Test PR", HeadSHA: "abc123", Dir: dir}
@@ -728,8 +966,8 @@ func TestRenderResult_ResolvedThreadDismissesFinding(t *testing.T) {
 }
 
 // TestRenderResult_DismissedFindingGetsNoInlineComment: under --inline a
-// dismissed finding gets no new inline comment, while the review body's data
-// block still carries it.
+// dismissed finding gets no new inline comment, while the summary comment's
+// data block still carries it.
 func TestRenderResult_DismissedFindingGetsNoInlineComment(t *testing.T) {
 	t.Parallel()
 
@@ -755,9 +993,13 @@ func TestRenderResult_DismissedFindingGetsNoInlineComment(t *testing.T) {
 	gh := &githubtest.Fake{
 		Threads:     []github.ReviewThread{ownThread(dismissed, "github-actions", true, "maintainer")},
 		FetchDiffFn: func(owner, repo string, number int) (string, error) { return inlineTestDiff, nil },
+		PostPRCommentFn: func(owner, repo string, number int, b string) (string, error) {
+			body = b
+			return testSummaryURL, nil
+		},
 		SubmitPRReviewFn: func(owner, repo string, number int, commitSHA, b string, cs []github.ReviewComment) (string, error) {
-			body, comments = b, cs
-			return "https://github.com/test/repo/pull/1#pullrequestreview-1", nil
+			comments = cs
+			return testReviewURL, nil
 		},
 	}
 	pr := &github.PR{Owner: "test", Repo: "repo", Number: 1, Title: "Test PR", HeadSHA: "abc123", Dir: dir}
@@ -772,7 +1014,7 @@ func TestRenderResult_DismissedFindingGetsNoInlineComment(t *testing.T) {
 	}
 	_, findings, ok := report.ParseDataBlock(body)
 	if !ok || len(findings) != 2 {
-		t.Errorf("review body data block = %+v (ok=%v), want both findings", findings, ok)
+		t.Errorf("summary comment data block = %+v (ok=%v), want both findings", findings, ok)
 	}
 }
 

@@ -19,17 +19,25 @@ planwerk-agent --min-severity warning owner/repo#123
 # Post review as inline comments on the PR
 planwerk-agent --inline owner/repo#123
 
+# Also resolve the tool's own threads a push made outdated
+planwerk-agent --inline --resolve-outdated owner/repo#123
+
 # Write output to file
 planwerk-agent owner/repo#123 > review.md
 ```
 
-`--post-review` posts (and updates) a single summary comment on the PR;
-`--inline` posts findings as inline review comments via the GitHub Review API
-and implies `--post-review`. The inline comments follow `--min-severity` and
-`--min-confidence` the way the report does, and a finding in the report's
-Unverified section stays in the summary without an inline comment. For every
-flag, see the [CLI reference](/reference/cli#review-default-command); for the
-shape of the report, see [Output format](/reference/output-format).
+`--post-review` posts a single summary comment on the PR and updates it on
+every later run. `--inline` implies `--post-review`: it keeps that summary
+comment and adds a review via the GitHub Review API only for the inline
+comments a run posts, so re-reviews do not pile up summaries. The inline
+comments follow `--min-severity` and `--min-confidence` the way the report
+does, and a finding in the report's Unverified section stays in the summary
+without an inline comment. `--resolve-outdated` also resolves the tool's own
+inline threads once GitHub marks them outdated, unless someone replied or a
+current finding still covers their lines (see
+[Resolving outdated threads](/reference/output-format#resolving-outdated-threads)).
+For every flag, see the [CLI reference](/reference/cli#review-default-command);
+for the shape of the report, see [Output format](/reference/output-format).
 
 On a re-review, a posted review leaves out the findings the last one already
 listed in a severity section, on a file that has not changed since. It also
@@ -63,7 +71,8 @@ full `implement` cycles. A standalone review has no plan or implementation
 report, so it proposes **patterns only**, never `memory/` pages.
 
 The pass is always **propose-only**: the suggestions go to `stdout`, and — only
-with `--post-review` — as a PR comment; **nothing is ever written to the wiki**.
+with `--post-review` — as a PR comment of their own, beside the summary;
+**nothing is ever written to the wiki**.
 Unlike `implement` and `audit`, review has no `--capture-wiki` flag and never pushes
 the accepted pages: it analyzes an untrusted pull request and the proposal pass reads
 attacker-controlled source, so auto-pushing its free-form pages would let an

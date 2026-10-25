@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"golang.org/x/sync/errgroup"
 
@@ -45,6 +46,12 @@ type Options struct {
 	Version         string
 	PostReview      bool
 	InlineReview    bool
+	// ResolveOutdated resolves, after an inline review is posted, the review
+	// threads earlier runs opened that GitHub marks outdated, under the guards
+	// resolveOutdatedThreads lists. It requires InlineReview and is off by
+	// default. It is not part of the cache key, because it changes posting
+	// only.
+	ResolveOutdated bool
 	Thorough        bool
 	Specialists     bool // run the domain-specialist fan-out and merge its findings
 	CoverageMap     bool
@@ -90,6 +97,9 @@ type Runner struct {
 	// opts.Brain is set. Defaults to search.ResolveSurface; a Runner seam so the
 	// wiring can be exercised without a mirror.
 	ResolveBrain func(owner, name string) search.Surface
+	// Pause waits between two resolve mutations of resolveOutdatedThreads. nil
+	// sleeps with time.Sleep; tests pass a no-op.
+	Pause func(time.Duration)
 }
 
 // resolveWikiFn resolves the target repo's wiki. A Runner seam so the capture
@@ -488,10 +498,12 @@ func (r *Runner) runCapture(w io.Writer, pr *github.PR, opts Options, result *re
 
 	// Post the proposals as a PR comment only when the review itself is posted, so
 	// a plain `review --wiki` does not comment on the PR. nil otherwise skips it.
+	// The proposals get a comment of their own: through PostPRComment they
+	// would replace the summary comment and its data block (decision 133).
 	var poster capture.CommentPoster
 	if opts.PostReview {
 		poster = func(body string) (string, error) {
-			return r.GitHub.PostPRComment(pr.Owner, pr.Repo, pr.Number, body)
+			return r.GitHub.AddPRComment(pr.Owner, pr.Repo, pr.Number, body)
 		}
 	}
 
@@ -536,11 +548,20 @@ func (r *Runner) renderResult(w io.Writer, result *report.ReviewResult, pr *gith
 	// other than the poster resolved while the quoted code is still in the file
 	// (decision 132). The rendered sections use the filtered set and the note
 	// lists what it left out; the data block keeps the full set so the next
-	// re-review can compare again.
+	// re-review can compare again. --resolve-outdated reuses the threads it
+	// read.
 	displayResult := result
-	var hidden suppressed
+	var (
+		hidden  suppressed
+		threads []github.ReviewThread
+	)
 	if opts.PostReview || opts.InlineReview {
-		if kept, s, _ := r.skipSuppressed(result, pr, opts.MinSeverity, opts.MinConfidence); s.total() > 0 {
+		var (
+			kept []report.Finding
+			s    suppressed
+		)
+		kept, s, threads = r.skipSuppressed(result, pr, opts.MinSeverity, opts.MinConfidence)
+		if s.total() > 0 {
 			filtered := *result
 			filtered.Findings = kept
 			displayResult = &filtered
@@ -583,34 +604,33 @@ func (r *Runner) renderResult(w io.Writer, result *report.ReviewResult, pr *gith
 		writeSuppressionNote(output, hidden)
 	}
 
-	if opts.InlineReview {
-		slog.Info("posting inline review with GitHub Review API")
-		// Inline comments come from the display set (no new comments for
-		// suppressed or dismissed findings) under the report's thresholds; the
-		// data block carries the full result.
-		err := r.postInlineReview(displayResult, result, pr, opts.MinSeverity, opts.MinConfidence, &buf)
-		if err != nil {
-			slog.Warn("inline review failed, falling back to PR comment", "err", err)
-			// Carry the full data block as the inline review would have, so the
-			// next re-review finds this run's findings.
-			_, err = r.GitHub.PostPRComment(pr.Owner, pr.Repo, pr.Number, buf.String()+report.RenderDataBlock(*result, pr.HeadSHA, r.Claude.UsageTotals()))
-			if err != nil {
-				return fmt.Errorf("posting PR comment (fallback): %w", err)
-			}
-		}
-	} else if opts.PostReview {
+	if !opts.PostReview && !opts.InlineReview {
+		return nil
+	}
+	// The data block is built from the FULL result, so the next re-review sees
+	// every finding, the suppressed ones included.
+	summaryBody := buf.String() + report.RenderDataBlock(*result, pr.HeadSHA, r.Claude.UsageTotals())
+	if !opts.InlineReview {
 		slog.Info("posting review as PR comment (will update existing if found)")
-		// Append data block for machine consumption — always the FULL result so
-		// the next re-review sees every finding, including the suppressed ones.
-		dataBlock := report.RenderDataBlock(*result, pr.HeadSHA, r.Claude.UsageTotals())
-		body := buf.String() + dataBlock
-		postResult, err := r.GitHub.PostPRComment(pr.Owner, pr.Repo, pr.Number, body)
+		url, err := r.GitHub.PostPRComment(pr.Owner, pr.Repo, pr.Number, summaryBody)
 		if err != nil {
 			return fmt.Errorf("posting PR comment: %w", err)
 		}
-		slog.Info("review posted", "url", postResult)
+		slog.Info("review posted", "url", url)
+		return nil
 	}
 
+	slog.Info("posting inline review with GitHub Review API")
+	// Inline comments come from the display set (no new comments for
+	// suppressed or dismissed findings) under the report's thresholds.
+	if err := r.postInlineReview(displayResult, pr, opts.MinSeverity, opts.MinConfidence, summaryBody); err != nil {
+		return err
+	}
+	// The overlap veto reads the full result: a finding the report or the
+	// inline comments leave out is still live and keeps its old thread open.
+	if opts.ResolveOutdated {
+		r.resolveOutdatedThreads(pr, result.Findings, threads)
+	}
 	return nil
 }
 
@@ -661,33 +681,62 @@ func inlineReviewComments(findings []report.Finding, diffMap *github.DiffMap, mi
 	return comments
 }
 
-func (r *Runner) postInlineReview(displayResult, fullResult *report.ReviewResult, pr *github.PR, minSeverity report.Severity, minConfidence report.Confidence, summaryBuf *bytes.Buffer) error {
-	// 1. Fetch the diff
-	rawDiff, err := r.GitHub.FetchDiff(pr.Owner, pr.Repo, pr.Number)
-	if err != nil {
-		return fmt.Errorf("fetching diff: %w", err)
+// postInlineReview posts summaryBody, the report and its data block, as the
+// summary comment PostPRComment edits in place, and the findings of
+// displayResult that inlineReviewComments places on a diff line as inline
+// comments in a review of their own, posted only when there is one. The
+// comment goes first, so on a first run it sits above the review in the
+// timeline. When the comment fails, the review carries summaryBody instead and
+// is posted even without inline comments, so the data block still reaches the
+// PR. A failed diff fetch posts no inline comments. It returns an error only
+// when neither the comment nor the review reached the PR (decision 133).
+func (r *Runner) postInlineReview(displayResult *report.ReviewResult, pr *github.PR, minSeverity report.Severity, minConfidence report.Confidence, summaryBody string) error {
+	summaryURL, summaryErr := r.GitHub.PostPRComment(pr.Owner, pr.Repo, pr.Number, summaryBody)
+	if summaryErr != nil {
+		slog.Warn("posting the summary comment failed; the review carries the summary", "err", summaryErr)
+	} else {
+		slog.Info("review summary posted", "url", summaryURL)
 	}
 
-	// 2. Parse the diff into a map
-	diffMap := github.ParseDiff(rawDiff)
-
-	// 3. Pick the findings that get an inline comment. Suppressed and dismissed
-	// findings are already out of displayResult, so neither gets a new comment;
-	// the data block below is built from the full result and still carries them.
-	inlineComments := inlineReviewComments(displayResult.Findings, diffMap, minSeverity, minConfidence)
-
-	// 4. Build the review summary body with data block (full result).
-	dataBlock := report.RenderDataBlock(*fullResult, pr.HeadSHA, r.Claude.UsageTotals())
-	summaryBody := summaryBuf.String() + dataBlock
-
-	// 5. Submit the review
-	url, err := r.GitHub.SubmitPRReview(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA, summaryBody, inlineComments)
-	if err != nil {
-		return err
+	var comments []github.ReviewComment
+	if rawDiff, err := r.GitHub.FetchDiff(pr.Owner, pr.Repo, pr.Number); err != nil {
+		slog.Warn("fetching the diff failed; posting no inline comments", "err", err)
+	} else {
+		comments = inlineReviewComments(displayResult.Findings, github.ParseDiff(rawDiff), minSeverity, minConfidence)
 	}
 
-	slog.Info("inline review posted", "url", url)
+	body := summaryBody
+	if summaryErr == nil {
+		if len(comments) == 0 {
+			return nil
+		}
+		body = inlineReviewBody(len(comments), pr.HeadSHA, summaryURL)
+	}
+	url, err := r.GitHub.SubmitPRReview(pr.Owner, pr.Repo, pr.Number, pr.HeadSHA, body, comments)
+	if err != nil {
+		if summaryErr != nil {
+			return fmt.Errorf("posting the review: summary comment: %w; review: %w", summaryErr, err)
+		}
+		slog.Warn("posting the inline comments failed; the summary comment carries every finding", "err", err)
+		return nil
+	}
+	slog.Info("inline review posted", "url", url, "comments", len(comments))
 	return nil
+}
+
+// inlineReviewBody is the body of a review that carries inline comments only:
+// their count, the commit they were posted at, and a pointer to the summary
+// comment that holds the report and the data block. summaryURL becomes a link
+// only when it starts with https:// and holds no whitespace; anything else gh
+// printed is left out, and the body names the comment instead. SubmitPRReview
+// appends the inline signature (decision 133).
+func inlineReviewBody(comments int, headSHA, summaryURL string) string {
+	summary := "the planwerk-agent comment on this pull request"
+	if strings.HasPrefix(summaryURL, "https://") && !strings.ContainsFunc(summaryURL, unicode.IsSpace) {
+		summary = "[the planwerk-agent comment](" + summaryURL + ")"
+	}
+	return fmt.Sprintf("planwerk-agent posted %d inline comment(s) at %s. The summary and every finding are in %s.",
+		comments, report.ShortSHA(headSHA), summary)
 }
 
 // gitLogTimeout is the maximum time allowed for local git log operations.

@@ -2,6 +2,10 @@ package github
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -128,6 +132,89 @@ func TestReviewThreadsQuery_SelectsResolverAndReview(t *testing.T) {
 		if !strings.Contains(reviewThreadsQuery, sel) {
 			t.Errorf("reviewThreadsQuery does not select %q", sel)
 		}
+	}
+}
+
+// TestParseReviewThreads_ReadsTheOutdatedGuardFields: a thread carries the
+// fields --resolve-outdated's guards read (decision 133). A null
+// originalStartLine, as GitHub returns for a single-line thread, is 0, and a
+// totalCount above the comments returned survives as CommentCount, so a
+// partial view is visible to the caller. The query must keep selecting them,
+// which the fixture alone cannot notice.
+func TestParseReviewThreads_ReadsTheOutdatedGuardFields(t *testing.T) {
+	const page = `{"data":{"repository":{"pullRequest":{"reviewThreads":{
+  "pageInfo":{"hasNextPage":false,"endCursor":null},
+  "nodes":[{
+    "id":"RT_9","isResolved":false,"isOutdated":true,"resolvedBy":null,
+    "originalLine":42,"originalStartLine":null,
+    "comments":{"totalCount":3,"nodes":[
+      {"author":{"login":"github-actions","__typename":"Bot"},"body":"finding","createdAt":"2026-06-01T10:00:00Z","path":"a.go","line":null,"diffHunk":"@@","pullRequestReview":{"id":"PRR_1"}},
+      {"author":{"login":"alice","__typename":"User"},"body":"reply","createdAt":"2026-06-01T11:00:00Z","path":"a.go","line":null,"diffHunk":"@@","pullRequestReview":{"id":"PRR_2"}}
+    ]}
+  }]
+}}}}}`
+	threads, _, _, err := parseReviewThreads([]byte(page))
+	if err != nil {
+		t.Fatalf("parseReviewThreads returned error: %v", err)
+	}
+	if len(threads) != 1 {
+		t.Fatalf("got %d threads, want 1", len(threads))
+	}
+	got := threads[0]
+	if got.OriginalLine != 42 || got.OriginalStartLine != 0 || got.CommentCount != 3 || len(got.Comments) != 2 {
+		t.Errorf("thread = original %d-%d, %d of %d comments; want original 0-42, 2 of 3 comments",
+			got.OriginalStartLine, got.OriginalLine, len(got.Comments), got.CommentCount)
+	}
+	if !got.Comments[0].AuthorIsBot || got.Comments[1].AuthorIsBot {
+		t.Errorf("AuthorIsBot = [%v, %v], want [true, false] for a Bot and a User", got.Comments[0].AuthorIsBot, got.Comments[1].AuthorIsBot)
+	}
+
+	for _, sel := range []string{"originalLine", "originalStartLine", "totalCount", "author { login __typename }"} {
+		if !strings.Contains(reviewThreadsQuery, sel) {
+			t.Errorf("reviewThreadsQuery does not select %q", sel)
+		}
+	}
+}
+
+// TestViewerLogin reads the authenticated login through a fake gh, and names
+// the call and gh's output when gh fails. Only GitHub's refusal of an app's
+// token wraps ErrViewerRefused; a failure that says nothing about the token,
+// such as a timeout, does not.
+func TestViewerLogin(t *testing.T) {
+	argvFile := filepath.Join(t.TempDir(), "argv")
+	fakeGH(t, recordArgv(argvFile)+"echo octocat\n")
+	login, err := client.ViewerLogin()
+	if err != nil || login != "octocat" {
+		t.Fatalf("ViewerLogin = %q, %v; want octocat", login, err)
+	}
+	argv := recordedCalls(t, argvFile)[0]
+	want := []string{"api", "graphql", "-f", "query=query { viewer { login } }", "--jq", ".data.viewer.login"}
+	if !slices.Equal(argv, want) {
+		t.Errorf("argv = %q, want %q", argv, want)
+	}
+
+	for _, tc := range []struct {
+		name, output string
+		refused      bool
+	}{
+		{name: "refused to an app token", output: "GraphQL: Resource not accessible by integration (viewer)", refused: true},
+		{name: "timed out", output: `Post "https://api.github.com/graphql": net/http: TLS handshake timeout`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fakeGH(t, fmt.Sprintf("echo '%s' >&2\nexit 1\n", tc.output))
+			login, err := client.ViewerLogin()
+			if err == nil || login != "" {
+				t.Fatalf("a failing gh = %q, %v; want an error alone", login, err)
+			}
+			for _, want := range []string{"gh api graphql (viewer): ", tc.output} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q lacks %q", err, want)
+				}
+			}
+			if got := errors.Is(err, ErrViewerRefused); got != tc.refused {
+				t.Errorf("errors.Is(err, ErrViewerRefused) = %v, want %v", got, tc.refused)
+			}
+		})
 	}
 }
 

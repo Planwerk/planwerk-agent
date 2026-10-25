@@ -3,12 +3,13 @@
 The repo ships a composite GitHub Action at the root (`action.yml`) that wraps
 the `review` command for use on pull requests. It installs Claude Code,
 downloads the planwerk-agent release binary, runs the review against the PR
-that triggered the workflow, and posts a summary plus inline review comments.
-On each later push it leaves out the findings it already posted on files the
-push did not change ([Re-reviews](/reference/output-format#re-reviews)).
-Resolve a finding's inline thread to keep it out of later reports while the
-code it quotes stays unchanged. Reading the review threads needs
-`pull-requests: read`, which the `pull-requests: write` below already grants.
+that triggered the workflow, keeps one summary comment on the PR up to date,
+and posts inline review comments. On each later push it leaves out the
+findings it already posted on files the push did not change
+([Re-reviews](/reference/output-format#re-reviews)). Resolve a finding's
+inline thread to keep it out of later reports while the code it quotes stays
+unchanged. Reading the review threads needs `pull-requests: read`, which the
+`pull-requests: write` below already grants.
 
 Minimal example workflow:
 
@@ -68,3 +69,36 @@ The action still passes the PR reference explicitly, so `--local` validates it
 against the checkout's `origin` and switches the working tree to the PR head via
 `gh pr checkout`. The default stays `false` so existing workflows are
 unaffected. See [Use local mode](/how-to/use-local-mode) for the full semantics.
+
+## Resolve outdated threads
+
+A push that rewrites the lines an inline comment sat on leaves its thread
+outdated but open. With `resolve-outdated: 'true'` the action passes
+`--resolve-outdated` and resolves those threads after it posts: only the
+tool's own threads that GitHub marks outdated, that nobody replied to, and
+whose original lines no finding of the current run still covers. The full list
+of guards is in
+[Resolving outdated threads](/reference/output-format#resolving-outdated-threads).
+
+```yaml
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: Planwerk/planwerk-agent@<commit-sha> # vX.Y.Z
+        with:
+          version: vX.Y.Z
+          resolve-outdated: 'true'
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+Resolving needs `contents: write`, because GitHub ties resolving a review
+thread to write access to the repository rather than to
+`pull-requests: write`. With `contents: read`, the first resolve is refused,
+the run logs a warning and resolves nothing more, and the review still
+succeeds. On a pull request from a fork the token is read-only, so resolving is
+refused the same way posting is. `post-inline` has to stay `true`, its default:
+without it the action skips `resolve-outdated` with a note in the log.

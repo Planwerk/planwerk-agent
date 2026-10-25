@@ -91,7 +91,8 @@ planwerk-agent owner/repo#123 > review.md
 | `--cache-max-age` | Reject cached entries older than this duration (`0` disables the TTL) | `720h` |
 | `--format` | Output format (`markdown`, `json`) | `markdown` |
 | `--post-review` | Post the review as a comment on the PR (updates existing if found) | `false` |
-| `--inline` | Post review with inline comments using the GitHub Review API (implies `--post-review`). A finding gets an inline comment only when the summary lists it in a severity section: findings below `--min-severity` or `--min-confidence` and findings in the Unverified section get none | `false` |
+| `--inline` | Post findings as inline comments using the GitHub Review API; the summary goes into the PR comment `--post-review` keeps up to date (implies `--post-review`). A finding gets an inline comment only when the summary lists it in a severity section: findings below `--min-severity` or `--min-confidence` and findings in the Unverified section get none | `false` |
+| `--resolve-outdated` | With `--inline`, resolve the review threads earlier runs opened once GitHub marks them outdated, unless someone replied or a current finding still covers their lines (needs write access to the repository; see [Resolving outdated threads](/reference/output-format#resolving-outdated-threads)) | `false` |
 | `--thorough` | Run an additional adversarial review pass for security and failure modes | `false` |
 | `--specialists` | Run the domain-specialist review fan-out (security, data-migration, testing, performance, api-contract, maintainability) concurrently and merge their findings. Specialists are adaptively gated (see [Adaptive specialist gating](/explanation/review-methodology#adaptive-specialist-gating)). | `false` |
 | `--coverage-map` | Generate a test coverage map for changed functions | `false` |
@@ -124,8 +125,8 @@ When the review uses `--wiki`, a read-only **capture pass** then proposes new
 project knowledge for the wiki: generalizable review findings become candidate
 `review_patterns/` pages, deduplicated against the wiki's existing entries and
 the bundled pattern catalog. It is always **propose-only** — the suggestions
-surface on stdout, and (only with `--post-review`) as a PR comment; nothing is ever
-written to the wiki. Unlike `implement` and `audit`, review has no `--capture-wiki` flag and never
+surface on stdout, and (only with `--post-review`) as a PR comment of their own,
+beside the summary; nothing is ever written to the wiki. Unlike `implement` and `audit`, review has no `--capture-wiki` flag and never
 pushes the accepted pages: it analyzes an untrusted pull request
 and the proposal pass reads attacker-controlled source, so auto-pushing its
 free-form pages would let an external contributor poison the shared knowledge base.

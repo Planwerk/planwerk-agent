@@ -223,6 +223,9 @@ or short form (owner/repo#123).`,
 			if cfg.InlineReview && cfg.Format == formatJSON {
 				return fmt.Errorf("--inline cannot be used with --format json")
 			}
+			if cfg.ResolveOutdated && !cfg.InlineReview {
+				return fmt.Errorf("--resolve-outdated requires --inline")
+			}
 
 			opts := cfg
 			opts.Version = deps.version
@@ -261,7 +264,8 @@ or short form (owner/repo#123).`,
 	flags.DurationVar(&cfg.CacheMaxAge, "cache-max-age", cache.DefaultMaxAge, "Reject cached entries older than this duration (0 disables the TTL)")
 	flags.StringVar(&cfg.Format, "format", "markdown", "Output format (markdown, json)")
 	flags.BoolVar(&cfg.PostReview, "post-review", false, "Post the review as a comment on the PR")
-	flags.BoolVar(&cfg.InlineReview, "inline", false, "Post review with inline comments using GitHub Review API (implies --post-review)")
+	flags.BoolVar(&cfg.InlineReview, "inline", false, "Post findings as inline comments using the GitHub Review API; the summary goes into the PR comment --post-review keeps up to date (implies --post-review)")
+	flags.BoolVar(&cfg.ResolveOutdated, "resolve-outdated", false, "With --inline, resolve the review threads earlier runs opened once GitHub marks them outdated, unless someone replied or a current finding still covers their lines (needs write access to the repository)")
 	flags.BoolVar(&cfg.Thorough, "thorough", false, "Run additional adversarial review pass")
 	flags.BoolVar(&cfg.Specialists, "specialists", false, "Run the domain-specialist review fan-out (security, data-migration, testing, performance, api-contract, maintainability) concurrently and merge their findings")
 	flags.BoolVar(&cfg.CoverageMap, "coverage-map", false, "Generate test coverage map for changed functions")
