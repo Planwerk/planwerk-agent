@@ -57,6 +57,12 @@ the comment. Neither kind is shown in the report or as a new inline comment,
 and a note at the end of the report lists them; see
 [Re-reviews](/reference/output-format#re-reviews).
 
+Before a pull request exists — a branch you have not pushed, or changes you
+have not committed — the
+[`/planwerk:review` skill](/how-to/review-a-change-interactively) does the
+review in your checkout: it quotes the code behind every finding, accounts for
+every changed file, and changes nothing.
+
 ## How it works
 
 1. **PR Input**: The tool receives a GitHub PR as input (URL or `owner/repo#number`).

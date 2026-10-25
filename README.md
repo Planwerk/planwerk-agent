@@ -37,6 +37,7 @@ than subcommands:
 - **`/planwerk:revisit`** re-checks a prepared issue against what has actually landed since, and corrects what went stale
 - **`/planwerk:clarify`** answers the open questions that stopped a planning session, and records them where the next one reads them
 - **`/planwerk:implement`** implements a prepared issue in your checkout — a plan you approve in plan mode, one complete pull request behind your yes, none of the pipeline's passes
+- **`/planwerk:review`** reviews the branch you are on, or the changes you have not committed, in your checkout before a pull request exists — every finding verified against the line it cites, every changed file accounted for as reviewed or skipped
 - **`/planwerk:diagnose`** reproduces a reported bug with a feedback loop that goes red before any theory, and fixes the root cause behind a regression test
 - **`/planwerk:fix`** repairs a pull request's failing CI checks, asking you whether the code or the test is the wrong one
 - **`/planwerk:rebase`** rebases a pull request onto its base, resolves each conflict so both sides survive, settles the review threads the base already answered, and corrects what the rewrite made false in the PR body

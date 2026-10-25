@@ -183,7 +183,7 @@ planwerk-agent/
 ├── .claude-plugin/
 │   └── marketplace.json        # Claude Code marketplace catalog (this repo)
 ├── plugins/
-│   └── planwerk/               # The plugin: the thirteen interactive skills
+│   └── planwerk/               # The plugin: the fourteen interactive skills
 │       ├── .claude-plugin/
 │       │   └── plugin.json
 │       ├── shared/             # One source for the format, style, doctrine, gh calls
@@ -214,6 +214,7 @@ planwerk-agent/
 │           ├── implement/
 │           ├── meta/
 │           ├── rebase/
+│           ├── review/
 │           └── revisit/
 ├── tools/
 │   ├── toolbox/

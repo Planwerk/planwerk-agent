@@ -1,8 +1,10 @@
 package review
 
 import (
+	"os"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/planwerk/planwerk-agent/internal/github"
@@ -78,5 +80,30 @@ func TestLedgerPaths(t *testing.T) {
 	got := ledgerPaths([]github.FileChange{{Path: "b.go", OldPath: "a.go"}, {Path: "c.go"}})
 	if want := []string{"b.go", "c.go"}; !slices.Equal(got, want) {
 		t.Errorf("ledgerPaths = %q, want %q", got, want)
+	}
+}
+
+// reviewSkillDoc is the /planwerk:review skill, which fills gates.files from
+// its own ledger when asked for JSON (decision 151).
+const reviewSkillDoc = "../../plugins/planwerk/skills/review/SKILL.md"
+
+// TestReviewSkillCountsFilesAsTheLedgerDoes fails when the review skill's
+// changed-file record stops meaning what reviewLedger's does: the skill must
+// keep the .planwerk/ paths ledgerKeptPlanwerk keeps, and leave every other
+// planning artifact out of gates.files, so that files.changed has one meaning
+// whichever of the two wrote it.
+func TestReviewSkillCountsFilesAsTheLedgerDoes(t *testing.T) {
+	raw, err := os.ReadFile(reviewSkillDoc)
+	if err != nil {
+		t.Fatalf("reading %s: %v", reviewSkillDoc, err)
+	}
+	skill := strings.Join(strings.Fields(string(raw)), " ")
+	for _, keep := range ledgerKeptPlanwerk {
+		if !strings.Contains(skill, "`"+keep+"`") {
+			t.Errorf("%s does not keep %s out of its planning artifacts; reviewLedger lists it", reviewSkillDoc, keep)
+		}
+	}
+	if marker := "without the entries skipped as a planning artifact"; !strings.Contains(skill, marker) {
+		t.Errorf("%s no longer says gates.files is filled %q; the command's files.changed leaves the planning artifacts out", reviewSkillDoc, marker)
 	}
 }

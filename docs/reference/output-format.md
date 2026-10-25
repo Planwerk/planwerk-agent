@@ -541,12 +541,20 @@ The `--format json` output of every command is described by a JSON Schema
 
 | Schema file | Describes | Commands |
 |-------------|-----------|----------|
-| `report-result.schema.json` | `ReviewResult` (findings, summary, recommendation, gates, passes, excluded_files, partitions) | `review`, `audit` |
+| `report-result.schema.json` | `ReviewResult` (findings, summary, recommendation, gates, passes, excluded_files, partitions) | `review`, `audit`, and `/planwerk:review` on request |
 | `proposal.schema.json` | `ProposalResult` envelope (repository overview + proposals) | `propose` |
 | `rebase-analysis.schema.json` | `RebaseAnalysis` (per-commit adjustments, summary, recommendation) | `rebase` |
 
 `review` and `audit` share `report-result.schema.json` because the audit path
-reuses the review result shape. The schemas pin the severity, confidence,
+reuses the review result shape. The `/planwerk:review` skill gives the same
+shape when asked for JSON. Of the gate records it fills only `gates.files`
+(`changed`, `reviewed`, `missing`), from its ledger and counted as the command
+counts it: the `.planwerk/` planning artifacts stay out, and a path the ledger
+holds twice, deleted and untracked, counts once. It leaves out the other gate
+records, `passes`, `excluded_files`, and `partitions`, since it runs none of
+those stages. With an older `planwerk-agent` whose schema has no
+`gates.files`, its summary ends with the coverage line instead. The schemas
+pin the severity, confidence,
 actionability, fix-class, priority, category, and scope enums, and allow `null`
 for the slice fields the renderer leaves empty (`findings`, `proposals`,
 `affected_areas`, `acceptance_criteria`).
@@ -557,7 +565,7 @@ fails CI. The [`schema` subcommand](/reference/cli#schema) prints the same files
 to stdout so consumers can validate piped JSON:
 
 ```bash
-planwerk-agent review --format json owner/repo#123 > review.json
+planwerk-agent --format json owner/repo#123 > review.json
 planwerk-agent schema review > report-result.schema.json
 check-jsonschema --schemafile report-result.schema.json review.json
 ```

@@ -604,4 +604,11 @@ schema carries the comment quoted there
 ([decision 136](/explanation/design-decisions)). What was taken is the rule and
 its evidence. OCR keeps its order by choosing field names that Go's
 alphabetical encoding sorts into place; this repository embeds its schemas as
-documents whose nested order the encoder never touches.
+documents whose nested order the encoder never touches. The per-file ledger of
+`/planwerk:review` and its hardened git invocations come from OCR's delegation
+skill ([decision 151](./design-decisions.md)): every changed file ends reviewed
+or skipped with a reason, the report states the coverage, and every git call
+that prints a patch runs without a pager, an external diff, a text conversion,
+or color. What was left is its `ocr delegate` CLI, which selects the files and
+resolves the rules for the host agent; here git lists the files, and the
+patterns the base commits are the rules.

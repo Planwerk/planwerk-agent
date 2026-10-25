@@ -49,6 +49,10 @@ export default defineConfig({
             { text: 'Overview', link: '/how-to/' },
             { text: 'Review a pull request', link: '/how-to/review-a-pr' },
             {
+              text: 'Review a change interactively',
+              link: '/how-to/review-a-change-interactively',
+            },
+            {
               text: 'Analyze a repository',
               link: '/how-to/analyze-a-repository',
             },

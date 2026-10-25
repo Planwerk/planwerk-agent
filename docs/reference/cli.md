@@ -12,10 +12,10 @@ omitted. Shell completions and man pages are produced by the built-in
 ::: info Drafting and splitting are skills, not subcommands
 `draft` and `meta` are no longer `planwerk-agent` subcommands. They are Claude
 Code Skills — `/planwerk:draft` and `/planwerk:meta` — because both turn on
-decisions only a human can make mid-run. `audit`, `elaborate`, and `fix` exist
-both ways: as the commands documented below, and as the `/planwerk:audit`,
-`/planwerk:elaborate`, and `/planwerk:fix` skills. See
-[Use the skills](/how-to/use-the-skills).
+decisions only a human can make mid-run. `audit`, `elaborate`, `fix`, and
+`review` exist both ways: as the commands documented below, and as the
+`/planwerk:audit`, `/planwerk:elaborate`, `/planwerk:fix`, and
+`/planwerk:review` skills. See [Use the skills](/how-to/use-the-skills).
 :::
 
 ## Global flags
@@ -46,7 +46,10 @@ CI log streams.
 
 ## `review` (default command)
 
-The root command reviews a single GitHub pull request.
+The root command reviews a single GitHub pull request. To review a branch
+before it has a pull request, or changes you have not committed, use the
+[`/planwerk:review` skill](/how-to/review-a-change-interactively) in your
+checkout.
 
 > Every pass that emits findings (the review, the audit, the adversarial pass,
 > the domain specialists, the feature-compliance check, the simplify finder and
