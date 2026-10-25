@@ -995,13 +995,164 @@ func TestSkipSuppressed_RefusesACommitSHAThatIsNotAnObjectName(t *testing.T) {
 	}
 	pr := &github.PR{Owner: "acme", Repo: "widgets", Number: 42, Dir: dir}
 
-	kept, suppressed := newTestRunner(gh).skipSuppressed(&report.ReviewResult{Findings: findings}, pr, report.SeverityInfo, "")
-	if len(suppressed) != 0 || len(kept) != len(findings) {
+	kept, suppressed, _ := newTestRunner(gh).skipSuppressed(&report.ReviewResult{Findings: findings}, pr, report.SeverityInfo, "")
+	if suppressed.total() != 0 || len(kept) != len(findings) {
 		t.Errorf("kept %d, suppressed %+v; want every finding kept", len(kept), suppressed)
 	}
 	if _, err := os.Stat(written); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("the forged commit_sha reached git as an option: stat %s = %v", written, err)
 	}
+}
+
+// TestSkipSuppressed_RunsBothStages: the prior data block suppresses a repeat
+// on an unchanged file, and a resolved thread dismisses a finding on the file
+// the push changed, because the code it quotes is still there; one whose code
+// is gone is kept (decision 132). skipSuppressed hands back the threads it
+// fetched. When they cannot be fetched it returns none and dismisses nothing,
+// while the data block still suppresses.
+func TestSkipSuppressed_RunsBothStages(t *testing.T) {
+	dir, firstSHA := initGitRepoTwoCommits(t)
+	finding := func(id, title, file, snippet string) report.Finding {
+		return report.Finding{
+			ID: id, Severity: report.SeverityWarning, Confidence: report.ConfidenceVerified,
+			Title: title, File: file, Line: 2, CodeSnippet: snippet, Problem: "p", Action: "a",
+		}
+	}
+	repeat := finding("W-001", "Bare package", "unchanged.go", "package x")
+	stale := finding("W-002", "Version comment", "changed.go", "// v2")
+	gone := finding("W-003", "Old version comment", "changed.go", "// v1")
+	prior := "## Previous review\n" + report.RenderDataBlock(report.ReviewResult{Findings: []report.Finding{repeat}}, firstSHA, report.Usage{}) + "\n<!-- planwerk-agent-inline -->"
+	threads := []github.ReviewThread{
+		ownThread(stale, "github-actions", true, "maintainer"),
+		ownThread(gone, "github-actions", true, "maintainer"),
+	}
+	gh := &githubtest.Fake{
+		FetchReviewCommentFn: func(owner, repo string, number int) (string, bool, error) { return prior, true, nil },
+		Threads:              threads,
+	}
+	pr := &github.PR{Owner: "acme", Repo: "widgets", Number: 43, Dir: dir}
+	result := &report.ReviewResult{Findings: []report.Finding{repeat, stale, gone}}
+
+	kept, s, got := newTestRunner(gh).skipSuppressed(result, pr, report.SeverityInfo, "")
+	if ids := findingIDs(kept); !slices.Equal(ids, []string{"W-003"}) {
+		t.Errorf("kept = %v, want [W-003]", ids)
+	}
+	if ids := findingIDs(s.unchanged); !slices.Equal(ids, []string{"W-001"}) {
+		t.Errorf("previously reported = %v, want [W-001]", ids)
+	}
+	if ids := findingIDs(s.dismissed); !slices.Equal(ids, []string{"W-002"}) {
+		t.Errorf("dismissed = %v, want [W-002]", ids)
+	}
+	if len(got) != len(threads) {
+		t.Errorf("returned %d threads, want the %d fetched", len(got), len(threads))
+	}
+
+	gh.ThreadsErr = errors.New("graphql: rate limited")
+	kept, s, got = newTestRunner(gh).skipSuppressed(result, pr, report.SeverityInfo, "")
+	if got != nil || len(s.dismissed) != 0 {
+		t.Errorf("with the threads unavailable: threads %+v, dismissed %+v; want neither", got, s.dismissed)
+	}
+	if ids := findingIDs(s.unchanged); !slices.Equal(ids, []string{"W-001"}) || len(kept) != 2 {
+		t.Errorf("with the threads unavailable: previously reported %v, kept %d; want [W-001] and 2", ids, len(kept))
+	}
+}
+
+// TestSkipSuppressed_SpendsEachEarlierFindingOnce: an earlier finding leaves
+// out at most one current finding, even when the prior data block carries it
+// and its own thread was resolved, or when later runs posted it again in
+// threads of their own, and only a finding the report would show spends it
+// (decision 132). Otherwise a CRITICAL raised on the same code, or the listed
+// repeat itself, would drop out of the report.
+func TestSkipSuppressed_SpendsEachEarlierFindingOnce(t *testing.T) {
+	dir, firstSHA := initGitRepoTwoCommits(t)
+	finding := func(id string, sev report.Severity, title, file, snippet string) report.Finding {
+		return report.Finding{
+			ID: id, Severity: sev, Confidence: report.ConfidenceVerified,
+			Title: title, File: file, Line: 1, CodeSnippet: snippet, Problem: "p", Action: "a",
+		}
+	}
+	earlier := finding("W-001", report.SeverityWarning, "Unchecked Close", "unchanged.go", "package x")
+	critical := finding("C-001", report.SeverityCritical, "Shadowed package", "unchanged.go", "package x")
+	nit := finding("I-001", report.SeverityInfo, "Defer in loop style", "unchanged.go", "package x")
+	earlierChanged := finding("W-001", report.SeverityWarning, "Version comment", "changed.go", "// v2")
+	criticalChanged := finding("C-001", report.SeverityCritical, "Stale version", "changed.go", "// v2")
+	resolved := func(f report.Finding) []github.ReviewThread {
+		return []github.ReviewThread{ownThread(f, "github-actions", true, "maintainer")}
+	}
+	// The second run posted f again because its file changed while the first
+	// thread was open; a maintainer resolved both.
+	resolvedTwice := func(f report.Finding) []github.ReviewThread {
+		return append(resolved(f), postedIn(ownThread(f, "github-actions", true, "maintainer"), "PRR_2"))
+	}
+
+	for _, tc := range []struct {
+		name                                   string
+		prior                                  []report.Finding // nil: no prior data block
+		threads                                []github.ReviewThread
+		current                                []report.Finding
+		minSeverity                            report.Severity
+		wantKept, wantUnchanged, wantDismissed []string
+	}{
+		{
+			name:  "data block and resolved thread name one earlier finding",
+			prior: []report.Finding{earlier}, threads: resolved(earlier),
+			current: []report.Finding{critical, earlier}, minSeverity: report.SeverityInfo,
+			wantKept: []string{"C-001"}, wantUnchanged: []string{"W-001"},
+		},
+		{
+			name:  "file changed, so the resolved thread alone spends it",
+			prior: []report.Finding{earlierChanged}, threads: resolved(earlierChanged),
+			current: []report.Finding{criticalChanged, earlierChanged}, minSeverity: report.SeverityInfo,
+			wantKept: []string{"C-001"}, wantDismissed: []string{"W-001"},
+		},
+		{
+			name:  "file changed, so threads two runs opened for it spend it once",
+			prior: []report.Finding{earlierChanged}, threads: resolvedTwice(earlierChanged),
+			current: []report.Finding{criticalChanged, earlierChanged}, minSeverity: report.SeverityInfo,
+			wantKept: []string{"C-001"}, wantDismissed: []string{"W-001"},
+		},
+		{
+			name:    "data block: a repeat below the thresholds spends nothing",
+			prior:   []report.Finding{earlier},
+			current: []report.Finding{earlier, nit}, minSeverity: report.SeverityWarning,
+			wantKept: []string{"I-001"}, wantUnchanged: []string{"W-001"},
+		},
+		{
+			name:    "resolved thread: a repeat below the thresholds spends nothing",
+			threads: resolved(earlier),
+			current: []report.Finding{earlier, nit}, minSeverity: report.SeverityWarning,
+			wantKept: []string{"I-001"}, wantDismissed: []string{"W-001"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			gh := &githubtest.Fake{Threads: tc.threads}
+			if tc.prior != nil {
+				prior := "## Previous review\n" + report.RenderDataBlock(report.ReviewResult{Findings: tc.prior}, firstSHA, report.Usage{}) + "\n<!-- planwerk-agent-inline -->"
+				gh.FetchReviewCommentFn = func(owner, repo string, number int) (string, bool, error) { return prior, true, nil }
+			}
+			pr := &github.PR{Owner: "acme", Repo: "widgets", Number: 44, Dir: dir}
+
+			kept, s, _ := newTestRunner(gh).skipSuppressed(&report.ReviewResult{Findings: tc.current}, pr, tc.minSeverity, "")
+			if ids := findingIDs(kept); !slices.Equal(ids, tc.wantKept) {
+				t.Errorf("kept = %v, want %v", ids, tc.wantKept)
+			}
+			if ids := findingIDs(s.unchanged); !slices.Equal(ids, tc.wantUnchanged) {
+				t.Errorf("previously reported = %v, want %v", ids, tc.wantUnchanged)
+			}
+			if ids := findingIDs(s.dismissed); !slices.Equal(ids, tc.wantDismissed) {
+				t.Errorf("dismissed = %v, want %v", ids, tc.wantDismissed)
+			}
+		})
+	}
+}
+
+// findingIDs returns the ID of each finding, in order.
+func findingIDs(findings []report.Finding) []string {
+	ids := make([]string, 0, len(findings))
+	for _, f := range findings {
+		ids = append(ids, f.ID)
+	}
+	return ids
 }
 
 func TestRun_WikiDisabledLeavesRunUnchanged(t *testing.T) {

@@ -140,3 +140,24 @@ func TestFormatInlineComment_AutoFixNoSuggestedFix(t *testing.T) {
 		t.Error("should contain action text as fallback")
 	}
 }
+
+// TestFormatInlineComment_CarriesFindingMarker: the body ends with the hidden
+// marker a re-review reads back to trace a resolved thread to its finding.
+func TestFormatInlineComment_CarriesFindingMarker(t *testing.T) {
+	f := Finding{
+		ID:          "W-001",
+		Severity:    SeverityWarning,
+		Title:       "Missing error check",
+		File:        "db.go",
+		CodeSnippet: "db.Close()",
+		Problem:     "The returned error from db.Close() is discarded.",
+		Action:      "Wrap the error and return it.",
+	}
+
+	got := FormatInlineComment(f)
+
+	want := "<!-- planwerk-agent-finding:" + FindingFingerprint(f) + " -->"
+	if !strings.HasSuffix(got, want+"\n") {
+		t.Errorf("body should end with %q, got:\n%s", want, got)
+	}
+}

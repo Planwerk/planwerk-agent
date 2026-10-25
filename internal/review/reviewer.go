@@ -532,17 +532,20 @@ func (r *Runner) renderResult(w io.Writer, result *report.ReviewResult, pr *gith
 
 	// Persistent skip-suppression: when re-reviewing a PR, drop findings the user
 	// already saw last time and did not act on, as long as their file is
-	// unchanged since that review. The rendered sections use the filtered set;
-	// the data block keeps the full set so the next re-review can compare again.
+	// unchanged since that review, and findings whose own inline thread someone
+	// other than the poster resolved while the quoted code is still in the file
+	// (decision 132). The rendered sections use the filtered set and the note
+	// lists what it left out; the data block keeps the full set so the next
+	// re-review can compare again.
 	displayResult := result
-	var suppressed []report.Finding
+	var hidden suppressed
 	if opts.PostReview || opts.InlineReview {
-		if kept, supp := r.skipSuppressed(result, pr, opts.MinSeverity, opts.MinConfidence); len(supp) > 0 {
+		if kept, s, _ := r.skipSuppressed(result, pr, opts.MinSeverity, opts.MinConfidence); s.total() > 0 {
 			filtered := *result
 			filtered.Findings = kept
 			displayResult = &filtered
-			suppressed = supp
-			slog.Info("suppressed previously-reported findings on unchanged files", "count", len(supp))
+			hidden = s
+			slog.Info("suppressed findings on re-review", "previously_reported", len(s.unchanged), "dismissed_in_thread", len(s.dismissed))
 		}
 	}
 
@@ -576,15 +579,15 @@ func (r *Runner) renderResult(w io.Writer, result *report.ReviewResult, pr *gith
 		report.RenderCoverageMap(output, *coverage)
 	}
 
-	if len(suppressed) > 0 {
-		writeSuppressionNote(output, suppressed)
+	if hidden.total() > 0 {
+		writeSuppressionNote(output, hidden)
 	}
 
 	if opts.InlineReview {
 		slog.Info("posting inline review with GitHub Review API")
 		// Inline comments come from the display set (no new comments for
-		// suppressed findings) under the report's thresholds; the data block
-		// carries the full result.
+		// suppressed or dismissed findings) under the report's thresholds; the
+		// data block carries the full result.
 		err := r.postInlineReview(displayResult, result, pr, opts.MinSeverity, opts.MinConfidence, &buf)
 		if err != nil {
 			slog.Warn("inline review failed, falling back to PR comment", "err", err)
@@ -668,9 +671,9 @@ func (r *Runner) postInlineReview(displayResult, fullResult *report.ReviewResult
 	// 2. Parse the diff into a map
 	diffMap := github.ParseDiff(rawDiff)
 
-	// 3. Pick the findings that get an inline comment. Suppressed findings are
-	// already out of displayResult; the data block below is built from the full
-	// result.
+	// 3. Pick the findings that get an inline comment. Suppressed and dismissed
+	// findings are already out of displayResult, so neither gets a new comment;
+	// the data block below is built from the full result and still carries them.
 	inlineComments := inlineReviewComments(displayResult.Findings, diffMap, minSeverity, minConfidence)
 
 	// 4. Build the review summary body with data block (full result).
@@ -706,46 +709,148 @@ func warnRedaction(source string, r redact.Result) {
 
 // hexObjectName matches the commit_sha RenderDataBlock records: a hex git object
 // name. skipSuppressed passes the prior block's SHA to git diff as an argument,
-// so it refuses anything else, such as a forged "--output=<path>" that git
-// would read as an option (decision 128).
+// so priorFindings refuses anything else, such as a forged "--output=<path>"
+// that git would read as an option (decision 128).
 var hexObjectName = regexp.MustCompile(`^[0-9a-f]{7,64}$`)
 
-// skipSuppressed loads the prior review comment's data block and suppresses the
-// current findings the user already saw on a file that has not changed since.
-// The block carries every finding of the prior run, but only the ones
+// suppressed holds the findings a re-review leaves out of the report sections,
+// by reason. unchanged holds findings the prior data block carried whose file
+// is unchanged since its commit; dismissed holds findings whose own inline
+// thread another account resolved while the quoted code is still in the file.
+type suppressed struct {
+	unchanged, dismissed []report.Finding
+}
+
+// total is the number of findings left out for either reason.
+func (s suppressed) total() int {
+	return len(s.unchanged) + len(s.dismissed)
+}
+
+// skipSuppressed returns the current findings a posted re-review still lists,
+// and the ones it leaves out, in two independent stages (decision 132):
+//
+//   - Stage 1 suppresses the findings the prior data block carried
+//     (priorFindings) on files unchanged since that block's commit. When the
+//     block cannot be read or the diff since its commit cannot be computed, it
+//     suppresses nothing, so nothing is hidden on a bad signal.
+//   - Stage 2 runs whether or not stage 1 did. It reads the PR's review threads
+//     and dismisses the findings that dismissedFingerprints traces to a
+//     resolved thread of planwerk-agent's own, while hygiene.SnippetInFile still
+//     finds the whole quoted code in the file at pr.Dir, changed or not.
+//
+// Both stages leave out only a finding that meets minSeverity and
+// minConfidence, one the report would show, so a repeat below them never takes
+// the place of a listed one. An earlier finding leaves out at most one current
+// finding across both stages: dismissedFingerprints counts it once however
+// many runs posted it, and the data block carries the finding its resolved
+// thread was posted for, so each finding stage 1 left out takes one dismissal
+// off its fingerprint before stage 2 runs. threads is the list stage 2 fetched,
+// nil when FetchReviewThreads failed; a failure is logged and dismisses
+// nothing.
+func (r *Runner) skipSuppressed(result *report.ReviewResult, pr *github.PR, minSeverity report.Severity, minConfidence report.Confidence) (kept []report.Finding, s suppressed, threads []github.ReviewThread) {
+	listed := func(f report.Finding) bool { return f.MeetsThresholds(minSeverity, minConfidence) }
+	kept = result.Findings
+	if priorSHA, prior, ok := r.priorFindings(pr, minSeverity, minConfidence); ok {
+		if changed, ok := changedFilesSince(pr.Dir, priorSHA); ok {
+			kept, s.unchanged = report.FilterPreviouslyReported(kept, prior, listed, func(file string) bool {
+				return !changed[file]
+			})
+		}
+	}
+
+	threads, err := r.GitHub.FetchReviewThreads(pr.Owner, pr.Repo, pr.Number)
+	if err != nil {
+		slog.Warn("could not fetch review threads; resolved threads dismiss nothing", "err", err)
+		return kept, s, nil
+	}
+	fps := dismissedFingerprints(threads)
+	// A finding stage 1 left out already spent the earlier finding its own
+	// thread was posted for.
+	for _, f := range s.unchanged {
+		if fp := report.FindingFingerprint(f); fps[fp] > 0 {
+			fps[fp]--
+		}
+	}
+	if len(fps) > 0 {
+		kept, s.dismissed = report.FilterDismissed(kept, fps, listed, func(f report.Finding) bool {
+			return hygiene.SnippetInFile(pr.Dir, f.File, f.CodeSnippet)
+		})
+	}
+	return kept, s, threads
+}
+
+// priorFindings loads the prior review comment's data block and returns the
+// commit SHA it was posted at and the findings a re-review counts as already
+// reported. The block carries every finding of the prior run, but only the ones
 // inSeveritySection admits count as seen: one the thresholds hid, or one the
 // summary listed as Unverified, was never reported as a finding to act on, so
 // it suppresses nothing and is reported when it comes back confirmed (decision
 // 129). The block does not record the prior run's thresholds; minSeverity and
 // minConfidence, this run's, stand in for them.
-// On any failure (no prior comment, unparseable data block, a commit_sha that
-// is not a hex object name, uncomputable diff) it suppresses nothing — the full
-// set is returned.
-func (r *Runner) skipSuppressed(result *report.ReviewResult, pr *github.PR, minSeverity report.Severity, minConfidence report.Confidence) (kept, suppressed []report.Finding) {
+// ok is false on any failure (no prior comment, unparseable data block, a
+// commit_sha that is not a hex object name) and when no finding counts.
+func (r *Runner) priorFindings(pr *github.PR, minSeverity report.Severity, minConfidence report.Confidence) (sha string, findings []report.Finding, ok bool) {
 	body, found, err := r.GitHub.FetchReviewComment(pr.Owner, pr.Repo, pr.Number)
 	if err != nil {
-		slog.Warn("could not fetch prior review comment; skipping suppression", "err", err)
-		return result.Findings, nil
+		slog.Warn("could not fetch prior review comment; previously reported findings are not suppressed", "err", err)
+		return "", nil, false
 	}
 	if !found {
-		return result.Findings, nil
+		return "", nil, false
 	}
-	priorSHA, priorFindings, ok := report.ParseDataBlock(body)
-	priorFindings = slices.DeleteFunc(priorFindings, func(p report.Finding) bool {
+	sha, findings, ok = report.ParseDataBlock(body)
+	findings = slices.DeleteFunc(findings, func(p report.Finding) bool {
 		return !inSeveritySection(p, minSeverity, minConfidence)
 	})
-	if !ok || !hexObjectName.MatchString(priorSHA) || len(priorFindings) == 0 {
-		return result.Findings, nil
+	if !ok || !hexObjectName.MatchString(sha) || len(findings) == 0 {
+		return "", nil, false
 	}
-	changed, ok := changedFilesSince(pr.Dir, priorSHA)
-	if !ok {
-		// Without a reliable diff we cannot tell skipped from regressed; do not
-		// suppress, so nothing is hidden on a bad signal.
-		return result.Findings, nil
+	return sha, findings, true
+}
+
+// dismissedFingerprints counts, per report.FindingFingerprint, the earlier
+// findings that resolved review threads dismiss. A thread dismisses when it is
+// planwerk-agent's own (github.IsOwnThread), its first comment carries a
+// finding marker (report.ParseFindingMarker), and an account other than the
+// one that posted that comment resolved it. A resolve never dismisses when it
+// comes from the posting identity, compared case-insensitively, or when GitHub
+// reports no resolver, as for the GitHub Actions bot: that rule is what keeps
+// --resolve-outdated's own resolves (decision 133) from hiding live findings.
+// An open own thread with the same marker does not cancel a dismissal, since
+// that thread is still visible on the PR. A comment posted without a marker
+// dismisses nothing.
+//
+// The count is the most dismissing threads any one review opened for the
+// fingerprint, not their sum: a run posts a finding again when its file
+// changed while its thread was still open, so threads from several reviews can
+// stand for one earlier finding, while two findings on the same code in one
+// review are two. A thread whose first comment GitHub names no review for
+// counts as a review of its own, so it never adds to another (decision 132).
+func dismissedFingerprints(threads []github.ReviewThread) map[string]int {
+	type opened struct{ fp, review string }
+	perReview := make(map[opened]int)
+	counts := make(map[string]int)
+	for _, t := range threads {
+		if !github.IsOwnThread(t) || !t.IsResolved || t.ResolvedBy == "" {
+			continue
+		}
+		first := t.Comments[0]
+		if strings.EqualFold(t.ResolvedBy, first.Author) {
+			continue
+		}
+		fp, ok := report.ParseFindingMarker(first.Body)
+		if !ok {
+			continue
+		}
+		n := 1
+		if first.ReviewID != "" {
+			k := opened{fp, first.ReviewID}
+			perReview[k]++
+			n = perReview[k]
+		}
+		counts[fp] = max(counts[fp], n)
 	}
-	return report.FilterPreviouslyReported(result.Findings, priorFindings, func(file string) bool {
-		return !changed[file]
-	})
+	return counts
 }
 
 // changedFilesSince returns the set of files changed between sha and HEAD. ok is
@@ -771,16 +876,43 @@ func changedFilesSince(dir, sha string) (map[string]bool, bool) {
 	return changed, true
 }
 
-// writeSuppressionNote renders a collapsed note listing findings suppressed as
-// previously-reported, so nothing is hidden silently.
-func writeSuppressionNote(w io.Writer, suppressed []report.Finding) {
-	_, _ = fmt.Fprintf(w, "> [!NOTE]\n> %d finding(s) suppressed as previously reported on unchanged files since the last review:\n", len(suppressed))
-	for _, f := range suppressed {
-		_, _ = fmt.Fprintf(w, "> - %s", f.Title)
-		if f.File != "" {
-			_, _ = fmt.Fprintf(w, " (%s)", f.File)
+// reasonPreviouslyReported and reasonDismissedInThread follow the count in the
+// suppression note's group headers. The first keeps the wording of the note's
+// single header from before resolved threads dismissed anything.
+const (
+	reasonPreviouslyReported = "suppressed as previously reported on unchanged files since the last review"
+	reasonDismissedInThread  = "suppressed because their inline thread was resolved and the quoted code is unchanged"
+)
+
+// writeSuppressionNote renders one [!NOTE] alert listing the findings a
+// re-review left out, so nothing is hidden silently. It holds a group per
+// non-empty reason, previously reported first, separated by a bare ">" line.
+func writeSuppressionNote(w io.Writer, s suppressed) {
+	_, _ = fmt.Fprintln(w, "> [!NOTE]")
+	groups := []struct {
+		reason   string
+		findings []report.Finding
+	}{
+		{reasonPreviouslyReported, s.unchanged},
+		{reasonDismissedInThread, s.dismissed},
+	}
+	written := false
+	for _, g := range groups {
+		if len(g.findings) == 0 {
+			continue
 		}
-		_, _ = fmt.Fprintln(w)
+		if written {
+			_, _ = fmt.Fprintln(w, ">")
+		}
+		written = true
+		_, _ = fmt.Fprintf(w, "> %d finding(s) %s:\n", len(g.findings), g.reason)
+		for _, f := range g.findings {
+			_, _ = fmt.Fprintf(w, "> - %s", f.Title)
+			if f.File != "" {
+				_, _ = fmt.Fprintf(w, " (%s)", f.File)
+			}
+			_, _ = fmt.Fprintln(w)
+		}
 	}
 	_, _ = fmt.Fprintln(w)
 }
