@@ -146,7 +146,7 @@ the phases around exactly this.
 Deleting a published interface is on `interaction.md`'s irreversibility list,
 so every **Author's call** item is genuinely theirs. Group the items by
 surface — one question per exported package or API area, never one per symbol
-— and ask each group as its own `AskUserQuestion`, under the rules in
+— and ask each group as its own question, in rounds, under the rules in
 `interaction.md`.
 
 What the author settles moves to Dead or Healthy accordingly. What they

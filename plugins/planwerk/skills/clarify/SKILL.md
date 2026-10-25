@@ -159,12 +159,14 @@ Two rules keep the sort honest:
 
 ## Phase 3 — Put the decisions to the author
 
-Ask each decision as its own `AskUserQuestion`, under the rules in
+Ask each decision as its own question, in rounds, under the rules in
 `interaction.md`. Cite the `path:line` that raised it.
 
 Order the decisions by blast radius, largest first. An answer that discards half
 the plan makes the smaller questions moot, and asking those first spends the
-author's attention on work that will not exist.
+author's attention on work that will not exist. Such a decision is a round of
+its own (`interaction.md`, Ask in rounds); the decisions it cannot moot share
+the round after it.
 
 Two things belong in every such question, and only `clarify` is in a position to
 supply them:

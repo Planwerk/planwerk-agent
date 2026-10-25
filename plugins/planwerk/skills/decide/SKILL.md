@@ -138,9 +138,10 @@ looked.
 
 ## Phase 3 — Put the contested decisions to the author
 
-Ask each **Contested** item as its own `AskUserQuestion`, under the rules in
+Ask each **Contested** item as its own question, in rounds, under the rules in
 `interaction.md`. Order them by blast radius, largest first — an answer that
-discards half the downstream work makes the smaller items moot.
+discards half the downstream work makes the smaller items moot, so that item is
+a round of its own.
 
 Two things belong in every such question, and only this skill is in a position
 to supply them:

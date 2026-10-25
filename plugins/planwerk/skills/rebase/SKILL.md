@@ -182,7 +182,7 @@ commit for a reason the rebase did not introduce: `git rebase --abort`, and
 report `BLOCKED` with the commit, the hook, and what it printed. `--no-verify`
 is never the answer (the rules at the top).
 
-Two conflicts are the author's, one `AskUserQuestion` each, in the option shape
+Two conflicts are the author's, one question each, in the option shape
 `interaction.md` gives under "One decision, one question":
 
 1. **The two sides want different behavior.** The replayed commit changes what

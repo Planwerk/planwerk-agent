@@ -360,7 +360,7 @@ proves nothing about the real one. Record "no correct seam: `<why>`" for the
 report and the pull request body. The verdict is then at most
 `DONE_WITH_CONCERNS`.
 
-Three forks go to the author, one `AskUserQuestion` each, in the option shape
+Three forks go to the author, one question each, in the option shape
 `interaction.md` gives under "One decision, one question":
 
 1. The reported behavior is what the code, its tests, or its documentation

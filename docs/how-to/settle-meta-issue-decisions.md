@@ -54,8 +54,10 @@ Contested without having opened those files first.
 
 ## What reaches you
 
-One `AskUserQuestion` per **Contested** item, largest blast radius first, with
-the same doctrine every planwerk skill asks under — a recommendation on one
+One question per **Contested** item, largest blast radius first, in rounds
+that put independent items into one prompt and hold back an item whose options
+hang on an answer still open, with the same doctrine every planwerk skill asks
+under — a recommendation on one
 option, a concrete upside and an honest downside on each, one sentence on what
 breaks if the choice is wrong. Two things only `decide` can add, because only it
 has read both the Meta Issue and its siblings:
