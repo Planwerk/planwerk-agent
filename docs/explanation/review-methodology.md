@@ -131,6 +131,9 @@ skipped, and the report lists them as gated out beside the ones that ran, so a
 5-line docs-only PR runs only the two always-on specialists instead of all six.
 When the changed-file set cannot be determined, the gate fails open and every
 specialist runs.
+`--dry-run` shows the gate's choice for a pull request before any session
+runs: each specialist with whether it runs and, for a skipped one, the kind of
+file the diff did not touch.
 
 The same fan-out runs inside `implement`'s self-review, on the first round of
 its review-and-fix loop (see [Shared with `implement`'s self-review](#shared-with-the-implement-self-review)).

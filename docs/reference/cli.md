@@ -73,6 +73,12 @@ planwerk-agent --format sarif owner/repo#123 > results.sarif
 
 # Write output to file
 planwerk-agent owner/repo#123 > review.md
+
+# Report what a review would run, without a Claude call
+planwerk-agent --dry-run --thorough --specialists owner/repo#123
+
+# Render the review prompt
+planwerk-agent --print-prompt owner/repo#123 > review-prompt.md
 ```
 
 | Flag | Description | Default |
@@ -93,7 +99,7 @@ planwerk-agent owner/repo#123 > review.md
 | `--cache-stats` | Show cache size, age distribution, and per-command breakdown, then exit | `false` |
 | `--cache-inspect` | Print the metadata and payload for the given cache key, then exit | - |
 | `--cache-max-age` | Reject cached entries older than this duration (`0` disables the TTL) | `720h` |
-| `--format` | Output format (`markdown`, `json`, `sarif`; see [SARIF](/reference/output-format#sarif)). `json` and `sarif` refuse `--post-review` and `--inline`, and `sarif` also refuses `--coverage-map` | `markdown` |
+| `--format` | Output format (`markdown`, `json`, `sarif`; see [SARIF](/reference/output-format#sarif)). `json` and `sarif` refuse `--post-review` and `--inline`, and `sarif` also refuses `--coverage-map`, `--dry-run` and `--print-prompt` | `markdown` |
 | `--post-review` | Post the review as a comment on the PR (updates existing if found) | `false` |
 | `--inline` | Post findings as inline comments using the GitHub Review API; the summary goes into the PR comment `--post-review` keeps up to date (implies `--post-review`). A finding gets an inline comment only when the summary lists it in a severity section: findings below `--min-severity` or `--min-confidence` and findings in the Unverified section get none. Neither does a finding whose quoted code pins no single place in the head content (`line_check: unanchored`); it stays in the summary | `false` |
 | `--resolve-outdated` | With `--inline`, resolve the review threads earlier runs opened once GitHub marks them outdated, unless someone replied or a current finding still covers their lines (needs write access to the repository; see [Resolving outdated threads](/reference/output-format#resolving-outdated-threads)) | `false` |
@@ -107,6 +113,8 @@ planwerk-agent owner/repo#123 > review.md
 | `--local` | Operate on the current working directory instead of cloning into a temp dir (see [Use local mode](/how-to/use-local-mode)). The PR reference may be omitted — it is inferred from the current branch. | `false` |
 | `--force` | With `--local`, skip the confirmation prompt when the working tree is dirty | `false` |
 | `--no-capture` | Skip the read-only capture pass that proposes new wiki review patterns from the review findings (only runs with `--wiki`; writes nothing) | `false` |
+| `--dry-run` | Report what the review would run without invoking Claude, writing the cache, or posting: the PR and head SHA, the cache key and whether it hits, the detected technologies, pattern counts, changed files, and each pass with whether it runs and the size of its prompt | `false` |
+| `--print-prompt` | Render the review prompt, with the pattern bodies, to stdout and exit | `false` |
 | `--version` | Show version information and exit | `false` |
 
 The secondary passes (`--thorough`, `--specialists`, `--coverage-map`, and the
@@ -116,6 +124,41 @@ pass that errors is left out of the findings and named with its error in a
 block, and in a warning notification of a `--format sarif` log
 ([Pass Status](/reference/output-format#pass-status)). The run is then not
 written to the cache, so the next run of the same commit retries it.
+
+`--dry-run` and `--print-prompt` are mutually exclusive, and both refuse
+`--format sarif`, since neither writes a SARIF log. Both check out the pull
+request, resolve the wiki and the mirror search, detect technologies, and
+load the patterns, checklist and glossary from the base ref, exactly as a
+review does; with `--local`, both check out the PR branch in the working tree,
+as a review does. Neither starts a Claude session, writes the cache, posts to
+the pull request, or runs the capture pass.
+
+`--dry-run` reports a cache hit rather than serving it. It lists every finder
+pass with whether it runs: the specialist rows show the adaptive gate's
+choice, with the reason for each skipped specialist, and a running pass shows
+how many pattern bodies its prompt carries and the prompt's size in bytes.
+To size the prompts as a run sends them, it writes what a run writes before
+its first session (the project memory, the diff files, the `--scope-patterns`
+catalog) and removes it before it exits. A partitioned review lists its
+partitions, with one review row per partition. The passes that work on the
+findings (dedup, claim verification, capture) are not sized. With
+`--format json` the dry run prints one JSON object
+([Dry-run report](/reference/output-format#dry-run-report-dry-run)).
+
+`--print-prompt` prints the primary review session's prompt. It carries the
+pattern bodies, and the project memory as page bodies rather than the index,
+because the directory the index points to is removed when the command exits.
+It writes no file either: where a run hands the session a diff file and the
+`--scope-patterns` catalog, it names the `git diff` command and carries every
+pattern body, as a run does when it cannot write them. It still lists the
+changed files and splits the review as a run does. Under `--diff-exclusions`
+it classifies the changed files without writing the diff, so the files the
+diff would leave out are missing from its changed-file list and its
+partitions, although the `git diff` command it names shows them. Unlike the
+printed prompts of `fix` and `address`, it resolves the wiki, since a review
+loads the wiki's patterns into its prompt. For a partitioned review it prints
+the first partition's prompt and logs how many partitions there are;
+`--dry-run` lists them all.
 
 ### Sessions that search the mirror
 

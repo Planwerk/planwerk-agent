@@ -73,6 +73,41 @@ and a note at the end of the report lists them; see
 The cognitive patterns and checklist Claude applies are described in
 [Review methodology](/explanation/review-methodology).
 
+## Preview a review before it runs
+
+To see what a review would run before you pay for it, ask for a dry run:
+
+```bash
+planwerk-agent --dry-run --specialists owner/repo#123
+```
+
+The dry run prepares the review as a review does (the checkout, the wiki, the
+patterns, the cache key) and stops before the first Claude session. Read three
+things in its report:
+
+- **Cache**: `hit` means a review of this commit with these flags would be
+  served the cached result and start no session; `--no-cache` would run the
+  passes listed.
+- **Passes**: which specialists the adaptive gate lets through for this diff,
+  and why it skips the others.
+- **Prompt sizes**: how many pattern bodies and bytes each pass would be sent,
+  before you raise `--max-patterns` or turn on `--specialists` or
+  `--thorough`. The sizes are bytes, not tokens, and the passes that work on
+  the findings are not sized.
+
+To inspect the review prompt itself, or paste it into a manual session, print
+it:
+
+```bash
+planwerk-agent --print-prompt owner/repo#123
+```
+
+The printed prompt carries the pattern bodies and the project memory, and it
+names the `git diff` command where a run hands the session a diff file it
+writes. See the [CLI reference](/reference/cli#review-default-command) for both
+flags and [Dry-run report](/reference/output-format#dry-run-report-dry-run) for
+the report's fields.
+
 ## Review a large pull request
 
 When a pull request touches dozens of files, split the review so each part

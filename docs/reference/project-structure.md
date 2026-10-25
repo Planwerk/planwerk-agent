@@ -45,6 +45,7 @@ planwerk-agent/
 │   ├── claude/
 │   │   ├── claude.go           # Review command entry point (Review, ReviewContext)
 │   │   ├── prompt.go           # review prompt builder (buildReviewPrompt)
+│   │   ├── review_passes.go    # The prompt each review session would be sent (ReviewPassPrompts, review --dry-run)
 │   │   ├── runner.go           # Claude Code subprocess invocation (runClaude, timeout/model)
 │   │   ├── repair.go           # JSON decode with one-shot Claude repair
 │   │   ├── structure.go        # Finder JSON → findings + IDs, schema repair
@@ -152,6 +153,7 @@ planwerk-agent/
 │   │   ├── scope.go            # The scoped catalog under --scope-patterns (scopeCatalog)
 │   │   ├── partition.go        # Partitioned review (--partition-files): the split, the per-partition sessions, the merge
 │   │   ├── partition_test.go
+│   │   ├── preview.go          # The dry-run report (--dry-run) and the printed review prompt (--print-prompt)
 │   │   └── merge.go            # Merge results from multiple review passes
 │   ├── search/                 # brain search: the full-text index of a mirror directory
 │   │   ├── index.go            # index.sqlite: the schema, the version check, the refresh, the block cutting (Open)

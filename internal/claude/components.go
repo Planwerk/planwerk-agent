@@ -146,11 +146,19 @@ func finderPatternCatalog(intro string, pats []patterns.Pattern, maxPatterns int
 // wiki-authored pattern with an unrecognized area never vanishes from every
 // specialist.
 func domainPatternCatalog(intro string, pats []patterns.Pattern, maxPatterns int, areas []string) string {
+	return finderPatternCatalog(intro, areaCatalog(pats, areas), maxPatterns)
+}
+
+// areaCatalog returns the patterns of pats that domainPatternCatalog renders
+// for areas: those patterns.PartitionByArea files under one of them, or all of
+// pats when areas is empty or no pattern carries one. ReviewPassPrompts counts
+// a specialist's pattern bodies through it (decision 143).
+func areaCatalog(pats []patterns.Pattern, areas []string) []patterns.Pattern {
 	scoped, _ := patterns.PartitionByArea(pats, areas...)
 	if len(scoped) == 0 {
-		return finderPatternCatalog(intro, pats, maxPatterns)
+		return pats
 	}
-	return finderPatternCatalog(intro, scoped, maxPatterns)
+	return scoped
 }
 
 // promptScope distinguishes a diff-scoped review (a PR or branch comparison)

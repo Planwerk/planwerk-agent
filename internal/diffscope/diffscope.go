@@ -283,13 +283,9 @@ func Materialize(req Request) (Diff, func(), error) {
 	if err != nil {
 		return Diff{}, noop, err
 	}
-	var excluded []report.ExcludedFile
-	if req.Exclude {
-		changed, err := changedPaths(top, req.Revs, req.Paths)
-		if err != nil {
-			return Diff{}, noop, err
-		}
-		excluded = Classify(top, changed)
+	excluded, err := exclusionsAt(top, req)
+	if err != nil {
+		return Diff{}, noop, err
 	}
 
 	dir, err := os.MkdirTemp("", DirPrefix)
@@ -317,6 +313,38 @@ func Materialize(req Request) (Diff, func(), error) {
 		return Diff{}, noop, err
 	}
 	return Diff{Dir: dir, File: file, Range: strings.Join(req.Revs, " "), Lines: lines, Excluded: excluded}, cleanup, nil
+}
+
+// Exclusions returns the changed files the diff req names leaves out: the
+// Excluded list Materialize records for req, classified the same way but
+// without writing the diff. It returns nil without req.Exclude, and for a
+// request Materialize writes nothing for. A caller that needs the excluded
+// set but no diff file, as review --print-prompt does, calls it in place of
+// Materialize; a git failure is reported as Materialize reports it
+// (decision 143).
+func Exclusions(req Request) ([]report.ExcludedFile, error) {
+	if !req.Exclude || req.RepoDir == "" || len(req.Revs) == 0 {
+		return nil, nil
+	}
+	top, err := topLevel(req.RepoDir)
+	if err != nil {
+		return nil, err
+	}
+	return exclusionsAt(top, req)
+}
+
+// exclusionsAt is Exclusions at top, the checkout's top level: Classify over
+// the paths the diff over req.Revs changes, limited to req.Paths, or nil
+// without req.Exclude.
+func exclusionsAt(top string, req Request) ([]report.ExcludedFile, error) {
+	if !req.Exclude {
+		return nil, nil
+	}
+	changed, err := changedPaths(top, req.Revs, req.Paths)
+	if err != nil {
+		return nil, err
+	}
+	return Classify(top, changed), nil
 }
 
 // MaterializeOrWarn is Materialize for callers that run without a diff file

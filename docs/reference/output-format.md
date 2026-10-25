@@ -142,6 +142,81 @@ Verdict values: `HOLD` (blockers/criticals present), `REVIEW` (warnings only),
 Recommendations use GitHub Alert syntax (`[!CAUTION]`, `[!WARNING]`, `[!TIP]`,
 `[!IMPORTANT]`) for native rendering.
 
+## Dry-run report (`--dry-run`)
+
+`review --dry-run` reports what a review of the pull request would run,
+without a Claude session (see the
+[CLI reference](/reference/cli#review-default-command)). The text form opens
+with a header, then lists what the review's preparation found, the changed
+files, and one row per finder pass, with its pattern bodies and prompt size or
+the reason it does not run:
+
+```text
+[dry-run] Review of owner/repo#123: no Claude session, no cache write, nothing posted.
+
+PR:           owner/repo#123: Cache widget lookups
+Head:         3f2c1d9 (widget-cache into main)
+Cache:        miss, key 7985bf17c90f05cf6c689e1bbf97b82c
+Technologies: go
+Patterns:     47 loaded (16 design-principle, 31 technology, 0 review, 0 general)
+Post:         none
+
+Changed files (2):
+  internal/cache/cache.go
+  internal/cache/cache_test.go
+
+Passes:
+  review                      run   47 patterns  131.2 KB
+  adversarial                 run   47 patterns  121.0 KB
+  coverage                    skip  --coverage-map is off
+  compliance                  skip  no Planwerk feature file matches the pull request
+  specialist-security         run   9 patterns   31.6 KB
+  specialist-data-migration   run   1 pattern    12.0 KB
+  specialist-testing          run   6 patterns   19.9 KB
+  specialist-performance      run   21 patterns  60.2 KB
+  specialist-api-contract     skip  the diff changes no route or handler file
+  specialist-maintainability  run   38 patterns  104.5 KB
+
+The sizes are prompt bytes, not tokens. The passes that work on the findings (dedup, claim verification, capture) depend on the findings and are not sized.
+```
+
+A cache hit reads `hit, key <key>: a review would serve the cached result and
+start no session; --no-cache runs the passes below`. The text form adds a
+`Wiki`, `Brain`, `Scope` or `Feature` line when there is one to report, lists
+the excluded files and the partitions under the changed files, and collapses
+the six specialist rows into one `specialists  skip  --specialists is off` row
+without `--specialists`.
+
+With `--format json` the dry run prints one object instead:
+
+| Field | Meaning |
+|-------|---------|
+| `pr` | The pull request, `owner/repo#N` |
+| `title` | Its title |
+| `head_sha`, `head_branch`, `base_branch` | The head commit checked out, and the head and base branches |
+| `cache_key` | The key a review of this commit, with these flags, is cached under ([Caching model](/explanation/caching)) |
+| `cache` | `hit`: a review would be served the cached result and start no session. `miss`: no usable entry. `off`: `--no-cache` |
+| `wiki_repo`, `wiki_commit` | The resolved wiki and its commit; absent without one |
+| `memory_pages` | How many project memory pages the wiki holds |
+| `brain` | Whether the review session may search the local mirror (`--brain`) |
+| `tech_tags` | The detected technologies; `[]` when none |
+| `patterns` | The loaded catalog before any scoping: `loaded`, then `design_principle`, `technology`, `review` and `general` by category, and `max_patterns`, the `--max-patterns` cap each prompt applies (`0` for none) |
+| `scope_patterns` | With `--scope-patterns` only: `inline`, the pattern bodies the review prompt carries, and `indexed`, the patterns it lists instead, both before `--max-patterns` |
+| `feature` | The ID of the Planwerk feature file the compliance check would check against; absent when none matches |
+| `changed_files` | The pull request's changed files; `[]` when git could not list them, and the specialist gate then fails open |
+| `excluded_files` | What `--diff-exclusions` leaves out of the diff, in the form of [Excluded Files](#excluded-files); absent when nothing is left out |
+| `partitions` | With `--partition-files` splitting the review: one entry per primary-review session, with the `files` it reviews and their `lines`, as in [Partitioned Reviews](#partitioned-reviews); absent otherwise |
+| `passes` | One entry per finder session a review can start, in order: the review session (one per partition), `adversarial`, `coverage`, `compliance`, then `specialist-<key>` for each of the six specialists. Each has `pass`, its session label; `partition`, the number of a partitioned review's session; `run`, whether the review starts it; `reason`, why it does not; `patterns`, the pattern bodies its prompt carries after the specialist's areas, the `--scope-patterns` split and `--max-patterns`; and `prompt_bytes`, its prompt's size |
+| `post` | Where the review would be posted: `none`, `comment` (`--post-review`) or `inline` (`--inline`). The CLI refuses `--post-review` and `--inline` with `--format json`, so a JSON dry run from the command line reads `none` |
+
+`passes[].pass` is the label a run's `usage.passes[].pass` carries (see
+[Claude Usage Totals](#claude-usage-totals)), so a dry run's prompt sizes can
+be set beside the token counts of a run; the sessions of a partitioned review
+all carry `review`, as their usage does. The prompts are built by the builders
+the sessions use, and the sizes count bytes, not tokens. The passes whose input
+is the findings (the file-less dedup, claim verification, the capture pass)
+are not listed.
+
 ## Claude Usage Totals
 
 Every command aggregates the token usage and estimated cost of all the Claude
@@ -519,10 +594,10 @@ way: a run whose review failed prints no log, and a failed secondary pass does
 not fail the run.
 
 The log is the whole of stdout, so `review` refuses `--post-review`, `--inline`,
-and `--coverage-map` with `--format sarif`, and `audit` refuses
-`--create-issues`, and `--capture-wiki` without `--yes`. With `--wiki` the
-capture pass still runs, and its printed proposals are discarded, as under
-`--format json`.
+`--coverage-map`, `--dry-run` and `--print-prompt` with `--format sarif`, and
+`audit` refuses `--create-issues`, and `--capture-wiki` without `--yes`. With
+`--wiki` the capture pass still runs, and its printed proposals are discarded,
+as under `--format json`.
 
 ```bash
 planwerk-agent --format sarif owner/repo#123 > results.sarif

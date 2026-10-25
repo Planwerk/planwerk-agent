@@ -32,6 +32,17 @@ func (s Specialist) ShouldRun(changedFiles []string) bool {
 	return false
 }
 
+// String names the kind of changed file that makes a gateable specialist of
+// this Relevance run: "route or handler file" for RelevanceRoutes, "source
+// file" otherwise, the same split ShouldRun makes. review --dry-run prints it
+// after "the diff changes no " for a specialist the gate skips (decision 143).
+func (r Relevance) String() string {
+	if r == RelevanceRoutes {
+		return "route or handler file"
+	}
+	return "source file"
+}
+
 // isSourceFile reports whether a repo-relative path is a source-code file, as
 // opposed to documentation, configuration, data, or media. The "any source"
 // specialists (testing, performance, maintainability) are relevant only when

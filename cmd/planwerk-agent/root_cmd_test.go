@@ -58,6 +58,10 @@ func TestValidateReviewFormat(t *testing.T) {
 		{"sarif refuses --inline", review.Options{Format: "sarif", InlineReview: true}, "--inline cannot be used with --format sarif"},
 		{"sarif refuses --coverage-map", review.Options{Format: "sarif", CoverageMap: true}, "--coverage-map cannot be used with --format sarif: SARIF has no place for the coverage map"},
 		{"json keeps --coverage-map", review.Options{Format: "json", CoverageMap: true}, ""},
+		{"sarif refuses --dry-run", review.Options{Format: "sarif", DryRun: true}, "--dry-run cannot be used with --format sarif"},
+		{"sarif refuses --print-prompt", review.Options{Format: "sarif", PrintPrompt: true}, "--print-prompt cannot be used with --format sarif"},
+		{"json keeps --dry-run", review.Options{Format: "json", DryRun: true}, ""},
+		{"json keeps --print-prompt", review.Options{Format: "json", PrintPrompt: true}, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

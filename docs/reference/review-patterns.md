@@ -164,7 +164,8 @@ read; the reviewer reads none. `fix` writes one per iteration, beside that
 iteration's pattern catalog, and resolves the wiki once per run. `address`
 writes one per run, shared by every per-thread session. The printed prompts of
 `fix` and `address` (`--print-prompt`, `--print-bare-prompt`) resolve no wiki
-and carry no memory. `brain memory` writes no directory: it prints the index
+and carry no memory; `review --print-prompt` resolves the wiki and carries the
+memory as page bodies. `brain memory` writes no directory: it prints the index
 without the 64 KB budget, and a page's body, to stdout. It lists and prints
 only the pages whose file name is safe on a command line, and drops control
 characters from what it prints (see the [CLI reference](/reference/cli#brain)).

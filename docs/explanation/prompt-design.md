@@ -519,6 +519,9 @@ tokens of prompt injected into eight of them before the specialists were scoped
 to their own areas ([decision 79](./design-decisions.md)), and that is the shape
 of finding sprawl at the resolution of a *pass* — text a prompt tells the model
 to ignore, paid for once per session that carries it.
+Before a run, `planwerk-agent --dry-run <pr>` prints each pass's prompt size,
+built by the same builders the sessions use, so a prompt change's size shows
+up without spending a token ([decision 143](/explanation/design-decisions)).
 
 The golden tests hold a prompt still; they cannot say whether it still fits
 its reader. That check runs as an iteration, not as a build step, because it

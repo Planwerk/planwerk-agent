@@ -106,3 +106,6 @@ stored:
 - `cache inspect <key>` dumps the cached command, `writtenAt`, age, size, and
   the full JSON payload for a single entry, so you can confirm what would be
   reused on the next run without rerunning the analysis.
+- `review --dry-run` prints the key a review of the pull request would use and
+  whether an entry under it would be served, so `cache inspect <key>` can show
+  that entry before you decide on `--no-cache`.

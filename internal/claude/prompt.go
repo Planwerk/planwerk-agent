@@ -297,12 +297,8 @@ func reviewPatternsBlock(ctx ReviewContext) string {
 	if len(ctx.Patterns) == 0 {
 		return ""
 	}
-	s := ctx.Scope
-	var index string
-	if s != nil && len(s.Rest) > 0 {
-		index = patterns.FormatCatalogIndex(ctx.Catalog.Only(s.Rest), ctx.MaxPatterns)
-	}
-	if s == nil || (len(s.Rest) > 0 && index == "") {
+	s, index := reviewPatternScope(ctx)
+	if s == nil {
 		return reviewPatternsLeadIn + ":\n\n<review-patterns>\n" +
 			patterns.FormatGroupedForPrompt(ctx.Patterns, ctx.MaxPatterns) +
 			"</review-patterns>\n\n"
@@ -322,6 +318,24 @@ func reviewPatternsBlock(ctx ReviewContext) string {
 			"\n\n<review-patterns-index>\n" + index + "</review-patterns-index>\n\n")
 	}
 	return sb.String()
+}
+
+// reviewPatternScope returns the split of ctx.Patterns reviewPatternsBlock
+// renders and the index it lists for the split's Rest: ctx.Scope with that
+// index, or "" when Rest is empty, and nil when the block carries every body,
+// because ctx has no Scope or no catalog was written for its Rest.
+// ReviewPassPrompts counts the review's pattern bodies through it (decision
+// 141, decision 143).
+func reviewPatternScope(ctx ReviewContext) (*patterns.FileScope, string) {
+	s := ctx.Scope
+	if s == nil || len(s.Rest) == 0 {
+		return s, ""
+	}
+	index := patterns.FormatCatalogIndex(ctx.Catalog.Only(s.Rest), ctx.MaxPatterns)
+	if index == "" {
+		return nil, ""
+	}
+	return s, index
 }
 
 // changedFilesBlock renders the review prompt's Changed Files section: one line

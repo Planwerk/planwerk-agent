@@ -500,6 +500,64 @@ func TestMaterialize_GitFailureLeavesNothingBehind(t *testing.T) {
 	}
 }
 
+// TestExclusions_ClassifiesWithoutWritingTheDiff pins Exclusions: the set
+// Materialize records for the same request, with Paths applied, and no diff
+// directory written; nil without Exclude or a request to diff; and git's error
+// when the range does not resolve (decision 143).
+func TestExclusions_ClassifiesWithoutWritingTheDiff(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	dir, _ := branchRepo(t,
+		map[string]string{"app.go": "package app\n", "go.sum": "a v1\n", "vendor/x/y.go": "package x\n"},
+		map[string]string{"app.go": "package app\n\nvar A = 1\n", "go.sum": "a v2\n", "vendor/x/y.go": "package x\n\nvar Y = 1\n"},
+	)
+	req := Request{RepoDir: dir, Revs: []string{"origin/main...HEAD"}, Exclude: true}
+
+	got, err := Exclusions(req)
+	if err != nil {
+		t.Fatalf("Exclusions: %v", err)
+	}
+	want := []report.ExcludedFile{
+		{Path: "go.sum", Reason: report.ExcludedLockfile},
+		{Path: "vendor/", Reason: report.ExcludedVendored, Files: 1},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Exclusions = %+v, want %+v", got, want)
+	}
+	if left := diffDirsIn(t, tmp); len(left) != 0 {
+		t.Errorf("TMPDIR holds %v after Exclusions, want no diff directory", left)
+	}
+	d, cleanup, err := Materialize(req)
+	if err != nil {
+		t.Fatalf("Materialize: %v", err)
+	}
+	cleanup()
+	if !reflect.DeepEqual(got, d.Excluded) {
+		t.Errorf("Exclusions = %+v, Materialize recorded %+v; want the same set", got, d.Excluded)
+	}
+
+	limited := req
+	limited.Paths = []string{"app.go", "go.sum"}
+	if got, err := Exclusions(limited); err != nil || !reflect.DeepEqual(got, want[:1]) {
+		t.Errorf("Exclusions with Paths = %+v, %v; want only the go.sum entry", got, err)
+	}
+	for _, off := range []Request{
+		{RepoDir: dir, Revs: req.Revs},
+		{Revs: req.Revs, Exclude: true},
+		{RepoDir: dir, Exclude: true},
+	} {
+		if got, err := Exclusions(off); got != nil || err != nil {
+			t.Errorf("Exclusions(%+v) = %+v, %v; want nil and no error", off, got, err)
+		}
+	}
+
+	// gitreftest.Repo creates no origin/main, so the range does not resolve.
+	broken := gitreftest.Repo(t, map[string]string{"app.go": "package app\n"})
+	if got, err := Exclusions(Request{RepoDir: broken, Revs: req.Revs, Exclude: true}); got != nil || err == nil || !strings.Contains(err.Error(), "origin/main...HEAD") {
+		t.Errorf("Exclusions on an unresolved range = %+v, %v; want nil and an error naming the range", got, err)
+	}
+}
+
 // TestRunGit_DoesNotWaitOnAGrandchildHoldingItsOutput pins gitWaitDelay: a
 // process git leaves running with the output pipes open, as a lazy fetch in a
 // blobless clone can, must not keep runGit waiting until it ends.
