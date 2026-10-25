@@ -845,7 +845,7 @@ func TestImplementSystemPromptGolden(t *testing.T) {
 
 // TestBuildImplementerAgentPrompt_Golden locks the implementer subagent's
 // system prompt — the static half of the --agents definition an orchestrated
-// implement session passes to Claude Code. Determinism here is load-bearing:
+// implement session passes to Claude Code. Determinism matters most here:
 // the worker sees neither the issue nor the plan, so everything in this golden
 // is the entirety of what every delegated work package inherits.
 func TestBuildImplementerAgentPrompt_Golden(t *testing.T) {

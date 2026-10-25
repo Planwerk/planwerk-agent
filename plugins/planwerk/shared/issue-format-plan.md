@@ -150,7 +150,7 @@ These are plan failures. Never emit them:
 - Delivery-splitting notes: "one commit ≈ one PR", "split this into separate
   PRs", "defer X to a follow-up issue", "phase 2 can land later".
 
-That last rule is load-bearing. **One issue, one complete PR.** An elaborated
+That last rule matters most. **One issue, one complete PR.** An elaborated
 issue is implemented by one session and lands as exactly one pull request. Never
 prescribe another delivery structure, and never move work the Description
 requires into Non-Goals to shrink that delivery.

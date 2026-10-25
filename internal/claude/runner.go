@@ -156,7 +156,7 @@ func EffortLevels() string {
 // restrict the rest of the toolset. The auto-mode sessions (implement, fix,
 // address, rebase) already get both from the auto classifier's read-only-HTTP
 // allowance, so listing them here is redundant-but-harmless for them and
-// load-bearing for the read-only ones, which run in
+// required for the read-only ones, which run in
 // claudeReadOnlyPermissionMode.
 var claudeAllowedTools = []string{"WebSearch", "WebFetch"}
 

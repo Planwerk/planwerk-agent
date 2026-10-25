@@ -32,9 +32,10 @@ pinned to English.
   intricate, landscape (as an abstract noun), multifaceted, notably, nuanced,
   pivotal, showcase, tapestry, a testament to, underscore (as a verb), vibrant,
   leverage (as a verb), robust (outside its statistical sense), shed light on,
-  pave the way. These words are not wrong one by one; they cluster in machine
-  prose, and each has a plainer neighbor. The ban governs your own prose, never
-  identifiers, quoted code, or existing API names you cite verbatim.
+  pave the way, load-bearing (outside its structural sense). These words are not
+  wrong one by one; they cluster in machine prose, and each has a plainer
+  neighbor. The ban governs your own prose, never identifiers, quoted code, or
+  existing API names you cite verbatim.
 - Vary sentence length. Do not dress up your own work with adjectives ("critical
   fix", "powerful feature"). Write "This change…", not a bare "This…".
 

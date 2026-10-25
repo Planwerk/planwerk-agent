@@ -118,7 +118,7 @@ func loadDir(dir string) ([]Pattern, error) {
 		if d.IsDir() {
 			return nil
 		}
-		// Skip symlinks. The guard is load-bearing: a pattern directory is not
+		// Skip symlinks. The guard is required: a pattern directory is not
 		// always trusted input — the wiki ships a review_patterns/ tree and a
 		// wiki is world-editable, and a reviewed repo's .planwerk/review_patterns
 		// travels with the pull request — so a *.md symlink pointing at

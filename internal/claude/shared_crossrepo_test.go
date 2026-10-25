@@ -17,7 +17,7 @@ import (
 // applied to cross-repo references.
 const sharedCrossRepoDoc = "../../plugins/planwerk/shared/github.md"
 
-// crossRepoMarkers are the load-bearing phrases of the rule, in the form both
+// crossRepoMarkers are the key phrases of the rule, in the form both
 // surfaces must carry. Kept short so an unrelated rewording does not fail the
 // test while a dropped rule does.
 var crossRepoMarkers = []string{

@@ -55,7 +55,7 @@ func readEntries(dir string) ([]entry, error) {
 	var entries []entry
 	for _, f := range files {
 		// Skip directories, symlinks, and non-markdown entries. The symlink
-		// guard is load-bearing: the wiki is world-editable, so a *.md symlink
+		// guard is required: the wiki is world-editable, so a *.md symlink
 		// pointing at e.g. ~/.ssh/id_ed25519 would otherwise be followed by the
 		// read below and its target committed (and, in PR mode, pushed). The
 		// entry type is reported without following the link, so it is rejected

@@ -596,7 +596,7 @@ Use these exact terms. Do NOT substitute the looser words "component", "service"
 // TestSharedHumanizerDocMatchesPromptBlocks keeps this line, the shared doc,
 // and house-style.md agreeing on the list (decision 80).
 func bannedVocabularyLine() string {
-	return `Never use AI-slop vocabulary: additionally, crucial, comprehensive, delve, enduring, enhance, foster, furthermore, garner, groundbreaking, interplay, intricate, landscape (as an abstract noun), multifaceted, notably, nuanced, pivotal, showcase, tapestry, a testament to, underscore (as a verb), vibrant, leverage (as a verb), robust (outside its statistical sense), shed light on, pave the way. The ban governs your own prose, never identifiers, quoted code, or existing API names you cite verbatim.`
+	return `Never use AI-slop vocabulary: additionally, crucial, comprehensive, delve, enduring, enhance, foster, furthermore, garner, groundbreaking, interplay, intricate, landscape (as an abstract noun), multifaceted, notably, nuanced, pivotal, showcase, tapestry, a testament to, underscore (as a verb), vibrant, leverage (as a verb), robust (outside its statistical sense), shed light on, pave the way, load-bearing (outside its structural sense). The ban governs your own prose, never identifiers, quoted code, or existing API names you cite verbatim.`
 }
 
 // communicationStyleBlock returns the anti-sycophancy "## Communication Style"
@@ -814,7 +814,7 @@ func passSummaryLine() string {
 // added via `git commit -s` as the final line, and never a Co-authored-by
 // trailer.
 //
-// Ordering is load-bearing. The Signed-off-by MUST be the last line, so the
+// Ordering matters. The Signed-off-by MUST be the last line, so the
 // Assisted-by line is passed as the final `-m` paragraph — `git commit -s`
 // folds its Signed-off-by into that same trailer block, landing it last.
 // Passing Assisted-by via `--trailer` instead would place it AFTER the

@@ -51,7 +51,7 @@ sharper but drifts.
 ## Information hierarchy
 
 A prompt is read top to bottom by a model that weights early, specific
-instructions heavily. So the load-bearing instruction leads. The review prompt
+instructions heavily. So the most important instruction leads. The review prompt
 opens by pinning the review *scope* before it says anything about persona or
 patterns, because reviewing the wrong diff makes every later instruction moot.
 The implement prompt states the issue is the definition of done before it lists

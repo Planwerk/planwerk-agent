@@ -200,7 +200,7 @@ func LoadMemoryPages(dir string) []MemoryPage {
 	controlNamed := 0
 	for _, e := range entries {
 		// Skip directories, symlinks, and non-markdown entries. The symlink
-		// guard is load-bearing: a wiki is world-editable, so a *.md symlink
+		// guard is required: a wiki is world-editable, so a *.md symlink
 		// pointing at e.g. ~/.aws/credentials or ~/.ssh/id_rsa would otherwise be
 		// followed by the read below and its target handed to a session.
 		// os.DirEntry reports the entry's own type without following it, so a

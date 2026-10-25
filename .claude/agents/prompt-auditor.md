@@ -60,7 +60,7 @@ For each, the operational test is in parentheses.
    weight: a qualifier on a qualifier, an example that restates the rule above
    it, a hedge left from a since-tightened constraint. (Read the block whole and
    ask which sentences survived only because nobody removed them.)
-4. **Sprawl** — the prompt grew long enough that its own load-bearing
+4. **Sprawl** — the prompt grew long enough that its own important
    instructions compete for attention. (If the lead instruction is no longer near
    the top, it has sprawled. Token cost is the secondary signal.)
 5. **Premature completion** — a finish line the model can cross while the work is
@@ -71,7 +71,7 @@ For each, the operational test is in parentheses.
 
 Also verify the two structural rules:
 
-- **Information hierarchy** — the single load-bearing instruction leads; state the
+- **Information hierarchy** — the single most important instruction leads; state the
   constraint, then the rationale, not the reverse.
 - **Single source of truth** — one source per instruction (not one block per
   superficially-similar paragraph).
