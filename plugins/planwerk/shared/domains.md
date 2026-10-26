@@ -37,3 +37,8 @@ not only against the sections the issue happened to write down.
 - **Operability & configuration** — the change adds or changes a flag,
   environment variable, config key, or default. Name what an existing
   deployment must set, and what happens when it sets nothing.
+- **User experience & accessibility** — the change alters what a person sees or
+  operates: a screen, a form, an interactive prompt, or text a user reads. Name
+  the states it renders (loading, empty, error, long or translated text), how a
+  keyboard and a screen reader reach a graphical one, and the words a user
+  reads when it fails.
