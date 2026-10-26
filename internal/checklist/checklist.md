@@ -26,5 +26,5 @@
 - [ ] Test Quality: untested error paths, missing edge cases, negative-path tests that assert type/status but not side effects
 - [ ] Performance & Bundle Impact: N+1 queries (missing eager loading), unbounded allocations, missing pagination, known-heavy dependencies (moment.js, lodash full), large static assets committed (>500KB), synchronous script tags without async/defer
 - [ ] API Contract: breaking changes to public interfaces without versioning, missing backward compatibility
-- [ ] View/Frontend: unescaped user content in templates, missing loading/error states, accessibility regressions, inline style blocks in partials (re-parsed every render)
+- [ ] View/Frontend: unescaped user content in templates, missing loading/empty/error states, accessibility regressions (a control without an accessible name, an image without alt text, a skipped heading level, an element the keyboard cannot reach, focus lost after an action, text below WCAG 2.2 AA contrast), inline style blocks in partials (re-parsed every render)
 - [ ] Time Window Safety: date-key lookups that assume "today" covers 24h, mismatched time windows between related features (one uses hourly buckets, another uses daily keys)

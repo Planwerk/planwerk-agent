@@ -42,6 +42,11 @@ type Specialist struct {
 	// added later: a new specialist behaves exactly as every specialist did
 	// before this field existed until someone decides what it covers.
 	Areas []string
+	// Design marks the specialist that reads the impeccable design skill when
+	// the operator loaded it: its reference documents, and the detector's
+	// matches on the changed UI files as leads (decision 155). It is set for
+	// ui alone.
+	Design bool
 }
 
 // PassLabel returns the session label the specialist's pass runs under,
@@ -63,13 +68,17 @@ const (
 	// RelevanceRoutes runs the specialist only when a changed file lives in a
 	// routing or request-handler layer (api/, routes/, handlers/, controllers/).
 	RelevanceRoutes
+	// RelevanceUI runs the specialist only when a changed file is markup, a
+	// stylesheet, a UI component, or a view template (isUIFile).
+	RelevanceUI
 )
 
 // Specialists is the registry of domain reviewers run by the fan-out. Security
 // and data-migration are marked NeverGate because a missed vulnerability or a
 // destructive migration is far more costly than the extra pass; the remaining
 // specialists are adaptively gated by [Specialist.ShouldRun] so a PR that does
-// not touch their relevant paths skips them.
+// not touch their relevant paths skips them. ui comes last, so the six that
+// preceded it keep their indices (decision 155).
 //
 // Each specialist's Areas lists the areas its domain actually reads on, and is
 // read as an exclusion of the rest: it drops only areas plainly outside the
@@ -125,6 +134,15 @@ var Specialists = []Specialist{
 		// API on documentation. Only security, testing and reliability drop out.
 		Areas: []string{"quality", "architecture", "documentation"},
 		Focus: `Clarity and intent: dead code, misleading names, duplicated logic that should be factored, magic numbers that should be named constants, and missing documentation for new public APIs, CLI flags, or config options. Skip style preferences: formatting, and naming that follows the project's conventions.`,
+	},
+	{
+		Key:       "ui",
+		Relevance: RelevanceUI,
+		// No embedded pattern carries this area, so the pass gets the whole
+		// catalog until a project files UI patterns under it.
+		Areas:  []string{"user-experience"},
+		Design: true,
+		Focus:  `What a person sees and operates. Markup that hides its meaning from assistive technology: a control without an accessible name, an image without alt text, a skipped heading level, a click handler on an element the keyboard cannot reach, focus lost or trapped after an action. Text or controls below WCAG 2.2 AA contrast, and touch targets under its minimum of 24 by 24 CSS pixels. States the change leaves unrendered: loading, empty, error, and long or translated text that overflows. Layouts that break at narrow widths or on zoom, and motion without a prefers-reduced-motion fallback. Colors, sizes, or spacing hard-coded where the project uses design tokens. UI copy that leaves the user unable to tell what happened or what to do next. Judge each from the source: the markup, the stylesheet values, the component's states. Judge visual taste only where the project's documented design decisions (a DESIGN.md, a PRODUCT.md, a brand guide) rule on it.`,
 	},
 }
 
@@ -200,10 +218,21 @@ func RunSpecialistFanOut(changedFiles []string, call func(Specialist) (*report.R
 // so the specialist applies the patterns that fall inside its domain — narrowed
 // to sp.Areas when it declares them; an empty catalog leaves the prompt
 // unchanged. The pass reads a diff it writes first (runDiffFinder), and its
-// result lists in ExcludedFiles what that diff left out (decision 137).
+// result lists in ExcludedFiles what that diff left out (decision 137). A
+// Design specialist, when the operator loaded the impeccable skill, may also
+// read the skill's reference documents, and its prompt carries them and the
+// detector's leads (designGuidance, decision 155).
 func (c *Client) SpecialistReview(dir, baseBranch string, sp Specialist, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
-	raw, model, excluded, err := c.runDiffFinder(dir, baseBranch, "", sp.PassLabel(), func(d diffscope.Diff) string {
-		return buildSpecialistPrompt(baseBranch, d, sp, pats, maxPatterns)
+	var readDirs []string
+	if sp.Design && c.hasDesignKit {
+		readDirs = []string{c.designKit.ReferenceDir()}
+	}
+	raw, model, excluded, err := c.runDiffFinderReading(dir, baseBranch, "", sp.PassLabel(), readDirs, func(d diffscope.Diff) string {
+		design := ""
+		if sp.Design {
+			design = c.designGuidance(dir, baseBranch, d)
+		}
+		return specialistPrompt(baseBranch, d, sp, pats, maxPatterns, design)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("running %s specialist review: %w", sp.Key, err)
@@ -216,7 +245,16 @@ func (c *Client) SpecialistReview(dir, baseBranch string, sp Specialist, pats []
 	return res, nil
 }
 
+// buildSpecialistPrompt renders the prompt of sp's pass over the diff d,
+// without the design section a Design specialist carries at run time.
+// ReviewPassPrompts sizes the dry run's specialist rows with it.
 func buildSpecialistPrompt(baseBranch string, d diffscope.Diff, sp Specialist, pats []patterns.Pattern, maxPatterns int) string {
+	return specialistPrompt(baseBranch, d, sp, pats, maxPatterns, "")
+}
+
+// specialistPrompt is buildSpecialistPrompt with design, the rendered
+// designGuidanceBlock, after the pattern catalog; "" leaves it out.
+func specialistPrompt(baseBranch string, d diffscope.Diff, sp Specialist, pats []patterns.Pattern, maxPatterns int, design string) string {
 	if baseBranch == "" {
 		baseBranch = DefaultBaseBranch
 	}
@@ -234,6 +272,7 @@ If your domain has no issues in this diff, return an empty findings array.
 `, sp.Key, sp.Focus)
 
 	sb.WriteString(domainPatternCatalog("## Project review patterns\n\nApply the project review patterns below that fall inside your domain — they ground your pass in the same catalog a later review of this diff would apply. They do NOT widen your scope beyond the domain above.", pats, maxPatterns, sp.Areas))
+	sb.WriteString(design)
 
 	sb.WriteString(communicationStyleBlock())
 	sb.WriteString(outputLanguageBlock())

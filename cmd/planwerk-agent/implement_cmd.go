@@ -113,8 +113,8 @@ finders and finding-hygiene the review command runs, then folds each fix into th
 commit it belongs to (same fixup/autosquash mechanism as the simplify pass, still
 no push) so the eventual PR lands already self-reviewed. Its first round runs the
 adversarial finder plus the domain-specialist fan-out (security, data migration,
-testing, performance, api contract, maintainability), adaptively gated by the
-files the branch changed and run concurrently; later rounds re-check the applied
+testing, performance, api contract, maintainability, ui), adaptively gated by
+the files the branch changed and run concurrently; later rounds re-check the applied
 fixes with the adversarial finder alone. The merged findings pass through the
 shared hygiene stage — multi-pass merge, file-less dedup, the quote-or-demote
 snippet gate, and claim verification — and only findings that survive it are

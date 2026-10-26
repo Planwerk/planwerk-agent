@@ -37,8 +37,15 @@ func (c *Client) writeDiff(dir, baseBranch, sinceRef string) (diffscope.Diff, fu
 // result. The review does not run through here: the review runner writes its
 // diff and passes it in ReviewContext.Diff (decision 137).
 func (c *Client) runDiffFinder(dir, baseBranch, sinceRef, label string, build func(diffscope.Diff) string) (text, model string, excluded []report.ExcludedFile, err error) {
+	return c.runDiffFinderReading(dir, baseBranch, sinceRef, label, nil, build)
+}
+
+// runDiffFinderReading is runDiffFinder for a pass that may also read the
+// directories in readDirs, beside the diff's: the ui specialist reads the
+// design skill's reference documents (decision 155).
+func (c *Client) runDiffFinderReading(dir, baseBranch, sinceRef, label string, readDirs []string, build func(diffscope.Diff) string) (text, model string, excluded []report.ExcludedFile, err error) {
 	d, cleanup := c.writeDiff(dir, baseBranch, sinceRef)
 	defer cleanup()
-	text, model, err = c.runClaudeFinderFindings(dir, build(d), label, d.Dir)
+	text, model, err = c.runClaudeFinderFindings(dir, build(d), label, d.Dir, readDirs...)
 	return text, model, d.Excluded, err
 }

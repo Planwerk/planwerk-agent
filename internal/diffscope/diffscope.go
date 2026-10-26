@@ -408,6 +408,20 @@ func literalPathspecs(paths []string) []string {
 	return specs
 }
 
+// Changed lists the paths the diff over revs changes in the checkout
+// repoDir lies in, as changedPaths prints them, and returns the top-level
+// directory they are relative to: repoDir may be a subdirectory, as it is
+// under --local when the run starts below the root. The ui specialist picks
+// the files the design detector scans from it (decision 155).
+func Changed(repoDir string, revs []string) (top string, changed []string, err error) {
+	top, err = topLevel(repoDir)
+	if err != nil {
+		return "", nil, err
+	}
+	changed, err = changedPaths(top, revs, nil)
+	return top, changed, err
+}
+
 // changedPaths lists the paths the diff over revs changes, limited to paths
 // when it holds any, as git prints them with -z: unquoted and NUL-separated,
 // so a name with a newline or a quote is one entry.

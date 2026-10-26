@@ -19,7 +19,7 @@ import (
 )
 
 // maxConcurrentPartitions is how many partition sessions of a partitioned
-// review run at once. With the adversarial pass, the six specialists, the
+// review run at once. With the adversarial pass, the seven specialists, the
 // coverage map and the compliance check running beside them, it keeps a
 // partitioned run's concurrent sessions near what an unpartitioned
 // --thorough --specialists run starts (decision 142).
