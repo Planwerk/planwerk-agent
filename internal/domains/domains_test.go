@@ -28,7 +28,7 @@ func TestDefault_NotEmpty(t *testing.T) {
 	}
 }
 
-// TestDefault_CoversEveryDomain pins the seven domains the plan prompt's
+// TestDefault_CoversEveryDomain pins the eight domains the plan prompt's
 // "every domain appears exactly once" rule is written against. Dropping one
 // here silently shrinks the sweep, so the list is asserted by name.
 func TestDefault_CoversEveryDomain(t *testing.T) {
@@ -40,6 +40,7 @@ func TestDefault_CoversEveryDomain(t *testing.T) {
 		"Security & trust boundaries",
 		"Performance & cost",
 		"Operability & configuration",
+		"User experience & accessibility",
 	} {
 		if !strings.Contains(Default(), "**"+name+"**") {
 			t.Errorf("default domain list is missing the %q domain", name)

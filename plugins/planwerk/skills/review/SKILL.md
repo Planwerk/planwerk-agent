@@ -61,6 +61,12 @@ memory, and the comment, rather than stopping as `github.md` says.
   own.
 - It never closes the ledger with an entry open, and size is never a reason
   to skip one.
+- It never judges visual taste. Accessibility (contrast and reduced motion
+  included), a missing interface state, a layout that breaks at a narrow width
+  or on zoom, and a value hard-coded where the project uses design tokens are
+  findings like any other; taste in layout, typography, color, and motion is
+  one only where the project's documented design decisions (a `DESIGN.md`, a
+  `PRODUCT.md`, a brand guide) rule on it. Phase 6 says what judges the rest.
 
 ## Phase 1 — Fix the scope
 
@@ -416,6 +422,13 @@ Then, in this order:
 - the sources: the patterns by source, the checklist, the memory pages, and
   the statement of intent.
 
+When the change touches UI files (markup, stylesheets, components, view
+templates), add one line after the sources, before the closing line. With the
+`impeccable` skill available in this session, it reads: `/impeccable critique`
+on the changed surface judges the design this review leaves out, and
+`/impeccable audit` measures it against impeccable's technical checks. Without
+it, the line says that this review did not judge how the interface looks.
+
 End with the next action as the last line. When a finding stands at WARNING or
 above, name the one to fix first and ask for `/planwerk:review` again, in a
 fresh session (`/clear` or a new `claude`), once the fix is committed.
@@ -461,7 +474,8 @@ report:
   fails, name the one that failed and post nothing: a commit made or pushed
   since the review began means the report describes a head the pull request
   no longer has.
-- The body is the report as shown, then a `---` line and
+- The body is the report as shown, without the line on UI files, which speaks
+  to the author in this session; then a `---` line and
   `_Reviewed by [planwerk-agent](https://github.com/planwerk/planwerk-agent) with Claude:<your model id>_`.
   Write the model id as your runtime states it, without a bracketed suffix
   such as `[1m]`; with no id, write a bare `with Claude`.

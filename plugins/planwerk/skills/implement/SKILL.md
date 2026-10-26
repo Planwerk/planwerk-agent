@@ -112,6 +112,10 @@ stories, no commit-sequence essay, no risk register. It must state, concretely:
 - The documentation the change makes stale.
 - The verification commands, including the project's own gate (`make test`,
   the lint target CI runs) when it is cheap.
+- When the change set touches UI files (markup, stylesheets, components, view
+  templates) and the `impeccable` skill is available in this session, the
+  impeccable command for each such surface: `harden` for the states an
+  Acceptance Criterion names, `audit` to check the result.
 
 The plan covers the whole issue as one pull request. A note in the issue body
 that splits delivery — "one commit ≈ one PR", "defer X to a follow-up" — is
@@ -153,6 +157,16 @@ Hold the plan's line while you work:
   path: the debug print, the widened test, the tidied import block in a file
   you only visited — delete everything not strictly required.
 
+Run the impeccable commands the plan named, each with its surface as the
+target; invoked without one, the skill shows a menu instead of running. A
+design change the plan does not name is a structural deviation. Where the
+skill's steps or its hooks' reminders conflict with this skill, the plan,
+`commits.md`, or the report, this skill wins: a finding you leave standing,
+from a command or a hook, goes into the report with its reason, never into an
+ignore, a waiver, or an `impeccable-disable` comment. A hook that reports after
+the push changes nothing pushed without the author's yes; end again with the
+next step as the last line.
+
 Then walk the Acceptance Criteria one by one against the actual diff, each with
 the command that exercises it and what it printed. Never write "met" for a
 criterion you did not exercise; a criterion only a live system can verify is
@@ -191,6 +205,8 @@ Open with one line: what shipped, or why nothing did. Then state:
   opened.
 - Every deviation from the approved plan, and every question the author
   declined, as unresolved decisions.
+- Each design finding you left standing, with its reason, when an impeccable
+  command ran.
 - Noticed but not touching: each thing outside the issue you saw and left
   alone — a bug next door, a stale doc — with its `path:line` and why it is out
   of scope, or "none". Never park an Acceptance Criterion here; what the issue
