@@ -45,6 +45,11 @@ treated as elaborated: the skill asks whether to proceed with the plan carrying
 the full weight, or to stop for [`/planwerk:elaborate`](/how-to/elaborate-an-issue)
 first.
 
+When the plan builds or changes an interface and the
+[impeccable](/how-to/use-impeccable-for-ui-work) skill is installed, the skill
+uses it for that part of the work, within the plan you approved: a design change
+the plan does not name comes back to you as a question before it is made.
+
 ## Complete, or not at all
 
 The plan covers the whole issue as one pull request, and the implementation

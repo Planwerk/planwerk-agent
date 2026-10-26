@@ -270,7 +270,7 @@ warning and the sessions carry the bodies.
 ```markdown
 # Review Pattern: <Pattern Name>
 
-**Review-Area**: <architecture|security|quality|testing|workflow|...>
+**Review-Area**: <architecture|security|quality|testing|user-experience|workflow|...>
 **Detection-Hint**: <Description of when/how this pattern should be detected>
 **Severity**: <BLOCKING|CRITICAL|WARNING|INFO>
 **Category**: <technology|design-principle|review>
@@ -311,6 +311,17 @@ body, and the sessions that carry the index read them in the pattern's file. A
 test holds the embedded catalog's sections to that place and form. For how to
 write one, see
 [Write your own review patterns](/how-to/write-review-patterns#say-what-is-not-a-finding).
+
+### Review-Area
+
+`**Review-Area**` names the area a pattern belongs to. The domain specialists
+of `review --specialists` read only the patterns of the areas their domain
+covers, compared without regard to case or surrounding spaces, and a specialist
+whose areas match no loaded pattern reads the whole catalog. The `ui`
+specialist reads `user-experience`, which no pattern the binary ships carries:
+file a project's own accessibility, interface-state, or design-system patterns
+under `user-experience`, written with the hyphen, and the `ui` pass reads them
+in place of the whole catalog.
 
 ### Applies-When and Applies-To-Paths
 

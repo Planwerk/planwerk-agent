@@ -124,6 +124,15 @@ the comment by its location and stays in the report in the conversation.
   unverified.
 - **It never skips a file silently.** Every entry in the ledger is reviewed
   or skipped with a reason.
+- **It never judges visual taste.** Accessibility (contrast and reduced motion
+  included), a missing interface state, a layout that breaks at a narrow width
+  or on zoom, and a value hard-coded where the project uses design tokens are
+  findings like any other; taste in layout, typography, color, and motion is one
+  only where the project's documented design decisions rule on it. When the
+  change touches UI files, the report says in one line what judges the rest:
+  `/impeccable critique` and `/impeccable audit` when the
+  [impeccable](/how-to/use-impeccable-for-ui-work) skill is installed, and
+  otherwise that the review did not judge how the interface looks.
 
 ## Where it sits in the pipeline
 

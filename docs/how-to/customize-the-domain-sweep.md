@@ -25,7 +25,8 @@ Criterion or an Affected Areas entry, and its reviewer scores whether it did. Th
 - Operability & configuration — adds `--retry-budget` (default 3); an existing
   deployment that sets nothing keeps today's behavior.
 - Not touched: Compatibility & contracts, Failure & recovery, Observability,
-  Security & trust boundaries, Performance & cost
+  Security & trust boundaries, Performance & cost, User experience &
+  accessibility
 ```
 
 Every domain appears exactly once, on its own bullet or in the `Not touched:`
@@ -38,7 +39,7 @@ rather than into building something nobody approved.
 
 ## The default list
 
-Seven domains ship with the binary:
+Eight domains ship with the binary:
 
 | Domain | Fires when the change… |
 |--------|------------------------|
@@ -49,6 +50,7 @@ Seven domains ship with the binary:
 | **Security & trust boundaries** | accepts new input, holds a new secret, reads external content, or widens what a caller may do |
 | **Performance & cost** | adds work per request or per run, including paid API and token spend |
 | **Operability & configuration** | adds or changes a flag, environment variable, config key, or default |
+| **User experience & accessibility** | alters what a person sees or operates: a screen, a form, an interactive prompt, or text a user reads |
 
 Testing and documentation are deliberately absent. The plan already carries a
 `### Test Plan` and a `### Documentation Plan`, and the elaborated issue already

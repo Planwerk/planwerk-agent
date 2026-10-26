@@ -68,12 +68,15 @@ environment overrides the main CLI honors (`PLANWERK_CLAUDE_MODEL`,
 `PLANWERK_CLAUDE_EFFORT`, `PLANWERK_STRUCTURE_MODEL`,
 `PLANWERK_STRUCTURE_EFFORT`, `PLANWERK_FINDER_MODEL`,
 `PLANWERK_FINDER_EFFORT`, `PLANWERK_FINDER_TOOLS`, `PLANWERK_CLAUDE_TIMEOUT`,
-`PLANWERK_CLAUDE_INHERIT_USER_CONFIG`, `PLANWERK_DIFF_EXCLUSIONS`), and the
-two switches take the values the CLI takes: `1`, `true`, `yes`, `on`, `0`,
+`PLANWERK_CLAUDE_INHERIT_USER_CONFIG`, `PLANWERK_DIFF_EXCLUSIONS`,
+`PLANWERK_CLAUDE_PLUGINS`), and the two switches take the values the CLI
+takes: `1`, `true`, `yes`, `on`, `0`,
 `false`, `no`, `off`, in any letter case. An effort that is not one of `low`,
 `medium`, `high`, `xhigh`, `max`, a tool list that
-[`--finder-tools`](/reference/cli#global-flags) would refuse, or a switch set
-to any other value exits 1 before any case runs. The corpus holds no lock,
+[`--finder-tools`](/reference/cli#global-flags) would refuse, a plugin value
+that resolves to no plugin, or a switch set to any other value exits 1 before
+any case runs. The plugins are resolved once, so every case loads the version
+the report records. The corpus holds no lock,
 vendored or generated file, so `PLANWERK_DIFF_EXCLUSIONS` leaves a corpus run
 unchanged. An AACR-Bench pull request can change such a file, and the variable
 then leaves it out as it does on a real review.
@@ -290,7 +293,8 @@ In `-json` output each case and the aggregate carry `precision`, `recall`,
 `specialists`, `scope_patterns` (present when set), `tiers`, `match` and
 `recall_by_pass`. `tiers` holds `claude_model`, `claude_effort`,
 `finder_model`, `finder_effort`, `structure_model` and `structure_effort`, and
-`finder_tools` when `PLANWERK_FINDER_TOOLS` is set. Each `usage.passes` entry
+`finder_tools` when `PLANWERK_FINDER_TOOLS` is set, and `plugins`, the
+`name@version` of each plugin, when `PLANWERK_CLAUDE_PLUGINS` is. Each `usage.passes` entry
 also carries `num_turns`, `permission_denials`, `tool_uses` and `session_ids`
 (see [Claude Usage Totals](/reference/output-format#claude-usage-totals)).
 

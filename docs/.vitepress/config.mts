@@ -100,6 +100,10 @@ export default defineConfig({
             },
             { text: 'Use local mode', link: '/how-to/use-local-mode' },
             {
+              text: 'Use impeccable for UI work',
+              link: '/how-to/use-impeccable-for-ui-work',
+            },
+            {
               text: 'Use the GitHub Action',
               link: '/how-to/use-the-github-action',
             },

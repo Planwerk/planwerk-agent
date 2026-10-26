@@ -176,15 +176,18 @@ Passes:
   specialist-performance      run   21 patterns  60.2 KB
   specialist-api-contract     skip  the diff changes no route or handler file
   specialist-maintainability  run   38 patterns  104.5 KB
+  specialist-ui               skip  the diff changes no UI file
 
 The sizes are prompt bytes, not tokens. The passes that work on the findings (dedup, claim verification, capture) depend on the findings and are not sized.
 ```
+
+The `specialist-ui` row is sized without the design section a run adds when the `impeccable` plugin is loaded (`--claude-plugin`): the guidance and the detector's leads, which exist only once the detector ran.
 
 A cache hit reads `hit, key <key>: a review would serve the cached result and
 start no session; --no-cache runs the passes below`. The text form adds a
 `Wiki`, `Brain`, `Scope` or `Feature` line when there is one to report, lists
 the excluded files and the partitions under the changed files, and collapses
-the six specialist rows into one `specialists  skip  --specialists is off` row
+the seven specialist rows into one `specialists  skip  --specialists is off` row
 without `--specialists`.
 
 With `--format json` the dry run prints one object instead:
@@ -206,7 +209,7 @@ With `--format json` the dry run prints one object instead:
 | `changed_files` | The pull request's changed files; `[]` when git could not list them, and the specialist gate then fails open |
 | `excluded_files` | What `--diff-exclusions` leaves out of the diff, in the form of [Excluded Files](#excluded-files); absent when nothing is left out |
 | `partitions` | With `--partition-files` splitting the review: one entry per primary-review session, with the `files` it reviews and their `lines`, as in [Partitioned Reviews](#partitioned-reviews); absent otherwise |
-| `passes` | One entry per finder session a review can start, in order: the review session (one per partition), `adversarial`, `coverage`, `compliance`, then `specialist-<key>` for each of the six specialists. Each has `pass`, its session label; `partition`, the number of a partitioned review's session; `run`, whether the review starts it; `reason`, why it does not; `patterns`, the pattern bodies its prompt carries after the specialist's areas, the `--scope-patterns` split and `--max-patterns`; and `prompt_bytes`, its prompt's size |
+| `passes` | One entry per finder session a review can start, in order: the review session (one per partition), `adversarial`, `coverage`, `compliance`, then `specialist-<key>` for each of the seven specialists. Each has `pass`, its session label; `partition`, the number of a partitioned review's session; `run`, whether the review starts it; `reason`, why it does not; `patterns`, the pattern bodies its prompt carries after the specialist's areas, the `--scope-patterns` split and `--max-patterns`; and `prompt_bytes`, its prompt's size |
 | `post` | Where the review would be posted: `none`, `comment` (`--post-review`) or `inline` (`--inline`). The CLI refuses `--post-review` and `--inline` with `--format json`, so a JSON dry run from the command line reads `none` |
 
 `passes[].pass` is the label a run's `usage.passes[].pass` carries (see
@@ -453,7 +456,7 @@ findings names it with its error:
 
 The PR introduces user authentication ...
 
-**Passes**: ran adversarial, specialist-data-migration; gated out specialist-testing, specialist-performance, specialist-api-contract, specialist-maintainability; failed specialist-security
+**Passes**: ran adversarial, specialist-data-migration; gated out specialist-testing, specialist-performance, specialist-api-contract, specialist-maintainability, specialist-ui; failed specialist-security
 ```
 
 The same records travel in the `passes` array of the `--format json` output and
