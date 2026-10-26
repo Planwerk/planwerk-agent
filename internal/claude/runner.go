@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/planwerk/planwerk-agent/internal/claudeplugin"
+	"github.com/planwerk/planwerk-agent/internal/impeccable"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
 	"github.com/planwerk/planwerk-agent/internal/report/schema"
@@ -497,8 +498,12 @@ type Client struct {
 	diffExclusions bool
 
 	// plugins are the Claude Code plugins the mutating sessions load
-	// (sessionPlugins). Set via WithPlugins (decision 153).
-	plugins []claudeplugin.Plugin
+	// (sessionPlugins), and designKit the impeccable skill among them, which
+	// hasDesignKit says was found. Set via WithPlugins (decisions 153 and
+	// 155).
+	plugins      []claudeplugin.Plugin
+	designKit    impeccable.Kit
+	hasDesignKit bool
 
 	// sessionFn, when set, runs every session in place of the claude CLI. Only tests set it.
 	sessionFn func(spec runSpec, prompt string) (text, model string, err error)
@@ -870,11 +875,13 @@ func (c *Client) runClaudeFinder(dir, prompt, label string) (text, model string,
 // list, which finderSpec leaves out, so the coverage map and claim
 // verification keep the default set (decision 152). diffDir is the directory
 // of the diff the session reads (diffscope.Diff.Dir), "" for none (decision
-// 137).
-func (c *Client) runClaudeFinderFindings(dir, prompt, label, diffDir string) (text, model string, err error) {
+// 137). readDirs are further directories the session may read, after the
+// diff's: the design skill's reference documents for the ui specialist
+// (decision 155).
+func (c *Client) runClaudeFinderFindings(dir, prompt, label, diffDir string, readDirs ...string) (text, model string, err error) {
 	spec := c.finderSpec(dir, label)
 	spec.jsonSchema = string(schema.FinderOutput)
-	spec.addDirs = []string{diffDir}
+	spec.addDirs = append([]string{diffDir}, readDirs...)
 	spec.tools = c.finderTools
 	return c.runSession(spec, prompt)
 }

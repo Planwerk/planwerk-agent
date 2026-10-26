@@ -21,6 +21,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/gapanalysis"
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/glossary"
+	"github.com/planwerk/planwerk-agent/internal/impeccable"
 	"github.com/planwerk/planwerk-agent/internal/implement"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/planwerk"
@@ -1082,6 +1083,19 @@ func TestBuildImplementerAgentPrompt_Plugins_Golden(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertGoldenPrompt(t, "implementer_agent_plugins", defs[implementerAgentName].Prompt)
+}
+
+// TestBuildSpecialistPrompt_UIDesign_Golden locks the ui specialist's prompt
+// with the design section a run adds when the impeccable skill is loaded: the
+// reference documents a review reads and two detector leads, one with an
+// excerpt cut at maxLeadSnippet (decision 155).
+func TestBuildSpecialistPrompt_UIDesign_Golden(t *testing.T) {
+	leads := []impeccable.Finding{
+		{Rule: "side-tab", Name: "Side-tab accent border", Category: "slop", Severity: "warning", File: "web/card.css", Line: 3, Snippet: "border-left: 4px solid #7c3aed"},
+		{Rule: "skipped-heading", Name: "Skipped heading", Category: "quality", Severity: "warning", File: "web/index.html", Snippet: strings.Repeat("h1 followed by h3 with a long heading text ", 6)},
+	}
+	design := designGuidanceBlock("/tmp/planwerk-agent-impeccable-golden/reference", impeccable.ReviewGuides(), leads)
+	assertGoldenPrompt(t, "specialist_ui_design", specialistPrompt("develop", goldenDiff(), specialistByKey(t, "ui"), nil, 0, design))
 }
 
 // TestBuildImplementPromptResume_Golden locks the shape used when an earlier

@@ -150,7 +150,7 @@ or short form (owner/repo#123).`,
 
 			// Same reason as the structuring effort: the finder passes run before
 			// the passes that act on their findings, so a typo must be caught here
-			// rather than after a six-specialist fan-out has spent its tokens.
+			// rather than after a seven-specialist fan-out has spent its tokens.
 			findEffort, err := resolveEffort(finderEffort, cmd.Flags().Changed("finder-effort"), envFinderEffort, claude.DefaultFinderEffort, true, "--finder-effort")
 			if err != nil {
 				return err
@@ -204,9 +204,9 @@ or short form (owner/repo#123).`,
 			// command, next to its own flags. The diff exclusions decide which
 			// changed files the sessions read, the finder tool list what the
 			// finding passes can call, and the plugins, by name and version,
-			// what the sessions that edit draw on. Each is appended only when
-			// on or set, so a key without them is the one it was before they
-			// existed.
+			// what the sessions that edit and the ui specialist draw on. Each
+			// is appended only when on or set, so a key without them is the
+			// one it was before they existed.
 			fingerprint := []string{mainModel, mainEffort, structModel, structEffort, findModel, findEffort}
 			if exclude {
 				fingerprint = append(fingerprint, "diff-exclusions")
@@ -326,7 +326,7 @@ or short form (owner/repo#123).`,
 	persistent.StringVar(&finderEffort, "finder-effort", claude.DefaultFinderEffort, "Reasoning effort for the finder passes (low, medium, high, xhigh, max; empty inherits --claude-effort; env: "+envFinderEffort+")")
 	persistent.StringVar(&finderTools, "finder-tools", claude.DefaultFinderTools, "Comma-separated Claude Code built-in tools the seven passes that emit findings load (review, audit, adversarial, specialists, compliance, simplify finder, implementation verifier), e.g. Bash,Glob,Grep,Read,WebFetch,WebSearch; empty keeps Claude Code's default set; Edit, Write and NotebookEdit stay denied either way (env: "+envFinderTools+")")
 	persistent.BoolVar(&claudeInheritUserConfig, "claude-inherit-user-config", false, "Let orchestrated Claude sessions inherit your user-global ~/.claude settings and MCP servers (default: isolated for reproducible output; env: "+envClaudeInheritUserConfig+")")
-	persistent.StringArrayVar(&claudePlugins, "claude-plugin", nil, "Claude Code plugin the sessions that edit (implement, fix, address, rebase) load, named by its installed id (name@marketplace, as claude plugin list prints it) or its directory; repeat for more than one. Read-only sessions never load one (env: "+envClaudePlugins+", comma-separated)")
+	persistent.StringArrayVar(&claudePlugins, "claude-plugin", nil, "Claude Code plugin the sessions that edit (implement, fix, address, rebase) load, named by its installed id (name@marketplace, as claude plugin list prints it) or its directory; repeat for more than one. Read-only sessions never load one; the impeccable plugin also feeds the ui review specialist (env: "+envClaudePlugins+", comma-separated)")
 	persistent.BoolVar(&diffExclusions, "diff-exclusions", false, "Leave lock files, vendored directories, and generated files out of the diff the review and finder passes read, and list them in the report; tests outside vendored directories are never left out (env: "+envDiffExclusions+")")
 
 	flags := rootCmd.Flags()
@@ -346,7 +346,7 @@ or short form (owner/repo#123).`,
 	flags.BoolVar(&cfg.InlineReview, "inline", false, "Post findings as inline comments using the GitHub Review API; the summary goes into the PR comment --post-review keeps up to date (implies --post-review)")
 	flags.BoolVar(&cfg.ResolveOutdated, "resolve-outdated", false, "With --inline, resolve the review threads earlier runs opened once GitHub marks them outdated, unless someone replied or a current finding still covers their lines (needs write access to the repository)")
 	flags.BoolVar(&cfg.Thorough, "thorough", false, "Run additional adversarial review pass")
-	flags.BoolVar(&cfg.Specialists, "specialists", false, "Run the domain-specialist review fan-out (security, data-migration, testing, performance, api-contract, maintainability) concurrently and merge their findings")
+	flags.BoolVar(&cfg.Specialists, "specialists", false, "Run the domain-specialist review fan-out (security, data-migration, testing, performance, api-contract, maintainability, ui) concurrently and merge their findings")
 	flags.BoolVar(&cfg.CoverageMap, "coverage-map", false, "Generate test coverage map for changed functions")
 	flags.IntVar(&cfg.MaxPatterns, "max-patterns", patterns.DefaultMaxPatternsInPrompt, "Max review patterns injected into the prompt (<=0 disables truncation, env: "+envMaxPatterns+")")
 	flags.BoolVar(&cfg.ScopePatterns, "scope-patterns", false, "Carry only the review-pattern bodies that apply to every file or whose technology or path matches a changed file and list the rest as an index the review session reads from disk (experimental, off until make eval holds; env: "+envScopePatterns+")")

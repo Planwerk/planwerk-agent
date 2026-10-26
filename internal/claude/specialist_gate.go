@@ -21,8 +21,11 @@ func (s Specialist) ShouldRun(changedFiles []string) bool {
 		return true
 	}
 	relevant := isSourceFile
-	if s.Relevance == RelevanceRoutes {
+	switch s.Relevance {
+	case RelevanceRoutes:
 		relevant = isRouteFile
+	case RelevanceUI:
+		relevant = isUIFile
 	}
 	for _, f := range changedFiles {
 		if relevant(f) {
@@ -33,12 +36,16 @@ func (s Specialist) ShouldRun(changedFiles []string) bool {
 }
 
 // String names the kind of changed file that makes a gateable specialist of
-// this Relevance run: "route or handler file" for RelevanceRoutes, "source
-// file" otherwise, the same split ShouldRun makes. review --dry-run prints it
-// after "the diff changes no " for a specialist the gate skips (decision 143).
+// this Relevance run: "route or handler file" for RelevanceRoutes, "UI file"
+// for RelevanceUI, "source file" otherwise, the same split ShouldRun makes.
+// review --dry-run prints it after "the diff changes no " for a specialist the
+// gate skips (decision 143).
 func (r Relevance) String() string {
-	if r == RelevanceRoutes {
+	switch r {
+	case RelevanceRoutes:
 		return "route or handler file"
+	case RelevanceUI:
+		return "UI file"
 	}
 	return "source file"
 }
@@ -104,4 +111,27 @@ func isRouteFile(path string) bool {
 	return strings.Contains(base, "handler") ||
 		strings.Contains(base, "route") ||
 		strings.Contains(base, "controller")
+}
+
+// uiExtensions are the file extensions that mark a changed file as part of a
+// user interface: markup, stylesheets, the component formats of the web
+// frameworks, and the server-side view templates. Plain .js and .ts files are
+// not on the list, because most of them are not UI code and a backend change
+// must not start the ui specialist; a component in one is reached through the
+// markup or stylesheet it changes alongside, or through .jsx and .tsx.
+var uiExtensions = map[string]bool{
+	".html": true, ".htm": true, ".xhtml": true,
+	".css": true, ".scss": true, ".sass": true, ".less": true, ".styl": true,
+	".jsx": true, ".tsx": true, ".vue": true, ".svelte": true, ".astro": true,
+	".erb": true, ".haml": true, ".slim": true, ".hbs": true, ".handlebars": true,
+	".mustache": true, ".ejs": true, ".njk": true, ".liquid": true, ".twig": true,
+	".jinja": true, ".jinja2": true, ".cshtml": true, ".razor": true, ".gohtml": true,
+}
+
+// isUIFile reports whether a repo-relative path is a UI file by its extension
+// (uiExtensions) or, for Blade, its double extension. It gates the ui
+// specialist, and it picks the files the design detector scans.
+func isUIFile(path string) bool {
+	lower := strings.ToLower(path)
+	return uiExtensions[filepath.Ext(lower)] || strings.HasSuffix(lower, ".blade.php")
 }
