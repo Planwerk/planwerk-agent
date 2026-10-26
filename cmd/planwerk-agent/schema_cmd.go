@@ -25,8 +25,9 @@ against. "review" and "audit" share one schema (report-result.schema.json)
 because the audit output reuses the review result shape; "propose" emits the
 proposal-result envelope (proposal.schema.json); "rebase" emits the
 post-rebase analysis (rebase-analysis.schema.json).`,
-		Args:      cobra.ExactArgs(1),
-		ValidArgs: []string{"review", "audit", "propose", "rebase"},
+		Args:        cobra.ExactArgs(1),
+		ValidArgs:   []string{"review", "audit", "propose", "rebase"},
+		Annotations: map[string]string{noSessionAnnotation: "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			doc, err := schemaFor(args[0])
 			if err != nil {

@@ -117,6 +117,15 @@ func loadDirs(repoDir string, keep func(dir string) bool) []Skill {
 	return out
 }
 
+// ParseFile reads the skill whose SKILL.md is at path, with the name of the
+// directory that holds it as the fallback name. ok is false on the conditions
+// parseSkill lists. The claudeplugin package reads the skills a Claude Code
+// plugin ships through it, so a plugin skill and a project skill are read by
+// one parser.
+func ParseFile(path string) (Skill, bool) {
+	return parseSkill(path, filepath.Base(filepath.Dir(path)))
+}
+
 // parseSkill reads name + description from a SKILL.md's YAML frontmatter. The
 // skill directory name is the fallback identity when the frontmatter omits
 // name. Returns ok=false when the file is absent, carries no frontmatter,

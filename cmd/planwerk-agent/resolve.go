@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/planwerk/planwerk-agent/internal/claude"
+	"github.com/planwerk/planwerk-agent/internal/claudeplugin"
 	"github.com/planwerk/planwerk-agent/internal/cli"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 )
@@ -208,6 +209,13 @@ const envStructureEffort = "PLANWERK_STRUCTURE_EFFORT"
 // explicitly set. Off by default so reviews stay reproducible across machines.
 const envClaudeInheritUserConfig = "PLANWERK_CLAUDE_INHERIT_USER_CONFIG"
 
+// envClaudePlugins names the Claude Code plugins the sessions that edit load,
+// comma-separated: installed plugin ids (name@marketplace, as `claude plugin
+// list` prints them) or plugin directories. The repeatable --claude-plugin CLI
+// flag takes precedence when explicitly set. Unset or empty loads none
+// (decision 153).
+const envClaudePlugins = "PLANWERK_CLAUDE_PLUGINS"
+
 // envDiffExclusions leaves the changed lock files, vendored directories, and
 // generated files out of the diff the review and finder passes read. Any
 // truthy value (1, true, yes, on; case-insensitive) enables it; the
@@ -313,6 +321,27 @@ func resolveFinderTools(flag string, set bool) ([]string, error) {
 		return nil, fmt.Errorf("invalid --finder-tools %q: %w (env: %s)", value, err, envFinderTools)
 	}
 	return tools, nil
+}
+
+// resolveClaudePlugins resolves the plugins the sessions that edit load: the
+// --claude-plugin values when the flag was set, the comma-separated
+// PLANWERK_CLAUDE_PLUGINS otherwise. list looks the installed plugins up for a
+// value given by id; nil uses claudeplugin.ListInstalled. A value that
+// resolves to no plugin fails the run before any session starts (decision
+// 153).
+func resolveClaudePlugins(flag []string, set bool, list claudeplugin.Lister) ([]claudeplugin.Plugin, error) {
+	values := flag
+	if !set {
+		values = strings.Split(os.Getenv(envClaudePlugins), ",")
+	}
+	if list == nil {
+		list = claudeplugin.ListInstalled
+	}
+	plugins, err := claudeplugin.Resolve(values, list)
+	if err != nil && !set {
+		return nil, fmt.Errorf("%w (env: %s)", err, envClaudePlugins)
+	}
+	return plugins, err
 }
 
 // resolveRemotePatternsTTL returns the effective remote-patterns TTL.

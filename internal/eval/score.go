@@ -385,12 +385,16 @@ type Tiers struct {
 	StructureModel  string `json:"structure_model"`
 	StructureEffort string `json:"structure_effort"`
 	FinderTools     string `json:"finder_tools,omitempty"`
+	// Plugins records the Claude Code plugins the run loaded, as
+	// comma-separated name@version labels, "" for none (decision 153).
+	Plugins string `json:"plugins,omitempty"`
 }
 
 // String renders the tiers as "claude <model>/<effort>, finder
 // <model>/<effort>, structure <model>/<effort>", followed by ", finder tools
-// <list>" when FinderTools is set, or "(unrecorded)" for the zero value a
-// report written before the tiers were recorded decodes to.
+// <list>" when FinderTools is set and ", plugins <list>" when Plugins is,
+// or "(unrecorded)" for the zero value a report written before the tiers
+// were recorded decodes to.
 func (t Tiers) String() string {
 	if t == (Tiers{}) {
 		return unrecorded
@@ -399,6 +403,9 @@ func (t Tiers) String() string {
 		t.ClaudeModel, t.ClaudeEffort, t.FinderModel, t.FinderEffort, t.StructureModel, t.StructureEffort)
 	if t.FinderTools != "" {
 		s += ", finder tools " + t.FinderTools
+	}
+	if t.Plugins != "" {
+		s += ", plugins " + t.Plugins
 	}
 	return s
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/planwerk/planwerk-agent/internal/claudeplugin"
 	"github.com/planwerk/planwerk-agent/internal/diffscope"
 	"github.com/planwerk/planwerk-agent/internal/implement"
 	"github.com/planwerk/planwerk-agent/internal/report"
@@ -128,7 +129,7 @@ For EVERY finding, include: the Acceptance Criterion it concerns (quote it in th
 // The session's system prompt also carries ImplementSystemPrompt (decision
 // 108).
 func (c *Client) Implement(dir string, ctx implement.Context) (string, string, error) {
-	agentsJSON, err := implementAgentsJSON(ctx)
+	agentsJSON, err := implementAgentsJSON(ctx, c.plugins)
 	if err != nil {
 		return "", "", err
 	}
@@ -183,8 +184,12 @@ type agentDefinition struct {
 // at ctx.WorkerEffort (falling back to DefaultImplementWorkerEffort). It
 // returns "" when ctx.WorkerModel is empty — the single-session mode, where no
 // subagent is defined and the runner omits the --agents flag entirely, keeping
-// the historical invocation byte-for-byte unchanged.
-func implementAgentsJSON(ctx implement.Context) (string, error) {
+// the historical invocation byte-for-byte unchanged. plugins are the plugins
+// the session loads: the worker's edits run their hooks too, but a subagent
+// sees none of the parent's system prompt, so its own prompt carries
+// pluginSessionPrompt after the rest (decision 154); no plugins leaves the
+// prompt as buildImplementerAgentPrompt renders it.
+func implementAgentsJSON(ctx implement.Context, plugins []claudeplugin.Plugin) (string, error) {
 	if ctx.WorkerModel == "" {
 		return "", nil
 	}
@@ -195,7 +200,7 @@ func implementAgentsJSON(ctx implement.Context) (string, error) {
 	raw, err := json.Marshal(map[string]agentDefinition{
 		implementerAgentName: {
 			Description: "Implements exactly one delegated work package of a GitHub issue end-to-end — code, tests, docs — committed on the current feature branch.",
-			Prompt:      buildImplementerAgentPrompt(ctx.AITrailersForbiddenBy),
+			Prompt:      joinPrompts(buildImplementerAgentPrompt(ctx.AITrailersForbiddenBy), pluginSessionPrompt(plugins)),
 			Model:       ctx.WorkerModel,
 			Effort:      effort,
 		},

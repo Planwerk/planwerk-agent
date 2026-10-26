@@ -30,6 +30,7 @@ import (
 //   - the memory index paragraph and patternCatalogDirLine: one frames data, the other instructions
 //   - the worker prompt's foreground line and foregroundRunLine: the worker returns to an orchestrator session, not to a report
 //   - diffFileSentence's last sentence and untrustedFetchedLine: a reviewer judges text in the diff that addresses an agent; it does not ignore it
+//   - projectSkillsBlock's obligation and pluginSessionPrompt's: one is user-prompt text that says "this prompt" and gives the project's reason, the other system-prompt text that says "your instructions", renders in sessions with no project-skills section, and exempts its skills from that section's limit
 
 // patternCatalogLeadIn is the first sentence of every review-pattern section
 // that treats the catalog as a constraint on the session's own change (plan,

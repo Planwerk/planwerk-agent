@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/planwerk/planwerk-agent/internal/claudeplugin"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
 	"github.com/planwerk/planwerk-agent/internal/report/schema"
@@ -494,6 +495,10 @@ type Client struct {
 	// the diff-scoped finders read (diffscope.Classify). Set via
 	// WithDiffExclusions; off by default (decision 137).
 	diffExclusions bool
+
+	// plugins are the Claude Code plugins the mutating sessions load
+	// (sessionPlugins). Set via WithPlugins (decision 153).
+	plugins []claudeplugin.Plugin
 
 	// sessionFn, when set, runs every session in place of the claude CLI. Only tests set it.
 	sessionFn func(spec runSpec, prompt string) (text, model string, err error)
@@ -1024,8 +1029,9 @@ func (c *Client) claudeArgs(spec runSpec) []string {
 		"--effort", spec.effort,
 		"--output-format", "stream-json", "--verbose",
 	}
-	args = withAppendSystemPrompt(args, spec.appendSystemPrompt)
 	readOnly := spec.readOnly || spec.noTools
+	plugins := c.sessionPlugins(readOnly)
+	args = withAppendSystemPrompt(args, joinPrompts(spec.appendSystemPrompt, pluginSessionPrompt(plugins)))
 	mode := spec.permissionMode
 	if mode == "" && readOnly {
 		mode = claudeReadOnlyPermissionMode
@@ -1043,6 +1049,7 @@ func (c *Client) claudeArgs(spec runSpec) []string {
 	args = withAgents(args, spec.agentsJSON)
 	args = c.hermeticArgs(args, readOnly)
 	args = withHooksDisabled(args, readOnly)
+	args = withPluginDirs(args, plugins)
 	if spec.noTools {
 		return withNoTools(args)
 	}
@@ -1057,7 +1064,8 @@ func (c *Client) claudeArgs(spec runSpec) []string {
 }
 
 // claudeCommand builds the claude subprocess for spec: claudeArgs for the
-// argv, the wait delay, the working directory when spec names one, and the
+// argv, the wait delay, the working directory when spec names one, then the
+// environment of a session that loads plugins (withSessionEnv), and the
 // prompt on stdin.
 func (c *Client) claudeCommand(ctx context.Context, spec runSpec, prompt string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, "claude", c.claudeArgs(spec)...)
@@ -1065,6 +1073,7 @@ func (c *Client) claudeCommand(ctx context.Context, spec runSpec, prompt string)
 	if spec.dir != "" {
 		cmd.Dir = spec.dir
 	}
+	withSessionEnv(cmd, c.sessionPlugins(spec.readOnly || spec.noTools))
 	cmd.Stdin = strings.NewReader(prompt)
 	return cmd
 }

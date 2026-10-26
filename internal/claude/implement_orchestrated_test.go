@@ -20,7 +20,7 @@ const (
 // flag entirely, and the implement invocation stays byte-for-byte what it was
 // before orchestrator mode existed.
 func TestImplementAgentsJSON_EmptyWithoutWorkerModel(t *testing.T) {
-	got, err := implementAgentsJSON(goldenImplementContext())
+	got, err := implementAgentsJSON(goldenImplementContext(), nil)
 	if err != nil {
 		t.Fatalf("implementAgentsJSON returned %v, want nil", err)
 	}
@@ -38,7 +38,7 @@ func TestImplementAgentsJSON_DefinesImplementerOnWorkerModel(t *testing.T) {
 	ctx.WorkerModel = testWorkerModel
 	ctx.WorkerEffort = testWorkerEffort
 
-	raw, err := implementAgentsJSON(ctx)
+	raw, err := implementAgentsJSON(ctx, nil)
 	if err != nil {
 		t.Fatalf("implementAgentsJSON returned %v, want nil", err)
 	}
@@ -72,7 +72,7 @@ func TestImplementAgentsJSON_CarriesTheTrailerBan(t *testing.T) {
 	ctx.WorkerModel = testWorkerModel
 	ctx.AITrailersForbiddenBy = goldenAITrailersForbiddenBy
 
-	raw, err := implementAgentsJSON(ctx)
+	raw, err := implementAgentsJSON(ctx, nil)
 	if err != nil {
 		t.Fatalf("implementAgentsJSON returned %v, want nil", err)
 	}
@@ -92,7 +92,7 @@ func TestImplementAgentsJSON_DefaultsWorkerEffort(t *testing.T) {
 	ctx := goldenImplementContext()
 	ctx.WorkerModel = testWorkerModel
 
-	raw, err := implementAgentsJSON(ctx)
+	raw, err := implementAgentsJSON(ctx, nil)
 	if err != nil {
 		t.Fatalf("implementAgentsJSON returned %v, want nil", err)
 	}

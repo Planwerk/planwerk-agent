@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -13,6 +15,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/attribution"
 	"github.com/planwerk/planwerk-agent/internal/cache"
 	"github.com/planwerk/planwerk-agent/internal/claude"
+	"github.com/planwerk/planwerk-agent/internal/claudeplugin"
 	"github.com/planwerk/planwerk-agent/internal/elaborate"
 	"github.com/planwerk/planwerk-agent/internal/prompt"
 	"github.com/planwerk/planwerk-agent/internal/review"
@@ -272,5 +275,184 @@ func TestReviewRegistersPartitionFiles(t *testing.T) {
 	root.AddCommand(audit)
 	if audit.Flags().Lookup("partition-files") != nil || audit.InheritedFlags().Lookup("partition-files") != nil {
 		t.Error("audit must not expose --partition-files")
+	}
+}
+
+func TestRootRegistersTheClaudePluginFlag(t *testing.T) {
+	flag := newRootCmd(&runtimeDeps{}).PersistentFlags().Lookup("claude-plugin")
+	if flag == nil {
+		t.Fatal("the root command must expose --claude-plugin as a persistent flag")
+	}
+	if flag.Value.Type() != "stringArray" {
+		t.Errorf("--claude-plugin is a %s, want a repeatable stringArray that never splits a value on commas", flag.Value.Type())
+	}
+	if !strings.Contains(flag.Usage, "env: "+envClaudePlugins) {
+		t.Errorf("--claude-plugin usage %q does not name %s", flag.Usage, envClaudePlugins)
+	}
+}
+
+// writePlugin writes a plugin root named name at version into a new
+// directory and returns it.
+func writePlugin(t *testing.T, name, version string) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".claude-plugin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := `{"name": "` + name + `", "version": "` + version + `"}`
+	if err := os.WriteFile(filepath.Join(dir, ".claude-plugin", "plugin.json"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// TestRoot_ClaudePluginsReachTheClientAndTheCacheKey runs the root command's
+// pre-run through a review whose run is stubbed and checks that --claude-plugin and
+// PLANWERK_CLAUDE_PLUGINS resolve installed ids and directories into the
+// shared Client and scope the cache key by name and version, that the flag
+// wins over the environment, and that a value naming no plugin fails the run
+// (decision 153).
+func TestRoot_ClaudePluginsReachTheClientAndTheCacheKey(t *testing.T) {
+	// Not t.Parallel(): the pre-run sets the default logger, the attribution
+	// version and the cache fingerprint, which the cleanups restore.
+	prevLogger, prevFingerprint := slog.Default(), cache.RunFingerprint()
+	t.Cleanup(func() {
+		slog.SetDefault(prevLogger)
+		cache.SetRunFingerprint(prevFingerprint)
+		attribution.SetVersion("")
+	})
+	design := writePlugin(t, "impeccable", "4.7.1")
+	local := writePlugin(t, "local", "")
+	list := func() ([]claudeplugin.Installed, error) {
+		return []claudeplugin.Installed{{ID: "impeccable@impeccable", Version: "4.7.1", InstallPath: design}}, nil
+	}
+
+	for _, tc := range []struct {
+		name    string
+		args    []string
+		env     string
+		want    []string // plugin labels, in order
+		wantErr string
+	}{
+		{name: "none by default"},
+		{name: "an installed id and a directory", args: []string{"--claude-plugin", "impeccable@impeccable", "--claude-plugin", local}, want: []string{"impeccable@4.7.1", "local"}},
+		{name: "the environment", env: "impeccable@impeccable," + local, want: []string{"impeccable@4.7.1", "local"}},
+		{name: "the flag wins over the environment", args: []string{"--claude-plugin", local}, env: "impeccable@impeccable", want: []string{"local"}},
+		{name: "an id that is not installed", args: []string{"--claude-plugin", "nope@market"}, wantErr: "not installed; installed: impeccable@impeccable"},
+		{name: "a bad environment value names the variable", env: "nope", wantErr: "(env: " + envClaudePlugins + ")"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(envClaudePlugins, tc.env)
+			t.Setenv(envFinderTools, "")
+			t.Setenv(envDiffExclusions, "")
+			deps := &runtimeDeps{version: "test", listPlugins: list, runReview: func(io.Writer, review.Options, *claude.Client) error { return nil }}
+			cmd := newRootCmd(deps)
+			cmd.SetOut(&bytes.Buffer{})
+			cmd.SetArgs(append(tc.args, testRepoRef+"#1"))
+			err := cmd.Execute()
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("Execute error = %v, want one containing %q", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Execute: %v", err)
+			}
+			var got []string
+			for _, p := range deps.claude.Plugins() {
+				got = append(got, p.Label())
+			}
+			if strings.Join(got, ",") != strings.Join(tc.want, ",") {
+				t.Errorf("Client.Plugins() = %v, want %v", got, tc.want)
+			}
+			wantSuffix := ""
+			if len(tc.want) > 0 {
+				wantSuffix = "|plugins=" + strings.Join(tc.want, ",")
+			}
+			if fp := cache.RunFingerprint(); (wantSuffix == "" && strings.Contains(fp, "plugins=")) || !strings.HasSuffix(fp, wantSuffix) {
+				t.Errorf("cache fingerprint %q, want it to end in %q", fp, wantSuffix)
+			}
+		})
+	}
+}
+
+// TestRoot_CommandsWithoutASessionResolveNoPlugin: a command that starts no
+// session, and the root's version and cache actions, never list the installed
+// plugins, so PLANWERK_CLAUDE_PLUGINS cannot make them depend on the claude
+// CLI or fail them (decision 153).
+func TestRoot_CommandsWithoutASessionResolveNoPlugin(t *testing.T) {
+	// Not t.Parallel(): the pre-run sets the default logger, the attribution
+	// version and the cache fingerprint, which the cleanups restore.
+	prevLogger, prevFingerprint := slog.Default(), cache.RunFingerprint()
+	t.Cleanup(func() {
+		slog.SetDefault(prevLogger)
+		cache.SetRunFingerprint(prevFingerprint)
+		attribution.SetVersion("")
+	})
+	restore := cache.SetDir(t.TempDir())
+	t.Cleanup(restore)
+	t.Setenv(envClaudePlugins, "impeccable@impeccable")
+	t.Setenv(envFinderTools, "")
+	t.Setenv(envDiffExclusions, "")
+
+	for _, args := range [][]string{
+		{"--version"},
+		{"--cache-stats"},
+		{"schema", "review"},
+		{"cache", "stats"},
+		{"help"},
+		{"completion", "bash"},
+		{"__complete", "sch"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			deps := &runtimeDeps{version: "test", listPlugins: func() ([]claudeplugin.Installed, error) {
+				t.Errorf("%v listed the installed plugins", args)
+				return nil, nil
+			}}
+			cmd := newRootCmd(deps)
+			cmd.AddCommand(newSchemaCmd(deps), newCacheCmd(deps))
+			cmd.SetOut(&bytes.Buffer{})
+			cmd.SetArgs(args)
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("Execute(%v): %v", args, err)
+			}
+		})
+	}
+}
+
+// TestStartsNoSession_MarksTheCommandsThatRunNoSession pins which commands
+// carry the mark that keeps the pre-run from resolving a plugin: the ones that
+// only read GitHub, the mirror, or the cache, or print a prompt for another
+// session, and cobra's own. The commands that start a session are not marked;
+// neither is brain search, which the pre-run leaves before resolving anything
+// because it is mirror-only.
+func TestStartsNoSession_MarksTheCommandsThatRunNoSession(t *testing.T) {
+	deps := &runtimeDeps{version: "test"}
+	root := newRootCmd(deps)
+	root.AddCommand(newSchemaCmd(deps), newCacheCmd(deps), newPromptCmd(deps), newBrainCmd(deps), newImplementCmd(deps), newExtractCmd(deps))
+	root.InitDefaultHelpCmd()
+	root.InitDefaultCompletionCmd()
+	for path, want := range map[string]bool{
+		"schema":          true,
+		"cache stats":     true,
+		"prompt":          true,
+		"brain memory":    true,
+		"brain sync":      true,
+		"extract":         true,
+		"help":            true,
+		"completion bash": true,
+		"brain bootstrap": false,
+		"brain search":    false,
+		"implement":       false,
+		"":                false,
+	} {
+		cmd, _, err := root.Find(strings.Fields(path))
+		if err != nil {
+			t.Fatalf("Find(%q): %v", path, err)
+		}
+		if got := startsNoSession(cmd); got != want {
+			t.Errorf("startsNoSession(%q) = %v, want %v", path, got, want)
+		}
 	}
 }

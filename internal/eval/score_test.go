@@ -571,6 +571,7 @@ func TestTiersString(t *testing.T) {
 		{"the zero value is unrecorded", Tiers{}, "(unrecorded)"},
 		{"a full value names every tier", sampleTiers(), sampleTiersLine},
 		{"a finder tool list follows the tiers", func() Tiers { tr := sampleTiers(); tr.FinderTools = "Grep,Read"; return tr }(), sampleTiersLine + ", finder tools Grep,Read"},
+		{"the plugins come last", func() Tiers { tr := sampleTiers(); tr.FinderTools = "Read"; tr.Plugins = "impeccable@4.7.1"; return tr }(), sampleTiersLine + ", finder tools Read, plugins impeccable@4.7.1"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -126,8 +126,9 @@ func humanBytes(n int64) string {
 // points.
 func newCacheCmd(deps *runtimeDeps) *cobra.Command {
 	cacheCmd := &cobra.Command{
-		Use:   "cache",
-		Short: "Inspect and manage cached review/propose/audit results",
+		Use:         "cache",
+		Annotations: map[string]string{noSessionAnnotation: "true"},
+		Short:       "Inspect and manage cached review/propose/audit results",
 		Long: `Inspect and manage planwerk-agent's on-disk cache.
 
 Cached entries are keyed by repo + HEAD SHA + flags and are written under the

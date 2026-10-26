@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/planwerk/planwerk-agent/internal/claude"
@@ -231,14 +232,55 @@ const (
 )
 
 // clearTierEnv empties every variable resolveTiers and buildClient read, so a
-// test sees only the variables it sets itself.
+// test sees only the variables it sets itself, and resets evalPlugins, which
+// would otherwise keep the plugins an earlier test resolved.
 func clearTierEnv(t *testing.T) {
 	t.Helper()
 	for _, name := range []string{
-		envClaudeModel, envClaudeEffort, envFinderModel, envFinderEffort, envStructureModel, envStructureEffort, envFinderTools,
+		envClaudeModel, envClaudeEffort, envFinderModel, envFinderEffort, envStructureModel, envStructureEffort, envFinderTools, envClaudePlugins,
 		"PLANWERK_CLAUDE_TIMEOUT", "PLANWERK_CLAUDE_INHERIT_USER_CONFIG", "PLANWERK_DIFF_EXCLUSIONS", "PLANWERK_SHOW_CLAUDE_OUTPUT",
 	} {
 		t.Setenv(name, "")
+	}
+	prev := evalPlugins
+	evalPlugins = sync.OnceValues(resolveEvalPlugins)
+	t.Cleanup(func() { evalPlugins = prev })
+}
+
+// TestResolveTiers_RecordsAndLoadsThePlugins: PLANWERK_CLAUDE_PLUGINS is
+// resolved before any case runs, its plugins' labels are recorded in the
+// tiers, every client buildClient makes loads them, and a value that resolves
+// to no plugin fails naming the variable (decision 153).
+func TestResolveTiers_RecordsAndLoadsThePlugins(t *testing.T) {
+	clearTierEnv(t)
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".claude-plugin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".claude-plugin", "plugin.json"), []byte(`{"name": "design", "version": "4.7.1"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(envClaudePlugins, dir)
+
+	tiers, err := resolveTiers()
+	if err != nil {
+		t.Fatalf("resolveTiers: %v", err)
+	}
+	if tiers.Plugins != "design@4.7.1" {
+		t.Errorf("tiers.Plugins = %q, want design@4.7.1", tiers.Plugins)
+	}
+	client, err := buildClient(tiers)
+	if err != nil {
+		t.Fatalf("buildClient: %v", err)
+	}
+	if got := client.Plugins(); len(got) != 1 || got[0].Dir != dir {
+		t.Errorf("client plugins = %+v, want the plugin at %s", got, dir)
+	}
+
+	clearTierEnv(t)
+	t.Setenv(envClaudePlugins, "not a plugin")
+	if _, err := resolveTiers(); err == nil || !strings.Contains(err.Error(), "(env: "+envClaudePlugins+")") {
+		t.Errorf("resolveTiers error = %v, want one naming %s", err, envClaudePlugins)
 	}
 }
 

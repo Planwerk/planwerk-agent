@@ -23,9 +23,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/planwerk/planwerk-agent/internal/claude"
+	"github.com/planwerk/planwerk-agent/internal/claudeplugin"
 	"github.com/planwerk/planwerk-agent/internal/eval"
 	"github.com/planwerk/planwerk-agent/internal/hygiene"
 	"github.com/planwerk/planwerk-agent/internal/report"
@@ -387,7 +389,28 @@ const (
 	envStructureModel  = "PLANWERK_STRUCTURE_MODEL"
 	envStructureEffort = "PLANWERK_STRUCTURE_EFFORT"
 	envFinderTools     = "PLANWERK_FINDER_TOOLS"
+	envClaudePlugins   = "PLANWERK_CLAUDE_PLUGINS"
 )
+
+// evalPlugins is resolveEvalPlugins once per process: resolveTiers records
+// the plugins and buildClient loads them into every case's client, so the
+// tiers name the version every run loaded, and a long eval starts `claude
+// plugin list` once.
+var evalPlugins = sync.OnceValues(resolveEvalPlugins)
+
+// resolveEvalPlugins resolves the plugins PLANWERK_CLAUDE_PLUGINS names. An
+// unset or blank variable loads none.
+func resolveEvalPlugins() ([]claudeplugin.Plugin, error) {
+	raw := strings.TrimSpace(os.Getenv(envClaudePlugins))
+	if raw == "" {
+		return nil, nil
+	}
+	plugins, err := claudeplugin.Resolve(strings.Split(raw, ","), claudeplugin.ListInstalled)
+	if err != nil {
+		return nil, fmt.Errorf("%w (env: %s)", err, envClaudePlugins)
+	}
+	return plugins, nil
+}
 
 // resolveTiers resolves the model and effort of the main, finder and
 // structure tiers from their PLANWERK_* variables, and the finder tool list
@@ -396,10 +419,12 @@ const (
 // tier as claude.Client.FinderTier resolves it, so the recorded tier is the
 // tier that runs. The tool list is recorded as claude.ParseToolList returns
 // it, sorted and comma-joined, so two spellings of one set record the same
-// value. It rejects an effort that is not one of the levels Claude Code
-// accepts and a tool list ParseToolList refuses; a compiled-in default is
-// never invalid, so an unset variable cannot fail. main calls it before the
-// first case runs.
+// value. The plugins PLANWERK_CLAUDE_PLUGINS names are recorded as their
+// name@version labels; evalPlugins resolves them for buildClient too. It
+// rejects an effort that is not one of the levels Claude Code accepts, a tool
+// list ParseToolList refuses, and a plugin value that resolves to no plugin;
+// a compiled-in default is never invalid, so an unset variable cannot fail.
+// main calls it before the first case runs.
 func resolveTiers() (eval.Tiers, error) {
 	env := func(name string) string { return strings.TrimSpace(os.Getenv(name)) }
 	rawTools := env(envFinderTools)
@@ -422,6 +447,15 @@ func resolveTiers() (eval.Tiers, error) {
 		StructureEffort: cmp.Or(env(envStructureEffort), claude.DefaultStructureEffort),
 		FinderTools:     strings.Join(tools, ","),
 	}
+	if plugins, err := evalPlugins(); err != nil {
+		return eval.Tiers{}, err
+	} else if len(plugins) > 0 {
+		labels := make([]string, len(plugins))
+		for i, p := range plugins {
+			labels[i] = p.Label()
+		}
+		t.Plugins = strings.Join(labels, ",")
+	}
 	for _, e := range []struct{ name, value string }{
 		{envClaudeEffort, t.ClaudeEffort},
 		{envFinderEffort, t.FinderEffort},
@@ -435,8 +469,9 @@ func resolveTiers() (eval.Tiers, error) {
 }
 
 // buildClient constructs a Claude client on tiers, then applies the timeout,
-// inherit-user-config, diff-exclusions and show-output overrides the shipped
-// CLI honors, each only when set so the compiled-in defaults otherwise stand.
+// inherit-user-config, diff-exclusions, plugin and show-output overrides the
+// shipped CLI honors, each only when set so the compiled-in defaults
+// otherwise stand.
 // The model and effort variables and the finder tool list are read in
 // resolveTiers alone, which has already validated tiers.FinderTools. It is
 // the minimal mirror of the root command's resolve* helpers, which are
@@ -474,6 +509,11 @@ func buildClient(tiers eval.Tiers) (*claude.Client, error) {
 		}
 		opts = append(opts, claude.WithDiffExclusions(b))
 	}
+	plugins, err := evalPlugins()
+	if err != nil {
+		return nil, err
+	}
+	opts = append(opts, claude.WithPlugins(plugins))
 	if v := strings.TrimSpace(os.Getenv("PLANWERK_SHOW_CLAUDE_OUTPUT")); v != "" {
 		if b, err := parseBoolEnv("PLANWERK_SHOW_CLAUDE_OUTPUT", v); err == nil {
 			opts = append(opts, claude.WithShowOutput(b))

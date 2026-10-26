@@ -80,6 +80,11 @@ type streamEvent struct {
 	Tools             json.RawMessage `json:"tools,omitempty"`
 	NumTurns          json.RawMessage `json:"num_turns,omitempty"`
 	PermissionDenials json.RawMessage `json:"permission_denials,omitempty"`
+	// Plugins is the init event's list of the plugins the session loaded,
+	// each an object whose name warnUnloadedPlugins checks against the
+	// plugins the session was given; captured raw for the reason Tools is
+	// (decision 154).
+	Plugins json.RawMessage `json:"plugins,omitempty"`
 }
 
 // sessionStats records how one `claude -p` invocation spent its turns: its
@@ -114,17 +119,18 @@ func (s sessionStats) isZero() bool {
 // resolved model id from the init event (empty if the stream never announced
 // one), the cumulative token usage and estimated cost from the `result` event
 // (zero if it carried none), the raw `result` event of a failed turn (nil when
-// the turn succeeded), the tool names the init event listed (nil when no init
-// event carried a list), and the session's stats.
+// the turn succeeded), the tool names and the plugin names the init event
+// listed (nil when no init event carried the list), and the session's stats.
 type streamOutcome struct {
-	final, acc  strings.Builder
-	sawResult   bool
-	model       string
-	usage       tokenUsage
-	cost        float64
-	failLine    []byte
-	loadedTools []string
-	stats       sessionStats
+	final, acc    strings.Builder
+	sawResult     bool
+	model         string
+	usage         tokenUsage
+	cost          float64
+	failLine      []byte
+	loadedTools   []string
+	loadedPlugins []string
+	stats         sessionStats
 }
 
 // streamSink decides where streamed events are surfaced. Implementations
@@ -237,7 +243,8 @@ func (slogStreamSink) toolResult(label string) {
 // the session's stats are folded into the pass with addSessionStats, with
 // spec.sessionID standing in when the stream named no session, and a tool of
 // spec.tools the init event did not list is logged by warnUnloadedTools
-// (decision 152).
+// (decision 152), and a plugin the session was given but did not load by
+// warnUnloadedPlugins (decision 154).
 func (c *Client) runClaudeStream(spec runSpec, prompt string) (string, string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
@@ -279,6 +286,7 @@ func (c *Client) runClaudeStream(spec runSpec, prompt string) (string, string, e
 	}
 	c.addSessionStats(spec.label, out.stats)
 	warnUnloadedTools(slog.Default(), spec.label, spec.tools, out.loadedTools)
+	warnUnloadedPlugins(slog.Default(), spec.label, c.sessionPlugins(spec.readOnly || spec.noTools), out.loadedPlugins)
 
 	waitErr := cmd.Wait()
 
@@ -411,8 +419,9 @@ func readStreamLine(br *bufio.Reader, limit int) ([]byte, error) {
 // session_id that decodes is kept in out.stats. The `system` event's resolved
 // model id is recorded in out.model (first value wins) so the caller can stamp
 // the attribution footers with the exact model, and the `init` event's tool
-// list in out.loadedTools. Every `tool_use` block of an `assistant` event is
-// counted in out.stats, a subagent's included. A `result` event sets
+// list in out.loadedTools and its plugin names in out.loadedPlugins. Every
+// `tool_use` block of an `assistant` event is counted in out.stats, a
+// subagent's included. A `result` event sets
 // out.sawResult, and its text, token usage, estimated cost, turn count and
 // number of permission denials are recorded best-effort, each set only on a
 // clean decode, and a later `result` event overwrites an earlier one. A
@@ -449,6 +458,19 @@ func handleStreamLine(line []byte, label string, sink streamSink, out *streamOut
 			var tools []string
 			if json.Unmarshal(ev.Tools, &tools) == nil {
 				out.loadedTools = tools
+			}
+		}
+		if ev.Subtype == "init" && out.loadedPlugins == nil && ev.Plugins != nil {
+			var plugins []struct {
+				Name string `json:"name"`
+			}
+			// A null list decodes to a nil slice and counts as no list, as
+			// it does for Tools.
+			if json.Unmarshal(ev.Plugins, &plugins) == nil && plugins != nil {
+				out.loadedPlugins = make([]string, 0, len(plugins))
+				for _, p := range plugins {
+					out.loadedPlugins = append(out.loadedPlugins, p.Name)
+				}
 			}
 		}
 	case "assistant":
