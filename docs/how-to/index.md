@@ -31,6 +31,7 @@ solves one specific problem.
 - [Rebase a PR interactively](/how-to/rebase-a-pr-interactively)
 - [Address review comments](/how-to/address-review-comments)
 - [Use local mode](/how-to/use-local-mode)
+- [Use impeccable for UI work](/how-to/use-impeccable-for-ui-work)
 - [Wire it up as a GitHub Action](/how-to/use-the-github-action)
 - [Install shell completions & man pages](/how-to/install-completions-and-man-pages)
 - [Build from source](/how-to/build-from-source)

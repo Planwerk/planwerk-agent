@@ -125,7 +125,7 @@ in the [output format reference](/reference/output-format#actionability-levels).
 
 ## Adaptive Specialist Gating
 
-With `--specialists`, the review fans out into six domain reviewers that run
+With `--specialists`, the review fans out into seven domain reviewers that run
 concurrently and merge their findings. To avoid spending a full fan-out on a
 small change, each specialist is *gated*: it runs only when the PR diff touches
 files relevant to its domain.
@@ -138,11 +138,12 @@ files relevant to its domain.
 | `performance` | any source-code file |
 | `maintainability` | any source-code file |
 | `api-contract` | a routing / request-handler file (`api/`, `routes/`, `handlers/`, `controllers/`, or a `*handler*` / `*route*` / `*controller*` file) |
+| `ui` | a UI file: markup, a stylesheet, a component (`.html`, `.css`, `.scss`, `.jsx`, `.tsx`, `.vue`, `.svelte`, `.astro`, …), or a view template (`.erb`, `.hbs`, `.twig`, `.blade.php`, …); plain `.js` and `.ts` files do not count |
 
 A file counts as source code unless it is documentation, configuration, data,
 or media (`.md`, `.yaml`, `.json`, `.png`, …). Gated-out specialists are
 skipped, and the report lists them as gated out beside the ones that ran, so a
-5-line docs-only PR runs only the two always-on specialists instead of all six.
+5-line docs-only PR runs only the two always-on specialists instead of all seven.
 When the changed-file set cannot be determined, the gate fails open and every
 specialist runs.
 `--dry-run` shows the gate's choice for a pull request before any session
