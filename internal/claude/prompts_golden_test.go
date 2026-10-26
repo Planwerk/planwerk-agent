@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/audit"
 	"github.com/planwerk/planwerk-agent/internal/brain"
 	"github.com/planwerk/planwerk-agent/internal/capture"
+	"github.com/planwerk/planwerk-agent/internal/claudeplugin"
 	"github.com/planwerk/planwerk-agent/internal/diffscope"
 	"github.com/planwerk/planwerk-agent/internal/doccheck"
 	"github.com/planwerk/planwerk-agent/internal/elaborate"
@@ -1048,6 +1050,38 @@ func TestBuildImplementerAgentPrompt_Golden(t *testing.T) {
 // implementer_agent.golden.
 func TestBuildImplementerAgentPrompt_NoAITrailers(t *testing.T) {
 	assertGoldenPrompt(t, "implementer_agent_no_ai_trailers", buildImplementerAgentPrompt(goldenAITrailersForbiddenBy))
+}
+
+// goldenPlugins is a plugin that ships one skill and a plugin that ships none.
+func goldenPlugins() []claudeplugin.Plugin {
+	return []claudeplugin.Plugin{
+		{Dir: "/plugins/impeccable", Name: "impeccable", Version: "4.7.1", Skills: []claudeplugin.Skill{{Name: "impeccable", Description: "Use when the user wants to design, critique, audit, polish, or harden a frontend interface."}}},
+		{Dir: "/plugins/formatter", Name: "formatter"},
+	}
+}
+
+// TestPluginSessionPrompt_Golden locks the system-prompt section a session
+// that edits carries when the operator loaded plugins (decision 154), with a
+// skill to list and for plugins that ship none.
+func TestPluginSessionPrompt_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "plugin_session", pluginSessionPrompt(goldenPlugins()))
+	assertGoldenPrompt(t, "plugin_session_hooks_only", pluginSessionPrompt(goldenPlugins()[1:]))
+}
+
+// TestBuildImplementerAgentPrompt_Plugins_Golden locks the worker prompt of an
+// orchestrated implement session that loads plugins: the implementer prompt,
+// then the plugin section, since a subagent sees none of the parent's system
+// prompt (decision 154).
+func TestBuildImplementerAgentPrompt_Plugins_Golden(t *testing.T) {
+	raw, err := implementAgentsJSON(implement.Context{WorkerModel: "sonnet"}, goldenPlugins())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var defs map[string]agentDefinition
+	if err := json.Unmarshal([]byte(raw), &defs); err != nil {
+		t.Fatal(err)
+	}
+	assertGoldenPrompt(t, "implementer_agent_plugins", defs[implementerAgentName].Prompt)
 }
 
 // TestBuildImplementPromptResume_Golden locks the shape used when an earlier

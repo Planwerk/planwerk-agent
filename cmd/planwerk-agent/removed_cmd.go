@@ -35,10 +35,11 @@ func newRemovedCmds() []*cobra.Command {
 	cmds := make([]*cobra.Command, 0, len(removed))
 	for _, r := range removed {
 		cmds = append(cmds, &cobra.Command{
-			Use:    r.name,
-			Hidden: true,
-			Short:  fmt.Sprintf("Removed — use the %s skill", r.skill),
-			Args:   cobra.ArbitraryArgs,
+			Use:         r.name,
+			Hidden:      true,
+			Annotations: map[string]string{noSessionAnnotation: "true"},
+			Short:       fmt.Sprintf("Removed — use the %s skill", r.skill),
+			Args:        cobra.ArbitraryArgs,
 			RunE: func(_ *cobra.Command, _ []string) error {
 				return fmt.Errorf(
 					"the %q subcommand was removed; it is now the %s Claude Code skill, which asks you the questions the command had to guess\n\ninstall it once with:\n%s\n\nthen run %s inside a Claude Code session\n\nsee %s",

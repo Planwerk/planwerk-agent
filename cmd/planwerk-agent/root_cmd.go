@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/attribution"
 	"github.com/planwerk/planwerk-agent/internal/cache"
 	"github.com/planwerk/planwerk-agent/internal/claude"
+	"github.com/planwerk/planwerk-agent/internal/claudeplugin"
 	"github.com/planwerk/planwerk-agent/internal/cli"
 	"github.com/planwerk/planwerk-agent/internal/logging"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
@@ -27,6 +29,33 @@ import (
 // reviewed change wrote: a key this binary does not know would fail every
 // search of the session.
 const mirrorOnlyAnnotation = "planwerk-agent/mirror-only"
+
+// noSessionAnnotation marks a command that starts no Claude Code session, as
+// do its subcommands. The root command's pre-run resolves no --claude-plugin
+// for it, so a schema dump, a cache listing, or a mirror sync never depends
+// on the claude CLI that resolving a plugin id runs (decision 153).
+const noSessionAnnotation = "planwerk-agent/no-session"
+
+// cobraCommands are the commands cobra adds on its own, none of which starts
+// a session: help, the completion scripts, and the hidden commands a shell
+// calls on every completion request.
+var cobraCommands = map[string]bool{
+	"help":                          true,
+	"completion":                    true,
+	cobra.ShellCompRequestCmd:       true,
+	cobra.ShellCompNoDescRequestCmd: true,
+}
+
+// startsNoSession reports whether cmd, or a command it is nested in, carries
+// noSessionAnnotation or is one of cobraCommands.
+func startsNoSession(cmd *cobra.Command) bool {
+	for c := cmd; c != nil; c = c.Parent() {
+		if c.Annotations[noSessionAnnotation] != "" || (c.HasParent() && cobraCommands[c.Name()]) {
+			return true
+		}
+	}
+	return false
+}
 
 // newRootCmd builds the root command. The root command is the review command:
 // it analyzes a single GitHub PR (or the local working tree with --local). It
@@ -52,6 +81,7 @@ func newRootCmd(deps *runtimeDeps) *cobra.Command {
 	var finderEffort string
 	var finderTools string
 	var claudeInheritUserConfig bool
+	var claudePlugins []string
 	var diffExclusions bool
 	var wikiEnable, wikiDisable bool
 	var wikiRef string
@@ -129,6 +159,17 @@ or short form (owner/repo#123).`,
 			if err != nil {
 				return err
 			}
+			// A command that starts no session, and the root's own version and
+			// cache actions, load no plugin and so resolve none.
+			var plugins []claudeplugin.Plugin
+			if !startsNoSession(cmd) && !showVersion && !cacheStats && cacheInspect == "" && !clearCache && clearCacheScope == "" {
+				if plugins, err = resolveClaudePlugins(claudePlugins, cmd.Flags().Changed("claude-plugin"), deps.listPlugins); err != nil {
+					return err
+				}
+			}
+			for _, p := range plugins {
+				slog.Info("loading a Claude Code plugin into the sessions that edit", "plugin", p.Label(), "dir", p.Dir)
+			}
 
 			// Build the Claude Code client once from the resolved --claude-*
 			// flags and share it with every subcommand via deps. The implement
@@ -150,6 +191,7 @@ or short form (owner/repo#123).`,
 				claude.WithFinderTools(findTools),
 				claude.WithInheritUserConfig(resolveBool(claudeInheritUserConfig, cmd.Flags().Changed("claude-inherit-user-config"), envClaudeInheritUserConfig)),
 				claude.WithDiffExclusions(exclude),
+				claude.WithPlugins(plugins),
 			}
 			deps.claude = claude.NewClient(deps.claudeOpts...)
 
@@ -160,9 +202,10 @@ or short form (owner/repo#123).`,
 			// stronger model returned the weaker one's findings for the whole
 			// TTL. The per-command pattern sources are folded in by each
 			// command, next to its own flags. The diff exclusions decide which
-			// changed files the sessions read, and the finder tool list what
-			// the finding passes can call. Each is appended only when on or
-			// set, so a key without them is the one it was before they
+			// changed files the sessions read, the finder tool list what the
+			// finding passes can call, and the plugins, by name and version,
+			// what the sessions that edit draw on. Each is appended only when
+			// on or set, so a key without them is the one it was before they
 			// existed.
 			fingerprint := []string{mainModel, mainEffort, structModel, structEffort, findModel, findEffort}
 			if exclude {
@@ -170,6 +213,13 @@ or short form (owner/repo#123).`,
 			}
 			if len(findTools) > 0 {
 				fingerprint = append(fingerprint, "finder-tools="+strings.Join(findTools, ","))
+			}
+			if len(plugins) > 0 {
+				labels := make([]string, len(plugins))
+				for i, p := range plugins {
+					labels[i] = p.Label()
+				}
+				fingerprint = append(fingerprint, "plugins="+strings.Join(labels, ","))
 			}
 			cache.SetRunFingerprint(fingerprint...)
 
@@ -276,6 +326,7 @@ or short form (owner/repo#123).`,
 	persistent.StringVar(&finderEffort, "finder-effort", claude.DefaultFinderEffort, "Reasoning effort for the finder passes (low, medium, high, xhigh, max; empty inherits --claude-effort; env: "+envFinderEffort+")")
 	persistent.StringVar(&finderTools, "finder-tools", claude.DefaultFinderTools, "Comma-separated Claude Code built-in tools the seven passes that emit findings load (review, audit, adversarial, specialists, compliance, simplify finder, implementation verifier), e.g. Bash,Glob,Grep,Read,WebFetch,WebSearch; empty keeps Claude Code's default set; Edit, Write and NotebookEdit stay denied either way (env: "+envFinderTools+")")
 	persistent.BoolVar(&claudeInheritUserConfig, "claude-inherit-user-config", false, "Let orchestrated Claude sessions inherit your user-global ~/.claude settings and MCP servers (default: isolated for reproducible output; env: "+envClaudeInheritUserConfig+")")
+	persistent.StringArrayVar(&claudePlugins, "claude-plugin", nil, "Claude Code plugin the sessions that edit (implement, fix, address, rebase) load, named by its installed id (name@marketplace, as claude plugin list prints it) or its directory; repeat for more than one. Read-only sessions never load one (env: "+envClaudePlugins+", comma-separated)")
 	persistent.BoolVar(&diffExclusions, "diff-exclusions", false, "Leave lock files, vendored directories, and generated files out of the diff the review and finder passes read, and list them in the report; tests outside vendored directories are never left out (env: "+envDiffExclusions+")")
 
 	flags := rootCmd.Flags()

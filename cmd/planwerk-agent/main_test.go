@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"log/slog"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -17,6 +18,15 @@ import (
 // testRepoRef is the canonical repository reference shared across the
 // command-level tests in this package.
 const testRepoRef = "acme/widgets"
+
+// TestMain unsets PLANWERK_CLAUDE_PLUGINS before any test runs. The how-to
+// tells an operator to export it, and every test that runs the root
+// command's pre-run would otherwise resolve the operator's plugins through
+// the claude CLI; a test that is about the variable sets it itself.
+func TestMain(m *testing.M) {
+	_ = os.Unsetenv(envClaudePlugins)
+	os.Exit(m.Run())
+}
 
 func TestResolveBuildInfoUsesLdflagsVersion(t *testing.T) {
 	bi := resolveBuildInfo("v1.2.3")

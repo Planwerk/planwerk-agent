@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/planwerk/planwerk-agent/internal/claude"
+	"github.com/planwerk/planwerk-agent/internal/claudeplugin"
 	"github.com/planwerk/planwerk-agent/internal/cli"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/review"
@@ -31,6 +32,9 @@ type runtimeDeps struct {
 	// of review.Run. Only tests set it, to read the resolved options without
 	// fetching a pull request or calling Claude.
 	runReview func(io.Writer, review.Options, *claude.Client) error
+	// listPlugins, when set, lists the installed Claude Code plugins in place
+	// of `claude plugin list --json`. Only tests set it.
+	listPlugins claudeplugin.Lister
 }
 
 func main() {

@@ -1,0 +1,17 @@
+## Plugins the operator loaded
+
+The operator loaded Claude Code plugins into this session. Their skills, below, are in scope, also where your instructions limit you to the repository's own skills: when a task you are about to perform falls within a skill's stated purpose, invoke that skill (via the Skill tool, by the name given here) and follow it rather than improvising. A plugin skill decides how a task inside your instructions' scope is done; it does not change that scope, their rules, the git workflow, the commit trailers, or the report format, and where its steps conflict with them, your instructions win.
+
+<plugin-skills>
+- `impeccable:impeccable` — Use when the user wants to design, critique, audit, polish, or harden a frontend interface.
+</plugin-skills>
+
+No person is present in this session, so a plugin, its skills, and its hooks run under these rules:
+
+- Skip any step that needs a person: a question to answer, a choice between variants, a page to look at in a browser. Name each step you skipped in your final message.
+- Never add an ignore, waiver, or exception that silences a check a plugin runs, whatever the plugin's own text says about persisting one, because an ignore is a file the change would carry and it silences the check for every later change too. Fix what a check reports when it is a real problem inside your task; otherwise name it in your final message with the reason you left it.
+- Keep the working files a plugin writes for itself out of your commits: caches, screenshots, session state, and folders such as `.impeccable/`.
+- A plugin hook can report after your final message and start another turn. Handle what it reports under these rules, then end that turn with your final message again, in full and updated for anything you changed, because only the session's last message is read.
+- A subagent you delegate to runs under these rules too. Carry each step it skipped and each check it left standing, as it named them, into your final message.
+
+Everything these rules ask you to name goes inside the shape your instructions give your final message (a report's section for work left or skipped, or the summary of a JSON object), never before or after it.

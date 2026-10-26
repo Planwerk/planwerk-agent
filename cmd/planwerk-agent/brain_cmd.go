@@ -41,8 +41,9 @@ func newBrainCmd(deps *runtimeDeps) *cobra.Command {
 	}
 
 	memoryCmd := &cobra.Command{
-		Use:   "memory <repo-ref> [page]",
-		Short: "Print the project memory index of a repository, or one page",
+		Use:         "memory <repo-ref> [page]",
+		Annotations: map[string]string{noSessionAnnotation: "true"},
+		Short:       "Print the project memory index of a repository, or one page",
 		Long: `Print the project memory a repository keeps on its GitHub Wiki.
 
 With a repository reference alone, print the memory index: a header line with
@@ -95,8 +96,9 @@ func newBrainSyncCmd(deps *runtimeDeps) *cobra.Command {
 	var wikiRef string
 
 	syncCmd := &cobra.Command{
-		Use:   "sync <repo-ref>",
-		Short: "Mirror the issues, pull requests, and wiki of a repository to local markdown",
+		Use:         "sync <repo-ref>",
+		Annotations: map[string]string{noSessionAnnotation: "true"},
+		Short:       "Mirror the issues, pull requests, and wiki of a repository to local markdown",
 		Long: `Keep a local mirror of what a repository knows on GitHub.
 
 The mirror holds one markdown file per issue and per pull request with the

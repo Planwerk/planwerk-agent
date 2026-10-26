@@ -23,8 +23,9 @@ func newExtractCmd(deps *runtimeDeps) *cobra.Command {
 	var wikiRef string
 
 	extractCmd := &cobra.Command{
-		Use:   "extract <repo-ref>",
-		Short: "Anchor wiki review patterns into committed files",
+		Use:         "extract <repo-ref>",
+		Annotations: map[string]string{noSessionAnnotation: "true"},
+		Short:       "Anchor wiki review patterns into committed files",
 		Long: `Pull review patterns off a target repository's GitHub Wiki and write them
 as committed, reproducible files, selecting which entries to anchor.
 

@@ -18,8 +18,9 @@ func newPromptCmd(deps *runtimeDeps) *cobra.Command {
 	var mode string
 
 	promptCmd := &cobra.Command{
-		Use:   "prompt <issue-ref>",
-		Short: "Generate a Claude Code prompt that fixes or implements an issue",
+		Use:         "prompt <issue-ref>",
+		Annotations: map[string]string{noSessionAnnotation: "true"},
+		Short:       "Generate a Claude Code prompt that fixes or implements an issue",
 		Long: `Fetch a GitHub issue and emit a copy-paste-ready prompt for Claude
 Code (or another AI agent) to fix or implement it.
 
