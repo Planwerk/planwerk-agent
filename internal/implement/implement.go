@@ -46,6 +46,7 @@ type Options struct {
 	NoPlan          bool // skip the planning session; the implement session plans for itself
 	NoPlanReuse     bool // always run a fresh planning session; do not reuse a plan already posted on the issue
 	NoPlanComment   bool // do not post the finished plan as a comment on the source issue
+	NoPlanReview    bool // do not review a freshly generated plan before implementing it
 	NoReportComment bool // do not post the implementation report as a comment on the source issue
 	Verify          bool // after implementing, run an independent verification pass against the diff
 	// NoSimplify disables the automatic simplify pass that, after the implement
@@ -151,6 +152,11 @@ type Runner struct {
 	// implement session plans for itself, as before the planning phase
 	// existed.
 	Planner ClaudePlanner
+	// PlanReviewer runs the read-only review a freshly generated plan gets
+	// before the implement session executes it; a plan below
+	// passingPlanReviewScore is planned once more with the review's gaps. Nil
+	// (or opts.NoPlanReview) skips the review.
+	PlanReviewer PlanReviewer
 	// BuildPrompt renders the implement prompt without invoking Claude.
 	// Required when Options.PrintPrompt is set; nil otherwise is fine.
 	BuildPrompt PromptBuildFn
@@ -225,24 +231,26 @@ type Runner struct {
 }
 
 // NewRunner builds a Runner with the production GitHub backend, the given
-// Claude plan/implement functions, their prompt builders, the optional
-// acceptance-criteria and adversarial verifiers, the optional simplify
-// finder/applier, the optional review applier, and the finalize function. The
-// CLI wires claude.Plan / claude.BuildPlanPrompt / claude.Implement /
-// claude.BuildImplementPrompt / claude.VerifyImplementation /
+// Claude plan/implement functions, their prompt builders, the optional plan
+// reviewer, the optional acceptance-criteria and adversarial verifiers, the
+// optional simplify finder/applier, the optional review applier, and the
+// finalize function. The CLI wires claude.Plan / claude.BuildPlanPrompt /
+// claude.ReviewPlan / claude.Implement / claude.BuildImplementPrompt /
+// claude.VerifyImplementation /
 // claude.AdversarialReview / claude.SpecialistReviews / claude.SimplifyFindings /
 // claude.ApplySimplifications / claude.ApplyReview / claude.DedupFindings /
 // claude.VerifyFindingClaims / claude.Capture / claude.FinalizePR so the import
 // direction stays claude -> implement. A nil planFn disables the planning phase;
-// a nil verifyFn leaves the verification pass disabled; a nil adversarialFn
-// leaves both the adversarial pass and the review-and-fix finder disabled; a nil
-// specialistsFn leaves the review pass's first-round fan-out disabled (the
-// adversarial finder still runs); a nil simplifyFindFn or simplifyApplyFn leaves
-// the simplify pass disabled; a nil reviewApplyFn leaves the review-and-fix pass
-// disabled; a nil dedupFn or verifyClaimsFn skips that hygiene stage; a nil
-// captureFn leaves the capture pass disabled; a nil finalizeFn leaves the run on
-// the committed branch with no PR opened.
-func NewRunner(planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn, adversarialFn AdversarialFn, specialistsFn SpecialistReviewsFn, simplifyFindFn SimplifyFindFn, simplifyApplyFn SimplifyApplyFn, reviewApplyFn ReviewApplyFn, dedupFn hygiene.DedupFn, verifyClaimsFn hygiene.VerifyClaimsFn, captureFn CaptureFn, finalizeFn FinalizeFn) *Runner {
+// a nil planReviewFn disables the plan review; a nil verifyFn leaves the
+// verification pass disabled; a nil adversarialFn leaves both the adversarial
+// pass and the review-and-fix finder disabled; a nil specialistsFn leaves the
+// review pass's first-round fan-out disabled (the adversarial finder still
+// runs); a nil simplifyFindFn or simplifyApplyFn leaves the simplify pass
+// disabled; a nil reviewApplyFn leaves the review-and-fix pass disabled; a nil
+// dedupFn or verifyClaimsFn skips that hygiene stage; a nil captureFn leaves the
+// capture pass disabled; a nil finalizeFn leaves the run on the committed branch
+// with no PR opened.
+func NewRunner(planFn PlanFn, buildPlan PromptBuildFn, planReviewFn PlanReviewFn, fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn, adversarialFn AdversarialFn, specialistsFn SpecialistReviewsFn, simplifyFindFn SimplifyFindFn, simplifyApplyFn SimplifyApplyFn, reviewApplyFn ReviewApplyFn, dedupFn hygiene.DedupFn, verifyClaimsFn hygiene.VerifyClaimsFn, captureFn CaptureFn, finalizeFn FinalizeFn) *Runner {
 	r := &Runner{
 		Claude:          implementFnAdapter{fn: fn},
 		GitHub:          github.Client{},
@@ -253,6 +261,9 @@ func NewRunner(planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build Pro
 	}
 	if planFn != nil {
 		r.Planner = planFnAdapter{fn: planFn}
+	}
+	if planReviewFn != nil {
+		r.PlanReviewer = planReviewFnAdapter{fn: planReviewFn}
 	}
 	if verifyFn != nil {
 		r.Verifier = verifyFnAdapter{fn: verifyFn}
@@ -282,15 +293,15 @@ func NewRunner(planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build Pro
 }
 
 // Run is a package-level convenience that delegates to NewRunner(...).Run.
-func Run(w io.Writer, opts Options, planFn PlanFn, buildPlan PromptBuildFn, fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn, adversarialFn AdversarialFn, specialistsFn SpecialistReviewsFn, simplifyFindFn SimplifyFindFn, simplifyApplyFn SimplifyApplyFn, reviewApplyFn ReviewApplyFn, dedupFn hygiene.DedupFn, verifyClaimsFn hygiene.VerifyClaimsFn, captureFn CaptureFn, finalizeFn FinalizeFn) error {
-	return NewRunner(planFn, buildPlan, fn, build, verifyFn, adversarialFn, specialistsFn, simplifyFindFn, simplifyApplyFn, reviewApplyFn, dedupFn, verifyClaimsFn, captureFn, finalizeFn).Run(w, opts)
+func Run(w io.Writer, opts Options, planFn PlanFn, buildPlan PromptBuildFn, planReviewFn PlanReviewFn, fn ImplementFn, build PromptBuildFn, verifyFn VerifyFn, adversarialFn AdversarialFn, specialistsFn SpecialistReviewsFn, simplifyFindFn SimplifyFindFn, simplifyApplyFn SimplifyApplyFn, reviewApplyFn ReviewApplyFn, dedupFn hygiene.DedupFn, verifyClaimsFn hygiene.VerifyClaimsFn, captureFn CaptureFn, finalizeFn FinalizeFn) error {
+	return NewRunner(planFn, buildPlan, planReviewFn, fn, build, verifyFn, adversarialFn, specialistsFn, simplifyFindFn, simplifyApplyFn, reviewApplyFn, dedupFn, verifyClaimsFn, captureFn, finalizeFn).Run(w, opts)
 }
 
 // PrintBarePrompt is a package-level convenience that delegates to
 // NewRunner(nil, ...).PrintBarePrompt. The prompt itself is built without
 // invoking Claude, so the functions passed to NewRunner are not used here.
 func PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuildFn) error {
-	return NewRunner(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil).PrintBarePrompt(w, opts, build)
+	return NewRunner(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil).PrintBarePrompt(w, opts, build)
 }
 
 // PrintBarePrompt builds a self-contained ("bare") implement prompt from
@@ -369,10 +380,13 @@ func (r *Runner) PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuil
 //     an implementation plan planwerk-agent already posted on the issue is
 //     reused verbatim (no planning session, no duplicate comment); --no-plan-reuse
 //     forces a fresh read-only Claude planning session inside the clone (on the
-//     dedicated planning model) whose finished plan is posted back onto the
-//     source issue as a comment (unless --no-plan-comment). Either way the plan
-//     is embedded into the implement context, and a STATUS: BLOCKED /
-//     NEEDS_CONTEXT plan aborts before any code is written.
+//     dedicated planning model). Unless --no-plan-review, a second read-only
+//     session reviews that fresh plan, and a plan it scores below
+//     passingPlanReviewScore is planned once more with the review's gaps. The
+//     plan the run implements is posted back onto the source issue as a
+//     comment (unless --no-plan-comment). Either way the plan is embedded into
+//     the implement context, and a STATUS: BLOCKED / NEEDS_CONTEXT plan aborts
+//     before any code is written.
 //  6. Run a Claude session inside the clone to implement the issue
 //     end-to-end (code + tests + docs), committing on a fresh feature branch —
 //     but NOT opening a pull request yet.
@@ -990,10 +1004,12 @@ func stripCommentFooter(body, marker string) string {
 // issue unimplementable as specified, so a human must look at the plan
 // before any code is written.
 //
-// Whichever way the plan turns out, the finished plan is posted back onto the
-// source issue as a comment (unless --no-plan-comment) before the escalation
-// check, so an escalated plan still lands where the human who must clarify the
-// issue will see it.
+// The plan the run implements is posted back onto the source issue as a
+// comment (unless --no-plan-comment), and so is an escalated plan, before the
+// run aborts, so it lands where the human who must clarify the issue will see
+// it. A PLAN_READY plan goes through the plan review first
+// (reviewAndRevisePlan), so the plan posted is the one that survived it: a plan
+// the review rejected is never posted, and the next run never reuses it.
 //
 // The planning session is the only reader of the project memory, so the memory
 // pages are written here and removed when the session is over: a run that
@@ -1024,13 +1040,86 @@ func (r *Runner) runPlanning(w io.Writer, opts Options, owner, name, dir string,
 		return fmt.Errorf("planning session returned no complete plan (it needs the %q heading and a STATUS line); rerun, or rerun with --no-plan to skip planning", planHeading)
 	}
 	_, _ = fmt.Fprintf(w, "\nImplementation plan:\n%s\n", plan)
-	r.postPlanComment(w, opts, owner, name, ctx.IssueNumber, plan, model)
 	if status := planEscalation(plan); status != "" {
+		r.postPlanComment(w, opts, owner, name, ctx.IssueNumber, plan, model)
 		return fmt.Errorf("planning session reported %s; review the plan above and clarify the issue, or rerun with --no-plan", status)
 	}
+	if !opts.NoPlanReview && r.PlanReviewer != nil {
+		plan, model, err = r.reviewAndRevisePlan(w, opts, owner, name, dir, planCtx, plan, model)
+		if err != nil {
+			return err
+		}
+	}
+	r.postPlanComment(w, opts, owner, name, ctx.IssueNumber, plan, model)
 	ctx.Plan = plan
 	slog.Info("planning complete", "issue", ctx.IssueNumber)
 	return nil
+}
+
+// passingPlanReviewScore is the executability bar (0-10) a fresh plan must
+// clear in the plan review for the run to implement it as it is; below it, the
+// plan is planned once more with the review's gaps. It mirrors elaborate's
+// passingReviewScore and, for the same reason (design decision 30), is a
+// package constant, not a flag.
+const passingPlanReviewScore = 8
+
+// reviewAndRevisePlan runs the plan review on a fresh PLAN_READY plan and
+// returns the plan the run implements, with the model that produced it. A plan
+// that clears passingPlanReviewScore comes back unchanged. Below the bar, the
+// planner runs once more on planCtx with the rejected plan, the review's gaps,
+// and its target, and the revised plan comes back without a second review, so
+// a rejected plan costs two extra planning-tier sessions and never more.
+//
+// A review that fails (an error, or no verdict) leaves the plan as good as a run
+// without the review, so the run implements it unreviewed. A re-plan that fails
+// is fatal like any planning failure, and posts nothing: the rejected plan was
+// never posted, so the next run plans afresh. A revised plan that escalates is
+// posted, then aborts the run, as a first plan that escalates does.
+//
+// The re-plan runs inside runPlanning, so planCtx still carries the memory
+// directory and the search surface the first planning session had.
+func (r *Runner) reviewAndRevisePlan(w io.Writer, opts Options, owner, name, dir string, planCtx Context, plan, model string) (string, string, error) {
+	n := planCtx.IssueNumber
+	review, reviewModel, err := r.PlanReviewer.ReviewPlan(dir, planCtx, plan)
+	if err == nil && review == nil {
+		err = errors.New("the plan review returned no verdict")
+	}
+	if err != nil {
+		slog.Warn("plan review failed; implementing on the unreviewed plan", "issue", n, "err", err)
+		_, _ = fmt.Fprintf(w, "\nThe plan review failed (%v); implementing on the unreviewed plan.\n", err)
+		return plan, model, nil
+	}
+	s := review.Score
+	_, _ = fmt.Fprintf(w, "\n%s\n", formatPlanReview(review, n))
+	r.postPlanReviewComment(w, opts, owner, name, n, review, reviewModel)
+	if s >= passingPlanReviewScore {
+		slog.Info("plan cleared the review bar", "issue", n, "score", s)
+		return plan, model, nil
+	}
+
+	slog.Info("plan review below the bar; re-planning once", "issue", n, "score", s, "gaps", len(review.Gaps))
+	_, _ = fmt.Fprintf(w, "\nThe plan review scored %d/10, below the bar of %d; planning once more with its gaps.\n", s, passingPlanReviewScore)
+	reviseCtx := planCtx
+	reviseCtx.PriorPlan = plan
+	reviseCtx.PlanReviewGaps = review.Gaps
+	reviseCtx.PlanReviewTarget = review.ToReachTen
+	revised, revisedModel, err := r.Planner.Plan(dir, reviseCtx)
+	if err != nil {
+		return "", "", fmt.Errorf("claude plan (revision after a plan review of %d/10): %w (rerun, or rerun with --no-plan-review to implement on the first plan)", s, err)
+	}
+	revised = strings.TrimSpace(revised)
+	if !planComplete(revised) {
+		if revised != "" {
+			_, _ = fmt.Fprintf(w, "\nThe revised planning session returned no complete plan:\n%s\n", revised)
+		}
+		return "", "", fmt.Errorf("the revised planning session returned no complete plan (it needs the %q heading and a STATUS line); rerun, or rerun with --no-plan-review to implement on the first plan", planHeading)
+	}
+	_, _ = fmt.Fprintf(w, "\nRevised implementation plan:\n%s\n", revised)
+	if status := planEscalation(revised); status != "" {
+		r.postPlanComment(w, opts, owner, name, n, revised, revisedModel)
+		return "", "", fmt.Errorf("the revised planning session reported %s; review the plan above and clarify the issue, or rerun with --no-plan", status)
+	}
+	return revised, revisedModel, nil
 }
 
 // planCommentMarker is the stable, version- and model-independent prefix of the
@@ -1069,6 +1158,65 @@ func (r *Runner) postPlanComment(w io.Writer, opts Options, owner, name string, 
 // followed by the attribution footer.
 func formatPlanComment(plan, model string) string {
 	return plan + "\n\n---\n\n" + planCommentFooter(model) + "\n"
+}
+
+// planReviewHeading is the heading every plan review opens with ("## Plan
+// Review (issue #N)"). It contains none of the headings the plan-reuse and
+// resume lookups key on (planHeading, reportHeading, progressNoteHeading,
+// simplifyHeading, reviewHeading), and the review comment carries none of
+// their markers, so mostRecentPlanComment, latestSessionAccount, and
+// passesAfter pass over it. No lookup reads a review back, so unlike those
+// comments it has no footer marker of its own.
+const planReviewHeading = "## Plan Review"
+
+// planReviewCommentFooter attributes the posted plan review to planwerk-agent,
+// naming the model that produced it and matching the plan comment's footer.
+func planReviewCommentFooter(model string) string {
+	return attribution.CommentFooter("Plan review generated by", "implement", model)
+}
+
+// formatPlanReview renders a plan review for stdout and the issue comment: the
+// heading, the score against passingPlanReviewScore and what it means for the
+// run, the gaps ("none" when there are none), and the reviewer's target when it
+// gave one.
+func formatPlanReview(review *PlanReview, number int) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "%s (issue #%d)\n\n", planReviewHeading, number)
+	if review.Score >= passingPlanReviewScore {
+		fmt.Fprintf(&sb, "Score: %d/10, clears the bar of %d.\n", review.Score, passingPlanReviewScore)
+	} else {
+		fmt.Fprintf(&sb, "Score: %d/10, below the bar of %d: the plan is planned once more with the gaps below before the implement session runs.\n", review.Score, passingPlanReviewScore)
+	}
+	sb.WriteString("\n### Gaps\n\n")
+	if len(review.Gaps) == 0 {
+		sb.WriteString("- none\n")
+	}
+	for _, g := range review.Gaps {
+		fmt.Fprintf(&sb, "- %s\n", strings.TrimSpace(g))
+	}
+	if t := strings.TrimSpace(review.ToReachTen); t != "" {
+		fmt.Fprintf(&sb, "\n### What a 10/10 plan would look like\n\n%s\n", t)
+	}
+	return strings.TrimSpace(sb.String())
+}
+
+// formatPlanReviewComment wraps a formatted plan review in the issue-comment
+// body: the review followed by the attribution footer.
+func formatPlanReviewComment(review *PlanReview, number int, model string) string {
+	return formatPlanReview(review, number) + "\n\n---\n\n" + planReviewCommentFooter(model) + "\n"
+}
+
+// postPlanReviewComment posts the plan review as a comment on the source issue,
+// beside the plan it judged. The review is part of the plan record, so
+// --no-plan-comment disables it too. Posting is best-effort: a failure is
+// logged and surfaced but never aborts the run.
+func (r *Runner) postPlanReviewComment(w io.Writer, opts Options, owner, name string, number int, review *PlanReview, model string) {
+	if opts.NoPlanComment {
+		return
+	}
+	github.PostBestEffort(w, "plan review", fmt.Sprintf("issue #%d", number), func() (string, error) {
+		return r.GitHub.AddIssueComment(owner, name, number, formatPlanReviewComment(review, number, model))
+	})
 }
 
 // reportCommentFooter attributes the posted implementation report to

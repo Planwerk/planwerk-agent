@@ -127,7 +127,7 @@ or short form (owner/repo#123).`,
 				iopts := shipImplementOptions(implOpts, deps, issueRef,
 					resolveString(implementWorkerModel, cmd.Flags().Changed("implement-worker-model"), envImplementWorkerModel, ""),
 					resolveString(implementWorkerEffort, cmd.Flags().Changed("implement-worker-effort"), envImplementWorkerEffort, claude.DefaultImplementWorkerEffort))
-				return implement.Run(w, iopts, client.Plan, claude.BuildPlanPrompt, client.Implement, claude.BuildImplementPrompt, client.VerifyImplementation, client.AdversarialReview, client.SpecialistReviews, client.SimplifyFindings, client.ApplySimplifications, client.ApplyReview, client.DedupFindings, client.VerifyFindingClaims, client.Capture, client.FinalizePR)
+				return implement.Run(w, iopts, client.Plan, claude.BuildPlanPrompt, client.ReviewPlan, client.Implement, claude.BuildImplementPrompt, client.VerifyImplementation, client.AdversarialReview, client.SpecialistReviews, client.SimplifyFindings, client.ApplySimplifications, client.ApplyReview, client.DedupFindings, client.VerifyFindingClaims, client.Capture, client.FinalizePR)
 			}
 			fixFn := func(w io.Writer, prRef string) error {
 				return fix.Run(w, shipFixOptions(fixOpts, implOpts, deps, prRef), client.Fix, claude.BuildFixPrompt)
@@ -148,7 +148,8 @@ or short form (owner/repo#123).`,
 	shipFlags.BoolVar(&implOpts.Verify, "verify", false, "In each implement run, check the produced diff against the Sub Issue's Acceptance Criteria")
 	shipFlags.BoolVar(&implOpts.NoPlan, "no-plan", false, "Skip the planning session in each per–Sub Issue implement run")
 	shipFlags.BoolVar(&implOpts.NoPlanReuse, "no-plan-reuse", false, "Always run a fresh planning session; do not reuse a plan already posted on the Sub Issue")
-	shipFlags.BoolVar(&implOpts.NoPlanComment, "no-plan-comment", false, "Do not post the generated implementation plan as a comment on each Sub Issue")
+	shipFlags.BoolVar(&implOpts.NoPlanComment, "no-plan-comment", false, "Do not post the generated implementation plan, or its plan review, as a comment on each Sub Issue")
+	shipFlags.BoolVar(&implOpts.NoPlanReview, "no-plan-review", false, "Skip the review of each freshly generated plan in each per–Sub Issue implement run")
 	shipFlags.StringVar(&planModel, "plan-model", claude.DefaultPlanModel, "Model for the planning session passed to Claude Code via --model (env: "+envPlanModel+")")
 	shipFlags.StringVar(&planEffort, "plan-effort", claude.DefaultPlanEffort, "Reasoning effort for the planning session passed via --effort (low, medium, high, xhigh, max; env: "+envPlanEffort+")")
 	shipFlags.StringVar(&implementModel, "implement-model", "", "Model for the implement session in each per–Sub Issue run; the other sessions stay on --claude-model (empty inherits --claude-model; env: "+envImplementModel+")")

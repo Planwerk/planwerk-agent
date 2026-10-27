@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -216,16 +217,46 @@ type fakePlanner struct {
 	// onPlan, when set, runs inside Plan after the call is recorded, so a test
 	// can observe on-disk state while the session "runs".
 	onPlan func(Context)
+	// revisionPlan, revisionModel, and revisionErr answer the re-plan a plan
+	// review below the bar triggers (a call whose ctx.PriorPlan is set) in
+	// place of plan, model, and err; revisionCtx records that call's context.
+	revisionPlan  string
+	revisionModel string
+	revisionErr   error
+	revisionCtx   *Context
 }
 
 func (f *fakePlanner) Plan(dir string, ctx Context) (string, string, error) {
 	f.called.Add(1)
 	f.dir = dir
-	f.ctx = ctx
 	if f.onPlan != nil {
 		f.onPlan(ctx)
 	}
+	if ctx.PriorPlan != "" {
+		c := ctx
+		f.revisionCtx = &c
+		return f.revisionPlan, f.revisionModel, f.revisionErr
+	}
+	f.ctx = ctx
 	return f.plan, f.model, f.err
+}
+
+type fakePlanReviewer struct {
+	called atomic.Int32
+	dir    string
+	ctx    Context
+	plan   string
+	review *PlanReview
+	model  string
+	err    error
+}
+
+func (f *fakePlanReviewer) ReviewPlan(dir string, ctx Context, plan string) (*PlanReview, string, error) {
+	f.called.Add(1)
+	f.dir = dir
+	f.ctx = ctx
+	f.plan = plan
+	return f.review, f.model, f.err
 }
 
 func TestRun_PlanFeedsImplement(t *testing.T) {
@@ -361,6 +392,466 @@ func TestRun_PlanCommentFailureIsNonFatal(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "Could not post the implementation plan") {
 		t.Errorf("expected a non-fatal warning about the failed comment post, got:\n%s", buf.String())
+	}
+}
+
+const (
+	reviewedFirstPlan   = "## Implementation Plan (issue #42)\n\nThe first plan.\n\nSTATUS: PLAN_READY"
+	reviewedRevisedPlan = "## Implementation Plan (issue #42)\n\nThe revised plan.\n\nSTATUS: PLAN_READY"
+)
+
+// newPlanReviewRunner wires a planner that returns reviewedFirstPlan (and
+// reviewedRevisedPlan for the re-plan) and a reviewer that returns review and
+// reviewErr, on an issue without comments.
+func newPlanReviewRunner(t *testing.T, review *PlanReview, reviewErr error) (*githubtest.Fake, *fakeClaude, *fakePlanner, *fakePlanReviewer, *Runner) {
+	t.Helper()
+	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
+	cl := &fakeClaude{report: validImplReport}
+	fp := &fakePlanner{plan: reviewedFirstPlan, revisionPlan: reviewedRevisedPlan}
+	fr := &fakePlanReviewer{review: review, err: reviewErr}
+	r := newRunner(gh, cl)
+	r.Planner = fp
+	r.PlanReviewer = fr
+	return gh, cl, fp, fr, r
+}
+
+// planComments returns the posted comments that are plan comments.
+func planComments(gh *githubtest.Fake) []string {
+	var out []string
+	for _, c := range gh.Comments() {
+		if strings.Contains(c, planCommentMarker) {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// TestRun_PlanReviewPassFeedsTheReviewedPlan locks the passing path: the fresh
+// plan is reviewed once, implemented as it is, and the review comment lands
+// before the plan comment and the report.
+func TestRun_PlanReviewPassFeedsTheReviewedPlan(t *testing.T) {
+	gh, cl, fp, fr, r := newPlanReviewRunner(t, &PlanReview{Score: 8}, nil)
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if fp.called.Load() != 1 || fr.called.Load() != 1 {
+		t.Fatalf("planner called %d times, reviewer %d times; want 1 and 1", fp.called.Load(), fr.called.Load())
+	}
+	if fr.plan != reviewedFirstPlan || fr.ctx.PriorPlan != "" || fr.dir != gh.Dir {
+		t.Errorf("reviewer got plan %q, PriorPlan %q, dir %q; want the fresh plan, no prior plan, the clone", fr.plan, fr.ctx.PriorPlan, fr.dir)
+	}
+	if cl.ctx.Plan != reviewedFirstPlan {
+		t.Errorf("implement received Plan %q, want the reviewed plan", cl.ctx.Plan)
+	}
+	comments := gh.Comments()
+	if len(comments) != 3 {
+		t.Fatalf("posted %d comments, want 3 (review, plan, report):\n%v", len(comments), comments)
+	}
+	if !strings.Contains(comments[0], "## Plan Review (issue #42)") || !strings.Contains(comments[0], "Score: 8/10, clears the bar of 8.") || !strings.Contains(comments[0], planReviewCommentFooter("")) {
+		t.Errorf("first comment is not the plan review:\n%s", comments[0])
+	}
+	if !strings.Contains(comments[1], reviewedFirstPlan) || !strings.Contains(comments[1], planCommentFooter("")) {
+		t.Errorf("second comment is not the plan:\n%s", comments[1])
+	}
+	if !strings.Contains(comments[2], reportCommentFooter("")) {
+		t.Errorf("third comment is not the report:\n%s", comments[2])
+	}
+}
+
+// TestRun_PlanReviewFailureReplansOnce locks the rejected path: one re-plan
+// with the rejected plan, the gaps, and the target, no second review, and only
+// the revised plan posted and implemented.
+func TestRun_PlanReviewFailureReplansOnce(t *testing.T) {
+	gaps := []string{"Change Set: adds internal/foo, which the issue never asks for"}
+	const target = "A 10 changes only the files the issue names."
+	gh, cl, fp, fr, r := newPlanReviewRunner(t, &PlanReview{Score: 7, Gaps: gaps, ToReachTen: target}, nil)
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if fp.called.Load() != 2 {
+		t.Fatalf("planner called %d times, want 2 (the plan and one re-plan)", fp.called.Load())
+	}
+	if fp.revisionCtx == nil {
+		t.Fatal("the second planning call carried no PriorPlan")
+	}
+	if fp.revisionCtx.PriorPlan != reviewedFirstPlan || !reflect.DeepEqual(fp.revisionCtx.PlanReviewGaps, gaps) || fp.revisionCtx.PlanReviewTarget != target {
+		t.Errorf("re-plan ctx = PriorPlan %q, gaps %q, target %q; want the rejected plan, the review's gaps and target",
+			fp.revisionCtx.PriorPlan, fp.revisionCtx.PlanReviewGaps, fp.revisionCtx.PlanReviewTarget)
+	}
+	if fr.called.Load() != 1 {
+		t.Errorf("reviewer called %d times, want 1 (the revised plan is not reviewed again)", fr.called.Load())
+	}
+	if cl.ctx.Plan != reviewedRevisedPlan {
+		t.Errorf("implement received Plan %q, want the revised plan", cl.ctx.Plan)
+	}
+	plans := planComments(gh)
+	if len(plans) != 1 || !strings.Contains(plans[0], reviewedRevisedPlan) {
+		t.Errorf("plan comments = %q, want exactly one, carrying the revised plan", plans)
+	}
+	for _, c := range gh.Comments() {
+		if strings.Contains(c, "The first plan.") {
+			t.Errorf("the rejected plan was posted:\n%s", c)
+		}
+	}
+	if comments := gh.Comments(); len(comments) == 0 || !strings.Contains(comments[0], "## Plan Review (issue #42)") ||
+		!strings.Contains(comments[0], "Score: 7/10, below the bar of 8") || !strings.Contains(comments[0], gaps[0]) {
+		t.Errorf("the first comment is not the below-bar review carrying its gap: %q", comments)
+	}
+	for _, want := range []string{
+		"The plan review scored 7/10, below the bar of 8; planning once more with its gaps.",
+		"Revised implementation plan:",
+	} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("stdout is missing %q:\n%s", want, buf.String())
+		}
+	}
+}
+
+// TestRun_PlanReviewFailureWithoutGapsReplans locks that the score alone
+// decides: a low score with no gaps still triggers the re-plan.
+func TestRun_PlanReviewFailureWithoutGapsReplans(t *testing.T) {
+	_, cl, fp, _, r := newPlanReviewRunner(t, &PlanReview{Score: 3}, nil)
+
+	if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42"}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if fp.called.Load() != 2 || fp.revisionCtx == nil {
+		t.Fatalf("planner called %d times, want 2 with a re-plan", fp.called.Load())
+	}
+	if len(fp.revisionCtx.PlanReviewGaps) != 0 {
+		t.Errorf("re-plan gaps = %q, want none", fp.revisionCtx.PlanReviewGaps)
+	}
+	if cl.ctx.Plan != reviewedRevisedPlan {
+		t.Errorf("implement received Plan %q, want the revised plan", cl.ctx.Plan)
+	}
+}
+
+// TestRun_PlanReviewErrorImplementsTheUnreviewedPlan locks that a failed review
+// leaves the run as it is without one: the first plan is posted and
+// implemented, and no review comment is posted.
+func TestRun_PlanReviewErrorImplementsTheUnreviewedPlan(t *testing.T) {
+	gh, cl, fp, _, r := newPlanReviewRunner(t, nil, errors.New("claude exited 1"))
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
+		t.Fatalf("Run returned %v, want nil (a failed review is not fatal)", err)
+	}
+	if fp.called.Load() != 1 {
+		t.Errorf("planner called %d times, want 1", fp.called.Load())
+	}
+	if cl.ctx.Plan != reviewedFirstPlan {
+		t.Errorf("implement received Plan %q, want the unreviewed first plan", cl.ctx.Plan)
+	}
+	if plans := planComments(gh); len(plans) != 1 || !strings.Contains(plans[0], reviewedFirstPlan) {
+		t.Errorf("plan comments = %q, want the first plan posted once", plans)
+	}
+	for _, c := range gh.Comments() {
+		if strings.Contains(c, planReviewHeading) {
+			t.Errorf("a failed review posted a review comment:\n%s", c)
+		}
+	}
+	if want := "The plan review failed (claude exited 1); implementing on the unreviewed plan."; !strings.Contains(buf.String(), want) {
+		t.Errorf("stdout is missing %q:\n%s", want, buf.String())
+	}
+}
+
+// TestRun_NilPlanReviewImplementsTheUnreviewedPlan locks that a reviewer
+// returning no verdict and no error is treated as a failed review.
+func TestRun_NilPlanReviewImplementsTheUnreviewedPlan(t *testing.T) {
+	gh, cl, fp, _, r := newPlanReviewRunner(t, nil, nil)
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if fp.called.Load() != 1 || cl.ctx.Plan != reviewedFirstPlan {
+		t.Errorf("planner called %d times, implement got %q; want 1 and the first plan", fp.called.Load(), cl.ctx.Plan)
+	}
+	if plans := planComments(gh); len(plans) != 1 || !strings.Contains(plans[0], reviewedFirstPlan) {
+		t.Errorf("plan comments = %q, want the first plan posted once", plans)
+	}
+	for _, c := range gh.Comments() {
+		if strings.Contains(c, planReviewHeading) {
+			t.Errorf("a review without a verdict posted a review comment:\n%s", c)
+		}
+	}
+	if want := "The plan review failed (the plan review returned no verdict); implementing on the unreviewed plan."; !strings.Contains(buf.String(), want) {
+		t.Errorf("stdout is missing %q:\n%s", want, buf.String())
+	}
+}
+
+// TestRun_PlanReviewCommentsNameTheirModels locks the attribution: the review
+// comment names the reviewer's model, and the plan comment the model of the
+// plan it carries, the first one when it passed and the re-plan's otherwise.
+func TestRun_PlanReviewCommentsNameTheirModels(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		score     int
+		planModel string
+	}{
+		{"passing plan", 9, "first-model"},
+		{"revised plan", 5, "revision-model"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			gh, _, fp, fr, r := newPlanReviewRunner(t, &PlanReview{Score: tc.score}, nil)
+			fp.model, fp.revisionModel, fr.model = "first-model", "revision-model", "review-model"
+
+			if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42"}); err != nil {
+				t.Fatalf("Run returned %v, want nil", err)
+			}
+			comments := gh.Comments()
+			if len(comments) == 0 || !strings.Contains(comments[0], planReviewCommentFooter("review-model")) {
+				t.Errorf("the review comment does not name the reviewer's model: %q", comments)
+			}
+			plans := planComments(gh)
+			if len(plans) != 1 || !strings.Contains(plans[0], planCommentFooter(tc.planModel)) {
+				t.Errorf("plan comments = %q, want one naming %s", plans, tc.planModel)
+			}
+		})
+	}
+}
+
+// TestRun_PlanRevisionKeepsMemoryAndBrain locks that the re-plan runs with the
+// first planning session's project memory, still on disk, and its search.
+func TestRun_PlanRevisionKeepsMemoryAndBrain(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	_, _, fp, _, r := newPlanReviewRunner(t, &PlanReview{Score: 5}, nil)
+	var reads int
+	fp.onPlan = func(ctx Context) {
+		if data, err := os.ReadFile(filepath.Join(ctx.Memory.Dir, "pin-dependencies.md")); err == nil && string(data) == "# Pin every dependency\n" {
+			reads++
+		}
+	}
+	r.ResolveWiki = func(_, _ string, _ patterns.WikiOptions, _ patterns.RemoteOptions) patterns.ResolvedWiki {
+		return patterns.ResolvedWiki{MemoryPages: []patterns.MemoryPage{
+			{Name: "pin-dependencies.md", Title: "Pin every dependency", Body: "# Pin every dependency"},
+		}}
+	}
+	surface := search.Surface{Command: "planwerk-agent brain search owner/repo"}
+	r.ResolveBrain = func(string, string) search.Surface { return surface }
+
+	opts := Options{IssueRef: "owner/repo#42", NoLocalPatterns: true, NoRepoPatterns: true, Brain: true}
+	if err := r.Run(io.Discard, opts); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if fp.called.Load() != 2 || fp.revisionCtx == nil {
+		t.Fatalf("planner called %d times, want the plan and one re-plan", fp.called.Load())
+	}
+	if reads != 2 {
+		t.Errorf("the memory page was readable in %d of 2 planning sessions, want both", reads)
+	}
+	if got := fp.revisionCtx.Memory; got.Dir == "" || got.Dir != fp.ctx.Memory.Dir || len(got.Pages) != 1 {
+		t.Errorf("re-plan memory = %+v, want the first session's %+v", got, fp.ctx.Memory)
+	}
+	if fp.revisionCtx.Brain != surface || fp.ctx.Brain != surface {
+		t.Errorf("brain surface = %+v (plan) and %+v (re-plan), want %+v for both", fp.ctx.Brain, fp.revisionCtx.Brain, surface)
+	}
+}
+
+// TestRun_PlanRevisionErrorAborts locks that a failed re-plan stops the run
+// before any code is written and posts no plan, so the next run plans afresh.
+func TestRun_PlanRevisionErrorAborts(t *testing.T) {
+	gh, cl, fp, _, r := newPlanReviewRunner(t, &PlanReview{Score: 5}, nil)
+	fp.revisionErr = errors.New("usage limit reached")
+
+	err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42"})
+	if err == nil || !strings.Contains(err.Error(), "usage limit reached") || !strings.Contains(err.Error(), "--no-plan-review") {
+		t.Fatalf("Run returned %v, want the re-plan error naming --no-plan-review", err)
+	}
+	if cl.called.Load() != 0 {
+		t.Errorf("implement called %d times, want 0", cl.called.Load())
+	}
+	if plans := planComments(gh); len(plans) != 0 {
+		t.Errorf("plan comments = %q, want none", plans)
+	}
+}
+
+// TestRun_IncompletePlanRevisionAborts locks that a re-plan without a complete
+// plan stops the run, posts no plan, and shows what came back.
+func TestRun_IncompletePlanRevisionAborts(t *testing.T) {
+	for _, tc := range []struct {
+		name, revision string
+		printed        bool
+	}{
+		{"text without a plan", "I could not finish the plan.", true},
+		{"empty", "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			gh, cl, fp, _, r := newPlanReviewRunner(t, &PlanReview{Score: 5}, nil)
+			fp.revisionPlan = tc.revision
+
+			var buf bytes.Buffer
+			err := r.Run(&buf, Options{IssueRef: "owner/repo#42"})
+			if err == nil || !strings.Contains(err.Error(), "the revised planning session returned no complete plan") {
+				t.Fatalf("Run returned %v, want the incomplete-revision error", err)
+			}
+			if cl.called.Load() != 0 {
+				t.Errorf("implement called %d times, want 0", cl.called.Load())
+			}
+			if plans := planComments(gh); len(plans) != 0 {
+				t.Errorf("plan comments = %q, want none", plans)
+			}
+			const lead = "The revised planning session returned no complete plan:"
+			if got := strings.Contains(buf.String(), lead); got != tc.printed {
+				t.Errorf("stdout carries %q: %t, want %t:\n%s", lead, got, tc.printed, buf.String())
+			}
+			if tc.printed && !strings.Contains(buf.String(), tc.revision) {
+				t.Errorf("stdout is missing the returned text %q:\n%s", tc.revision, buf.String())
+			}
+		})
+	}
+}
+
+// TestRun_PlanRevisionEscalationAborts locks that a revised plan that escalates
+// is posted for the human who must clarify the issue, and stops the run.
+func TestRun_PlanRevisionEscalationAborts(t *testing.T) {
+	const escalated = "## Implementation Plan (issue #42)\n\nNeeds a human.\n\nSTATUS: NEEDS_CONTEXT"
+	gh, cl, fp, _, r := newPlanReviewRunner(t, &PlanReview{Score: 4}, nil)
+	fp.revisionPlan = escalated
+
+	err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42"})
+	if err == nil || !strings.Contains(err.Error(), "the revised planning session reported NEEDS_CONTEXT") {
+		t.Fatalf("Run returned %v, want the revised-plan escalation", err)
+	}
+	if cl.called.Load() != 0 {
+		t.Errorf("implement called %d times, want 0", cl.called.Load())
+	}
+	if plans := planComments(gh); len(plans) != 1 || !strings.Contains(plans[0], "Needs a human.") {
+		t.Errorf("plan comments = %q, want the escalated revised plan posted once", plans)
+	}
+}
+
+// TestRun_NoPlanReviewSkipsTheReviewer locks the off switch: no review, and the
+// comments and the implement context of a run without a reviewer.
+func TestRun_NoPlanReviewSkipsTheReviewer(t *testing.T) {
+	gh, cl, _, fr, r := newPlanReviewRunner(t, &PlanReview{Score: 2}, nil)
+
+	if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42", NoPlanReview: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if fr.called.Load() != 0 {
+		t.Errorf("reviewer called %d times, want 0 with --no-plan-review", fr.called.Load())
+	}
+	comments := gh.Comments()
+	if len(comments) != 2 || !strings.Contains(comments[0], planCommentFooter("")) || !strings.Contains(comments[1], reportCommentFooter("")) {
+		t.Errorf("comments = %q, want the plan then the report", comments)
+	}
+	if cl.ctx.Plan != reviewedFirstPlan {
+		t.Errorf("implement received Plan %q, want the first plan", cl.ctx.Plan)
+	}
+}
+
+// TestRun_ReusedPlanIsNotReviewed locks that a plan already posted on the issue
+// is reused without a planning session or a review.
+func TestRun_ReusedPlanIsNotReviewed(t *testing.T) {
+	gh, cl, fp, fr, r := newPlanReviewRunner(t, &PlanReview{Score: 2}, nil)
+	gh.IssueComments = []github.IssueComment{{Body: formatPlanComment(reviewedFirstPlan, "")}}
+
+	if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42"}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if fp.called.Load() != 0 || fr.called.Load() != 0 {
+		t.Errorf("planner called %d times, reviewer %d times; want 0 and 0 for a reused plan", fp.called.Load(), fr.called.Load())
+	}
+	if cl.ctx.Plan != reviewedFirstPlan {
+		t.Errorf("implement received Plan %q, want the reused plan", cl.ctx.Plan)
+	}
+}
+
+// TestRun_EscalatedPlanIsNotReviewed locks that a first plan that escalates is
+// posted and aborts the run as before, without a review.
+func TestRun_EscalatedPlanIsNotReviewed(t *testing.T) {
+	gh, cl, fp, fr, r := newPlanReviewRunner(t, &PlanReview{Score: 9}, nil)
+	fp.plan = "## Implementation Plan (issue #42)\n\nBlocked.\n\nSTATUS: BLOCKED"
+
+	err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42"})
+	if err == nil || !strings.Contains(err.Error(), "planning session reported BLOCKED") {
+		t.Fatalf("Run returned %v, want the planning escalation", err)
+	}
+	if fr.called.Load() != 0 || cl.called.Load() != 0 {
+		t.Errorf("reviewer called %d times, implement %d times; want 0 and 0", fr.called.Load(), cl.called.Load())
+	}
+	if plans := planComments(gh); len(plans) != 1 || !strings.Contains(plans[0], "Blocked.") {
+		t.Errorf("plan comments = %q, want the escalated plan posted once", plans)
+	}
+}
+
+// TestRun_NoPlanCommentSkipsThePlanReviewComment locks that --no-plan-comment
+// keeps the review off the issue too, while the review still runs and prints.
+func TestRun_NoPlanCommentSkipsThePlanReviewComment(t *testing.T) {
+	gh, _, _, fr, r := newPlanReviewRunner(t, &PlanReview{Score: 9}, nil)
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoPlanComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if fr.called.Load() != 1 {
+		t.Errorf("reviewer called %d times, want 1", fr.called.Load())
+	}
+	if !strings.Contains(buf.String(), "## Plan Review (issue #42)") {
+		t.Errorf("the review was not printed:\n%s", buf.String())
+	}
+	comments := gh.Comments()
+	if len(comments) != 1 || !strings.Contains(comments[0], reportCommentFooter("")) {
+		t.Errorf("comments = %q, want only the report", comments)
+	}
+}
+
+// TestRun_PlanReviewCommentFailureIsNonFatal locks that a review comment GitHub
+// rejects never stops the run.
+func TestRun_PlanReviewCommentFailureIsNonFatal(t *testing.T) {
+	gh, cl, _, _, r := newPlanReviewRunner(t, &PlanReview{Score: 9}, nil)
+	gh.AddIssueCommentFn = func(owner, name string, number int, body string) (string, error) {
+		if strings.Contains(body, planReviewHeading) {
+			return "", errors.New("github down")
+		}
+		return "https://github.com/owner/repo/issues/42#issuecomment-1", nil
+	}
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
+		t.Fatalf("Run returned %v, want nil despite the failed review comment", err)
+	}
+	if cl.called.Load() != 1 {
+		t.Errorf("implement called %d times, want 1", cl.called.Load())
+	}
+	if plans := planComments(gh); len(plans) != 1 {
+		t.Errorf("plan comments = %q, want the plan posted once", plans)
+	}
+	if want := "Could not post the plan review as a comment on issue #42"; !strings.Contains(buf.String(), want) {
+		t.Errorf("stdout is missing %q:\n%s", want, buf.String())
+	}
+}
+
+// TestFormatPlanReview locks the review's rendering: both score lines, "none"
+// for an empty gap list, and the target section only when there is a target.
+func TestFormatPlanReview(t *testing.T) {
+	passing := formatPlanReview(&PlanReview{Score: 8}, 42)
+	for _, want := range []string{"## Plan Review (issue #42)", "Score: 8/10, clears the bar of 8.", "### Gaps\n\n- none"} {
+		if !strings.Contains(passing, want) {
+			t.Errorf("passing review is missing %q:\n%s", want, passing)
+		}
+	}
+	if strings.Contains(passing, "### What a 10/10 plan would look like") {
+		t.Errorf("a review without a target rendered the target section:\n%s", passing)
+	}
+
+	failing := formatPlanReview(&PlanReview{Score: 7, Gaps: []string{" Test Plan: no error path "}, ToReachTen: "Name the error path."}, 42)
+	for _, want := range []string{
+		"Score: 7/10, below the bar of 8: the plan is planned once more with the gaps below before the implement session runs.",
+		"### Gaps\n\n- Test Plan: no error path\n",
+		"### What a 10/10 plan would look like\n\nName the error path.",
+	} {
+		if !strings.Contains(failing, want) {
+			t.Errorf("failing review is missing %q:\n%s", want, failing)
+		}
+	}
+	if strings.Contains(failing, "- none") {
+		t.Errorf("a review with gaps rendered \"- none\":\n%s", failing)
 	}
 }
 
@@ -661,6 +1152,7 @@ func TestMostRecentSessionAccount(t *testing.T) {
 		{"newest wins: report after note", []github.IssueComment{{Body: note}, {Body: reportComment}}, partialReport},
 		{"newest wins: note after report", []github.IssueComment{{Body: reportComment}, {Body: newerNote}}, "note TWO body"},
 		{"quoted heading without marker is ignored", []github.IssueComment{{Body: "someone wrote: ## Progress Note looks odd"}}, ""},
+		{"plan review is not an account", []github.IssueComment{{Body: formatPlanReviewComment(&PlanReview{Score: 9}, 42, "m")}}, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -968,6 +1460,8 @@ func TestMostRecentPlanComment(t *testing.T) {
 	const planA = "## Implementation Plan (issue #42)\n\nfirst plan\n\nSTATUS: PLAN_READY"
 	const planB = "## Implementation Plan (issue #42)\n\nsecond plan\n\nSTATUS: PLAN_READY"
 	reportComment := "## Implementation Report (issue #42)\n\ndone\n\n---\n\n" + reportCommentFooter("") + "\n"
+	// A review whose gap quotes the plan heading still carries no plan marker.
+	planReviewComment := formatPlanReviewComment(&PlanReview{Score: 6, Gaps: []string{"Summary: the ## Implementation Plan heading names the wrong issue"}}, 42, "")
 
 	cases := []struct {
 		name string
@@ -1002,6 +1496,19 @@ func TestMostRecentPlanComment(t *testing.T) {
 			in: []github.IssueComment{
 				{Body: formatPlanComment(planA, "")},
 				{Body: reportComment},
+			},
+			want: planA,
+		},
+		{
+			name: "ignores a plan review comment",
+			in:   []github.IssueComment{{Body: planReviewComment}},
+			want: "",
+		},
+		{
+			name: "skips a later plan review to find the earlier plan",
+			in: []github.IssueComment{
+				{Body: formatPlanComment(planA, "")},
+				{Body: planReviewComment},
 			},
 			want: planA,
 		},
@@ -4581,6 +5088,11 @@ func TestPassesAfter(t *testing.T) {
 	got = passesAfter([]github.IssueComment{{Body: formatReviewComment("## Review Report\n\nr", "m", 1, "abc123")}})
 	if got.reviewSince != "abc123" || got.reviewRounds != 1 {
 		t.Errorf("got %+v, want one round since abc123", got)
+	}
+	// A plan review is neither a simplify nor a review report.
+	review := formatPlanReviewComment(&PlanReview{Score: 5, Gaps: []string{"Test Plan: no error path"}}, 42, "m")
+	if got := passesAfter([]github.IssueComment{{Body: review}}); got != (resumedPasses{}) {
+		t.Errorf("a plan review counted as a pass report: %+v", got)
 	}
 }
 

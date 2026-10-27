@@ -60,6 +60,24 @@ func TestShipCarriesNoSpecialistsSwitch(t *testing.T) {
 	}
 }
 
+// TestImplementAndShipRegisterNoPlanReview pins the plan review's off switch on
+// both commands that plan: default false, so the review runs unless asked not to.
+func TestImplementAndShipRegisterNoPlanReview(t *testing.T) {
+	for name, cmd := range map[string]*cobra.Command{
+		"implement": newImplementCmd(&runtimeDeps{}),
+		"ship":      newShipCmd(&runtimeDeps{}),
+	} {
+		off, err := cmd.Flags().GetBool("no-plan-review")
+		if err != nil {
+			t.Errorf("%s must expose the boolean --no-plan-review: %v", name, err)
+			continue
+		}
+		if off {
+			t.Errorf("%s --no-plan-review defaults to true, want false", name)
+		}
+	}
+}
+
 // TestCommandsRegisterTheWikiFlags pins the wiki opt-in on the commands that
 // read the project memory beside review, audit, propose, and implement, and
 // its absence on a command that reads none.
