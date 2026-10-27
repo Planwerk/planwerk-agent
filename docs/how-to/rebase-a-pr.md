@@ -60,7 +60,12 @@ request body the rewrite left stale.
    starts no session. The apply session ends on a report with a terminal
    `STATUS:` line (`DONE`, `DONE_WITH_CONCERNS`, `BLOCKED`, or
    `NEEDS_CONTEXT`); a session that ends without one is resumed to finish and
-   report, and a report with no status counts as `BLOCKED`.
+   report, and a report with no status counts as `BLOCKED`. The report lists
+   each command the session ran under Verification, as `PASS`, `FAIL` with its
+   first failing line, or `not run` with the reason. `DONE` needs at least one
+   entry and none that reads `FAIL`, so a checkout without the toolchain still
+   reaches `DONE` with a `not run` entry, while a failing command ends the
+   report on `DONE_WITH_CONCERNS`.
 7. **Publish (opt-in).** A rebase rewrites commit SHAs, so publishing requires a
    force-push. This happens **only** with `--push`, which uses
    `git push --force-with-lease` — history is never force-pushed implicitly.
