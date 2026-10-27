@@ -196,6 +196,74 @@ func TestRoot_DiffExclusionsReachTheClientAndTheCacheKey(t *testing.T) {
 	}
 }
 
+// TestRootRegistersTheKeepTranscriptsFlag pins --keep-transcripts as a
+// persistent flag that is off by default and names its environment variable
+// (decision 161).
+func TestRootRegistersTheKeepTranscriptsFlag(t *testing.T) {
+	flag := newRootCmd(&runtimeDeps{}).PersistentFlags().Lookup("keep-transcripts")
+	if flag == nil {
+		t.Fatal("the root command must expose --keep-transcripts as a persistent flag")
+	}
+	if on, err := strconv.ParseBool(flag.DefValue); err != nil || on {
+		t.Errorf("--keep-transcripts defaults to %q, want off", flag.DefValue)
+	}
+	if !strings.Contains(flag.Usage, "env: "+envKeepTranscripts) {
+		t.Errorf("--keep-transcripts usage %q does not name %s", flag.Usage, envKeepTranscripts)
+	}
+}
+
+// TestRoot_KeepTranscriptsReachTheClient runs the root command's pre-run
+// through --version, which touches no backend, and checks that the flag and
+// PLANWERK_KEEP_TRANSCRIPTS reach the shared Client, the flag winning when
+// set, while the cache key stays the same: what a session saves to disk
+// changes nothing it returns.
+func TestRoot_KeepTranscriptsReachTheClient(t *testing.T) {
+	// Not t.Parallel(): the pre-run sets the default logger, the attribution
+	// version and the cache fingerprint, which the cleanups restore.
+	prevLogger, prevFingerprint := slog.Default(), cache.RunFingerprint()
+	t.Cleanup(func() {
+		slog.SetDefault(prevLogger)
+		cache.SetRunFingerprint(prevFingerprint)
+		attribution.SetVersion("")
+	})
+
+	var fingerprints []string
+	for _, tc := range []struct {
+		name string
+		args []string
+		env  string
+		want bool
+	}{
+		{"off by default", nil, "", false},
+		{"the flag", []string{"--keep-transcripts"}, "", true},
+		{"the environment", nil, "yes", true},
+		{"the flag wins over the environment", []string{"--keep-transcripts=false"}, "1", false},
+		{"an unrecognized value is off", nil, "maybe", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(envKeepTranscripts, tc.env)
+			t.Setenv(envDiffExclusions, "")
+			t.Setenv(envFinderTools, "")
+			deps := &runtimeDeps{version: "test"}
+			cmd := newRootCmd(deps)
+			cmd.SetOut(&bytes.Buffer{})
+			cmd.SetArgs(append(tc.args, "--version"))
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("Execute: %v", err)
+			}
+			if got := deps.claude.KeepTranscripts(); got != tc.want {
+				t.Errorf("Client.KeepTranscripts() = %v, want %v", got, tc.want)
+			}
+			fingerprints = append(fingerprints, cache.RunFingerprint())
+		})
+	}
+	for i, fp := range fingerprints {
+		if fp != fingerprints[0] {
+			t.Errorf("row %d keyed the cache %q, want %q: the flag must not change the key", i, fp, fingerprints[0])
+		}
+	}
+}
+
 // TestReviewRegistersScopePatterns pins --scope-patterns as a flag of the
 // review command alone: off by default, naming its environment variable, and
 // neither persistent nor exposed by another command (decision 141).

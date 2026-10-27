@@ -81,6 +81,7 @@ func newRootCmd(deps *runtimeDeps) *cobra.Command {
 	var finderEffort string
 	var finderTools string
 	var claudeInheritUserConfig bool
+	var keepTranscripts bool
 	var claudePlugins []string
 	var diffExclusions bool
 	var wikiEnable, wikiDisable bool
@@ -182,6 +183,7 @@ or short form (owner/repo#123).`,
 			deps.claudeOpts = []claude.Option{
 				claude.WithTimeout(timeout),
 				claude.WithShowOutput(resolveBool(showClaudeOutput, cmd.Flags().Changed("show-claude-output"), envShowClaudeOutput)),
+				claude.WithKeepTranscripts(resolveBool(keepTranscripts, cmd.Flags().Changed("keep-transcripts"), envKeepTranscripts)),
 				claude.WithModel(mainModel),
 				claude.WithEffort(mainEffort),
 				claude.WithStructureModel(structModel),
@@ -318,6 +320,7 @@ or short form (owner/repo#123).`,
 	persistent.DurationVar(&remotePatternsTTL, "remote-patterns-ttl", patterns.DefaultRemoteTTL, "Refresh interval for remote pattern sources (env: "+envRemotePatternsTTL+"; <=0 disables refresh once cached)")
 	persistent.DurationVar(&claudeTimeout, "claude-timeout", claude.DefaultClaudeTimeout, "Maximum duration for a single Claude Code invocation (env: "+envClaudeTimeout+"; must be > 0)")
 	persistent.BoolVar(&showClaudeOutput, "show-claude-output", false, "Stream Claude Code's live output to stderr while running (env: "+envShowClaudeOutput+")")
+	persistent.BoolVar(&keepTranscripts, "keep-transcripts", false, "Let Claude Code save the transcript of every session under ~/.claude/projects, the read-only ones included (default: only the sessions that edit keep one; env: "+envKeepTranscripts+")")
 	persistent.StringVar(&claudeModel, "claude-model", claude.DefaultClaudeModel, "Model passed to Claude Code via --model (e.g. opus, fable, sonnet; env: "+envClaudeModel+")")
 	persistent.StringVar(&claudeEffort, "claude-effort", claude.DefaultClaudeEffort, "Reasoning effort passed to Claude Code via --effort (low, medium, high, xhigh, max; env: "+envClaudeEffort+")")
 	persistent.StringVar(&structureModel, "structure-model", claude.DefaultStructureModel, "Model for the mechanical JSON-structuring passes (independent of --claude-model; the cheap tier that casts an analysis session's prose into its JSON schema for propose, elaborate, gap-analysis, sync, capture and review-prepared, and runs the JSON repair and dedup calls; brain bootstrap defaults it to "+claude.DefaultBrainStructureModel+"; env: "+envStructureModel+")")

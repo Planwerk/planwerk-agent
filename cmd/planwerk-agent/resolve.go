@@ -209,6 +209,13 @@ const envStructureEffort = "PLANWERK_STRUCTURE_EFFORT"
 // explicitly set. Off by default so reviews stay reproducible across machines.
 const envClaudeInheritUserConfig = "PLANWERK_CLAUDE_INHERIT_USER_CONFIG"
 
+// envKeepTranscripts lets Claude Code save the transcript of every session,
+// the read-only and structuring ones included. Any truthy value (1, true, yes,
+// on; case-insensitive) enables it; the --keep-transcripts CLI flag takes
+// precedence when explicitly set. Off by default, so only the sessions that
+// edit leave a transcript (decision 161).
+const envKeepTranscripts = "PLANWERK_KEEP_TRANSCRIPTS"
+
 // envClaudePlugins names the Claude Code plugins the sessions that edit load,
 // comma-separated: installed plugin ids (name@marketplace, as `claude plugin
 // list` prints them) or plugin directories. The repeatable --claude-plugin CLI

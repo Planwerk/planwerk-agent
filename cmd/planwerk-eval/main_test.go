@@ -238,7 +238,7 @@ func clearTierEnv(t *testing.T) {
 	t.Helper()
 	for _, name := range []string{
 		envClaudeModel, envClaudeEffort, envFinderModel, envFinderEffort, envStructureModel, envStructureEffort, envFinderTools, envClaudePlugins,
-		"PLANWERK_CLAUDE_TIMEOUT", "PLANWERK_CLAUDE_INHERIT_USER_CONFIG", "PLANWERK_DIFF_EXCLUSIONS", "PLANWERK_SHOW_CLAUDE_OUTPUT",
+		"PLANWERK_CLAUDE_TIMEOUT", "PLANWERK_CLAUDE_INHERIT_USER_CONFIG", "PLANWERK_DIFF_EXCLUSIONS", "PLANWERK_KEEP_TRANSCRIPTS", "PLANWERK_SHOW_CLAUDE_OUTPUT",
 	} {
 		t.Setenv(name, "")
 	}
@@ -487,6 +487,35 @@ func TestBuildClientAppliesTheTiers(t *testing.T) {
 			t.Setenv("PLANWERK_DIFF_EXCLUSIONS", v)
 			if _, err := buildClient(eval.Tiers{}); err == nil || !strings.Contains(err.Error(), fmt.Sprintf("invalid PLANWERK_DIFF_EXCLUSIONS=%q", v)) {
 				t.Errorf("PLANWERK_DIFF_EXCLUSIONS=%q: buildClient = %v, want an error naming PLANWERK_DIFF_EXCLUSIONS", v, err)
+			}
+		}
+	})
+
+	t.Run("PLANWERK_KEEP_TRANSCRIPTS keeps every transcript", func(t *testing.T) {
+		clearTierEnv(t)
+		// The CLI's vocabulary (lookupBoolEnv), in any letter case.
+		for v, want := range map[string]bool{
+			"": false, "1": true, "true": true, "TRUE": true, "yes": true, "YES": true, "on": true, "On": true,
+			"0": false, "false": false, "no": false, "off": false,
+		} {
+			t.Setenv("PLANWERK_KEEP_TRANSCRIPTS", v)
+			client, err := buildClient(eval.Tiers{})
+			if err != nil {
+				t.Fatalf("PLANWERK_KEEP_TRANSCRIPTS=%q: buildClient = %v, want a client", v, err)
+			}
+			if got := client.KeepTranscripts(); got != want {
+				t.Errorf("PLANWERK_KEEP_TRANSCRIPTS=%q: KeepTranscripts() = %v, want %v", v, got, want)
+			}
+		}
+	})
+
+	t.Run("a bogus PLANWERK_KEEP_TRANSCRIPTS is rejected", func(t *testing.T) {
+		clearTierEnv(t)
+		// "t" is a strconv.ParseBool value the CLI does not read as true.
+		for _, v := range []string{"maybe", "t"} {
+			t.Setenv("PLANWERK_KEEP_TRANSCRIPTS", v)
+			if _, err := buildClient(eval.Tiers{}); err == nil || !strings.Contains(err.Error(), fmt.Sprintf("invalid PLANWERK_KEEP_TRANSCRIPTS=%q", v)) {
+				t.Errorf("PLANWERK_KEEP_TRANSCRIPTS=%q: buildClient = %v, want an error naming PLANWERK_KEEP_TRANSCRIPTS", v, err)
 			}
 		}
 	})
