@@ -655,6 +655,107 @@ func TestFindingsOutputBlock_MatchesFinderOutputSchema(t *testing.T) {
 	}
 }
 
+// TestAddressPrompt_MatchesAddressResultSchema is the drift guard between the
+// JSON example the address prompt ends on and schema.AddressResult, which the
+// address session receives via --json-schema when it is given no
+// --claude-plugin plugin, and which sets additionalProperties false at every
+// level. At the top level and in a
+// thread entry the example names exactly the properties the schema defines, in
+// the schema's order, so a key added to, renamed in or moved in only one of
+// them fails here rather than failing the session's validation (decision 160).
+func TestAddressPrompt_MatchesAddressResultSchema(t *testing.T) {
+	_, shape, ok := strings.Cut(BuildAddressPrompt(goldenAddressContext()), "as your final message (no markdown fences, no prose before or after):")
+	if !ok {
+		t.Fatal("the address prompt carries no JSON-only step")
+	}
+	example := json.RawMessage(extractJSONValue(shape))
+	var output struct {
+		Threads []json.RawMessage `json:"threads"`
+	}
+	if err := json.Unmarshal(example, &output); err != nil {
+		t.Fatalf("the prompt's example is not valid JSON: %v", err)
+	}
+	if len(output.Threads) != 1 {
+		t.Fatalf("the example shows %d threads, want 1", len(output.Threads))
+	}
+
+	var doc struct {
+		Properties json.RawMessage `json:"properties"`
+		Defs       map[string]struct {
+			Properties json.RawMessage `json:"properties"`
+		} `json:"$defs"`
+	}
+	if err := json.Unmarshal(schema.AddressResult, &doc); err != nil {
+		t.Fatalf("decoding schema.AddressResult: %v", err)
+	}
+	for _, level := range []struct {
+		name          string
+		shape, schema json.RawMessage
+	}{
+		{"output", example, doc.Properties},
+		{"thread", output.Threads[0], doc.Defs["addressedThread"].Properties},
+	} {
+		shapeKeys, schemaKeys := objectKeys(t, level.shape), objectKeys(t, level.schema)
+		if !slices.Equal(shapeKeys, schemaKeys) {
+			t.Errorf("the example's %s keys are %q, schema.AddressResult defines %q", level.name, shapeKeys, schemaKeys)
+		}
+	}
+}
+
+// TestRebaseAnalysisPrompt_MatchesRebaseAnalysisSchema is the same drift guard
+// for the rebase analysis prompt and schema.RebaseAnalysis, which the rebase
+// analysis session receives via --json-schema: the example names exactly the
+// schema's properties, in its order, at the top level, in a commit entry and
+// in an adjustment (decision 160).
+func TestRebaseAnalysisPrompt_MatchesRebaseAnalysisSchema(t *testing.T) {
+	_, shape, ok := strings.Cut(BuildRebaseAnalysisPrompt(goldenRebaseAnalysisContext()), jsonSchemaOnlyLine())
+	if !ok {
+		t.Fatal("the rebase analysis prompt carries no JSON-only line")
+	}
+	example := json.RawMessage(extractJSONValue(shape))
+	var output struct {
+		Commits []json.RawMessage `json:"commits"`
+	}
+	if err := json.Unmarshal(example, &output); err != nil {
+		t.Fatalf("the prompt's example is not valid JSON: %v", err)
+	}
+	if len(output.Commits) != 1 {
+		t.Fatalf("the example shows %d commits, want 1", len(output.Commits))
+	}
+	var commit struct {
+		Adjustments []json.RawMessage `json:"adjustments"`
+	}
+	if err := json.Unmarshal(output.Commits[0], &commit); err != nil {
+		t.Fatalf("decoding the example commit: %v", err)
+	}
+	if len(commit.Adjustments) != 1 {
+		t.Fatalf("the example commit shows %d adjustments, want 1", len(commit.Adjustments))
+	}
+
+	var doc struct {
+		Properties json.RawMessage `json:"properties"`
+		Defs       map[string]struct {
+			Properties json.RawMessage `json:"properties"`
+		} `json:"$defs"`
+	}
+	if err := json.Unmarshal(schema.RebaseAnalysis, &doc); err != nil {
+		t.Fatalf("decoding schema.RebaseAnalysis: %v", err)
+	}
+	for _, level := range []struct {
+		name          string
+		shape, schema json.RawMessage
+	}{
+		{"output", example, doc.Properties},
+		{"commit", output.Commits[0], doc.Defs["commitAnalysis"].Properties},
+		{"adjustment", commit.Adjustments[0], doc.Defs["adjustment"].Properties},
+	} {
+		shapeKeys, schemaKeys := objectKeys(t, level.shape), objectKeys(t, level.schema)
+		if !slices.Equal(shapeKeys, schemaKeys) {
+			t.Errorf("the example's %s keys are %q, schema.RebaseAnalysis defines %q", level.name, shapeKeys, schemaKeys)
+		}
+	}
+}
+
 // TestFinderOutputSchema_PutsEvidenceBeforeLabels pins the order the drift
 // guard above holds both copies to. A session fills schema.FinderOutput in its
 // property order, so a finding's location, quote, problem and fix come before
