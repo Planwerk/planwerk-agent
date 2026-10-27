@@ -66,9 +66,12 @@ see [Claude Usage Totals](/reference/output-format#claude-usage-totals) — and 
 `passes` array recording whether each requested pass ran, was gated out, or
 failed ([Pass Status](/reference/output-format#pass-status)), both available for
 extraction the same way. Each entry of `usage.passes` also records its
-sessions' turns, permission denials, tool calls and session ids. The
-transcripts those ids name live on the runner, so they are gone when the job
-ends unless the workflow uploads `~/.claude/projects`.
+sessions' turns, permission denials, tool calls and session ids. A review's
+sessions are all read-only, so Claude Code saves no transcript for them unless
+the job sets `PLANWERK_KEEP_TRANSCRIPTS` in its `env`
+([`--keep-transcripts`](/reference/cli#global-flags)). The transcripts it then
+saves live on the runner, so they are gone when the job ends unless the
+workflow uploads `~/.claude/projects`.
 
 With `format: sarif` nothing is posted, so the counts come from the SARIF
 report instead: the results it holds, counted by each result's `severity`
