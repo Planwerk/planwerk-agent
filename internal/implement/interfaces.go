@@ -53,6 +53,15 @@ type Context struct {
 	// implement prompt; empty means the implement session plans for
 	// itself (--no-plan, or no planner wired).
 	Plan string
+	// PriorPlan, PlanReviewGaps, and PlanReviewTarget are set only on the
+	// context of the one re-planning session reviewAndRevisePlan runs after a
+	// plan review scored a fresh plan below the bar: the rejected plan, the
+	// reviewer's gaps, and its "what a 10/10 plan would look like" target.
+	// BuildPlanPrompt renders its revision block from them; an empty PriorPlan
+	// renders none.
+	PriorPlan        string
+	PlanReviewGaps   []string
+	PlanReviewTarget string
 	// Memory is the target repo's project memory from its GitHub Wiki: the
 	// pages and the directory a session reads them from. It is set only on the
 	// context the planning session receives: the planning prompt lists the
@@ -220,6 +229,27 @@ type planFnAdapter struct {
 func (a planFnAdapter) Plan(dir string, ctx Context) (string, string, error) {
 	return a.fn(dir, ctx)
 }
+
+// PlanReview is the plan reviewer's verdict on a freshly generated plan: the
+// gaps that keep it short of a 10, what a 10/10 version of it would add or fix,
+// and its executability score (0-10, already clamped).
+type PlanReview struct {
+	Gaps       []string `json:"gaps"`
+	ToReachTen string   `json:"to_reach_ten"`
+	Score      int      `json:"score"`
+}
+
+// PlanReviewer is the injected dependency for the read-only review a fresh plan
+// gets before the implement session runs. The production implementation is
+// claude.ReviewPlan (on the planning tier); tests substitute a fake that
+// returns scripted verdicts without invoking the real Claude CLI. model is the
+// resolved model id for the review comment's attribution footer.
+type PlanReviewer interface {
+	ReviewPlan(dir string, ctx Context, plan string) (review *PlanReview, model string, err error)
+}
+
+// PlanReviewFn is the bare-function form of PlanReviewer the CLI wires in.
+type PlanReviewFn func(dir string, ctx Context, plan string) (review *PlanReview, model string, err error)
 
 // ImplementationVerifier independently checks a produced change set against
 // the issue's Acceptance Criteria, deliberately ignoring the implementation's
