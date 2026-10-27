@@ -656,6 +656,15 @@ planned but was aborted before implementing) is reused by default: the planning
 session is skipped and no duplicate plan comment is posted. Use `--no-plan-reuse`
 to force a fresh planning session when the posted plan has gone stale.
 
+A plan the run generates fresh is reviewed before any code is written: a second
+fresh, read-only session on the planning model and effort checks it against the
+issue and the code, scores its executability 0-10, and posts the review on the
+issue as a `## Plan Review` comment (`--no-plan-comment` skips it with the
+plan). A plan below 8/10 is planned once more with
+the review's gaps, and the run implements the revised plan without reviewing it
+again. A reused plan is not reviewed. Use `--no-plan-review` to skip the review
+and the re-plan.
+
 An issue that has not been elaborated (its body carries no Acceptance Criteria
 heading) gives the plan no definition of done, so before cloning the run asks
 whether to implement it anyway. Answering no aborts with the `elaborate`
@@ -668,6 +677,7 @@ planwerk-agent implement owner/repo#123
 planwerk-agent implement --allow-unelaborated owner/repo#123
 planwerk-agent implement --no-plan owner/repo#123
 planwerk-agent implement --no-plan-reuse owner/repo#123
+planwerk-agent implement --no-plan-review owner/repo#123
 planwerk-agent implement --verify owner/repo#123
 planwerk-agent implement --no-simplify owner/repo#123
 planwerk-agent implement --no-review owner/repo#123
@@ -685,7 +695,8 @@ planwerk-agent implement --wiki --capture-wiki --yes owner/repo#123
 | `--print-plan-prompt` | Render the planning prompt (with the issue body embedded) to stdout and exit | `false` |
 | `--no-plan` | Skip the planning session and implement directly in a single session | `false` |
 | `--no-plan-reuse` | Always run a fresh planning session; do not reuse an implementation plan already posted on the issue | `false` |
-| `--no-plan-comment` | Do not post the generated implementation plan as a comment on the source issue | `false` |
+| `--no-plan-comment` | Do not post the generated implementation plan, or its plan review, as a comment on the source issue | `false` |
+| `--no-plan-review` | Skip the read-only review of a freshly generated implementation plan, and the one re-plan a review below 8/10 triggers | `false` |
 | `--no-report-comment` | Do not post the implementation report as a comment on the source issue | `false` |
 | `--plan-model` | Model for the planning session passed to Claude Code via `--model` (e.g. `opus`, `fable`; env: `PLANWERK_PLAN_MODEL`) | `opus` |
 | `--plan-effort` | Reasoning effort for the planning session passed via `--effort` (`low`, `medium`, `high`, `xhigh`, `max`; env: `PLANWERK_PLAN_EFFORT`) | `xhigh` |
@@ -919,7 +930,8 @@ planwerk-agent ship --wiki --capture-wiki --yes owner/repo#123
 | `--verify` | In each implement run, check the produced diff against the Sub Issue's Acceptance Criteria | `false` |
 | `--no-plan` | Skip the planning session in each per–Sub Issue implement run | `false` |
 | `--no-plan-reuse` | Always run a fresh planning session; do not reuse a plan already posted on the Sub Issue | `false` |
-| `--no-plan-comment` | Do not post the generated implementation plan as a comment on each Sub Issue | `false` |
+| `--no-plan-comment` | Do not post the generated implementation plan, or its plan review, as a comment on each Sub Issue | `false` |
+| `--no-plan-review` | Skip the review of each freshly generated plan in each per–Sub Issue implement run | `false` |
 | `--plan-model` | Model for the planning session passed to Claude Code via `--model` (env: `PLANWERK_PLAN_MODEL`) | `opus` |
 | `--plan-effort` | Reasoning effort for the planning session passed via `--effort` (env: `PLANWERK_PLAN_EFFORT`) | `xhigh` |
 | `--implement-model` | Model for the implement session in each per–Sub Issue run; the other sessions stay on `--claude-model` (env: `PLANWERK_IMPLEMENT_MODEL`) | inherits `--claude-model` |
