@@ -80,7 +80,7 @@ func BuildReviewApplyPrompt(ctx implement.ReviewApplyContext) string {
 1. For each finding above, confirm it is a real issue worth fixing. If a finding is a false positive or no longer applies to the current diff, skip it and record why in the report.
 2. Fix the root cause with the minimal change that resolves the finding, with the cited file open before you edit.
 3. Add a regression test when the fix is in production code and the existing suite did not catch the issue — a test that fails before your fix and passes after. Skip this only for fixes inside test code itself or fixes no unit/integration test could plausibly catch.
-4. Verify locally: build the project and run the tests (or the targeted subset covering the touched code). ` + foregroundRunLine() + ` Record the exact commands and their results under Verification in the report. If a command cannot run in this environment, say so explicitly.
+4. ` + verifyLocallyLine() + `
 `)
 
 	sb.WriteString(foldSteps(ctx.BaseBranch, 5, "a fix for code", "changing", "the report", foldLocalTail(ctx.AITrailersForbiddenBy)))
@@ -93,9 +93,7 @@ func BuildReviewApplyPrompt(ctx implement.ReviewApplyContext) string {
    - [<severity>] <finding title> — <root cause and the fix> (folded into <commit subject>)
    ### Skipped
    - [<severity>] <finding title> — <why: ` + skipReasons + `>
-   ### Verification
-   - <exact command> — <PASS | FAIL: first failing line | not run: reason>
-   ### Diff summary
+` + verificationReportLines() + `   ### Diff summary
    - Files: <comma-separated list>
    - Approx lines added/removed: <+N/-M>
    ### Status

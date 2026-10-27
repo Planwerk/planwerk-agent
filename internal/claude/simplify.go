@@ -142,7 +142,7 @@ func BuildSimplifyApplyPrompt(ctx implement.SimplifyApplyContext) string {
 
 1. For each simplification above, confirm it removes accidental complexity only and changes no observable behavior (Hard rules say what to do with one that does not).
 2. Apply the change — delete or collapse the code to the simpler form. Edit the lines the finding names and the call sites and imports its collapse requires; do not rewrite a function or a file for any other reason. In this pass the guardrail above and "Delete, do not redesign" win over the baseline's "no error handling for impossible scenarios" and "rewrite it" lines: error handling and validation stay.
-3. Verify locally: build the project and run the tests (or the targeted subset covering the touched code). ` + foregroundRunLine() + ` Record the exact commands and their results under Verification in the report. If a command cannot run in this environment, say so explicitly.
+3. ` + verifyLocallyLine() + `
 `)
 
 	sb.WriteString(foldSteps(ctx.BaseBranch, 4, "a removal of code", "changing", "the report", foldLocalTail(ctx.AITrailersForbiddenBy)))
@@ -155,9 +155,7 @@ func BuildSimplifyApplyPrompt(ctx implement.SimplifyApplyContext) string {
    - <finding title> — <what was removed/collapsed and to what> (folded into <commit subject>)
    ### Skipped
    - <finding title> — <why: would change behavior, touches a guardrail area, or no longer present>
-   ### Verification
-   - <exact command> — <PASS | FAIL: first failing line | not run: reason>
-   ### Diff summary
+` + verificationReportLines() + `   ### Diff summary
    - Files: <comma-separated list>
    - Approx lines added/removed: <+N/-M>
    ### Status
