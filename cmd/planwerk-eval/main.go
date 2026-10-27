@@ -469,9 +469,9 @@ func resolveTiers() (eval.Tiers, error) {
 }
 
 // buildClient constructs a Claude client on tiers, then applies the timeout,
-// inherit-user-config, diff-exclusions, plugin and show-output overrides the
-// shipped CLI honors, each only when set so the compiled-in defaults
-// otherwise stand.
+// inherit-user-config, diff-exclusions, keep-transcripts, plugin and
+// show-output overrides the shipped CLI honors, each only when set so the
+// compiled-in defaults otherwise stand.
 // The model and effort variables and the finder tool list are read in
 // resolveTiers alone, which has already validated tiers.FinderTools. It is
 // the minimal mirror of the root command's resolve* helpers, which are
@@ -508,6 +508,13 @@ func buildClient(tiers eval.Tiers) (*claude.Client, error) {
 			return nil, err
 		}
 		opts = append(opts, claude.WithDiffExclusions(b))
+	}
+	if v := strings.TrimSpace(os.Getenv("PLANWERK_KEEP_TRANSCRIPTS")); v != "" {
+		b, err := parseBoolEnv("PLANWERK_KEEP_TRANSCRIPTS", v)
+		if err != nil {
+			return nil, err
+		}
+		opts = append(opts, claude.WithKeepTranscripts(b))
 	}
 	plugins, err := evalPlugins()
 	if err != nil {
