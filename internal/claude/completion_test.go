@@ -3,6 +3,7 @@ package claude
 import (
 	"errors"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -202,6 +203,94 @@ func TestImplement_CarriesTheStatusContractInTheSystemPrompt(t *testing.T) {
 		}
 	}
 	if first, second := (*calls)[0], (*calls)[1]; !second.spec.resume || second.spec.sessionID != first.spec.sessionID {
+		t.Errorf("nudge turn resume=%v session=%q, want a resume of %q", second.spec.resume, second.spec.sessionID, first.spec.sessionID)
+	}
+}
+
+// TestNudgedSessions_KeepTheirTranscript covers the sessions the completion
+// nudge resumes: implement and fix keep their transcript on the first turn and
+// on the resumed one, because --resume can only continue a session Claude Code
+// saved (decision 161).
+func TestNudgedSessions_KeepTheirTranscript(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		report string
+		run    func(c *Client) error
+	}{
+		{"implement", completeImplementReport, func(c *Client) error {
+			_, _, err := c.Implement("", goldenImplementContext())
+			return err
+		}},
+		{"fix", fixReportHeading + "\n\nSTATUS: DONE", func(c *Client) error {
+			_, _, err := c.Fix("", goldenFixContext())
+			return err
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			c, calls := scriptedClient(t, func(call int, _ runSpec, _ string) (string, string, error) {
+				if call == 1 {
+					return "Every change is committed; the report follows.", testResolvedModel, nil
+				}
+				return tc.report, testResolvedModel, nil
+			})
+			if err := tc.run(c); err != nil {
+				t.Fatalf("%s returned error: %v", tc.name, err)
+			}
+			if len(*calls) != 2 {
+				t.Fatalf("session ran %d times, want 2 (initial + one nudge)", len(*calls))
+			}
+			for i, call := range *calls {
+				if args := c.claudeArgs(call.spec); slices.Contains(args, "--no-session-persistence") {
+					t.Errorf("call %d must keep its transcript; argv %v", i+1, args)
+				}
+			}
+			if !(*calls)[1].spec.resume {
+				t.Error("the nudge turn must resume the session")
+			}
+		})
+	}
+}
+
+// TestRunWithCompletionNudge_NeverResumesAnUnsavedSession covers a read-only
+// spec handed to the nudge: Claude Code saved no transcript for it, so a
+// --resume would fail, and the nudge returns the first turn's output for the
+// caller's own gate instead. Under WithKeepTranscripts(true) the session is
+// saved, and the nudge resumes it as before (decision 161).
+func TestRunWithCompletionNudge_NeverResumesAnUnsavedSession(t *testing.T) {
+	t.Parallel()
+	spec := runSpec{label: "plan", model: "opus", effort: "xhigh", readOnly: true}
+	const prose = "prose without a report"
+	script := func(call int, _ runSpec, _ string) (string, string, error) {
+		if call == 1 {
+			return prose, testResolvedModel, nil
+		}
+		return completeImplementReport, testResolvedModel, nil
+	}
+
+	c, calls := scriptedClient(t, script)
+	out, _, err := c.runWithCompletionNudge(spec, "prompt", implementReportHeading, implementReportStatusChoices)
+	if err != nil || out != prose {
+		t.Errorf("out = %q, err = %v; want the first turn's prose and no error", out, err)
+	}
+	if len(*calls) != 1 {
+		t.Errorf("session ran %d times, want 1: an unsaved session cannot be resumed", len(*calls))
+	}
+	for _, call := range *calls {
+		if call.spec.resume {
+			t.Error("the nudge resumed a session Claude Code did not save")
+		}
+	}
+
+	kept, keptCalls := scriptedClient(t, script, WithKeepTranscripts(true))
+	if _, _, err := kept.runWithCompletionNudge(spec, "prompt", implementReportHeading, implementReportStatusChoices); err != nil {
+		t.Fatalf("runWithCompletionNudge under WithKeepTranscripts(true): %v", err)
+	}
+	if len(*keptCalls) != 2 {
+		t.Fatalf("session ran %d times under WithKeepTranscripts(true), want 2", len(*keptCalls))
+	}
+	if first, second := (*keptCalls)[0], (*keptCalls)[1]; !second.spec.resume || second.spec.sessionID != first.spec.sessionID {
 		t.Errorf("nudge turn resume=%v session=%q, want a resume of %q", second.spec.resume, second.spec.sessionID, first.spec.sessionID)
 	}
 }

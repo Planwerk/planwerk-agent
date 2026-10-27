@@ -329,10 +329,11 @@ type runSpec struct {
 }
 
 // withSession appends the session-identity flags: --session-id <id> pins a
-// fresh session's id so a follow-up turn can find it and its transcript can be
-// named, --resume <id> continues that session in place of starting a fresh
-// one. A no-op when no session id is set, which runSession leaves only when
-// newSessionID failed (decision 152).
+// fresh session's id so a follow-up turn can find it and the run's log and
+// report can name it, --resume <id> continues that session in place of
+// starting a fresh one. The id names a transcript only when persistsSession
+// holds. A no-op when no session id is set, which runSession leaves only when
+// newSessionID failed (decisions 152 and 161).
 func withSession(args []string, spec runSpec) []string {
 	if spec.sessionID == "" {
 		return args
@@ -341,6 +342,23 @@ func withSession(args []string, spec runSpec) []string {
 		return append(args, "--resume", spec.sessionID)
 	}
 	return append(args, "--session-id", spec.sessionID)
+}
+
+// persistsSession reports whether Claude Code saves spec's transcript: a
+// session that edits always does, a read-only or structuring one only under
+// WithKeepTranscripts(true) (decision 161).
+func (c *Client) persistsSession(spec runSpec) bool {
+	return c.keepTranscripts || (!spec.readOnly && !spec.noTools)
+}
+
+// withNoSessionPersistence appends --no-session-persistence when persist is
+// false and is a no-op otherwise. The flag takes no value, so it may sit
+// anywhere before the trailing variadic tool flags (decision 161).
+func withNoSessionPersistence(args []string, persist bool) []string {
+	if persist {
+		return args
+	}
+	return append(args, "--no-session-persistence")
 }
 
 // newSessionID returns a fresh RFC 4122 version-4 UUID for the CLI's
@@ -494,6 +512,12 @@ type Client struct {
 	// global ~/.claude settings and MCP servers instead of running hermetically
 	// (see hermeticArgs). Set via WithInheritUserConfig (decision 45).
 	inheritUserConfig bool
+
+	// keepTranscripts, when true, lets Claude Code save the transcript of
+	// every session, the read-only and structuring ones included; false, the
+	// default, saves only the transcripts of the sessions that edit (see
+	// persistsSession). Set via WithKeepTranscripts (decision 161).
+	keepTranscripts bool
 
 	// diffExclusions leaves lock, vendored and generated files out of the diff
 	// the diff-scoped finders read (diffscope.Classify). Set via
@@ -782,6 +806,15 @@ func WithInheritUserConfig(b bool) Option {
 	return func(c *Client) { c.inheritUserConfig = b }
 }
 
+// WithKeepTranscripts controls whether Claude Code saves the transcript of the
+// read-only and structuring sessions under ~/.claude/projects. The default
+// (false) runs them with --no-session-persistence, since nothing resumes or
+// reads them; the sessions that edit keep their transcript either way. Pass
+// true to inspect a read-only session after the run (decision 161).
+func WithKeepTranscripts(b bool) Option {
+	return func(c *Client) { c.keepTranscripts = b }
+}
+
 // WithDiffExclusions controls whether the diff each diff-scoped finder pass
 // reads leaves out the changed lock files, vendored directories and generated
 // files, which the pass's result then lists in ExcludedFiles. The default
@@ -794,6 +827,12 @@ func WithDiffExclusions(b bool) Option {
 // The review runner reads it to write the review session's diff with the same
 // setting the Client's other finder passes use.
 func (c *Client) DiffExclusions() bool { return c.diffExclusions }
+
+// KeepTranscripts reports whether WithKeepTranscripts kept the transcripts of
+// the read-only and structuring sessions. The root command's and
+// cmd/planwerk-eval's tests read it to prove the flag and the environment
+// variable reach the Client.
+func (c *Client) KeepTranscripts() bool { return c.keepTranscripts }
 
 // runClaude invokes claude in the given directory in
 // claudeReadOnlyPermissionMode and returns the extracted text response along
@@ -1065,6 +1104,7 @@ func (c *Client) claudeArgs(spec runSpec) []string {
 		args = append(args, "--json-schema", spec.jsonSchema)
 	}
 	args = withSession(args, spec)
+	args = withNoSessionPersistence(args, c.persistsSession(spec))
 	args = withAgents(args, spec.agentsJSON)
 	args = c.hermeticArgs(args, readOnly)
 	args = withHooksDisabled(args, readOnly)
@@ -1101,10 +1141,11 @@ func (c *Client) claudeCommand(ctx context.Context, spec runSpec, prompt string)
 // the claude CLI otherwise. On the CLI path it first resolves structureWorkDir
 // as a noTools spec's working directory, before any process starts, and drops
 // jsonSchema's dialect declaration (cliJSONSchema). It then pins a fresh
-// --session-id on a spec that names no id, logs the id at debug level, and
-// runs the session through runClaudeStream. A completion nudge's resumed spec
-// already carries the id it resumes, so --resume is untouched (decisions 78
-// and 152).
+// --session-id on a spec that names no id, logs the id and whether the
+// session's transcript is saved (persistsSession) at debug level, and runs the
+// session through runClaudeStream. A completion nudge's resumed spec already
+// carries the id it resumes, so --resume is untouched (decisions 78, 152 and
+// 161).
 func (c *Client) runSession(spec runSpec, prompt string) (string, string, error) {
 	if c.sessionFn != nil {
 		return c.sessionFn(spec, prompt)
@@ -1120,7 +1161,7 @@ func (c *Client) runSession(spec runSpec, prompt string) (string, string, error)
 	if spec.sessionID == "" {
 		spec.sessionID = newSessionID()
 	}
-	slog.Debug("claude session", "label", spec.label, "session_id", spec.sessionID, "resume", spec.resume)
+	slog.Debug("claude session", "label", spec.label, "session_id", spec.sessionID, "resume", spec.resume, "persisted", c.persistsSession(spec))
 	return c.runClaudeStream(spec, prompt)
 }
 

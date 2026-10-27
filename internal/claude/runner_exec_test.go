@@ -1,8 +1,10 @@
 package claude
 
 import (
+	"bytes"
 	"errors"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -254,7 +256,93 @@ func TestRunClaudeStructure_RunsIsolatedFromTheOperatorsDirectory(t *testing.T) 
 			if !slices.Contains(argv, "--setting-sources=") || !slices.Contains(argv, "--strict-mcp-config") {
 				t.Errorf("a structuring session lost its hermetic flags; got %v", argv)
 			}
+			if !slices.Contains(argv, "--no-session-persistence") {
+				t.Errorf("a structuring session must not save its transcript; got %v", argv)
+			}
 		})
+	}
+}
+
+// TestRunSession_PersistsOnlyTheSessionsThatEdit drives a real subprocess to
+// pin what reaches the CLI: a session that edits is started without
+// --no-session-persistence, a read-only one with it (decision 161).
+func TestRunSession_PersistsOnlyTheSessionsThatEdit(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		spec runSpec
+		want bool
+	}{
+		{"a session that edits", runSpec{label: "implement", model: "opus", effort: "xhigh", permissionMode: claudeAutoPermissionMode}, false},
+		{"a read-only session", runSpec{label: "implement", model: "opus", effort: "xhigh", readOnly: true}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			argvFile := filepath.Join(t.TempDir(), "argv")
+			fakeClaude(t, "cat >/dev/null\nprintf '%s\\n' \"$@\" > '"+argvFile+"'\n"+okTurn+"\n")
+
+			if _, _, err := NewClient().runSession(tc.spec, "p"); err != nil {
+				t.Fatalf("runSession: %v", err)
+			}
+			if got := slices.Contains(recordedArgv(t, argvFile), "--no-session-persistence"); got != tc.want {
+				t.Errorf("argv carries --no-session-persistence = %v, want %v: %v", got, tc.want, recordedArgv(t, argvFile))
+			}
+		})
+	}
+}
+
+// TestRunClaude_NamesACLIThatRejectsNoSessionPersistence covers a claude CLI
+// too old to know the flag: the read-only session fails once, and the error
+// names the exit status and the CLI's own complaint, so the operator sees
+// which flag the installed version lacks.
+func TestRunClaude_NamesACLIThatRejectsNoSessionPersistence(t *testing.T) {
+	runs := filepath.Join(t.TempDir(), "runs")
+	fakeClaude(t, "cat >/dev/null\necho run >> '"+runs+"'\necho \"error: unknown option '--no-session-persistence'\" >&2\nexit 1\n")
+
+	_, _, err := NewClient().runClaude(t.TempDir(), "p", "review", noCatalog)
+	if err == nil {
+		t.Fatal("expected an error from a CLI that rejects the flag")
+	}
+	for _, want := range []string{"exit status 1", "stderr: error: unknown option '--no-session-persistence'"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %q, want it to contain %q", err, want)
+		}
+	}
+	if n := strings.Count(readRecorded(t, runs), "run\n"); n != 1 {
+		t.Errorf("the CLI ran %d times, want 1", n)
+	}
+}
+
+// TestRunSession_LogsWhetherTheTranscriptIsKept pins the debug line -v shows
+// as each session starts: it says whether Claude Code saves the session's
+// transcript, so an operator knows which session ids name one (decision 161).
+// Not parallel: it swaps the default logger.
+func TestRunSession_LogsWhetherTheTranscriptIsKept(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	fakeClaude(t, "cat >/dev/null\n"+okTurn+"\n")
+
+	for _, tc := range []struct {
+		label string
+		spec  runSpec
+		want  string
+	}{
+		{"read-only", runSpec{label: "read-only", model: "opus", effort: "xhigh", readOnly: true}, "persisted=false"},
+		{"auto", runSpec{label: "auto", model: "opus", effort: "xhigh", permissionMode: claudeAutoPermissionMode}, "persisted=true"},
+	} {
+		buf.Reset()
+		if _, _, err := NewClient().runSession(tc.spec, "p"); err != nil {
+			t.Fatalf("%s: runSession: %v", tc.label, err)
+		}
+		var line string
+		for _, l := range strings.Split(buf.String(), "\n") {
+			if strings.Contains(l, `msg="claude session"`) {
+				line = l
+			}
+		}
+		if !strings.Contains(line, tc.want) {
+			t.Errorf("%s: claude session line %q, want %s", tc.label, line, tc.want)
+		}
 	}
 }
 
