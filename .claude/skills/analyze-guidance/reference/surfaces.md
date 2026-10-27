@@ -1,11 +1,13 @@
 # The slices
 
-A page of Claude Code guidance can touch planwerk-agent in five places, and
-each has its own readers: the sessions the orchestrator launches, the prompts
-they read, the pipeline that chains them, the people who run the plugin's
-skills, and the people who work on this repository or set up a target
-repository for it. One `guidance-mapper` agent maps the recommendations
-routed to one slice; a slice no recommendation touches gets no mapper.
+A page of Claude Code guidance, or a practice another repository follows
+(`/adopt-practices` routes its practices to the same slices), can touch
+planwerk-agent in five places, and each has its own readers: the sessions
+the orchestrator launches, the prompts they read, the pipeline that chains
+them, the people who run the plugin's skills, and the people who work on
+this repository or set up a target repository for it. One `guidance-mapper`
+agent maps the recommendations routed to one slice; a slice no
+recommendation touches gets no mapper.
 
 The slices are fixed so that two analyses of the same page are comparable. A
 package that is added later goes into the slice whose readers it serves; a

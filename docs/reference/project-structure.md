@@ -164,12 +164,17 @@ planwerk-agent/
 │       └── todocheck_test.go
 ├── .claude/                    # This repository's own Claude Code tooling (never shipped)
 │   ├── agents/
-│   │   ├── guidance-mapper.md  # Read-only mapping of vendor recommendations onto one slice
+│   │   ├── guidance-mapper.md  # Read-only mapping of vendor recommendations or practices onto one slice
+│   │   ├── practice-extractor.md  # Read-only extraction of practices from one group of a source repository
 │   │   ├── prompt-auditor.md   # Read-only audit of one prompt builder against the doctrine
 │   │   └── skill-auditor.md    # Read-only audit of a plugin skill or shared document
 │   ├── commands/
 │   │   └── audit-prompt.md     # /audit-prompt <builder>: delegates to prompt-auditor
 │   ├── skills/
+│   │   ├── adopt-practices/    # /adopt-practices <repo-url>: another repository's practices against every slice
+│   │   │   ├── SKILL.md
+│   │   │   ├── reference/      # The triage roles, the extraction and mapping briefs, the ledger template
+│   │   │   └── scripts/        # fetch-source.sh (the text-only clone, the inventory, is an analysis due)
 │   │   ├── analyze-guidance/   # /analyze-guidance <url>: one vendor page against every slice
 │   │   │   ├── SKILL.md
 │   │   │   ├── reference/      # The five slices, the brief and ledger templates
@@ -179,6 +184,7 @@ planwerk-agent/
 │   │       ├── reference/      # The brief and ledger templates, the seven audit slices
 │   │       └── scripts/        # probe-models.sh (alias → model id), check.sh (is an iteration due)
 │   ├── guidance-analyses/      # The ledger of /analyze-guidance: one file per page and analysis
+│   ├── practice-analyses/      # The ledger of /adopt-practices: one file per source and analysis
 │   └── prompt-audits/          # The ledger: one file per iteration, newest is the state
 ├── .claude-plugin/
 │   └── marketplace.json        # Claude Code marketplace catalog (this repo)
