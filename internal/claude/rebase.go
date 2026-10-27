@@ -234,7 +234,7 @@ func BuildRebaseApplyPrompt(ctx rebase.ApplyContext) string {
 	fmt.Fprintf(&sb, `## What to do
 
 1. For each adjustment, open the named file and confirm it still applies — the analysis marks each with a confidence and can be wrong or already handled; confirm a "likely" or "uncertain" one against the file before you apply it. Apply exactly the described change (Hard rules say what to do with one that does not apply).
-2. Verify locally where you can run the toolchain. `+foregroundRunLine()+`
+2. `+verifyLocallyLine()+`
 3. Fold each change into the commit it belongs to (the branch's own commits are the range origin/%[1]s..HEAD):
 
    a. List the branch's commits (oldest first):
@@ -262,9 +262,9 @@ func BuildRebaseApplyPrompt(ctx rebase.ApplyContext) string {
    - <adjustment> — folded into <sha> <subject>
    ### Skipped
    - <adjustment> — <why: false positive, already handled, or no longer applies>
-   ### Status
+`+verificationReportLines()+`   ### Status
    STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT>
-   (DONE = every listed adjustment applied or skipped with its reason, the fold complete, no fixup left unfolded, and no rebase in progress; DONE_WITH_CONCERNS = the branch is consistent but carries a reservation a human must see, such as fixups left unfolded after a conflict you could not resolve; BLOCKED = the branch is not in a state to publish; NEEDS_CONTEXT = an adjustment turns on a decision only a human can make. planwerk-agent publishes the branch under --push only on DONE.)
+   (DONE = every listed adjustment applied or skipped with its reason, the fold complete, no fixup left unfolded, no rebase in progress, and at least one Verification entry, each PASS or not run with its reason; DONE_WITH_CONCERNS = the branch is consistent but carries a reservation a human must see, such as fixups left unfolded after a conflict you could not resolve or a Verification entry that reads FAIL; BLOCKED = the branch is not in a state to publish; NEEDS_CONTEXT = an adjustment turns on a decision only a human can make. planwerk-agent publishes the branch under --push only on DONE.)
 
 ## Hard rules
 
@@ -272,7 +272,7 @@ func BuildRebaseApplyPrompt(ctx rebase.ApplyContext) string {
 - Do NOT push. Do NOT force-push. planwerk-agent publishes the branch separately, only when --push is given and your report says DONE.
 - NEVER rebase, reorder, drop, or rewrite commits that already exist on origin/%[1]s — only this branch's own commits (origin/%[1]s..HEAD) may be folded.
 - If an adjustment is a false positive or no longer applies, SKIP it and record why — do not invent a change to satisfy it.
-- If there is nothing to apply, do NOT create an empty commit; output the report with empty Applied and Skipped lists and STATUS: DONE.
+- If there is nothing to apply, do NOT create an empty commit; output the report with empty Applied and Skipped lists, the Verification entries from step 2, and the STATUS the definitions above give.
 `, ctx.Onto)
 	sb.WriteString(noSkipHooksLine())
 

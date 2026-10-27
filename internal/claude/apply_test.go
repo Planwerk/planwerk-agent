@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/planwerk/planwerk-agent/internal/implement"
+	"github.com/planwerk/planwerk-agent/internal/patterns"
+	"github.com/planwerk/planwerk-agent/internal/rebase"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
@@ -101,5 +103,42 @@ func TestReviewApplyPrompt_NamesVerificationGapsAsCriteria(t *testing.T) {
 	})
 	if !strings.Contains(got, "an independent verification found between the issue's Acceptance Criteria and the produced diff") {
 		t.Error("verification findings are not described as unmet criteria")
+	}
+}
+
+// TestRebaseApplyPrompt_DoneRequiresVerification: the runner force-pushes on
+// the rebase apply report's DONE, so that DONE needs a Verification entry and
+// a FAIL entry is a concern instead. The section and the rule hold for an
+// analysis with nothing to apply and for a run without a pattern catalog, and
+// splicing the shared lines into the prompt's format string leaves no stray
+// verb behind.
+func TestRebaseApplyPrompt_DoneRequiresVerification(t *testing.T) {
+	empty := goldenRebaseApplyContext()
+	empty.Analysis = report.RebaseAnalysis{Commits: []report.CommitAnalysis{{SHA: "1111111aaaa", Subject: "Add the snapshot helper"}}}
+	absent := goldenRebaseApplyContext()
+	absent.Catalog = patterns.Catalog{}
+	absent.Patterns = nil
+
+	for name, ctx := range map[string]rebase.ApplyContext{
+		"adjustments":        goldenRebaseApplyContext(),
+		"no adjustments":     empty,
+		"no pattern catalog": absent,
+	} {
+		got := BuildRebaseApplyPrompt(ctx)
+		for _, want := range []string{
+			verificationReportLines(),
+			"and at least one Verification entry, each PASS or not run with its reason",
+			"a Verification entry that reads FAIL",
+		} {
+			if !strings.Contains(got, want) {
+				t.Errorf("%s: the rebase apply prompt is missing %q", name, want)
+			}
+		}
+		if strings.Contains(got, "%!") {
+			t.Errorf("%s: the rebase apply prompt carries a stray format verb:\n%s", name, got)
+		}
+	}
+	if got := BuildRebaseApplyPrompt(empty); !strings.Contains(got, "(The analysis reported no adjustments.)") {
+		t.Error("an analysis without adjustments does not render as having none")
 	}
 }
