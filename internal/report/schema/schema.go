@@ -42,8 +42,10 @@ var RebaseAnalysis []byte
 // AddressResult is the JSON Schema (draft 2020-12) for the `address` command's
 // per-run Claude output, i.e. report.AddressResult. Unlike the other schemas
 // here it does not back a `--format json` stdout payload — it is the contract
-// the address session's structured output is decoded against. A single thread
-// result is defined under $defs/addressedThread.
+// the address session's structured output is decoded against, and the address
+// session receives it via --json-schema when it is given no --claude-plugin
+// plugin (decision 160). A single thread result is defined under
+// $defs/addressedThread.
 //
 //go:embed address-result.schema.json
 var AddressResult []byte

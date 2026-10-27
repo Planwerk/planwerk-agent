@@ -1403,11 +1403,14 @@ func TestFinders_SessionErrorIsWrappedAndSkipsDecode(t *testing.T) {
 
 // TestSchemaSessions_CarryTheirSchema pins the sessions besides the finders
 // that receive their schema via --json-schema (decision 160): the rebase
-// analysis on every run, read-only on the main tier. A valid result, the null
-// slice the schema allows included, decodes in that one session. The repair
-// decode stays the backstop for a result that arrives as text: an empty one
-// fails without a repair, a truncated one is repaired toward the schema on the
-// structure tier, and a failed session is wrapped and decodes nothing.
+// analysis on every run, read-only on the main tier, and the address session
+// when it is given no --claude-plugin plugin, in auto mode with the write
+// tools. A valid result, the null slice the schema allows included, decodes in
+// that one session. The repair decode stays the backstop for a result that
+// arrives as text: an empty one fails without a repair, a truncated one is
+// repaired toward the schema on the structure tier, and a failed session is
+// wrapped and decodes nothing. An address session given a plugin runs without
+// the schema.
 func TestSchemaSessions_CarryTheirSchema(t *testing.T) {
 	t.Parallel()
 
@@ -1416,7 +1419,7 @@ func TestSchemaSessions_CarryTheirSchema(t *testing.T) {
 		// decodeLabel is the label the adapter decodes under; its repair
 		// session runs as decodeLabel-repair.
 		decodeLabel, schemaTitle, valid, sessionErrPrefix string
-		run                                               func(c *Client) (summary string, err error)
+		run                                               func(t *testing.T, c *Client) (summary string, err error)
 		checkSpec                                         func(t *testing.T, c *Client, spec runSpec)
 	}{
 		{
@@ -1425,7 +1428,7 @@ func TestSchemaSessions_CarryTheirSchema(t *testing.T) {
 			schemaTitle:      `"title": "RebaseAnalysis"`,
 			valid:            `{"commits":null,"summary":"s","recommendation":"r"}`,
 			sessionErrPrefix: "analyzing rebased commits: ",
-			run: func(c *Client) (string, error) {
+			run: func(_ *testing.T, c *Client) (string, error) {
 				result, err := c.AnalyzeRebasedCommits("", goldenRebaseAnalysisContext())
 				if err != nil {
 					return "", err
@@ -1445,6 +1448,33 @@ func TestSchemaSessions_CarryTheirSchema(t *testing.T) {
 				}
 			},
 		},
+		{
+			name:             "address",
+			decodeLabel:      "structured address-result",
+			schemaTitle:      `"title": "AddressResult"`,
+			valid:            `{"threads":null,"summary":"s","status":"DONE"}`,
+			sessionErrPrefix: "running address: ",
+			run: func(t *testing.T, c *Client) (string, error) {
+				t.Helper()
+				result, err := c.Address("", goldenAddressContext())
+				if err != nil {
+					return "", err
+				}
+				if result.Status != report.StatusDone {
+					t.Errorf("status = %q, want %s", result.Status, report.StatusDone)
+				}
+				return result.Summary, nil
+			},
+			checkSpec: func(t *testing.T, _ *Client, spec runSpec) {
+				t.Helper()
+				if spec.label != "address" || spec.permissionMode != claudeAutoPermissionMode || spec.readOnly {
+					t.Errorf("label=%q permissionMode=%q readOnly=%v, want address in auto mode with the write tools", spec.label, spec.permissionMode, spec.readOnly)
+				}
+				if spec.jsonSchema != string(schema.AddressResult) {
+					t.Errorf("jsonSchema is not schema.AddressResult: %.80q", spec.jsonSchema)
+				}
+			},
+		},
 	}
 	for _, a := range adapters {
 		t.Run(a.name, func(t *testing.T) {
@@ -1457,7 +1487,7 @@ func TestSchemaSessions_CarryTheirSchema(t *testing.T) {
 				c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
 					return a.valid, "", nil
 				}, WithFinderModel("haiku"), WithFinderEffort("low"), WithPlanModel("fable"), WithPlanEffort("high"))
-				summary, err := a.run(c)
+				summary, err := a.run(t, c)
 				if err != nil {
 					t.Fatalf("adapter returned error: %v", err)
 				}
@@ -1475,7 +1505,7 @@ func TestSchemaSessions_CarryTheirSchema(t *testing.T) {
 				c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
 					return "", "", nil
 				})
-				_, err := a.run(c)
+				_, err := a.run(t, c)
 				if want := "parsing " + a.decodeLabel + " as JSON: the output holds no JSON value"; err == nil || !strings.HasPrefix(err.Error(), want) {
 					t.Errorf("err = %v, want it to start with %q", err, want)
 				}
@@ -1493,7 +1523,7 @@ func TestSchemaSessions_CarryTheirSchema(t *testing.T) {
 					}
 					return a.valid, "", nil
 				})
-				summary, err := a.run(c)
+				summary, err := a.run(t, c)
 				if err != nil {
 					t.Fatalf("adapter returned error: %v", err)
 				}
@@ -1520,7 +1550,7 @@ func TestSchemaSessions_CarryTheirSchema(t *testing.T) {
 				c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
 					return "", "", sessionErr
 				})
-				_, err := a.run(c)
+				_, err := a.run(t, c)
 				if !errors.Is(err, sessionErr) || err.Error() != a.sessionErrPrefix+"claude exited 1" {
 					t.Errorf("err = %v, want %sclaude exited 1", err, a.sessionErrPrefix)
 				}
@@ -1530,6 +1560,26 @@ func TestSchemaSessions_CarryTheirSchema(t *testing.T) {
 			})
 		})
 	}
+
+	t.Run("an address session given a plugin runs without it", func(t *testing.T) {
+		t.Parallel()
+		c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
+			return `{"threads":null,"summary":"s","status":"DONE"}`, "", nil
+		}, WithPlugins(testPlugins))
+		if _, err := c.Address("", goldenAddressContext()); err != nil {
+			t.Fatalf("Address returned error: %v", err)
+		}
+		if len(*calls) != 1 {
+			t.Fatalf("ran %d sessions, want 1", len(*calls))
+		}
+		spec := (*calls)[0].spec
+		if spec.jsonSchema != "" {
+			t.Errorf("jsonSchema = %.80q, want none for a session given a plugin", spec.jsonSchema)
+		}
+		if args := c.claudeArgs(spec); !slices.Contains(args, "--plugin-dir") || slices.Contains(args, "--json-schema") {
+			t.Errorf("argv %v, want --plugin-dir and no --json-schema", args)
+		}
+	})
 }
 
 // diffTestRepo returns a checkout whose origin/develop is the base commit and

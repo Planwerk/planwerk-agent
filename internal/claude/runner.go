@@ -281,8 +281,9 @@ type runSpec struct {
 	noTools bool
 	// jsonSchema is passed via --json-schema when non-empty. The runners of the
 	// passes that emit findings, runClaudeFindings and runClaudeFinderFindings,
-	// set it (decision 109), and runClaudeSchema sets it for the rebase
-	// analysis (decision 160).
+	// set it (decision 109); runClaudeSchema sets it for the rebase analysis,
+	// and Address for an address session given no --claude-plugin plugin
+	// (decision 160).
 	jsonSchema string
 	agentsJSON string // --agents when non-empty
 	// appendSystemPrompt is passed as --append-system-prompt when non-empty;
