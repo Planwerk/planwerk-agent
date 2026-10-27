@@ -21,7 +21,7 @@ more than supervision: the command runs passes the skill deliberately omits.
 | | `/planwerk:implement` | [`planwerk-agent implement`](/reference/cli#implement) |
 |---|---|---|
 | Runs in | Your session, in your checkout | A throw-away clone, or `--local` |
-| Plans | A short plan in plan mode, approved by you | A dedicated read-only planning session, posted to the issue |
+| Plans | A short plan in plan mode, approved by you | A dedicated read-only planning session, reviewed by a second read-only session and posted to the issue |
 | After the code | You read the diff | Simplify, review-and-fix, and optional verification passes |
 | Opens the PR | Only after you say yes | Automatically, as the run's deliverable |
 
