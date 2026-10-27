@@ -595,6 +595,85 @@ func TestClaudeArgs_ReadOnlyRunsInDontAsk(t *testing.T) {
 	}
 }
 
+// TestClaudeArgs_PersistsOnlyTheSessionsThatEdit locks in which sessions
+// Claude Code saves a transcript for: a read-only or structuring session runs
+// with --no-session-persistence, once and ahead of the variadic tool lists,
+// while a session that edits, resumed or not, keeps its transcript, and
+// WithKeepTranscripts(true) keeps every one (decision 161).
+func TestClaudeArgs_PersistsOnlyTheSessionsThatEdit(t *testing.T) {
+	t.Parallel()
+
+	const flag = "--no-session-persistence"
+	const id = "123e4567-e89b-42d3-a456-426614174000"
+	readOnly := []struct {
+		name string
+		spec runSpec
+	}{
+		{"a read-only session", runSpec{model: "opus", effort: "xhigh", readOnly: true}},
+		{"a structuring session", runSpec{model: "sonnet", effort: "medium", readOnly: true, noTools: true}},
+		{"a finder session", runSpec{model: "opus", effort: "xhigh", readOnly: true, jsonSchema: `{"type":"object"}`, tools: []string{"Grep", "Read"}}},
+	}
+	editing := []struct {
+		name string
+		spec runSpec
+	}{
+		{"an auto-mode session", runSpec{model: "opus", effort: "xhigh", permissionMode: claudeAutoPermissionMode}},
+		{"a resumed auto-mode session", runSpec{model: "opus", effort: "xhigh", permissionMode: claudeAutoPermissionMode, sessionID: id, resume: true}},
+		// The zero spec is neither readOnly nor noTools, so it is a session
+		// that edits.
+		{"the zero spec", runSpec{}},
+	}
+
+	for _, tc := range readOnly {
+		args := NewClient().claudeArgs(tc.spec)
+		if n := countArg(args, flag); n != 1 {
+			t.Errorf("%s: want %s exactly once, got %d; argv %v", tc.name, flag, n, args)
+			continue
+		}
+		i := slices.Index(args, flag)
+		for _, list := range []string{"--tools", "--disallowed-tools", "--allowed-tools"} {
+			if j := slices.Index(args, list); j != -1 && j < i {
+				t.Errorf("%s: %s must precede the variadic %s; argv %v", tc.name, flag, list, args)
+			}
+		}
+	}
+	if args := NewClient().claudeArgs(readOnly[1].spec); !slices.Equal(args[len(args)-2:], []string{"--tools", ""}) {
+		t.Errorf("a structuring session must still end with --tools \"\"; argv %v", args)
+	}
+	for _, tc := range editing {
+		if args := NewClient().claudeArgs(tc.spec); slices.Contains(args, flag) {
+			t.Errorf("%s must keep its transcript; argv %v", tc.name, args)
+		}
+	}
+
+	keep := NewClient(WithKeepTranscripts(true))
+	for _, tc := range append(readOnly, editing...) {
+		if args := keep.claudeArgs(tc.spec); slices.Contains(args, flag) {
+			t.Errorf("%s under WithKeepTranscripts(true) must keep its transcript; argv %v", tc.name, args)
+		}
+	}
+
+	// The session id and the persistence flag are independent: a read-only
+	// session pins its id and still saves nothing.
+	if args := NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", readOnly: true}); !slices.Contains(args, flag) || slices.Contains(args, "--session-id") {
+		t.Errorf("a read-only session without an id wants %s and no --session-id; argv %v", flag, args)
+	}
+	if args := NewClient().claudeArgs(runSpec{model: "opus", effort: "xhigh", readOnly: true, sessionID: id}); !slices.Contains(args, flag) || !slices.Contains(args, "--session-id") {
+		t.Errorf("a read-only session with an id wants both %s and --session-id; argv %v", flag, args)
+	}
+}
+
+// countArg counts the elements of args equal to arg.
+func countArg(args []string, arg string) int {
+	n := 0
+	for _, a := range args {
+		if a == arg {
+			n++
+		}
+	}
+	return n
+}
+
 // TestClaudeArgs_ToolFlagsSurviveWithoutNoTools guards the other direction: every
 // session that is not a structuring pass keeps the deny/allow pair exactly as
 // before, and carries no --tools while its spec names no tool list.

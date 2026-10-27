@@ -67,6 +67,12 @@ Output the report as the last thing in this turn, with nothing after it.`, headi
 // maxCompletionNudges times. The session's id is pinned upfront via
 // --session-id so the follow-up turn can find it with --resume.
 //
+// --resume needs the transcript Claude Code saved, so a spec whose transcript
+// is not saved (persistsSession) runs once and its output goes back to the
+// caller's gate unnudged. Every caller passes a spec built on autoSpec, which
+// is always saved; the check keeps a read-only spec handed here from failing
+// on its resume instead (decision 161).
+//
 // The nudge only repairs the yielded-mid-work shape (prose without a report);
 // a genuine run error — a hit rate limit, an exhausted turn budget — is
 // returned unchanged, since a follow-up turn cannot fix an API failure. A
@@ -79,7 +85,7 @@ func (c *Client) runWithCompletionNudge(spec runSpec, prompt, heading, statuses 
 	complete := terminalReportComplete(heading)
 	spec.sessionID = newSessionID()
 	out, model, err := c.runSession(spec, prompt)
-	if err != nil || complete(out) || spec.sessionID == "" {
+	if err != nil || complete(out) || spec.sessionID == "" || !c.persistsSession(spec) {
 		return out, model, err
 	}
 	nudge := completionNudgePrompt(heading, statuses)

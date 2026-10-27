@@ -521,9 +521,10 @@ func (u Usage) Sub(o Usage) Usage {
 // refused. ToolUses counts every tool call of the pass's sessions by tool name,
 // a subagent's included. SessionIDs holds each session's id once, in the order
 // the sessions ended; the id names the transcript Claude Code wrote for the
-// session. Each is omitted when empty, so a payload written before they
-// existed is unchanged, and encoding/json sorts the ToolUses keys, so the wire
-// form stays deterministic (decision 152).
+// session only for a session that edits, or for any session under
+// --keep-transcripts (decision 161). Each is omitted when empty, so a payload
+// written before they existed is unchanged, and encoding/json sorts the
+// ToolUses keys, so the wire form stays deterministic (decision 152).
 type PassUsage struct {
 	Pass                string         `json:"pass"`
 	Calls               int            `json:"calls"`
