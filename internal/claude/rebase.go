@@ -28,10 +28,12 @@ func (c *Client) ResolveRebaseConflict(dir string, ctx rebase.ConflictContext) (
 
 // AnalyzeRebasedCommits runs a read-only Claude session that judges each
 // rebased commit against the upstream range and returns the structured
-// per-commit adjustments. The decode shares decodeJSONWithRepair so a
-// one-character JSON glitch does not fail the run.
+// per-commit adjustments. The session receives schema.RebaseAnalysis via
+// --json-schema, so the CLI validates the object it emits (decision 160). The
+// decode still shares decodeJSONWithRepair, the backstop for a result that
+// arrives as text, so a one-character JSON glitch does not fail the run.
 func (c *Client) AnalyzeRebasedCommits(dir string, ctx rebase.AnalysisContext) (*report.RebaseAnalysis, error) {
-	text, model, err := c.runClaude(dir, BuildRebaseAnalysisPrompt(ctx), "rebase-analysis", ctx.Catalog)
+	text, model, err := c.runClaudeSchema(dir, BuildRebaseAnalysisPrompt(ctx), "rebase-analysis", ctx.Catalog, schema.RebaseAnalysis)
 	if err != nil {
 		return nil, fmt.Errorf("analyzing rebased commits: %w", err)
 	}
