@@ -37,8 +37,13 @@ Acceptance Criteria walk, and the one-PR discipline all still apply.
 The skill enters plan mode before touching anything, grounds the issue in the
 actual code — every cited file and symbol verified — and presents a short plan:
 the change set, the change and verification command behind every Acceptance
-Criterion, the tests to write, the documentation the change makes stale.
-Nothing is edited before you approve that plan.
+Criterion, the tests to write, the documentation the change makes stale. For a
+criterion a user observes in the running program, that command is a local
+one: run the built binary, start the development server and send it a
+request, or drive a headless browser against it. The plan also lists any
+install or network access such a run needs beyond the repository's own
+tooling, so your approval covers it. Nothing is edited before you approve that
+plan.
 
 A draft-depth issue (no Affected Areas, no Acceptance Criteria) is not silently
 treated as elaborated: the skill asks whether to proceed with the plan carrying
@@ -63,7 +68,12 @@ The passes the skill omits do not soften what "done" means. Every Acceptance
 Criterion is exercised by a command the report quotes, a bug fix carries a
 regression test the skill watched fail before the fix, and the diff is re-read
 against `.planwerk/review_patterns/` when the repository carries them — because
-no review pass will do it later.
+no review pass will do it later. A criterion a user observes is checked in the
+program the skill runs locally, not on unit tests alone, and the skill stops
+every process it started before it shows you the result. "Only a live system
+can verify" is reserved for a criterion that needs a remote host or a
+credential; one whose local run this machine could not provide is reported as
+"not exercised here", with the reason.
 
 ## How the work lands
 

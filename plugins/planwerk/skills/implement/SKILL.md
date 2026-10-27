@@ -106,7 +106,37 @@ stories, no commit-sequence essay, no risk register. It must state, concretely:
 - The change set: each file, and what changes in it.
 - For every Acceptance Criterion, the change that satisfies it and the command
   that will prove it. A criterion the plan cannot map is a gap to raise now,
-  not to discover after the diff exists.
+  not to discover after the diff exists. Each criterion is one of three kinds,
+  and its command fits the kind:
+  - **Observable in the locally running program** — what a user of the program
+    built from this checkout sees when they run it the way they normally do: a
+    CLI invocation's output or exit code, an HTTP response from the development
+    server on localhost, a page rendered in a browser. Its command is the local
+    one: how the program is built or started, and what exercises the criterion.
+    A program whose start hands it to a daemon (`docker compose up -d`) has no
+    local command here: the plan says its criterion will be
+    `not exercised here`.
+  - **Needs a host beyond the local machine or a credential** — the plan says
+    only a live system can verify it, and names that host or credential. A
+    criterion whose check reaches such a host or uses such a credential is
+    this kind, whatever the program also prints locally. A credential is a
+    secret the author holds for a system beyond this machine (an API token, a
+    cloud key, a production password); a value the repository gives for local
+    development, in `.env.example`, a compose file, or its README, is
+    configuration.
+  - **Neither** — internal behavior with no surface in the running program (a
+    function's result, a prompt checked against a golden file), or any
+    criterion in a repository with no runnable program, such as a library.
+    Its command is the test that proves it.
+
+  A local run that needs anything beyond the repository's own build and test
+  tooling gets its own line in the plan naming the exact command, because the
+  approval of the plan is what lets it run: an install of a package or browser
+  the repository does not declare, a container image pull, network access to a
+  host other than localhost, or elevated privileges. Installing the
+  repository's declared dependencies from its own lock file is its tooling.
+  Any other install writes into the run directory Phase 3 creates, never into
+  the checkout's manifest or lock file.
 - The tests to write or extend. A bug fix gets a regression test that fails
   before the fix and passes after.
 - The documentation the change makes stale.
@@ -167,11 +197,124 @@ ignore, a waiver, or an `impeccable-disable` comment. A hook that reports after
 the push changes nothing pushed without the author's yes; end again with the
 next step as the last line.
 
+A criterion the plan marked observable in the locally running program is
+exercised by running that program the way its user does, usually in one of
+three forms:
+
+- **The program's command line** — built with the repository's own build
+  command when it has one, which writes its output where it always does, and
+  otherwise into `<run-dir>`; run the way its README or entry point says, with
+  the criterion's input; compare its output and exit code with what the
+  criterion states.
+- **The development server** — started from the checkout root with the
+  repository's own start command (a Makefile target, a package script, the
+  command its README gives), and exercised with requests to localhost.
+- **A headless browser** (Playwright, Puppeteer) driving that local server and
+  asserting on the DOM, the console, or the network. A script in `<run-dir>`
+  loads the repository's copy by its path, since module resolution starts at
+  the script's own directory. When the repository does not depend on one, the
+  install goes into `<run-dir>`, browsers included: set
+  `PLAYWRIGHT_BROWSERS_PATH=<run-dir>/browsers` (Playwright) or
+  `PUPPETEER_CACHE_DIR=<run-dir>/browsers` (Puppeteer) on the install and on
+  every run of the script.
+
+A need beyond the repository's tooling that the plan did not name is a
+structural deviation, and goes to the author before it runs.
+
+A test the repository already runs is that local command only when it drives
+the program the way its user does: it runs the program, starts the real server
+entry point, or drives a browser against it. A test that calls a function or a
+handler directly is not. The unit tests the plan names still run, beside the
+local command, never in its place.
+
+Your throwaway files (request and browser scripts, the server log, its PID
+file, an install the plan named) live in one private run directory, never in
+the checkout: create it once with `mktemp -d` and use the path it prints,
+`<run-dir>`, from then on. Configuration the program needs that is not a
+credential (a port, a log level, a data path inside `<run-dir>`, a value the
+repository gives for local development) goes on the start command as
+environment variables, never into a file in the checkout such as a `.env`
+copied from `.env.example`. When no criterion is observable in the locally
+running program, create no run directory and start nothing.
+
+Before you start a long-running program, send a request to the address it
+will listen on: it must be refused. When something answers, or the log later
+says the address is in use, another process holds the port. Never kill a
+process you did not start: pass your instance another port if the program
+takes one; otherwise the criterion is `not exercised here: port <n> is in use`.
+When the start command builds before it serves (`go run`, `cargo run`), run
+the repository's build in the foreground first, so the wait below times the
+start alone. Then start the program in its own process group, from Bash rather
+than as a background task of the session, so the PID the stop needs sits in
+`<run-dir>`; `bash -c` keeps job control the same under any login shell:
+
+```bash
+bash -c 'set -m; <start command> > "$1/server.log" 2>&1 & echo $! > "$1/server.pid"' _ <run-dir>
+```
+
+A start command that hands the program to a daemon (`docker compose up -d`, a
+service manager) leaves it outside any group you can stop and check: do not run
+it. The criterion is `not exercised here: the start hands the program to a
+daemon`.
+
+Poll the address for at most 60 seconds. A program that has not answered by
+then failed to start: read `<run-dir>/server.log`, and sort the failure. An
+address already in use is the port case above.
+
+- The log names a local service or system tool this machine lacks, outside
+  the repository's declared dependencies, or an install the author declined:
+  `not exercised here: <why>`. When the issue itself adds that need, the
+  `<why>` says so.
+- It needs a credential or a remote host to start:
+  `only a live system can verify: <host or credential>`, and the report names
+  that move as a deviation from the plan.
+- Anything else is the diff's: a criterion not met — fix it like any other, or
+  stop at `BLOCKED` with the log lines that show the failure. That includes a
+  package or symbol the diff uses without declaring or defining it, and a
+  failure you suspect the default branch shares: only the author can settle
+  that one.
+
 Then walk the Acceptance Criteria one by one against the actual diff, each with
-the command that exercises it and what it printed. Never write "met" for a
-criterion you did not exercise; a criterion only a live system can verify is
-reported in those words. Leave the issue's checkboxes alone — the report
-carries the verification, and the pull request carries the closure.
+the command that exercises it and what it printed. A criterion observable in
+the locally running program counts as met only once its local command ran and
+its output showed the criterion. One instance at a time serves the walk, and
+every check runs against the code in the diff: after an edit, rebuild a
+command-line program before you re-run it, and stop a long-running program's
+group as below and start it again in the same `<run-dir>` (rebuilding first
+when its start command does not build), since a rebuild does not change a
+process already running. An edit made during the walk sends you back over
+every criterion already marked met, local or tested, and over the plan's
+verification commands, since the edit may have changed what they showed. A
+criterion that names its own start configuration gets the same stop and start
+with that configuration, and the next criterion gets the plan's own start
+again. Quote the command and only the lines that show the result, never the
+whole server log, with each secret value replaced by `<REDACTED>`. Never write
+"met" for a criterion you did not exercise. One you could not exercise is
+reported in one of two wordings:
+`only a live system can verify: <host or credential>` when it needs a host
+beyond the local machine or a credential, or `not exercised here: <why>` when
+the environment could not provide its local run. Leave the issue's checkboxes
+alone — the report carries the verification, and the pull request carries the
+closure.
+
+Once the walk is done, and on every exit path before the report (`BLOCKED` and
+`NEEDS_CONTEXT` included), stop what you started before Phase 4 shows the
+result. A long-running program's group stops with this script: it sends
+`kill -TERM`, waits up to 10 seconds for the `kill -0` check to fail, then
+sends `kill -KILL`, and exits non-zero when the PID file is missing or the
+group survives:
+
+```bash
+bash -c 'g=$(cat "$1/server.pid") && [ -n "$g" ] || exit 2
+kill -TERM -- -"$g" 2>/dev/null
+for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 -- -"$g" 2>/dev/null || exit 0; sleep 1; done
+kill -KILL -- -"$g" 2>/dev/null; sleep 1; ! kill -0 -- -"$g" 2>/dev/null' _ <run-dir>
+```
+
+Stopped means the script exited 0 and the address no longer answers. Then
+remove the run directory: `rm -rf <run-dir>`. A stop that fails leaves
+`<run-dir>` in place, and the report names the group and what still answers,
+as a concern the author must clear.
 
 ## Phase 4 — Show the result, then publish behind a yes
 
@@ -200,7 +343,9 @@ commit — report and stop.
 Open with one line: what shipped, or why nothing did. Then state:
 
 - Every Acceptance Criterion, the command that exercised it, and its result —
-  or, in words, why it could not run here.
+  or, in words, why it could not run here:
+  `only a live system can verify: <host or credential>` or
+  `not exercised here: <why>`.
 - The branch, the commits on it, and the pull request's URL when one was
   opened.
 - Every deviation from the approved plan, and every question the author
@@ -214,7 +359,9 @@ Open with one line: what shipped, or why nothing did. Then state:
 - `STATUS: DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT`:
   - `DONE` — every Acceptance Criterion was exercised by a command that passed.
   - `DONE_WITH_CONCERNS` — the work is complete, with a criterion only a live
-    system can verify or a deviation the author should see; name which.
+    system can verify (it needs a remote host or a credential), a criterion
+    not exercised here, a process that would not stop, or a deviation the
+    author should see; name which.
   - `BLOCKED` — the work cannot complete; the branch stays local, and the report
     names what stops it.
   - `NEEDS_CONTEXT` — only the author holds a fact the work turns on.
@@ -231,6 +378,12 @@ single thing that unblocks the work.
 
 - Every Acceptance Criterion traces to the diff and to a command you actually
   ran, or the report says in words why it could not run.
+- Every criterion the plan marked observable in the locally running program
+  was exercised by its local command, carries `not exercised here: <why>`, or
+  was moved to `only a live system can verify: <host or credential>` as a
+  reported deviation. No process you started is still running and
+  `<run-dir>` is gone, unless the report names a stop that failed as a
+  concern.
 - Every changed file is warranted by the issue or the approved plan. Nothing
   widened, nothing "while I was in here".
 - No test was skipped, weakened, or deleted to get green. Re-read the diff
