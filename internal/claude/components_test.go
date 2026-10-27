@@ -336,6 +336,29 @@ func TestImplementRationalizationsBlockIsShared(t *testing.T) {
 	}
 }
 
+// TestVerificationBlockIsShared pins the verify step and the report's
+// Verification lines into every apply prompt whose report carries them, the
+// review-apply prompt in both its sources. A copy that drifted in one of them
+// would ask that session for evidence in a shape the others no longer use.
+func TestVerificationBlockIsShared(t *testing.T) {
+	verification := goldenReviewApplyContext()
+	verification.Source = implement.ReviewApplySourceVerification
+	prompts := map[string]string{
+		"simplify-apply":              BuildSimplifyApplyPrompt(goldenSimplifyApplyContext()),
+		"review-apply":                BuildReviewApplyPrompt(goldenReviewApplyContext()),
+		"review-apply (verification)": BuildReviewApplyPrompt(verification),
+		"rebase-apply":                BuildRebaseApplyPrompt(goldenRebaseApplyContext()),
+	}
+	for name, prompt := range prompts {
+		if !strings.Contains(prompt, verifyLocallyLine()) {
+			t.Errorf("%s prompt does not carry the verify step verbatim", name)
+		}
+		if !strings.Contains(prompt, verificationReportLines()) {
+			t.Errorf("%s prompt does not carry the Verification report lines verbatim", name)
+		}
+	}
+}
+
 // TestImplementRationalizationsDoNotDuplicateHardRules is the doctrine guard:
 // the table carries the reasoning that used to trail the hard rules inline, so
 // each excuse must appear once in the prompt, not once per section. A second
