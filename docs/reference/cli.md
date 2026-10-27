@@ -639,6 +639,9 @@ planwerk-agent rebase --local --push
 
 `--dry-run`, `--print-prompt`, and `--print-bare-prompt` are mutually exclusive.
 The conflict resolution and the apply step run in Claude Code's auto mode.
+The post-rebase analysis constrains its output with Claude Code's
+`--json-schema` flag, carrying `rebase-analysis.schema.json`
+([design decision #160](/explanation/design-decisions)).
 
 ## `implement`
 
@@ -1026,7 +1029,14 @@ planwerk-agent address --local --force
 | `--wiki-ref` | Pin the wiki to a branch, tag, or commit (env: `PLANWERK_WIKI_REF`) | - |
 
 `--dry-run`, `--print-prompt`, and `--print-bare-prompt` are mutually exclusive.
-The address session runs in Claude Code's auto mode.
+The address session runs in Claude Code's auto mode. Without
+`--claude-plugin`, it constrains its output with Claude Code's `--json-schema`
+flag, carrying the address result schema. A session given `--claude-plugin`
+runs without the flag, because under it a report the plugin's Stop hook gives
+after the session's last message never reaches the session. A plugin your own
+settings enable under `--claude-inherit-user-config` is not part of that rule,
+so its session keeps the flag
+([design decision #160](/explanation/design-decisions)).
 
 With the wiki enabled, the run loads the wiki's `review_patterns/` and writes
 the project memory to one directory that every per-thread session reads. A run

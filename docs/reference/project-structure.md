@@ -142,6 +142,8 @@ planwerk-agent/
 │   │   │   ├── schema.go       # //go:embed of the schema files
 │   │   │   ├── report-result.schema.json  # ReviewResult (review + audit)
 │   │   │   ├── proposal.schema.json       # ProposalResult envelope (propose)
+│   │   │   ├── rebase-analysis.schema.json  # RebaseAnalysis (rebase; --json-schema for the analysis session)
+│   │   │   ├── address-result.schema.json   # Address session wire contract (--json-schema without --claude-plugin)
 │   │   │   └── finder-output.schema.json  # Finder pass wire contract (--json-schema)
 │   │   └── testdata/
 │   │       └── schema/         # JSON fixtures validated against the schemas
