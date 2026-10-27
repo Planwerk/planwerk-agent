@@ -57,6 +57,13 @@ that). A plan that reports STATUS: BLOCKED or NEEDS_CONTEXT aborts before any
 code is written. Use --no-plan to skip the planning session and implement
 directly in a single session.
 
+A freshly generated plan is reviewed before the implement session runs: a
+second read-only session on the planning model scores it against the issue
+and the code and posts its review on the issue (--no-plan-comment skips it
+with the plan). A plan it scores below 8/10 is planned once more with the
+review's gaps and implemented without a second review. A reused plan is not
+reviewed. Use --no-plan-review to skip the review.
+
 If an implementation plan planwerk-agent posted on an earlier run is already
 on the issue (for example a run that planned but was aborted before
 implementing), it is reused verbatim by default: the planning session is
@@ -214,7 +221,7 @@ or short form (owner/repo#123).`,
 			if implementCfg.PrintBarePrompt {
 				return implement.PrintBarePrompt(cmd.OutOrStdout(), opts, claude.BuildBareImplementPrompt)
 			}
-			return implement.Run(cmd.OutOrStdout(), opts, client.Plan, claude.BuildPlanPrompt, client.Implement, claude.BuildImplementPrompt, client.VerifyImplementation, client.AdversarialReview, client.SpecialistReviews, client.SimplifyFindings, client.ApplySimplifications, client.ApplyReview, client.DedupFindings, client.VerifyFindingClaims, client.Capture, client.FinalizePR)
+			return implement.Run(cmd.OutOrStdout(), opts, client.Plan, claude.BuildPlanPrompt, client.ReviewPlan, client.Implement, claude.BuildImplementPrompt, client.VerifyImplementation, client.AdversarialReview, client.SpecialistReviews, client.SimplifyFindings, client.ApplySimplifications, client.ApplyReview, client.DedupFindings, client.VerifyFindingClaims, client.Capture, client.FinalizePR)
 		},
 	}
 
@@ -225,7 +232,8 @@ or short form (owner/repo#123).`,
 	implementFlags.BoolVar(&implementCfg.PrintPlanPrompt, "print-plan-prompt", false, "Render the planning prompt (with the issue body embedded) to stdout and exit; do not clone or invoke Claude")
 	implementFlags.BoolVar(&implementCfg.NoPlan, "no-plan", false, "Skip the planning session and implement directly in a single session")
 	implementFlags.BoolVar(&implementCfg.NoPlanReuse, "no-plan-reuse", false, "Always run a fresh planning session; do not reuse an implementation plan already posted on the issue")
-	implementFlags.BoolVar(&implementCfg.NoPlanComment, "no-plan-comment", false, "Do not post the generated implementation plan as a comment on the source issue")
+	implementFlags.BoolVar(&implementCfg.NoPlanComment, "no-plan-comment", false, "Do not post the generated implementation plan, or its plan review, as a comment on the source issue")
+	implementFlags.BoolVar(&implementCfg.NoPlanReview, "no-plan-review", false, "Skip the read-only review of a freshly generated implementation plan, and the one re-plan a review below 8/10 triggers")
 	implementFlags.BoolVar(&implementCfg.NoReportComment, "no-report-comment", false, "Do not post the implementation report as a comment on the source issue")
 	implementFlags.StringVar(&planModel, "plan-model", claude.DefaultPlanModel, "Model for the planning session passed to Claude Code via --model (e.g. fable, opus; env: "+envPlanModel+")")
 	implementFlags.StringVar(&planEffort, "plan-effort", claude.DefaultPlanEffort, "Reasoning effort for the planning session passed to Claude Code via --effort (low, medium, high, xhigh, max; env: "+envPlanEffort+")")

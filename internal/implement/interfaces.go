@@ -251,6 +251,14 @@ type PlanReviewer interface {
 // PlanReviewFn is the bare-function form of PlanReviewer the CLI wires in.
 type PlanReviewFn func(dir string, ctx Context, plan string) (review *PlanReview, model string, err error)
 
+type planReviewFnAdapter struct {
+	fn PlanReviewFn
+}
+
+func (a planReviewFnAdapter) ReviewPlan(dir string, ctx Context, plan string) (*PlanReview, string, error) {
+	return a.fn(dir, ctx, plan)
+}
+
 // ImplementationVerifier independently checks a produced change set against
 // the issue's Acceptance Criteria, deliberately ignoring the implementation's
 // own report. Optional: wired only when --verify is set.

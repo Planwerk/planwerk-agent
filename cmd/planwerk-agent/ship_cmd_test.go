@@ -193,13 +193,14 @@ func TestShipCaptureWrite(t *testing.T) {
 
 func TestShipImplementOptions(t *testing.T) {
 	base := implement.Options{
-		Wiki:        patterns.WikiOptions{Enabled: true, Repo: "acme/handbook", Ref: "v1"},
-		CaptureWiki: true,
-		NoCapture:   true,
-		Yes:         true,
-		NoSimplify:  true,
-		PatternDirs: []string{"extra"},
-		Brain:       true,
+		Wiki:         patterns.WikiOptions{Enabled: true, Repo: "acme/handbook", Ref: "v1"},
+		CaptureWiki:  true,
+		NoCapture:    true,
+		Yes:          true,
+		NoSimplify:   true,
+		NoPlanReview: true,
+		PatternDirs:  []string{"extra"},
+		Brain:        true,
 	}
 	deps := &runtimeDeps{version: "v9", remoteOpts: patterns.RemoteOptions{TTL: time.Hour}}
 
@@ -214,7 +215,7 @@ func TestShipImplementOptions(t *testing.T) {
 	if got.Wiki != base.Wiki || !got.CaptureWiki || !got.NoCapture || !got.Yes {
 		t.Errorf("wiki and capture settings = %+v, %v, %v, %v; want them unchanged from the base", got.Wiki, got.CaptureWiki, got.NoCapture, got.Yes)
 	}
-	if !got.NoSimplify || !reflect.DeepEqual(got.PatternDirs, base.PatternDirs) {
+	if !got.NoSimplify || !got.NoPlanReview || !reflect.DeepEqual(got.PatternDirs, base.PatternDirs) {
 		t.Errorf("the other base options were not carried over: %+v", got)
 	}
 	if !got.AllowUnelaborated {
