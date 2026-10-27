@@ -281,7 +281,8 @@ type runSpec struct {
 	noTools bool
 	// jsonSchema is passed via --json-schema when non-empty. The runners of the
 	// passes that emit findings, runClaudeFindings and runClaudeFinderFindings,
-	// set it (decision 109).
+	// set it (decision 109), and runClaudeSchema sets it for the rebase
+	// analysis (decision 160).
 	jsonSchema string
 	agentsJSON string // --agents when non-empty
 	// appendSystemPrompt is passed as --append-system-prompt when non-empty;
@@ -289,8 +290,9 @@ type runSpec struct {
 	appendSystemPrompt string
 	// addDirs holds the directories the session may read besides its working
 	// directory: the on-disk pattern catalog directory (patterns.Materialize),
-	// which runClaudeMemory, runClaudeFindings, runClaudePlan, and autoSpec
-	// add; the project memory directory (patterns.MaterializeMemory), which
+	// which runClaudeMemory, runClaudeFindings, runClaudeSchema, runClaudePlan,
+	// and autoSpec add; the project memory directory
+	// (patterns.MaterializeMemory), which
 	// runClaudeMemory, runClaudeFindings, runClaudePlan, runClaudeBrainReview,
 	// and autoMemorySpec add; and the directory of the diff a finder reads
 	// (diffscope.Materialize), which runClaudeFindings and
@@ -830,6 +832,15 @@ func (c *Client) runClaudeMemory(dir, prompt, label string, cat patterns.Catalog
 // none; the audit has no diff (decision 137).
 func (c *Client) runClaudeFindings(dir, prompt, label string, cat patterns.Catalog, mem patterns.MemoryCatalog, surface search.Surface, diffDir string) (text, model string, err error) {
 	return c.runSession(runSpec{dir: dir, label: label, model: c.model, effort: c.effort, readOnly: true, jsonSchema: string(schema.FinderOutput), addDirs: []string{cat.Dir, mem.Dir, diffDir}, searchRule: surface.AllowRule(), tools: c.finderTools}, prompt)
+}
+
+// runClaudeSchema is runClaude that also passes jsonSchema to the CLI via
+// --json-schema, so the session emits its result as JSON the CLI validates.
+// The rebase analysis calls it with schema.RebaseAnalysis (decision 160). cat
+// is the pattern catalog whose directory the session may read (--add-dir),
+// noCatalog for a session without one.
+func (c *Client) runClaudeSchema(dir, prompt, label string, cat patterns.Catalog, jsonSchema []byte) (text, model string, err error) {
+	return c.runSession(runSpec{dir: dir, label: label, model: c.model, effort: c.effort, readOnly: true, jsonSchema: string(jsonSchema), addDirs: []string{cat.Dir}}, prompt)
 }
 
 // noCatalog is what a session without a pattern catalog passes to its runner:

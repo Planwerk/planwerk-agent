@@ -487,6 +487,7 @@ func TestClaudeRunError_NoOutputAtAll(t *testing.T) {
 func TestClaudeArgs_StreamsEverySession(t *testing.T) {
 	full := runSpec{model: "opus", effort: "high", permissionMode: "plan", jsonSchema: `{"type":"object"}`, readOnly: true, agentsJSON: "{}", appendSystemPrompt: "contract", sessionID: "0b6f4a8e-6a4c-4c1e-9a55-3f0d2c1b7e21", addDirs: []string{"/tmp/planwerk-agent-patterns-test"}}
 	structuring := runSpec{model: "sonnet", effort: "medium", readOnly: true, noTools: true, jsonSchema: `{"type":"object"}`, sessionID: "0b6f4a8e-6a4c-4c1e-9a55-3f0d2c1b7e21"}
+	auto := runSpec{model: "opus", effort: "xhigh", permissionMode: claudeAutoPermissionMode, jsonSchema: `{"type":"object"}`, sessionID: "0b6f4a8e-6a4c-4c1e-9a55-3f0d2c1b7e21"}
 
 	for _, tc := range []struct {
 		name string
@@ -495,6 +496,7 @@ func TestClaudeArgs_StreamsEverySession(t *testing.T) {
 	}{
 		{"a full session", full, []string{"--session-id", "--permission-mode", "--add-dir", "--append-system-prompt", "--json-schema"}},
 		{"a structuring session", structuring, []string{"--session-id", "--permission-mode", "--json-schema"}},
+		{"an auto-mode session", auto, []string{"--session-id", "--permission-mode", "--json-schema"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			args := NewClient().claudeArgs(tc.spec)
@@ -1396,6 +1398,137 @@ func TestFinders_SessionErrorIsWrappedAndSkipsDecode(t *testing.T) {
 	}
 	if len(*calls) != 1 {
 		t.Errorf("ran %d sessions, want only the failed finder session", len(*calls))
+	}
+}
+
+// TestSchemaSessions_CarryTheirSchema pins the sessions besides the finders
+// that receive their schema via --json-schema (decision 160): the rebase
+// analysis on every run, read-only on the main tier. A valid result, the null
+// slice the schema allows included, decodes in that one session. The repair
+// decode stays the backstop for a result that arrives as text: an empty one
+// fails without a repair, a truncated one is repaired toward the schema on the
+// structure tier, and a failed session is wrapped and decodes nothing.
+func TestSchemaSessions_CarryTheirSchema(t *testing.T) {
+	t.Parallel()
+
+	adapters := []struct {
+		name string
+		// decodeLabel is the label the adapter decodes under; its repair
+		// session runs as decodeLabel-repair.
+		decodeLabel, schemaTitle, valid, sessionErrPrefix string
+		run                                               func(c *Client) (summary string, err error)
+		checkSpec                                         func(t *testing.T, c *Client, spec runSpec)
+	}{
+		{
+			name:             "rebase analysis",
+			decodeLabel:      "structured rebase-analysis",
+			schemaTitle:      `"title": "RebaseAnalysis"`,
+			valid:            `{"commits":null,"summary":"s","recommendation":"r"}`,
+			sessionErrPrefix: "analyzing rebased commits: ",
+			run: func(c *Client) (string, error) {
+				result, err := c.AnalyzeRebasedCommits("", goldenRebaseAnalysisContext())
+				if err != nil {
+					return "", err
+				}
+				return result.Summary, nil
+			},
+			checkSpec: func(t *testing.T, c *Client, spec runSpec) {
+				t.Helper()
+				if spec.label != "rebase-analysis" || spec.model != c.model || spec.effort != c.effort {
+					t.Errorf("label/model/effort = %q/%q/%q, want rebase-analysis on the main tier %q/%q", spec.label, spec.model, spec.effort, c.model, c.effort)
+				}
+				if !spec.readOnly || spec.noTools {
+					t.Errorf("readOnly=%v noTools=%v, want a read-only session that keeps its tools", spec.readOnly, spec.noTools)
+				}
+				if spec.jsonSchema != string(schema.RebaseAnalysis) {
+					t.Errorf("jsonSchema is not schema.RebaseAnalysis: %.80q", spec.jsonSchema)
+				}
+			},
+		},
+	}
+	for _, a := range adapters {
+		t.Run(a.name, func(t *testing.T) {
+			t.Parallel()
+
+			t.Run("a valid result decodes in one session", func(t *testing.T) {
+				t.Parallel()
+				// The finder and plan tiers differ from the main tier here, so a
+				// spec built on either of them fails checkSpec.
+				c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
+					return a.valid, "", nil
+				}, WithFinderModel("haiku"), WithFinderEffort("low"), WithPlanModel("fable"), WithPlanEffort("high"))
+				summary, err := a.run(c)
+				if err != nil {
+					t.Fatalf("adapter returned error: %v", err)
+				}
+				if summary != "s" {
+					t.Errorf("summary = %q, want s", summary)
+				}
+				if len(*calls) != 1 {
+					t.Fatalf("ran %d sessions, want 1", len(*calls))
+				}
+				a.checkSpec(t, c, (*calls)[0].spec)
+			})
+
+			t.Run("an empty result fails without a repair", func(t *testing.T) {
+				t.Parallel()
+				c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
+					return "", "", nil
+				})
+				_, err := a.run(c)
+				if want := "parsing " + a.decodeLabel + " as JSON: the output holds no JSON value"; err == nil || !strings.HasPrefix(err.Error(), want) {
+					t.Errorf("err = %v, want it to start with %q", err, want)
+				}
+				if len(*calls) != 1 {
+					t.Errorf("ran %d sessions, want 1 and no repair", len(*calls))
+				}
+			})
+
+			t.Run("a truncated result is repaired toward the schema", func(t *testing.T) {
+				t.Parallel()
+				truncated := strings.TrimSuffix(a.valid, "}")
+				c, calls := scriptedClient(t, func(call int, _ runSpec, _ string) (string, string, error) {
+					if call == 1 {
+						return truncated, "", nil
+					}
+					return a.valid, "", nil
+				})
+				summary, err := a.run(c)
+				if err != nil {
+					t.Fatalf("adapter returned error: %v", err)
+				}
+				if summary != "s" {
+					t.Errorf("summary = %q after the repair, want s", summary)
+				}
+				if len(*calls) != 2 {
+					t.Fatalf("ran %d sessions, want the session and one repair", len(*calls))
+				}
+				repair := (*calls)[1]
+				if !repair.spec.noTools || repair.spec.label != a.decodeLabel+"-repair" {
+					t.Errorf("repair noTools=%v label=%q, want a structure-tier session labelled %q", repair.spec.noTools, repair.spec.label, a.decodeLabel+"-repair")
+				}
+				for _, want := range []string{"The corrected JSON MUST match this JSON Schema:", a.schemaTitle} {
+					if !strings.Contains(repair.prompt, want) {
+						t.Errorf("repair prompt lacks %q", want)
+					}
+				}
+			})
+
+			t.Run("a failed session is wrapped and decodes nothing", func(t *testing.T) {
+				t.Parallel()
+				sessionErr := errors.New("claude exited 1")
+				c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
+					return "", "", sessionErr
+				})
+				_, err := a.run(c)
+				if !errors.Is(err, sessionErr) || err.Error() != a.sessionErrPrefix+"claude exited 1" {
+					t.Errorf("err = %v, want %sclaude exited 1", err, a.sessionErrPrefix)
+				}
+				if len(*calls) != 1 {
+					t.Errorf("ran %d sessions, want only the failed one", len(*calls))
+				}
+			})
+		})
 	}
 }
 
