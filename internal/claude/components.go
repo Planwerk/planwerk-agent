@@ -1144,6 +1144,24 @@ func foregroundRunLine() string {
 	return "Run every command in the FOREGROUND and wait for it to finish before the next step — never background a test or build run and move on. You need its real exit status in hand to commit and to fill in the report; a backgrounded run's result never reaches this one-shot session. If a command outlives the Bash tool's foreground time limit, background it and poll its output within this same turn until it exits."
 }
 
+// verifyLocallyLine is the verify step of the three apply sessions whose
+// report carries a Verification section (simplify-apply, review-apply, and
+// rebase apply); verificationReportLines is the section it fills. It carries
+// no list prefix and no trailing newline, so each caller numbers its own
+// step, and no %, so it is safe inside a format string.
+func verifyLocallyLine() string {
+	return "Verify locally: build the project and run the tests (or the targeted subset covering the touched code). " + foregroundRunLine() + " Record the exact commands and their results under Verification in the report. If a command cannot run in this environment, say so explicitly."
+}
+
+// verificationReportLines is the Verification section of the simplify-apply,
+// review-apply, and rebase apply report templates: one entry per command the
+// session ran, with its result. It carries the templates' three-space indent
+// and its own trailing newline, and no %, so it is safe inside a format
+// string.
+func verificationReportLines() string {
+	return "   ### Verification\n   - <exact command> — <PASS | FAIL: first failing line | not run: reason>\n"
+}
+
 // foldSteps renders the fold-via-autosquash recipe shared by every session that
 // folds its changes into the branch commits they belong to: fix (full and
 // bare), simplify-apply, and review-apply. Each change is recorded as a fixup
