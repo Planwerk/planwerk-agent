@@ -1191,6 +1191,56 @@ func TestBuildPlanPrompt_MetaDeps_Golden(t *testing.T) {
 	assertGoldenPrompt(t, "plan_meta_deps", BuildPlanPrompt(goldenPlanMetaDepsContext()))
 }
 
+// goldenReviewedPlan is the plan the plan-review and plan-revision goldens
+// judge and revise; it is the plan TestBuildImplementPromptWithPlan_Golden
+// embeds.
+const goldenReviewedPlan = "## Implementation Plan (issue #42)\n\n### Summary\n- Add a golden file per prompt builder and a -update helper.\n\n### Status\nSTATUS: PLAN_READY"
+
+// TestBuildPlanReviewPrompt_Golden locks the plan reviewer's prompt: the issue
+// and the plan fenced as data, the nine checks, the rubric, and the JSON shape.
+func TestBuildPlanReviewPrompt_Golden(t *testing.T) {
+	assertGoldenPrompt(t, "plan_review", buildPlanReviewPrompt(goldenImplementContext(), goldenReviewedPlan))
+}
+
+// TestBuildPlanReviewPrompt_RendersRelations locks that the reviewer judges a
+// Sub Issue's plan against its Meta Issue and siblings, as the planner wrote it.
+func TestBuildPlanReviewPrompt_RendersRelations(t *testing.T) {
+	if got := buildPlanReviewPrompt(goldenPlanMetaContext(), goldenReviewedPlan); !strings.Contains(got, "## Meta / Sub-Issue Context") {
+		t.Errorf("the plan review prompt of a Sub Issue carries no Meta / Sub-Issue context:\n%s", got)
+	}
+}
+
+// TestBuildPlanPrompt_Revision_Golden locks the "## Revising a Prior Plan"
+// block of the one re-plan a plan review below the bar triggers.
+func TestBuildPlanPrompt_Revision_Golden(t *testing.T) {
+	ctx := goldenImplementContext()
+	ctx.PriorPlan = goldenReviewedPlan
+	ctx.PlanReviewGaps = []string{"Test Plan: no test exercises the -update flag's write error"}
+	ctx.PlanReviewTarget = "A 10 names a test for every Acceptance Criterion."
+	assertGoldenPrompt(t, "plan_revision", BuildPlanPrompt(ctx))
+}
+
+// TestBuildPlanPrompt_RevisionOmitsEmptyParts locks that the revision block
+// writes only the parts the review gave, and none at all without a prior plan.
+func TestBuildPlanPrompt_RevisionOmitsEmptyParts(t *testing.T) {
+	ctx := goldenImplementContext()
+	ctx.PriorPlan = goldenReviewedPlan
+	got := BuildPlanPrompt(ctx)
+	if !strings.Contains(got, "## Revising a Prior Plan") || !strings.Contains(got, "<prior-plan>") {
+		t.Fatalf("a prior plan rendered no revision block:\n%s", got)
+	}
+	for _, absent := range []string{"Gaps to close:", "What a 10/10 plan would look like:"} {
+		if strings.Contains(got, absent) {
+			t.Errorf("a revision without gaps or target rendered %q", absent)
+		}
+	}
+
+	ctx.PriorPlan = " \n\t"
+	if got := BuildPlanPrompt(ctx); strings.Contains(got, "## Revising a Prior Plan") {
+		t.Errorf("a whitespace-only prior plan rendered a revision block")
+	}
+}
+
 // TestBuildSimplifyFindPrompt_Golden locks the read-only ponytail-style finder
 // prompt: the decision ladder, the delete-list framing, and the hard guardrail
 // that keeps validation/error-handling/security/accessibility/tests off the

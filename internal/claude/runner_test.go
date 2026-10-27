@@ -1752,3 +1752,50 @@ func TestRunClaudeBrainReview_SessionErrorSurfaces(t *testing.T) {
 		t.Errorf("runClaudeBrainReview = %q, %v, want the session's error", text, err)
 	}
 }
+
+// TestReviewPlan_RunsOnThePlanTierAndOpensNothing locks where the plan review
+// runs: one read-only session labeled plan-review on the planning tier, which
+// opens neither the pattern catalog nor the memory directory and carries no
+// search rule, whatever the context it is handed carries.
+func TestReviewPlan_RunsOnThePlanTierAndOpensNothing(t *testing.T) {
+	t.Parallel()
+
+	// The planning tier this test configures, its own constants for the
+	// reason testWorkerModel's comment gives.
+	const (
+		catalogDir      = "/tmp/planwerk-agent-patterns-test"
+		memoryDir       = "/tmp/planwerk-agent-memory-test"
+		planTierModel   = "fable"
+		planTierEffort  = "max"
+		reportedModelID = "claude-fable-5-1"
+	)
+	c, calls := scriptedClient(t, func(int, runSpec, string) (string, string, error) {
+		return `{"gaps": [], "to_reach_ten": "", "score": 9}`, reportedModelID, nil
+	}, WithPlanModel(planTierModel), WithPlanEffort(planTierEffort))
+	ctx := goldenImplementContext()
+	ctx.Catalog.Dir = catalogDir
+	ctx.Memory = patterns.MemoryCatalog{Dir: memoryDir, Pages: goldenMemory().Pages}
+	ctx.Brain = search.Surface{Command: "planwerk-agent brain search planwerk/planwerk-agent"}
+	_, model, err := c.ReviewPlan("", ctx, "## Implementation Plan (issue #42)\n\nSTATUS: PLAN_READY")
+	if err != nil {
+		t.Fatalf("ReviewPlan returned error: %v", err)
+	}
+	if model != reportedModelID {
+		t.Errorf("ReviewPlan returned model %q, want the session's %q for the comment footer", model, reportedModelID)
+	}
+
+	if len(*calls) != 1 {
+		t.Fatalf("the reviewer ran %d sessions, want 1", len(*calls))
+	}
+	spec := (*calls)[0].spec
+	if spec.label != "plan-review" || spec.model != planTierModel || spec.effort != planTierEffort || !spec.readOnly {
+		t.Errorf("session label %q, model %q, effort %q, readOnly %t; want plan-review, %s, %s, true", spec.label, spec.model, spec.effort, spec.readOnly, planTierModel, planTierEffort)
+	}
+	if spec.searchRule != "" {
+		t.Errorf("the plan review must carry no search rule; got %q", spec.searchRule)
+	}
+	args := c.claudeArgs(spec)
+	if slices.Contains(args, "--add-dir") || slices.Contains(args, catalogDir) || slices.Contains(args, memoryDir) {
+		t.Errorf("the plan review session must open no directory; argv %v", args)
+	}
+}

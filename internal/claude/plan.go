@@ -21,8 +21,9 @@ import (
 // runClaude* call it is a fresh `claude -p` invocation, so plan and
 // implement are two independent sessions by construction.
 func (c *Client) Plan(dir string, ctx implement.Context) (string, string, error) {
-	// Returned unwrapped: the sole caller (implement's runPlanning) already
-	// prefixes "claude plan", and runClaudePlan names the model and the reason.
+	// Returned unwrapped: both callers (implement's runPlanning, and
+	// reviewAndRevisePlan for the one re-plan) prefix "claude plan", and
+	// runClaudePlan names the model and the reason.
 	out, model, err := c.runClaudePlan(dir, BuildPlanPrompt(ctx), "plan", ctx.Catalog, ctx.Memory, ctx.Brain)
 	if err != nil {
 		return "", "", err
@@ -91,6 +92,7 @@ func BuildPlanPrompt(ctx implement.Context) string {
 	// no memory pages)
 	sb.WriteString(projectMemoryBlock(ctx.Memory))
 	sb.WriteString(brainSearchBlock(ctx.Brain))
+	writePlanRevision(&sb, ctx)
 
 	sb.WriteString(domainSweepBlock(ctx.Domains, `Report the sweep in the "### Domain Sweep" section of the plan: one bullet per domain the change touches, naming the concrete consequence and the Change Set, Commit Sequence, Test Plan, or Documentation Plan entry that carries it, then a single "Not touched:" line naming every remaining domain. Every domain above appears exactly once, on its own bullet or in that line — a domain you can place in neither is a domain you have not swept. Sweeping a domain never widens the change: a consequence you find is either already required by an Acceptance Criterion, or it is over-scope, which the OVER-SCOPE GATE under Hard rules governs.`))
 
@@ -151,4 +153,40 @@ Ground the plan before you design it: open every file, symbol, and migration the
 `)
 
 	return sb.String()
+}
+
+// writePlanRevision writes the "## Revising a Prior Plan" block of the one
+// re-planning session a plan review below the bar triggers: the reviewer's
+// gaps and target, and the rejected plan, set on the context by the implement
+// runner. Both come from sessions that read the issue, so both are fenced and
+// named as data, like the plan in the implement prompt. A context without a
+// prior plan writes nothing, so every other planning prompt is unchanged.
+func writePlanRevision(sb *strings.Builder, ctx implement.Context) {
+	prior := strings.TrimSpace(ctx.PriorPlan)
+	if prior == "" {
+		return
+	}
+	sb.WriteString("## Revising a Prior Plan\n\n")
+	sb.WriteString("A reviewer scored a previous plan for this issue below the bar. Write a REVISED plan, in the format below, that keeps everything already correct and closes every gap the reviewer found.\n\n")
+	var review strings.Builder
+	if len(ctx.PlanReviewGaps) > 0 {
+		review.WriteString("Gaps to close:\n")
+		for _, g := range ctx.PlanReviewGaps {
+			fmt.Fprintf(&review, "- %s\n", strings.TrimSpace(g))
+		}
+	}
+	if t := strings.TrimSpace(ctx.PlanReviewTarget); t != "" {
+		if review.Len() > 0 {
+			review.WriteString("\n")
+		}
+		fmt.Fprintf(&review, "What a 10/10 plan would look like: %s\n", t)
+	}
+	tags := []string{"prior-plan"}
+	if review.Len() > 0 {
+		sb.WriteString(fencedData("plan-review", "", strings.TrimSpace(review.String())))
+		tags = []string{"plan-review", "prior-plan"}
+	}
+	sb.WriteString(fencedData("prior-plan", "", prior))
+	sb.WriteString("\n")
+	sb.WriteString(untrustedDataLine("They are the reviewer's verdict on the previous plan, and that plan.", tags...))
 }
