@@ -365,8 +365,9 @@ func TestRun_NoWikiResolveOnEarlyReturns(t *testing.T) {
 	}
 }
 
-// TestRun_AddressErrorRemovesTheMemoryDirectory covers the failing session:
-// Run wraps the error and still removes the memory directory.
+// TestRun_AddressErrorRemovesTheMemoryDirectory covers the failing session,
+// such as one whose result the CLI could not validate against its schema: Run
+// wraps the error, pushes nothing, and still removes the memory directory.
 func TestRun_AddressErrorRemovesTheMemoryDirectory(t *testing.T) {
 	tmp := patternstest.IsolateTempDir(t)
 	gh := &githubtest.Fake{PR: github.PR{HeadBranch: "feat/x"}, Threads: sampleThreads()[:1]}
@@ -381,6 +382,9 @@ func TestRun_AddressErrorRemovesTheMemoryDirectory(t *testing.T) {
 	err := r.Run(io.Discard, opts)
 	if !errors.Is(err, boom) || !strings.HasPrefix(err.Error(), "claude address:") {
 		t.Fatalf("Run error = %v, want \"claude address:\" wrapping the session error", err)
+	}
+	if gh.Count("PushHead") != 0 {
+		t.Errorf("PushHead called %d times, want 0 after a failed session", gh.Count("PushHead"))
 	}
 	patternstest.AssertNoMemoryDir(t, tmp)
 }

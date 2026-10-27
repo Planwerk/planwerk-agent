@@ -17,11 +17,24 @@ import (
 // but does NOT push; the orchestrator owns the push, mirroring how the rebase
 // apply session leaves publishing to the orchestrator. It runs in auto mode so
 // the session can edit files, run tests, and commit without an interactive
-// confirmation. The decode shares decodeJSONWithRepair so a one-character JSON
-// glitch does not fail the run.
+// confirmation. A session given no --claude-plugin plugin receives
+// schema.AddressResult via --json-schema, so the CLI validates the object it
+// emits; one given a plugin runs without it, because under the flag a Stop
+// hook's report after the final message never reaches the session (decision
+// 160). The gate sees only those plugins: one the operator's own settings
+// enable under --claude-inherit-user-config loads unseen, and its Stop hook's
+// report is dropped too. The decode shares decodeJSONWithRepair, the backstop
+// for a result that arrives as text, so a one-character JSON glitch does not
+// fail the run.
 func (c *Client) Address(dir string, ctx address.Context) (*report.AddressResult, error) {
 	spec := c.autoMemorySpec(dir, "address", ctx.Catalog, ctx.Memory)
 	spec.denyRules = skillDenyRules(ctx.ChangedSkills)
+	// A Stop hook's report after the final message never reaches a session
+	// under --json-schema, so a session given a --claude-plugin plugin runs
+	// without it (decision 160).
+	if len(c.sessionPlugins(spec.readOnly)) == 0 {
+		spec.jsonSchema = string(schema.AddressResult)
+	}
 	out, model, err := c.runSession(spec, BuildAddressPrompt(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("running address: %w", err)
