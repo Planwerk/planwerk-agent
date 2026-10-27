@@ -329,8 +329,12 @@ are there even when the failure billed no call: a pass that
 [Pass Status](#pass-status) records as `failed` finds them under the
 `usage.passes` entry of the same name. A session id names the
 transcript Claude Code wrote for that session under its config directory
-(`find ~/.claude/projects -name '<session id>.jsonl'`). Run with `-v` to see
-each id as the session starts.
+(`find ~/.claude/projects -name '<session id>.jsonl'`) only when the session
+was saved: a session that edits always is, while a read-only or structuring
+session runs with `--no-session-persistence` unless the run passes
+[`--keep-transcripts`](/reference/cli#global-flags). The `review` pass in the
+example is read-only, so by default its id names no transcript. Run with `-v`
+to see each id, and whether its session is saved, as the session starts.
 
 ## Demotion-Gate Records
 

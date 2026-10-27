@@ -69,7 +69,8 @@ environment overrides the main CLI honors (`PLANWERK_CLAUDE_MODEL`,
 `PLANWERK_STRUCTURE_EFFORT`, `PLANWERK_FINDER_MODEL`,
 `PLANWERK_FINDER_EFFORT`, `PLANWERK_FINDER_TOOLS`, `PLANWERK_CLAUDE_TIMEOUT`,
 `PLANWERK_CLAUDE_INHERIT_USER_CONFIG`, `PLANWERK_DIFF_EXCLUSIONS`,
-`PLANWERK_CLAUDE_PLUGINS`), and the two switches take the values the CLI
+`PLANWERK_KEEP_TRANSCRIPTS`, `PLANWERK_CLAUDE_PLUGINS`), and the three
+switches take the values the CLI
 takes: `1`, `true`, `yes`, `on`, `0`,
 `false`, `no`, `off`, in any letter case. An effort that is not one of `low`,
 `medium`, `high`, `xhigh`, `max`, a tool list that

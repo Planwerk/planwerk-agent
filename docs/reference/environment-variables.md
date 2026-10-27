@@ -13,6 +13,7 @@ full resolution order.
 | `PLANWERK_SCOPE_PATTERNS` | `--scope-patterns` (`review`) | Truthy values (`1`, `true`, `yes`, `on`) carry in the review prompt only the bodies of the patterns that apply to every file or that the changed files match, and list the rest as an index; falsy values (`0`, `false`, `no`, `off`) do not. Off by default. No config-file key. |
 | `PLANWERK_REMOTE_PATTERNS_TTL` | `--remote-patterns-ttl` | Duration (e.g. `24h`); `<=0` disables refresh once cached. |
 | `PLANWERK_SHOW_CLAUDE_OUTPUT` | `--show-claude-output` | Truthy values enable streaming: `1`, `true`, `yes`, `on` (case-insensitive). |
+| `PLANWERK_KEEP_TRANSCRIPTS` | `--keep-transcripts` | Truthy values let Claude Code save the transcript of every session, the read-only and structuring ones included: `1`, `true`, `yes`, `on` (case-insensitive). Off by default: only the sessions that edit keep one. Not read from `.planwerk/config.yaml`. |
 | `PLANWERK_CLAUDE_TIMEOUT` | `--claude-timeout` | Duration (e.g. `20m`, `1h30m`); must be `> 0`. |
 | `PLANWERK_CLAUDE_MODEL` | `--claude-model` | Model alias or full ID passed to Claude Code via `--model`. |
 | `PLANWERK_CLAUDE_EFFORT` | `--claude-effort` | One of `low`, `medium`, `high`, `xhigh`, `max`. |
