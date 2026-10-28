@@ -733,12 +733,12 @@ planwerk-agent implement --wiki --capture-wiki --yes owner/repo#123
 are mutually exclusive. The implement session runs in Claude Code's auto mode
 and requires Claude Code v2.1.306+.
 
-A session that ends without its implementation report (typically it yielded to
-"wait" for a backgrounded test run whose result can never arrive in a one-shot
-session) is first resumed in place with a completion nudge — the same Claude
-session, full context intact, told to finish the outstanding verification and
-emit the report. Only when that fails does the run abort; the session's final
-output is then preserved as a `## Progress Note` comment on the issue.
+A session that ends without its implementation report (for example, its last
+turn ended on a summary instead of the report) is first resumed in place with a
+completion nudge — the same Claude session, full context intact, told to finish
+the outstanding verification and emit the report. Only when that fails does the
+run abort; the session's final output is then preserved as a `## Progress Note`
+comment on the issue.
 
 The implement session also receives its report's status contract (the `STATUS`
 verdict definitions and the `unproven` Acceptance Criterion status) in its

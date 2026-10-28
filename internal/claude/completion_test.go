@@ -100,9 +100,16 @@ func TestRunWithCompletionNudge_NudgeCompletes(t *testing.T) {
 	if second.spec.dir != first.spec.dir || second.spec.model != first.spec.model || second.spec.agentsJSON != first.spec.agentsJSON || second.spec.permissionMode != first.spec.permissionMode {
 		t.Errorf("nudge spec %+v drifted from the initial spec %+v", second.spec, first.spec)
 	}
-	for _, want := range []string{implementReportHeading, "KILLED", "FOREGROUND", "STATUS: <" + implementReportStatusChoices + ">"} {
+	for _, want := range []string{implementReportHeading, "FOREGROUND", "STATUS: <" + implementReportStatusChoices + ">"} {
 		if !strings.Contains(second.prompt, want) {
 			t.Errorf("nudge prompt does not contain %q:\n%s", want, second.prompt)
+		}
+	}
+	// Since Claude Code 2.1.292 a backgrounded command ends before the process
+	// does, so the nudge must not tell the session it was killed (decision 163).
+	for _, banned := range []string{"KILLED", "never arrive"} {
+		if strings.Contains(second.prompt, banned) {
+			t.Errorf("nudge prompt still contains %q:\n%s", banned, second.prompt)
 		}
 	}
 }

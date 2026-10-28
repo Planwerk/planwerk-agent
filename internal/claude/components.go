@@ -978,7 +978,7 @@ Each row is an excuse sessions reach for. When you catch yourself forming one, t
 | "The scope grew, so this is a circuit breaker — PARTIAL is legitimate." | The breakers fire on thrashing and on scope the issue never asked for, never on the size of the scope it did ask for. Implementing the packages the issue lists IS the required scope; assessing it as too large is never a route to PARTIAL. |
 | "The remaining criteria need CI, so the honest verdict is PARTIAL." | PARTIAL is for an unfinished work package. A test you wrote but cannot run here is an unproven criterion under DONE_WITH_CONCERNS; PARTIAL withholds the very pull request CI runs on. |
 | "This test was already failing / is flaky — skipping it is fine." | Run it on the base commit. If it passes there, your change broke it: fix the root cause, and never weaken, skip, or delete the test to go green. If it fails there too, it is pre-existing: leave it alone and record it as "fail — pre-existing on <base>". |
-| "I'll start the test run in the background and commit once it is green." | This session has no later turn. A backgrounded run is killed when you stop, its result never arrives, and the commit it gated never happens. Run it in the foreground and wait. |
+| "I'll start the test run in the background and commit once it is green." | A backgrounded run does not end with your turn: the session waits for it and wakes you in a new turn, and planwerk-agent reads only the last turn's output as your report. Run it in the foreground and wait, so the commit and the report follow the result in one turn. |
 | "This refactor is basically required to do the change cleanly." | Unless it is listed in Affected Areas, it is scope the issue did not ask for. Make the change the issue asked for; note the refactor and leave it. |
 | "I noticed a bug next door — fixing it is a courtesy." | It is an unsolicited change a reviewer did not ask for and cannot attribute. Record it under "Noticed but not touching" and move on. |
 
@@ -1136,12 +1136,15 @@ func selfReviewPatternLine() string {
 
 // foregroundRunLine is the rule for running tests and builds in a one-shot
 // session, shared by every session that verifies its own edits before it
-// reports. The failure it prevents is the most frequent one the completion
-// nudge sees (completion.go): a session that starts the test run in the
-// background and ends its turn to wait for it, which kills the run and loses
-// its result. It carries no list prefix and no trailing newline.
+// reports. Since Claude Code 2.1.292 a command still running in the background
+// when the turn ends keeps the session open until it exits and then wakes it
+// for another turn, whose output replaces the report the session already wrote
+// (completion.go nudges it back); one that never exits holds the session until
+// Claude Code's background time limit stops it, 30 minutes by default in
+// claude -p (decision 163). It carries no list prefix, no trailing newline,
+// and no %.
 func foregroundRunLine() string {
-	return "Run every command in the FOREGROUND and wait for it to finish before the next step — never background a test or build run and move on. You need its real exit status in hand to commit and to fill in the report; a backgrounded run's result never reaches this one-shot session. If a command outlives the Bash tool's foreground time limit, background it and poll its output within this same turn until it exits."
+	return "Run every command in the FOREGROUND and wait for it to finish before the next step — never background a test or build run and move on. You need its real exit status in hand to commit and to fill in the report. If a command outlives the Bash tool's foreground time limit, background it and poll its output within this same turn until it exits. A command still running in the background when you end the turn keeps this session open until it exits and then starts another turn, and planwerk-agent reads only the last turn's output: before you end the turn, wait for every command you backgrounded, and stop any that never exits on its own (a server, a watcher)."
 }
 
 // verifyLocallyLine is the verify step of the three apply sessions whose

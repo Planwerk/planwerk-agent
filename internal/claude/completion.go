@@ -11,10 +11,11 @@ import (
 
 // maxCompletionNudges bounds the follow-up turns runWithCompletionNudge spends
 // on a session that ended without its terminal report. Two attempts cover the
-// dominant failure — a session that yielded to "wait" for a backgrounded test
-// run needs one resumed turn to finish the verification and emit the report,
+// dominant failure — a session whose last turn ended on a summary instead of
+// the report needs one resumed turn to finish the verification and emit it,
 // and occasionally a second when that turn is itself interrupted — while
-// keeping a session that structurally refuses to report from looping.
+// keeping a session that structurally refuses to report from looping
+// (decision 163).
 const maxCompletionNudges = 2
 
 // Status vocabularies rendered into the completion nudge, matching each
@@ -40,21 +41,25 @@ func terminalReportComplete(heading string) func(string) bool {
 // completionNudgePrompt is the follow-up turn sent to a resumed session that
 // ended without its terminal report. The session keeps its full context, so
 // the prompt does not restate the task; it names the one thing the previous
-// turn got wrong (no report), warns that backgrounded commands died with that
-// turn, and demands the report — honest escalation included — as the turn's
-// final output. The escalation it accepts is one the session's own prompt
-// names: the implement prompt makes the circuit breakers the only route to
-// PARTIAL and its rationalizations table rebuts "too much remains for this
-// turn", so the nudge must not name remaining work as a route of its own. The
+// turn got wrong (no report) and demands the report — honest escalation
+// included — as the turn's final output. It says nothing about killed
+// background commands: since Claude Code 2.1.292 the process exits only once
+// every backgrounded command has exited or been stopped by the CLI's
+// background time limit, and the session is woken either way, so none died
+// unseen with the turn the nudge follows (decision 163). The escalation it
+// accepts is one the session's own prompt names: the implement prompt makes
+// the circuit breakers the only route to PARTIAL and its rationalizations
+// table rebuts "too much remains for this turn", so the nudge must not name
+// remaining work as a route of its own. The
 // report's Next line follows the STATUS line (reportShapeBlock), so the nudge
 // asks for the status line, not for the last line.
 func completionNudgePrompt(heading, statuses string) string {
 	return fmt.Sprintf(`Your previous turn ended WITHOUT the mandatory terminal report: planwerk-agent did not find both the %q heading and a terminal STATUS line, so it treats the session as unfinished and stops the run unless this turn completes it.
 
-Any command you had running in the background was KILLED when that turn ended — its result or notification will never arrive. Do this now, in this turn:
+Do this now, in this turn:
 
 1. Re-check the state of your work (git status, git log): confirm what is committed and what is not.
-2. Re-run whatever verification was still outstanding, in the FOREGROUND, and wait for it to finish. If a command genuinely outlives the Bash tool's foreground time limit, run it in the background and poll its output from within this same turn until it exits — NEVER end the turn to "wait" for it.
+2. Re-run, in the FOREGROUND, any verification whose result you have not seen in this session, and wait for it to finish. If a command genuinely outlives the Bash tool's foreground time limit, run it in the background and poll its output from within this same turn until it exits — NEVER end the turn to "wait" for it.
 3. Commit any finished but uncommitted work.
 4. End the turn with the complete report: it MUST carry the %q heading and MUST end with a terminal "STATUS: <%s>" line. If work remains that you cannot finish in this turn, report it honestly with the appropriate escalation status instead of waiting for anything — an honest escalation is accepted; a turn without the report is not.
 
