@@ -137,6 +137,61 @@ func TestRunSession_UsageUncountedWhenEnvelopeCarriesNone(t *testing.T) {
 	}
 }
 
+// TestRunSession_CountsEveryTurnOfAFailedWokenSession covers a session that
+// background work woke for a second turn, which then failed: the first turn's
+// tokens count as well, and the cost is the failed event's cumulative figure
+// (decision 163).
+func TestRunSession_CountsEveryTurnOfAFailedWokenSession(t *testing.T) {
+	ok := `{"type":"result","subtype":"success","result":"STARTED",` +
+		`"usage":{"input_tokens":10,"output_tokens":100},"total_cost_usd":0.1}`
+	failed := `{"type":"result","is_error":true,"subtype":"error_max_turns",` +
+		`"usage":{"input_tokens":5,"output_tokens":50},"total_cost_usd":0.3}`
+	fakeClaude(t, "cat >/dev/null\nprintf '%s\\n' '"+ok+"' '"+failed+"'\nexit 1\n")
+	c := NewClient()
+
+	_, _, err := c.runSession(runSpec{label: "implement", model: "opus", effort: "xhigh"}, "prompt")
+	if err == nil {
+		t.Fatal("expected an error for a failed turn")
+	}
+	if !strings.Contains(err.Error(), "error_max_turns") {
+		t.Errorf("error = %q, want the failed event's reason", err)
+	}
+	got := c.UsageTotals()
+	if got.Calls != 1 || got.InputTokens != 15 || got.OutputTokens != 150 || got.CostUSD != 0.3 {
+		t.Errorf("usage = %+v, want one call with both turns' tokens and the cumulative cost 0.3", got)
+	}
+}
+
+// TestRunSession_TimeoutCountsTheTurnsItFinished covers a woken session that
+// outlives its deadline: no failed result event arrives, but the turn that
+// finished before the kill spent its tokens and is counted (decision 163).
+func TestRunSession_TimeoutCountsTheTurnsItFinished(t *testing.T) {
+	ok := `{"type":"result","subtype":"success","result":"STARTED",` +
+		`"usage":{"input_tokens":10,"output_tokens":100},"total_cost_usd":0.1}`
+	// The event is printed before anything else, so it reaches the reader long
+	// before the 200ms deadline; like TestRunSession_TimeoutNamesTheDeadline's
+	// fake, this one never reads its stdin.
+	fakeClaude(t, "printf '%s\\n' '"+ok+"'\nsleep 30\n")
+	c := NewClient(WithTimeout(200 * time.Millisecond))
+
+	start := time.Now()
+	_, _, err := c.runSession(runSpec{label: "implement", model: "opus", effort: "xhigh"}, "prompt")
+	elapsed := time.Since(start)
+	if err == nil {
+		t.Fatal("expected an error when the invocation outlives the timeout")
+	}
+	if elapsed > 10*time.Second {
+		t.Errorf("returned after %s: the deadline did not bound the wait", elapsed)
+	}
+	if !strings.Contains(err.Error(), "timed out after") {
+		t.Errorf("error = %q, want it to name the timeout", err)
+	}
+	got := c.UsageTotals()
+	if got.Calls != 1 || got.OutputTokens != 100 || got.CostUSD != 0.1 {
+		t.Errorf("usage = %+v, want the finished turn counted once", got)
+	}
+}
+
 // TestRunClaudeStream_KeepsStderrTail covers the pipe contract: exec must have
 // finished copying stderr before Wait returns, or the tail — the whole
 // diagnosis on the error path — can be lost.

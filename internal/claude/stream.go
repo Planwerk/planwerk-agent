@@ -61,18 +61,19 @@ type streamEvent struct {
 	// over Result when present so a session run under --json-schema reads the
 	// constrained output; an absent field stays nil and Result is used instead.
 	StructuredOutput json.RawMessage `json:"structured_output,omitempty"`
-	// Usage and TotalCostUSD are carried on the `result` event and hold the
-	// run's cumulative token counts and the CLI's own estimated cost. Both are
-	// captured raw and decoded best-effort in handleStreamLine so a usage-schema
-	// change on the result event — a reshaped usage object, a stringified cost —
-	// never makes the line unparseable and discards the result text it shares. An
-	// absent block stays nil, so a non-`result` event contributes nothing.
+	// Usage and TotalCostUSD are carried on the `result` event: the token counts
+	// of that event's own turns, and the CLI's own estimated cost, cumulative
+	// for the process (decision 163). Both are captured raw and decoded
+	// best-effort in handleStreamLine so a usage-schema change on the result
+	// event — a reshaped usage object, a stringified cost — never makes the line
+	// unparseable and discards the result text it shares. An absent block stays
+	// nil, so a non-`result` event contributes nothing.
 	Usage        json.RawMessage `json:"usage,omitempty"`
 	TotalCostUSD json.RawMessage `json:"total_cost_usd,omitempty"`
 	// SessionID is the id of the session the event belongs to; every event
 	// carries it, the `system`/`init` event first. Tools is the init event's
 	// list of the tool names the session loaded. NumTurns and PermissionDenials
-	// are carried on the `result` event: the turns the invocation took, and one
+	// are carried on the `result` event: the turns that event covers, and one
 	// {tool_name, tool_use_id, tool_input} entry per tool call Claude Code's
 	// permission check refused. All four are captured raw and decoded
 	// best-effort in handleStreamLine, for the reason Usage is (decision 152).
@@ -88,8 +89,9 @@ type streamEvent struct {
 }
 
 // sessionStats records how one `claude -p` invocation spent its turns: its
-// tool calls by tool name (a subagent's included), the turns and the
-// permission denials its `result` event reports, and its session id.
+// tool calls by tool name (a subagent's included), its turns summed over
+// every `result` event, the permission denials the last one reports, and its
+// session id.
 // runClaudeStream folds it into the pass with addSessionStats (decision 152).
 type sessionStats struct {
 	toolUses          map[string]int
@@ -117,10 +119,11 @@ func (s sessionStats) isZero() bool {
 // final result text, whether a `result` event arrived at all, the accumulated
 // assistant text as a defensive fallback for a stream that carried none, the
 // resolved model id from the init event (empty if the stream never announced
-// one), the cumulative token usage and estimated cost from the `result` event
-// (zero if it carried none), the raw `result` event of a failed turn (nil when
-// the turn succeeded), the tool names and the plugin names the init event
-// listed (nil when no init event carried the list), and the session's stats.
+// one), the token usage summed over every `result` event and the estimated
+// cost the last one reported (zero if none carried them), the raw `result`
+// event of a failed turn (nil when the turn succeeded), the tool names and the
+// plugin names the init event listed (nil when no init event carried the
+// list), and the session's stats.
 type streamOutcome struct {
 	final, acc    strings.Builder
 	sawResult     bool
@@ -294,7 +297,7 @@ func (c *Client) runClaudeStream(spec runSpec, prompt string) (string, string, e
 	// closes the pipes underneath the reader, so readErr would otherwise
 	// report "file already closed" and bury the real reason.
 	if timeout := c.timeoutError(ctx, spec.model, stderrBuf.Bytes()); timeout != nil {
-		c.addFailureUsage(spec.label, out.failLine)
+		c.addFailureUsage(spec.label, out.usage, out.cost)
 		return "", "", timeout
 	}
 	if readErr != nil {
@@ -302,8 +305,8 @@ func (c *Client) runClaudeStream(spec runSpec, prompt string) (string, string, e
 	}
 	if waitErr != nil {
 		// A failed turn still spent its tokens: the `result` event carries the
-		// usage block, so count it before reporting.
-		c.addFailureUsage(spec.label, out.failLine)
+		// usage block, so count it, and every turn before it, before reporting.
+		c.addFailureUsage(spec.label, out.usage, out.cost)
 		return "", "", claudeRunError(waitErr, spec.model, out.failLine, stderrBuf.Bytes())
 	}
 
@@ -423,13 +426,17 @@ func readStreamLine(br *bufio.Reader, limit int) ([]byte, error) {
 // `tool_use` block of an `assistant` event is counted in out.stats, a
 // subagent's included. A `result` event sets
 // out.sawResult, and its text, token usage, estimated cost, turn count and
-// number of permission denials are recorded best-effort, each set only on a
-// clean decode, and a later `result` event overwrites an earlier one. A
-// `result` event that reports a failed turn is copied verbatim into
-// out.failLine so the caller can diagnose the exit with envelopeFailure. The
-// copy is taken only on failure — the line is a slice of the reader's buffer,
-// reused across lines, and a successful run must not pay for a second copy of
-// a result that can reach megabytes (decision 152).
+// number of permission denials are recorded best-effort, each only on a clean
+// decode. A session that background work wakes for another turn emits one
+// `result` event per turn: the token usage and turn count of each cover its
+// own turns and are added up, while the cost is cumulative for the process,
+// so a later event's cost and denial count, and its text when it has any,
+// replace an earlier one's (decision 163). A `result` event that reports a
+// failed turn is copied verbatim into out.failLine so the caller can diagnose
+// the exit with envelopeFailure. The copy is taken only on failure — the line
+// is a slice of the reader's buffer, reused across lines, and a successful run
+// must not pay for a second copy of a result that can reach megabytes
+// (decision 152).
 func handleStreamLine(line []byte, label string, sink streamSink, out *streamOutcome) {
 	if len(bytes.TrimSpace(line)) == 0 {
 		return
@@ -511,11 +518,16 @@ func handleStreamLine(line []byte, label string, sink streamSink, out *streamOut
 		}
 		// Decode the figures best-effort so a reshaped or stringified field on
 		// the result event degrades it to zero rather than aborting the line and
-		// dropping the result text captured just above.
+		// dropping the result text captured just above. Usage and num_turns
+		// cover this event's turns alone, so they add to the earlier events';
+		// total_cost_usd is cumulative, so the later value stands (decision 163).
 		if ev.Usage != nil {
 			var u tokenUsage
 			if json.Unmarshal(ev.Usage, &u) == nil {
-				out.usage = u
+				out.usage.InputTokens += u.InputTokens
+				out.usage.OutputTokens += u.OutputTokens
+				out.usage.CacheReadTokens += u.CacheReadTokens
+				out.usage.CacheCreationTokens += u.CacheCreationTokens
 			}
 		}
 		if ev.TotalCostUSD != nil {
@@ -527,7 +539,7 @@ func handleStreamLine(line []byte, label string, sink streamSink, out *streamOut
 		if ev.NumTurns != nil {
 			var n int
 			if json.Unmarshal(ev.NumTurns, &n) == nil {
-				out.stats.numTurns = n
+				out.stats.numTurns += n
 			}
 		}
 		if ev.PermissionDenials != nil {

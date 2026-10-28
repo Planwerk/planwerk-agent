@@ -1166,17 +1166,9 @@ func (c *Client) runSession(spec runSpec, prompt string) (string, string, error)
 }
 
 // claudeResponse is the view of a `result` event that a failed turn needs:
-// envelopeFailure reads its reason and addFailureUsage the tokens it spent.
+// envelopeFailure reads its reason.
 type claudeResponse struct {
 	Result string `json:"result"`
-	// Usage and TotalCostUSD carry the per-call cumulative token counts and the
-	// CLI's own estimated cost; they feed the per-Run usage accumulator. Both are
-	// captured raw and decoded best-effort in addFailureUsage, decoupled from the
-	// rest of the decode: a usage-schema change — a reshaped usage object, a
-	// stringified cost, a token count past int64 — must degrade these figures to
-	// zero, not make the failure unreadable.
-	Usage        json.RawMessage `json:"usage"`
-	TotalCostUSD json.RawMessage `json:"total_cost_usd"`
 	// IsError marks an envelope the CLI emitted for a FAILED turn. Claude Code
 	// exits non-zero whenever it sets this — for an upstream API error and for
 	// an exhausted turn budget alike — so only the error path reads it; a
@@ -1190,7 +1182,7 @@ type claudeResponse struct {
 	// APIErrorStatus is the upstream HTTP status behind an API-level failure
 	// (429 once a model's rate limit is hit). Captured raw and stringified so a
 	// status the CLI one day emits as a string cannot make the whole envelope
-	// unparseable — the same wire-drift tolerance Usage and TotalCostUSD get.
+	// unparseable.
 	APIErrorStatus json.RawMessage `json:"api_error_status,omitempty"`
 }
 
@@ -1210,30 +1202,18 @@ func (c *Client) timeoutError(ctx context.Context, model string, stderr []byte) 
 	return fmt.Errorf("claude (model %s): timed out after %s (--claude-timeout)", model, c.timeout)
 }
 
-// addFailureUsage counts the tokens a FAILED invocation spent. Claude Code
-// reports an exhausted turn budget or an upstream API error by writing its
-// `result` event — usage block included — to stdout and exiting non-zero; raw
-// is that event as runClaudeStream kept it. A payload that is not such an
-// event, or one that carries no usage at all, records nothing rather than an
-// empty call.
-func (c *Client) addFailureUsage(label string, raw []byte) {
-	if len(bytes.TrimSpace(raw)) == 0 {
+// addFailureUsage counts the tokens a FAILED or timed-out invocation spent.
+// Claude Code reports an exhausted turn budget or an upstream API error by
+// writing its `result` event — usage block included — to stdout and exiting
+// non-zero; u and cost are the stream reducer's figures over every `result`
+// event the invocation wrote, so the turns a woken session finished before
+// the failure count as well (decision 163). An invocation that wrote no usage
+// at all records nothing rather than an empty call.
+func (c *Client) addFailureUsage(label string, u tokenUsage, cost float64) {
+	if u == (tokenUsage{}) && cost == 0 {
 		return
 	}
-	var resp claudeResponse
-	if err := json.Unmarshal(raw, &resp); err != nil {
-		return
-	}
-	var (
-		usage tokenUsage
-		cost  float64
-	)
-	_ = json.Unmarshal(resp.Usage, &usage)
-	_ = json.Unmarshal(resp.TotalCostUSD, &cost)
-	if usage == (tokenUsage{}) && cost == 0 {
-		return
-	}
-	c.addUsage(label, usage, cost)
+	c.addUsage(label, u, cost)
 }
 
 // claudeRunError renders a failed `claude -p` invocation into an error that

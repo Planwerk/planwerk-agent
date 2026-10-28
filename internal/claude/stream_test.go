@@ -247,6 +247,74 @@ func TestReadStream_LaterResultEventOverwritesEarlier(t *testing.T) {
 	}
 }
 
+// TestReadStream_SumsUsageAndTurnsAcrossResultEvents replays the two result
+// events of a session that background work woke for a second turn, with the
+// figures Claude Code 2.1.312 emitted in the probe behind decision 163: usage
+// and num_turns cover each event's own turns and add up, while total_cost_usd
+// is cumulative for the process, so the later value is the session's.
+func TestReadStream_SumsUsageAndTurnsAcrossResultEvents(t *testing.T) {
+	const stream = `{"type":"result","subtype":"success","result":"STARTED","num_turns":2,` +
+		`"usage":{"input_tokens":4,"output_tokens":128,"cache_read_input_tokens":29601,"cache_creation_input_tokens":7169},"total_cost_usd":0.00179421}
+{"type":"result","subtype":"success","result":"finished","num_turns":1,` +
+		`"usage":{"input_tokens":4,"output_tokens":43,"cache_read_input_tokens":18551,"cache_creation_input_tokens":442},"total_cost_usd":0.00209002}
+`
+	out, err := readStream(strings.NewReader(stream), "implement", &recordingSink{})
+	if err != nil {
+		t.Fatalf("readStream: %v", err)
+	}
+	if want := (tokenUsage{InputTokens: 8, OutputTokens: 171, CacheReadTokens: 48152, CacheCreationTokens: 7611}); out.usage != want {
+		t.Errorf("usage = %+v, want the sum of both events %+v", out.usage, want)
+	}
+	if out.stats.numTurns != 3 {
+		t.Errorf("numTurns = %d, want 3", out.stats.numTurns)
+	}
+	if out.cost != 0.00209002 {
+		t.Errorf("cost = %v, want the later, cumulative 0.00209002", out.cost)
+	}
+	if final := out.final.String(); final != "finished" {
+		t.Errorf("final = %q, want %q", final, "finished")
+	}
+}
+
+// TestReadStream_ResultEventWithoutFiguresKeepsTheSums covers a later result
+// event that carries no usage, turn count, or cost: it adds nothing and leaves
+// the cost the earlier event reported, while its text still wins.
+func TestReadStream_ResultEventWithoutFiguresKeepsTheSums(t *testing.T) {
+	const stream = `{"type":"result","result":"first","num_turns":2,"usage":{"input_tokens":10,"output_tokens":5},"total_cost_usd":0.5}
+{"type":"result","result":"woken turn"}
+`
+	out, err := readStream(strings.NewReader(stream), "implement", &recordingSink{})
+	if err != nil {
+		t.Fatalf("readStream: %v", err)
+	}
+	if want := (tokenUsage{InputTokens: 10, OutputTokens: 5}); out.usage != want || out.stats.numTurns != 2 || out.cost != 0.5 {
+		t.Errorf("usage = %+v, numTurns = %d, cost = %v; want %+v, 2, and 0.5", out.usage, out.stats.numTurns, out.cost, want)
+	}
+	if final := out.final.String(); final != "woken turn" {
+		t.Errorf("final = %q, want %q", final, "woken turn")
+	}
+}
+
+// TestReadStream_DriftedFiguresOnALaterResultAddNothing mirrors
+// TestReadStream_UsageDriftDoesNotDropResultText for a second result event: a
+// usage reshaped into an array and a stringified num_turns add nothing to the
+// sums, and the event's text still wins.
+func TestReadStream_DriftedFiguresOnALaterResultAddNothing(t *testing.T) {
+	const stream = `{"type":"result","result":"first","num_turns":2,"usage":{"input_tokens":10,"output_tokens":5},"total_cost_usd":0.5}
+{"type":"result","result":"drifted turn","usage":[1,2,3],"num_turns":"7"}
+`
+	out, err := readStream(strings.NewReader(stream), "implement", &recordingSink{})
+	if err != nil {
+		t.Fatalf("readStream: %v", err)
+	}
+	if want := (tokenUsage{InputTokens: 10, OutputTokens: 5}); out.usage != want || out.stats.numTurns != 2 {
+		t.Errorf("usage = %+v, numTurns = %d; want %+v and 2", out.usage, out.stats.numTurns, want)
+	}
+	if final := out.final.String(); final != "drifted turn" {
+		t.Errorf("final = %q, want %q", final, "drifted turn")
+	}
+}
+
 func TestHandleStreamLine_EmptyAndWhitespaceLinesAreIgnored(t *testing.T) {
 	sink := &recordingSink{}
 	out := &streamOutcome{}
