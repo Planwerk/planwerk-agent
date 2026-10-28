@@ -148,7 +148,7 @@ func TestBuildImplementerAgentPrompt_CarriesTheNonNegotiables(t *testing.T) {
 // orchestration instructions appear exactly when a worker model is configured:
 // the single-session prompt stays free of them, and the orchestrated prompt
 // carries the section, the delegating workflow step, and the never-edit hard
-// rule.
+// rule. Neither prompt names the tool the session delegates with.
 func TestBuildImplementPrompt_OrchestrationOnlyWithWorkerModel(t *testing.T) {
 	plain := BuildImplementPrompt(goldenImplementContext())
 	if strings.Contains(plain, "Orchestrated implementation") {
@@ -167,6 +167,16 @@ func TestBuildImplementPrompt_OrchestrationOnlyWithWorkerModel(t *testing.T) {
 	} {
 		if !strings.Contains(orch, want) {
 			t.Errorf("orchestrated implement prompt is missing %q", want)
+		}
+	}
+
+	// Claude Code renamed its subagent tool from Task to Agent once already, and
+	// a tool name in the prompt is a cache of the session's own tool list.
+	for name, prompt := range map[string]string{"single-session": plain, "orchestrated": orch} {
+		for _, banned := range []string{"Task tool", "Agent tool"} {
+			if strings.Contains(prompt, banned) {
+				t.Errorf("%s implement prompt names the %q; the session finds its subagent tool in its own tool list", name, banned)
+			}
 		}
 	}
 }
