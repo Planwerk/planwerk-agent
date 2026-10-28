@@ -257,7 +257,10 @@ shown; the rest are summed into a trailing `+N further passes` line, so the
 breakdown always accounts for the whole run.
 
 The end of a row says how the pass's sessions spent their turns. `turns` is the
-sum of each call's `num_turns`. `denied` counts the tool calls Claude Code's
+sum of `num_turns` over every `result` event of every call: a session that
+background work wakes for another turn emits a further `result` event that
+counts only the turns since the previous one, and its tokens are summed the
+same way. `denied` counts the tool calls Claude Code's
 permission check refused (`permission_denials`) and is omitted at zero. The
 `tools:` line under a row counts every tool call the pass's sessions made, a
 subagent's included, most-used first; the `+N further passes` line sums the

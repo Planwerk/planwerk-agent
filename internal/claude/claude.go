@@ -110,11 +110,11 @@ func (c *Client) runReview(dir string, rctx ReviewContext) (text, model string, 
 	return c.runClaudeFindings(dir, buildReviewPrompt(rctx), PassLabelReview, rctx.Catalog, rctx.Memory, rctx.Brain, rctx.Diff.Dir)
 }
 
-// tokenUsage is a tolerant view over the per-call token counts Claude Code
-// reports on the `result` event of its stream. Absent fields decode to zero,
-// so an older or newer CLI that omits any of them degrades to a partial count
-// rather than a parse error. The counts are cumulative for the call, so they
-// are summed directly across calls.
+// tokenUsage is a tolerant view over the token counts Claude Code reports on
+// a `result` event of its stream. Absent fields decode to zero, so an older or
+// newer CLI that omits any of them degrades to a partial count rather than a
+// parse error. An event's counts cover its own turns: handleStreamLine sums
+// them over a call's events, and addUsage sums the calls (decision 163).
 type tokenUsage struct {
 	InputTokens         int64 `json:"input_tokens"`
 	OutputTokens        int64 `json:"output_tokens"`
