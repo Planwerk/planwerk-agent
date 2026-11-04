@@ -114,7 +114,7 @@ jobs:
       - name: Install Claude Code
         env:
           # renovate: datasource=npm depName=@anthropic-ai/claude-code
-          CLAUDE_CODE_VERSION: '2.1.306'
+          CLAUDE_CODE_VERSION: '2.1.318'
         run: npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
       - run: claude plugin validate --strict .
       - run: claude plugin validate --strict plugins/planwerk

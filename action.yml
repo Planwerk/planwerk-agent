@@ -54,7 +54,7 @@ inputs:
     description: 'Claude Code (@anthropic-ai/claude-code) version to install from npm. The default is the version this release of the action is tested with; planwerk-agent needs v2.1.306 or newer. "latest" installs the newest release.'
     required: false
     # renovate: datasource=npm depName=@anthropic-ai/claude-code
-    default: '2.1.306'
+    default: '2.1.318'
   version:
     description: 'planwerk-agent release tag to install (e.g. v0.3.0). Use "latest" to resolve to the most recent release. Ignored when binary-path is set. The archive is checked against the SHA-256 the release lists in its checksums file, whose name drops the tag''s leading v (planwerk-agent_0.3.0_checksums.txt for v0.3.0), before it is unpacked.'
     required: false
