@@ -49,12 +49,16 @@ anything. When the order looks right, drop the flag.
 For each eligible Sub Issue, `ship` runs:
 
 1. **Implement** — the existing `implement` flow (plan → plan review → implement →
-   simplify → review → finalize), producing a feature branch cut from the
-   *current* default-branch tip and a PR that closes the Sub Issue. The plan
-   review and the automatic simplify and review passes run as in `implement` and
-   honor the same `--no-plan-review` / `--no-simplify` / `--no-review` switches,
-   so the plan is checked before any code is written and the diff is cleaned and
-   self-reviewed before CI ever sees it.
+   simplify → verify → review → finalize), producing a feature branch cut from
+   the *current* default-branch tip and a PR that closes the Sub Issue. The plan
+   review and the automatic simplify, verification, and review passes run as in
+   `implement` and honor the same `--no-plan-review` / `--no-simplify` /
+   `--no-verify` / `--no-review` switches, so the plan is checked before any
+   code is written, and the diff is cleaned, checked against the Sub Issue and
+   its plan, and self-reviewed before CI ever sees it. The verification pass
+   matters most here: for a draft-depth Sub Issue that `ship` plans on the fly,
+   the plan is the only checkable specification, and nobody is present to ask
+   for the check.
 2. **Mark the PR ready** — undraft it so its checks are the real merge gate.
 3. **Wait for CI** — reusing the `fix` loop's polling (`--interval`).
 4. **Self-heal red CI** — reusing the `fix` loop: pull the failed-run logs, apply

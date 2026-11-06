@@ -648,9 +648,9 @@ The post-rebase analysis constrains its output with Claude Code's
 
 Take an elaborated GitHub issue, run a read-only Claude Code planning session,
 then a fresh implement session that executes the plan end to end (code, tests,
-docs) and commits on a feature branch. The simplify and review passes then run
-over the committed diff, and a finalize session opens the draft pull request
-last — so it lands already simplified and self-reviewed. The implementation
+docs) and commits on a feature branch. The simplify, verification, and review
+passes then run over the committed diff, and a finalize session opens the draft
+pull request last, so it lands already simplified, verified, and self-reviewed. The implementation
 report is posted back onto the source issue as a comment on every run (use
 `--no-report-comment` to skip that), so the course of each implementation is
 recorded on the issue.
@@ -682,7 +682,7 @@ planwerk-agent implement --allow-unelaborated owner/repo#123
 planwerk-agent implement --no-plan owner/repo#123
 planwerk-agent implement --no-plan-reuse owner/repo#123
 planwerk-agent implement --no-plan-review owner/repo#123
-planwerk-agent implement --verify owner/repo#123
+planwerk-agent implement --no-verify owner/repo#123
 planwerk-agent implement --no-simplify owner/repo#123
 planwerk-agent implement --no-review owner/repo#123
 planwerk-agent implement --wiki owner/repo#123
@@ -707,7 +707,7 @@ planwerk-agent implement --wiki --capture-wiki --yes owner/repo#123
 | `--implement-model` | Model for the implement session only, passed to Claude Code via `--model`; the simplify/review/finalize passes stay on `--claude-model` (env: `PLANWERK_IMPLEMENT_MODEL`) | inherits `--claude-model` |
 | `--implement-worker-model` | Model for the `implementer` subagents the implement session delegates its work packages to. Setting it switches the session into **orchestrator mode**: the session (on `--implement-model`, e.g. `fable`) keeps the whole issue in view, delegates each work package to a subagent on this model, and verifies every delivered package against the actual diff before moving on. The subagent is defined inline via Claude Code's `--agents` flag, so the checkout stays untouched; the report's attribution names this model, and the workers' commit trailers carry their exact model id, unless the repository forbids that trailer ([design decision #150](/explanation/design-decisions)). Pass an exact model id (e.g. `claude-opus-5-5`) for exact footer attribution. Empty keeps the single-session behavior (env: `PLANWERK_IMPLEMENT_WORKER_MODEL`) | - (orchestrator mode off) |
 | `--implement-worker-effort` | Reasoning effort for the `implementer` subagents in orchestrator mode (`low`, `medium`, `high`, `xhigh`, `max`); ignored without `--implement-worker-model` (env: `PLANWERK_IMPLEMENT_WORKER_EFFORT`) | `xhigh` |
-| `--verify` | After implementing, run an independent pass that checks the actual diff against the issue's Acceptance Criteria without trusting the implementer's report; any unmet criteria are then fed into the review applier and fixed on the branch before the PR opens | `false` |
+| `--no-verify` | Skip the independent verification pass that checks the diff against the issue's Acceptance Criteria and the implementation plan, reports changes outside them, and has unmet items fixed on the branch | `false` |
 | `--no-simplify` | Skip the automatic simplify pass that folds over-engineering removals into the branch before the review phase | `false` |
 | `--no-review` | Skip the automatic review-and-fix pass that folds review findings into the branch after the simplify pass | `false` |
 | `--no-specialists` | Skip the domain-specialist fan-out on the review pass's first round; the adversarial finder still runs | `false` |
@@ -766,28 +766,22 @@ When the run that stopped had already finished implementing — its
 implementation report on the issue says `DONE` (or `DONE_WITH_CONCERNS`) and it
 stopped in one of the passes after the session, typically at a usage limit —
 the resume continues from that pass instead of running the implement session
-again: a posted simplification report skips the simplify pass, each posted
-review report counts as a used round of `--max-review-iterations`, and the
-review loop resumes at the next round, scoped to the fixes of the last one
-(branch-wide when the checkout no longer has that round's pre-fix commit). A
-`PARTIAL` report whose Work Breakdown Coverage lists every work package as done
-counts as a finished implementation: the run that posted it read the verdict as
-`DONE_WITH_CONCERNS` and continued past the implement session.
-Capture, verification, and the finalize session then run as usual. A finalize
+again: a posted simplification report skips the simplify pass, a posted
+verification report or any posted review report skips the verification pass
+(a clean verification posts nothing, and the review loop starts only after
+verification), each posted review report counts as a used round of
+`--max-review-iterations`, and the review loop resumes at the next round,
+scoped to the fixes of the last one (branch-wide when the checkout no longer
+has that round's pre-fix commit). A `PARTIAL` report whose Work Breakdown
+Coverage lists every work package as done counts as a finished implementation:
+the run that posted it read the verdict as `DONE_WITH_CONCERNS` and continued
+past the implement session. Capture and the finalize session then run as
+usual. A finalize
 session that fails persists the branch the same way an abort does, so the next
 run resumes it and opens the pull request.
 
-`--verify` is a verification pass that runs over the actual committed diff, not
-the implementer's self-report, and checks it for acceptance-criteria coverage.
-It is non-fatal — a finding is reported, it
-does not fail the run. When `--verify` finds unmet criteria, those findings are
-also fed into the same review applier the review-and-fix pass uses, so the gaps
-are fixed on the local branch before the finalize step opens the PR (this apply
-is non-fatal too, and a clean pass — or a run with no applier wired — stays
-render-only).
-
 The simplify pass runs by default once the branch is committed, before the
-review-and-fix and verification passes, so they assess the leaner diff. A
+verification and review-and-fix passes, so they assess the leaner diff. A
 read-only ponytail-style finder reviews the diff through a YAGNI decision ladder
 for over-engineering; when it finds something, a fresh session folds each removal
 into the commit it belongs to (`git commit --fixup` + `git rebase --autosquash`)
@@ -798,8 +792,41 @@ assertions; its report is posted as a comment on the source issue. Nothing to
 simplify is a clean no-op (no commit, no issue comment), and the pass is
 non-fatal. Disable it with `--no-simplify`.
 
-The review-and-fix pass runs by default after the simplify pass — a full run is
-**implement → simplify → review → finalize**. It runs the same finders and the
+The verification pass runs by default after the simplify pass. One read-only
+session on the finder tier (`--finder-model`) checks the committed diff, not
+the implementer's self-report, against the issue and the implementation plan
+the run followed: every work package (from the issue's breakdown and the
+plan's Work Breakdown Coverage), every Acceptance Criterion, and every edge or
+error-path test the plan's Test Plan names. It then checks the scope. Every
+hunk must be accounted for by a criterion, a work package, an Affected Areas
+entry of the issue, or a Change Set, Test Plan, or Documentation Plan entry of
+the plan, and a test or documentation change that serves a criterion counts as
+accounted for. A hunk a Non-Goal excludes, or one nothing accounts for, is a
+**scope warning** (pattern `implementation-scope`, needs discussion). A Change
+Set entry with no hunk is not a finding, because the implementation may take
+another route than the plan's. Without a plan (`--no-plan`) the pass checks
+the issue alone, and an issue with neither Acceptance Criteria nor a plan
+skips it.
+
+The unmet items go to the same review applier the review-and-fix pass uses,
+which closes them on the local branch (no push) before the review pass runs,
+so the review's first round reviews those fixes like every other commit.
+Scope warnings are **never applied**: an applier that reverted a hunk the
+verifier misjudged would delete wanted work with nobody watching, so a person
+decides. A WARNING or INFO finding the verifier itself rated uncertain is
+withheld: reported, never applied, under the survive-before-apply gate the
+review loop applies. The pass prints its findings under three headings (unmet, withheld, and
+outside the issue and the plan, each scope warning with its hunk) and posts
+them as one verification report on the source issue, followed by the apply
+report; a clean pass posts nothing. It runs once per run and never loops, and
+costs one finder-tier session per run plus one apply session when it finds an
+unmet item. The pass is non-fatal: a failed verification, apply, or post is
+reported and never changes the run's exit code. It is on by default because
+`implement` runs unattended with nobody present to opt in; `--no-verify` turns
+it off.
+
+The review-and-fix pass runs by default after the verification pass — a full
+run is **implement → simplify → verify → review → finalize**. It runs the same finders and the
 same finding hygiene the `review` command runs (package `internal/hygiene`),
 then folds each surviving fix into the commit it belongs to (`git commit --fixup`
 + `git rebase --autosquash`) on the local branch — no push, since no pull request
@@ -847,10 +874,9 @@ the adversarial finder reviews only what the previous round's fixes changed —
 whole branch was already reviewed and the open question is whether those fixes
 hold. If the pre-fix commit cannot be recorded the round falls back to the
 branch-wide scope. The pass is
-non-fatal — a failed or escalated review never changes the run's exit code. The
-read-only `--verify` flag remains available for a
-report-only run. Disable the whole pass with `--no-review`, or just the
-first-round specialist fan-out with `--no-specialists`.
+non-fatal — a failed or escalated review never changes the run's exit code.
+Disable the whole pass with `--no-review`, or just the first-round specialist
+fan-out with `--no-specialists`.
 
 When the run uses `--wiki`, a read-only capture pass then proposes new project
 knowledge for the wiki: generalizable review findings become candidate
@@ -931,7 +957,7 @@ planwerk-agent ship --wiki --capture-wiki --yes owner/repo#123
 | `--interval` | Polling interval between CI check-status queries | `1m` |
 | `--no-simplify` | Skip the automatic simplify pass in each per–Sub Issue implement run | `false` |
 | `--no-review` | Skip the automatic review-and-fix pass in each per–Sub Issue implement run | `false` |
-| `--verify` | In each implement run, check the produced diff against the Sub Issue's Acceptance Criteria | `false` |
+| `--no-verify` | Skip the independent verification pass in each per–Sub Issue implement run | `false` |
 | `--no-plan` | Skip the planning session in each per–Sub Issue implement run | `false` |
 | `--no-plan-reuse` | Always run a fresh planning session; do not reuse a plan already posted on the Sub Issue | `false` |
 | `--no-plan-comment` | Do not post the generated implementation plan, or its plan review, as a comment on each Sub Issue | `false` |

@@ -22,7 +22,7 @@ more than supervision: the command runs passes the skill deliberately omits.
 |---|---|---|
 | Runs in | Your session, in your checkout | A throw-away clone, or `--local` |
 | Plans | A short plan in plan mode, approved by you | A dedicated read-only planning session, reviewed by a second read-only session and posted to the issue |
-| After the code | You read the diff | Simplify, review-and-fix, and optional verification passes |
+| After the code | You read the diff | Simplify, verification, and review-and-fix passes |
 | Opens the PR | Only after you say yes | Automatically, as the run's deliverable |
 
 Reach for the command when nobody is watching, or when the change is large
