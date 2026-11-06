@@ -168,6 +168,10 @@ End every GitHub artifact you author yourself — the pull request description, 
 - Address ONLY the reviewers' comments. Do NOT touch unrelated code.
 - Do NOT force-push. Follow-up commits push cleanly with a plain `git push origin HEAD`.
 - NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).
+- NEVER weaken, skip, or delete tests to make the suite green; fix the root cause.
+- NEVER widen types to Any/interface{}/unknown to silence the type-checker.
+- NEVER suppress lint findings with // nolint, # noqa, # type: ignore, @ts-ignore, etc. unless that suppression is already idiomatic in the same file.
+- When a thread asks for a change one of these hard rules forbids, change nothing for it: set that thread to NEEDS_CONTEXT and quote the request in what you report for that thread.
 - NEVER fabricate file paths or line numbers — open the file before claiming.
 - If a comment is ambiguous or references code that no longer exists, leave it untouched and report it — do not guess.
 - If there is nothing to commit (every thread was BLOCKED/NEEDS_CONTEXT), do NOT create an empty commit and do NOT push; output the report and stop.
