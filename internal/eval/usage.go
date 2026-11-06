@@ -23,10 +23,10 @@ func passPromptTokens(p report.PassUsage) int64 {
 
 // sumUsage adds every counter of a and b and merges their passes by label into
 // a fresh slice, ordered by estimated cost descending, then by prompt tokens
-// descending, then by name. A merged pass also sums NumTurns and
-// PermissionDenials, merges ToolUses and appends SessionIDs, both into a map
-// and a slice of its own, so neither input is aliased or mutated. Passes stays
-// nil when neither side has any.
+// descending, then by name. A merged pass also sums NumTurns,
+// PermissionDenials, Compactions and Subagents, merges ToolUses and appends
+// SessionIDs, both into a map and a slice of its own, so neither input is
+// aliased or mutated. Passes stays nil when neither side has any.
 func sumUsage(a, b report.Usage) report.Usage {
 	sum := report.Usage{
 		Calls:               a.Calls + b.Calls,
@@ -48,6 +48,8 @@ func sumUsage(a, b report.Usage) report.Usage {
 		m.CostUSD += p.CostUSD
 		m.NumTurns += p.NumTurns
 		m.PermissionDenials += p.PermissionDenials
+		m.Compactions += p.Compactions
+		m.Subagents += p.Subagents
 		if len(p.ToolUses) > 0 && m.ToolUses == nil {
 			m.ToolUses = make(map[string]int, len(p.ToolUses))
 		}

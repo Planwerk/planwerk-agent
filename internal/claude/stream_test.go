@@ -403,6 +403,100 @@ func TestReadStream_CountsToolUsesByName(t *testing.T) {
 	}
 }
 
+// TestReadStream_CountsCompactions covers the compaction count: every
+// system event of subtype compact_boundary counts once, whatever its
+// compact_metadata holds, no other system event counts (microcompact_boundary
+// included), and an unparseable line counts nothing without stopping the read.
+func TestReadStream_CountsCompactions(t *testing.T) {
+	const boundary = `{"type":"system","subtype":"compact_boundary","compact_metadata":{"trigger":"auto","pre_tokens":180000}}`
+	tests := []struct {
+		name      string
+		stream    string
+		want      int
+		wantFinal string
+	}{
+		{
+			name:      "two boundaries",
+			stream:    `{"type":"system","subtype":"init"}` + "\n" + boundary + "\n" + boundary + "\n" + `{"type":"result","result":"ok"}`,
+			want:      2,
+			wantFinal: "ok",
+		},
+		{
+			name:   "boundary without compact_metadata",
+			stream: `{"type":"system","subtype":"compact_boundary"}`,
+			want:   1,
+		},
+		{
+			name:      "boundary whose compact_metadata is a string",
+			stream:    `{"type":"system","subtype":"compact_boundary","compact_metadata":"x"}` + "\n" + `{"type":"result","result":"kept"}`,
+			want:      1,
+			wantFinal: "kept",
+		},
+		{
+			name: "other system events",
+			stream: `{"type":"system","subtype":"init"}` + "\n" +
+				`{"type":"system","subtype":"status","status":"compacting"}` + "\n" +
+				`{"type":"system","subtype":"microcompact_boundary"}` + "\n" +
+				`{"type":"system"}`,
+			want: 0,
+		},
+		{
+			name:   "truncated boundary line",
+			stream: `{"type":"system","subtype":"compact_boundary"` + "\n" + boundary,
+			want:   1,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out, err := readStream(strings.NewReader(tt.stream+"\n"), "implement", &recordingSink{})
+			if err != nil {
+				t.Fatalf("readStream: %v", err)
+			}
+			if out.stats.compactions != tt.want {
+				t.Errorf("compactions = %d, want %d", out.stats.compactions, tt.want)
+			}
+			if final := out.final.String(); final != tt.wantFinal {
+				t.Errorf("final = %q, want %q", final, tt.wantFinal)
+			}
+		})
+	}
+}
+
+// TestReadStream_CountsSubagents covers the subagent count: every tool_use
+// block named exactly Agent or Task counts, a subagent's own launch included,
+// while the histogram keeps counting every named block as before.
+func TestReadStream_CountsSubagents(t *testing.T) {
+	t.Run("agent and task calls", func(t *testing.T) {
+		const stream = `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent"},{"type":"tool_use","name":"Task"}]}}
+{"type":"assistant","parent_tool_use_id":"toolu_1","message":{"content":[{"type":"tool_use","name":"Agent"}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read"},{"type":"tool_use","name":"TaskOutput"},{"type":"tool_use","name":""}]}}
+{"type":"result","result":"ok"}
+`
+		out, err := readStream(strings.NewReader(stream), "plan", &recordingSink{})
+		if err != nil {
+			t.Fatalf("readStream: %v", err)
+		}
+		if out.stats.subagents != 3 {
+			t.Errorf("subagents = %d, want 3", out.stats.subagents)
+		}
+		if want := map[string]int{"Agent": 2, "Task": 1, "Read": 1, "TaskOutput": 1}; !maps.Equal(out.stats.toolUses, want) {
+			t.Errorf("toolUses = %v, want %v", out.stats.toolUses, want)
+		}
+	})
+	t.Run("no agent call", func(t *testing.T) {
+		const stream = `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read"},{"type":"tool_use","name":"Grep"}]}}
+{"type":"result","result":"ok"}
+`
+		out, err := readStream(strings.NewReader(stream), "plan", &recordingSink{})
+		if err != nil {
+			t.Fatalf("readStream: %v", err)
+		}
+		if out.stats.subagents != 0 {
+			t.Errorf("subagents = %d, want 0", out.stats.subagents)
+		}
+	})
+}
+
 // TestReadStream_RecordsTurnsDenialsAndSessionID covers the result event's
 // figures: num_turns, the number of permission_denials entries, and the
 // session id the init event announced, beside the text and usage as before.

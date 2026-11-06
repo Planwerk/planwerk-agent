@@ -108,6 +108,39 @@ func TestClient_AddSessionStatsFoldsIntoThePass(t *testing.T) {
 	}
 }
 
+// TestClient_AddSessionStatsFoldsCompactionsAndSubagents covers the two
+// counts: the sessions of one pass add up, and a session that recorded
+// nothing but one of them still creates the pass's entry without billing a
+// call.
+func TestClient_AddSessionStatsFoldsCompactionsAndSubagents(t *testing.T) {
+	c := NewClient()
+	c.addSessionStats("implement", sessionStats{compactions: 1})
+	c.addSessionStats("implement", sessionStats{compactions: 2, subagents: 3})
+	want := []report.PassUsage{{Pass: "implement", Compactions: 3, Subagents: 3}}
+	if got := c.UsageTotals().Passes; !reflect.DeepEqual(got, want) {
+		t.Errorf("Passes = %+v, want %+v", got, want)
+	}
+
+	twice := NewClient()
+	twice.addSessionStats("plan", sessionStats{subagents: 2})
+	twice.addSessionStats("plan", sessionStats{subagents: 3})
+	if got := twice.UsageTotals().Passes; len(got) != 1 || got[0].Subagents != 5 {
+		t.Errorf("Passes = %+v, want one plan pass with 5 subagents", got)
+	}
+
+	for _, s := range []sessionStats{{compactions: 1}, {subagents: 1}} {
+		only := NewClient()
+		only.addSessionStats("fix", s)
+		got := only.UsageTotals()
+		if len(got.Passes) != 1 || got.Passes[0].Pass != "fix" {
+			t.Errorf("stats %+v created %+v, want one fix pass", s, got.Passes)
+		}
+		if got.Calls != 0 || (len(got.Passes) == 1 && got.Passes[0].Calls != 0) {
+			t.Errorf("stats %+v billed a call: %+v", s, got)
+		}
+	}
+}
+
 // TestClient_UsageTotalsCopiesSessionStats locks in that a snapshot owns its
 // tool map and session ids: a later fold on the same pass leaves it as it was,
 // and writing to it leaves the client's own record alone.

@@ -746,16 +746,17 @@ func TestRenderDataBlock_IncludesUsage(t *testing.T) {
 }
 
 // TestRenderDataBlock_PassRecordsHowItsSessionsRan covers the per-pass session
-// record in usage.passes: turns, denials, the tool histogram and the session
-// ids ride along when set, a pass without them renders none of the keys, and
-// ParseDataBlock still reads the sha and the findings.
+// record in usage.passes: turns, denials, compactions, subagents, the tool
+// histogram and the session ids ride along when set, a pass without them
+// renders none of the keys, and ParseDataBlock still reads the sha and the
+// findings.
 func TestRenderDataBlock_PassRecordsHowItsSessionsRan(t *testing.T) {
 	full := ReviewResult{Findings: []Finding{
 		{ID: "W-001", Severity: SeverityWarning, Title: "Unbounded retry", File: "retry.go", Line: 7},
 	}}
 	usage := Usage{Calls: 2, Passes: []PassUsage{
 		{
-			Pass: "review", Calls: 1, NumTurns: 14, PermissionDenials: 2,
+			Pass: "review", Calls: 1, NumTurns: 14, PermissionDenials: 2, Compactions: 2, Subagents: 1,
 			ToolUses:   map[string]int{"Read": 22, "Bash": 4},
 			SessionIDs: []string{"0b6f4a8e-6a4c-4c1e-9a55-3f0d2c1b7e21"},
 		},
@@ -766,6 +767,8 @@ func TestRenderDataBlock_PassRecordsHowItsSessionsRan(t *testing.T) {
 	for _, want := range []string{
 		`"num_turns":14`,
 		`"permission_denials":2`,
+		`"compactions":2`,
+		`"subagents":1`,
 		`"tool_uses":{"Bash":4,"Read":22}`,
 		`"session_ids":["0b6f4a8e-6a4c-4c1e-9a55-3f0d2c1b7e21"]`,
 	} {
