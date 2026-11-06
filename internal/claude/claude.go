@@ -161,12 +161,12 @@ func (c *Client) addUsage(label string, u tokenUsage, costUSD float64) {
 }
 
 // addSessionStats folds how one session ran into the per-pass accumulator
-// under label: its turns and permission denials are added, its tool calls
-// merged into the pass's own map, and its session id appended unless the pass
-// already lists it, as a resumed completion-nudge turn reports its session's
-// id again. It never counts a call or a token, so addUsage stays the one
-// place a call is billed, and zero stats create no entry. Like addUsage it is
-// safe to call concurrently (decision 152).
+// under label: its turns, permission denials, compactions and subagents are
+// added, its tool calls merged into the pass's own map, and its session id
+// appended unless the pass already lists it, as a resumed completion-nudge
+// turn reports its session's id again. It never counts a call or a token, so
+// addUsage stays the one place a call is billed, and zero stats create no
+// entry. Like addUsage it is safe to call concurrently (decisions 152, 164).
 func (c *Client) addSessionStats(label string, s sessionStats) {
 	if s.isZero() {
 		return
@@ -180,6 +180,8 @@ func (c *Client) addSessionStats(label string, s sessionStats) {
 	p.Pass = label
 	p.NumTurns += s.numTurns
 	p.PermissionDenials += s.permissionDenials
+	p.Compactions += s.compactions
+	p.Subagents += s.subagents
 	if len(s.toolUses) > 0 && p.ToolUses == nil {
 		p.ToolUses = make(map[string]int, len(s.toolUses))
 	}

@@ -464,12 +464,15 @@ var v4UUID = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-
 // TestRunSession_RecordsHowTheSessionRan drives a quiet session end to end: the
 // argv asks for the event stream and pins a fresh session id, and the pass
 // records the call, the result event's turns and denials, every tool call by
-// name, and the pinned id the stream did not repeat.
+// name, the compaction and the subagent the stream carried, and the pinned id
+// the stream did not repeat.
 func TestRunSession_RecordsHowTheSessionRan(t *testing.T) {
 	argvFile := filepath.Join(t.TempDir(), "argv")
 	fakeClaude(t, "cat >/dev/null\nprintf '%s\\n' \"$@\" > '"+argvFile+"'\nprintf '%s\\n' "+
 		`'{"type":"system","subtype":"init","model":"claude-opus-5-5","tools":["Read","Grep"]}' `+
 		`'{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read"},{"type":"tool_use","name":"Grep"}]}}' `+
+		`'{"type":"system","subtype":"compact_boundary","compact_metadata":{"trigger":"auto","pre_tokens":1}}' `+
+		`'{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent"}]}}' `+
 		`'{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read"}]}}' `+
 		`'{"type":"result","result":"ok","num_turns":3,"permission_denials":[{"tool_name":"Bash","tool_use_id":"t1","tool_input":{}}],`+
 		`"usage":{"input_tokens":100,"output_tokens":10},"total_cost_usd":0.02}'`+"\n")
@@ -494,8 +497,8 @@ func TestRunSession_RecordsHowTheSessionRan(t *testing.T) {
 
 	want := []report.PassUsage{{
 		Pass: "review", Calls: 1, InputTokens: 100, OutputTokens: 10, CostUSD: 0.02,
-		NumTurns: 3, PermissionDenials: 1,
-		ToolUses:   map[string]int{"Read": 2, "Grep": 1},
+		NumTurns: 3, PermissionDenials: 1, Compactions: 1, Subagents: 1,
+		ToolUses:   map[string]int{"Read": 2, "Grep": 1, "Agent": 1},
 		SessionIDs: []string{argv[i+1]},
 	}}
 	if got := c.UsageTotals().Passes; !reflect.DeepEqual(got, want) {
@@ -525,12 +528,14 @@ func TestRunSession_ResumedTurnKeepsItsSessionID(t *testing.T) {
 
 // TestRunSession_TimedOutSessionKeepsItsID covers a session the deadline ends:
 // the timeout error is unchanged, and the pass still records the id the stream
-// announced and the tool calls made before the kill, without billing a call.
+// announced and the tool calls and the compaction made before the kill,
+// without billing a call.
 func TestRunSession_TimedOutSessionKeepsItsID(t *testing.T) {
 	const id = "0b6f4a8e-6a4c-4c1e-9a55-3f0d2c1b7e21"
 	fakeClaude(t, "cat >/dev/null\nprintf '%s\\n' "+
 		`'{"type":"system","subtype":"init","session_id":"`+id+`"}' `+
-		`'{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash"}]}}'`+
+		`'{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash"}]}}' `+
+		`'{"type":"system","subtype":"compact_boundary","compact_metadata":{"trigger":"auto","pre_tokens":1}}'`+
 		"\nsleep 30\n")
 	c := NewClient(WithTimeout(time.Second))
 
@@ -538,9 +543,28 @@ func TestRunSession_TimedOutSessionKeepsItsID(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "timed out after") {
 		t.Fatalf("err = %v, want the timeout", err)
 	}
-	want := []report.PassUsage{{Pass: "review", ToolUses: map[string]int{"Bash": 1}, SessionIDs: []string{id}}}
+	want := []report.PassUsage{{Pass: "review", Compactions: 1, ToolUses: map[string]int{"Bash": 1}, SessionIDs: []string{id}}}
 	if got := c.UsageTotals().Passes; !reflect.DeepEqual(got, want) {
 		t.Errorf("Passes = %+v, want %+v", got, want)
+	}
+}
+
+// TestRunSession_FailedTurnKeepsItsCompactions covers a session whose turn
+// failed after a compaction: the error still names the envelope's reason, and
+// the pass records the compaction beside the failed turn's usage.
+func TestRunSession_FailedTurnKeepsItsCompactions(t *testing.T) {
+	fakeClaude(t, "cat >/dev/null\nprintf '%s\\n' "+
+		`'{"type":"system","subtype":"compact_boundary","compact_metadata":{"trigger":"auto","pre_tokens":1}}'`+
+		"\nprintf '%s' '"+failureEnvelope+"'\nexit 1\n")
+	c := NewClient()
+
+	_, _, err := c.runSession(runSpec{label: "implement", model: "opus", effort: "xhigh"}, "prompt")
+	if err == nil || !strings.Contains(err.Error(), "error_max_turns") {
+		t.Fatalf("err = %v, want the envelope's reason", err)
+	}
+	got := c.UsageTotals().Passes
+	if len(got) != 1 || got[0].Pass != "implement" || got[0].Compactions != 1 {
+		t.Errorf("Passes = %+v, want the implement pass with 1 compaction", got)
 	}
 }
 

@@ -90,13 +90,17 @@ type streamEvent struct {
 
 // sessionStats records how one `claude -p` invocation spent its turns: its
 // tool calls by tool name (a subagent's included), its turns summed over
-// every `result` event, the permission denials the last one reports, and its
-// session id.
-// runClaudeStream folds it into the pass with addSessionStats (decision 152).
+// every `result` event, the permission denials the last one reports, the
+// times its context was compacted, the subagents it started, and its session
+// id.
+// runClaudeStream folds it into the pass with addSessionStats (decisions 152,
+// 164).
 type sessionStats struct {
 	toolUses          map[string]int
 	numTurns          int
 	permissionDenials int
+	compactions       int
+	subagents         int
 	sessionID         string
 }
 
@@ -112,7 +116,8 @@ func (s *sessionStats) addToolUse(name string) {
 // isZero reports whether s recorded nothing, so addSessionStats creates no
 // pass entry for it.
 func (s sessionStats) isZero() bool {
-	return len(s.toolUses) == 0 && s.numTurns == 0 && s.permissionDenials == 0 && s.sessionID == ""
+	return len(s.toolUses) == 0 && s.numTurns == 0 && s.permissionDenials == 0 &&
+		s.compactions == 0 && s.subagents == 0 && s.sessionID == ""
 }
 
 // streamOutcome is what readStream collected from one session's events: the
@@ -339,18 +344,33 @@ func warnUnloadedTools(logger *slog.Logger, label string, want, loaded []string)
 	}
 }
 
+// The two names Claude Code gives the tool that starts a subagent: Agent, and
+// its legacy name Task.
+const (
+	agentToolName       = "Agent"
+	legacyAgentToolName = "Task"
+)
+
 // toolAlias returns the other name Claude Code knows a built-in tool by, and
 // name itself for a tool that has none. The init event of Claude Code 2.1.306
 // and 2.1.310 lists the Agent tool under its legacy name, Task, so a requested
 // Agent is loaded when the list carries Task, and the other way round.
 func toolAlias(name string) string {
 	switch name {
-	case "Agent":
-		return "Task"
-	case "Task":
-		return "Agent"
+	case agentToolName:
+		return legacyAgentToolName
+	case legacyAgentToolName:
+		return agentToolName
 	}
 	return name
+}
+
+// isAgentTool reports whether name is the tool that starts a subagent, under
+// either of the names Claude Code gives it: the init events of 2.1.306,
+// 2.1.310 and 2.1.319 list it as Task, while the tool_use blocks of a 2.1.319
+// stream name it Agent (decision 164).
+func isAgentTool(name string) bool {
+	return name == agentToolName || name == legacyAgentToolName
 }
 
 // readStream consumes NDJSON events from r until EOF, dispatching each line
@@ -424,7 +444,9 @@ func readStreamLine(br *bufio.Reader, limit int) ([]byte, error) {
 // the attribution footers with the exact model, and the `init` event's tool
 // list in out.loadedTools and its plugin names in out.loadedPlugins. Every
 // `tool_use` block of an `assistant` event is counted in out.stats, a
-// subagent's included. A `result` event sets
+// subagent's included, and one that calls the Agent tool counts a subagent
+// too; every `system` event of subtype `compact_boundary` counts a compaction
+// (decision 164). A `result` event sets
 // out.sawResult, and its text, token usage, estimated cost, turn count and
 // number of permission denials are recorded best-effort, each only on a clean
 // decode. A session that background work wakes for another turn emits one
@@ -461,6 +483,11 @@ func handleStreamLine(line []byte, label string, sink streamSink, out *streamOut
 		if out.model == "" && ev.Model != "" {
 			out.model = ev.Model
 		}
+		// One compact_boundary event marks each completed compaction of the
+		// session's context, whatever triggered it (decision 164).
+		if ev.Subtype == "compact_boundary" {
+			out.stats.compactions++
+		}
 		if ev.Subtype == "init" && out.loadedTools == nil && ev.Tools != nil {
 			var tools []string
 			if json.Unmarshal(ev.Tools, &tools) == nil {
@@ -493,6 +520,9 @@ func handleStreamLine(line []byte, label string, sink streamSink, out *streamOut
 			case "tool_use":
 				if c.Name != "" {
 					out.stats.addToolUse(c.Name)
+					if isAgentTool(c.Name) {
+						out.stats.subagents++
+					}
 					sink.tool(label, c.Name)
 				}
 			}

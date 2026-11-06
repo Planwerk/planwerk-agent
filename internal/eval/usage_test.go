@@ -24,7 +24,7 @@ func TestSumUsage(t *testing.T) {
 		a := report.Usage{
 			Calls: 2, InputTokens: 10, OutputTokens: 5, CacheReadTokens: 100, CacheCreationTokens: 7, CostUSD: 0.5,
 			Passes: []report.PassUsage{
-				{Pass: "review", Calls: 1, InputTokens: 10, OutputTokens: 5, CacheReadTokens: 100, CacheCreationTokens: 7, CostUSD: 0.4},
+				{Pass: "review", Calls: 1, InputTokens: 10, OutputTokens: 5, CacheReadTokens: 100, CacheCreationTokens: 7, CostUSD: 0.4, Compactions: 1},
 				{Pass: "structure", Calls: 1, CostUSD: 0.1},
 			},
 		}
@@ -32,7 +32,7 @@ func TestSumUsage(t *testing.T) {
 			Calls: 3, InputTokens: 20, OutputTokens: 6, CacheReadTokens: 200, CacheCreationTokens: 8, CostUSD: 0.9,
 			Passes: []report.PassUsage{
 				{Pass: "specialist-security", Calls: 1, CostUSD: 0.2},
-				{Pass: "review", Calls: 2, InputTokens: 20, OutputTokens: 6, CacheReadTokens: 200, CacheCreationTokens: 8, CostUSD: 0.7},
+				{Pass: "review", Calls: 2, InputTokens: 20, OutputTokens: 6, CacheReadTokens: 200, CacheCreationTokens: 8, CostUSD: 0.7, Compactions: 2, Subagents: 4},
 			},
 		}
 		aPasses := slices.Clone(a.Passes)
@@ -42,7 +42,7 @@ func TestSumUsage(t *testing.T) {
 		want := report.Usage{
 			Calls: 5, InputTokens: 30, OutputTokens: 11, CacheReadTokens: 300, CacheCreationTokens: 15, CostUSD: 1.4,
 			Passes: []report.PassUsage{
-				{Pass: "review", Calls: 3, InputTokens: 30, OutputTokens: 11, CacheReadTokens: 300, CacheCreationTokens: 15, CostUSD: 1.1},
+				{Pass: "review", Calls: 3, InputTokens: 30, OutputTokens: 11, CacheReadTokens: 300, CacheCreationTokens: 15, CostUSD: 1.1, Compactions: 3, Subagents: 4},
 				{Pass: "specialist-security", Calls: 1, CostUSD: 0.2},
 				{Pass: "structure", Calls: 1, CostUSD: 0.1},
 			},
@@ -72,11 +72,11 @@ func TestSumUsage(t *testing.T) {
 
 	t.Run("merges how each pass's sessions ran without touching either input", func(t *testing.T) {
 		a := report.Usage{Passes: []report.PassUsage{
-			{Pass: "review", NumTurns: 10, PermissionDenials: 1, ToolUses: map[string]int{"Read": 5, "Grep": 2}, SessionIDs: []string{"a-1"}},
+			{Pass: "review", NumTurns: 10, PermissionDenials: 1, Compactions: 1, Subagents: 2, ToolUses: map[string]int{"Read": 5, "Grep": 2}, SessionIDs: []string{"a-1"}},
 			{Pass: "structure", Calls: 1},
 		}}
 		b := report.Usage{Passes: []report.PassUsage{
-			{Pass: "review", NumTurns: 4, ToolUses: map[string]int{"Read": 1, "Bash": 3}, SessionIDs: []string{"b-1", "b-2"}},
+			{Pass: "review", NumTurns: 4, Compactions: 1, Subagents: 1, ToolUses: map[string]int{"Read": 1, "Bash": 3}, SessionIDs: []string{"b-1", "b-2"}},
 		}}
 		clone := func(u report.Usage) report.Usage {
 			c := u
@@ -93,7 +93,7 @@ func TestSumUsage(t *testing.T) {
 		got := sumUsage(a, b)
 
 		want := []report.PassUsage{
-			{Pass: "review", NumTurns: 14, PermissionDenials: 1, ToolUses: map[string]int{"Read": 6, "Grep": 2, "Bash": 3}, SessionIDs: []string{"a-1", "b-1", "b-2"}},
+			{Pass: "review", NumTurns: 14, PermissionDenials: 1, Compactions: 2, Subagents: 3, ToolUses: map[string]int{"Read": 6, "Grep": 2, "Bash": 3}, SessionIDs: []string{"a-1", "b-1", "b-2"}},
 			{Pass: "structure", Calls: 1},
 		}
 		if !reflect.DeepEqual(got.Passes, want) {
