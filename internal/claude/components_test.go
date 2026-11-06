@@ -398,6 +398,35 @@ func TestImplementReportHasNegativeSpaceSection(t *testing.T) {
 	}
 }
 
+// noWeakeningPrompts builds every prompt whose session changes code against a
+// check, once from its golden context and once from its zero-value context, so
+// the shared rules are shown to hang on no context field.
+func noWeakeningPrompts() map[string]string {
+	return map[string]string{
+		"implementer-agent":   buildImplementerAgentPrompt(""),
+		"implement":           BuildImplementPrompt(goldenImplementContext()),
+		"implement/zero":      BuildImplementPrompt(implement.Context{}),
+		"bare-implement":      BuildBareImplementPrompt(goldenBareImplementContext()),
+		"bare-implement/zero": BuildBareImplementPrompt(implement.BareContext{}),
+	}
+}
+
+// TestNoWeakeningRulesReachEveryEditingSession pins noWeakeningRules into
+// every prompt whose session edits code against a check, exactly once. The
+// second count catches an inline copy left beside the shared block, the drift
+// the block exists to end.
+func TestNoWeakeningRulesReachEveryEditingSession(t *testing.T) {
+	rules := noWeakeningRules()
+	for name, prompt := range noWeakeningPrompts() {
+		if got := strings.Count(prompt, rules); got != 1 {
+			t.Errorf("%s prompt carries noWeakeningRules %d times, want exactly 1", name, got)
+		}
+		if got := strings.Count(prompt, "NEVER widen types"); got != 1 {
+			t.Errorf("%s prompt says %q %d times, want exactly 1", name, "NEVER widen types", got)
+		}
+	}
+}
+
 // TestFixScopeLinesNamesTheCommit locks the re-review scope: it points the pass
 // at the difference between the recorded commit and HEAD, and says why — a
 // previous round already reviewed the branch in full.
