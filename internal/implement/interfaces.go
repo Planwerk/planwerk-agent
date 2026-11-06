@@ -263,7 +263,8 @@ func (a planReviewFnAdapter) ReviewPlan(dir string, ctx Context, plan string) (*
 // the issue's Acceptance Criteria and work packages and against plan, the
 // implementation plan the run followed ("" when the run has none), and reports
 // every hunk neither accounts for, deliberately ignoring the implementation's
-// own report. Optional: wired only when --verify is set.
+// own report. The production wiring always sets it; --no-verify skips the
+// pass.
 type ImplementationVerifier interface {
 	VerifyImplementation(dir, issueTitle, issueBody, plan, baseBranch string) (*report.ReviewResult, error)
 }

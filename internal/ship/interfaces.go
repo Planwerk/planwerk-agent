@@ -7,17 +7,17 @@ import (
 )
 
 // ImplementFn runs the full implement pipeline (plan → implement → simplify →
-// review → finalize) for a single Sub Issue, ending at an open pull request that
-// closes it. It returns an error when the Sub Issue could not be carried to an
-// open PR — the implement session reported BLOCKED / NEEDS_CONTEXT, or the run
-// otherwise failed. ship treats any error as "this Sub Issue could not be
-// finished autonomously" and skips it together with everything transitively
-// blocked by it.
+// verify → review → finalize) for a single Sub Issue, ending at an open pull
+// request that closes it. It returns an error when the Sub Issue could not be
+// carried to an open PR — the implement session reported BLOCKED /
+// NEEDS_CONTEXT, or the run otherwise failed. ship treats any error as "this
+// Sub Issue could not be finished autonomously" and skips it together with
+// everything transitively blocked by it.
 //
 // The CLI wires this to implement.Run with the shared Claude functions and the
-// --no-simplify / --no-review / verify / pattern / planning options bound in, so
-// ship reuses the implement pipeline exactly as the implement command runs it.
-// Tests inject a fake that returns scripted results per issue ref.
+// --no-simplify / --no-verify / --no-review / pattern / planning options bound
+// in, so ship reuses the implement pipeline exactly as the implement command
+// runs it. Tests inject a fake that returns scripted results per issue ref.
 type ImplementFn func(w io.Writer, issueRef string) error
 
 // FixFn runs the CI self-heal loop for a single PR: it waits for the PR's checks

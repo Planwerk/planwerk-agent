@@ -115,7 +115,20 @@ no push. It never removes validation, error handling, security, accessibility,
 tests, or assertions, posts its report as a comment on the source issue, and is
 non-fatal. Nothing to simplify is a clean no-op. Disable it with --no-simplify.
 
-After the simplify pass, a review-and-fix pass runs by default: it runs the same
+After the simplify pass, an independent verification pass runs by default. A
+read-only session on the finder tier checks the committed diff against the
+issue's Acceptance Criteria and work packages and against the implementation
+plan, without trusting the implementation report: a work package, criterion,
+or planned test the diff does not deliver is a gap, and a change outside the
+issue and the plan, which a Non-Goal excludes or nothing accounts for, is a
+scope warning. A fresh session closes the gaps on the local branch, still no
+push, before the review pass reviews them. Scope warnings need a person, so
+they are reported and never applied. Every finding is posted in one
+verification report on the source issue, and a clean pass posts nothing. An
+issue with neither Acceptance Criteria nor a plan skips the pass. It is
+non-fatal. Disable it with --no-verify.
+
+After the verification pass, a review-and-fix pass runs by default: it runs the same
 finders and finding-hygiene the review command runs, then folds each fix into the
 commit it belongs to (same fixup/autosquash mechanism as the simplify pass, still
 no push) so the eventual PR lands already self-reviewed. Its first round runs the
@@ -131,8 +144,7 @@ the source issue, a STATUS: BLOCKED / NEEDS_CONTEXT report stops the pass withou
 retrying, and nothing to fix is a clean no-op. The pass is non-fatal — a failed
 or escalated review never changes the run's exit code. Disable the whole pass
 with --no-review, or just the first-round specialist fan-out with
---no-specialists. (The read-only --verify flag remains available for a
-report-only run.)
+--no-specialists.
 
 When the run uses --wiki, a read-only capture pass then proposes new project
 knowledge for the wiki: generalizable review findings become candidate review
@@ -240,8 +252,8 @@ or short form (owner/repo#123).`,
 	implementFlags.StringVar(&implementModel, "implement-model", "", "Model for the implement session only, passed to Claude Code via --model; the simplify/review/finalize passes stay on --claude-model (empty inherits --claude-model; env: "+envImplementModel+")")
 	implementFlags.StringVar(&implementWorkerModel, "implement-worker-model", "", "Model for the implementer subagents the implement session delegates its work packages to; setting it switches the session into orchestrator mode (empty keeps the single-session behavior; pass an exact model id for exact attribution; env: "+envImplementWorkerModel+")")
 	implementFlags.StringVar(&implementWorkerEffort, "implement-worker-effort", claude.DefaultImplementWorkerEffort, "Reasoning effort for the implementer subagents in orchestrator mode (low, medium, high, xhigh, max; ignored without --implement-worker-model; env: "+envImplementWorkerEffort+")")
-	implementFlags.BoolVar(&implementCfg.Verify, "verify", false, "After implementing, run an independent pass that checks the actual diff against the issue's Acceptance Criteria without trusting the implementer's report; any unmet criteria are fed into the review applier to be fixed on the branch")
 	implementFlags.BoolVar(&implementCfg.NoSimplify, "no-simplify", false, "Skip the automatic simplify pass that folds over-engineering removals into the branch before the review phase")
+	implementFlags.BoolVar(&implementCfg.NoVerify, "no-verify", false, "Skip the independent verification pass that checks the diff against the issue's Acceptance Criteria and the implementation plan, reports changes outside them, and has unmet items fixed on the branch")
 	implementFlags.BoolVar(&implementCfg.NoReview, "no-review", false, "Skip the automatic review-and-fix pass that folds review findings into the branch after the simplify pass")
 	implementFlags.BoolVar(&implementCfg.NoSpecialists, "no-specialists", false, "Skip the domain-specialist fan-out on the review pass's first round; the adversarial finder still runs")
 	implementFlags.IntVar(&implementCfg.MaxReviewIterations, "max-review-iterations", 0, "Cap on review-and-fix loop iterations: each round re-reviews and re-fixes until clean or this bound (<=0 uses the default of 3)")
