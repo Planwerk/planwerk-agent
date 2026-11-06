@@ -13,6 +13,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/elaborate"
 	"github.com/planwerk/planwerk-agent/internal/implement"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
+	"github.com/planwerk/planwerk-agent/internal/rebase"
 	"github.com/planwerk/planwerk-agent/internal/report"
 	"github.com/planwerk/planwerk-agent/internal/report/schema"
 	"github.com/planwerk/planwerk-agent/internal/search"
@@ -404,15 +405,21 @@ func TestImplementReportHasNegativeSpaceSection(t *testing.T) {
 // the shared rules are shown to hang on no context field.
 func noWeakeningPrompts() map[string]string {
 	return map[string]string{
-		"implementer-agent":   buildImplementerAgentPrompt(""),
-		"implement":           BuildImplementPrompt(goldenImplementContext()),
-		"implement/zero":      BuildImplementPrompt(implement.Context{}),
-		"bare-implement":      BuildBareImplementPrompt(goldenBareImplementContext()),
-		"bare-implement/zero": BuildBareImplementPrompt(implement.BareContext{}),
-		"address":             BuildAddressPrompt(goldenAddressContext()),
-		"address/zero":        BuildAddressPrompt(address.Context{}),
-		"bare-address":        BuildBareAddressPrompt(goldenBareAddressContext()),
-		"bare-address/zero":   BuildBareAddressPrompt(address.BareContext{}),
+		"implementer-agent":    buildImplementerAgentPrompt(""),
+		"implement":            BuildImplementPrompt(goldenImplementContext()),
+		"implement/zero":       BuildImplementPrompt(implement.Context{}),
+		"bare-implement":       BuildBareImplementPrompt(goldenBareImplementContext()),
+		"bare-implement/zero":  BuildBareImplementPrompt(implement.BareContext{}),
+		"address":              BuildAddressPrompt(goldenAddressContext()),
+		"address/zero":         BuildAddressPrompt(address.Context{}),
+		"bare-address":         BuildBareAddressPrompt(goldenBareAddressContext()),
+		"bare-address/zero":    BuildBareAddressPrompt(address.BareContext{}),
+		"rebase-conflict":      BuildRebaseConflictPrompt(goldenRebaseConflictContext()),
+		"rebase-conflict/zero": BuildRebaseConflictPrompt(rebase.ConflictContext{}),
+		"rebase-apply":         BuildRebaseApplyPrompt(goldenRebaseApplyContext()),
+		"rebase-apply/zero":    BuildRebaseApplyPrompt(rebase.ApplyContext{}),
+		"bare-rebase":          BuildBareRebasePrompt(goldenBareRebaseContext()),
+		"bare-rebase/zero":     BuildBareRebasePrompt(rebase.BareContext{}),
 	}
 }
 

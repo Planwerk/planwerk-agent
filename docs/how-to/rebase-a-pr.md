@@ -43,9 +43,13 @@ request body the rewrite left stale.
 4. **Resolve conflicts semantically.** On each conflicting commit, Claude is
    given both sides, the replayed commit's intent, and the project's review
    patterns, and produces a resolution that keeps both the commit's intent and
-   the upstream change correct — not a blind `ours`/`theirs` pick. The loop
-   continues until the rebase completes or `--max-iterations` is hit, in which
-   case the rebase is aborted cleanly and the conflicting commit is named.
+   the upstream change correct — not a blind `ours`/`theirs` pick. It never
+   weakens, skips, or deletes a test, widens a type, or adds a lint
+   suppression the file does not already use to make a resolution compile:
+   a file it cannot resolve without one is reported as unresolved, and the
+   rebase is aborted with that reason. The loop continues until the rebase
+   completes or `--max-iterations` is hit, in which case the rebase is
+   aborted cleanly and the conflicting commit is named.
 5. **Analyze the rebased commits.** Each rebased commit is checked against the
    upstream commits that entered the base since the fork point. Claude reports
    per-commit adjustments even where git produced no textual conflict — a
@@ -56,11 +60,17 @@ request body the rewrite left stale.
    skip the analysis entirely).
 6. **Apply adjustments (opt-in).** With `--apply-adjustments`, the reported
    adjustments are applied as fixup commits folded into the commits they belong
-   to, instead of only being reported. An analysis that lists no adjustment
-   starts no session. The apply session ends on a report with a terminal
-   `STATUS:` line (`DONE`, `DONE_WITH_CONCERNS`, `BLOCKED`, or
-   `NEEDS_CONTEXT`); a session that ends without one is resumed to finish and
-   report, and a report with no status counts as `BLOCKED`. The report lists
+   to, instead of only being reported. The apply session holds to the same
+   rules as the conflict session: an adjustment it could only apply by
+   weakening a test, widening a type, or adding a new lint suppression is
+   skipped, with that reason under Skipped. When the check it was meant to
+   satisfy still fails under Verification, the report ends on
+   `DONE_WITH_CONCERNS` and `--push` publishes nothing. An analysis that
+   lists no adjustment starts no session. The apply session ends on a
+   report with a terminal `STATUS:` line (`DONE`, `DONE_WITH_CONCERNS`,
+   `BLOCKED`, or `NEEDS_CONTEXT`); a session that ends without one is
+   resumed to finish and report, and a report with no status counts as
+   `BLOCKED`. The report lists
    each command the session ran under Verification, as `PASS`, `FAIL` with its
    first failing line, or `not run` with the reason. `DONE` needs at least one
    entry and none that reads `FAIL`, so a checkout without the toolchain still
