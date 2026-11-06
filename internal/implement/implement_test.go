@@ -65,6 +65,9 @@ type fakeAdversarialVerifier struct {
 	// afterwards.
 	mu        sync.Mutex
 	sinceRefs []string
+	// onReview, when set, runs inside AdversarialReview after the call is
+	// recorded, so a test can log the order the passes run in.
+	onReview func()
 }
 
 func (f *fakeAdversarialVerifier) AdversarialReview(dir, baseBranch, sinceRef string, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
@@ -74,6 +77,9 @@ func (f *fakeAdversarialVerifier) AdversarialReview(dir, baseBranch, sinceRef st
 	f.mu.Lock()
 	f.sinceRefs = append(f.sinceRefs, sinceRef)
 	f.mu.Unlock()
+	if f.onReview != nil {
+		f.onReview()
+	}
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -1760,62 +1766,247 @@ func TestRun_VerifyReportsUnmetCriteria(t *testing.T) {
 	r.Verifier = fv
 
 	var buf bytes.Buffer
-	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", Verify: true}); err != nil {
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
 	if fv.called.Load() != 1 {
 		t.Errorf("verifier called %d times, want 1", fv.called.Load())
 	}
 	out := buf.String()
-	if !strings.Contains(out, "unmet criterion finding") || !strings.Contains(out, "foo() not implemented") {
-		t.Errorf("missing verification findings in output:\n%s", out)
+	for _, want := range []string{
+		"Independent verification: 1 unmet, 0 withheld, 0 outside the issue and the plan. The implementer's report was not trusted.",
+		"### Unmet\n\n- [CRITICAL] foo() not implemented (foo.go)\n  no foo() in diff",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output lacks %q:\n%s", want, out)
+		}
 	}
 }
 
+// verificationComments returns the verification reports posted on the issue.
+func verificationComments(gh *githubtest.Fake) []string {
+	var out []string
+	for _, c := range gh.Comments() {
+		if strings.Contains(c, verificationHeading) {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// TestRun_VerifyCleanPass: a verifier with nothing to report, as an empty
+// findings slice or a nil result, prints the clean line, never runs the
+// applier, and posts no verification comment.
 func TestRun_VerifyCleanPass(t *testing.T) {
-	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
-	cl := &fakeClaude{report: validImplReport}
-	fv := &fakeVerifier{result: &report.ReviewResult{}}
-	r := newRunner(gh, cl)
-	r.Verifier = fv
+	for name, result := range map[string]*report.ReviewResult{"empty findings": {}, "nil result": nil} {
+		t.Run(name, func(t *testing.T) {
+			gh := reviewGH(t)
+			ra := &fakeReviewApplier{report: "unused"}
+			r := verifyApplyRunner(gh, &fakeClaude{}, &fakeVerifier{result: result}, ra)
 
-	var buf bytes.Buffer
-	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", Verify: true}); err != nil {
-		t.Fatalf("Run returned %v, want nil", err)
-	}
-	if !strings.Contains(buf.String(), "all Acceptance Criteria satisfied") {
-		t.Errorf("expected clean-pass message, got:\n%s", buf.String())
+			var buf bytes.Buffer
+			if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
+				t.Fatalf("Run returned %v, want nil", err)
+			}
+			if !strings.Contains(buf.String(), "Independent verification: every criterion is met and every change is accounted for.") {
+				t.Errorf("expected the clean-pass line, got:\n%s", buf.String())
+			}
+			if ra.called.Load() != 0 {
+				t.Errorf("applier called %d times, want 0 on a clean pass", ra.called.Load())
+			}
+			if got := verificationComments(gh); len(got) != 0 {
+				t.Errorf("a clean pass posted %d verification comment(s), want none:\n%v", len(got), got)
+			}
+		})
 	}
 }
 
-func TestRun_VerifyDisabledByDefault(t *testing.T) {
-	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
-	cl := &fakeClaude{report: validImplReport}
-	fv := &fakeVerifier{}
-	r := newRunner(gh, cl)
+// TestRun_VerifiesByDefault: the pass runs without any option once a verifier
+// is wired, as the production wiring always wires one.
+func TestRun_VerifiesByDefault(t *testing.T) {
+	fv := &fakeVerifier{result: &report.ReviewResult{}}
+	r := newRunner(&githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}, &fakeClaude{report: validImplReport})
 	r.Verifier = fv
 
 	if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42"}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
-	if fv.called.Load() != 0 {
-		t.Errorf("verifier called %d times, want 0 when --verify is off", fv.called.Load())
+	if fv.called.Load() != 1 {
+		t.Errorf("verifier called %d times, want 1 with no option set", fv.called.Load())
 	}
 }
 
-// oneCriterionFinding is the acceptance-criteria gap the --verify pass surfaces:
-// a criterion the diff does not satisfy. The review-feedback tests thread it
-// through to the applier.
+// TestRun_NoVerifySkipsThePass: --no-verify turns the pass off, so the
+// verifier never runs and nothing about it is printed.
+func TestRun_NoVerifySkipsThePass(t *testing.T) {
+	fv := &fakeVerifier{result: oneCriterionFinding()}
+	r := newRunner(&githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}, &fakeClaude{report: validImplReport})
+	r.Verifier = fv
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoVerify: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if fv.called.Load() != 0 {
+		t.Errorf("verifier called %d times, want 0 under --no-verify", fv.called.Load())
+	}
+	if strings.Contains(buf.String(), "Independent verification") {
+		t.Errorf("--no-verify still printed a verification line:\n%s", buf.String())
+	}
+}
+
+// TestRun_VerifyReceivesThePlan: the verifier is handed the plan the run
+// implements and the issue body merged with its continuation, the
+// specification the planner and the implementer worked from.
+func TestRun_VerifyReceivesThePlan(t *testing.T) {
+	const plan = "## Implementation Plan (issue #42)\n\n### Change Set\n- foo.go: add foo()\n\nSTATUS: PLAN_READY"
+	issue := sampleIssue()
+	issue.Body = continuedBody
+	gh := &githubtest.Fake{Issue: issue, Dir: t.TempDir(), IssueComments: []github.IssueComment{{ID: "c2", Body: continuationComment}}}
+	cl := &fakeClaude{report: validImplReport}
+	fv := &fakeVerifier{result: &report.ReviewResult{}}
+	r := newRunner(gh, cl)
+	r.Planner = &fakePlanner{plan: plan}
+	r.Verifier = fv
+
+	if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42"}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if fv.called.Load() != 1 {
+		t.Fatalf("verifier called %d times, want 1", fv.called.Load())
+	}
+	if fv.plan != plan {
+		t.Errorf("verifier got plan %q, want the planner's %q", fv.plan, plan)
+	}
+	if fv.issueBody != cl.ctx.IssueBody || !strings.Contains(fv.issueBody, "Criterion from the continuation") {
+		t.Errorf("verifier got issue body %q, want the merged body the implementer saw", fv.issueBody)
+	}
+}
+
+// TestRun_VerifyRunsWithoutPlanOnCriteria: under --no-plan the issue's
+// Acceptance Criteria are specification enough, so the pass runs with no plan.
+func TestRun_VerifyRunsWithoutPlanOnCriteria(t *testing.T) {
+	fv := &fakeVerifier{result: &report.ReviewResult{}}
+	fp := &fakePlanner{plan: "## Implementation Plan (issue #42)\n\nSTATUS: PLAN_READY"}
+	r := newRunner(&githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}, &fakeClaude{report: validImplReport})
+	r.Planner = fp
+	r.Verifier = fv
+
+	if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42", NoPlan: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if fp.called.Load() != 0 {
+		t.Fatalf("planner called %d times under --no-plan, want 0", fp.called.Load())
+	}
+	if fv.called.Load() != 1 || fv.plan != "" {
+		t.Errorf("verifier called %d times with plan %q, want once with no plan", fv.called.Load(), fv.plan)
+	}
+}
+
+// TestRun_VerifySkippedWithoutCriteriaOrPlan: an issue without Acceptance
+// Criteria, implemented without a plan, gives the pass nothing to verify
+// against, so it is skipped before the verifier runs.
+func TestRun_VerifySkippedWithoutCriteriaOrPlan(t *testing.T) {
+	fv := &fakeVerifier{result: oneCriterionFinding()}
+	r := newRunner(&githubtest.Fake{Issue: draftIssue(), Dir: t.TempDir()}, &fakeClaude{report: validImplReport})
+	r.Verifier = fv
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoPlan: true, AllowUnelaborated: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if fv.called.Load() != 0 {
+		t.Errorf("verifier called %d times, want 0 without criteria or a plan", fv.called.Load())
+	}
+	if want := "Independent verification skipped: the issue has no Acceptance Criteria and the run has no implementation plan to verify against."; !strings.Contains(buf.String(), want) {
+		t.Errorf("output lacks %q:\n%s", want, buf.String())
+	}
+}
+
+// TestRun_VerifyRunsOnPlanWithoutCriteria: an issue without Acceptance
+// Criteria that the run planned is verified against the plan, since the plan is
+// then the only checkable specification.
+func TestRun_VerifyRunsOnPlanWithoutCriteria(t *testing.T) {
+	const plan = "## Implementation Plan (issue #42)\n\n### Work Breakdown Coverage\n- foo widget\n\nSTATUS: PLAN_READY"
+	fv := &fakeVerifier{result: &report.ReviewResult{}}
+	r := newRunner(&githubtest.Fake{Issue: draftIssue(), Dir: t.TempDir()}, &fakeClaude{report: validImplReport})
+	r.Planner = &fakePlanner{plan: plan}
+	r.Verifier = fv
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", AllowUnelaborated: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if fv.called.Load() != 1 || fv.plan != plan {
+		t.Errorf("verifier called %d times with plan %q, want once with the plan", fv.called.Load(), fv.plan)
+	}
+	if strings.Contains(buf.String(), "Independent verification skipped") {
+		t.Errorf("a planned run without criteria skipped the pass:\n%s", buf.String())
+	}
+}
+
+// TestRun_VerifyRunsBeforeReview: the pass runs between the simplify pass and
+// the review loop, so the review's first round reviews the verification fixes
+// like every other commit on the branch.
+func TestRun_VerifyRunsBeforeReview(t *testing.T) {
+	var (
+		mu    sync.Mutex
+		order []string
+	)
+	logCall := func(name string) {
+		mu.Lock()
+		defer mu.Unlock()
+		order = append(order, name)
+	}
+	gh := reviewGH(t)
+	sa := &fakeSimplifyApplier{report: "## Simplification Report\n\nSTATUS: DONE", onApply: func(SimplifyApplyContext) { logCall("simplify-apply") }}
+	r := simplifyRunner(gh, &fakeClaude{}, &fakeSimplifyFinder{result: oneSimplifyFinding(reviewTestProdFile)}, sa)
+	r.Verifier = &fakeVerifier{result: oneCriterionFinding(), onVerify: func() { logCall("verify") }}
+	r.AdversarialVerifier = &fakeAdversarialVerifier{results: oneThenCleanReview(reviewTestProdFile), onReview: func() { logCall("review") }}
+	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"}
+	r.ReviewApplier = ra
+
+	if err := r.Run(io.Discard, Options{IssueRef: "owner/repo#42"}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if len(order) < 3 || !reflect.DeepEqual(order[:3], []string{"simplify-apply", "verify", "review"}) {
+		t.Errorf("call order %v, want simplify-apply, verify, then the first review round", order)
+	}
+	if len(ra.ctxs) != 2 {
+		t.Fatalf("review applier ran %d times, want 2 (the verification fixes, then the review round)", len(ra.ctxs))
+	}
+	if ra.ctxs[0].Source != ReviewApplySourceVerification || ra.ctxs[1].Source != "" {
+		t.Errorf("apply sources %q, %q, want %q first and the review's zero source second", ra.ctxs[0].Source, ra.ctxs[1].Source, ReviewApplySourceVerification)
+	}
+}
+
+// oneCriterionFinding is the acceptance-criteria gap the verification pass
+// surfaces: a criterion the diff does not satisfy. The review-feedback tests
+// thread it through to the applier.
 func oneCriterionFinding() *report.ReviewResult {
 	return &report.ReviewResult{Findings: []report.Finding{
 		{Severity: report.SeverityCritical, Title: "foo() not implemented", File: "foo.go", Problem: "no foo() in diff"},
 	}}
 }
 
+// scopeFinding is a hunk outside the issue and the plan, as the verifier
+// reports it.
+func scopeFinding() report.Finding {
+	return report.Finding{
+		Severity:    report.SeverityWarning,
+		Title:       "Drive-by change to Shout",
+		File:        "format.go",
+		Line:        7,
+		Pattern:     VerificationScopePattern,
+		Problem:     "The Non-Goal \"Changing Shout\" excludes this hunk.",
+		CodeSnippet: "\treturn strings.ToUpper(strings.TrimSpace(s))\n",
+	}
+}
+
 // verifyApplyRunner wires the acceptance-criteria verifier and a review applier
 // onto a fresh Runner. The adversarial finder is left nil, so the default-on
-// review-and-fix pass stays disabled and only the --verify feedback path touches
-// the applier — isolating Part A of the loop-closing work.
+// review-and-fix pass stays disabled and only the verification feedback path
+// touches the applier — isolating Part A of the loop-closing work.
 func verifyApplyRunner(gh *githubtest.Fake, cl *fakeClaude, fv *fakeVerifier, ra *fakeReviewApplier) *Runner {
 	ensureValidReport(cl)
 	r := newRunner(gh, cl)
@@ -1824,10 +2015,11 @@ func verifyApplyRunner(gh *githubtest.Fake, cl *fakeClaude, fv *fakeVerifier, ra
 	return r
 }
 
-// TestRun_VerifyFeedsUnmetCriteriaToApplier proves the --verify pass no longer
-// just renders: when it finds unmet criteria and an applier is wired, exactly
-// those findings are fed into the same ReviewApplier the review pass uses, and
-// the apply report is printed — while the render output still appears.
+// TestRun_VerifyFeedsUnmetCriteriaToApplier proves the verification pass does
+// not just render: when it finds unmet criteria and an applier is wired,
+// exactly those findings are fed into the same ReviewApplier the review pass
+// uses, and the apply report is printed — while the render output still
+// appears.
 func TestRun_VerifyFeedsUnmetCriteriaToApplier(t *testing.T) {
 	gh := &githubtest.Fake{
 		Issue:     sampleIssue(),
@@ -1840,7 +2032,7 @@ func TestRun_VerifyFeedsUnmetCriteriaToApplier(t *testing.T) {
 	r := verifyApplyRunner(gh, cl, fv, ra)
 
 	var buf bytes.Buffer
-	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", Verify: true, NoReportComment: true}); err != nil {
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
 	if fv.called.Load() != 1 {
@@ -1852,18 +2044,22 @@ func TestRun_VerifyFeedsUnmetCriteriaToApplier(t *testing.T) {
 	if len(ra.ctx.Findings) != 1 || ra.ctx.Findings[0].File != "foo.go" {
 		t.Errorf("applier got findings %+v, want exactly the verifier's unmet-criteria finding", ra.ctx.Findings)
 	}
-	if ra.ctx.BaseBranch != reviewTestBase {
-		t.Errorf("applier got base %q, want main threaded from CurrentBranchRef", ra.ctx.BaseBranch)
+	if ra.ctx.BaseBranch != reviewTestBase || fv.baseBranch != reviewTestBase {
+		t.Errorf("applier got base %q and verifier %q, want main threaded from CurrentBranchRef", ra.ctx.BaseBranch, fv.baseBranch)
 	}
 	if ra.ctx.Source != ReviewApplySourceVerification {
 		t.Errorf("applier got source %q, want the verification source so the prompt names the findings as unmet criteria", ra.ctx.Source)
 	}
 	out := buf.String()
-	if !strings.Contains(out, "unmet criterion finding") {
+	if !strings.Contains(out, "Independent verification: 1 unmet, 0 withheld, 0 outside the issue and the plan.") {
 		t.Errorf("the render output must still appear alongside the apply:\n%s", out)
 	}
 	if !strings.Contains(out, "Verification fixes report:") {
 		t.Errorf("missing the apply report in output:\n%s", out)
+	}
+	comments := verificationComments(gh)
+	if len(comments) != 1 || !strings.Contains(comments[0], "### Unmet") || !strings.Contains(comments[0], "## Review Report\n\nSTATUS: DONE") {
+		t.Errorf("want one verification comment carrying the gap and the apply report, got:\n%v", comments)
 	}
 }
 
@@ -1884,20 +2080,20 @@ func TestRun_VerifyWithholdsUnverifiedFindings(t *testing.T) {
 	r := verifyApplyRunner(gh, cl, fv, ra)
 
 	var buf bytes.Buffer
-	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", Verify: true, NoReportComment: true}); err != nil {
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
 	if ra.called.Load() != 0 {
 		t.Errorf("applier called %d times, want 0 — an unverified finding is reported, never applied", ra.called.Load())
 	}
-	if !strings.Contains(buf.String(), "maybe unmet") {
-		t.Errorf("the withheld finding must still be reported:\n%s", buf.String())
+	if !strings.Contains(buf.String(), "### Withheld (not grounded, not applied)\n\n- [WARNING] maybe unmet (foo.go)") {
+		t.Errorf("the withheld finding must still be reported under its section:\n%s", buf.String())
 	}
 }
 
-// TestRun_VerifyCleanPassSkipsApplier proves a clean --verify pass (no unmet
-// criteria) never touches the applier even when one is wired — the render-only
-// no-op path.
+// TestRun_VerifyCleanPassSkipsApplier proves a clean verification pass (no
+// unmet criteria) never touches the applier even when one is wired — the
+// render-only no-op path.
 func TestRun_VerifyCleanPassSkipsApplier(t *testing.T) {
 	gh := &githubtest.Fake{
 		Issue:     sampleIssue(),
@@ -1910,19 +2106,124 @@ func TestRun_VerifyCleanPassSkipsApplier(t *testing.T) {
 	r := verifyApplyRunner(gh, cl, fv, ra)
 
 	var buf bytes.Buffer
-	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", Verify: true, NoReportComment: true}); err != nil {
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
 	if ra.called.Load() != 0 {
 		t.Errorf("applier called %d times, want 0 — a clean verify pass applies nothing", ra.called.Load())
 	}
-	if !strings.Contains(buf.String(), "all Acceptance Criteria satisfied") {
+	if !strings.Contains(buf.String(), "every criterion is met and every change is accounted for") {
 		t.Errorf("expected the clean-pass message, got:\n%s", buf.String())
 	}
 }
 
-// TestRun_VerifyApplyErrorIsNonFatal proves a failure applying the verification
-// findings is surfaced but never aborts the run — the PR still opens.
+// TestRun_VerifyScopeFindingsAreReportedNotApplied: a hunk outside the issue
+// and the plan needs a person, so the applier receives the gap alone, and the
+// scope finding is printed and posted with its hunk, under the model of the
+// apply session that ran.
+func TestRun_VerifyScopeFindingsAreReportedNotApplied(t *testing.T) {
+	gh := reviewGH(t)
+	gap := oneCriterionFinding().Findings[0]
+	fv := &fakeVerifier{result: &report.ReviewResult{Findings: []report.Finding{gap, scopeFinding()}, Model: "verifier-model"}}
+	ra := &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE", model: "apply-model"}
+	r := verifyApplyRunner(gh, &fakeClaude{}, fv, ra)
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if ra.called.Load() != 1 || len(ra.ctx.Findings) != 1 || ra.ctx.Findings[0].Title != gap.Title {
+		t.Fatalf("applier ran %d times with %+v, want once with exactly the gap", ra.called.Load(), ra.ctx.Findings)
+	}
+	section := "### Outside the issue and the plan (needs discussion, not applied)\n\n- [WARNING] Drive-by change to Shout (format.go:7)\n  The Non-Goal \"Changing Shout\" excludes this hunk.\n```\n\treturn strings.ToUpper(strings.TrimSpace(s))\n```"
+	out := buf.String()
+	if !strings.Contains(out, "1 unmet, 0 withheld, 1 outside the issue and the plan") || !strings.Contains(out, section) {
+		t.Errorf("output lacks the counts or the scope section:\n%s", out)
+	}
+	comments := verificationComments(gh)
+	if len(comments) != 1 {
+		t.Fatalf("posted %d verification comments, want 1", len(comments))
+	}
+	for _, want := range []string{verificationHeading + "\n\n### Unmet", section, "_Verification report generated by ", "Claude:apply-model"} {
+		if !strings.Contains(comments[0], want) {
+			t.Errorf("verification comment lacks %q:\n%s", want, comments[0])
+		}
+	}
+}
+
+// TestRun_VerifyOnlyScopeFindingsSkipApplier: with nothing but a scope
+// finding, nothing is applied, and the comment still lands, under the
+// verifier's model since no apply session ran.
+func TestRun_VerifyOnlyScopeFindingsSkipApplier(t *testing.T) {
+	gh := reviewGH(t)
+	fv := &fakeVerifier{result: &report.ReviewResult{Findings: []report.Finding{scopeFinding()}, Model: "verifier-model"}}
+	ra := &fakeReviewApplier{report: "unused", model: "apply-model"}
+	r := verifyApplyRunner(gh, &fakeClaude{}, fv, ra)
+
+	if err := r.Run(io.Discard, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if ra.called.Load() != 0 {
+		t.Errorf("applier called %d times, want 0 for a scope finding", ra.called.Load())
+	}
+	comments := verificationComments(gh)
+	if len(comments) != 1 || !strings.Contains(comments[0], "### Outside the issue and the plan") || !strings.Contains(comments[0], "Claude:verifier-model") {
+		t.Errorf("want one verification comment with the scope section under the verifier's model, got:\n%v", comments)
+	}
+}
+
+// TestRun_VerifyUncertainScopeFindingIsScope: a scope finding is never applied
+// whatever its confidence, so an uncertain one is listed as a scope finding,
+// not withheld.
+func TestRun_VerifyUncertainScopeFindingIsScope(t *testing.T) {
+	gh := reviewGH(t)
+	f := scopeFinding()
+	f.Confidence = report.ConfidenceUncertain
+	ra := &fakeReviewApplier{report: "unused"}
+	r := verifyApplyRunner(gh, &fakeClaude{}, &fakeVerifier{result: &report.ReviewResult{Findings: []report.Finding{f}}}, ra)
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "0 unmet, 0 withheld, 1 outside the issue and the plan") || !strings.Contains(out, "### Outside the issue and the plan") {
+		t.Errorf("the uncertain scope finding is not listed as a scope finding:\n%s", out)
+	}
+	if strings.Contains(out, "### Withheld") {
+		t.Errorf("the uncertain scope finding was listed as withheld:\n%s", out)
+	}
+	if ra.called.Load() != 0 {
+		t.Errorf("applier called %d times, want 0", ra.called.Load())
+	}
+}
+
+// TestRun_VerifyErrorIsNonFatal: a verifier that fails is named on stdout,
+// posts nothing, and the run goes on to the review loop and returns nil.
+func TestRun_VerifyErrorIsNonFatal(t *testing.T) {
+	gh := reviewGH(t)
+	av := &fakeAdversarialVerifier{result: &report.ReviewResult{}}
+	r := reviewRunner(gh, &fakeClaude{}, av, &fakeReviewApplier{report: "unused"})
+	r.Verifier = &fakeVerifier{err: errors.New("verifier down")}
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
+		t.Fatalf("Run returned %v, want nil despite the verifier error", err)
+	}
+	if !strings.Contains(buf.String(), "Independent verification could not run: verifier down") {
+		t.Errorf("missing the verifier error in output:\n%s", buf.String())
+	}
+	if got := verificationComments(gh); len(got) != 0 {
+		t.Errorf("a failed verification posted %d comment(s), want none", len(got))
+	}
+	if av.called.Load() == 0 {
+		t.Error("the review loop did not run after the verifier failed")
+	}
+}
+
+// TestRun_VerifyApplyErrorIsNonFatal proves a failure applying the
+// verification findings is surfaced and posted but never aborts the run — the
+// PR still opens.
 func TestRun_VerifyApplyErrorIsNonFatal(t *testing.T) {
 	gh := &githubtest.Fake{
 		Issue:     sampleIssue(),
@@ -1930,14 +2231,14 @@ func TestRun_VerifyApplyErrorIsNonFatal(t *testing.T) {
 		BranchRef: &github.BranchRef{BaseBranch: "main", HeadBranch: "feat/x"},
 	}
 	cl := &fakeClaude{report: validImplReport}
-	fv := &fakeVerifier{result: oneCriterionFinding()}
-	ra := &fakeReviewApplier{err: errors.New("apply exploded")}
+	fv := &fakeVerifier{result: &report.ReviewResult{Findings: oneCriterionFinding().Findings, Model: "verifier-model"}}
+	ra := &fakeReviewApplier{err: errors.New("apply exploded"), model: "apply-model"}
 	r := verifyApplyRunner(gh, cl, fv, ra)
 	ff := &fakeFinalizer{report: defaultFinalizeReport}
 	r.Finalizer = ff
 
 	var buf bytes.Buffer
-	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", Verify: true, NoReportComment: true}); err != nil {
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
 		t.Fatalf("Run returned %v, want nil despite the apply error", err)
 	}
 	if ra.called.Load() != 1 {
@@ -1946,8 +2247,13 @@ func TestRun_VerifyApplyErrorIsNonFatal(t *testing.T) {
 	if ff.called.Load() != 1 {
 		t.Errorf("finalizer called %d times, want 1 — a verify-apply error must not block the PR", ff.called.Load())
 	}
-	if !strings.Contains(buf.String(), "Verification fixes could not run") {
+	const line = "Verification fixes could not run: apply exploded"
+	if !strings.Contains(buf.String(), line) {
 		t.Errorf("expected a non-fatal warning about the apply failure, got:\n%s", buf.String())
+	}
+	comments := verificationComments(gh)
+	if len(comments) != 1 || !strings.Contains(comments[0], line) || !strings.Contains(comments[0], "Claude:verifier-model") {
+		t.Errorf("want one verification comment carrying %q under the verifier's model, got:\n%v", line, comments)
 	}
 }
 
@@ -1969,7 +2275,7 @@ func TestRun_VerifyApplyEscalationIsHonored(t *testing.T) {
 	r.Finalizer = ff
 
 	var buf bytes.Buffer
-	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", Verify: true, NoReportComment: true}); err != nil {
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
 	if !strings.Contains(buf.String(), "Verification fixes stopped on NEEDS_CONTEXT") {
@@ -1980,9 +2286,37 @@ func TestRun_VerifyApplyEscalationIsHonored(t *testing.T) {
 	}
 }
 
-// TestRun_VerifyApplyBranchRefErrorSkips proves the verify-feedback apply degrades
-// cleanly when the base branch cannot be resolved: it renders, notes the skip,
-// and never calls the applier.
+// TestRun_VerifyEscalatedReportIsPostedFirst: an apply report that escalates
+// lands on the issue inside the verification comment before the run names the
+// escalation, so the person who must act sees it.
+func TestRun_VerifyEscalatedReportIsPostedFirst(t *testing.T) {
+	const fixes = "## Review Report\n\n### Skipped\n- the criterion — blocked on a decision\n### Status\nSTATUS: BLOCKED"
+	gh := reviewGH(t)
+	var buf bytes.Buffer
+	var posted, printedBefore string
+	gh.AddIssueCommentFn = func(_, _ string, _ int, body string) (string, error) {
+		if strings.Contains(body, verificationHeading) {
+			posted, printedBefore = body, buf.String()
+		}
+		return "", nil
+	}
+	r := verifyApplyRunner(gh, &fakeClaude{}, &fakeVerifier{result: oneCriterionFinding()}, &fakeReviewApplier{report: fixes})
+
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if !strings.Contains(posted, fixes) {
+		t.Fatalf("the verification comment does not carry the escalated apply report:\n%s", posted)
+	}
+	if strings.Contains(printedBefore, "Verification fixes stopped on BLOCKED") || !strings.Contains(buf.String(), "Verification fixes stopped on BLOCKED") {
+		t.Errorf("the escalation must be printed after the comment is posted:\nbefore the post:\n%s\nafter the run:\n%s", printedBefore, buf.String())
+	}
+}
+
+// TestRun_VerifyApplyBranchRefErrorSkips proves the verify-feedback apply
+// degrades cleanly when the base branch cannot be resolved: the verifier still
+// runs with an empty base, the apply is skipped with a note, and the comment
+// carries that note.
 func TestRun_VerifyApplyBranchRefErrorSkips(t *testing.T) {
 	gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir(), BranchRefErr: errors.New("no origin/HEAD")}
 	cl := &fakeClaude{report: validImplReport}
@@ -1991,19 +2325,48 @@ func TestRun_VerifyApplyBranchRefErrorSkips(t *testing.T) {
 	r := verifyApplyRunner(gh, cl, fv, ra)
 
 	var buf bytes.Buffer
-	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", Verify: true, NoReportComment: true}); err != nil {
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
+	}
+	if fv.called.Load() != 1 || fv.baseBranch != "" {
+		t.Errorf("verifier ran %d times with base %q, want once with an empty base", fv.called.Load(), fv.baseBranch)
 	}
 	if ra.called.Load() != 0 {
 		t.Errorf("applier called %d times, want 0 when the base branch cannot be resolved", ra.called.Load())
 	}
-	if !strings.Contains(buf.String(), "could not resolve the base branch") {
+	const line = "Verification fixes skipped: could not resolve the base branch for this checkout: no origin/HEAD"
+	if !strings.Contains(buf.String(), line) {
 		t.Errorf("missing the branch-resolution skip note in output:\n%s", buf.String())
+	}
+	if comments := verificationComments(gh); len(comments) != 1 || !strings.Contains(comments[0], line) {
+		t.Errorf("want one verification comment carrying %q, got:\n%v", line, comments)
 	}
 }
 
-// TestRun_VerifyRenderOnlyWithoutApplier proves the pre-loop behavior is intact:
-// with no applier wired, --verify renders its findings and never attempts a fix.
+// TestRun_VerifyCommentFailureIsNonFatal: a failure to post the verification
+// comment is named on stdout, and the run goes on to the review loop and
+// returns nil.
+func TestRun_VerifyCommentFailureIsNonFatal(t *testing.T) {
+	gh := reviewGH(t)
+	gh.CommentErr = errors.New("GitHub down")
+	av := &fakeAdversarialVerifier{result: &report.ReviewResult{}}
+	r := reviewRunner(gh, &fakeClaude{}, av, &fakeReviewApplier{report: "## Review Report\n\nSTATUS: DONE"})
+	r.Verifier = &fakeVerifier{result: oneCriterionFinding()}
+
+	var buf bytes.Buffer
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
+		t.Fatalf("Run returned %v, want nil despite the failed post", err)
+	}
+	if !strings.Contains(buf.String(), "Could not post the verification report as a comment on issue #42: GitHub down") {
+		t.Errorf("missing the failed post in output:\n%s", buf.String())
+	}
+	if av.called.Load() == 0 {
+		t.Error("the review loop did not run after the verification comment failed to post")
+	}
+}
+
+// TestRun_VerifyRenderOnlyWithoutApplier proves the pass without an applier
+// wired renders and posts its findings and never attempts a fix.
 func TestRun_VerifyRenderOnlyWithoutApplier(t *testing.T) {
 	gh := &githubtest.Fake{
 		Issue:     sampleIssue(),
@@ -2016,15 +2379,18 @@ func TestRun_VerifyRenderOnlyWithoutApplier(t *testing.T) {
 	r.Verifier = fv // no ReviewApplier wired
 
 	var buf bytes.Buffer
-	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", Verify: true, NoReportComment: true}); err != nil {
+	if err := r.Run(&buf, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
 	out := buf.String()
-	if !strings.Contains(out, "unmet criterion finding") || !strings.Contains(out, "foo() not implemented") {
+	if !strings.Contains(out, "1 unmet, 0 withheld, 0 outside the issue and the plan") || !strings.Contains(out, "foo() not implemented") {
 		t.Errorf("render-only path must still show the findings:\n%s", out)
 	}
 	if strings.Contains(out, "Verification fixes report:") {
 		t.Errorf("render-only path must not run any apply:\n%s", out)
+	}
+	if got := verificationComments(gh); len(got) != 1 {
+		t.Errorf("posted %d verification comments, want 1", len(got))
 	}
 }
 
@@ -3658,7 +4024,7 @@ func TestRun_PassesPatternsToClaude(t *testing.T) {
 	// Use an in-process patterns dir so LoadFiltered returns at least one
 	// pattern, proving the wiring from Options through to Claude.Implement
 	// actually carries patterns into the prompt context. The plan, simplify,
-	// review and --verify passes run too, so the test also proves every later
+	// verification and review passes run too, so the test also proves every later
 	// session reads the same on-disk catalog as the implement session, and that
 	// the catalog is still on disk while each one runs.
 	patternsDir := writeSamplePattern(t)
@@ -3696,9 +4062,7 @@ func TestRun_PassesPatternsToClaude(t *testing.T) {
 	r.ReviewApplier = ra
 	r.Verifier = &fakeVerifier{result: oneCriterionFinding()}
 
-	opts := samplePatternOptions(patternsDir)
-	opts.Verify = true
-	if err := r.Run(io.Discard, opts); err != nil {
+	if err := r.Run(io.Discard, samplePatternOptions(patternsDir)); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
 	if got := len(cl.ctx.Patterns); got != 1 {
@@ -3723,17 +4087,15 @@ func TestRun_PassesPatternsToClaude(t *testing.T) {
 		t.Errorf("simplify applier got catalog %q, want the implement session's %q", got, want)
 	}
 	if ra.called.Load() != 2 {
-		t.Fatalf("review applier called %d times, want 2 (the review pass, then the verification fixes)", ra.called.Load())
+		t.Fatalf("review applier called %d times, want 2 (the verification fixes, then the review pass)", ra.called.Load())
 	}
-	sawVerification := false
+	if ra.ctxs[0].Source != ReviewApplySourceVerification || ra.ctxs[1].Source != "" {
+		t.Errorf("review-apply sources %q, %q, want the verification fixes first and the review pass second", ra.ctxs[0].Source, ra.ctxs[1].Source)
+	}
 	for _, ctx := range ra.ctxs {
-		sawVerification = sawVerification || ctx.Source == ReviewApplySourceVerification
 		if got, want := ctx.Catalog.Dir, cl.ctx.Catalog.Dir; got != want {
 			t.Errorf("review applier (source %q) got catalog %q, want the implement session's %q", ctx.Source, got, want)
 		}
-	}
-	if !sawVerification {
-		t.Errorf("no review-apply call carried source %q, want the verification fixes to run", ReviewApplySourceVerification)
 	}
 	if _, err := os.Stat(cl.ctx.Catalog.Dir); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("stat %s after Run: %v, want fs.ErrNotExist (the catalog is removed when Run returns)", cl.ctx.Catalog.Dir, err)
@@ -4950,6 +5312,44 @@ func TestRun_ResumeSimplifyRunsWithoutReport(t *testing.T) {
 	}
 }
 
+// TestRun_ResumeSkipsVerificationOnceVerified: a resumed branch skips the
+// verification pass when an earlier run posted its verification comment, or
+// posted a review round, which starts only after verification. A posted
+// simplification report alone does not prove it ran.
+func TestRun_ResumeSkipsVerificationOnceVerified(t *testing.T) {
+	cases := []struct {
+		name     string
+		after    []github.IssueComment
+		wantRuns int32
+	}{
+		{"verification comment", []github.IssueComment{{Body: formatVerificationComment("### Unmet\n\n- [CRITICAL] x (x.go)\n\n## Review Report\n\nSTATUS: DONE", "m")}}, 0},
+		{"review round, no verification comment", []github.IssueComment{reviewRoundComment(1, "")}, 0},
+		{"simplification report only", []github.IssueComment{{Body: formatSimplifyComment("## Simplification Report\n\nfolded", "m")}}, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			gh := reviewGH(t)
+			gh.ResumeState = &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "abc1234", Subject: "done"}}}
+			gh.IssueComments = append([]github.IssueComment{doneReportComment()}, tc.after...)
+			fv := &fakeVerifier{result: &report.ReviewResult{}}
+			r := newRunner(gh, &fakeClaude{})
+			r.Verifier = fv
+
+			var buf bytes.Buffer
+			if err := r.Run(&buf, Options{IssueRef: "owner/repo#42"}); err != nil {
+				t.Fatalf("Run returned %v, want nil", err)
+			}
+			if got := fv.called.Load(); got != tc.wantRuns {
+				t.Errorf("verifier called %d times, want %d", got, tc.wantRuns)
+			}
+			skipped := strings.Contains(buf.String(), "Verification skipped: an earlier run already verified this branch.")
+			if skipped != (tc.wantRuns == 0) {
+				t.Errorf("skip line printed = %t, want %t:\n%s", skipped, tc.wantRuns == 0, buf.String())
+			}
+		})
+	}
+}
+
 // resumedReviewGH is a resumable, fully implemented branch whose issue carries
 // the given review-round comments after the DONE report.
 func resumedReviewGH(t *testing.T, rounds ...github.IssueComment) *githubtest.Fake {
@@ -5106,6 +5506,17 @@ func TestPassesAfter(t *testing.T) {
 	}
 }
 
+// TestPassesAfter_VerificationIsNotAReviewRound: a verification comment
+// embeds its apply report, which opens with the review heading, yet it marks
+// the branch verified and counts as no review round.
+func TestPassesAfter_VerificationIsNotAReviewRound(t *testing.T) {
+	body := verificationSections(oneCriterionFinding().Findings, nil, nil) + "\n\n## Review Report\n\n### Resolved\n- foo() added\n\nSTATUS: DONE"
+	got := passesAfter([]github.IssueComment{{Body: formatVerificationComment(body, "m")}})
+	if !got.verified || got.reviewRounds != 0 {
+		t.Errorf("got verified=%t reviewRounds=%d, want verified and no review round", got.verified, got.reviewRounds)
+	}
+}
+
 // TestLatestSessionAccount_Complete locks which accounts count as a finished
 // implementation: DONE and DONE_WITH_CONCERNS do, and so does a PARTIAL whose
 // coverage lists every package as done; any other PARTIAL, escalations, and
@@ -5232,7 +5643,7 @@ func TestRun_ThreadsTheTrailerBanToEveryCommittingSession(t *testing.T) {
 	r.ReviewApplier = ra
 	r.Verifier = &fakeVerifier{result: oneCriterionFinding()}
 
-	if err := r.Run(io.Discard, Options{IssueRef: "owner/repo#42", Verify: true, NoReportComment: true}); err != nil {
+	if err := r.Run(io.Discard, Options{IssueRef: "owner/repo#42", NoReportComment: true}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
 	if cl.ctx.AITrailersForbiddenBy != trailerBanFile {
@@ -5241,9 +5652,12 @@ func TestRun_ThreadsTheTrailerBanToEveryCommittingSession(t *testing.T) {
 	if sa.called.Load() != 1 || sa.ctx.AITrailersForbiddenBy != trailerBanFile {
 		t.Errorf("simplify apply ran %d times with AITrailersForbiddenBy %q, want once with AGENTS.md", sa.called.Load(), sa.ctx.AITrailersForbiddenBy)
 	}
-	// One apply for the review round, one for the verification's unmet criterion.
+	// One apply for the verification's unmet criterion, then one for the review round.
 	if len(ra.ctxs) != 2 {
-		t.Fatalf("review applier ran %d times, want 2 (review round and verification)", len(ra.ctxs))
+		t.Fatalf("review applier ran %d times, want 2 (verification and review round)", len(ra.ctxs))
+	}
+	if ra.ctxs[0].Source != ReviewApplySourceVerification || ra.ctxs[1].Source != "" {
+		t.Errorf("review-apply sources %q, %q, want the verification fixes first and the review round second", ra.ctxs[0].Source, ra.ctxs[1].Source)
 	}
 	for _, ctx := range ra.ctxs {
 		if ctx.AITrailersForbiddenBy != trailerBanFile {

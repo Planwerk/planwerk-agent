@@ -78,6 +78,28 @@ func TestImplementAndShipRegisterNoPlanReview(t *testing.T) {
 	}
 }
 
+// TestImplementAndShipRegisterNoVerify pins the verification pass's off switch
+// on both commands that implement: default false, so the pass runs unless asked
+// not to, and the verify flag that once opted in is gone.
+func TestImplementAndShipRegisterNoVerify(t *testing.T) {
+	for name, cmd := range map[string]*cobra.Command{
+		"implement": newImplementCmd(&runtimeDeps{}),
+		"ship":      newShipCmd(&runtimeDeps{}),
+	} {
+		off, err := cmd.Flags().GetBool("no-verify")
+		if err != nil {
+			t.Errorf("%s must expose the boolean --no-verify: %v", name, err)
+			continue
+		}
+		if off {
+			t.Errorf("%s --no-verify defaults to true, want false", name)
+		}
+		if cmd.Flags().Lookup("verify") != nil {
+			t.Errorf("%s still registers the verify flag, which the default-on pass replaced", name)
+		}
+	}
+}
+
 // TestCommandsRegisterTheWikiFlags pins the wiki opt-in on the commands that
 // read the project memory beside review, audit, propose, and implement, and
 // its absence on a command that reads none.

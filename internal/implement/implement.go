@@ -27,6 +27,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/domains"
 	"github.com/planwerk/planwerk-agent/internal/github"
 	"github.com/planwerk/planwerk-agent/internal/hygiene"
+	"github.com/planwerk/planwerk-agent/internal/mdfence"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
 	"github.com/planwerk/planwerk-agent/internal/search"
@@ -48,15 +49,22 @@ type Options struct {
 	NoPlanComment   bool // do not post the finished plan as a comment on the source issue
 	NoPlanReview    bool // do not review a freshly generated plan before implementing it
 	NoReportComment bool // do not post the implementation report as a comment on the source issue
-	Verify          bool // after implementing, run an independent verification pass against the diff
 	// NoSimplify disables the automatic simplify pass that, after the implement
 	// session commits, folds removals of over-engineering into the branch's
 	// commits on the local feature branch (no push). The pass is on by default.
 	NoSimplify bool
+	// NoVerify disables the independent verification pass that, after the
+	// simplify pass, checks the diff against the issue's Acceptance Criteria and
+	// the implementation plan, reports the changes outside them on the issue,
+	// and has the unmet items fixed on the local branch (no push) before the
+	// review pass reviews those fixes. The pass is on by default; a full run is
+	// implement -> simplify -> verify -> review -> finalize.
+	NoVerify bool
 	// NoReview disables the automatic review-and-fix pass that, after the
-	// simplify pass, runs the adversarial review over the diff and folds each
-	// fix into the commit it belongs to on the local branch (no push). The pass
-	// is on by default; a full run is implement -> simplify -> review -> finalize.
+	// verification pass, runs the adversarial review over the diff and folds
+	// each fix into the commit it belongs to on the local branch (no push). The
+	// pass is on by default; a full run is
+	// implement -> simplify -> verify -> review -> finalize.
 	NoReview bool
 	// NoSpecialists disables the domain-specialist fan-out on the review pass's
 	// first round; the adversarial finder still runs. The fan-out is on by default
@@ -163,8 +171,8 @@ type Runner struct {
 	// BuildPlanPrompt renders the planning prompt without invoking Claude.
 	// Required when Options.PrintPlanPrompt is set; nil otherwise is fine.
 	BuildPlanPrompt PromptBuildFn
-	// Verifier runs the optional independent verification pass. When nil (or
-	// opts.Verify is false) the pass is skipped.
+	// Verifier runs the independent verification pass. When nil (or
+	// opts.NoVerify is set) the pass is skipped.
 	Verifier ImplementationVerifier
 	// AdversarialVerifier is the review-and-fix pass's finder. When nil (or
 	// opts.NoReview is set) the pass is skipped.
@@ -202,10 +210,11 @@ type Runner struct {
 	// and implementation report, writing nothing. Nil (or a wiki that did not
 	// resolve, or opts.NoCapture) leaves the pass disabled.
 	Capturer ClaudeCapturer
-	// Finalizer opens the draft pull request after the simplify and review passes
-	// have run on the local branch (a full run is implement -> simplify -> review
-	// -> finalize). When nil the run stops with the branch committed but no PR
-	// opened. The production wiring always sets it.
+	// Finalizer opens the draft pull request after the simplify, verification,
+	// and review passes have run on the local branch (a full run is
+	// implement -> simplify -> verify -> review -> finalize). When nil the run
+	// stops with the branch committed but no PR opened. The production wiring
+	// always sets it.
 	Finalizer PRFinalizer
 	// ResolveWiki resolves the target repo's wiki. Defaults to
 	// patterns.ResolveWiki; a Runner seam so the capture pass can be exercised
@@ -232,7 +241,7 @@ type Runner struct {
 
 // NewRunner builds a Runner with the production GitHub backend, the given
 // Claude plan/implement functions, their prompt builders, the optional plan
-// reviewer, the optional acceptance-criteria and adversarial verifiers, the
+// reviewer, the implementation and adversarial verifiers, the
 // optional simplify finder/applier, the optional review applier, and the
 // finalize function. The CLI wires claude.Plan / claude.BuildPlanPrompt /
 // claude.ReviewPlan / claude.Implement / claude.BuildImplementPrompt /
@@ -393,10 +402,14 @@ func (r *Runner) PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuil
 //  7. Post the implementation report back onto the source issue as a comment
 //     (unless --no-report-comment), so every run — including no-op or failed
 //     ones — leaves its course of events recorded on the issue.
-//  8. Run the simplify and review-and-fix passes over the committed diff, on the
-//     local branch, posting their reports onto the source issue.
-//  9. Open the draft pull request last, so it lands already simplified and
-//     self-reviewed (a full run is implement -> simplify -> review -> finalize).
+//  8. Run the simplify, verification, and review-and-fix passes over the
+//     committed diff, on the local branch, posting their reports onto the
+//     source issue. The verification pass checks the diff against the issue's
+//     Acceptance Criteria and the implementation plan, and the review pass
+//     reviews the fixes it applied.
+//  9. Open the draft pull request last, so it lands already simplified,
+//     verified, and self-reviewed (a full run is
+//     implement -> simplify -> verify -> review -> finalize).
 func (r *Runner) Run(w io.Writer, opts Options) error {
 	if opts.PrintPrompt && r.BuildPrompt == nil {
 		return errors.New("--print-prompt requires a prompt builder; wire claude.BuildImplementPrompt via NewRunner")
@@ -641,8 +654,8 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 
 	// Simplify pass: runs over the diff the implement session committed, on the
 	// local feature branch before any pull request exists. On by default;
-	// --no-simplify or an unwired dependency skips it. Non-fatal, like the verify
-	// passes.
+	// --no-simplify or an unwired dependency skips it. Non-fatal, like the
+	// verification and review passes.
 	if !opts.NoSimplify && r.Simplifier != nil && r.SimplifyApplier != nil {
 		if resumed != nil && resumed.simplified {
 			slog.Info("simplify pass already ran on an earlier run; skipping", "issue", number)
@@ -652,11 +665,32 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		}
 	}
 
-	// Review-and-fix pass: runs after the simplify pass (a full run is
-	// implement -> simplify -> review -> finalize), reusing the adversarial
-	// review as the finder and folding each fix into the commit it belongs to. On
-	// by default; --no-review or an unwired dependency skips it. Non-fatal, like
-	// the verify and simplify passes. Its findings feed the capture pass below.
+	// Verification pass: checks the simplified diff against the issue's
+	// Acceptance Criteria and the implementation plan without trusting the
+	// implementation report, posts its verdict on the issue, and has the unmet
+	// items fixed on the local branch. It runs before the review pass, so the
+	// review's first round reviews those fixes like every other commit. On by
+	// default; --no-verify or an unwired verifier skips it. Non-fatal.
+	//
+	// A resumed run skips it once an earlier run verified the branch: that run
+	// posted a verification comment, or it reached the review pass, which starts
+	// only after verification. A clean verification posts nothing, so a posted
+	// review round is the only trace it leaves.
+	if !opts.NoVerify && r.Verifier != nil {
+		if resumed != nil && (resumed.verified || resumed.reviewRounds > 0) {
+			slog.Info("verification pass already ran on an earlier run; skipping", "issue", number)
+			_, _ = fmt.Fprint(w, "\nVerification skipped: an earlier run already verified this branch.\n")
+		} else {
+			r.runVerification(w, repo.Dir, owner, name, number, ctx)
+		}
+	}
+
+	// Review-and-fix pass: runs after the verification pass (a full run is
+	// implement -> simplify -> verify -> review -> finalize), reusing the
+	// adversarial review as the finder and folding each fix into the commit it
+	// belongs to. On by default; --no-review or an unwired dependency skips it.
+	// Non-fatal, like the simplify and verification passes. Its findings feed the
+	// capture pass below.
 	var reviewFindings []report.Finding
 	if !opts.NoReview && r.AdversarialVerifier != nil && r.ReviewApplier != nil {
 		reviewFindings = r.runReview(w, repo.Dir, owner, name, number, ctx, opts, resumed)
@@ -670,13 +704,6 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	// (memory-only) when --no-review left the findings empty.
 	if !opts.NoCapture && r.Capturer != nil && wiki.Dir != "" {
 		r.runCapture(w, repo.Dir, owner, name, number, ctx, opts, implReport, reviewFindings, wiki)
-	}
-
-	// The optional read-only verification pass assesses the final, simplified
-	// and self-reviewed diff against the issue's Acceptance Criteria before the
-	// PR is opened. It is non-fatal.
-	if opts.Verify && r.Verifier != nil {
-		r.runVerification(w, repo.Dir, ctx)
 	}
 
 	// Finalize: open the draft pull request last, so it lands already simplified
@@ -768,12 +795,14 @@ func (r *Runner) prepareResume(w io.Writer, owner, name, dir string, number int,
 
 // resumedPasses records how far an earlier run got past its implement session,
 // read from the reports it posted on the issue: the complete implementation
-// report itself, whether the simplify pass posted its report, how many review
-// rounds posted theirs, and the pre-fix commit the last of those rounds
-// recorded so the next round re-reviews just its fixes.
+// report itself, whether the simplify pass posted its report, whether the
+// verification pass posted its report, how many review rounds posted theirs,
+// and the pre-fix commit the last of those rounds recorded so the next round
+// re-reviews just its fixes.
 type resumedPasses struct {
 	implReport   string
 	simplified   bool
+	verified     bool
 	reviewRounds int
 	reviewSince  string
 }
@@ -781,15 +810,21 @@ type resumedPasses struct {
 // passesAfter reads the pass reports out of the comments posted after the
 // implementation report they belong to. Each kind is identified by heading plus
 // attribution marker, like the session accounts. A simplify pass that found
-// nothing posts no report, so it is not detected and runs again on a resume; a
-// review round always posts one (an applied report or the withheld-only report),
-// so the count is exact.
+// nothing posts no report, so it is not detected and runs again on a resume. A
+// clean verification posts none either; Run reads a posted review round as
+// proof that verification ran, since the review pass starts after it. A review
+// round always posts one (an applied report or the withheld-only report), so
+// the count is exact. A verification comment embeds its apply report, which
+// opens with the review heading, but never the review marker, so it is never
+// counted as a round.
 func passesAfter(comments []github.IssueComment) resumedPasses {
 	var p resumedPasses
 	for _, c := range comments {
 		switch {
 		case strings.Contains(c.Body, simplifyHeading) && strings.Contains(c.Body, simplifyCommentMarker):
 			p.simplified = true
+		case strings.Contains(c.Body, verificationHeading) && strings.Contains(c.Body, verificationCommentMarker):
+			p.verified = true
 		case strings.Contains(c.Body, reviewHeading) && strings.Contains(c.Body, reviewCommentMarker):
 			p.reviewRounds++
 			p.reviewSince = ""
@@ -870,10 +905,11 @@ func hasAcceptanceCriteria(body string) bool {
 
 // confirmUnelaborated asks whether to implement an issue that has not been
 // elaborated anyway (design decision 102). Without criteria the plan has no
-// definition of done to ground and --verify nothing to check against, so the
-// operator decides rather than the run guessing. A "no" or a non-TTY stdin
-// aborts before anything is cloned; the error names the elaborate invocation
-// that fixes the issue and the flag that skips the question.
+// definition of done to ground and the verification pass nothing to check
+// against, so the operator decides rather than the run guessing. A "no" or a
+// non-TTY stdin aborts before anything is cloned; the error names the
+// elaborate invocation that fixes the issue and the flag that skips the
+// question.
 func (r *Runner) confirmUnelaborated(w io.Writer, fullName string, number int) error {
 	ref := fmt.Sprintf("%s#%d", fullName, number)
 	elaborateHint := fmt.Sprintf("elaborate it first with \"planwerk-agent elaborate --update-issue %s\"", ref)
@@ -1163,10 +1199,10 @@ func formatPlanComment(plan, model string) string {
 // planReviewHeading is the heading every plan review opens with ("## Plan
 // Review (issue #N)"). It contains none of the headings the plan-reuse and
 // resume lookups key on (planHeading, reportHeading, progressNoteHeading,
-// simplifyHeading, reviewHeading), and the review comment carries none of
-// their markers, so mostRecentPlanComment, latestSessionAccount, and
-// passesAfter pass over it. No lookup reads a review back, so unlike those
-// comments it has no footer marker of its own.
+// simplifyHeading, verificationHeading, reviewHeading), and the review
+// comment carries none of their markers, so mostRecentPlanComment,
+// latestSessionAccount, and passesAfter pass over it. No lookup reads a review
+// back, so unlike those comments it has no footer marker of its own.
 const planReviewHeading = "## Plan Review"
 
 // planReviewCommentFooter attributes the posted plan review to planwerk-agent,
@@ -1408,18 +1444,29 @@ func effectiveImplementStatus(implReport string) (status string, reinterpreted b
 	return status, false
 }
 
-// runVerification runs the independent verification pass against the change set
-// the implement session produced and prints its verdict. Verification failures
-// are non-fatal — the implementation still happened, and the operator gets the
-// implementer's own report regardless.
+// runVerification runs the independent verification pass against the change
+// set the implement session produced, without trusting the implementation
+// report, and reports what it found. The pass is non-fatal: a failure to
+// verify, to apply, or to post is logged and surfaced, never returned.
 //
-// When the pass finds unmet-criteria findings and a review applier is wired, the
-// findings are fed into the same ReviewApplier the review-and-fix pass uses so
-// the gaps are closed on the local branch before the finalize step opens the PR.
-// That apply is non-fatal, mirroring runReview: a failed branch resolution or
-// apply is logged and surfaced but never aborts the run. With no applier wired
-// (or a clean pass) the pass stays render-only, exactly as before.
-func (r *Runner) runVerification(w io.Writer, dir string, ctx Context) {
+// Without Acceptance Criteria or a plan there is no specification to verify
+// against, and the scope check would flag every hunk, so the pass is skipped.
+// Otherwise the findings fall into three groups. A scope finding
+// (VerificationScopePattern, whatever its confidence) names a hunk outside the
+// issue and the plan; it needs a person, so it is reported and never applied.
+// A withheld finding did not clear the survive-before-apply gate the review
+// loop applies (decision 72) and is reported only. The remaining gaps go to
+// the same ReviewApplier the review-and-fix pass uses, so they are closed on
+// the local branch before the review pass reviews the result. Every group goes
+// to stdout and, when there is any finding, into one comment on the issue,
+// posted before the escalation check so an escalated apply report still lands.
+// A clean pass posts nothing.
+func (r *Runner) runVerification(w io.Writer, dir, owner, name string, number int, ctx Context) {
+	if !hasAcceptanceCriteria(ctx.IssueBody) && strings.TrimSpace(ctx.Plan) == "" {
+		slog.Info("no Acceptance Criteria and no plan to verify against; skipping the verification pass", "issue", number)
+		_, _ = fmt.Fprint(w, "\nIndependent verification skipped: the issue has no Acceptance Criteria and the run has no implementation plan to verify against.\n")
+		return
+	}
 	slog.Info("running independent implementation verification")
 	// The verifier scopes its diff to the base the branch forked from, as the
 	// other finders do, so the branch is resolved before the pass; when it
@@ -1435,78 +1482,167 @@ func (r *Runner) runVerification(w io.Writer, dir string, ctx Context) {
 		_, _ = fmt.Fprintf(w, "\nIndependent verification could not run: %v\n", err)
 		return
 	}
-	renderVerification(w, result)
-
-	if r.ReviewApplier == nil || result == nil || len(result.Findings) == 0 {
+	var findings []report.Finding
+	model := ""
+	if result != nil {
+		findings, model = result.Findings, result.Model
+	}
+	if len(findings) == 0 {
+		slog.Info("verification found every criterion met and every change accounted for", "issue", number)
+		_, _ = fmt.Fprint(w, "\nIndependent verification: every criterion is met and every change is accounted for.\n")
 		return
 	}
 
-	if branchErr != nil {
-		slog.Warn("could not resolve the branch to apply verification findings; skipping", "err", branchErr)
-		_, _ = fmt.Fprintf(w, "\nVerification fixes skipped: could not resolve the base branch for this checkout: %v\n", branchErr)
-		return
-	}
-
-	// The same survive-before-apply gate the review loop applies (decision 72):
-	// a finding the verifier could not ground is reported above, never edited
-	// from.
-	var gaps []report.Finding
-	for _, f := range result.Findings {
-		if !f.Unverified() {
+	var gaps, withheld, scope []report.Finding
+	for _, f := range findings {
+		switch {
+		case f.Pattern == VerificationScopePattern:
+			scope = append(scope, f)
+		case f.Unverified():
+			withheld = append(withheld, f)
+		default:
 			gaps = append(gaps, f)
 		}
 	}
-	if len(gaps) == 0 {
-		return
+	if len(scope) > 0 {
+		slog.Info("verification found changes outside the issue and the plan", "count", len(scope))
+	}
+	body := verificationSections(gaps, withheld, scope)
+	_, _ = fmt.Fprintf(w, "\nIndependent verification: %d unmet, %d withheld, %d outside the issue and the plan. The implementer's report was not trusted.\n\n%s\n",
+		len(gaps), len(withheld), len(scope), body)
+
+	var fixes string
+	switch {
+	case r.ReviewApplier == nil || len(gaps) == 0:
+	case branchErr != nil:
+		line := fmt.Sprintf("Verification fixes skipped: could not resolve the base branch for this checkout: %v", branchErr)
+		slog.Warn("could not resolve the branch to apply verification findings; skipping", "err", branchErr)
+		_, _ = fmt.Fprintf(w, "\n%s\n", line)
+		body = appendReportSections(body, line)
+	default:
+		slog.Info("feeding verification findings into the review applier", "findings", len(gaps))
+		applied, applyModel, err := r.ReviewApplier.ApplyReview(dir, ReviewApplyContext{
+			RepoFullName:          ctx.RepoFullName,
+			BaseBranch:            baseBranch,
+			Findings:              gaps,
+			Patterns:              ctx.Patterns,
+			Catalog:               ctx.Catalog,
+			MaxPatterns:           ctx.MaxPatterns,
+			Source:                ReviewApplySourceVerification,
+			AITrailersForbiddenBy: ctx.AITrailersForbiddenBy,
+		})
+		if err != nil {
+			line := fmt.Sprintf("Verification fixes could not run: %v", err)
+			slog.Warn("verification apply failed", "err", err)
+			_, _ = fmt.Fprintf(w, "\n%s\n", line)
+			body = appendReportSections(body, line)
+			break
+		}
+		fixes = applied
+		if applyModel != "" {
+			model = applyModel
+		}
+		if fixes != "" {
+			_, _ = fmt.Fprintf(w, "\nVerification fixes report:\n%s\n", fixes)
+			body = appendReportSections(body, fixes)
+		}
 	}
 
-	slog.Info("feeding verification findings into the review applier", "findings", len(gaps))
-	verifyReport, _, err := r.ReviewApplier.ApplyReview(dir, ReviewApplyContext{
-		RepoFullName:          ctx.RepoFullName,
-		BaseBranch:            branch.BaseBranch,
-		Findings:              gaps,
-		Patterns:              ctx.Patterns,
-		Catalog:               ctx.Catalog,
-		MaxPatterns:           ctx.MaxPatterns,
-		Source:                ReviewApplySourceVerification,
-		AITrailersForbiddenBy: ctx.AITrailersForbiddenBy,
-	})
-	if err != nil {
-		slog.Warn("verification apply failed", "err", err)
-		_, _ = fmt.Fprintf(w, "\nVerification fixes could not run: %v\n", err)
-		return
-	}
-	if verifyReport != "" {
-		_, _ = fmt.Fprintf(w, "\nVerification fixes report:\n%s\n", verifyReport)
-	}
+	// Post the report before the escalation check so an escalated report still
+	// lands on the issue for the human who must look at it.
+	r.postVerificationComment(w, owner, name, number, body, model)
 	// The prompt tells the session its STATUS line is read and stops the pass
 	// on an escalation; honor that here as the review loop does.
-	if status := planEscalation(verifyReport); status != "" {
+	if status := planEscalation(fixes); status != "" {
 		slog.Warn("verification fixes session escalated", "status", status)
 		_, _ = fmt.Fprintf(w, "\nVerification fixes stopped on %s; the unmet criteria above stand as reported.\n", status)
 		return
 	}
-	slog.Info("verification fixes complete")
+	if fixes != "" {
+		slog.Info("verification fixes complete")
+	}
 }
 
-// renderVerification prints the verification verdict: a clean pass when no
-// criterion gaps were found, otherwise one block per unmet criterion.
-func renderVerification(w io.Writer, result *report.ReviewResult) {
-	if result == nil || len(result.Findings) == 0 {
-		_, _ = fmt.Fprint(w, "\nIndependent verification: all Acceptance Criteria satisfied against the actual diff.\n")
-		return
-	}
-	_, _ = fmt.Fprintf(w, "\nIndependent verification: %d unmet criterion finding(s) — the implementer's report was not trusted.\n\n", len(result.Findings))
-	for _, f := range result.Findings {
-		_, _ = fmt.Fprintf(w, "- [%s] %s", f.Severity, f.Title)
-		if f.File != "" {
-			_, _ = fmt.Fprintf(w, " (%s)", f.File)
+// verificationSections renders the verification findings as report sections,
+// each only when it has an entry, in this order: the gaps, the findings the
+// survive-before-apply gate withheld, and the changes outside the issue and the
+// plan. A gap or withheld entry names its severity, title, and file, with the
+// problem on the next line; a scope entry adds the line the hunk starts on and
+// ends with the hunk's lines, fenced.
+func verificationSections(gaps, withheld, scope []report.Finding) string {
+	var sections []string
+	for _, sec := range []struct {
+		heading  string
+		findings []report.Finding
+		scope    bool
+	}{
+		{"### Unmet", gaps, false},
+		{"### Withheld (not grounded, not applied)", withheld, false},
+		{"### Outside the issue and the plan (needs discussion, not applied)", scope, true},
+	} {
+		if len(sec.findings) == 0 {
+			continue
 		}
-		_, _ = fmt.Fprintln(w)
-		if f.Problem != "" {
-			_, _ = fmt.Fprintf(w, "  %s\n", f.Problem)
+		var sb strings.Builder
+		sb.WriteString(sec.heading + "\n\n")
+		for _, f := range sec.findings {
+			_, _ = fmt.Fprintf(&sb, "- [%s] %s", f.Severity, f.Title)
+			switch {
+			case f.File == "":
+			case sec.scope && f.Line > 0:
+				_, _ = fmt.Fprintf(&sb, " (%s:%d)", f.File, f.Line)
+			default:
+				_, _ = fmt.Fprintf(&sb, " (%s)", f.File)
+			}
+			sb.WriteString("\n")
+			if f.Problem != "" {
+				_, _ = fmt.Fprintf(&sb, "  %s\n", f.Problem)
+			}
+			if snippet := strings.TrimRight(f.CodeSnippet, "\n"); sec.scope && strings.TrimSpace(snippet) != "" {
+				sb.WriteString(mdfence.Wrap(snippet, "") + "\n")
+			}
 		}
+		sections = append(sections, strings.TrimRight(sb.String(), "\n"))
 	}
+	return strings.Join(sections, "\n\n")
+}
+
+// verificationCommentFooter attributes the posted verification report to
+// planwerk-agent, naming the model that produced it and matching the footer the
+// implement command's other comments append to the artifacts they leave on
+// GitHub.
+func verificationCommentFooter(model string) string {
+	return attribution.CommentFooter("Verification report generated by", "implement", model)
+}
+
+// verificationHeading and verificationCommentMarker double-key a posted
+// verification report the way simplifyHeading and simplifyCommentMarker key a
+// simplification report: a resumed run reads them to know the verification
+// pass already ran.
+const (
+	verificationHeading       = "## Verification Report"
+	verificationCommentMarker = "_Verification report generated by " + attribution.Link
+)
+
+// formatVerificationComment wraps the verification report in the issue-comment
+// body: the heading, body (the sections, then the apply report or the line the
+// run printed when the apply did not run), and the attribution footer.
+func formatVerificationComment(body, model string) string {
+	return verificationHeading + "\n\n" + strings.TrimSpace(body) + "\n\n---\n\n" + verificationCommentFooter(model) + "\n"
+}
+
+// postVerificationComment posts the verification report as a comment on the
+// source issue, so what the pass found, applied, and left for discussion lands
+// on the issue alongside the plan and the other passes' reports; the PR does
+// not exist yet when this pass runs.
+//
+// Posting is best-effort: a failure to reach GitHub is logged and surfaced to
+// the operator but never aborts the run. The fixes are already on the branch,
+// and the report is on stdout regardless.
+func (r *Runner) postVerificationComment(w io.Writer, owner, name string, number int, body, model string) {
+	github.PostBestEffort(w, "verification report", fmt.Sprintf("issue #%d", number), func() (string, error) {
+		return r.GitHub.AddIssueComment(owner, name, number, formatVerificationComment(body, model))
+	})
 }
 
 // runSimplify runs the automatic simplify pass over the diff the implement
@@ -2258,9 +2394,10 @@ func (r *Runner) runCapture(w io.Writer, dir, owner, name string, number int, ct
 }
 
 // runFinalize opens the draft pull request as the final step, once the implement,
-// simplify, and review passes have all run on the local feature branch. A fresh
-// Claude session reads the final diff, writes the PR description (with the
-// mandatory "Closes #N" link), pushes the branch, and opens the draft PR.
+// simplify, verification, and review passes have all run on the local feature
+// branch. A fresh Claude session reads the final diff, writes the PR
+// description (with the mandatory "Closes #N" link), pushes the branch, and
+// opens the draft PR.
 //
 // Unlike the simplify/review passes this is the run's deliverable, so a genuine
 // failure to open the PR is returned to the caller (fatal): the branch is
