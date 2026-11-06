@@ -51,7 +51,11 @@ See the [CLI reference](/reference/cli#address) for the full flag table.
    **minimal-invasive** change that addresses the feedback. By default each
    thread becomes one follow-up commit (`--one-commit-per-thread`) so the
    comment-to-commit mapping stays legible; `--one-commit-per-thread=false`
-   aggregates the changes into a single commit. The loop runs until every
+   aggregates the changes into a single commit. The session never weakens,
+   skips, or deletes a test, widens a type, or adds a lint suppression the
+   file does not already use to make a comment go away: a thread that asks
+   for one is reported as `NEEDS_CONTEXT` with the request quoted, and the
+   run stops there once the report is posted. The loop runs until every
    selected thread is handled or `--max-iterations` is hit. Each commit ends
    with `Assisted-by` above `Signed-off-by`, or with `Signed-off-by` alone when
    the repository's contribution rules on the base branch forbid AI attribution

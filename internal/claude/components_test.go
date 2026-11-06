@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/planwerk/planwerk-agent/internal/address"
 	"github.com/planwerk/planwerk-agent/internal/diffscope"
 	"github.com/planwerk/planwerk-agent/internal/elaborate"
 	"github.com/planwerk/planwerk-agent/internal/implement"
@@ -408,6 +409,10 @@ func noWeakeningPrompts() map[string]string {
 		"implement/zero":      BuildImplementPrompt(implement.Context{}),
 		"bare-implement":      BuildBareImplementPrompt(goldenBareImplementContext()),
 		"bare-implement/zero": BuildBareImplementPrompt(implement.BareContext{}),
+		"address":             BuildAddressPrompt(goldenAddressContext()),
+		"address/zero":        BuildAddressPrompt(address.Context{}),
+		"bare-address":        BuildBareAddressPrompt(goldenBareAddressContext()),
+		"bare-address/zero":   BuildBareAddressPrompt(address.BareContext{}),
 	}
 }
 
@@ -423,6 +428,14 @@ func TestNoWeakeningRulesReachEveryEditingSession(t *testing.T) {
 		}
 		if got := strings.Count(prompt, "NEVER widen types"); got != 1 {
 			t.Errorf("%s prompt says %q %d times, want exactly 1", name, "NEVER widen types", got)
+		}
+		if strings.Contains(name, "address") {
+			if got := strings.Count(prompt, addressForbiddenAskRule); got != 1 {
+				t.Errorf("%s prompt carries addressForbiddenAskRule %d times, want exactly 1", name, got)
+			}
+			if !strings.Contains(prompt, rules+addressForbiddenAskRule) {
+				t.Errorf("%s prompt: addressForbiddenAskRule does not directly follow noWeakeningRules", name)
+			}
 		}
 	}
 }

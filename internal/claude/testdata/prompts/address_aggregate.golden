@@ -124,6 +124,10 @@ EVERY commit you create MUST end with exactly these two trailers, in this order 
 - Address ONLY the threads listed above. Do NOT touch unrelated code.
 - Do NOT push, and do NOT force-push: planwerk-agent publishes the branch after this session.
 - NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).
+- NEVER weaken, skip, or delete tests to make the suite green; fix the root cause.
+- NEVER widen types to Any/interface{}/unknown to silence the type-checker.
+- NEVER suppress lint findings with // nolint, # noqa, # type: ignore, @ts-ignore, etc. unless that suppression is already idiomatic in the same file.
+- When a thread asks for a change one of these hard rules forbids, change nothing for it: set that thread to NEEDS_CONTEXT and quote the request in what you report for that thread.
 - NEVER fabricate file paths or line numbers — open the file before claiming.
 - If there is nothing to commit (every thread was BLOCKED/NEEDS_CONTEXT), do NOT create an empty commit; emit the JSON and stop.
 
