@@ -304,6 +304,77 @@ func TestClient_LogUsageSummary_SinglePassWithStatsShowsItsRow(t *testing.T) {
 	}
 }
 
+// TestClient_LogUsageSummary_ShowsCompactionsAndSubagents locks the two counts
+// on a pass's row: after the turns and before the denials, singular at one,
+// omitted at zero, and enough on their own to print a single pass's row.
+func TestClient_LogUsageSummary_ShowsCompactionsAndSubagents(t *testing.T) {
+	t.Run("rows of two passes", func(t *testing.T) {
+		c := NewClient()
+		c.addUsage("implement", tokenUsage{InputTokens: 180_000, OutputTokens: 21_000}, 7.40)
+		c.addSessionStats("implement", sessionStats{toolUses: map[string]int{"Agent": 3}, numTurns: 61, compactions: 1, subagents: 3, permissionDenials: 2})
+		c.addUsage("fix", tokenUsage{InputTokens: 1_000, OutputTokens: 500}, 0.10)
+		c.addSessionStats("fix", sessionStats{toolUses: map[string]int{"Task": 1}, compactions: 2, subagents: 1})
+
+		var buf strings.Builder
+		c.LogUsageSummary(&buf)
+		want := "claude usage: 181.0k in / 21.5k out across 2 calls, est. $7.50\n" +
+			"  implement                 1 call   180.0k in / 21.0k out, est. $7.40, 61 turns, 1 compaction, 3 subagents, 2 denied\n" +
+			"                           tools: Agent 3\n" +
+			"  fix                       1 call   1.0k in / 500 out, est. $0.10, 2 compactions, 1 subagent\n" +
+			"                           tools: Task 1\n"
+		if got := buf.String(); got != want {
+			t.Errorf("LogUsageSummary =\n%q\nwant\n%q", got, want)
+		}
+	})
+
+	for _, tt := range []struct {
+		name  string
+		stats sessionStats
+		end   string
+	}{
+		{name: "single pass with only a compaction", stats: sessionStats{compactions: 1}, end: ", 1 compaction"},
+		{name: "single pass with only a subagent", stats: sessionStats{subagents: 1}, end: ", 1 subagent"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewClient()
+			c.addUsage("implement", tokenUsage{InputTokens: 13_400, OutputTokens: 4_200}, 0.42)
+			c.addSessionStats("implement", tt.stats)
+
+			var buf strings.Builder
+			c.LogUsageSummary(&buf)
+			want := "claude usage: 13.4k in / 4.2k out across 1 calls, est. $0.42\n" +
+				"  implement                 1 call   13.4k in / 4.2k out, est. $0.42" + tt.end + "\n"
+			if got := buf.String(); got != want {
+				t.Errorf("LogUsageSummary =\n%q\nwant\n%q", got, want)
+			}
+		})
+	}
+}
+
+// TestClient_LogUsageSummary_OverflowSumsCompactionsAndSubagents locks in that
+// the "+N further passes" line sums the two counts of the passes past the
+// bound, so a compaction in a cheap pass is not lost from the summary.
+func TestClient_LogUsageSummary_OverflowSumsCompactionsAndSubagents(t *testing.T) {
+	c := NewClient()
+	const passes = maxSummaryPasses + 2
+	for i := range passes {
+		// Descending cost, so the two cheapest fall past the bound.
+		label := fmt.Sprintf("pass-%02d", i)
+		c.addUsage(label, tokenUsage{InputTokens: 1_000}, float64(passes-i))
+		if i >= maxSummaryPasses {
+			c.addSessionStats(label, sessionStats{compactions: 1, subagents: 2})
+		}
+	}
+
+	var buf strings.Builder
+	c.LogUsageSummary(&buf)
+	lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+	want := "  +2 further passes         2 calls  2.0k in / 0 out, est. $3.00, 2 compactions, 4 subagents"
+	if last := lines[len(lines)-1]; last != want {
+		t.Errorf("last line = %q, want %q", last, want)
+	}
+}
+
 // TestClient_LogUsageSummary_SilentWhenNoCalls locks in that a Run that never
 // invoked Claude (e.g. --help, a dry run, a print-prompt exit) prints nothing,
 // so the summary line never appears on an empty run.

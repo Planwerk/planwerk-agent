@@ -246,14 +246,15 @@ const maxSummaryPasses = 8
 // LogUsageSummary writes a totals summary of the Run's Claude token usage and
 // estimated cost to w (typically os.Stderr), e.g. "claude usage: 13.4k in /
 // 4.2k out across 6 calls, est. $0.42", followed by the same figures broken
-// down per pass, most expensive first. A pass row ends in its turns and
-// permission denials (sessionSuffix), and a pass whose sessions called a tool
-// is followed by a "tools:" line with its histogram (formatToolUses); session
-// ids are left to usage.passes and the -v log. It writes nothing when no Claude
-// call was made, so commands that exit early (--help, dry runs, print-prompt)
-// stay silent, and it omits the breakdown when there is no pass, or a single
-// pass with no turns, denials or tool calls to show (passObserved): there the
-// totals line already says everything the breakdown would (decision 152).
+// down per pass, most expensive first. A pass row ends in its turns,
+// compactions, subagents and permission denials (sessionSuffix), and a pass
+// whose sessions called a tool is followed by a "tools:" line with its
+// histogram (formatToolUses); session ids are left to usage.passes and the -v
+// log. It writes nothing when no Claude call was made, so commands that exit
+// early (--help, dry runs, print-prompt) stay silent, and it omits the
+// breakdown when there is no pass, or a single pass with none of those counts
+// or tool calls to show (passObserved): there the totals line already says
+// everything the breakdown would (decisions 152, 164).
 func (c *Client) LogUsageSummary(w io.Writer) {
 	u := c.UsageTotals()
 	if u.Calls == 0 {
@@ -272,7 +273,7 @@ func (c *Client) LogUsageSummary(w io.Writer) {
 	for _, p := range shown {
 		_, _ = fmt.Fprintf(w, "  %-24s %2d %s  %s in / %s out, est. $%.2f%s\n",
 			p.Pass, p.Calls, pluralCalls(p.Calls), humanizeTokens(p.InputTokens), humanizeTokens(p.OutputTokens), p.CostUSD,
-			sessionSuffix(p.NumTurns, p.PermissionDenials))
+			sessionSuffix(p))
 		if len(p.ToolUses) > 0 {
 			_, _ = fmt.Fprintf(w, "  %-24s tools: %s\n", "", formatToolUses(p.ToolUses))
 		}
@@ -286,35 +287,47 @@ func (c *Client) LogUsageSummary(w io.Writer) {
 			agg.CostUSD += p.CostUSD
 			agg.NumTurns += p.NumTurns
 			agg.PermissionDenials += p.PermissionDenials
+			agg.Compactions += p.Compactions
+			agg.Subagents += p.Subagents
 		}
 		_, _ = fmt.Fprintf(w, "  %-24s %2d %s  %s in / %s out, est. $%.2f%s\n",
 			fmt.Sprintf("+%d further passes", len(rest)), agg.Calls, pluralCalls(agg.Calls),
 			humanizeTokens(agg.InputTokens), humanizeTokens(agg.OutputTokens), agg.CostUSD,
-			sessionSuffix(agg.NumTurns, agg.PermissionDenials))
+			sessionSuffix(agg))
 	}
 }
 
 // passObserved reports whether p recorded how its sessions ran: turns,
-// permission denials or tool calls, the figures a summary row adds to the
-// totals line.
+// permission denials, compactions, subagents or tool calls, the figures a
+// summary row adds to the totals line.
 func passObserved(p report.PassUsage) bool {
-	return p.NumTurns > 0 || p.PermissionDenials > 0 || len(p.ToolUses) > 0
+	return p.NumTurns > 0 || p.PermissionDenials > 0 || p.Compactions > 0 || p.Subagents > 0 || len(p.ToolUses) > 0
 }
 
-// sessionSuffix renders the end of a summary row: ", N turns" (", 1 turn") when
-// turns is positive and ", N denied" when denials is, "" when neither is.
-func sessionSuffix(turns, denials int) string {
+// sessionSuffix renders the end of p's summary row, each part only when its
+// count is positive and in this order: ", N turns" (", 1 turn"),
+// ", N compactions" (", 1 compaction"), ", N subagents" (", 1 subagent") and
+// ", N denied"; "" when every count is zero.
+func sessionSuffix(p report.PassUsage) string {
 	var b strings.Builder
-	switch {
-	case turns == 1:
-		b.WriteString(", 1 turn")
-	case turns > 1:
-		fmt.Fprintf(&b, ", %d turns", turns)
-	}
-	if denials > 0 {
-		fmt.Fprintf(&b, ", %d denied", denials)
+	writeCount(&b, p.NumTurns, "turn")
+	writeCount(&b, p.Compactions, "compaction")
+	writeCount(&b, p.Subagents, "subagent")
+	if p.PermissionDenials > 0 {
+		fmt.Fprintf(&b, ", %d denied", p.PermissionDenials)
 	}
 	return b.String()
+}
+
+// writeCount appends ", 1 <noun>" or ", N <noun>s" to b, and nothing when n is
+// not positive.
+func writeCount(b *strings.Builder, n int, noun string) {
+	switch {
+	case n == 1:
+		fmt.Fprintf(b, ", 1 %s", noun)
+	case n > 1:
+		fmt.Fprintf(b, ", %d %ss", n, noun)
+	}
 }
 
 // formatToolUses renders a tool histogram as "Read 22, Grep 9, Bash 4": the
