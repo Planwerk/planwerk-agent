@@ -66,7 +66,8 @@ see [Claude Usage Totals](/reference/output-format#claude-usage-totals) — and 
 `passes` array recording whether each requested pass ran, was gated out, or
 failed ([Pass Status](/reference/output-format#pass-status)), both available for
 extraction the same way. Each entry of `usage.passes` also records its
-sessions' turns, permission denials, tool calls and session ids. A review's
+sessions' turns, permission denials, compactions, subagents, tool calls and
+session ids. A review's
 sessions are all read-only, so Claude Code saves no transcript for them unless
 the job sets `PLANWERK_KEEP_TRANSCRIPTS` in its `env`
 ([`--keep-transcripts`](/reference/cli#global-flags)). The transcripts it then
