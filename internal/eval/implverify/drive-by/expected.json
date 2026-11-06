@@ -1,0 +1,13 @@
+{
+  "description": "The clean case's issue, plan, and head, plus a drive-by change to Shout in format.go, which the issue's Non-Goals exclude and nothing in the plan accounts for. The verifier must report it as a scope finding.",
+  "clean": false,
+  "findings": [
+    {
+      "file": "format.go",
+      "line": 7,
+      "severity": "WARNING",
+      "pattern": "implementation-scope",
+      "keywords": ["scope", "non-goal", "shout", "accounts", "plan"]
+    }
+  ]
+}

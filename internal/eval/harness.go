@@ -91,10 +91,14 @@ func (c *evalGitHubClient) ViewerLogin() (string, error) { return "", nil }
 // mirrors `review --specialists` (the domain specialist fan-out).
 // ScopePatterns mirrors `review --scope-patterns`, which narrows the primary
 // review's pattern bodies to the changed files (decision 141).
+// ImplementVerifier runs no review: each case goes to the implementation
+// verifier instead (RunImplementVerifierCase), which -implement-verifier
+// selects.
 type RunOptions struct {
-	Thorough      bool `json:"thorough"`
-	Specialists   bool `json:"specialists"`
-	ScopePatterns bool `json:"scope_patterns,omitempty"`
+	Thorough          bool `json:"thorough"`
+	Specialists       bool `json:"specialists"`
+	ScopePatterns     bool `json:"scope_patterns,omitempty"`
+	ImplementVerifier bool `json:"implement_verifier,omitempty"`
 }
 
 // reviewOptions returns the review.Options a case run passes to the shipped

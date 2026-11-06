@@ -1,0 +1,5 @@
+{
+  "description": "The head implements exactly what the issue and its plan ask for: Hello greets an empty name as a stranger, with a test. Nothing is missing and nothing is outside the issue, so any finding here is a false positive.",
+  "clean": true,
+  "findings": []
+}

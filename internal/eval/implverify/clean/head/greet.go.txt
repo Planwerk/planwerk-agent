@@ -1,0 +1,10 @@
+// Package greet builds greetings.
+package greet
+
+// Hello greets name, or a stranger when name is empty.
+func Hello(name string) string {
+	if name == "" {
+		return "Hello, stranger"
+	}
+	return "Hello, " + name
+}

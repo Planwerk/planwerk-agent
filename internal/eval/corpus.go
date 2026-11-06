@@ -31,6 +31,13 @@
 // RunVerifierBench sends AACR-Bench's expert-labeled review comments to the
 // claim verifier and tallies its verdicts per label (see verifierbench.go,
 // decision 148).
+//
+// # Implementation verifier
+//
+// A third corpus, internal/eval/implverify, scores the implementation
+// verifier `implement` runs instead of the review (see implverify.go). Its
+// cases keep the corpus layout and add the issue and the implementation plan
+// the verifier checks the head against.
 package eval
 
 import (
@@ -55,6 +62,10 @@ const expectedFileName = "expected.json"
 // Comment is the reference review comment an external benchmark labels, which
 // the -judge matcher compares a prediction against; the corpus leaves it
 // empty.
+//
+// Pattern, when set, also requires the prediction to carry that pattern: an
+// implementation verifier case uses it to tell a scope finding from a gap.
+// No review corpus case sets it.
 type ExpectedFinding struct {
 	File     string   `json:"file"`
 	Line     int      `json:"line"`
@@ -62,6 +73,7 @@ type ExpectedFinding struct {
 	Severity string   `json:"severity"`
 	Keywords []string `json:"keywords"`
 	Comment  string   `json:"comment,omitempty"`
+	Pattern  string   `json:"pattern,omitempty"`
 }
 
 // Expected is the parsed expected.json for a corpus case. A clean case seeds no
