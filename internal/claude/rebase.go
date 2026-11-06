@@ -126,6 +126,7 @@ func BuildRebaseConflictPrompt(ctx rebase.ConflictContext) string {
 - Leave NO conflict markers in any file (step 4 checks), and leave every resolved file in a state that compiles or parses.
 - NEVER pick one side blindly to make the conflict "go away" — that silently drops a change. If you cannot reconcile a file, report it on an UNRESOLVED line (step 6) instead of guessing.
 `)
+	sb.WriteString(noWeakeningRules())
 
 	return sb.String()
 }
@@ -263,7 +264,7 @@ func BuildRebaseApplyPrompt(ctx rebase.ApplyContext) string {
    ### Applied
    - <adjustment> — folded into <sha> <subject>
    ### Skipped
-   - <adjustment> — <why: false positive, already handled, or no longer applies>
+   - <adjustment> — <why: false positive, already handled, no longer applies, or a hard rule forbids it>
 `+verificationReportLines()+`   ### Status
    STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT>
    (DONE = every listed adjustment applied or skipped with its reason, the fold complete, no fixup left unfolded, no rebase in progress, and at least one Verification entry, each PASS or not run with its reason; DONE_WITH_CONCERNS = the branch is consistent but carries a reservation a human must see, such as fixups left unfolded after a conflict you could not resolve or a Verification entry that reads FAIL; BLOCKED = the branch is not in a state to publish; NEEDS_CONTEXT = an adjustment turns on a decision only a human can make. planwerk-agent publishes the branch under --push only on DONE.)
@@ -273,10 +274,11 @@ func BuildRebaseApplyPrompt(ctx rebase.ApplyContext) string {
 - Apply ONLY the adjustments listed above.
 - Do NOT push. Do NOT force-push. planwerk-agent publishes the branch separately, only when --push is given and your report says DONE.
 - NEVER rebase, reorder, drop, or rewrite commits that already exist on origin/%[1]s — only this branch's own commits (origin/%[1]s..HEAD) may be folded.
-- If an adjustment is a false positive or no longer applies, SKIP it and record why — do not invent a change to satisfy it.
+- If an adjustment is a false positive, no longer applies, or cannot be applied without breaking one of these hard rules, SKIP it and record why — do not invent a change to satisfy it.
 - If there is nothing to apply, do NOT create an empty commit; output the report with empty Applied and Skipped lists, the Verification entries from step 2, and the STATUS the definitions above give.
 `, ctx.Onto)
 	sb.WriteString(noSkipHooksLine())
+	sb.WriteString(noWeakeningRules())
 
 	return sb.String()
 }
@@ -340,6 +342,7 @@ func BuildBareRebasePrompt(ctx rebase.BareContext) string {
 - NEVER blind-pick a conflict side to make it go away.
 `, ctx.Onto)
 	sb.WriteString(noSkipHooksLine())
+	sb.WriteString(noWeakeningRules())
 
 	return sb.String()
 }
