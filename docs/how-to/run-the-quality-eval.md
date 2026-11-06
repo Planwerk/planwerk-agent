@@ -296,8 +296,8 @@ In `-json` output each case and the aggregate carry `precision`, `recall`,
 `finder_model`, `finder_effort`, `structure_model` and `structure_effort`, and
 `finder_tools` when `PLANWERK_FINDER_TOOLS` is set, and `plugins`, the
 `name@version` of each plugin, when `PLANWERK_CLAUDE_PLUGINS` is. Each `usage.passes` entry
-also carries `num_turns`, `permission_denials`, `tool_uses` and `session_ids`
-(see [Claude Usage Totals](/reference/output-format#claude-usage-totals)).
+also carries `num_turns`, `permission_denials`, `compactions`, `subagents`,
+`tool_uses` and `session_ids` (see [Claude Usage Totals](/reference/output-format#claude-usage-totals)).
 
 ## Run against AACR-Bench
 

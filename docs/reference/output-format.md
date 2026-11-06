@@ -241,8 +241,8 @@ per-pass breakdown, most expensive first:
 
 ```text
 claude usage: 350.0k in / 33.0k out across 7 calls, est. $12.29
-  implement                 1 call   180.0k in / 21.0k out, est. $7.40, 61 turns
-                           tools: Bash 48, Read 31, Edit 17, Grep 9
+  implement                 1 call   180.0k in / 21.0k out, est. $7.40, 61 turns, 1 compaction, 3 subagents
+                           tools: Bash 48, Read 31, Edit 17, Grep 9, Agent 3
   plan                      1 call   96.0k in / 8.0k out, est. $2.90, 22 turns
                            tools: Read 18, Grep 7, Bash 5
   specialist-security       1 call   38.0k in / 1.4k out, est. $0.62, 14 turns, 2 denied
@@ -260,12 +260,17 @@ The end of a row says how the pass's sessions spent their turns. `turns` is the
 sum of `num_turns` over every `result` event of every call: a session that
 background work wakes for another turn emits a further `result` event that
 counts only the turns since the previous one, and its tokens are summed the
-same way. `denied` counts the tool calls Claude Code's
-permission check refused (`permission_denials`) and is omitted at zero. The
+same way. `compaction` counts the times Claude Code compacted a session's
+context, one per `compact_boundary` event in its stream. `subagent` counts
+the subagents the pass's sessions started: their calls of the Agent tool,
+which the `tools:` line lists as well, under `Agent` or `Task`. `denied`
+counts the tool calls Claude Code's permission check refused
+(`permission_denials`). Each of the four is omitted at zero. The
 `tools:` line under a row counts every tool call the pass's sessions made, a
 subagent's included, most-used first; the `+N further passes` line sums the
-turns and denials but prints no tools line. A run with a single pass prints
-that pass's row as well when it has turns, denials or tool calls to show.
+turns, compactions, subagents and denials but prints no tools line. A run with
+a single pass prints that pass's row as well when it has turns, compactions,
+subagents, denials or tool calls to show.
 
 When a review is posted, the same totals are embedded as a `usage` object in
 the `<!-- planwerk-agent-data ... -->` block of the summary comment that both
@@ -305,7 +310,8 @@ extraction:
         "est_cost_usd": 0.31,
         "num_turns": 14,
         "permission_denials": 2,
-        "tool_uses": { "Bash": 4, "Grep": 9, "Read": 22 },
+        "subagents": 1,
+        "tool_uses": { "Agent": 1, "Bash": 4, "Grep": 9, "Read": 22 },
         "session_ids": ["0b6f4a8e-6a4c-4c1e-9a55-3f0d2c1b7e21"]
       }
     ]
@@ -324,9 +330,11 @@ array records how each requested pass ended, not what it spent (see
 [Pass Status](#pass-status)).
 
 Each `usage.passes` entry also records how its sessions ran: `num_turns`,
-`permission_denials`, `tool_uses` (tool name to count) and `session_ids` (each
-session's `--session-id` once; a resumed completion-nudge turn shares its
-session's id). Each is omitted when empty, so older payloads are unchanged. A
+`permission_denials`, `compactions`, `subagents`, `tool_uses` (tool name to
+count) and `session_ids` (each session's `--session-id` once; a resumed
+completion-nudge turn shares its session's id). `subagents` always equals the
+`Agent` and `Task` entries of `tool_uses` added together. Each is omitted when
+empty, so older payloads are unchanged. A
 pass whose session failed or timed out keeps its entry, so its `session_ids`
 are there even when the failure billed no call: a pass that
 [Pass Status](#pass-status) records as `failed` finds them under the
