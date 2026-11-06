@@ -1371,7 +1371,7 @@ func TestFinders_ConstrainTheOutputSchema(t *testing.T) {
 			return c.SimplifyFindings("", "develop")
 		}},
 		{"VerifyImplementation", "verify-implementation", finderModel, testWorkerEffort, func(c *Client) (*report.ReviewResult, error) {
-			return c.VerifyImplementation("", "t", "b", "develop")
+			return c.VerifyImplementation("", "t", "b", "", "develop")
 		}},
 	}
 	for _, row := range rows {
@@ -1714,7 +1714,7 @@ func TestFinders_ReadTheWrittenDiff(t *testing.T) {
 			return c.SimplifyFindings(dir, "develop")
 		}},
 		{"VerifyImplementation", func(c *Client) (*report.ReviewResult, error) {
-			return c.VerifyImplementation(dir, "t", "b", "develop")
+			return c.VerifyImplementation(dir, "t", "b", "", "develop")
 		}},
 	}
 	for _, row := range rows {

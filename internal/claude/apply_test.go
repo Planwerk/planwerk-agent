@@ -94,15 +94,21 @@ func TestSimplifyApplyPrompt_FencesSnippetWithBackticks(t *testing.T) {
 }
 
 // TestReviewApplyPrompt_NamesVerificationGapsAsCriteria: findings from the
-// independent verification are described as unmet criteria, not review defects.
+// independent verification are described as gaps against the criteria and the
+// plan, not review defects.
 func TestReviewApplyPrompt_NamesVerificationGapsAsCriteria(t *testing.T) {
 	got := BuildReviewApplyPrompt(implement.ReviewApplyContext{
 		RepoFullName: "o/r",
 		BaseBranch:   "main",
 		Source:       implement.ReviewApplySourceVerification,
 	})
-	if !strings.Contains(got, "an independent verification found between the issue's Acceptance Criteria and the produced diff") {
-		t.Error("verification findings are not described as unmet criteria")
+	for _, want := range []string{
+		"an independent verification found between the issue's Acceptance Criteria, its implementation plan, and the produced diff",
+		"each names a criterion, a work package, or a planned test the branch does not yet deliver",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("verification findings are not described as gaps against the criteria and the plan: missing %q", want)
+		}
 	}
 }
 
