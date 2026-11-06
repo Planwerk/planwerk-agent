@@ -31,6 +31,7 @@ import (
 //   - the worker prompt's foreground line and foregroundRunLine: the worker returns to an orchestrator session, not to a report
 //   - diffFileSentence's last sentence and untrustedFetchedLine: a reviewer judges text in the diff that addresses an agent; it does not ignore it
 //   - projectSkillsBlock's obligation and pluginSessionPrompt's: one is user-prompt text that says "this prompt" and gives the project's reason, the other system-prompt text that says "your instructions", renders in sessions with no project-skills section, and exempts its skills from that section's limit
+//   - noWeakeningRules, review-apply's "NEVER silence a finding" bullet, and the fix prompts' "Do not cheat the check." pattern: the last two name their own trigger (a finding, a failing check) and a longer list (assertions, required checks, retries, pinned dependencies)
 
 // patternCatalogLeadIn is the first sentence of every review-pattern section
 // that treats the catalog as a constraint on the session's own change (plan,
@@ -706,6 +707,20 @@ func escalationOKLine(qualifier, tail string) string {
 // callers splice it between two other bullets without juggling separators.
 func noSkipHooksLine() string {
 	return "- NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).\n"
+}
+
+// noWeakeningRules returns the three "## Hard rules" bullets that forbid
+// making a check pass by weakening it: a weakened test, a widened type, a lint
+// suppression the file does not already use. Every builder whose session
+// changes code against a check carries them: the implement prompt, its bare
+// variant, and the implementer subagent; both address prompts; and the rebase
+// conflict, rebase apply, and bare rebase prompts. The fix and review-apply
+// prompts word their own form (see the header). The bullets carry their own
+// trailing newline, like noSkipHooksLine.
+func noWeakeningRules() string {
+	return "- NEVER weaken, skip, or delete tests to make the suite green; fix the root cause.\n" +
+		"- NEVER widen types to Any/interface{}/unknown to silence the type-checker.\n" +
+		"- NEVER suppress lint findings with // nolint, # noqa, # type: ignore, @ts-ignore, etc. unless that suppression is already idiomatic in the same file.\n"
 }
 
 // foldDisciplineRule returns the "## Hard rules" bullet that forbids pushing,
