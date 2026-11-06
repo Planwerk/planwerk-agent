@@ -4,7 +4,9 @@ Measure how well the review pipeline actually finds bugs. `make eval` runs the
 **shipped** review pipeline against a small labeled corpus of seeded-bug cases
 and scores the findings for precision, recall, F1, and severity accuracy. It
 can also score a sample of AACR-Bench, a benchmark of real pull requests; see
-[Run against AACR-Bench](#run-against-aacr-bench).
+[Run against AACR-Bench](#run-against-aacr-bench). With `-implement-verifier`
+it scores the implementation verifier `implement` runs instead of the review;
+see [Measure the implementation verifier](#measure-the-implementation-verifier).
 
 > [!IMPORTANT]
 > The eval invokes the **real** `claude` CLI and **spends tokens**. It needs an
@@ -62,6 +64,9 @@ it directly for the full flag set (`go run ./cmd/planwerk-eval -h`):
   comments instead of scoring the review, with `-verifier-sample N` (default
   20) comments per label; see
   [Measure the claim verifier](#measure-the-claim-verifier).
+- `-implement-verifier` scores the implementation verifier on its own corpus
+  instead of the review; see
+  [Measure the implementation verifier](#measure-the-implementation-verifier).
 
 The Claude model, effort, and timeout come from the same `PLANWERK_*`
 environment overrides the main CLI honors (`PLANWERK_CLAUDE_MODEL`,
@@ -104,7 +109,9 @@ expected keyword appears (case-insensitively) in the predicted title or
 problem text. A range runs from `line` to `line_end`, and a finding without
 `line_end` covers its `line` alone, so for two single lines the window is ±3.
 A prediction spanning lines 5 to 20 matches an expected finding anywhere from
-line 2 to line 23.
+line 2 to line 23. An expected finding that sets `pattern` also needs a
+prediction carrying that pattern; only the implementation verifier's cases
+set it.
 
 Each expected finding claims at most one prediction, and each prediction is
 claimed at most once. The harness pairs them so that as many expected findings
@@ -201,7 +208,9 @@ is a route file, so that case keeps its handler under `handlers/`.
 ```
 
 A seeded bug that spans several lines may add `line_end`, the last line of
-its range; it must not be before `line`.
+its range; it must not be before `line`. An expected finding may also set
+`pattern`, which a matching prediction must carry; no review corpus case sets
+it.
 
 A **clean** case seeds no bug (`"clean": true`, no findings). It measures false
 positives: every finding the pipeline reports on it is an FP, and its recall is
@@ -515,9 +524,10 @@ comment: the report lists it under `SKIPPED` with the reason, and `SENT` can
 fall below the sample. A failed verifier call is retried once, and a second
 failure exits 1. Low rates never change the exit code. `-baseline`, `-case`,
 `-corpus`, `-runs`, `-thorough`, `-specialists`, `-aacr-sample`, `-judge` and
-`-scope-patterns` shape review runs, which the bench does not make: each
-exits 1 before anything runs. So does `-verifier-sample` without
-`-verifier-bench`, which a review run would ignore.
+`-scope-patterns` shape review runs, which the bench does not make, and
+`-implement-verifier` picks another mode: each exits 1 before anything runs.
+So does `-verifier-sample` without `-verifier-bench`, which a review run would
+ignore.
 
 In `-json` output the report carries `per_label`, `excluded` (the rows not
 eligible), `tiers`, `labels[]` and `all`, `skipped[]`, `samples[]` and
@@ -530,13 +540,86 @@ null when nothing was sent. `skipped[]` holds `pr_url`, `file`, `line_start`,
 `context`, its `outcome` (`confirmed`, `refuted`, `unverifiable` or
 `no-verdict`), and the verifier's `verdict`, `evidence` and `reason`.
 
+## Measure the implementation verifier
+
+`implement` runs an independent verification pass over the diff it
+committed: one finder-tier session checks the branch against the issue and
+the implementation plan, and reports what the branch does not deliver and
+what it changed outside the issue and the plan. `-implement-verifier` scores
+that verifier, not the review, on its own corpus under
+`internal/eval/implverify`.
+
+```bash
+# Every case once, as a table
+go run ./cmd/planwerk-eval -implement-verifier
+
+# One case, three runs
+go run ./cmd/planwerk-eval -implement-verifier -case drive-by -runs 3
+```
+
+### The cases
+
+Each case keeps the corpus layout (`base/`, `head/`, `expected.json`) and adds
+two files. `issue.md` is the issue the verifier checks the head against: a
+`# <title>` line, then the body. `plan.md` is the implementation plan, and an
+empty one leaves the verifier checking the issue alone. A case that lacks
+either file, or whose `issue.md` does not open with `# `, fails before any run
+spends tokens.
+
+The three cases share one base: package `greet` with `Hello(name string)
+string`, a test of `Hello("Ada")`, and `Shout(s string) string` in
+`format.go`.
+
+| Case | Head | Expected |
+|------|------|----------|
+| `clean` | `Hello("")` returns `"Hello, stranger"`, with its test, as the issue and the plan ask | nothing (the clean case) |
+| `drive-by` | the `clean` head, plus a change to `Shout` that the issue's Non-Goals exclude | a WARNING scope finding on `Shout` in `format.go` |
+| `missing-package` | the first of the issue's two work packages only, without the `Farewell` the plan also covers | a BLOCKING finding in `greet.go` that names the missing work package |
+
+### How a finding matches
+
+The match rule is the corpus rule with one more condition: an expected finding
+that sets `pattern` matches only a prediction carrying that pattern. The
+verifier marks a change outside the issue and the plan with
+`implementation-scope`, and every other finding it reports carries
+`implementation-verification`. So `drive-by` expects `implementation-scope`
+and `missing-package` expects `implementation-verification`, and a gap
+reported as a scope finding, or the reverse, counts as a miss and a false
+positive. Every finding carries the pass label `verify-implementation`, which
+the recall by pass shows. The match rule keeps its name, `range-overlap`,
+because no review corpus case sets `pattern`.
+
+`-thorough`, `-specialists`, `-scope-patterns` and `-aacr` shape review runs,
+and `-verifier-bench` picks another mode: each exits 1 with
+`-<flag> does not apply to -implement-verifier` before anything runs.
+`-runs`, `-case`, `-corpus`, `-json` and `-baseline` work as in a corpus run.
+Each run of a case is one verifier session on the finder tier
+(`PLANWERK_FINDER_MODEL`, `PLANWERK_FINDER_EFFORT`).
+
+### Compare a verifier change
+
+A change to the verifier prompt is judged by the rule in
+[Compare a change against a baseline](#compare-a-change-against-a-baseline).
+The report records the mode as `implement_verifier`, and a baseline recorded
+in the other mode is refused with `compare like with like`. Record the
+baseline on the commit the change branches from:
+
+```bash
+# On the commit the change branches from
+go run ./cmd/planwerk-eval -implement-verifier -runs 3 -json > /tmp/implverify-baseline.json
+
+# On the change
+go run ./cmd/planwerk-eval -implement-verifier -runs 3 -baseline /tmp/implverify-baseline.json
+```
+
 ## Compare a change against a baseline
 
 A change is judged against the commit it branches from by one rule (decision
 106):
 
-- Both sides ran at least 3 times per case, with the same `-thorough` and
-  `-specialists` flags, over the same cases, scored by the same match rule,
+- Both sides ran at least 3 times per case, with the same `-thorough`,
+  `-specialists` and `-implement-verifier` flags, over the same cases, scored
+  by the same match rule,
   and at least one case seeds a bug. Over clean cases alone no check can
   fail. Neither side is an AACR-Bench run.
 - Pooled recall is not below the baseline's. Recall gets no tolerance.
@@ -619,11 +702,12 @@ under `baseline_tiers` and `candidate_tiers` and both sides' F1 under `f1`
 The read-only finder passes share one tier, set by `PLANWERK_FINDER_MODEL`
 and `PLANWERK_FINDER_EFFORT`. The corpus runs three of them: the adversarial
 pass, the domain specialists and claim verification. The coverage map, the
-feature-compliance check, the simplify finder and the implementation verifier
-run on the same tier, but no case measures them. `-verifier-bench` measures
-claim verification alone, so a candidate finder tier can be checked against
-its refute rates as well; see
+feature-compliance check and the simplify finder run on the same tier, but no
+case measures them. `-verifier-bench` measures claim verification alone, so a
+candidate finder tier can be checked against its refute rates as well; see
 [Measure the claim verifier](#measure-the-claim-verifier).
+`-implement-verifier` measures the implementation verifier alone; see
+[Measure the implementation verifier](#measure-the-implementation-verifier).
 
 To measure whether a cheaper tier keeps the recall, record a baseline with
 neither variable set, then compare each candidate against it with one or both

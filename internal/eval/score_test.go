@@ -317,6 +317,34 @@ func TestScoreCase(t *testing.T) {
 	}
 }
 
+// TestMatchesRequiresTheExpectedPattern: an expected finding that sets a
+// pattern matches only a prediction carrying that pattern, however well its
+// file, lines, and keyword match, and one that sets none ignores the pattern.
+func TestMatchesRequiresTheExpectedPattern(t *testing.T) {
+	exp := ef("format.go", 7, "WARNING", "scope")
+	exp.Pattern = "implementation-scope"
+	pred := pf("format.go", 7, report.SeverityWarning, "Change outside the issue's scope", "nothing accounts for it")
+
+	pred.Pattern = "implementation-verification"
+	if matches(pred, exp) {
+		t.Error("matches = true for a prediction with another pattern, want false")
+	}
+	pred.Pattern = ""
+	if matches(pred, exp) {
+		t.Error("matches = true for a prediction with no pattern, want false")
+	}
+	pred.Pattern = "implementation-scope"
+	if !matches(pred, exp) {
+		t.Error("matches = false for a prediction with the expected pattern, want true")
+	}
+
+	exp.Pattern = ""
+	pred.Pattern = "anything"
+	if !matches(pred, exp) {
+		t.Error("matches = false when the expected finding sets no pattern, want true")
+	}
+}
+
 func TestScoreAddFoundBy(t *testing.T) {
 	var s Score
 	s.Add(Score{TP: 1})

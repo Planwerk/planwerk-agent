@@ -1,0 +1,8 @@
+package greet
+
+import "strings"
+
+// Shout returns s in upper case, without its surrounding whitespace.
+func Shout(s string) string {
+	return strings.ToUpper(strings.TrimSpace(s))
+}

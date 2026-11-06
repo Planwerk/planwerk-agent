@@ -3,6 +3,7 @@ package main
 import (
 	"cmp"
 	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -149,7 +150,7 @@ func TestVerifierBenchConflicts(t *testing.T) {
 	if err := verifierBenchConflicts(map[string]bool{}); err != nil {
 		t.Errorf("no flag set = %v, want nil", err)
 	}
-	for _, name := range []string{"baseline", "case", "corpus", "runs", "thorough", "specialists", "aacr-sample", "judge", "scope-patterns"} {
+	for _, name := range []string{"baseline", "case", "corpus", "runs", "thorough", "specialists", "aacr-sample", "judge", "scope-patterns", "implement-verifier"} {
 		t.Run("-"+name+" is refused", func(t *testing.T) {
 			err := verifierBenchConflicts(map[string]bool{name: true, "aacr": true})
 			if want := "-" + name + " does not apply to -verifier-bench"; err == nil || err.Error() != want {
@@ -168,6 +169,64 @@ func TestVerifierBenchConflicts(t *testing.T) {
 			t.Errorf("verifierBenchConflicts = %v, want -runs named first", err)
 		}
 	})
+}
+
+func TestImplementVerifierConflicts(t *testing.T) {
+	if err := implementVerifierConflicts(map[string]bool{}); err != nil {
+		t.Errorf("no flag set = %v, want nil", err)
+	}
+	for _, name := range []string{"thorough", "specialists", "scope-patterns", "aacr", "verifier-bench"} {
+		t.Run("-"+name+" is refused", func(t *testing.T) {
+			err := implementVerifierConflicts(map[string]bool{name: true, "implement-verifier": true})
+			if want := "-" + name + " does not apply to -implement-verifier"; err == nil || err.Error() != want {
+				t.Errorf("implementVerifierConflicts = %v, want %q", err, want)
+			}
+		})
+	}
+	t.Run("the corpus run's own flags pass", func(t *testing.T) {
+		set := map[string]bool{"implement-verifier": true, "corpus": true, "case": true, "runs": true, "json": true, "baseline": true}
+		if err := implementVerifierConflicts(set); err != nil {
+			t.Errorf("implementVerifierConflicts = %v, want nil", err)
+		}
+	})
+}
+
+// TestModeConflicts_TheModeNamedFirstRuns: of two modes, the one the command
+// line names first runs, and its check refuses the second by name, so the two
+// orders of -implement-verifier and -verifier-bench fail with opposite
+// messages. A mode turned off is no mode.
+func TestModeConflicts_TheModeNamedFirstRuns(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		want string // "" means no conflict
+	}{
+		{[]string{"-implement-verifier", "-verifier-bench"}, "-verifier-bench does not apply to -implement-verifier"},
+		{[]string{"-verifier-bench", "-implement-verifier"}, "-implement-verifier does not apply to -verifier-bench"},
+		{[]string{"-implement-verifier", "-thorough"}, "-thorough does not apply to -implement-verifier"},
+		{[]string{"-verifier-bench", "-thorough"}, "-thorough does not apply to -verifier-bench"},
+		{[]string{"-implement-verifier=false", "-thorough"}, ""},
+		{[]string{"-verifier-bench", "-verifier-bench=false", "-thorough"}, ""},
+		{[]string{"-implement-verifier", "-verifier-bench", "-implement-verifier=false"}, "-implement-verifier does not apply to -verifier-bench"},
+		{[]string{"-thorough"}, ""},
+	} {
+		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
+			fs := flag.NewFlagSet("planwerk-eval", flag.ContinueOnError)
+			fs.Bool("thorough", false, "")
+			modes := registerModes(fs)
+			if err := fs.Parse(tc.args); err != nil {
+				t.Fatalf("parsing %v: %v", tc.args, err)
+			}
+			set := make(map[string]bool)
+			fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
+			err := modeConflicts(*modes, set)
+			switch {
+			case tc.want == "" && err != nil:
+				t.Errorf("modeConflicts = %v, want nil", err)
+			case tc.want != "" && (err == nil || err.Error() != tc.want):
+				t.Errorf("modeConflicts = %v, want %q", err, tc.want)
+			}
+		})
+	}
 }
 
 // TestRunVerifierBenchGuardsSpendNoTokens locks that runVerifierBench rejects

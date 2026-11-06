@@ -1,0 +1,14 @@
+{
+  "description": "The issue lists two work packages, the empty-name greeting and a new Farewell, and the plan covers both. The head implements only the first, so the verifier must report the missing Farewell work package.",
+  "clean": false,
+  "findings": [
+    {
+      "file": "greet.go",
+      "line": 1,
+      "line_end": 10,
+      "severity": "BLOCKING",
+      "pattern": "implementation-verification",
+      "keywords": ["farewell", "work package"]
+    }
+  ]
+}

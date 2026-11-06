@@ -189,36 +189,42 @@ func TestShippedCorpusValid(t *testing.T) {
 		if c.Expected.Clean {
 			clean++
 		}
-		// An expected finding in a file head/ does not change, or past its
-		// end, could never match and would read as a miss in every run.
-		dst := t.TempDir()
-		changed, err := materialize(filepath.Join(c.Dir, "head"), dst)
-		if err != nil {
-			t.Fatalf("case %s: materializing head: %v", c.Name, err)
-		}
-		for _, f := range c.Expected.Findings {
-			if !slices.Contains(changed, f.File) {
-				t.Errorf("case %s: expected finding in %s, which head/ does not change (it changes %v)", c.Name, f.File, changed)
-				continue
-			}
-			data, err := os.ReadFile(filepath.Join(dst, filepath.FromSlash(f.File)))
-			if err != nil {
-				t.Fatalf("case %s: reading %s: %v", c.Name, f.File, err)
-			}
-			lines := strings.Count(string(data), "\n")
-			if !strings.HasSuffix(string(data), "\n") {
-				lines++
-			}
-			if f.Line < 1 || f.Line > lines {
-				t.Errorf("case %s: expected finding at %s:%d, but the file has %d lines", c.Name, f.File, f.Line, lines)
-			}
-			if f.LineEnd != 0 && f.LineEnd > lines {
-				t.Errorf("case %s: expected finding at %s:%d-%d, but the file has %d lines", c.Name, f.File, f.Line, f.LineEnd, lines)
-			}
-		}
+		assertFindingsInHead(t, c)
 	}
 	if clean != 1 {
 		t.Errorf("shipped corpus has %d clean cases, want exactly 1", clean)
+	}
+}
+
+// assertFindingsInHead fails t for every expected finding of c in a file head/
+// does not change, or past that file's end: it could never match and would
+// read as a miss in every run.
+func assertFindingsInHead(t *testing.T, c Case) {
+	t.Helper()
+	dst := t.TempDir()
+	changed, err := materialize(filepath.Join(c.Dir, "head"), dst)
+	if err != nil {
+		t.Fatalf("case %s: materializing head: %v", c.Name, err)
+	}
+	for _, f := range c.Expected.Findings {
+		if !slices.Contains(changed, f.File) {
+			t.Errorf("case %s: expected finding in %s, which head/ does not change (it changes %v)", c.Name, f.File, changed)
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dst, filepath.FromSlash(f.File)))
+		if err != nil {
+			t.Fatalf("case %s: reading %s: %v", c.Name, f.File, err)
+		}
+		lines := strings.Count(string(data), "\n")
+		if !strings.HasSuffix(string(data), "\n") {
+			lines++
+		}
+		if f.Line < 1 || f.Line > lines {
+			t.Errorf("case %s: expected finding at %s:%d, but the file has %d lines", c.Name, f.File, f.Line, lines)
+		}
+		if f.LineEnd != 0 && f.LineEnd > lines {
+			t.Errorf("case %s: expected finding at %s:%d-%d, but the file has %d lines", c.Name, f.File, f.Line, f.LineEnd, lines)
+		}
 	}
 }
 

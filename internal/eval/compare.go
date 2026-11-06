@@ -100,6 +100,7 @@ func LoadReport(path string) (Report, error) {
 // over the named cases, or nil when it can. Neither side may be an AACR-Bench
 // run: its ground truth is incomplete, so it is a benchmark to read, never the
 // gate (decision 147). Both sides need MinCompareRuns runs, the same passes,
+// the same mode (both score the review, or both the implementation verifier),
 // the same set of cases in any order, and the baseline must be scored by
 // MatchRule, because the same predictions tally differently under another rule
 // (decision 146). The baseline also needs a recall: over clean cases alone no
@@ -114,6 +115,13 @@ func Comparable(baseline Report, cfg Config, cases []string) error {
 	if baseline.Runs < MinCompareRuns || cfg.Runs < MinCompareRuns {
 		return fmt.Errorf("a comparison needs at least %d runs per side (baseline %d, this run %d); re-run with -runs %d",
 			MinCompareRuns, baseline.Runs, cfg.Runs, MinCompareRuns)
+	}
+	// The mode is checked before the passes: the implementation verifier
+	// refuses -thorough and -specialists, so a review baseline that ran them
+	// would otherwise be refused for passes the candidate cannot add.
+	if baseline.ImplementVerifier != cfg.ImplementVerifier {
+		return fmt.Errorf("baseline ran with implement_verifier=%t, this run with implement_verifier=%t; compare like with like",
+			baseline.ImplementVerifier, cfg.ImplementVerifier)
 	}
 	if baseline.Thorough != cfg.Thorough || baseline.Specialists != cfg.Specialists {
 		return fmt.Errorf("baseline ran with thorough=%t specialists=%t, this run with thorough=%t specialists=%t; compare like with like",

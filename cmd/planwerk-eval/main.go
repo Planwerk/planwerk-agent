@@ -2,7 +2,9 @@
 // output quality against a labeled seeded-bug corpus or, with -aacr, against a
 // sample of AACR-Bench's real pull requests. With -verifier-bench it scores no
 // review: it measures the claim verifier on AACR-Bench's expert-labeled
-// comments instead (decision 148). It is kept out of the shipped
+// comments instead (decision 148). With -implement-verifier it scores the
+// implementation verifier `implement` runs on its own corpus,
+// internal/eval/implverify, instead of the review. It is kept out of the shipped
 // planwerk-agent CLI on purpose: it invokes the real claude CLI and spends
 // tokens, so it never runs in unit CI. Run it via `make eval`.
 //
@@ -22,6 +24,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -46,17 +50,24 @@ func main() {
 	aacrSample := flag.Int("aacr-sample", 10, "with -aacr, the number of pull requests to sample, stratified by language and context")
 	aacrCache := flag.String("aacr-cache", eval.DefaultAACRCacheDir(), "with -aacr, the directory the benchmark repositories are fetched into")
 	judge := flag.Bool("judge", false, "with -aacr, also ask the structure tier whether each line-overlapping pair raises the same concern")
-	verifierBench := flag.Bool("verifier-bench", false, "measure the claim verifier on AACR-Bench's labeled comments instead of scoring the review (needs -aacr)")
+	modes := registerModes(flag.CommandLine)
 	verifierSample := flag.Int("verifier-sample", 20, "comments drawn per label for -verifier-bench")
 	flag.Parse()
 	set := setFlags()
 
-	if *verifierBench {
-		err := verifierBenchConflicts(set)
-		var tiers eval.Tiers
-		if err == nil {
-			tiers, err = resolveTiers()
-		}
+	// The mode named first runs, and its conflict check refuses every flag it
+	// would ignore, a second mode included, before any client is built.
+	if err := modeConflicts(*modes, set); err != nil {
+		fmt.Fprintln(os.Stderr, "planwerk-eval:", err)
+		os.Exit(1)
+	}
+	mode := ""
+	if len(*modes) > 0 {
+		mode = (*modes)[0]
+	}
+
+	if mode == verifierBenchFlag {
+		tiers, err := resolveTiers()
 		if err == nil {
 			err = runVerifierBench(*aacr, *aacrCache, *verifierSample, tiers, *jsonOut)
 		}
@@ -72,13 +83,18 @@ func main() {
 		fmt.Fprintln(os.Stderr, "planwerk-eval:", err)
 		os.Exit(1)
 	}
-	cfg := eval.Config{Runs: *runs, RunOptions: eval.RunOptions{Thorough: *thorough, Specialists: *specialists, ScopePatterns: *scopePatterns}, Tiers: tiers}
+	implementVerifier := mode == implementVerifierFlag
+	cfg := eval.Config{Runs: *runs, RunOptions: eval.RunOptions{Thorough: *thorough, Specialists: *specialists, ScopePatterns: *scopePatterns, ImplementVerifier: implementVerifier}, Tiers: tiers}
 	bench := aacrOptions{
 		export: *aacr, sample: *aacrSample, cacheDir: *aacrCache, judge: *judge,
 		corpusSet: set["corpus"], aacrSampleSet: set["aacr-sample"], aacrCacheSet: set["aacr-cache"],
 		verifierSampleSet: set["verifier-sample"],
 	}
-	if err := run(*corpusDir, *caseName, *baseline, cfg, bench, *jsonOut); err != nil {
+	corpus := *corpusDir
+	if implementVerifier && !set["corpus"] {
+		corpus = filepath.FromSlash("internal/eval/implverify")
+	}
+	if err := run(corpus, *caseName, *baseline, cfg, bench, *jsonOut); err != nil {
 		fmt.Fprintln(os.Stderr, "planwerk-eval:", err)
 		os.Exit(1)
 	}
@@ -140,9 +156,12 @@ func run(corpusDir, caseName, baselinePath string, cfg eval.Config, aacr aacrOpt
 	}
 	var cases []eval.Case
 	var err error
-	if aacr.export != "" {
+	switch {
+	case aacr.export != "":
 		cases, cfg.AACR, err = loadAACRCases(aacr, caseName)
-	} else {
+	case cfg.ImplementVerifier:
+		cases, err = eval.LoadImplementVerifierCases(corpusDir, caseName)
+	default:
 		cases, err = loadCases(corpusDir, caseName)
 	}
 	if err != nil {
@@ -192,10 +211,14 @@ func run(corpusDir, caseName, baselinePath string, cfg eval.Config, aacr aacrOpt
 		for i := 1; i <= cfg.Runs; i++ {
 			fmt.Fprintf(os.Stderr, "running case %s (run %d/%d) ...\n", c.Name, i, cfg.Runs)
 			r, err := retry(func() (eval.Run, error) {
-				// A fresh client per attempt: RunCase reads the client's cumulative usage.
+				// A fresh client per attempt: both runners read the client's
+				// cumulative usage.
 				client, err := buildClient(cfg.Tiers)
 				if err != nil {
 					return eval.Run{}, err
+				}
+				if cfg.ImplementVerifier {
+					return eval.RunImplementVerifierCase(client, c)
 				}
 				return eval.RunCase(client, c, cfg.RunOptions)
 			})
@@ -269,10 +292,56 @@ func setFlags() map[string]bool {
 	return set
 }
 
+// The flags that each switch the eval into a mode that scores something other
+// than the review.
+const (
+	verifierBenchFlag     = "verifier-bench"
+	implementVerifierFlag = "implement-verifier"
+)
+
+// registerModes registers the mode flags on fs and returns the modes the
+// parsed command line turned on, in the order it named them, so that of two
+// modes the one named first runs and refuses the other (modeConflicts). A
+// mode's last value wins, as for any boolean flag: turning one off again drops
+// it.
+func registerModes(fs *flag.FlagSet) *[]string {
+	var modes []string
+	for _, m := range []struct{ name, usage string }{
+		{verifierBenchFlag, "measure the claim verifier on AACR-Bench's labeled comments instead of scoring the review (needs -aacr)"},
+		{implementVerifierFlag, "score the implementation verifier on its own corpus instead of the review"},
+	} {
+		fs.BoolFunc(m.name, m.usage, func(v string) error {
+			on, err := strconv.ParseBool(v)
+			if err != nil {
+				return err
+			}
+			modes = slices.DeleteFunc(modes, func(name string) bool { return name == m.name })
+			if on {
+				modes = append(modes, m.name)
+			}
+			return nil
+		})
+	}
+	return &modes
+}
+
+// modeConflicts runs the conflict check of the mode the command line named
+// first, which refuses a second mode like any other flag it would ignore. No
+// mode scores the review, which refuses nothing here.
+func modeConflicts(modes []string, set map[string]bool) error {
+	if len(modes) == 0 {
+		return nil
+	}
+	if modes[0] == verifierBenchFlag {
+		return verifierBenchConflicts(set)
+	}
+	return implementVerifierConflicts(set)
+}
+
 // verifierBenchRefuses lists the flags -verifier-bench refuses, in the order
 // verifierBenchConflicts checks them: each selects or shapes review runs, and
 // the bench makes none.
-var verifierBenchRefuses = []string{"baseline", "case", "corpus", "runs", "thorough", "specialists", "aacr-sample", "judge", "scope-patterns"}
+var verifierBenchRefuses = []string{"baseline", "case", "corpus", "runs", "thorough", "specialists", "aacr-sample", "judge", "scope-patterns", implementVerifierFlag}
 
 // verifierBenchConflicts returns an error naming the first flag of
 // verifierBenchRefuses that set holds, so a flag the bench would ignore is
@@ -281,6 +350,24 @@ func verifierBenchConflicts(set map[string]bool) error {
 	for _, name := range verifierBenchRefuses {
 		if set[name] {
 			return fmt.Errorf("-%s does not apply to -verifier-bench", name)
+		}
+	}
+	return nil
+}
+
+// implementVerifierRefuses lists the flags -implement-verifier refuses, in the
+// order implementVerifierConflicts checks them: each adds a review pass, scopes
+// the review's patterns, picks AACR-Bench cases, or picks another mode, and the
+// implementation verifier runs no review.
+var implementVerifierRefuses = []string{"thorough", "specialists", "scope-patterns", "aacr", verifierBenchFlag}
+
+// implementVerifierConflicts returns an error naming the first flag of
+// implementVerifierRefuses that set holds, so a flag the mode would ignore is
+// not taken for one it honors.
+func implementVerifierConflicts(set map[string]bool) error {
+	for _, name := range implementVerifierRefuses {
+		if set[name] {
+			return fmt.Errorf("-%s does not apply to -%s", name, implementVerifierFlag)
 		}
 	}
 	return nil

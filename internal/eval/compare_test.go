@@ -1,6 +1,7 @@
 package eval
 
 import (
+	"encoding/json"
 	"errors"
 	"math"
 	"os"
@@ -188,6 +189,12 @@ func TestComparable(t *testing.T) {
 			[]string{"baseline ran with thorough=true specialists=false", "this run with thorough=false specialists=false", "compare like with like"}},
 		{"specialists mismatch", base, Config{Runs: 3, RunOptions: RunOptions{Thorough: true, Specialists: true}}, []string{"a", "b"},
 			[]string{"baseline ran with thorough=true specialists=false", "this run with thorough=true specialists=true", "compare like with like"}},
+		{"implement-verifier mismatch", base, Config{Runs: 3, RunOptions: RunOptions{Thorough: true, ImplementVerifier: true}}, []string{"a", "b"},
+			[]string{"baseline ran with implement_verifier=false, this run with implement_verifier=true; compare like with like"}},
+		{"a thorough review baseline against an implement-verifier run names the mode", Report{Config: Config{Runs: 3, RunOptions: RunOptions{Thorough: true, Specialists: true}}, Match: MatchRule, Cases: base.Cases, Aggregate: base.Aggregate}, Config{Runs: 3, RunOptions: RunOptions{ImplementVerifier: true}}, []string{"a", "b"},
+			[]string{"baseline ran with implement_verifier=false, this run with implement_verifier=true; compare like with like"}},
+		{"an implement-verifier baseline against a review run", decodeReport(t, `{"runs":3,"thorough":true,"implement_verifier":true,"match":"range-overlap","cases":[{"name":"a"},{"name":"b"}],"aggregate":{"recall":1}}`), cfg, []string{"a", "b"},
+			[]string{"baseline ran with implement_verifier=true, this run with implement_verifier=false; compare like with like"}},
 		{"different case sets", base, cfg, []string{"c", "a"},
 			[]string{"baseline covers cases [a b], this run covers [a c]", "compare like with like"}},
 		{"only clean cases leave no check that could fail", Report{Config: base.Config, Match: MatchRule, Cases: []CaseScore{{Name: "a", Clean: true}}}, cfg, []string{"a"},
@@ -225,6 +232,16 @@ func TestComparable(t *testing.T) {
 			}
 		})
 	}
+}
+
+// decodeReport decodes data as LoadReport decodes a report -json wrote.
+func decodeReport(t *testing.T, data string) Report {
+	t.Helper()
+	var rep Report
+	if err := json.Unmarshal([]byte(data), &rep); err != nil {
+		t.Fatalf("decoding report: %v", err)
+	}
+	return rep
 }
 
 // withAACR returns rep marked as an AACR-Bench run, scored by the line rule.

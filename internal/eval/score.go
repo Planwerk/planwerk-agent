@@ -19,10 +19,12 @@ import (
 const lineTolerance = 3
 
 // MatchRule names the rule ScoreCase tallies by: matches, and the one-to-one
-// pairing over it (pairFindings). Change the value whenever either changes. A
-// report records it, and Comparable refuses a baseline scored under another
-// rule, because the same predictions tally differently under each (decision
-// 146).
+// pairing over it (pairFindings). Change the value whenever either changes how
+// a review corpus label tallies; the pattern gate in matches applies only to a
+// label that sets Pattern, which no review corpus case does, so it left the
+// rule unchanged. A report records it, and Comparable refuses a baseline
+// scored under another rule, because the same predictions tally differently
+// under each (decision 146).
 const MatchRule = "range-overlap"
 
 // The rules an AACR-Bench run is scored by (ScoreRun). MatchLine pairs a
@@ -275,10 +277,14 @@ func passesMatching(preds []report.Finding, e int, match func(i, e int) bool) ma
 }
 
 // matches reports whether a predicted finding satisfies the match rule for an
-// expected one: same file, the predicted line range within lineTolerance of the
-// expected one (see lineSpan), and at least one expected keyword present
-// (case-insensitively) in the predicted title or problem.
+// expected one: the same pattern when the expected finding sets one, same
+// file, the predicted line range within lineTolerance of the expected one (see
+// lineSpan), and at least one expected keyword present (case-insensitively) in
+// the predicted title or problem.
 func matches(pred report.Finding, exp ExpectedFinding) bool {
+	if exp.Pattern != "" && pred.Pattern != exp.Pattern {
+		return false
+	}
 	if normPath(pred.File) != normPath(exp.File) || !spansWithin(pred, exp, lineTolerance) {
 		return false
 	}
