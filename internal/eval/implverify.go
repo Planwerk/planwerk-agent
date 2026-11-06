@@ -84,13 +84,13 @@ func LoadImplementVerifierCases(root, caseName string) ([]Case, error) {
 
 // RunImplementVerifierCase builds c's repository in a throwaway directory
 // (setupRepo), runs the implementation verifier `implement` runs over the
-// head's diff against the case's issue, and returns its findings, stamped with
-// implVerifyPass, with the run's usage. The plan is read, so a case without
-// plan.md fails, but the verifier receives the issue alone. A nil result counts
-// as an empty one. Like RunCase it spends tokens, needs a fresh client, and is
-// not unit-tested.
+// head's diff, and returns its findings, stamped with implVerifyPass, with the
+// run's usage. The verifier receives the case's issue and plan, as `implement`
+// hands it the issue and the plan it followed. A nil result counts as an empty
+// one. Like RunCase it spends tokens, needs a fresh client, and is not
+// unit-tested.
 func RunImplementVerifierCase(client *claude.Client, c Case) (Run, error) {
-	title, body, _, err := readImplementVerifierSpec(c)
+	title, body, plan, err := readImplementVerifierSpec(c)
 	if err != nil {
 		return Run{}, err
 	}
@@ -103,7 +103,7 @@ func RunImplementVerifierCase(client *claude.Client, c Case) (Run, error) {
 	if _, err := setupRepo(repoDir, c); err != nil {
 		return Run{}, fmt.Errorf("case %s: %w", c.Name, err)
 	}
-	result, err := client.VerifyImplementation(repoDir, title, body, evalBaseBranch)
+	result, err := client.VerifyImplementation(repoDir, title, body, plan, evalBaseBranch)
 	if err != nil {
 		return Run{}, fmt.Errorf("case %s: implementation verifier: %w", c.Name, err)
 	}

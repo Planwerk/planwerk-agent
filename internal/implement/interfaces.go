@@ -260,21 +260,23 @@ func (a planReviewFnAdapter) ReviewPlan(dir string, ctx Context, plan string) (*
 }
 
 // ImplementationVerifier independently checks a produced change set against
-// the issue's Acceptance Criteria, deliberately ignoring the implementation's
+// the issue's Acceptance Criteria and work packages and against plan, the
+// implementation plan the run followed ("" when the run has none), and reports
+// every hunk neither accounts for, deliberately ignoring the implementation's
 // own report. Optional: wired only when --verify is set.
 type ImplementationVerifier interface {
-	VerifyImplementation(dir, issueTitle, issueBody, baseBranch string) (*report.ReviewResult, error)
+	VerifyImplementation(dir, issueTitle, issueBody, plan, baseBranch string) (*report.ReviewResult, error)
 }
 
 // VerifyFn is the bare-function form of ImplementationVerifier.
-type VerifyFn func(dir, issueTitle, issueBody, baseBranch string) (*report.ReviewResult, error)
+type VerifyFn func(dir, issueTitle, issueBody, plan, baseBranch string) (*report.ReviewResult, error)
 
 type verifyFnAdapter struct {
 	fn VerifyFn
 }
 
-func (a verifyFnAdapter) VerifyImplementation(dir, issueTitle, issueBody, baseBranch string) (*report.ReviewResult, error) {
-	return a.fn(dir, issueTitle, issueBody, baseBranch)
+func (a verifyFnAdapter) VerifyImplementation(dir, issueTitle, issueBody, plan, baseBranch string) (*report.ReviewResult, error) {
+	return a.fn(dir, issueTitle, issueBody, plan, baseBranch)
 }
 
 // AdversarialVerifier red-teams a produced change set for the bugs it
@@ -433,7 +435,8 @@ type ReviewApplyContext struct {
 	MaxPatterns int
 	// Source says which pass produced Findings, so the prompt can describe
 	// them truthfully: the review fan-out's defects (the zero value), or the
-	// independent verification's unmet Acceptance Criteria.
+	// independent verification's gaps: criteria, work packages, and planned
+	// tests the branch does not yet deliver.
 	Source ReviewApplySource
 	// AITrailersForbiddenBy is the repo-relative path of the instruction file
 	// whose rule on the base branch forbids attributing commits to an AI
@@ -448,9 +451,16 @@ type ReviewApplyContext struct {
 type ReviewApplySource string
 
 // ReviewApplySourceVerification marks findings from the independent
-// implementation verification: each is an Acceptance Criterion the branch does
-// not yet satisfy, not a defect in code it wrote.
+// implementation verification: each is an Acceptance Criterion, a work
+// package, or a planned test the branch does not yet deliver, not a defect in
+// code it wrote.
 const ReviewApplySourceVerification ReviewApplySource = "verification"
+
+// VerificationScopePattern is the pattern the implementation verifier sets on
+// a scope finding: a hunk a Non-Goal excludes, or one that nothing in the
+// issue or the plan accounts for. The run reports such a finding as needing
+// discussion and never hands it to an editing session.
+const VerificationScopePattern = "implementation-scope"
 
 // ReviewApplier resolves the review pass's findings and folds each fix into the
 // commit it belongs to via fixup/autosquash on the local branch (no push). It

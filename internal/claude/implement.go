@@ -13,14 +13,18 @@ import (
 
 // VerifyImplementation runs an independent verification pass over the change
 // set an implement session just produced, checking it against the issue's
-// Acceptance Criteria. It deliberately does NOT trust any implementation
-// report: it diffs the feature branch and reads the actual committed code.
-// Findings are returned for every criterion that is not fully satisfied. The
-// pass reads a diff it writes first (runDiffFinder), and its result lists in
-// ExcludedFiles what that diff left out (decision 137).
-func (c *Client) VerifyImplementation(dir, issueTitle, issueBody, baseBranch string) (*report.ReviewResult, error) {
+// Acceptance Criteria and work packages and against plan, the implementation
+// plan the run followed ("" when it has none). It deliberately does NOT trust
+// any implementation report: it diffs the feature branch and reads the actual
+// committed code. Findings are returned for every criterion, work package, or
+// planned test the branch does not deliver, and, with the pattern
+// implement.VerificationScopePattern, for every hunk a Non-Goal excludes or
+// nothing accounts for. The pass reads a diff it writes first
+// (runDiffFinder), and its result lists in ExcludedFiles what that diff left
+// out (decision 137).
+func (c *Client) VerifyImplementation(dir, issueTitle, issueBody, plan, baseBranch string) (*report.ReviewResult, error) {
 	raw, model, excluded, err := c.runDiffFinder(dir, baseBranch, "", "verify-implementation", func(d diffscope.Diff) string {
-		return buildVerifyImplementationPrompt(issueTitle, issueBody, baseBranch, d)
+		return buildVerifyImplementationPrompt(issueTitle, issueBody, plan, baseBranch, d)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("running implementation verification: %w", err)
@@ -33,13 +37,28 @@ func (c *Client) VerifyImplementation(dir, issueTitle, issueBody, baseBranch str
 	return res, nil
 }
 
-func buildVerifyImplementationPrompt(issueTitle, issueBody, baseBranch string, d diffscope.Diff) string {
+// buildVerifyImplementationPrompt renders the verifier's prompt. plan is the
+// implementation plan the run followed; a blank one renders no plan section,
+// and the prompt then checks the branch against the issue alone. The scope
+// check names implement.VerificationScopePattern as the one review pattern
+// this prompt lists, so the shared output block's pattern rule asks for it.
+func buildVerifyImplementationPrompt(issueTitle, issueBody, plan, baseBranch string, d diffscope.Diff) string {
 	if baseBranch == "" {
 		baseBranch = DefaultBaseBranch
 	}
+	plan = strings.TrimSpace(plan)
+	hasPlan := plan != ""
+	// role and spec name what the branch is verified against: role in the
+	// opening line, spec in the scope check and the severity ladder.
+	role, spec := "its issue: that it delivers what the issue asks, and that it changed nothing outside it", "the issue"
+	plannedTest := ""
+	if hasPlan {
+		role, spec = "its issue and its implementation plan: that it delivers what they ask, and that it changed nothing outside them", "the issue and the plan"
+		plannedTest = ", a planned edge or error-path test the diff lacks"
+	}
 	var sb strings.Builder
 
-	sb.WriteString(`You are a Senior Engineer independently verifying that a just-completed implementation satisfies its issue's Acceptance Criteria.
+	sb.WriteString(`You are a Senior Engineer independently verifying a just-completed implementation against ` + role + `.
 
 ## Judge the committed code
 Commit messages say what the implementing session meant to do; verify each criterion against the committed code itself.
@@ -56,25 +75,52 @@ You are inside a checkout currently on the implementation's feature branch.
 	sb.WriteString("\n")
 	sb.WriteString(untrustedDataLine("They are the specification you verify the branch against.", "issue-title", "issue-body"))
 
-	sb.WriteString(`## Your task
+	if hasPlan {
+		sb.WriteString("## Implementation Plan\n\n")
+		sb.WriteString(fencedData("implementation-plan", "", plan))
+		sb.WriteString("\n")
+		sb.WriteString(untrustedDataLine("It is the plan the implementation followed, which you verify the branch against.", "implementation-plan"))
+	}
 
-First, if the issue decomposes the work into multiple parts — ` + workBreakdownDefinition() + ` — enumerate EVERY part. For each, search the diff for the code, tests, and docs that deliver it. A listed work package with no implementation in the diff is a BLOCKING finding: a multi-part issue is not done until every part is, and a single-package subset shipped as if it closes the issue is exactly what this pass exists to catch.
+	sb.WriteString("## Your task\n\n")
+	if hasPlan {
+		sb.WriteString(`First, enumerate EVERY work package: each part the issue decomposes the work into, and each entry of the plan's Work Breakdown Coverage. The issue decomposes the work when it has ` + workBreakdownDefinition() + `.`)
+	} else {
+		sb.WriteString(`First, if the issue decomposes the work into multiple parts — ` + workBreakdownDefinition() + ` — enumerate EVERY part.`)
+	}
+	sb.WriteString(` For each, search the diff for the code, tests, and docs that deliver it. A listed work package with no implementation in the diff is a BLOCKING finding: a multi-part issue is not done until every part is, and a single-package subset shipped as if it closes the issue is exactly what this pass exists to catch.
 
 Then extract EVERY Acceptance Criterion from the issue body. For each one:
 1. Search the diff for the concrete code, test, or doc that satisfies it. Cite file:line.
 2. Classify it: satisfied (evidence found), partial (some but not all), or missing (no evidence in the diff).
 3. Report a finding for every criterion that is NOT fully satisfied.
 
-## Severity
+`)
+	if hasPlan {
+		sb.WriteString("Then, for every entry of the plan's Test Plan that names an edge or error path, search the diff for its test. A planned edge or error-path test the diff does not contain is a WARNING finding.\n\n")
+	}
+
+	accounts := "an Acceptance Criterion, a work package, or an entry of the issue's Affected Areas"
+	if hasPlan {
+		accounts = "an Acceptance Criterion, a work package, an entry of the issue's Affected Areas, or an entry of the plan's Change Set, Test Plan, or Documentation Plan"
+	}
+	fmt.Fprintf(&sb, "Last, check the scope. This prompt lists one review pattern, `%[1]s`: a hunk outside %[2]s. For every hunk of the diff, name what accounts for it: %[3]s. A test or documentation change that serves a criterion counts as accounted for. A hunk a Non-Goal of the issue excludes, or one that nothing accounts for, violates `%[1]s` and is a scope finding: severity WARNING, actionability needs-discussion, `pattern` set to `%[1]s`, the hunk's lines as the code snippet, and a problem that names the Non-Goal or states that nothing in %[2]s accounts for the hunk. Every other finding leaves `pattern` empty.",
+		implement.VerificationScopePattern, spec, accounts)
+	if hasPlan {
+		sb.WriteString(" A Change Set entry with no hunk is not a finding: the implementation may take another route than the plan's, and the deliverables are the criteria, the work packages, and the planned tests.")
+	}
+	sb.WriteString("\n\n")
+
+	fmt.Fprintf(&sb, `## Severity
 
 - BLOCKING: a core Acceptance Criterion is missing or contradicted by the implementation, or a listed work package is entirely absent from the diff.
 - CRITICAL: a criterion is only partially met in a way that breaks its stated goal.
-- WARNING: a minor criterion gap, or missing tests/docs for an otherwise-implemented criterion.
+- WARNING: a minor criterion gap, missing tests/docs for an otherwise-implemented criterion%s, or a hunk outside %s (a scope finding).
 - INFO: a positive deviation, or a cosmetic mismatch with the spec.
 
-If EVERY criterion is fully satisfied with cited evidence, report an empty findings array.
+Report an empty findings array only when every criterion, work package, and planned test is delivered with cited evidence and every hunk is accounted for.
 
-`)
+`, plannedTest, spec)
 
 	sb.WriteString(communicationStyleBlock())
 	sb.WriteString(outputLanguageBlock())
@@ -87,7 +133,7 @@ If EVERY criterion is fully satisfied with cited evidence, report an empty findi
 
 ## Finding Enrichment
 
-For EVERY finding, include: the Acceptance Criterion it concerns (quote it in the problem), a code snippet (the satisfying/contradicting lines, or for something missing the existing lines where it belongs), and a concrete suggested fix.
+For EVERY finding, include: what it concerns, quoted in the problem (the Acceptance Criterion, work package, or planned test; for a scope finding, the Non-Goal that excludes the hunk, or the statement that nothing in ` + spec + ` accounts for it), a code snippet (the satisfying/contradicting lines, for something missing the existing lines where it belongs, or for a scope finding the hunk's lines), and a concrete suggested fix.
 
 `)
 	sb.WriteString(findingLabelsBlock())

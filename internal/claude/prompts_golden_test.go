@@ -1768,11 +1768,56 @@ func specialistByKey(t *testing.T, key string) Specialist {
 }
 
 // TestBuildVerifyImplementationPrompt_Golden locks the independent
-// implementation-verification prompt: the "do NOT trust the implementation"
-// framing, the change-set discovery steps, and the per-criterion classification.
+// implementation-verification prompt with a plan: the fenced plan, the
+// change-set discovery steps, the work packages from the issue and the plan,
+// the per-criterion classification, the planned-test check, and the scope
+// check. TestBuildVerifyImplementationPrompt_WithoutPlan covers the plan-less
+// branch.
 func TestBuildVerifyImplementationPrompt_Golden(t *testing.T) {
 	ctx := goldenImplementContext()
-	assertGoldenPrompt(t, "verify_implementation", buildVerifyImplementationPrompt(ctx.IssueTitle, ctx.IssueBody, "develop", goldenDiff()))
+	assertGoldenPrompt(t, "verify_implementation", buildVerifyImplementationPrompt(ctx.IssueTitle, ctx.IssueBody, goldenReviewedPlan, "develop", goldenDiff()))
+}
+
+// TestBuildVerifyImplementationPrompt_WithoutPlan: an empty or blank plan
+// renders no plan section, so the verifier checks the issue alone, and the
+// prompt names no plan entry it could not find.
+func TestBuildVerifyImplementationPrompt_WithoutPlan(t *testing.T) {
+	ctx := goldenImplementContext()
+	for name, plan := range map[string]string{"empty": "", "whitespace": " \n\t\n"} {
+		t.Run(name, func(t *testing.T) {
+			got := buildVerifyImplementationPrompt(ctx.IssueTitle, ctx.IssueBody, plan, "develop", goldenDiff())
+			for _, absent := range []string{"## Implementation Plan", "<implementation-plan>", "Work Breakdown Coverage", "Test Plan"} {
+				if strings.Contains(got, absent) {
+					t.Errorf("a plan-less prompt contains %q", absent)
+				}
+			}
+			if !strings.Contains(got, "against its issue: that it delivers what the issue asks") {
+				t.Error("a plan-less prompt does not verify the branch against the issue alone")
+			}
+		})
+	}
+}
+
+// TestBuildVerifyImplementationPrompt_NamesTheScopePattern: the scope check
+// writes the pattern the run partitions scope findings by, from the constant,
+// and lists it as the prompt's one review pattern, so the shared output
+// block's rule for the pattern field asks for it.
+func TestBuildVerifyImplementationPrompt_NamesTheScopePattern(t *testing.T) {
+	ctx := goldenImplementContext()
+	for name, plan := range map[string]string{"with a plan": goldenReviewedPlan, "without a plan": ""} {
+		t.Run(name, func(t *testing.T) {
+			got := buildVerifyImplementationPrompt(ctx.IssueTitle, ctx.IssueBody, plan, "develop", goldenDiff())
+			for _, want := range []string{
+				"This prompt lists one review pattern, `" + implement.VerificationScopePattern + "`",
+				"`pattern` set to `" + implement.VerificationScopePattern + "`",
+				"actionability needs-discussion",
+			} {
+				if !strings.Contains(got, want) {
+					t.Errorf("prompt does not contain %q", want)
+				}
+			}
+		})
+	}
 }
 
 func goldenBareImplementContext() implement.BareContext {

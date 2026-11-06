@@ -28,12 +28,22 @@ import (
 
 type fakeVerifier struct {
 	called atomic.Int32
-	result *report.ReviewResult
-	err    error
+	// issueTitle, issueBody, plan, and baseBranch record the arguments of the
+	// last call.
+	issueTitle, issueBody, plan, baseBranch string
+	result                                  *report.ReviewResult
+	err                                     error
+	// onVerify, when set, runs inside VerifyImplementation after the call is
+	// recorded, so a test can log the order the passes run in.
+	onVerify func()
 }
 
-func (f *fakeVerifier) VerifyImplementation(dir, issueTitle, issueBody, baseBranch string) (*report.ReviewResult, error) {
+func (f *fakeVerifier) VerifyImplementation(dir, issueTitle, issueBody, plan, baseBranch string) (*report.ReviewResult, error) {
 	f.called.Add(1)
+	f.issueTitle, f.issueBody, f.plan, f.baseBranch = issueTitle, issueBody, plan, baseBranch
+	if f.onVerify != nil {
+		f.onVerify()
+	}
 	return f.result, f.err
 }
 

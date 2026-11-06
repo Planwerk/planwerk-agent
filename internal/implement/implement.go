@@ -1429,7 +1429,7 @@ func (r *Runner) runVerification(w io.Writer, dir string, ctx Context) {
 	if branchErr == nil && branch != nil {
 		baseBranch = branch.BaseBranch
 	}
-	result, err := r.Verifier.VerifyImplementation(dir, ctx.IssueTitle, ctx.IssueBody, baseBranch)
+	result, err := r.Verifier.VerifyImplementation(dir, ctx.IssueTitle, ctx.IssueBody, ctx.Plan, baseBranch)
 	if err != nil {
 		slog.Warn("implementation verification failed", "err", err)
 		_, _ = fmt.Fprintf(w, "\nIndependent verification could not run: %v\n", err)
