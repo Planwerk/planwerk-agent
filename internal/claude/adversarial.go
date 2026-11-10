@@ -51,7 +51,7 @@ Your job is to find ways this code will fail in production.
 
 ` + scope + `Then look for failures in the added and modified lines of those files. A finding's cause must be in the diff; its evidence may sit in unchanged code the change now reaches (a caller it exposes, a routine a new input makes unsafe), so quote that file and line.
 
-Think like:
+` + planwerkIgnoreLine() + `Think like:
 - An attacker: How can this code be exploited? SQL injection, auth bypass, SSRF, path traversal, XSS, CSRF?
 - A chaos engineer: What happens when dependencies fail? Network partitions? Disk full? OOM? Clock skew?
 - A malicious insider: Could this code be used to exfiltrate data or escalate privileges?
@@ -79,5 +79,5 @@ For every finding you report:
 
 An empty findings array is the correct answer when the diff yields no attack vector or failure scenario; do not invent one to appear productive. A failure you are not sure of is reported with Confidence uncertain, not withheld: the claim check and the Unverified section downstream are where conviction is settled, and a finding you kept back reaches neither.
 
-` + finderPatternCatalog("## Project review patterns\n\nApply these project review patterns where they intersect the focus areas above — a pass inspecting a fresh diff should know the same patterns a later review of that diff would apply. They do NOT widen your scope: the Focus ONLY and DO NOT comment on rules above still bound what you report.", pats, maxPatterns) + planwerkIgnoreLine() + communicationStyleBlock() + outputLanguageBlock() + severityLadderBlock(scopeDiff) + findingLabelsBlock() + passSummaryLine() + findingsOutputBlock()
+` + finderPatternCatalog("## Project review patterns\n\nApply these project review patterns where they intersect the focus areas above — a pass inspecting a fresh diff should know the same patterns a later review of that diff would apply. They do NOT widen your scope: the Focus ONLY and DO NOT comment on rules above still bound what you report.", pats, maxPatterns) + communicationStyleBlock() + outputLanguageBlock() + severityLadderBlock(scopeDiff) + findingLabelsBlock() + passSummaryLine() + findingsOutputBlock()
 }
