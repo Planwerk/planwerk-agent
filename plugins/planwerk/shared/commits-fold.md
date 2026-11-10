@@ -48,11 +48,11 @@ belongs to no existing commit on this branch — a new file unrelated to any of
 them. Only then:
 
 ```bash
-git commit -s -m "<concise summary>" -m "<one line of context>" -m "Assisted-by: Claude"
+git commit -s -m "<concise summary>" -m "<one line of context>" -m "Assisted-by: Claude:<your model id>"
 ```
 
-Drop the `Assisted-by` paragraph where `commits.md` says the repository forbids
-it.
+Write `Assisted-by: Claude` alone when your runtime gives no model id, and drop
+the `Assisted-by` paragraph where `commits.md` says the repository forbids it.
 
 ## Publishing a fold
 

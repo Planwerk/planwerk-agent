@@ -78,14 +78,15 @@ to type back the explicit choice, and re-ask on a vague reply.
 "what problem is behind this idea?" — ask inline in the chat:
 
 - **At most five questions per round**, highest ambiguity first. A later round
-  holds only what the answers unblocked, however few.
+  holds what the answers unblocked and what this cap held back, however few.
 - **Number them**, each on its own line, apart from any paragraph of context.
 - **End the message with them.** They are the last thing the author reads.
 - **Attach your answer, and word the question so "yes" accepts it.** Under each
   question, on its own line, put the answer you recommend or the assumption you
   would otherwise build on, so that "yes" always means agreement: "This only
   affects the admin role — right?" is a better question than "who does this
-  affect?". When nothing you can read supports an answer (infrastructure or
+  affect?". The one exception is an irreversible choice asked in prose, where
+  the reply names the option (One decision, one question). When nothing you can read supports an answer (infrastructure or
   policy you cannot see, a symptom only the reporter saw), name the assumption
   the work currently rests on and say that it is one. When there is none either,
   write `none` with the reason, and ask the question open: the reply has to
@@ -110,8 +111,8 @@ when the next reply skips it too, record it per Record what was never decided.
 
 When several questions are open at once, decisions and open questions alike,
 ask them in rounds. A round holds every open question whose prerequisites are
-already settled: the ones you can ask now without guessing at an answer you have
-not heard yet. A question whose options, or whose relevance, turn on another one
+already settled, up to the inline cap: the ones you can ask now without
+guessing at an answer you have not heard yet. A question whose options, or whose relevance, turn on another one
 still open belongs to a later round. When you are unsure whether two depend on
 each other, the second one waits.
 
