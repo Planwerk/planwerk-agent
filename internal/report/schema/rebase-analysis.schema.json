@@ -32,7 +32,7 @@
     "adjustment": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "file", "detail", "action"],
+      "required": ["kind", "file", "detail", "action", "confidence"],
       "properties": {
         "kind": {
           "type": "string",
@@ -48,7 +48,10 @@
         "detail": { "type": "string" },
         "action": { "type": "string" },
         "upstream_ref": { "type": "string" },
-        "confidence": { "type": "string" }
+        "confidence": {
+          "type": "string",
+          "enum": ["verified", "likely", "uncertain"]
+        }
       }
     }
   }
