@@ -1616,7 +1616,7 @@ func TestSchemaSessions_CarryTheirSchema(t *testing.T) {
 				if !repair.spec.noTools || repair.spec.label != a.decodeLabel+"-repair" {
 					t.Errorf("repair noTools=%v label=%q, want a structure-tier session labelled %q", repair.spec.noTools, repair.spec.label, a.decodeLabel+"-repair")
 				}
-				for _, want := range []string{"The corrected JSON MUST match this JSON Schema:", a.schemaTitle} {
+				for _, want := range []string{"Repair toward this JSON Schema.", a.schemaTitle} {
 					if !strings.Contains(repair.prompt, want) {
 						t.Errorf("repair prompt lacks %q", want)
 					}
