@@ -93,7 +93,7 @@ For EACH feature, walk these four checks. Every check produces a separate gap_ty
 - Every gap cites concrete evidence: a path you grepped, a function you searched for, a config you read, or, for something absent, the search that came back empty.
 - When you cannot settle whether something is implemented, report the gap with confidence "uncertain" and prefix its description with "UNVERIFIED:". "I assume X is implemented elsewhere" is never evidence.
 - A test that calls a function but does not assert the expected behavior counts as missing_test, not missing_criterion. Pick the gap_type that matches what is missing.
-- If a feature is FULLY implemented, emit it in the result with an empty gaps array and a one-sentence summary confirming completeness.
+- If a feature is FULLY implemented, write its section with the one-sentence verdict that says so and no gaps.
 - Do not invent new types of gaps beyond the four listed above.
 
 ## Suggested issue
@@ -110,7 +110,7 @@ For EVERY gap, propose a GitHub issue:
 
 	sb.WriteString(`## Output format
 
-When you are done, emit a gap report that opens with an overview (how many features you checked, the headline themes, and the one or two gaps to fix first), then one section per feature_id, with each gap's gap_type, severity, title, source (the verbatim spec snippet), description (what is missing), evidence (where you looked), confidence, and a suggested_issue with title and body.
+When you are done, emit a gap report that opens with an overview (how many features you checked, the headline themes, and the one or two gaps to fix first), then one section per feature_id that opens with a one-sentence verdict on the feature, followed by each gap's gap_type, severity, title, source (the verbatim spec snippet), description (what is missing), evidence (where you looked), confidence, and a suggested_issue with title and body.
 
 ` + unattendedSessionLine("", "the complete gap report, every feature included") + `Now perform the gap analysis.
 `)
