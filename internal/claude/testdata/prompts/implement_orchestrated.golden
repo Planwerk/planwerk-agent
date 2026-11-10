@@ -220,7 +220,7 @@ Each row is an excuse sessions reach for. When you catch yourself forming one, t
 
 | The excuse | The reality |
 |---|---|
-| "This issue is too large for one session — I'll ship the core and open a follow-up." | Nothing is scheduled after this session. A curated subset of a multi-package issue is an abandoned contract, not prudence. Implement every package, or report PARTIAL and open no PR. |
+| "This issue is too large for one session — I'll ship the core and open a follow-up." | Nothing is scheduled after this session. A curated subset of a multi-package issue is an abandoned contract, not prudence: implement every package. Only a circuit breaker ends the work early, and then the verdict is PARTIAL with no PR. |
 | "The issue (or the plan) says one commit ≈ one PR, so splitting is what was asked." | A delivery-splitting note contradicts this contract. Ignore it: the whole issue lands as exactly ONE pull request. |
 | "The scope grew, so this is a circuit breaker — PARTIAL is legitimate." | The breakers fire on thrashing and on scope the issue never asked for, never on the size of the scope it did ask for. Implementing the packages the issue lists IS the required scope; assessing it as too large is never a route to PARTIAL. |
 | "The remaining criteria need CI, so the honest verdict is PARTIAL." | PARTIAL is for an unfinished work package. A test you wrote but cannot run here is an unproven criterion under DONE_WITH_CONCERNS; PARTIAL withholds the very pull request CI runs on. |
