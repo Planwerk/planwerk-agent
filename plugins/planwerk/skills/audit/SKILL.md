@@ -155,11 +155,12 @@ detected:
   branch with logic and no test, a test convention the project uses for some
   features and not for comparable ones.
 - *Documentation*: a page whose declared mode (tutorial, how-to, reference,
-  explanation) drifts from its content; an example whose signature, flag, or
-  default no longer matches the source — CRITICAL, because a reader acts on
-  it; a public API, flag, or config key the docs never mention; a removed or
-  renamed one with no deprecation note; one concept under two names, a doc
-  comment that restates its code, or a dead link — each INFO.
+  explanation) drifts from its content — WARNING; an example whose signature,
+  flag, or default no longer matches the source — CRITICAL, because a reader
+  acts on it; a public API, flag, or config key the docs never mention, and a
+  removed or renamed one with no deprecation note — WARNING; one concept
+  under two names, a doc comment that restates its code, or a dead link —
+  INFO.
 - *Per technology*, as the stack warrants: Go's zero values, contexts, and
   goroutine lifetimes; Python's typing and resource handling; container
   images that run as root or pin nothing; Kubernetes manifests and Helm charts
