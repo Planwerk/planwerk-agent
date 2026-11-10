@@ -42,7 +42,8 @@ command has to guess at every fork in Phase 4 and you can ask.
 - It never pushes a placebo. A flake, an expired secret, a runner that ran out
   of memory — none of these are repaired by a commit, and committing anything
   for them is worse than reporting them.
-- It never loops. One repair, then a verdict. `planwerk-agent fix` is the loop.
+- It never loops on CI: one push, then a verdict. `planwerk-agent fix` is the
+  loop.
 - It never merges, closes, relabels, or rewrites the base branch's commits.
 
 ## Phase 1 — Establish the pull request, and that you are standing on it

@@ -374,9 +374,9 @@ Sort every surviving lead into exactly one bucket:
 - **Finding** — quoted, refutation searches run and empty, severity from the
   ladder.
 - **Unverified** — an uncertain WARNING or INFO, or a lead with no quotable
-  line. An uncertain BLOCKING or CRITICAL lead stays a finding at its
-  severity, marked uncertain, with what would verify it, as the command
-  reports one.
+  line. An uncertain BLOCKING or CRITICAL lead whose lines you quoted stays a
+  finding at its severity, marked uncertain, with what would verify it, as
+  the command reports one.
 - **Author's call** — the lead turns on a kind `interaction.md`, What is
   actually theirs to decide, names: the fix changes behavior a user depends
   on, changes or removes a published interface callers rely on, or binds the
@@ -429,11 +429,12 @@ on the changed surface judges the design this review leaves out, and
 `/impeccable audit` measures it against impeccable's technical checks. Without
 it, the line says that this review did not judge how the interface looks.
 
-End with the next action as the last line. When a finding stands at WARNING or
+End the report with the next action as its last line; with `--format json`,
+the JSON block follows the report. When a finding stands at WARNING or
 above, name the one to fix first and ask for `/planwerk:review` again, in a
 fresh session (`/clear` or a new `claude`), once the fix is committed.
 Otherwise the last line is the next step: push the branch, or open the pull
-request. A glossary proposal goes beside the report, per `house-style.md`.
+request. A glossary proposal goes before the report, per `house-style.md`.
 
 ## Phase 7 — On request: the JSON, and a comment on the pull request
 

@@ -92,8 +92,8 @@ The glossary belongs to the repository's maintainers. Propose a change to it to
 the author in the conversation rather than editing the file: a term the
 conversation settled that the glossary lacks, or one the code uses differently
 from its entry, with the definition and the words to avoid. Put the proposal
-beside your closing report, never inside a report or body you post to GitHub,
-and leave a report's mandated last line last.
+before your closing report, never inside a report or body you post to GitHub,
+so a report's mandated last line stays last.
 
 ## Quantify, or say you cannot
 
