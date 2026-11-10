@@ -2413,10 +2413,11 @@ func (r *Runner) runFinalize(w io.Writer, dir string, ctx Context, implReport st
 	// ever runs for a complete implementation (a PARTIAL run aborts before it), so
 	// the PR always links with the closing "Closes #N" keyword.
 	finalizeReport, _, err := r.Finalizer.FinalizePR(dir, FinalizeContext{
-		RepoFullName:         ctx.RepoFullName,
-		IssueNumber:          ctx.IssueNumber,
-		IssueTitle:           ctx.IssueTitle,
-		ImplementationReport: implReport,
+		RepoFullName:          ctx.RepoFullName,
+		IssueNumber:           ctx.IssueNumber,
+		IssueTitle:            ctx.IssueTitle,
+		ImplementationReport:  implReport,
+		AITrailersForbiddenBy: ctx.AITrailersForbiddenBy,
 	})
 	if err != nil {
 		slog.Warn("finalize pass failed; no pull request was opened", "issue", ctx.IssueNumber, "err", err)
