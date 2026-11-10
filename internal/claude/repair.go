@@ -164,7 +164,7 @@ func buildRepairPrompt(malformedJSON string, parseErr error, schema string) stri
 	if schema != "" {
 		schemaSection = `
 
-The corrected JSON MUST match this JSON Schema:
+Repair toward this JSON Schema. Where it requires a key the input does not carry, leave the key out rather than write a value for it: a value you would have to invent is not a repair.
 
 ` + schema
 	}

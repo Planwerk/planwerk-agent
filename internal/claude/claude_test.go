@@ -705,11 +705,11 @@ func TestBuildRepairPrompt_SchemaSection(t *testing.T) {
 	err := fmt.Errorf("unexpected end of JSON input")
 	sch := `{"type":"object"}`
 	withSchema := buildRepairPrompt(`{`, err, sch)
-	if !strings.Contains(withSchema, "MUST match this JSON Schema") || !strings.Contains(withSchema, sch) {
+	if !strings.Contains(withSchema, "Repair toward this JSON Schema.") || !strings.Contains(withSchema, "leave the key out rather than write a value for it") || !strings.Contains(withSchema, sch) {
 		t.Error("a non-empty schema must add the schema section")
 	}
 	withoutSchema := buildRepairPrompt(`{`, err, "")
-	if strings.Contains(withoutSchema, "MUST match this JSON Schema") {
+	if strings.Contains(withoutSchema, "this JSON Schema") {
 		t.Error("an empty schema must omit the schema section")
 	}
 }

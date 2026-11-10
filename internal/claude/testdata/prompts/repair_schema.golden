@@ -4,7 +4,7 @@ invalid character ']' looking for beginning of value
 
 Fix the JSON so it is valid. Keep every key and value the input carries; change only what makes it invalid. Output ONLY the corrected JSON, nothing else. If the input holds no JSON value to repair, output exactly `null`.
 
-The corrected JSON MUST match this JSON Schema:
+Repair toward this JSON Schema. Where it requires a key the input does not carry, leave the key out rather than write a value for it: a value you would have to invent is not a repair.
 
 {"type":"object","required":["findings"]}
 
