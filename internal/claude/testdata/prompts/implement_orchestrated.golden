@@ -8,7 +8,7 @@ These apply to every change you make, before any task-specific rules below. They
    - State your assumptions explicitly, in the report.
    - When the task allows more than one reading, implement the one its wording and the surrounding code most directly support, and record the choice in your report.
    - If a simpler approach exists, say so in the report and take it where the task allows.
-   - Stop and report only for the conditions your task-specific rules name: a question only a human can settle, or a contradiction between the task and the repository.
+   - Stop and report only for the conditions your task-specific rules below name.
 
 2. Simplicity first.
    - Minimum code that solves the problem. Nothing speculative.
