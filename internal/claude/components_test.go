@@ -949,9 +949,9 @@ func TestDomainSweepBlock_OverrideReplacesDefault(t *testing.T) {
 	}
 }
 
-// TestDomainSweepReachesEveryBuilder pins the three prompts the sweep is wired
+// TestDomainSweepReachesEveryBuilder pins the four prompts the sweep is wired
 // into: the elaboration that writes the criteria, the reviewer that scores them,
-// and the planning session. A builder that quietly stopped rendering it would
+// the planning session, and the plan reviewer. A builder that quietly stopped rendering it would
 // otherwise only show up as a golden diff nobody reads as a regression.
 func TestDomainSweepReachesEveryBuilder(t *testing.T) {
 	const marker = "**Tenancy**"
@@ -960,6 +960,9 @@ func TestDomainSweepReachesEveryBuilder(t *testing.T) {
 	planCtx := implement.Context{RepoFullName: "acme/app", IssueNumber: 7, Domains: list}
 	if got := BuildPlanPrompt(planCtx); !strings.Contains(got, marker) {
 		t.Error("the planning prompt does not carry the domain list")
+	}
+	if got := buildPlanReviewPrompt(planCtx, "## Change Set\n\nA plan.\n"); !strings.Contains(got, marker) {
+		t.Error("the plan reviewer prompt does not carry the domain list")
 	}
 
 	elabCtx := elaborate.Context{RepoName: "acme/app", Domains: list}

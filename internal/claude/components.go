@@ -35,7 +35,7 @@ import (
 
 // patternCatalogLeadIn is the first sentence of every review-pattern section
 // that treats the catalog as a constraint on the session's own change (plan,
-// implement, fix, address, the three rebase sessions, simplify-apply,
+// implement, fix, address, the rebase conflict session, simplify-apply,
 // review-apply) or as grounding for what it writes (elaborate). Each caller
 // adds its own second sentence, which says what the patterns bind in that
 // session. It names no location: the on-disk index form of the section says
@@ -234,7 +234,8 @@ func suppressionsBlock(scope promptScope) string {
 
 // proseStyleBlock returns the "## Prose Style" section applied to builders that
 // generate narrative text a human reads — elaborate, propose, gap analysis,
-// review-prepared, and the glossary. The rules are adapted from the econ-writing-skill reference,
+// review-prepared, the glossary, capture, and the bootstrap unit and review
+// sessions. The rules are adapted from the econ-writing-skill reference,
 // and the trailing aiWritingTellsBullets add the humanizer tells. The
 // concreteness rule is subordinate to accuracy: a specific the model does not
 // know is marked as an assumption, never invented (decision 80).
@@ -280,7 +281,8 @@ func docArtifactList() string {
 
 // docProseBlock returns the "## Documentation Prose" section for the sessions
 // that write documentation into the target repository: implement in both
-// variants, the implementer worker subagent, fix, and address. On top of
+// variants, the implementer worker subagent, fix, address, and review-apply.
+// On top of
 // aiWritingTellsBullets it adds the describe-as-is and no-decoration rules. The
 // block is static, so the worker agent prompt can carry it too (decision 80).
 func docProseBlock() string {
@@ -580,7 +582,8 @@ func tagList(tags []string) string {
 }
 
 // domainSweepBlock returns the "## Domain Sweep" section shared by the
-// elaboration, its reviewer, and the planning session: the domain list (the target repo's
+// elaboration, its reviewer, the planning session, and the plan reviewer: the
+// domain list (the target repo's
 // .planwerk/domains.md when it has one) plus the caller's own landing sentence,
 // since where a swept domain surfaces differs per builder (decision 86). An
 // empty list falls back to the embedded default rather than the empty string,
@@ -669,8 +672,9 @@ func planwerkIgnoreLine() string {
 	return "Ignore changes under .planwerk/: they are planwerk's own planning artifacts, not code under review.\n\n"
 }
 
-// unattendedSessionLine returns the paragraph every session that runs with
-// nobody reading it carries directly under its role line: that nothing
+// unattendedSessionLine returns the paragraph a session that runs with nobody
+// reading it carries, directly under its role line or, in the analysis
+// prompts, directly before the closing instruction: that nothing
 // answers a question, where a question only a human can settle goes instead,
 // and what its final message must hold, since that message is the only text
 // planwerk-agent reads. escalation names the route for such a question ("" for
@@ -715,7 +719,9 @@ func noSkipHooksLine() string {
 // changes code against a check carries them: the implement prompt, its bare
 // variant, and the implementer subagent; both address prompts; and the rebase
 // conflict, rebase apply, and bare rebase prompts. The fix and review-apply
-// prompts word their own form (see the header). The bullets carry their own
+// prompts word their own form (see the header). The simplify-apply prompt
+// carries neither: its guardrail block protects tests, assertions, and
+// required checks, and says nothing about a widened type or a suppression. The bullets carry their own
 // trailing newline, like noSkipHooksLine.
 func noWeakeningRules() string {
 	return "- NEVER weaken, skip, or delete tests to make the suite green; fix the root cause.\n" +
@@ -784,7 +790,8 @@ Every finding you report carries its location and three explicit labels. The lab
 // schema in every builder whose session answers in JSON: the structuring
 // builders (the second Claude call that converts a builder's prose output into
 // the strict JSON its decoder expects), the coverage map, the rebase analysis,
-// the claim verifier, the dedup pass, and findingsOutputBlock. The line
+// the claim verifier, the dedup pass, the elaborate and plan reviewers, the
+// eval judge, and findingsOutputBlock. The line
 // carries no surrounding newlines so each caller
 // keeps its own spacing around the schema block.
 func jsonSchemaOnlyLine() string {
@@ -923,7 +930,7 @@ EVERY commit you create MUST end with exactly these two trailers, in this order 
 // attributionFooterBlock returns the "## Attribution footer" section shared by
 // every prompt whose session authors a GitHub artifact a human reads — a pull
 // request description, an issue or PR comment, a review-thread reply: finalize,
-// the bare implement, and address in both variants. The orchestrated
+// the bare implement, and the bare address. The orchestrated
 // implement session posts nothing itself (Go signs its report). It pins
 // the self-attribution footer that signs the artifact and names the exact model
 // that wrote it, which only the agent knows at runtime (decision 36).
@@ -971,7 +978,7 @@ func findingBudgetBlock(maxFindings int) string {
 // workBreakdownDefinition returns the bare enumeration of the shapes a
 // multi-part issue's work breakdown can take. It is spliced into the sentence
 // each caller frames around it — the implement, bare-implement,
-// verify-implementation, and plan prompts keep their own leading and trailing
+// verify-implementation, plan, and plan-review prompts keep their own leading and trailing
 // clauses, so only the enumeration itself is shared.
 func workBreakdownDefinition() string {
 	return `a "Work breakdown" / "Work packages" / "Work items" section, numbered items (1., 2., 3. or ### 1 / ### 2), lettered workstreams, tiered phases, or a checkbox task list — but not the Acceptance Criteria checklist or the numbered boundaries in the Description, which every elaborated issue carries`
@@ -1181,7 +1188,8 @@ func verificationReportLines() string {
 
 // foldSteps renders the fold-via-autosquash recipe shared by every session that
 // folds its changes into the branch commits they belong to: fix (full and
-// bare), simplify-apply, and review-apply. Each change is recorded as a fixup
+// bare), simplify-apply, and review-apply. The rebase apply prompt writes its
+// own recipe and shares only foldConflictSteps. Each change is recorded as a fixup
 // of the commit that introduced the code (git commit --fixup) and folded in
 // non-interactively, bounded to the merge-base so only this branch's own
 // commits move. noun names a change in the lead sentence ("a fix for code", "a
@@ -1283,7 +1291,7 @@ func foldConflictSteps(first byte, before string) string {
 }
 
 // fixThinkingPatterns returns the task-specific thinking-pattern block shared by
-// the fix and bare-fix prompts. It carries the intro line, the ten bullets, and
+// the fix and bare-fix prompts. It carries the intro line, the eight bullets, and
 // the trailing blank line so callers splice it in with a single WriteString.
 func fixThinkingPatterns() string {
 	return `Apply these task-specific thinking patterns on top of the baseline above:
