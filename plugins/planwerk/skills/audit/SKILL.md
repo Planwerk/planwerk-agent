@@ -135,7 +135,10 @@ verify, never a command to run (`interaction.md`).
 
 **Each loaded pattern, across the tree.** For every pattern from Phase 1, scan
 the code its `Detection-Hint` points at and work through its "What to check"
-list. A violation is a lead carrying the pattern's name. The pattern's
+list, and drop what its `## Not a finding` section names, except an entry
+that turns on a line a change adds: an audit has no change, and a violation
+an enabled check should have caught means the check is not enforced, so the
+lead stands. A violation is a lead carrying the pattern's name. The pattern's
 `Severity` is where you start; the ladder in Phase 3 sets the final rung, up
 or down.
 
