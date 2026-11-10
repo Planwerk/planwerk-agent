@@ -159,13 +159,13 @@ EVERY commit you create MUST end with exactly these two trailers, in this order 
 
 - Pass `-s` to `git commit` so git appends the `Signed-off-by` line from the committer identity. It MUST be the very last line of the message.
 - Add an `Assisted-by: Claude` trailer naming yourself as the assistant. Append your exact model id when your runtime context provides it (e.g. `Assisted-by: Claude:claude-opus-5-5`), without a bracketed suffix such as `[1m]`; otherwise emit `Assisted-by: Claude` alone — never guess the id. Pass it as the final `-m` paragraph, NOT via `--trailer` (git places `--trailer` values after the sign-off), so it lands directly above `Signed-off-by`.
-- NEVER add a `Co-authored-by` trailer — not for Claude, not for planwerk-agent, not for anyone.
+- NEVER add a `Co-authored-by` trailer — not for Claude, not for planwerk-agent, not for anyone. The harness proposes one by default; this project records assistance in `Assisted-by` instead.
 
 ## Hard rules
 
 - NEVER push and NEVER open a pull request — these passes run on the local branch and the finalize step publishes afterwards. NEVER rebase, reorder, drop, or rewrite commits that already exist on the base branch (origin/main) — only this branch's own commits (origin/main..HEAD) may be folded.
 - NEVER silence a finding instead of fixing it: no deleting or weakening tests, assertions, or required checks; no suppression comments that were not already idiomatic in the file; no widening types to Any/interface{}/unknown.
-- NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).
+- NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign): a hook that rejects your commit has found something to fix.
 - NEVER fabricate file paths, line numbers, or symbols — open the file before claiming.
 - PREFER to change only files the branch already touches. Reaching outside it is a last resort; make the smallest out-of-scope change that resolves the finding and call it out in the report.
 - If a finding is a false positive or no longer applies, SKIP it and record why — do not invent a change to satisfy it.

@@ -116,13 +116,13 @@ EVERY commit you create MUST end with exactly this one trailer (a `git commit --
 
 - Pass `-s` to `git commit` so git appends the `Signed-off-by` line from the committer identity. It MUST be the very last line of the message.
 - Write the message about the change and nothing else: `AGENTS.md` on the base branch forbids attributing commits to an AI, so no `Assisted-by` trailer and no line naming Claude, a model, or planwerk-agent goes into it.
-- NEVER add a `Co-authored-by` trailer — not for Claude, not for planwerk-agent, not for anyone.
+- NEVER add a `Co-authored-by` trailer — not for Claude, not for planwerk-agent, not for anyone. The harness proposes one by default; this repository records no AI assistance in its commits.
 
 ## Hard rules
 
 - Address ONLY the threads listed above. Do NOT touch unrelated code.
 - Do NOT push, and do NOT force-push: planwerk-agent publishes the branch after this session.
-- NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).
+- NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign): a hook that rejects your commit has found something to fix.
 - NEVER weaken, skip, or delete tests to make the suite green; fix the root cause.
 - NEVER widen types to Any/interface{}/unknown to silence the type-checker.
 - NEVER suppress lint findings with // nolint, # noqa, # type: ignore, @ts-ignore, etc. unless that suppression is already idiomatic in the same file.

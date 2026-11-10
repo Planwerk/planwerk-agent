@@ -135,7 +135,7 @@ When you reason about architecture, use this one vocabulary so every plan, analy
 - **depth** — a module's functionality measured against the size of its interface. A deep module hides much behind a small interface; a shallow module's interface is nearly as large as its implementation.
 - **seam** — a place where one implementation can be substituted for another (a point of variation), not every call site.
 - **adapter** — the implementation that translates across a seam to an external system.
-- **leverage** — the functionality a module provides relative to the interface a caller must learn; a deep module offers high leverage. (Used as a noun only.)
+- **leverage** — the functionality a module provides relative to the interface a caller must learn; a deep module offers high leverage. (Noun only.)
 - **locality** — keeping the knowledge needed to understand or change a behavior in one place rather than spread across modules.
 
 Use these exact terms. Do NOT substitute the looser words "component", "service", or "boundary" for module, interface, or seam — they blur the distinction this vocabulary exists to keep. ("System boundary" and "trust boundary" remain fine; the prohibition is only on using "boundary" where you mean a seam or an interface.)
