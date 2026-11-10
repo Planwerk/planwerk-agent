@@ -122,6 +122,43 @@ func TestBootstrapReview_RunsOnTheReviewTier(t *testing.T) {
 	}
 }
 
+// TestBootstrapSessions_BlankReplyIsAnError proves a session that ends without
+// a final message fails its unit instead of being structured: a blank analysis
+// would otherwise read as "proposes nothing" and close the unit for good, and
+// a blank review as a rejection of every page.
+func TestBootstrapSessions_BlankReplyIsAnError(t *testing.T) {
+	t.Parallel()
+	blank := func(int, runSpec, string) (string, string, error) {
+		return " \n\t", testResolvedModel, nil
+	}
+	for _, tc := range []struct {
+		name string
+		run  func(*Client) error
+		want string
+	}{
+		{"analysis", func(c *Client) error {
+			_, err := c.BootstrapUnit("/clone", bootstrapTestContext())
+			return err
+		}, "the bootstrap analysis session ended without a final message"},
+		{"review", func(c *Client) error {
+			_, err := c.BootstrapReview("/clone", brain.ReviewContext{UnitContext: bootstrapTestContext()})
+			return err
+		}, "the bootstrap review session ended without a final message"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			c, calls := scriptedClient(t, blank)
+			err := tc.run(c)
+			if err == nil || err.Error() != tc.want {
+				t.Fatalf("err = %v, want %q", err, tc.want)
+			}
+			if len(*calls) != 1 {
+				t.Errorf("ran %d sessions, want 1: a blank reply must not reach the structuring call", len(*calls))
+			}
+		})
+	}
+}
+
 // TestBootstrapSessions_ErrorWraps proves each of the four failures names its
 // step: a failed session and a failed structuring call, for both passes.
 func TestBootstrapSessions_ErrorWraps(t *testing.T) {
