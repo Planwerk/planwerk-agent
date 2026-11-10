@@ -39,7 +39,7 @@ is
 - agent-runnable: the skill runs it without you, except in the
   human-in-the-loop form.
 
-It tries these constructions in order:
+It reaches for the narrowest of these that reproduces the bug:
 
 1. A failing test at whatever seam reaches the bug.
 2. An HTTP request script against a locally running dev server.
@@ -74,9 +74,9 @@ fix on it.
 
 ## What it asks you
 
-Three to five ranked hypotheses reach you before any probe runs, each with a
-prediction: if X is the cause, changing Y turns the loop green. Keep the order,
-or re-rank and rule one out. You often know that a theory was already tested,
+Ranked hypotheses, as many as the evidence tells apart, reach you before any
+probe runs, each with a prediction: if X is the cause, changing Y turns the
+loop green. Keep the order, or re-rank and rule one out. You often know that a theory was already tested,
 or that an area changed last week.
 
 Three forks come to you, each with a recommendation and a sentence on what
