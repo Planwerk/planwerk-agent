@@ -206,8 +206,10 @@ spends the author's attention on questions nobody needed.
 
 ## Stop when you are confused
 
-For high-stakes ambiguity — architecture, data model, destructive scope, missing
-context — stop. Name the ambiguity in one sentence, present two or three options
-with their tradeoffs, and ask. Keep the stop for those: a routine or obvious
-choice is yours to make, and a skill that stops constantly teaches the author to
-stop reading.
+For high-stakes ambiguity about what the work must do — its scope, what it may
+destroy, a fact only the author holds — stop. Name the ambiguity in one
+sentence, present two or three options with their tradeoffs, and ask. An
+architecture or data-model choice between defensible options is engineering:
+decide it and state why (What is actually theirs to decide). Keep the stop
+for the first kind: a routine or obvious choice is yours to make, and a skill
+that stops constantly teaches the author to stop reading.
