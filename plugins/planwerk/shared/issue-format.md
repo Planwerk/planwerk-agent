@@ -60,6 +60,13 @@ A draft describes; it does not plan. Never write any of these:
 If you catch yourself writing an "Affected Areas" list, "Acceptance Criteria",
 or implementation steps, stop. That is `elaborate`'s job, run later on this issue.
 
+The two documents built on this depth are the exception. An audit issue is
+depth 1 plus `## Evidence` (`issue-format-audit.md`), and a survey Meta Issue
+is depth 1 plus its phases (`issue-format-survey.md`); both name files, pinned
+to the commit they were read at. `revisit` and `clarify` leave those sections
+as they stand. `elaborate` grounds its plan in their sites and names the
+audited commit and pattern under References.
+
 ## Titles
 
 Descriptive and specific, imperative mood, no severity or priority prefix.
