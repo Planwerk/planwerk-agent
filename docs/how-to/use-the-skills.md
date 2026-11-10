@@ -112,8 +112,8 @@ them changes.
 /planwerk:draft owner/repo add a dark mode toggle to the settings page
 ```
 
-The skill resolves the target repository, asks three to five clarifying
-questions in your own language, drafts the issue in English, checks the tracker
+The skill resolves the target repository, asks its clarifying questions in
+rounds of at most five, in your own language, drafts the issue in English, checks the tracker
 for near-duplicates, shows you the rendered body, and files it only after you say
 so. See [Draft an issue](/how-to/draft-an-issue).
 
@@ -353,8 +353,9 @@ picking an answer.
 
 The seven issue skills share their format specification rather than each restating
 it, so an issue is the same shape whichever produced it. That matters because
-[`plan`](/reference/cli#implement), [`implement`](/reference/cli#implement), and
-[`ship`](/reference/cli#ship) read these issues:
+[`implement`](/reference/cli#implement) (its planning session),
+[`ship`](/reference/cli#ship), and [`prompt`](/reference/cli#prompt) read these
+issues:
 
 - A draft-depth issue (`draft`, and each Sub Issue from `meta`) carries a
   `**Category**` / `**Scope**` header line, a `## Description`, and a
