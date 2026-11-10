@@ -167,7 +167,7 @@ func writePlanRevision(sb *strings.Builder, ctx implement.Context) {
 		return
 	}
 	sb.WriteString("## Revising a Prior Plan\n\n")
-	sb.WriteString("A reviewer scored a previous plan for this issue below the bar. Write a REVISED plan, in the format below, that keeps everything already correct and closes every gap the reviewer found.\n\n")
+	sb.WriteString("A reviewer scored a previous plan for this issue below the bar. Write a REVISED plan, in the format below, that keeps everything already correct and closes every gap the reviewer found. Check each gap against the repository first: a gap that does not hold stays out of the plan and goes under Ground-Truth Notes with what you found, and a gap the Hard rules forbid closing goes where those rules send it.\n\n")
 	var review strings.Builder
 	if len(ctx.PlanReviewGaps) > 0 {
 		review.WriteString("Gaps to close:\n")
