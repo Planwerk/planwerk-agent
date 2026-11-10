@@ -188,5 +188,9 @@ func writePlanRevision(sb *strings.Builder, ctx implement.Context) {
 	}
 	sb.WriteString(fencedData("prior-plan", "", prior))
 	sb.WriteString("\n")
-	sb.WriteString(untrustedDataLine("They are the reviewer's verdict on the previous plan, and that plan.", tags...))
+	what := "It is the previous plan."
+	if len(tags) > 1 {
+		what = "They are the reviewer's verdict on the previous plan, and that plan."
+	}
+	sb.WriteString(untrustedDataLine(what, tags...))
 }

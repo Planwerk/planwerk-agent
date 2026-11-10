@@ -1229,10 +1229,13 @@ func TestBuildPlanPrompt_RevisionOmitsEmptyParts(t *testing.T) {
 	if !strings.Contains(got, "## Revising a Prior Plan") || !strings.Contains(got, "<prior-plan>") {
 		t.Fatalf("a prior plan rendered no revision block:\n%s", got)
 	}
-	for _, absent := range []string{"Gaps to close:", "What a 10/10 plan would look like:"} {
+	for _, absent := range []string{"Gaps to close:", "What a 10/10 plan would look like:", "the reviewer's verdict on the previous plan"} {
 		if strings.Contains(got, absent) {
 			t.Errorf("a revision without gaps or target rendered %q", absent)
 		}
+	}
+	if !strings.Contains(got, "It is the previous plan.") {
+		t.Errorf("a revision without gaps or target does not name its one fence as the previous plan:\n%s", got)
 	}
 
 	ctx.PriorPlan = " \n\t"
