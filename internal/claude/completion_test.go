@@ -327,3 +327,19 @@ func TestTerminalReportComplete(t *testing.T) {
 		})
 	}
 }
+
+// TestCompletionNudgePrompt_NamesNoRouteOfItsOwn locks the nudge against
+// offering a way out the session's own prompt does not: the implement prompt
+// makes the circuit breakers the only route to PARTIAL, so a nudge that
+// accepts "work remains" as a reason to stop would open a second one.
+func TestCompletionNudgePrompt_NamesNoRouteOfItsOwn(t *testing.T) {
+	got := completionNudgePrompt(implementReportHeading, implementReportStatusChoices)
+	for _, banned := range []string{"work remains", "cannot finish in this turn", "honest escalation"} {
+		if strings.Contains(got, banned) {
+			t.Errorf("the nudge names remaining work as a route of its own (%q):\n%s", banned, got)
+		}
+	}
+	if !strings.Contains(got, "Stop early only for a condition your first message names") {
+		t.Errorf("the nudge does not send an early stop back to the session's own prompt:\n%s", got)
+	}
+}
