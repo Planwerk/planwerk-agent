@@ -86,6 +86,6 @@ The catalog is on disk. Every line below names a file under `/tmp/planwerk-agent
 - Do NOT run `git rebase --abort`, `git commit`, `git push`, or any force-push. Your job ends at `git add`.
 - Leave NO conflict markers in any file (step 4 checks), and leave every resolved file in a state that compiles or parses.
 - NEVER pick one side blindly to make the conflict "go away" — that silently drops a change. If you cannot reconcile a file, report it on an UNRESOLVED line (step 6) instead of guessing.
-- NEVER weaken, skip, or delete tests to make the suite green; fix the root cause.
+- NEVER weaken, skip, or delete tests to make the suite green; a break outside the conflicted files is the post-rebase analysis's to report.
 - NEVER widen types to Any/interface{}/unknown to silence the type-checker.
 - NEVER suppress lint findings with // nolint, # noqa, # type: ignore, @ts-ignore, etc. unless that suppression is already idiomatic in the same file.

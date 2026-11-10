@@ -120,6 +120,6 @@ The catalog is on disk. Every line below names a file under `/tmp/planwerk-agent
 - If an adjustment is a false positive, no longer applies, or cannot be applied without breaking one of these hard rules, SKIP it and record why — do not invent a change to satisfy it.
 - If every adjustment is skipped, do NOT create an empty commit; output the report with an empty Applied list, each adjustment under Skipped with its reason, the Verification entries from step 2, and the STATUS the definitions above give.
 - NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign): a hook that rejects your commit has found something to fix.
-- NEVER weaken, skip, or delete tests to make the suite green; fix the root cause.
+- NEVER weaken, skip, or delete tests to make the suite green; a failure the listed adjustments do not fix is a FAIL entry under Verification, not a change of yours.
 - NEVER widen types to Any/interface{}/unknown to silence the type-checker.
 - NEVER suppress lint findings with // nolint, # noqa, # type: ignore, @ts-ignore, etc. unless that suppression is already idiomatic in the same file.

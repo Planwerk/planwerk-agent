@@ -721,13 +721,36 @@ func noSkipHooksLine() string {
 // conflict, rebase apply, and bare rebase prompts. The fix and review-apply
 // prompts word their own form (see the header). The simplify-apply prompt
 // carries neither: its guardrail block protects tests, assertions, and
-// required checks, and says nothing about a widened type or a suppression. The bullets carry their own
-// trailing newline, like noSkipHooksLine.
-func noWeakeningRules() string {
-	return "- NEVER weaken, skip, or delete tests to make the suite green; fix the root cause.\n" +
+// required checks, and says nothing about a widened type or a suppression.
+//
+// target is what the session does instead of weakening a test, one of the
+// noWeakening* constants. It differs per session because the sessions differ
+// in what they may touch: "fix the root cause" is the implement session's
+// answer, and would send a rebase or address session outside the adjustments,
+// the conflicted files, or the threads its own hard rules confine it to. The
+// bullets carry their own trailing newline, like noSkipHooksLine.
+func noWeakeningRules(target string) string {
+	return "- NEVER weaken, skip, or delete tests to make the suite green; " + target + ".\n" +
 		"- NEVER widen types to Any/interface{}/unknown to silence the type-checker.\n" +
 		"- NEVER suppress lint findings with // nolint, # noqa, # type: ignore, @ts-ignore, etc. unless that suppression is already idiomatic in the same file.\n"
 }
+
+// The targets noWeakeningRules takes, one per kind of session.
+const (
+	// noWeakeningImplement: the session owns the change, so a failing test
+	// is its to repair.
+	noWeakeningImplement = "fix the root cause"
+	// noWeakeningAddress: the session may change only what its threads cover.
+	noWeakeningAddress = "fix the root cause inside the code the thread covers, or report the thread DONE_WITH_CONCERNS with the failure"
+	// noWeakeningRebaseConflict: the session edits the conflicted files only,
+	// and the analysis session that follows reports what else broke.
+	noWeakeningRebaseConflict = "a break outside the conflicted files is the post-rebase analysis's to report"
+	// noWeakeningRebaseApply: the session applies the listed adjustments only,
+	// and its report has a FAIL entry for what they do not fix.
+	noWeakeningRebaseApply = "a failure the listed adjustments do not fix is a FAIL entry under Verification, not a change of yours"
+	// noWeakeningBareRebase: the session ends on a report of adjustments.
+	noWeakeningBareRebase = "a failure the rebase leaves behind is an adjustment in your report"
+)
 
 // foldDisciplineRule returns the "## Hard rules" bullet that forbids pushing,
 // opening a PR, or rewriting base-branch commits in the local fold-only passes
