@@ -65,9 +65,9 @@ Commit messages say what the implementing session meant to do; verify each crite
 
 ## Determine the change set
 You are inside a checkout currently on the implementation's feature branch.
-` + diffScopeLines(baseBranch, d) + `Then read the changed files; ` + "`git log origin/" + baseBranch + "..HEAD --oneline`" + ` lists the commits, and every criterion is judged against the files, not the messages.
+` + diffScopeLines(baseBranch, d) + `Then read the changed files; ` + "`git log origin/" + baseBranch + "..HEAD --oneline`" + ` lists the commits.
 
-`)
+` + planwerkIgnoreLine())
 
 	sb.WriteString("## Source Issue\n\n")
 	sb.WriteString(fencedData("issue-title", "", strings.TrimSpace(issueTitle)))
@@ -137,7 +137,6 @@ For EVERY finding, include: what it concerns, quoted in the problem (the Accepta
 
 `)
 	sb.WriteString(findingLabelsBlock())
-	sb.WriteString(planwerkIgnoreLine())
 	sb.WriteString(passSummaryLine())
 	sb.WriteString(findingsOutputBlock())
 

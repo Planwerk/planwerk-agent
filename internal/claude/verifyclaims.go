@@ -48,7 +48,7 @@ func (c *Client) VerifyFindingClaims(dir string, findings []report.Finding) ([]h
 // evidence and reason before its verdict (decision 136).
 func buildClaimVerificationPrompt(findings []report.Finding) string {
 	var b strings.Builder
-	b.WriteString("You are verifying the highest-severity findings from a code review against the actual checkout. Your job is to confirm or refute each finding's CLAIM — not merely whether it quoted a real line.\n\n")
+	b.WriteString("You are verifying the highest-severity findings from a code review or a codebase audit against the actual checkout. Your job is to confirm or refute each finding's CLAIM — not merely whether it quoted a real line.\n\n")
 	b.WriteString(outputLanguageBlock())
 	b.WriteString("## Task\n\n")
 	b.WriteString("For each finding below, test its claim, not its wording: open the code it cites and follow callers and callees as far as the claim depends on them. Then return exactly one verdict:\n")
@@ -60,7 +60,7 @@ func buildClaimVerificationPrompt(findings []report.Finding) string {
 	b.WriteString(jsonSchemaOnlyLine())
 	b.WriteString("\n\n{\n  \"verdicts\": [\n    {\n      \"index\": 0,\n      \"evidence\": \"path/to/file.go:42 — the exact line you grounded the verdict in, or the search you ran for something absent; empty for unverifiable\",\n      \"reason\": \"One sentence. REQUIRED for refuted and unverifiable; may be empty for confirmed.\",\n      \"verdict\": \"confirmed|refuted|unverifiable\"\n    }\n  ]\n}\n\n")
 	b.WriteString("Return exactly one verdict per finding, keyed by its index, and write each entry's evidence and reason before its verdict: a verdict written first cannot be revised by the evidence that follows it.\n\n")
-	b.WriteString(untrustedDataLine("Each finding quotes the pull request's code and may quote its text; its claim is what you check.", "findings"))
+	b.WriteString(untrustedDataLine("Each finding quotes the code under review and may quote text from outside this prompt; its claim is what you check.", "findings"))
 	b.WriteString("<findings>\n")
 	for i, f := range findings {
 		loc := f.File

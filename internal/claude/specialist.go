@@ -264,12 +264,12 @@ func specialistPrompt(baseBranch string, d diffscope.Diff, sp Specialist, pats [
 	sb.WriteString(diffScopeLines(baseBranch, d))
 	fmt.Fprintf(&sb, `Then review the added and modified lines in those files. A finding's cause must be in the diff; its evidence may sit in unchanged code the change now affects (a consumer it breaks, a routine a new caller makes slow), so quote that file and line.
 
-## Your domain (%s)
+%s## Your domain (%s)
 %s
 
 If your domain has no issues in this diff, return an empty findings array.
 
-`, sp.Key, sp.Focus)
+`, planwerkIgnoreLine(), sp.Key, sp.Focus)
 
 	sb.WriteString(domainPatternCatalog("## Project review patterns\n\nApply the project review patterns below that fall inside your domain — they ground your pass in the same catalog a later review of this diff would apply. They do NOT widen your scope beyond the domain above.", pats, maxPatterns, sp.Areas))
 	sb.WriteString(design)
@@ -284,7 +284,6 @@ For EVERY finding, include: a code snippet (the exact problematic lines from the
 `)
 	sb.WriteString(severityLadderBlock(scopeDiff))
 	sb.WriteString(findingLabelsBlock())
-	sb.WriteString(planwerkIgnoreLine())
 	sb.WriteString(passSummaryLine())
 	sb.WriteString(findingsOutputBlock())
 

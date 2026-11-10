@@ -1092,9 +1092,9 @@ func excludedFilesFence(d diffscope.Diff) string {
 func excludedFilesSentence(d diffscope.Diff) string {
 	listed := "the entries in <excluded-files>"
 	if rest := len(d.Excluded) - report.ExcludedFilesListLimit; rest > 0 {
-		listed += fmt.Sprintf(", and %d more entries it does not list", rest)
+		listed += fmt.Sprintf(" and %d more it does not list", rest)
 	}
-	return fmt.Sprintf("The diff leaves out %d of the changed files as lock files, vendored code, or generated code, so a change to them is judged through the manifest, the dependency update, or the generator input the diff changes: %s. They are out of scope; open one when a change in the diff depends on what it pins or generates. The files in scope are the ones the diff holds.", report.ExcludedFileCount(d.Excluded), listed)
+	return fmt.Sprintf("The diff leaves out %d of the changed files, %s, as lock files, vendored code, or generated code: a change to them is judged through the manifest, the dependency update, or the generator input the diff changes. They are out of scope; open one when a change in the diff depends on what it pins or generates. The files in scope are the ones the diff holds.", report.ExcludedFileCount(d.Excluded), listed)
 }
 
 // emptyIDLine returns the "leave the id field empty" line shared by the

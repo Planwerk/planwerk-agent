@@ -46,7 +46,7 @@ implementation session introduced — and produce a delete/collapse list, not a 
 
 ` + diffScopeLines(baseBranch, d) + `Then confine the list to what this branch introduced in those files; unchanged code is context for whether a simpler form exists, never a target.
 
-## The decision ladder
+` + planwerkIgnoreLine() + `## The decision ladder
 For every piece of complexity, ask whether a simpler rung of this ladder would do
 the same job, and prefer it (top is simplest):
 1. Do not build it at all (YAGNI) — the requirement does not actually need it.
@@ -78,7 +78,7 @@ DO NOT comment on:
 
 A clean diff is a valid outcome: if you find no over-engineering, return an empty findings array — do NOT manufacture a finding.
 
-` + planwerkIgnoreLine() + communicationStyleBlock() + outputLanguageBlock() + findingLabelsBlock() + passSummaryLine() + findingsOutputBlock()
+` + communicationStyleBlock() + outputLanguageBlock() + findingLabelsBlock() + passSummaryLine() + findingsOutputBlock()
 }
 
 // simplifyReportHeading is the heading every simplification report opens with.

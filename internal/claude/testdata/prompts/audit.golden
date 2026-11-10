@@ -99,7 +99,7 @@ These rules exist because a reader acts on what the audit claims, and a claim th
 - NEVER say "this is probably tested" — name the specific test file and test function, or flag as "test coverage unknown".
 - NEVER say "this is handled elsewhere" — cite the exact file and line that handles it, or say "not verified".
 - NEVER assume error handling exists unless you can see it in the code.
-- If you are not sure a finding is real, report it anyway: state the claim plainly, prefix its problem with "UNVERIFIED:", and set its Confidence to uncertain. An uncertain finding is filed in a separate section, so reporting one costs the reader little and withholding one can cost them the defect.
+- If you are not sure a finding is real, report it anyway: state the claim plainly, prefix its problem with "UNVERIFIED:", and set its Confidence to uncertain. An uncertain WARNING or INFO finding is filed in a separate section and an uncertain BLOCKING or CRITICAL one goes to a claim check, so reporting one costs the reader little and withholding one can cost them the defect.
 - Every finding MUST cite a concrete file path. Line numbers are required unless the finding concerns a missing file (e.g. "no CHANGELOG.md").
 
 ## Communication Style
