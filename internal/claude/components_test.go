@@ -842,6 +842,62 @@ func TestRebaseAnalysisPrompt_MatchesRebaseAnalysisSchema(t *testing.T) {
 	}
 }
 
+// TestRebaseAnalysisPrompt_MatchesTheSchemasEnumsAndRequiredFields extends the
+// drift guard above from key names to values: every field the example shows
+// as "a|b|c" carries exactly the schema's enum, and the field the prompt says
+// every adjustment carries is one the schema requires. The apply prompt keys
+// its check of an adjustment on "likely" and "uncertain", so a schema that
+// accepted an adjustment without a confidence, or with any string in it,
+// would pass a value the next session cannot read.
+func TestRebaseAnalysisPrompt_MatchesTheSchemasEnumsAndRequiredFields(t *testing.T) {
+	prompt := BuildRebaseAnalysisPrompt(goldenRebaseAnalysisContext())
+	_, shape, ok := strings.Cut(prompt, jsonSchemaOnlyLine())
+	if !ok {
+		t.Fatal("the rebase analysis prompt carries no JSON-only line")
+	}
+	var output struct {
+		Commits []struct {
+			Adjustments []map[string]string `json:"adjustments"`
+		} `json:"commits"`
+	}
+	if err := json.Unmarshal([]byte(extractJSONValue(shape)), &output); err != nil {
+		t.Fatalf("the prompt's example is not valid JSON: %v", err)
+	}
+	if len(output.Commits) != 1 || len(output.Commits[0].Adjustments) != 1 {
+		t.Fatalf("the example does not show one commit with one adjustment")
+	}
+	example := output.Commits[0].Adjustments[0]
+
+	var doc struct {
+		Defs map[string]struct {
+			Required   []string `json:"required"`
+			Properties map[string]struct {
+				Enum []string `json:"enum"`
+			} `json:"properties"`
+		} `json:"$defs"`
+	}
+	if err := json.Unmarshal(schema.RebaseAnalysis, &doc); err != nil {
+		t.Fatalf("decoding schema.RebaseAnalysis: %v", err)
+	}
+	adjustment := doc.Defs["adjustment"]
+
+	for name, prop := range adjustment.Properties {
+		shown := strings.Split(example[name], "|")
+		switch {
+		case len(prop.Enum) > 0 && !slices.Equal(shown, prop.Enum):
+			t.Errorf("the example shows %q as %q, schema.RebaseAnalysis allows %q", name, shown, prop.Enum)
+		case len(prop.Enum) == 0 && len(shown) > 1:
+			t.Errorf("the example shows %q as the choice %q, schema.RebaseAnalysis has no enum for it", name, shown)
+		}
+	}
+	if !strings.Contains(prompt, `Every adjustment carries "confidence".`) {
+		t.Fatal("the rebase analysis prompt no longer says every adjustment carries a confidence")
+	}
+	if !slices.Contains(adjustment.Required, "confidence") {
+		t.Errorf("the prompt requires a confidence on every adjustment, schema.RebaseAnalysis requires only %q", adjustment.Required)
+	}
+}
+
 // TestFinderOutputSchema_PutsEvidenceBeforeLabels pins the order the drift
 // guard above holds both copies to. A session fills schema.FinderOutput in its
 // property order, so a finding's location, quote, problem and fix come before
