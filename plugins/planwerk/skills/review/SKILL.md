@@ -33,7 +33,7 @@ Read these before you start, in full:
 - `${CLAUDE_SKILL_DIR}/../../shared/house-style.md` — prose, citations, the glossary, anti-hallucination
 - `${CLAUDE_SKILL_DIR}/../../shared/github.md` — the repository and its default branch
 - `${CLAUDE_SKILL_DIR}/../../shared/github-checks.md` — the pull request for the branch, and posting a report on it
-- `${CLAUDE_SKILL_DIR}/../../shared/memory.md` — the project memory, when the repository opted in
+- `${CLAUDE_SKILL_DIR}/../../shared/memory.md` — how to read the project memory, and what to do when there is none
 
 The `review` command (`planwerk-agent <pr-ref>`) does the same review
 unattended, on a pull request, with the embedded catalog, the wiki's patterns,

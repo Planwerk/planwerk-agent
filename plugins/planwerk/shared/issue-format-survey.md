@@ -6,9 +6,7 @@ duplication survey, shaped so `meta` can split it. Read it beside
 
 ## The survey Meta Issue
 
-`cleanup` files the one Meta Issue the skills author themselves: the record of
-a dead-code and duplication survey, shaped so `meta` can split it. It is a
-draft-depth body carrying up to two extra sections:
+`cleanup` files it as a draft-depth body carrying up to two extra sections:
 
 ```markdown
 **Category**: feature | **Scope**: Large

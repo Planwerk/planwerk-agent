@@ -40,8 +40,9 @@ verify list compares the tree against before you file.
 
 ## What cleanup does not do
 
-- It never edits, deletes, or reformats code. The working tree is exactly as
-  it found it; the Meta Issue is the only artifact.
+- It never edits, deletes, or reformats code. The only change to the working
+  tree is the fast-forward the checkout step offers, on the author's yes,
+  before the survey starts; the Meta Issue is the only artifact.
 - It never installs a tool and never adds configuration. Detectors already on
   `PATH` may run read-only; a missing one is a coverage note in the report,
   not a stop.

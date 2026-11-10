@@ -28,7 +28,7 @@ Read these before you start, in full:
 - `${CLAUDE_SKILL_DIR}/../../shared/github-relations.md` — the neighborhood query
 - `${CLAUDE_SKILL_DIR}/../../shared/cross-repo.md` — when the plan implies work in another repository
 - `${CLAUDE_SKILL_DIR}/../../shared/domains.md` — the domain sweep, when the repository commits no `.planwerk/domains.md` of its own
-- `${CLAUDE_SKILL_DIR}/../../shared/memory.md` — the project memory, when the repository opted in
+- `${CLAUDE_SKILL_DIR}/../../shared/memory.md` — how to read the project memory, and what to do when there is none
 
 You must be inside a checkout of the issue's repository. If the working tree
 belongs to a different repo, say so and stop. Then check the checkout per
@@ -111,8 +111,7 @@ guesses. These are the decisions worth an author's time:
   building the wrong thing.
 
 Ask each as its own question, in rounds (`interaction.md`, Ask in rounds), cite
-the concrete `path:line` that raised it, and recommend one option. A question that names a real file is the
-difference between an interrogation and a form.
+the concrete `path:line` that raised it, and recommend one option.
 
 Do not surface cosmetic choices, naming preferences, or anything the smallest
 correct change already settles. Decide those yourself.

@@ -29,7 +29,7 @@ Read these before you start, in full:
 - `${CLAUDE_SKILL_DIR}/../../shared/house-style.md` — prose, citations, anti-hallucination
 - `${CLAUDE_SKILL_DIR}/../../shared/github.md` — the `gh` commands
 - `${CLAUDE_SKILL_DIR}/../../shared/github-relations.md` — the neighborhood query
-- `${CLAUDE_SKILL_DIR}/../../shared/memory.md` — the project memory, when the repository opted in
+- `${CLAUDE_SKILL_DIR}/../../shared/memory.md` — how to read the project memory, and what to do when there is none
 
 You must be inside a checkout of the Meta Issue's repository. Verifying a
 decision means opening the files it turns on, and a verification run from the
@@ -49,9 +49,10 @@ because a decision confirmed against a stale checkout is not confirmed at all.
   smuggling a path in.
 - It never closes an issue, including the spike Sub Issue whose job just ended.
   It reports that the job is done and lets the author close it.
-- It never reaches outside the checkout. A decision only a live system,
-  un-vendored upstream source, or a policy call can settle is asked as an open
-  question, never guessed.
+- It verifies only against what it can read from here: the checkout, the
+  issues the neighborhood query returns, and the project memory. A decision
+  only a live system, un-vendored upstream source, or a policy call can settle
+  is asked as an open question, never guessed.
 - It never grows a sibling's scope. A settled decision that implies work no
   sibling's body covers is named as a gap in the report, not added by this
   skill.
@@ -221,7 +222,7 @@ the report (What decide does not do says why its body is never edited).
 
 For a sibling you actually change, replace its footer verb with `Decided by`,
 naming your model id, the same rule Phase 4 applies to the Meta Issue. Then read
-its comments (`gh issue view <number> --repo <owner/repo> --comments`) and note
+its comments (`github.md`, Reading) and note
 whether the thread carries an implementation plan comment (`github.md`, The
 implementation plan comment): it was written against the body as it stood
 before your correction, and Phase 7 names every such sibling.

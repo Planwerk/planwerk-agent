@@ -24,7 +24,7 @@ Read these before you start, in full:
 - `${CLAUDE_SKILL_DIR}/../../shared/commits.md` — the trailers every commit ends with
 - `${CLAUDE_SKILL_DIR}/../../shared/github.md` — the `gh` commands, the checkout check, and the continuation-comment rule
 - `${CLAUDE_SKILL_DIR}/../../shared/house-style.md` — prose, citations, anti-hallucination
-- `${CLAUDE_SKILL_DIR}/../../shared/memory.md` — the project memory, when the repository opted in
+- `${CLAUDE_SKILL_DIR}/../../shared/memory.md` — how to read the project memory, and what to do when there is none
 
 There is no `planwerk-agent diagnose` command, because the hypothesis review
 and the stop when no loop can be built both need the author.

@@ -26,7 +26,7 @@ Read these before you start, in full:
 - `${CLAUDE_SKILL_DIR}/../../shared/github.md` — the `gh` commands
 - `${CLAUDE_SKILL_DIR}/../../shared/github-checks.md` — a pull request, its checks, and the logs behind a failed one
 - `${CLAUDE_SKILL_DIR}/../../shared/house-style.md` — prose, citations, anti-hallucination
-- `${CLAUDE_SKILL_DIR}/../../shared/memory.md` — the project memory, when the repository opted in
+- `${CLAUDE_SKILL_DIR}/../../shared/memory.md` — how to read the project memory, and what to do when there is none
 
 `planwerk-agent fix <pr-ref>` is the same work unattended, in a loop, in a
 throw-away clone; this skill is for when someone is watching, because the
