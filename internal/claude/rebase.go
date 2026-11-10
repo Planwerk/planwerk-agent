@@ -88,16 +88,22 @@ func BuildRebaseConflictPrompt(ctx rebase.ConflictContext) string {
 
 `)
 
-	fmt.Fprintf(&sb, "## Conflict\n\n- Repository: %s\n- PR #%d\n- Rebasing onto: origin/%s (freshly fetched)\n- Head branch: %s\n- Replayed commit: %s — %s\n\n",
-		ctx.RepoFullName, ctx.PRNumber, ctx.Onto, ctx.HeadBranch, shortCommit(ctx.Commit.SHA), ctx.Commit.Subject)
+	fmt.Fprintf(&sb, "## Conflict\n\n- Repository: %s\n- PR #%d\n- Rebasing onto: origin/%s (freshly fetched)\n- Head branch: %s\n- Replayed commit: %s, its subject in <replayed-commit>\n\n",
+		ctx.RepoFullName, ctx.PRNumber, ctx.Onto, ctx.HeadBranch, shortCommit(ctx.Commit.SHA))
 
+	// The subject and the paths are the pull request author's words, and a
+	// path or a subject shaped like a sentence would otherwise be a line of
+	// this prompt.
+	sb.WriteString(fencedData("replayed-commit", "", ctx.Commit.Subject))
+	conflictTags := []string{"replayed-commit"}
 	if len(ctx.ConflictedFiles) > 0 {
-		sb.WriteString("Conflicted files (git marked these unmerged):\n\n")
-		for _, f := range ctx.ConflictedFiles {
-			fmt.Fprintf(&sb, "- %s\n", f)
-		}
-		sb.WriteString("\n")
+		sb.WriteString("\nConflicted files (git marked these unmerged):\n\n")
+		sb.WriteString(fencedData("conflicted-files", "", strings.Join(ctx.ConflictedFiles, "\n")))
+		conflictTags = append(conflictTags, "conflicted-files")
 	}
+	sb.WriteString("\n")
+	sb.WriteString(untrustedDataLine("They name the commit being replayed and the files to resolve.", conflictTags...))
+	sb.WriteString(untrustedFetchedLine("commit text you read through git", "It says what each commit meant to do.") + "\n\n")
 
 	sb.WriteString(patternCatalogBlock(honorPatternsHeading,
 		patternCatalogLeadIn+" Your conflict resolution MUST stay consistent with them: do not resolve a conflict in a way that would itself be flagged by a pattern below.",
@@ -153,10 +159,12 @@ semantic behavior change it assumed away.
 	fmt.Fprintf(&sb, "## Repository\n\n- Repository: %s\n- PR #%d\n- Rebased onto: origin/%s\n\n", ctx.RepoFullName, ctx.PRNumber, ctx.Onto)
 
 	sb.WriteString("## Rebased commits (analyze each one, in order)\n\n")
-	sb.WriteString(formatAnalysisCommits(ctx.RebasedCommits))
+	sb.WriteString(fencedData("rebased-commits", "", strings.TrimRight(formatAnalysisCommits(ctx.RebasedCommits), "\n")))
 	sb.WriteString("\n## Upstream commits that entered the base since the PR forked\n\n")
-	sb.WriteString(formatAnalysisCommits(ctx.UpstreamCommits))
+	sb.WriteString(fencedData("upstream-commits", "", strings.TrimRight(formatAnalysisCommits(ctx.UpstreamCommits), "\n")))
 	sb.WriteString("\n")
+	sb.WriteString(untrustedDataLine("Each line is a commit: its SHA, then its subject.", "rebased-commits", "upstream-commits"))
+	sb.WriteString(untrustedFetchedLine("commit text you read through git", "It says what each commit meant to do.") + "\n\n")
 
 	sb.WriteString(patternCatalogBlock(honorPatternsHeading,
 		"Ground your analysis in these patterns: a rebased commit that now violates one because of an upstream change is exactly the kind of adjustment to report.",

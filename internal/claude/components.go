@@ -544,6 +544,18 @@ func fencedData(tag, attrs, body string) string {
 	return "<" + tag + attrs + ">\n" + escapeFence(tag, body) + "\n</" + tag + ">\n"
 }
 
+// prTitleFence renders a pull request's title as a fence with its data
+// sentence, for the sessions that edit a pull request's branch: the title is
+// the author's text, and outside a fence it would be a line of the prompt's
+// own header. An empty title renders nothing.
+func prTitleFence(title string) string {
+	if strings.TrimSpace(title) == "" {
+		return ""
+	}
+	return fencedData("pr-title", "", strings.TrimSpace(title)) + "\n" +
+		untrustedDataLine("It is the pull request's title, which states its intent.", "pr-title")
+}
+
 // untrustedDataLine returns the sentence that frames the named fences as data
 // rather than instructions. Every prompt that embeds text written outside this
 // tool carries it next to those fences, with two blocks framing their text in
