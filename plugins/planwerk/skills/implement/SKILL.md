@@ -360,8 +360,9 @@ Open with one line: what shipped, or why nothing did. Then state:
   - `DONE` — every Acceptance Criterion was exercised by a command that passed.
   - `DONE_WITH_CONCERNS` — the work is complete, with a criterion only a live
     system can verify (it needs a remote host or a credential), a criterion
-    not exercised here, a process that would not stop, or a deviation the
-    author should see; name which.
+    not exercised here, a process that would not stop, a deviation the
+    author should see, the branch left local, or a question the author
+    declined; name which.
   - `BLOCKED` — the work cannot complete; the branch stays local, and the report
     names what stops it.
   - `NEEDS_CONTEXT` — only the author holds a fact the work turns on.
