@@ -61,7 +61,7 @@ Do this now, in this turn:
 1. Re-check the state of your work (git status, git log): confirm what is committed and what is not.
 2. Re-run, in the FOREGROUND, any verification whose result you have not seen in this session, and wait for it to finish. If a command genuinely outlives the Bash tool's foreground time limit, run it in the background and poll its output from within this same turn until it exits — NEVER end the turn to "wait" for it.
 3. Commit any finished but uncommitted work.
-4. End the turn with the complete report: it MUST carry the %q heading and MUST end with a terminal "STATUS: <%s>" line. If work remains that you cannot finish in this turn, report it honestly with the appropriate escalation status instead of waiting for anything — an honest escalation is accepted; a turn without the report is not.
+4. End the turn with the complete report: it MUST carry the %q heading and, in its Status section, a terminal "STATUS: <%s>" line. If work remains that you cannot finish in this turn, report it honestly with the appropriate escalation status instead of waiting for anything — an honest escalation is accepted; a turn without the report is not.
 
 Output the report as the last thing in this turn, with nothing after it.`, heading, heading, statuses)
 }
