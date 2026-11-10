@@ -41,8 +41,9 @@ func terminalReportComplete(heading string) func(string) bool {
 // completionNudgePrompt is the follow-up turn sent to a resumed session that
 // ended without its terminal report. The session keeps its full context, so
 // the prompt does not restate the task; it names the one thing the previous
-// turn got wrong (no report) and demands the report — honest escalation
-// included — as the turn's final output. It says nothing about killed
+// turn got wrong (no report) and demands the report as the turn's final
+// output, with an early stop only for a condition the session's own prompt
+// names. It says nothing about killed
 // background commands: since Claude Code 2.1.292 the process exits only once
 // every backgrounded command has exited or been stopped by the CLI's
 // background time limit, and the session is woken either way, so none died
@@ -61,7 +62,7 @@ Do this now, in this turn:
 1. Re-check the state of your work (git status, git log): confirm what is committed and what is not.
 2. Re-run, in the FOREGROUND, any verification whose result you have not seen in this session, and wait for it to finish. If a command genuinely outlives the Bash tool's foreground time limit, run it in the background and poll its output from within this same turn until it exits — NEVER end the turn to "wait" for it.
 3. Commit any finished but uncommitted work.
-4. End the turn with the complete report: it MUST carry the %q heading and, in its Status section, a terminal "STATUS: <%s>" line. If work remains that you cannot finish in this turn, report it honestly with the appropriate escalation status instead of waiting for anything — an honest escalation is accepted; a turn without the report is not.
+4. Finish the work your first message asked for, then end the turn with the complete report: it carries the %q heading and its Status section's terminal "STATUS: <%s>" line. Stop early only for a condition your first message names, with the status it names for it; a turn without the report is not accepted.
 
 Output the report as the last thing in this turn, with nothing after it.`, heading, heading, statuses)
 }
