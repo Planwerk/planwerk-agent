@@ -86,3 +86,30 @@ func TestReviewSkillNamesTheDefaultChecklist(t *testing.T) {
 		}
 	}
 }
+
+// reviewLabelMarkers are the phrases that define the three actionability
+// labels. The skill emits its findings in the review command's schema, so a
+// label must mean in the skill what findingLabelsBlock makes it mean in the
+// command: a security fix the skill called auto-fix because the code was exact
+// would reach a reader as a fix to apply without asking.
+var reviewLabelMarkers = []string{
+	"apply this fix without discussion",
+	"Requires team input before fixing",
+	"Fundamental design issue that needs a broader conversation",
+}
+
+// TestReviewSkillMatchesTheFindingLabels fails when the actionability labels
+// stop meaning the same in the review skill and in the command's prompts.
+func TestReviewSkillMatchesTheFindingLabels(t *testing.T) {
+	block := flow(findingLabelsBlock())
+	skill := flow(readSharedDoc(t, reviewSkillDoc))
+	for _, marker := range reviewLabelMarkers {
+		m := flow(marker)
+		if !strings.Contains(block, m) {
+			t.Errorf("findingLabelsBlock() no longer carries %q; change the marker and the review skill together", marker)
+		}
+		if !strings.Contains(skill, m) {
+			t.Errorf("%s does not carry %q; the skill's actionability labels drifted from the review prompt", reviewSkillDoc, marker)
+		}
+	}
+}

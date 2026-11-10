@@ -362,9 +362,19 @@ Then label what survives:
     test or document the project's own conventions call for; a new dependency
     a major version behind.
   - INFO: style suggestions and minor improvements — optional.
-- **Actionability**: `auto-fix` when you can write the exact replacement code;
-  `needs-discussion` or `architectural` otherwise, each with two or three fix
-  options and one of them recommended.
+- **Actionability**, as the command defines it:
+  - `auto-fix`: a senior engineer would apply this fix without discussion
+    (dead code removal, an N+1 query fix, a stale comment, a magic number,
+    missing error wrapping, a simple nil check), and you can write the exact
+    replacement code.
+  - `needs-discussion`: Requires team input before fixing (a security fix, a
+    race condition's resolution, an API or design change, anything changing
+    observable behavior), even when you can write the code.
+  - `architectural`: Fundamental design issue that needs a broader
+    conversation (a wrong abstraction, a missing layer, a significant
+    refactor).
+
+  The last two carry two or three fix options, one of them recommended.
 - **Confidence**: `verified` (visible in the code with certainty), `likely`
   (strong evidence that depends on wider context), or `uncertain` (needs
   investigation).
