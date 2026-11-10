@@ -35,8 +35,8 @@ command has to guess at every fork in Phase 4 and you can ask.
 ## What fix does not do
 
 - It never silences a check: nothing in the list under "What never makes a
-  check green" in `commits.md` is a repair. A suppression is never one of the
-  options you offer the author.
+  check green" in `commits.md` is a repair. A suppression the file does not
+  already use is never one of the options you offer the author.
 - It never fixes what no check flagged. A failing check is the entire mandate.
   "While I was in here I noticed…" is a new issue, not a line in this diff.
 - It never pushes a placebo. A flake, an expired secret, a runner that ran out

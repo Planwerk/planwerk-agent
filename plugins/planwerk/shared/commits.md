@@ -43,7 +43,8 @@ A check that goes green because the check was silenced hides the cause and
 costs the next person a bisect. None of these is a fix, in a repair or in a
 fresh change: `t.Skip`, `pytest.skip`, `xit`, or `xdescribe` added to bypass a
 test; `//nolint`, `# noqa`, `# type: ignore`, `@ts-ignore`, or
-`@SuppressWarnings` added to silence a finding; widening a type to `any`,
+`@SuppressWarnings` added to silence a finding, unless the same suppression is
+already idiomatic in that file; widening a type to `any`,
 `interface{}`, `unknown`, or `Any` to silence a type-checker; deleting a test
 case or relaxing an assertion; pinning a dependency backwards to dodge a
 security finding; adding a retry, a sleep, or a longer timeout to a test, or
