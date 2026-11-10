@@ -146,9 +146,10 @@ the phases around exactly this.
 
 Deleting a published interface is on `interaction.md`'s irreversibility list,
 so every **Author's call** item is genuinely theirs. Group the items by
-surface — one question per exported package or API area, never one per symbol
-— and ask each group as its own question, in rounds, under the rules in
-`interaction.md`.
+surface: one question per exported package or API area when one answer
+settles every symbol in it (`interaction.md`, One decision, one question), and
+a question of its own for a symbol whose answer could differ. Ask each group
+as its own question, in rounds, under the rules in `interaction.md`.
 
 What the author settles moves to Dead or Healthy accordingly. What they
 decline or leave open lands in the Meta Issue's `## Open decisions` block, in
