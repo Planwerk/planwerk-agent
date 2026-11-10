@@ -131,6 +131,28 @@ func TestOpenPR_SkipsWhenNoImprovements(t *testing.T) {
 	}
 }
 
+// TestOpenPR_SkipsAFeatureWithoutAnInputFile: the file an improved spec is
+// committed to is the input spec's. A feature that matched no input spec has
+// none, and a name that leaves the features directory is never a file name.
+func TestOpenPR_SkipsAFeatureWithoutAnInputFile(t *testing.T) {
+	for _, file := range []string{"", "../outside.json", "nested/PX-0001.json"} {
+		gh := &githubtest.Fake{}
+		r := &Runner{GitHub: gh}
+		res := &Result{Features: []FeatureReview{{
+			FeatureID:    "PX-0001",
+			FeatureFile:  file,
+			ImprovedJSON: json.RawMessage(`{"feature_id":"PX-0001","status":"prepared"}`),
+		}}}
+		url, err := r.openPR(&github.Repo{Owner: "o", Name: "n", Dir: t.TempDir()}, res, Options{CreatePR: true})
+		if err != nil {
+			t.Fatalf("file %q: openPR: %v", file, err)
+		}
+		if url != "" || len(gh.ImprovementPRs()) != 0 {
+			t.Errorf("file %q: an improved spec without an input file was committed", file)
+		}
+	}
+}
+
 func TestOpenPR_PassesFormattedFiles(t *testing.T) {
 	gh := &githubtest.Fake{}
 	r := &Runner{GitHub: gh}

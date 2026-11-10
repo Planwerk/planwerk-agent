@@ -8,14 +8,14 @@ Output ONLY valid JSON matching this exact schema (no markdown fences, no surrou
   "features": [
     {
       "feature_id": "CC-0042",
-      "feature_file": "CC-0042-...json",
-      "title": "Feature title from the spec",
+      "feature_file": "",
+      "title": "",
       "summary": "The feature's verdict, copied from the report.",
       "gaps": [
         {
           "id": "",
           "feature_id": "CC-0042",
-          "feature_file": "CC-0042-...json",
+          "feature_file": "",
           "type": "missing_criterion|missing_scenario|missing_test|missing_task",
           "severity": "CRITICAL|WARNING|INFO",
           "title": "Short, specific gap title (no severity prefix, no brackets)",
@@ -38,7 +38,8 @@ Field rules:
 - "id": leave as empty string — it is assigned automatically.
 - "type": one of the four values above, copied from the gap type the analysis states.
 - "severity": uppercase, never BLOCKING (gap analysis runs on already-merged work).
-- "feature_id" / "feature_file": copy from the surrounding feature block.
+- "feature_id": copy from the heading of the report's section for that feature.
+- "feature_file" and the feature's "title": leave as empty strings — they are filled in automatically from the spec.
 - "source": include the verbatim text from the spec — criterion, scenario, task, or test name.
 - "evidence": cite paths or grep results. "checked X, did not find Y" is acceptable.
 - "suggested_issue.title": never start with "[CRITICAL]", "Severity:", or any other level marker.

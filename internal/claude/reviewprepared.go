@@ -171,22 +171,21 @@ func reconcileReviewFeatures(result *reviewprepared.Result, features []reviewpre
 		fr := &result.Features[fi]
 		key := strings.ToUpper(fr.FeatureID)
 		seen[key] = true
+		// The file and the title come from the input spec, never from the
+		// structuring call: it sees the report alone, so a name it writes is
+		// a guess, and openPR commits the improved spec to that path. A
+		// feature the input does not carry keeps no file at all.
+		fr.FeatureFile = ""
 		if pf, ok := byID[key]; ok {
-			if fr.FeatureFile == "" {
-				fr.FeatureFile = filepath.Base(pf.Feature.FilePath)
-			}
-			if fr.Title == "" {
-				fr.Title = pf.Feature.Title
-			}
+			fr.FeatureFile = filepath.Base(pf.Feature.FilePath)
+			fr.Title = pf.Feature.Title
 		}
 		for ji := range fr.Findings {
 			f := &fr.Findings[ji]
 			if f.FeatureID == "" {
 				f.FeatureID = fr.FeatureID
 			}
-			if f.FeatureFile == "" {
-				f.FeatureFile = fr.FeatureFile
-			}
+			f.FeatureFile = fr.FeatureFile
 		}
 	}
 
@@ -219,14 +218,14 @@ func buildReviewPreparedStructurePrompt(rawAnalysis string, includeImproved bool
   "features": [
     {
       "feature_id": "PX-0028",
-      "feature_file": "PX-0028-...json",
-      "title": "Feature title from the spec",
+      "feature_file": "",
+      "title": "",
       "summary": "The feature's verdict, copied from the report.",` + improvedField + `
       "findings": [
         {
           "id": "",
           "feature_id": "PX-0028",
-          "feature_file": "PX-0028-...json",
+          "feature_file": "",
           "category": "stories|requirements|tasks|tests|review_criteria|implementation_notes|other",
           "severity": "CRITICAL|WARNING|INFO",
           "title": "Short, specific finding title (no severity prefix, no brackets)",
@@ -245,7 +244,8 @@ Field rules:
 - ` + emptyIDLine() + `
 - "category": exactly one of the values above.
 - "severity": uppercase, never BLOCKING.
-- "feature_id" / "feature_file": copy from the surrounding feature block.
+- "feature_id": copy from the heading of the report's section for that feature.
+- "feature_file" and the feature's "title": leave as empty strings — they are filled in automatically from the spec.
 - "spec_pointer": copy the pointer the report states for the finding. If it states only a missing field, copy the parent it names (e.g. "stories[1]" for a story missing criteria).
 - "suggestion": copy the edit the report gives, with its exact wording.
 - If a feature has no findings, include it with an empty findings array and a positive summary.` +
