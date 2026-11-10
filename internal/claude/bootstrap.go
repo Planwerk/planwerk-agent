@@ -34,6 +34,9 @@ func (c *Client) BootstrapUnit(dir string, ctx brain.UnitContext) (*capture.Capt
 	if err != nil {
 		return nil, fmt.Errorf("running bootstrap analysis: %w", err)
 	}
+	if strings.TrimSpace(rawAnalysis) == "" {
+		return nil, errBlankBootstrapReply("analysis")
+	}
 	result, err := structure[capture.CaptureResult](c, buildCaptureStructurePrompt(rawAnalysis), "bootstrap-unit-structure", "structured bootstrap proposals")
 	if err != nil {
 		return nil, fmt.Errorf("structuring bootstrap proposals: %w", err)
@@ -54,12 +57,27 @@ func (c *Client) BootstrapReview(dir string, ctx brain.ReviewContext) (*brain.Re
 	if err != nil {
 		return nil, fmt.Errorf("running bootstrap review: %w", err)
 	}
+	if strings.TrimSpace(rawReview) == "" {
+		return nil, errBlankBootstrapReply("review")
+	}
 	result, err := structure[brain.ReviewResult](c, buildBootstrapReviewStructurePrompt(rawReview), "bootstrap-review-structure", "structured bootstrap review")
 	if err != nil {
 		return nil, fmt.Errorf("structuring bootstrap review: %w", err)
 	}
 	result.Model = model
 	return result, nil
+}
+
+// errBlankBootstrapReply is the error for a bootstrap session whose final
+// message is empty. Both prompts ask for a non-empty answer in every branch
+// (the pages, or the statement that none clears the bar; a verdict per page),
+// so an empty one is a failed session, not "proposes nothing": structured, a
+// blank analysis becomes two empty lists and the unit is recorded as done, and
+// a blank review rejects every page for having no verdict. The sessions run on
+// the brain tiers, by default Haiku at xhigh, where the vendor documents turns
+// that end on thinking alone.
+func errBlankBootstrapReply(session string) error {
+	return fmt.Errorf("the bootstrap %s session ended without a final message", session)
 }
 
 // buildBootstrapUnitPrompt constructs the analysis prompt of one unit. The
