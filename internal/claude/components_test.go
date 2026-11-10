@@ -428,21 +428,58 @@ func noWeakeningPrompts() map[string]string {
 // second count catches an inline copy left beside the shared block, the drift
 // the block exists to end.
 func TestNoWeakeningRulesReachEveryEditingSession(t *testing.T) {
-	rules := noWeakeningRules()
 	for name, prompt := range noWeakeningPrompts() {
+		rules := noWeakeningRules(noWeakeningTarget(name))
 		if got := strings.Count(prompt, rules); got != 1 {
 			t.Errorf("%s prompt carries noWeakeningRules %d times, want exactly 1", name, got)
 		}
 		if got := strings.Count(prompt, "NEVER widen types"); got != 1 {
 			t.Errorf("%s prompt says %q %d times, want exactly 1", name, "NEVER widen types", got)
 		}
-		if strings.Contains(name, "address") {
+		if strings.Contains(name, addressPromptName) {
 			if got := strings.Count(prompt, addressForbiddenAskRule); got != 1 {
 				t.Errorf("%s prompt carries addressForbiddenAskRule %d times, want exactly 1", name, got)
 			}
 			if !strings.Contains(prompt, rules+addressForbiddenAskRule) {
 				t.Errorf("%s prompt: addressForbiddenAskRule does not directly follow noWeakeningRules", name)
 			}
+		}
+	}
+}
+
+// addressPromptName is the name noWeakeningPrompts gives the address prompt;
+// the bare variant carries it behind a prefix.
+const addressPromptName = "address"
+
+// noWeakeningTarget names what each session does instead of weakening a test.
+// Only the implement sessions fix the root cause wherever it lies: the others
+// are confined to their threads, their conflicted files, or their listed
+// adjustments, and a shared "fix the root cause" would send them outside.
+func noWeakeningTarget(prompt string) string {
+	switch strings.TrimSuffix(prompt, "/zero") {
+	case addressPromptName, "bare-" + addressPromptName:
+		return noWeakeningAddress
+	case "rebase-conflict":
+		return noWeakeningRebaseConflict
+	case "rebase-apply":
+		return noWeakeningRebaseApply
+	case "bare-rebase":
+		return noWeakeningBareRebase
+	default:
+		return noWeakeningImplement
+	}
+}
+
+// TestNoWeakeningTargetStaysInsideTheSessionsScope pins the sessions that may
+// not repair a failure wherever it lies against the implement session's
+// target, which their own hard rules contradict.
+func TestNoWeakeningTargetStaysInsideTheSessionsScope(t *testing.T) {
+	for name, prompt := range noWeakeningPrompts() {
+		if noWeakeningTarget(name) == noWeakeningImplement {
+			continue
+		}
+		if strings.Contains(prompt, "to make the suite green; fix the root cause.") {
+			t.Errorf("%s prompt tells a session confined to part of the branch to fix the root cause", name)
 		}
 	}
 }

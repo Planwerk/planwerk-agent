@@ -126,7 +126,7 @@ func BuildRebaseConflictPrompt(ctx rebase.ConflictContext) string {
 - Leave NO conflict markers in any file (step 4 checks), and leave every resolved file in a state that compiles or parses.
 - NEVER pick one side blindly to make the conflict "go away" — that silently drops a change. If you cannot reconcile a file, report it on an UNRESOLVED line (step 6) instead of guessing.
 `)
-	sb.WriteString(noWeakeningRules())
+	sb.WriteString(noWeakeningRules(noWeakeningRebaseConflict))
 
 	return sb.String()
 }
@@ -272,7 +272,7 @@ func BuildRebaseApplyPrompt(ctx rebase.ApplyContext) string {
 - If every adjustment is skipped, do NOT create an empty commit; output the report with an empty Applied list, each adjustment under Skipped with its reason, the Verification entries from step 2, and the STATUS the definitions above give.
 `, ctx.Onto)
 	sb.WriteString(noSkipHooksLine())
-	sb.WriteString(noWeakeningRules())
+	sb.WriteString(noWeakeningRules(noWeakeningRebaseApply))
 
 	return sb.String()
 }
@@ -336,7 +336,7 @@ func BuildBareRebasePrompt(ctx rebase.BareContext) string {
 - NEVER blind-pick a conflict side to make it go away.
 `, ctx.Onto)
 	sb.WriteString(noSkipHooksLine())
-	sb.WriteString(noWeakeningRules())
+	sb.WriteString(noWeakeningRules(noWeakeningBareRebase))
 
 	return sb.String()
 }

@@ -291,7 +291,7 @@ func buildImplementerAgentPrompt(forbiddenBy string) string {
 	sb.WriteString(commitTrailerBlock(forbiddenBy))
 	sb.WriteString(`## Hard rules
 
-` + noSkipHooksLine() + noWeakeningRules() + `- NEVER fabricate file paths, symbol names, or migration numbers — open the file before claiming.
+` + noSkipHooksLine() + noWeakeningRules(noWeakeningImplement) + `- NEVER fabricate file paths, symbol names, or migration numbers — open the file before claiming.
 - If the brief contradicts the repository (a cited file does not exist, a criterion is unreachable), STOP and report the contradiction in your result instead of inventing code around it.
 
 ## Result (what you report back)
@@ -467,7 +467,7 @@ When you hit a circuit breaker, halt immediately and emit STATUS: PARTIAL when a
 
 ` + reportShapeBlock("DONE") + commitTrailerBlock(ctx.AITrailersForbiddenBy) + implementRationalizationsBlock() + `## Hard rules
 
-` + noSkipHooksLine() + noWeakeningRules() + `- NEVER add scope the issue did not ask for. Refactors, renames, dependency bumps, formatter sweeps — out of scope unless explicitly listed in Affected Areas.
+` + noSkipHooksLine() + noWeakeningRules(noWeakeningImplement) + `- NEVER add scope the issue did not ask for. Refactors, renames, dependency bumps, formatter sweeps — out of scope unless explicitly listed in Affected Areas.
 - NEVER do anything the issue's Non-Goals list excludes.
 - NEVER fabricate file paths, symbol names, or migration numbers — open the file before claiming.
 - NEVER stop after a subset of the issue's work packages and report DONE. Implement every package the issue lists; only when a circuit breaker genuinely interrupts you, report PARTIAL (not DONE / DONE_WITH_CONCERNS) so a follow-up run resumes the branch and finishes the rest.
@@ -696,7 +696,7 @@ When you hit a circuit breaker, halt immediately and emit STATUS: PARTIAL when a
 
 ` + reportShapeBlock("DONE") + commitTrailerBlock(ctx.AITrailersForbiddenBy) + attributionFooterBlock("Implemented by", ctx.AITrailersForbiddenBy) + implementRationalizationsBlock() + `## Hard rules
 
-` + noSkipHooksLine() + noWeakeningRules() + `- NEVER add scope the issue did not ask for. Refactors, renames, dependency bumps, formatter sweeps — out of scope unless explicitly listed in Affected Areas.
+` + noSkipHooksLine() + noWeakeningRules(noWeakeningImplement) + `- NEVER add scope the issue did not ask for. Refactors, renames, dependency bumps, formatter sweeps — out of scope unless explicitly listed in Affected Areas.
 - NEVER do anything the issue's Non-Goals list excludes.
 - NEVER fabricate file paths, symbol names, or migration numbers — open the file before claiming.
 - NEVER stop after a subset of the issue's work packages and report DONE, and NEVER open a pull request for partial work — the issue lands as exactly ONE complete PR. Implement every package the issue lists; only when a circuit breaker genuinely interrupts you, push the branch, open no PR, and report PARTIAL so a follow-up session finishes the rest.
