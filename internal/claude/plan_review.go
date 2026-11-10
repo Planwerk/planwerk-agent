@@ -38,6 +38,7 @@ func buildPlanReviewPrompt(ctx implement.Context, plan string) string {
 Do NOT rewrite the plan. Do NOT assume it is correct because it looks thorough: verify its claims against the repository with read-only commands.
 
 `)
+	sb.WriteString(unattendedSessionLine("A question only a human can settle is a gap: name the decision the plan leaves open.", "the JSON object below"))
 
 	fmt.Fprintf(&sb, "## Source Issue\n\n- Repository: %s\n- Issue #%d\n", ctx.RepoFullName, ctx.IssueNumber)
 	if ctx.IssueURL != "" {
