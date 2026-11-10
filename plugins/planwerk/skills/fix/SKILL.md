@@ -82,6 +82,10 @@ flags.
 List the checks. Record every one whose bucket is `fail` or `cancel` — a
 cancelled check hides a timeout, not a passing test.
 
+When no check is red and some are still `pending`, report them as pending
+and stop at `NEEDS_CONTEXT`: the author runs the skill again once they
+finish. When every check passed, say so and stop: there is nothing to repair.
+
 For each Actions-backed failure, pull the failed-step logs and read to the end;
 CI clusters its errors there. For a third-party check with no run id, open its
 URL. When the cause is not visible there, that check is undiagnosable from here,
@@ -166,6 +170,8 @@ Make the smallest change that removes the cause. Then:
   signature, a runner's memory limit).
 - **Re-run the command from Phase 3.** It must now pass. Run the project's own
   gate too when it is cheap — `make test`, the lint target the CI workflow calls.
+  When it still fails, the repair is not one yet: go back to the diagnosis, or
+  stop at `BLOCKED` with what you tried and what the command printed.
 - **Re-read your own diff as its reviewer.** Delete everything not strictly
   required: the debug print, the widened test, the tidied import block in a file
   you only visited.
