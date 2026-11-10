@@ -23,7 +23,7 @@ names a base other than the one the pull request targets.
 Read these before you start, in full:
 
 - `${CLAUDE_SKILL_DIR}/../../shared/interaction.md` — how to ask, and when to stop
-- `${CLAUDE_SKILL_DIR}/../../shared/commits.md` — the trailers every commit ends with
+- `${CLAUDE_SKILL_DIR}/../../shared/commits.md` — the trailers every commit ends with, and what never makes a check green
 - `${CLAUDE_SKILL_DIR}/../../shared/commits-fold.md` — the fold, the leased push, and the SHA references a rewrite strands
 - `${CLAUDE_SKILL_DIR}/../../shared/github.md` — the `gh` commands
 - `${CLAUDE_SKILL_DIR}/../../shared/github-checks.md` — reading a pull request
@@ -36,25 +36,28 @@ abort.
 
 ## What rebase does not do
 
-- It never squashes. Every commit on the branch is replayed as itself, and a
-  reviewer who read the commits in order can read them in the same order after.
+- It never squashes one commit into another. Every commit on the branch is
+  replayed as itself, and a reviewer who read the commits in order can read
+  them in the same order after. A fixup Phase 4 folds into its target is the
+  one exception.
 - It never picks a side. Not `git rebase -X ours`, not `-X theirs`, not
   `git checkout --ours`, not deleting one half of a conflict hunk because the
   other half compiles. A resolution that cannot keep both sides is a question
   for the author, never a guess.
-- It never resolves more than the conflict. The files git marked as unmerged
-  are the files it edits while resolving; a refactor, a reformat, or an
-  improvement noticed on the way is a new issue.
+- It never resolves more than the conflict. The files git marked as unmerged,
+  and a file a hook names in Phase 3, are the files it edits while resolving;
+  a refactor, a reformat, or an improvement noticed on the way is a new issue.
 - It never repairs what was red before the rebase. A check that fails on the
   old tip for a reason the rebase did not introduce is `/planwerk:fix`'s.
-- It never rewrites a commit that already exists on the base branch, and never
-  pushes with plain `--force`.
+- It never rewrites a commit that already exists on the base branch.
 - It never edits the pull request body beyond what the rewrite made false.
 - It never resolves a review thread the upstream range does not explain. A
   thread only the branch's own code can answer is not settled by a rebase, and
   stays open for the author or `planwerk-agent address`.
 - It never passes `--no-verify`. A hook that rejects a replayed commit has found
   something.
+- It never makes a check pass by weakening it. Nothing in the list under "What
+  never makes a check green" in `commits.md` is a resolution or an adjustment.
 
 ## Phase 1 — Establish the pull request, and that you are standing on it
 
@@ -102,25 +105,31 @@ conflict for a finding.
 ## Phase 2 — Record what the rewrite will erase
 
 A rebase moves the fork point and gives every commit a new SHA. Record what
-you will need afterwards while it still exists. Write it to a file outside the
-checkout, not to memory:
+you will need afterwards while it still exists. Write it to files outside the
+checkout, not to memory, in one command:
 
 ```bash
+record=$(mktemp -d)
 before=$(git rev-parse HEAD)
 fork=$(git merge-base HEAD origin/<base>)
-git log --format='%H %s' --reverse "$fork"..HEAD          # the branch's commits, old SHAs
-git log --oneline "$fork"..origin/<base>                   # the upstream range
-gh pr view <number> --repo <owner/repo> --json body -q .body > <path>
+git log --format='%H %s' --reverse "$fork"..HEAD > "$record/commits"   # the branch's commits, old SHAs
+gh pr view <number> --repo <owner/repo> --json body -q .body > "$record/body.md"
+git log --oneline "$fork"..origin/<base>                               # the upstream range
+echo "before=$before fork=$fork record=$record"
 ```
 
-`$before` is the tip the author can return to (`git reset --hard <before>`) if
+A shell variable does not outlive the command that set it. From here on,
+`<before>`, `<fork>`, and `<record>` stand for the three values the last line
+printed, and every later command carries them written out.
+
+`<before>` is the tip the author can return to (`git reset --hard <before>`) if
 they decline the push in Phase 6. Say that SHA out loud before you rewrite
 anything.
 
 Read the upstream range before you replay a single commit: `git log --stat` on
 it, and the diff of every path the branch also touches
-(`git diff --name-only "$fork"..HEAD` against
-`git diff --name-only "$fork"..origin/<base>`). A path both sides changed is
+(`git diff --name-only <fork>..HEAD` against
+`git diff --name-only <fork>..origin/<base>`). A path both sides changed is
 where the conflicts will be, and reading the upstream change first is what
 makes a resolution semantic rather than textual.
 
@@ -140,7 +149,7 @@ file:
 git status --short                              # UU, AA, DU, UD: the unmerged paths
 git show REBASE_HEAD --stat                     # the commit being replayed, and its message
 git diff                                        # the conflict hunks, both sides marked
-git log -p "$fork"..origin/<base> -- <path>     # what upstream did to this file, and why
+git log -p <fork>..origin/<base> -- <path>     # what upstream did to this file, and why
 ```
 
 The replayed commit has a purpose; its message states it. The upstream commit
@@ -174,10 +183,10 @@ dropped commit.
 When a hook rejects a replayed commit at `git rebase --continue`, the replay
 stops on that commit with its tree in place. Whose finding it is decides what
 happens: when the rule, or the code it checks, entered with the upstream range
-(the same commit passes the hook at `$before`), the rejection is a conflict git
+(the same commit passes the hook at `<before>`), the rejection is a conflict git
 did not see; repair it in that commit, stage the repair, and continue, and the
 report names it under Adjustments as Phase 4 would. When the commit fails the
-hook at `$before` too, the rebase did not cause it, and nothing here edits a
+hook at `<before>` too, the rebase did not cause it, and nothing here edits a
 commit for a reason the rebase did not introduce: `git rebase --abort`, and
 report `BLOCKED` with the commit, the hook, and what it printed. `--no-verify`
 is never the answer (the rules at the top).
@@ -196,7 +205,7 @@ Two conflicts are the author's, one question each, in the option shape
    either way.
 
 When the author chooses the abort, or when you cannot reconcile a file at all,
-run `git rebase --abort`, confirm `HEAD` is `$before` again, and report
+run `git rebase --abort`, confirm `HEAD` is `<before>` again, and report
 `BLOCKED` with the file and the reason. The branch and the pull request are
 then exactly as you found them, and that is a successful run.
 
@@ -211,18 +220,19 @@ Run the repository's own gate: the build and the tests the Makefile, the
 package scripts, or the CI workflow files define, and the lint target when
 there is one. Then compare the branch's diff against the upstream range: for
 each symbol the branch introduces a call to or depends on, check whether the
-upstream range changed it (`git log -S<symbol> "$fork"..origin/<base>`).
+upstream range changed it (`git log -S<symbol> <fork>..origin/<base>`).
 
 Say what you ran, and what it said. A failure you could not run here is
 written in those words, never as a pass.
 
 Repair only what the rebase introduced. Each repair is a fixup of the commit
 whose change no longer holds on the new base, folded in per `commits-fold.md`.
+In that document, `<base>` is the branch you rebased onto.
 
 A fold here rewrites the SHAs the replay just produced, so the mapping Phase 6
 shows is taken from the branch after the fold, not after the replay.
 
-A failure that reproduces on `$before` too is not the rebase's. Say so in the
+A failure that reproduces on `<before>` too is not the rebase's. Say so in the
 report, hand it to `/planwerk:fix`, and change nothing for it.
 
 ## Phase 5 — Find the review threads the base settled
@@ -260,11 +270,11 @@ range and nowhere else:
   or a reply in it says the work moved to `#N`. Read that issue
   (`gh issue view <N> --repo <owner/repo> --json state,closedByPullRequestsReferences`);
   when it is closed and the pull request that closed it merged into the
-  upstream range (`git log "$fork"..origin/<base> --grep='(#<pr-number>)'`,
+  upstream range (`git log <fork>..origin/<base> --grep='(#<pr-number>)'`,
   or the merge commit `gh pr view <pr-number> --repo <owner/repo> --json mergeCommit`
   names), that commit is the evidence.
 - **The upstream range changed the lines the thread sits on, the way the
-  thread asked.** `git log -p "$fork"..origin/<base> -- <path>` shows the
+  thread asked.** `git log -p <fork>..origin/<base> -- <path>` shows the
   change; read it against the comment's words. Matching the path is not
   enough: a reformat of the same line settles nothing.
 
@@ -302,8 +312,8 @@ it does not thank anyone.
 Show the author, before anything leaves the checkout:
 
 - Each commit, old SHA to new SHA, by subject
-  (`git log --format='%H %s' --reverse origin/<base>..HEAD` against the Phase 2
-  list), and each commit the replay dropped.
+  (`git log --format='%H %s' --reverse origin/<base>..HEAD` against
+  `<record>/commits`), and each commit the replay dropped.
 - Each conflict: the files, and one sentence per file on what each side wanted
   and what the file now does.
 - What Phase 4 ran, its result, and each adjustment folded in.
@@ -321,9 +331,9 @@ git push --force-with-lease origin HEAD:<head-branch>
 
 `--force-with-lease`, never `--force`: the branch's own commits
 (`origin/<base>..HEAD`) are the only ones rewritten, and the push is to the
-PR's own head branch, never to the base. Write only on an explicit yes; a
-"looks good" is not one. Declined, the local branch stays rebased, `origin`
-is untouched, the author has `$before` to return to, and the verdict is at
+PR's own head branch, never to the base. Write only on an explicit yes.
+Declined, the local branch stays rebased, `origin`
+is untouched, the author has `<before>` to return to, and the verdict is at
 most `DONE_WITH_CONCERNS`.
 
 ## Phase 7 — Correct what the rewrite made false in the pull request body
@@ -334,7 +344,7 @@ yours to touch.
 **The SHA references.** Every commit on the branch has a new SHA, so every
 reference to one of them now points at nothing. Repair them as
 `commits-fold.md` describes, except that the successor of a replaced SHA is
-read from the Phase 2 list, not from `git log -1 <old-sha>`.
+read from `<record>/commits`, not from `git log -1 <old-sha>`.
 
 **The sentences the rebase changed the truth of.** A body that walks the
 change set in commit order describes each commit. Where a resolution in
@@ -347,10 +357,11 @@ replay dropped loses its sentence. The body's statement of what the pull
 request is for does not change, because the rebase did not change it.
 
 Nothing else moves. The description is the author's, and every edited line
-traces to a SHA the rewrite replaced or a change the rebase made.
+traces to a SHA the rewrite replaced or a change the rebase made. Make the
+edits in `<record>/body.md`, the copy Phase 2 saved, and write it back:
 
 ```bash
-gh pr edit <number> --repo <owner/repo> --body-file <path>
+gh pr edit <number> --repo <owner/repo> --body-file <record>/body.md
 ```
 
 The retarget, when there is one, goes in the same step:
@@ -418,16 +429,16 @@ the rebase did not introduce.
 ## Before you push, verify
 
 - `HEAD` was the PR's head SHA and the tree was clean before the replay, and
-  `$before` was said out loud.
+  `<before>` was said out loud.
 - Every commit on the branch is still there, as itself, in the same order,
-  except the ones the report names as dropped; none was squashed.
+  except the ones the report names as dropped; none was squashed into another.
 - Every conflict was resolved with both sides read, and no file was resolved by
   picking a side. Re-read each resolved file against the upstream change.
 - No conflict marker remains in any file, and no file outside the unmerged set
-  was edited while resolving.
+  was edited while resolving, except one a hook named in Phase 3.
 - The repository's gate was run, or the report says in words why it could not.
 - Every adjustment folded in traces to a change in the upstream range, and
-  nothing that was red on `$before` was touched.
+  nothing that was red on `<before>` was touched.
 - The fold, when there was one, was bounded by `git merge-base`, and no commit
   on the base branch was rewritten.
 - The push targets the PR's own head branch, with `--force-with-lease`.
