@@ -345,14 +345,15 @@ Show the author:
 - A table: package number, highest severity, how many findings it carries,
   its scope, its title, and whether it is new, tracked in #N, or a
   regression since #N.
-- The full rendered body of every new package.
+- The full rendered body of every new package and every regression.
 - The result of each Phase 5 check.
 - The unverified leads, the Cleanup's leads, and the detectors that were
   missing.
 
-When no package is new, there is nothing to ask: go to Phase 8. Otherwise
-ask, with `AskUserQuestion`, whether to file every new package as shown,
-choose which to file, or cancel — and recommend one. On "choose", ask once
+When no package is new or a regression, there is nothing to ask: go to
+Phase 8. Otherwise ask, with `AskUserQuestion`, whether to file every new
+package and every regression as shown, choose which to file, or cancel — and
+recommend one. On "choose", ask once
 per package, in the table's order. File only on an explicit yes: write each
 body to a file under the system temp directory, outside the checkout, count
 it (`wc -c`; over GitHub's cap it is created as part 1 with its continuation
