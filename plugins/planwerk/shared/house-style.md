@@ -168,18 +168,22 @@ Where an artifact lives decides whether it may name files.
 When you reason about architecture, use these terms so every issue and plan
 speaks the same language:
 
-- **module** — a unit of code whose implementation is hidden behind an interface.
-- **interface** — the surface a module exposes: its signatures, contracts, and
-  documented behavior, not its internals.
+- **module** — a unit of code whose implementation is hidden behind an
+  interface (a package, type, or function).
+- **interface** — the surface a module exposes to its callers: its signatures,
+  contracts, and documented behavior, not its internals.
 - **depth** — a module's functionality measured against the size of its
-  interface. A deep module hides much behind a small interface.
-- **seam** — a place where one implementation can be substituted for another.
+  interface. A deep module hides much behind a small interface; a shallow
+  module's interface is nearly as large as its implementation.
+- **seam** — a place where one implementation can be substituted for another (a
+  point of variation), not every call site.
 - **adapter** — the implementation that translates across a seam to an external
   system.
 - **leverage** — the functionality a module provides relative to the interface a
-  caller must learn. (Noun only.)
-- **locality** — keeping the knowledge needed to understand a behavior in one
-  place rather than spread across modules.
+  caller must learn; a deep module offers high leverage. (Noun only.)
+- **locality** — keeping the knowledge needed to understand or change a
+  behavior in one place rather than spread across modules.
 
 Do not substitute the looser "component", "service", or "boundary" for module,
-interface, or seam. ("System boundary" and "trust boundary" remain fine.)
+interface, or seam. ("System boundary" and "trust boundary" remain fine; the
+prohibition is only on using "boundary" where you mean a seam or an interface.)

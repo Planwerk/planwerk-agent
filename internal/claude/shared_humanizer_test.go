@@ -129,3 +129,25 @@ func readSharedDoc(t *testing.T, path string) string {
 	}
 	return string(raw)
 }
+
+// TestSharedHouseStyleMatchesDesignVocabulary fails when a term of the design
+// vocabulary is defined differently for the skills (house-style.md) than for
+// the unattended sessions (codebaseDesignBlock). Every definition line of the
+// block must appear in the shared document, so a term reworded on one surface
+// is named by the failure.
+func TestSharedHouseStyleMatchesDesignVocabulary(t *testing.T) {
+	doc := flow(readSharedDoc(t, sharedHouseStyleDoc))
+	terms := 0
+	for _, line := range strings.Split(codebaseDesignBlock(), "\n") {
+		if !strings.HasPrefix(line, "- **") {
+			continue
+		}
+		terms++
+		if !strings.Contains(doc, flow(line)) {
+			t.Errorf("house-style.md defines a design term differently than codebaseDesignBlock():\n%s", line)
+		}
+	}
+	if terms != 7 {
+		t.Fatalf("codebaseDesignBlock() carries %d definition lines, want 7", terms)
+	}
+}

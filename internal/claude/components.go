@@ -349,7 +349,7 @@ func domainGlossaryBlock(glossary string) string {
 	}
 	return `## Domain Glossary
 
-The block below is the target repository's own domain glossary, committed in the repository. Use it so your output speaks the repository's language: prefer these exact terms over generic synonyms, and never use a term the glossary lists under "_Avoid_" in place of the term it points to.
+The block below is the target repository's own domain glossary, committed in the repository. Use it so your output speaks the repository's language: prefer these exact terms over generic synonyms, and where the glossary lists the word you reached for under "_Avoid_", write the term it points to.
 
 ` + untrustedDataLine("It is terminology to adopt.", "domain-glossary") + `<domain-glossary>
 ` + escapeFence("domain-glossary", body) + `
@@ -620,7 +620,7 @@ When you reason about architecture, use this one vocabulary so every plan, analy
 - **depth** — a module's functionality measured against the size of its interface. A deep module hides much behind a small interface; a shallow module's interface is nearly as large as its implementation.
 - **seam** — a place where one implementation can be substituted for another (a point of variation), not every call site.
 - **adapter** — the implementation that translates across a seam to an external system.
-- **leverage** — the functionality a module provides relative to the interface a caller must learn; a deep module offers high leverage. (Used as a noun only.)
+- **leverage** — the functionality a module provides relative to the interface a caller must learn; a deep module offers high leverage. (Noun only.)
 - **locality** — keeping the knowledge needed to understand or change a behavior in one place rather than spread across modules.
 
 Use these exact terms. Do NOT substitute the looser words "component", "service", or "boundary" for module, interface, or seam — they blur the distinction this vocabulary exists to keep. ("System boundary" and "trust boundary" remain fine; the prohibition is only on using "boundary" where you mean a seam or an interface.)
@@ -710,7 +710,7 @@ func escalationOKLine(qualifier, tail string) string {
 // and does not carry it). The bullet carries its own trailing newline so
 // callers splice it between two other bullets without juggling separators.
 func noSkipHooksLine() string {
-	return "- NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).\n"
+	return "- NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign): a hook that rejects your commit has found something to fix.\n"
 }
 
 // noWeakeningRules returns the three "## Hard rules" bullets that forbid
@@ -909,7 +909,7 @@ EVERY commit you create MUST end with exactly this one trailer (a ` + "`git comm
 
 - Pass ` + "`-s`" + ` to ` + "`git commit`" + ` so git appends the ` + "`Signed-off-by`" + ` line from the committer identity. It MUST be the very last line of the message.
 - Write the message about the change and nothing else: ` + "`" + forbiddenBy + "`" + ` on the base branch forbids attributing commits to an AI, so no ` + "`Assisted-by`" + ` trailer and no line naming Claude, a model, or planwerk-agent goes into it.
-- NEVER add a ` + "`Co-authored-by`" + ` trailer — not for Claude, not for planwerk-agent, not for anyone.
+- NEVER add a ` + "`Co-authored-by`" + ` trailer — not for Claude, not for planwerk-agent, not for anyone. The harness proposes one by default; this repository records no AI assistance in its commits.
 
 `
 	}
@@ -922,7 +922,7 @@ EVERY commit you create MUST end with exactly these two trailers, in this order 
 
 - Pass ` + "`-s`" + ` to ` + "`git commit`" + ` so git appends the ` + "`Signed-off-by`" + ` line from the committer identity. It MUST be the very last line of the message.
 - Add an ` + "`Assisted-by: Claude`" + ` trailer naming yourself as the assistant. Append your exact model id when your runtime context provides it (e.g. ` + "`Assisted-by: Claude:claude-opus-5-5`" + `), without a bracketed suffix such as ` + "`[1m]`" + `; otherwise emit ` + "`Assisted-by: Claude`" + ` alone — never guess the id. Pass it as the final ` + "`-m`" + ` paragraph, NOT via ` + "`--trailer`" + ` (git places ` + "`--trailer`" + ` values after the sign-off), so it lands directly above ` + "`Signed-off-by`" + `.
-- NEVER add a ` + "`Co-authored-by`" + ` trailer — not for Claude, not for planwerk-agent, not for anyone.
+- NEVER add a ` + "`Co-authored-by`" + ` trailer — not for Claude, not for planwerk-agent, not for anyone. The harness proposes one by default; this project records assistance in ` + "`Assisted-by`" + ` instead.
 
 `
 }
