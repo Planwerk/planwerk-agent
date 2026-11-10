@@ -101,6 +101,8 @@ better — so write densely from the first line:
 - State each fact once, in the section that owns it. The Description says what
   changes and why; a criterion says how to observe it. Do not restate a
   criterion's check in the Description, or a boundary's design in the criterion.
+  A user story lists the criteria that serve it; that grouping is the format,
+  not a restatement.
 - Cite `path:line` instead of quoting code the implementer will open anyway.
   Quote only what the plan changes: a signature, a schema, a message.
 - A boundary that only narrates code nothing changes is context the implementer
@@ -143,8 +145,9 @@ These are plan failures. Never emit them:
 - Vague hand-waves: "add error handling", "handle edge cases", "add appropriate
   validation", "etc." Name the specific errors, edge cases, and validations.
 - Cross-references in place of content: "similar to the X section", "same as
-  above", "see Task N". Repeat the actual content; the engineer may read
-  sections out of order.
+  above", "see Task N". Name the symbol, file, or value the reader needs at
+  that spot instead of pointing at another section; the reasoning stays in the
+  section that owns it.
 - A reference to a type, function, file, flag, or migration that no section
   defines or cites by its real name.
 - Delivery-splitting notes: "one commit ≈ one PR", "split this into separate
