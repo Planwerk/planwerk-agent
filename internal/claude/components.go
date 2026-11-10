@@ -1135,7 +1135,6 @@ func simplifyApplyGuardrailBlock() string {
 Simplification removes accidental complexity, never essential behavior: a change that
 weakens one of these is a defect, not a cleanup. Do not remove or weaken any of:
 ` + simplifyGuardrailBullets + `- Tests, assertions, or required checks — never delete or weaken a test, an assertion, or a test file to shrink the diff.
-If applying a finding would touch any of these, skip that finding and record why in the report.
 `
 }
 
@@ -1168,7 +1167,7 @@ func foregroundRunLine() string {
 // no list prefix and no trailing newline, so each caller numbers its own
 // step, and no %, so it is safe inside a format string.
 func verifyLocallyLine() string {
-	return "Verify locally: build the project and run the tests (or the targeted subset covering the touched code). " + foregroundRunLine() + " Record the exact commands and their results under Verification in the report. If a command cannot run in this environment, say so explicitly."
+	return "Verify locally: build the project and run the tests (or the targeted subset covering the touched code). " + foregroundRunLine() + " Record each command and its result under Verification in the report; a command that cannot run here is recorded as `not run` with its reason."
 }
 
 // verificationReportLines is the Verification section of the simplify-apply,

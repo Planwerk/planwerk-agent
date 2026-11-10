@@ -45,7 +45,7 @@ Apply these task-specific thinking patterns on top of the baseline above:
 
 - Repository: planwerk/planwerk-agent
 - PR #42: Add the snapshot tests
-- Head branch: feat/snapshot-tests (committed to by you; the orchestrator pushes)
+- Head branch: feat/snapshot-tests (committed to by you; planwerk-agent pushes)
 - Base branch: main
 
 ## Review threads to address
@@ -146,8 +146,8 @@ EVERY commit you create MUST end with exactly these two trailers, in this order 
         -m "Assisted-by: Claude:<your model id>"
 
    Wrap every commit-message line at 72 characters or fewer.
-5. Stop here: planwerk-agent pushes the follow-up commit to feat/snapshot-tests after this
-   session, then replies to and (optionally) resolves each thread.
+5. Leave the push to planwerk-agent: it pushes the follow-up commit to feat/snapshot-tests
+   after this session, then replies to and (optionally) resolves each thread.
 
 6. Output ONLY valid JSON matching this exact schema as your final message (no markdown fences, no prose before or after):
 
@@ -168,4 +168,4 @@ Field rules:
 - Include one "threads" entry for EVERY thread above, in order, even when you could not address it.
 - "status" per thread: DONE when addressed and verified; DONE_WITH_CONCERNS when changed but with a reservation; BLOCKED when you could not make progress; NEEDS_CONTEXT when only a human can supply what is missing — including a reasoned disagreement: leave the code untouched and put the disagreement and its evidence in the summary.
 - "files" lists the repo-relative paths you touched for that thread; omit it when you changed nothing.
-- The top-level "status" is the most severe of the thread statuses: BLOCKED, then NEEDS_CONTEXT, then DONE_WITH_CONCERNS, then DONE. The orchestrator stops and escalates on BLOCKED or NEEDS_CONTEXT, reading the thread statuses too.
+- The top-level "status" is the most severe of the thread statuses: BLOCKED, then NEEDS_CONTEXT, then DONE_WITH_CONCERNS, then DONE. planwerk-agent stops and escalates on BLOCKED or NEEDS_CONTEXT, reading the thread statuses too.

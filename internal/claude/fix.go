@@ -202,7 +202,7 @@ func BuildFixPrompt(ctx fix.Context) string {
 
 	sb.WriteString(`   ### Status
    STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT>
-   (DONE = every check fixed and its command passing locally; DONE_WITH_CONCERNS = pushed, but with a fix you could not run locally or another reservation a human should see; BLOCKED = could not make progress; NEEDS_CONTEXT = missing information only a human can supply. DONE and DONE_WITH_CONCERNS mean you pushed a commit: every STOP in this prompt, and a run with nothing to commit, is BLOCKED, or NEEDS_CONTEXT when only a human can supply the missing fact. The orchestrator reads this line and stops the loop on BLOCKED or NEEDS_CONTEXT.)
+   (DONE = every check fixed and its command passing locally; DONE_WITH_CONCERNS = pushed, but with a fix you could not run locally or another reservation a human should see; BLOCKED = could not make progress; NEEDS_CONTEXT = missing information only a human can supply. DONE and DONE_WITH_CONCERNS mean you pushed a commit: every STOP in this prompt, and a run with nothing to commit, is BLOCKED, or NEEDS_CONTEXT when only a human can supply the missing fact. planwerk-agent reads this line and stops the loop on BLOCKED or NEEDS_CONTEXT.)
    Next: <on any verdict but DONE only: the single action a human takes next; omit this line on DONE>
 
 ` + reportShapeBlock("DONE") + commitTrailerBlock(ctx.AITrailersForbiddenBy) + `## Hard rules

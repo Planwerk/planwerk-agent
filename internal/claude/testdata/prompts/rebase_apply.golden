@@ -35,11 +35,6 @@ These apply to every change you make, before any task-specific rules below. They
 
 Write your entire output in English, whatever language the input is written in — the issue, pull request, diff, review threads, CI logs, or code comments may be in another language. Read non-English input faithfully, but never mirror its language back: the artifact you produce is always English. Quote identifiers, code, paths, and command output verbatim; translate the surrounding prose. This governs the report, commit messages, and any text you post to GitHub; comments and documentation you write into the repository follow the language of the file you edit.
 
-Apply these task-specific thinking patterns on top of the baseline above:
-- "Apply only the reported adjustments." — Make exactly the changes the analysis below lists. No drive-by refactors, no unrelated cleanups.
-- "Fold each change into the commit it belongs to." — A fix for code a specific commit introduced belongs IN that commit, not in a new commit stacked on top.
-- "Verify before folding." — Where you can run the toolchain, confirm the adjusted code compiles / passes before recording the fixup.
-
 ## Pull Request
 
 - Repository: planwerk/planwerk-agent
@@ -75,7 +70,7 @@ The catalog is on disk. Every line below names a file under `/tmp/planwerk-agent
 ## What to do
 
 1. For each adjustment, open the named file and confirm it still applies — the analysis marks each with a confidence and can be wrong or already handled; confirm a "likely" or "uncertain" one against the file before you apply it. Apply exactly the described change (Hard rules say what to do with one that does not apply).
-2. Verify locally: build the project and run the tests (or the targeted subset covering the touched code). Run every command in the FOREGROUND and wait for it to finish before the next step — never background a test or build run and move on. You need its real exit status in hand before you act on it. If a command outlives the Bash tool's foreground time limit, background it and poll its output within this same turn until it exits. A command still running in the background when you end the turn keeps this session open until it exits and then starts another turn, and only the last turn's output counts as this session's result: before you end the turn, wait for every command you backgrounded, and stop any that never exits on its own (a server, a watcher). Record the exact commands and their results under Verification in the report. If a command cannot run in this environment, say so explicitly.
+2. Verify locally: build the project and run the tests (or the targeted subset covering the touched code). Run every command in the FOREGROUND and wait for it to finish before the next step — never background a test or build run and move on. You need its real exit status in hand before you act on it. If a command outlives the Bash tool's foreground time limit, background it and poll its output within this same turn until it exits. A command still running in the background when you end the turn keeps this session open until it exits and then starts another turn, and only the last turn's output counts as this session's result: before you end the turn, wait for every command you backgrounded, and stop any that never exits on its own (a server, a watcher). Record each command and its result under Verification in the report; a command that cannot run here is recorded as `not run` with its reason.
 3. Fold each change into the commit it belongs to (the branch's own commits are the range origin/main..HEAD):
 
    a. List the branch's commits (oldest first):
@@ -123,7 +118,7 @@ The catalog is on disk. Every line below names a file under `/tmp/planwerk-agent
 - Do NOT push. Do NOT force-push. planwerk-agent publishes the branch separately, only when --push is given and your report says DONE.
 - NEVER rebase, reorder, drop, or rewrite commits that already exist on origin/main — only this branch's own commits (origin/main..HEAD) may be folded.
 - If an adjustment is a false positive, no longer applies, or cannot be applied without breaking one of these hard rules, SKIP it and record why — do not invent a change to satisfy it.
-- If there is nothing to apply, do NOT create an empty commit; output the report with empty Applied and Skipped lists, the Verification entries from step 2, and the STATUS the definitions above give.
+- If every adjustment is skipped, do NOT create an empty commit; output the report with an empty Applied list, each adjustment under Skipped with its reason, the Verification entries from step 2, and the STATUS the definitions above give.
 - NEVER skip pre-commit / CI hooks (no --no-verify, no --no-gpg-sign).
 - NEVER weaken, skip, or delete tests to make the suite green; fix the root cause.
 - NEVER widen types to Any/interface{}/unknown to silence the type-checker.
