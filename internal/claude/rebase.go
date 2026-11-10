@@ -116,12 +116,12 @@ func BuildRebaseConflictPrompt(ctx rebase.ConflictContext) string {
 
    git add -- <each resolved file>
 
-6. Output a one-paragraph summary of how you reconciled each file. End with one line per file you could not reconcile, in the form ` + "`UNRESOLVED: <file> — <reason>`" + `, and leave that file unstaged; the orchestrator aborts the rebase and shows the operator your reason. Write no such line when every file is resolved and staged.
+6. Output a one-paragraph summary of how you reconciled each file. End with one line per file you could not reconcile, in the form ` + "`UNRESOLVED: <file> — <reason>`" + `, and leave that file unstaged; planwerk-agent aborts the rebase and shows the operator your reason. Write no such line when every file is resolved and staged.
 
 ## Hard rules
 
 - Resolve ONLY the conflicted files listed above. Do NOT touch other files, and do not refactor, reformat, or change unrelated code while resolving.
-- Do NOT run ` + "`git rebase --continue`" + ` — the orchestrator runs it after this session, once the files are staged.
+- Do NOT run ` + "`git rebase --continue`" + ` — planwerk-agent runs it after this session, once the files are staged.
 - Do NOT run ` + "`git rebase --abort`, `git commit`, `git push`" + `, or any force-push. Your job ends at ` + "`git add`" + `.
 - Leave NO conflict markers in any file (step 4 checks), and leave every resolved file in a state that compiles or parses.
 - NEVER pick one side blindly to make the conflict "go away" — that silently drops a change. If you cannot reconcile a file, report it on an UNRESOLVED line (step 6) instead of guessing.
@@ -215,12 +215,6 @@ func BuildRebaseApplyPrompt(ctx rebase.ApplyContext) string {
 	sb.WriteString(unattendedSessionLine("An adjustment that turns on a decision only a human can make is STATUS: NEEDS_CONTEXT in the report, never a question.", "the report, from its heading to its STATUS line"))
 	sb.WriteString(baselineBehavioralPrinciples)
 	sb.WriteString(outputLanguageBlock())
-	sb.WriteString(`Apply these task-specific thinking patterns on top of the baseline above:
-- "Apply only the reported adjustments." — Make exactly the changes the analysis below lists. No drive-by refactors, no unrelated cleanups.
-- "Fold each change into the commit it belongs to." — A fix for code a specific commit introduced belongs IN that commit, not in a new commit stacked on top.
-- "Verify before folding." — Where you can run the toolchain, confirm the adjusted code compiles / passes before recording the fixup.
-
-`)
 
 	fmt.Fprintf(&sb, "## Pull Request\n\n- Repository: %s\n- PR #%d\n- Rebased onto: origin/%s\n- Head branch: %s\n\n", ctx.RepoFullName, ctx.PRNumber, ctx.Onto, ctx.HeadBranch)
 
@@ -275,7 +269,7 @@ func BuildRebaseApplyPrompt(ctx rebase.ApplyContext) string {
 - Do NOT push. Do NOT force-push. planwerk-agent publishes the branch separately, only when --push is given and your report says DONE.
 - NEVER rebase, reorder, drop, or rewrite commits that already exist on origin/%[1]s — only this branch's own commits (origin/%[1]s..HEAD) may be folded.
 - If an adjustment is a false positive, no longer applies, or cannot be applied without breaking one of these hard rules, SKIP it and record why — do not invent a change to satisfy it.
-- If there is nothing to apply, do NOT create an empty commit; output the report with empty Applied and Skipped lists, the Verification entries from step 2, and the STATUS the definitions above give.
+- If every adjustment is skipped, do NOT create an empty commit; output the report with an empty Applied list, each adjustment under Skipped with its reason, the Verification entries from step 2, and the STATUS the definitions above give.
 `, ctx.Onto)
 	sb.WriteString(noSkipHooksLine())
 	sb.WriteString(noWeakeningRules())

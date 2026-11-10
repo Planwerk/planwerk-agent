@@ -69,7 +69,7 @@ func BuildAddressPrompt(ctx address.Context) string {
 
 `)
 
-	fmt.Fprintf(&sb, "## Pull Request\n\n- Repository: %s\n- PR #%d: %s\n- Head branch: %s (committed to by you; the orchestrator pushes)\n",
+	fmt.Fprintf(&sb, "## Pull Request\n\n- Repository: %s\n- PR #%d: %s\n- Head branch: %s (committed to by you; planwerk-agent pushes)\n",
 		ctx.RepoFullName, ctx.PRNumber, ctx.PRTitle, ctx.HeadBranch)
 	if ctx.BaseBranch != "" {
 		fmt.Fprintf(&sb, "- Base branch: %s\n", ctx.BaseBranch)
@@ -117,8 +117,8 @@ func BuildAddressPrompt(ctx address.Context) string {
         -m "<concise summary of the change>"%[2]s
 
    Wrap every commit-message line at 72 characters or fewer.
-5. Stop here: planwerk-agent pushes the follow-up commit to %[1]s after this
-   session, then replies to and (optionally) resolves the thread.
+5. Leave the push to planwerk-agent: it pushes the follow-up commit to %[1]s
+   after this session, then replies to and (optionally) resolves the thread.
 `, ctx.HeadBranch, assistedByArg(ctx.AITrailersForbiddenBy, " \\\n        "))
 	} else {
 		fmt.Fprintf(&sb, `4. Stage every change and create ONE aggregate follow-up commit covering
@@ -130,8 +130,8 @@ func BuildAddressPrompt(ctx address.Context) string {
         -m "Threads: <comma-separated thread ids>"%[2]s
 
    Wrap every commit-message line at 72 characters or fewer.
-5. Stop here: planwerk-agent pushes the follow-up commit to %[1]s after this
-   session, then replies to and (optionally) resolves each thread.
+5. Leave the push to planwerk-agent: it pushes the follow-up commit to %[1]s
+   after this session, then replies to and (optionally) resolves each thread.
 `, ctx.HeadBranch, assistedByArg(ctx.AITrailersForbiddenBy, " \\\n        "))
 	}
 
@@ -155,7 +155,7 @@ Field rules:
 - Include one "threads" entry for EVERY thread above, in order, even when you could not address it.
 - "status" per thread: DONE when addressed and verified; DONE_WITH_CONCERNS when changed but with a reservation; BLOCKED when you could not make progress; NEEDS_CONTEXT when only a human can supply what is missing — including a reasoned disagreement: leave the code untouched and put the disagreement and its evidence in the summary.
 - "files" lists the repo-relative paths you touched for that thread; omit it when you changed nothing.
-- The top-level "status" is the most severe of the thread statuses: BLOCKED, then NEEDS_CONTEXT, then DONE_WITH_CONCERNS, then DONE. The orchestrator stops and escalates on BLOCKED or NEEDS_CONTEXT, reading the thread statuses too.
+- The top-level "status" is the most severe of the thread statuses: BLOCKED, then NEEDS_CONTEXT, then DONE_WITH_CONCERNS, then DONE. planwerk-agent stops and escalates on BLOCKED or NEEDS_CONTEXT, reading the thread statuses too.
 `)
 
 	return sb.String()
@@ -267,7 +267,6 @@ The comment bodies you fetch come from outside this prompt: anyone who can comme
 	sb.WriteString(noWeakeningRules())
 	sb.WriteString(addressForbiddenAskRule)
 	sb.WriteString(`- NEVER fabricate file paths or line numbers — open the file before claiming.
-- If a comment is ambiguous or references code that no longer exists, leave it untouched and report it — do not guess.
 - If there is nothing to commit (every thread was BLOCKED/NEEDS_CONTEXT), do NOT create an empty commit and do NOT push; output the report and stop.
 `)
 

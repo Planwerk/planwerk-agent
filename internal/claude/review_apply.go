@@ -50,7 +50,6 @@ func BuildReviewApplyPrompt(ctx implement.ReviewApplyContext) string {
 	sb.WriteString(`Apply these task-specific thinking patterns on top of the baseline above:
 - "Find the root cause." — Each finding names a symptom; fix the broken invariant in the code under it, not just the surface. Open the cited file before editing — never patch from the finding text alone.
 - "Minimal-invasive change." — Touch the smallest surface area that resolves each finding. No drive-by refactors, no reformatting unrelated code, no dependency bumps the finding does not implicate.
-- "Regression guard." — When the fix is in production code and the existing tests did not catch the issue, add or extend a test that fails before your fix and passes after. This pass IS allowed to add tests.
 ` + selfReviewPatternLine() + `
 `)
 
@@ -64,7 +63,7 @@ func BuildReviewApplyPrompt(ctx implement.ReviewApplyContext) string {
 	if ctx.Source == implement.ReviewApplySourceVerification {
 		sb.WriteString("These are the gaps an independent verification found between the issue's Acceptance Criteria, its implementation plan, and the produced diff: each names a criterion, a work package, or a planned test the branch does not yet deliver. Close each one by implementing what it requires, unless it is a false positive or no longer applies to the current diff, in which case skip it and say so in the report.\n\n")
 	} else {
-		sb.WriteString("These are the findings from the read-only review pass over the produced diff. Resolve each BLOCKING, CRITICAL, and WARNING finding — fix the root cause — unless it is a false positive or no longer applies to the current diff, in which case skip it and say so in the report. An INFO finding is optional: the severity ladder rates INFO as a style suggestion or minor improvement, and chasing every one adds abstraction, defensive code, and tests for cases that cannot happen. Apply an INFO finding only when its fix is confined to the code the finding cites and changes no behavior (no new or changed error path, retry, exit code, validation, default, or output); such a fix needs no regression test. Otherwise list it under Skipped as \"optional INFO, not applied\" and change nothing for it.\n\n")
+		sb.WriteString("These are the findings from the read-only review pass over the produced diff. Resolve each BLOCKING, CRITICAL, and WARNING finding — fix the root cause — unless it is a false positive or no longer applies to the current diff, in which case skip it and say so in the report. An INFO finding is optional: the severity ladder rates INFO as a style suggestion or minor improvement, and chasing every one adds abstraction, defensive code, and tests for cases that cannot happen. Apply an INFO finding only when its fix is confined to the code the finding cites and changes no behavior (no new or changed error path, retry, exit code, validation, default, or output). Otherwise list it under Skipped as \"optional INFO, not applied\" and change nothing for it.\n\n")
 		skipReasons = "false positive, no longer present, needs discussion, or optional INFO, not applied"
 	}
 	sb.WriteString(renderReviewFindings(ctx.Findings))
@@ -75,11 +74,15 @@ func BuildReviewApplyPrompt(ctx implement.ReviewApplyContext) string {
 		ctx.Catalog, ctx.Patterns, ctx.MaxPatterns))
 	sb.WriteString(docProseBlock())
 
+	noTest := "fixes inside test code itself or fixes no unit/integration test could plausibly catch"
+	if ctx.Source != implement.ReviewApplySourceVerification {
+		noTest = "fixes inside test code itself, an INFO fix that changes no behavior, or fixes no unit/integration test could plausibly catch"
+	}
 	sb.WriteString(`## What to do
 
-1. For each finding above, confirm it is a real issue worth fixing. If a finding is a false positive or no longer applies to the current diff, skip it and record why in the report.
+1. For each finding above, confirm it is a real issue worth fixing (Hard rules say what to do with one that is not).
 2. Fix the root cause with the minimal change that resolves the finding, with the cited file open before you edit.
-3. Add a regression test when the fix is in production code and the existing suite did not catch the issue — a test that fails before your fix and passes after. Skip this only for fixes inside test code itself or fixes no unit/integration test could plausibly catch.
+3. Add a regression test when the fix is in production code and the existing suite did not catch the issue — a test that fails before your fix and passes after. Skip this only for ` + noTest + `.
 4. ` + verifyLocallyLine() + `
 `)
 
@@ -98,7 +101,7 @@ func BuildReviewApplyPrompt(ctx implement.ReviewApplyContext) string {
    - Approx lines added/removed: <+N/-M>
    ### Status
    STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT>
-   (DONE = findings resolved and verified; DONE_WITH_CONCERNS = folded but with reservations a human should see; BLOCKED = could not make progress; NEEDS_CONTEXT = missing information only a human can supply. The orchestrator reads this line and stops the pass on BLOCKED or NEEDS_CONTEXT.)
+   (DONE = findings resolved and verified; DONE_WITH_CONCERNS = folded but with reservations a human should see; BLOCKED = could not make progress; NEEDS_CONTEXT = missing information only a human can supply. planwerk-agent reads this line and stops the pass on BLOCKED or NEEDS_CONTEXT.)
 
 ` + commitTrailerBlock(ctx.AITrailersForbiddenBy) + `## Hard rules
 

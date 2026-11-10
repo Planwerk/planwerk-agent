@@ -38,7 +38,6 @@ Write your entire output in English, whatever language the input is written in �
 Apply these task-specific thinking patterns on top of the baseline above:
 - "Find the root cause." — Each finding names a symptom; fix the broken invariant in the code under it, not just the surface. Open the cited file before editing — never patch from the finding text alone.
 - "Minimal-invasive change." — Touch the smallest surface area that resolves each finding. No drive-by refactors, no reformatting unrelated code, no dependency bumps the finding does not implicate.
-- "Regression guard." — When the fix is in production code and the existing tests did not catch the issue, add or extend a test that fails before your fix and passes after. This pass IS allowed to add tests.
 - "Self-review before you finish." — Re-read your own changes (the fixup commits). The branch still builds and passes the tests. Remove anything in your changes that neither a listed finding nor this prompt required.
 
 ## Branch
@@ -49,7 +48,7 @@ Apply these task-specific thinking patterns on top of the baseline above:
 
 ## Review findings to resolve
 
-These are the findings from the read-only review pass over the produced diff. Resolve each BLOCKING, CRITICAL, and WARNING finding — fix the root cause — unless it is a false positive or no longer applies to the current diff, in which case skip it and say so in the report. An INFO finding is optional: the severity ladder rates INFO as a style suggestion or minor improvement, and chasing every one adds abstraction, defensive code, and tests for cases that cannot happen. Apply an INFO finding only when its fix is confined to the code the finding cites and changes no behavior (no new or changed error path, retry, exit code, validation, default, or output); such a fix needs no regression test. Otherwise list it under Skipped as "optional INFO, not applied" and change nothing for it.
+These are the findings from the read-only review pass over the produced diff. Resolve each BLOCKING, CRITICAL, and WARNING finding — fix the root cause — unless it is a false positive or no longer applies to the current diff, in which case skip it and say so in the report. An INFO finding is optional: the severity ladder rates INFO as a style suggestion or minor improvement, and chasing every one adds abstraction, defensive code, and tests for cases that cannot happen. Apply an INFO finding only when its fix is confined to the code the finding cites and changes no behavior (no new or changed error path, retry, exit code, validation, default, or output). Otherwise list it under Skipped as "optional INFO, not applied" and change nothing for it.
 
 1. Unparameterized SQL query allows injection [CRITICAL] (internal/store/query.go)
    - Problem: User input is concatenated straight into the SQL string.
@@ -89,10 +88,10 @@ Apply these rules to every piece of documentation you write or edit (README and 
 
 ## What to do
 
-1. For each finding above, confirm it is a real issue worth fixing. If a finding is a false positive or no longer applies to the current diff, skip it and record why in the report.
+1. For each finding above, confirm it is a real issue worth fixing (Hard rules say what to do with one that is not).
 2. Fix the root cause with the minimal change that resolves the finding, with the cited file open before you edit.
-3. Add a regression test when the fix is in production code and the existing suite did not catch the issue — a test that fails before your fix and passes after. Skip this only for fixes inside test code itself or fixes no unit/integration test could plausibly catch.
-4. Verify locally: build the project and run the tests (or the targeted subset covering the touched code). Run every command in the FOREGROUND and wait for it to finish before the next step — never background a test or build run and move on. You need its real exit status in hand before you act on it. If a command outlives the Bash tool's foreground time limit, background it and poll its output within this same turn until it exits. A command still running in the background when you end the turn keeps this session open until it exits and then starts another turn, and only the last turn's output counts as this session's result: before you end the turn, wait for every command you backgrounded, and stop any that never exits on its own (a server, a watcher). Record the exact commands and their results under Verification in the report. If a command cannot run in this environment, say so explicitly.
+3. Add a regression test when the fix is in production code and the existing suite did not catch the issue — a test that fails before your fix and passes after. Skip this only for fixes inside test code itself, an INFO fix that changes no behavior, or fixes no unit/integration test could plausibly catch.
+4. Verify locally: build the project and run the tests (or the targeted subset covering the touched code). Run every command in the FOREGROUND and wait for it to finish before the next step — never background a test or build run and move on. You need its real exit status in hand before you act on it. If a command outlives the Bash tool's foreground time limit, background it and poll its output within this same turn until it exits. A command still running in the background when you end the turn keeps this session open until it exits and then starts another turn, and only the last turn's output counts as this session's result: before you end the turn, wait for every command you backgrounded, and stop any that never exits on its own (a server, a watcher). Record each command and its result under Verification in the report; a command that cannot run here is recorded as `not run` with its reason.
 5. Fold each change into the commit it belongs to. This branch may carry more
    than one commit, and a fix for code that an earlier commit introduced
    belongs IN that commit — not in a new commit stacked on top.
@@ -149,7 +148,7 @@ Apply these rules to every piece of documentation you write or edit (README and 
    - Approx lines added/removed: <+N/-M>
    ### Status
    STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT>
-   (DONE = findings resolved and verified; DONE_WITH_CONCERNS = folded but with reservations a human should see; BLOCKED = could not make progress; NEEDS_CONTEXT = missing information only a human can supply. The orchestrator reads this line and stops the pass on BLOCKED or NEEDS_CONTEXT.)
+   (DONE = findings resolved and verified; DONE_WITH_CONCERNS = folded but with reservations a human should see; BLOCKED = could not make progress; NEEDS_CONTEXT = missing information only a human can supply. planwerk-agent reads this line and stops the pass on BLOCKED or NEEDS_CONTEXT.)
 
 ## Commit trailers
 

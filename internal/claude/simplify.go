@@ -121,7 +121,6 @@ func BuildSimplifyApplyPrompt(ctx implement.SimplifyApplyContext) string {
 	sb.WriteString(`Apply these task-specific thinking patterns on top of the baseline above:
 - "Decision ladder." — For every piece of complexity, prefer the simplest rung that still does the job: not building it (YAGNI) -> the standard library -> a platform/framework-native feature -> a dependency already present -> a one-liner -> only then the minimum new code. Collapse toward the top.
 - "Delete, do not redesign." — Simplification removes accidental complexity. It is NOT a refactor, an API redesign, or a behavior change.
-- "Each removal folds into the commit that introduced it." — A simplification to code an earlier commit added belongs IN that commit, not in a new commit stacked on top.
 ` + selfReviewPatternLine() + `
 `)
 
@@ -129,7 +128,7 @@ func BuildSimplifyApplyPrompt(ctx implement.SimplifyApplyContext) string {
 		ctx.RepoFullName, ctx.BaseBranch)
 
 	sb.WriteString("## Simplifications to apply\n\n")
-	sb.WriteString("These are the over-engineering findings from the read-only simplify pass. Apply each one — remove or collapse the complexity to the simpler form named — unless doing so would change behavior or touch the guardrail areas below, in which case skip it and say so in the report.\n\n")
+	sb.WriteString("These are the over-engineering findings from the read-only simplify pass. Apply each one — remove or collapse the complexity to the simpler form named — except where the Hard rules below say to skip it.\n\n")
 	sb.WriteString(renderSimplifyFindings(ctx.Findings))
 	sb.WriteString("\n")
 
@@ -160,7 +159,7 @@ func BuildSimplifyApplyPrompt(ctx implement.SimplifyApplyContext) string {
    - Approx lines added/removed: <+N/-M>
    ### Status
    STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT>
-   (DONE = simplifications applied and verified; DONE_WITH_CONCERNS = folded but with reservations a human should see; BLOCKED = could not make progress; NEEDS_CONTEXT = missing information only a human can supply. The orchestrator reads this line and stops the pass on BLOCKED or NEEDS_CONTEXT.)
+   (DONE = simplifications applied and verified; DONE_WITH_CONCERNS = folded but with reservations a human should see; BLOCKED = could not make progress; NEEDS_CONTEXT = missing information only a human can supply. planwerk-agent reads this line and stops the pass on BLOCKED or NEEDS_CONTEXT.)
 
 ` + commitTrailerBlock(ctx.AITrailersForbiddenBy) + `## Hard rules
 

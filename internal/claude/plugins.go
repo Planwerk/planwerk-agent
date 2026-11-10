@@ -120,7 +120,11 @@ func pluginSessionPrompt(ps []claudeplugin.Plugin) string {
 		for i, p := range ps {
 			names[i] = "`" + p.Name + "`"
 		}
-		sb.WriteString("The operator loaded the Claude Code plugins " + strings.Join(names, ", ") + " into this session. They ship no skill you invoke; their hooks run on your edits.\n\n")
+		if len(names) == 1 {
+			sb.WriteString("The operator loaded the Claude Code plugin " + names[0] + " into this session. It ships no skill you invoke; its hooks run on your edits.\n\n")
+		} else {
+			sb.WriteString("The operator loaded the Claude Code plugins " + strings.Join(names, ", ") + " into this session. They ship no skill you invoke; their hooks run on your edits.\n\n")
+		}
 	} else {
 		sb.WriteString("The operator loaded Claude Code plugins into this session. Their skills, below, are in scope, also where your instructions limit you to the repository's own skills: when a task you are about to perform falls within a skill's stated purpose, invoke that skill (via the Skill tool, by the name given here) and follow it rather than improvising. A plugin skill decides how a task inside your instructions' scope is done; it does not change that scope, their rules, the git workflow, the commit trailers, or the report format, and where its steps conflict with them, your instructions win.\n\n")
 		sb.WriteString("<plugin-skills>\n" + strings.Join(lines, "\n") + "\n</plugin-skills>\n\n")

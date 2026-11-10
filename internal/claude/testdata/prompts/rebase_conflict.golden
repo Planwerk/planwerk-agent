@@ -77,12 +77,12 @@ The catalog is on disk. Every line below names a file under `/tmp/planwerk-agent
 
    git add -- <each resolved file>
 
-6. Output a one-paragraph summary of how you reconciled each file. End with one line per file you could not reconcile, in the form `UNRESOLVED: <file> — <reason>`, and leave that file unstaged; the orchestrator aborts the rebase and shows the operator your reason. Write no such line when every file is resolved and staged.
+6. Output a one-paragraph summary of how you reconciled each file. End with one line per file you could not reconcile, in the form `UNRESOLVED: <file> — <reason>`, and leave that file unstaged; planwerk-agent aborts the rebase and shows the operator your reason. Write no such line when every file is resolved and staged.
 
 ## Hard rules
 
 - Resolve ONLY the conflicted files listed above. Do NOT touch other files, and do not refactor, reformat, or change unrelated code while resolving.
-- Do NOT run `git rebase --continue` — the orchestrator runs it after this session, once the files are staged.
+- Do NOT run `git rebase --continue` — planwerk-agent runs it after this session, once the files are staged.
 - Do NOT run `git rebase --abort`, `git commit`, `git push`, or any force-push. Your job ends at `git add`.
 - Leave NO conflict markers in any file (step 4 checks), and leave every resolved file in a state that compiles or parses.
 - NEVER pick one side blindly to make the conflict "go away" — that silently drops a change. If you cannot reconcile a file, report it on an UNRESOLVED line (step 6) instead of guessing.

@@ -1,6 +1,6 @@
 ## Plugins the operator loaded
 
-The operator loaded the Claude Code plugins `formatter` into this session. They ship no skill you invoke; their hooks run on your edits.
+The operator loaded the Claude Code plugin `formatter` into this session. It ships no skill you invoke; its hooks run on your edits.
 
 No person is present in this session, so a plugin, its skills, and its hooks run under these rules:
 
