@@ -2,7 +2,7 @@
 name: audit
 description: Audits the checkout you are in against the review patterns it commits and the catalog's design principles, and files the verified findings worth a pull request as issues the planning pipeline consumes, on the author's yes. Use when an existing codebase should be examined for refactoring candidates, defects, missing tests or documentation, and stale dependencies, and the author is present to settle what a finding alone cannot — the interactive counterpart of `planwerk-agent audit`. It changes no code; for dead and duplicated code, /planwerk:cleanup is the skill.
 argument-hint: "[<path>…] [--patterns <dir>]"
-allowed-tools: AskUserQuestion Read Grep Glob Write Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue list:*) Bash(gh issue view:*) Bash(gh issue create:*) Bash(gh issue comment:*) Bash(gh api:*) Bash(git fetch:*) Bash(git status:*) Bash(git rev-parse:*) Bash(git switch:*) Bash(git merge --ff-only:*) Bash(git ls-files:*) Bash(git grep:*) Bash(wc:*) Bash(command -v:*) Bash(go vet:*) Bash(go list:*) Bash(staticcheck:*) Bash(golangci-lint run ./...) Bash(govulncheck:*) Bash(ruff check --no-fix:*) Bash(mypy .) Bash(bandit:*) Bash(pip-audit) Bash(eslint .) Bash(tsc --noEmit:*) Bash(npm audit) Bash(npm outdated:*) Bash(cargo clippy) Bash(hadolint:*) Bash(helm lint:*) Bash(planwerk-agent brain memory:*)
+allowed-tools: AskUserQuestion Read Grep Glob Write Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue list:*) Bash(gh issue view:*) Bash(gh issue create:*) Bash(gh issue comment:*) Bash(gh api:*) Bash(git fetch:*) Bash(git status:*) Bash(git rev-parse:*) Bash(git switch:*) Bash(git merge --ff-only:*) Bash(git ls-files:*) Bash(git grep:*) Bash(wc:*) Bash(command -v:*) Bash(go vet:*) Bash(go list:*) Bash(staticcheck:*) Bash(golangci-lint run ./...) Bash(govulncheck:*) Bash(ruff check --no-fix:*) Bash(mypy .) Bash(bandit:*) Bash(pip-audit) Bash(eslint .) Bash(node_modules/.bin/eslint .) Bash(tsc --noEmit:*) Bash(node_modules/.bin/tsc --noEmit:*) Bash(npm audit) Bash(npm outdated:*) Bash(cargo clippy) Bash(hadolint:*) Bash(helm lint:*) Bash(planwerk-agent brain memory:*)
 ---
 
 # Audit a codebase
@@ -118,7 +118,8 @@ morning? Would a new team member understand the intent from the code? Where
 are the tests? Could a user find this feature or API in the documentation?
 
 **From the toolchain.** Run the read-only detectors that exist (`command -v`
-first; a copy under `node_modules/.bin` counts) and fit the stack — for
+first; a copy under `node_modules/.bin` counts too, and is run as
+`node_modules/.bin/<tool>`) and fit the stack — for
 example `go vet ./...`, `staticcheck`, `golangci-lint run ./...`, and
 `govulncheck ./...` for Go; `ruff check --no-fix`, `mypy .`, `bandit`, and
 `pip-audit` for Python; `eslint .`, `tsc --noEmit`, and `npm audit` for
