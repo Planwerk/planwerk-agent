@@ -57,13 +57,20 @@ the `Assisted-by` paragraph where `commits.md` says the repository forbids it.
 ## Publishing a fold
 
 ```bash
-git push --force-with-lease origin HEAD:<head-branch>
+git push --force-with-lease=<head-branch>:<old-head> origin HEAD:<head-branch>
 ```
 
 The autosquash rewrote the branch's commit SHAs, so a plain push is rejected.
+`<old-head>` is the pull request's head SHA as you verified it before you
+changed anything.
 
-- Use `--force-with-lease`, never plain `--force`. It publishes the fold while
-  refusing to clobber commits you have not seen.
+- Name the lease, never plain `--force` and never a bare `--force-with-lease`.
+  The named lease publishes the fold only while the remote branch still sits
+  at `<old-head>`. A bare one compares against the tracking ref, which a
+  background fetch moves, and then refuses nothing.
+- A rejected push means the branch moved on `origin`: push nothing more,
+  report it with the error, and never fetch and push again. The commits the
+  lease refused to overwrite are someone's work.
 - Only the branch's own commits (`origin/<base>..HEAD`) may be rewritten. Never
   rebase, reorder, drop, or rewrite a commit that already exists on the base
   branch.

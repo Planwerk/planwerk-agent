@@ -128,9 +128,13 @@ body as a diff, and each thread it would resolve with the reply it would
 carry. One yes covers the push, the body edit, and the threads.
 
 The push is `git push --force-with-lease` to the pull request's own head
-branch, never plain `--force` and never to the base. Only the branch's own
-commits are rewritten. Declined, the local branch stays rebased, `origin` is
-untouched, and `git reset --hard <before>` restores the tip the skill named.
+branch, never plain `--force` and never to the base. The lease names the tip
+the skill verified before the rebase, so the push goes through only while the
+remote branch still sits there, whatever a background fetch did in between.
+Only the branch's own commits are rewritten. Declined, the local branch stays
+rebased, `origin` is untouched, and `git reset --hard <before>` restores the
+tip the skill named. When `origin` rejects the push, the branch moved: the
+skill reports that and stops, and never fetches and pushes again.
 
 ## The rewrite takes the PR description with it
 

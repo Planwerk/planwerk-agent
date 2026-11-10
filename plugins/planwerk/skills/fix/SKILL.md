@@ -202,9 +202,11 @@ Land it locally first, so the yes is given to the thing it publishes:
 - For the working tree, there is nothing to land; the verdict is at most
   `DONE_WITH_CONCERNS`.
 
-Push and edit the body only on an explicit yes: `--force-with-lease` to the
-PR's own head branch after a fold, a plain push after a follow-up commit, then
-the body repair exactly as shown. A no leaves the local branch as it is, with
+Push and edit the body only on an explicit yes: the leased push of
+`commits-fold.md` to the PR's own head branch after a fold, with the head SHA
+Phase 1 verified as its lease, a plain push after a follow-up commit, then
+the body repair exactly as shown. A push `origin` rejects is not retried:
+report `DONE_WITH_CONCERNS` with the error. A no leaves the local branch as it is, with
 nothing on `origin` changed; report `DONE_WITH_CONCERNS` naming the landing the
 author declined. If there is nothing to commit, create no empty commit — report
 and stop.
@@ -240,8 +242,8 @@ Next: <on any verdict but DONE only: the single action a human takes next; omit 
 `DONE_WITH_CONCERNS` means the repair is complete with a reservation a human
 must see — an out-of-scope reach, a fix you could not exercise locally, a
 repair left in the working tree, which nothing has pushed and no check has run
-against, a push the author declined, or a fork the author declined to answer;
-say which. `BLOCKED` means
+against, a push the author declined, a push `origin` rejected, or a fork the
+author declined to answer; say which. `BLOCKED` means
 you could not make progress.
 `NEEDS_CONTEXT` means only a human holds the missing fact.
 
@@ -265,7 +267,8 @@ the author, or to `planwerk-agent fix <pr-ref>` for the unattended loop.
   why it could not run here.
 - The fold is bounded by `git merge-base`, and no commit that already exists on
   the base branch was rewritten.
-- The push targets the PR's own head branch, with `--force-with-lease`.
+- The push targets the PR's own head branch, with the lease naming the head
+  SHA Phase 1 verified.
 - After a fold, no SHA left in the PR body points at a commit the fold replaced,
   and nothing else in that body was edited.
 - Every commit ends with the trailers `commits.md` asks for, and carries no
