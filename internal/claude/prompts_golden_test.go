@@ -1325,6 +1325,21 @@ func TestBuildFinalizePrompt_Golden(t *testing.T) {
 	assertGoldenPrompt(t, "finalize", BuildFinalizePrompt(goldenFinalizeContext()))
 }
 
+// TestBuildFinalizePrompt_NoAITrailers locks the footer's reason in a
+// repository that forbids AI attribution in commits: the footer cannot mirror a
+// trailer no commit carries (decision 150).
+func TestBuildFinalizePrompt_NoAITrailers(t *testing.T) {
+	ctx := goldenFinalizeContext()
+	ctx.AITrailersForbiddenBy = "AGENTS.md"
+	got := BuildFinalizePrompt(ctx)
+	if strings.Contains(got, "This mirrors the Assisted-by commit trailer.") {
+		t.Errorf("the finalize footer names a trailer the repository forbids:\n%s", got)
+	}
+	if !strings.Contains(got, "this footer is where the assistance is disclosed") {
+		t.Errorf("the finalize footer does not say where the assistance is disclosed:\n%s", got)
+	}
+}
+
 func goldenFixContext() fix.Context {
 	return fix.Context{
 		RepoFullName:  "planwerk/planwerk-agent",

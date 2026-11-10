@@ -532,6 +532,11 @@ type FinalizeContext struct {
 	// description carries its deviations and out-of-scope observations, which
 	// the commits alone do not show.
 	ImplementationReport string
+	// AITrailersForbiddenBy is the repo-relative path of the instruction file
+	// whose rule on the base branch forbids attributing commits to an AI
+	// (decision 150), or "". The footer on the pull request then says that it
+	// is where the assistance is disclosed, since no commit trailer names it.
+	AITrailersForbiddenBy string
 }
 
 // PRFinalizer opens the draft pull request for the implemented + simplified +
