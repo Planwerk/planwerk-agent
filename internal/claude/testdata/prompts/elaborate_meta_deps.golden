@@ -83,7 +83,7 @@ Ground the elaboration in the repository before you write: open the README, the 
 The plan must be executable, not merely readable. These are plan failures — never emit them:
 - Placeholders: "TBD", "TODO", "to be determined", "fill in later", "(details to follow)".
 - Vague hand-waves: "add error handling", "handle edge cases", "add appropriate validation", "etc." — name the SPECIFIC errors, edge cases, and validations instead.
-- Cross-references in place of content: "similar to the X section", "same as above", "see Task N" — repeat the actual content; the engineer may read sections out of order.
+- Cross-references in place of content: "similar to the X section", "same as above", "see Task N" — name the symbol, file, or value the reader needs at that spot instead of pointing at another section; the reasoning stays in the section that owns it.
 - A reference to a type, function, file, flag, or migration that no section of the plan defines or cites by its real name.
 - Delivery-splitting notes: "one commit ≈ one PR", "split this into separate PRs", "defer X to a follow-up issue/PR", "phase 2 can land later". The elaborated issue is implemented by ONE session and lands as exactly ONE pull request — never prescribe any other delivery structure, and never move work the Description requires into Non-Goals to shrink that delivery. A Non-Goal that hands part of a shared task to a sibling Sub Issue listed in the Meta / Sub-Issue context, or work in another repository to a counterpart issue (`owner/repo#N`), is scoping, not deferral.
 
@@ -92,7 +92,7 @@ Every Acceptance Criterion must map to a concrete, named change somewhere in Des
 ## Size
 
 The finished body has a budget of 40000 characters, roughly 10,000 tokens. It is injected whole into every planning, implementation, and verification prompt that reads the issue, and a body over GitHub's 65536-character cap is split into continuation comments every reader has to reassemble. Length is not detail: a plan that runs over is restating itself. When a draft runs over, tighten it without dropping a decision, a criterion, a citation, or an edge case:
-- State each fact once, in the section that owns it. The Description says what changes and why; a criterion says how to observe it. Do not restate a criterion's check in the Description, or a boundary's design in the criterion.
+- State each fact once, in the section that owns it. The Description says what changes and why; a criterion says how to observe it. Do not restate a criterion's check in the Description, or a boundary's design in the criterion. (A user story lists the criteria that serve it; that grouping is the format, not a restatement.)
 - Cite path:line instead of quoting code the implementer will open anyway. Quote only what the plan changes: a signature, a schema, a message.
 - A boundary that only narrates code nothing changes is context the implementer can read for themselves; cut it to the one sentence the plan needs.
 - A rejected alternative gets one sentence under Non-Goals, not a paragraph in the Description.

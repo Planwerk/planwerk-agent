@@ -115,7 +115,7 @@ Ground the elaboration in the repository before you write: open the README, the 
 The plan must be executable, not merely readable. These are plan failures — never emit them:
 - Placeholders: "TBD", "TODO", "to be determined", "fill in later", "(details to follow)".
 - Vague hand-waves: "add error handling", "handle edge cases", "add appropriate validation", "etc." — name the SPECIFIC errors, edge cases, and validations instead.
-- Cross-references in place of content: "similar to the X section", "same as above", "see Task N" — repeat the actual content; the engineer may read sections out of order.
+- Cross-references in place of content: "similar to the X section", "same as above", "see Task N" — name the symbol, file, or value the reader needs at that spot instead of pointing at another section; the reasoning stays in the section that owns it.
 - A reference to a type, function, file, flag, or migration that no section of the plan defines or cites by its real name.
 - Delivery-splitting notes: "one commit ≈ one PR", "split this into separate PRs", "defer X to a follow-up issue/PR", "phase 2 can land later". The elaborated issue is implemented by ONE session and lands as exactly ONE pull request — never prescribe any other delivery structure, and never move work the Description requires into Non-Goals to shrink that delivery. ` + siblingScopingLine + `
 
@@ -126,7 +126,7 @@ Every Acceptance Criterion must map to a concrete, named change somewhere in Des
 	fmt.Fprintf(&sb, `## Size
 
 The finished body has a budget of %d characters, roughly 10,000 tokens. It is injected whole into every planning, implementation, and verification prompt that reads the issue, and a body over GitHub's %d-character cap is split into continuation comments every reader has to reassemble. Length is not detail: a plan that runs over is restating itself. When a draft runs over, tighten it without dropping a decision, a criterion, a citation, or an edge case:
-- State each fact once, in the section that owns it. The Description says what changes and why; a criterion says how to observe it. Do not restate a criterion's check in the Description, or a boundary's design in the criterion.
+- State each fact once, in the section that owns it. The Description says what changes and why; a criterion says how to observe it. Do not restate a criterion's check in the Description, or a boundary's design in the criterion. (A user story lists the criteria that serve it; that grouping is the format, not a restatement.)
 - Cite path:line instead of quoting code the implementer will open anyway. Quote only what the plan changes: a signature, a schema, a message.
 - A boundary that only narrates code nothing changes is context the implementer can read for themselves; cut it to the one sentence the plan needs.
 - A rejected alternative gets one sentence under Non-Goals, not a paragraph in the Description.
@@ -282,7 +282,7 @@ Do NOT rewrite the plan. Do NOT assume it is correct because it looks thorough �
 6. Edge-case coverage — every data-flow acceptance criterion enumerates its empty/zero-length, nil/absent, and upstream-error shadow paths as separate entries, each naming the concrete error (e.g. io.EOF, sql.ErrNoRows, a wrapped fmt.Errorf). A data-flow criterion that covers only the happy path is a gap.
 7. Single-delivery contract — the issue is implemented by ONE session and lands as exactly ONE pull request. Any note prescribing a different delivery structure — "one commit ≈ one PR", "split into separate PRs", deferring described work to a follow-up issue or PR — is a gap, as is a Non-Goal that defers work the Description requires. ` + siblingScopingLine + ` Such a Non-Goal is never a gap.
 8. Domain coverage — for each domain of the sweep above, decide from the repository whether this change touches it. When it does, an Acceptance Criterion or an Affected Areas entry must carry its consequence; when it does not, the draft owes it nothing. An uncovered touched domain is a gap: name the domain and the specific consequence that has no home. A domain the change does not touch is never a gap — do NOT report one to look thorough, and do NOT ask for a Domain Sweep section in the body, which the house format has no room for.
-9. Density — length is not detail. A section that restates what another section owns, or a boundary that narrates code the change does not touch, is a gap: name the section to tighten. The implementer re-reads this body in every later prompt, so padding costs on every run.
+9. Density — length is not detail. A section that restates what another section owns, or a boundary that narrates code the change does not touch, is a gap: name the section to tighten. A user story that lists the criteria that serve it is the format, not a restatement. The implementer re-reads this body in every later prompt, so padding costs on every run.
 
 ## Scoring rubric
 
