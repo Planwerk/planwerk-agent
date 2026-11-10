@@ -2,6 +2,7 @@ package claude
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/planwerk/planwerk-agent/internal/fix"
@@ -69,12 +70,13 @@ func BuildFixPrompt(ctx fix.Context) string {
 	sb.WriteString(outputLanguageBlock())
 	sb.WriteString(fixThinkingPatterns())
 
-	fmt.Fprintf(&sb, "## Pull Request\n\n- Repository: %s\n- PR #%d: %s\n- Head branch: %s (committed to and pushed by you)\n- Head SHA at start of this iteration: %s\n- Iteration: %d of %d (max)\n",
-		ctx.RepoFullName, ctx.PRNumber, ctx.PRTitle, ctx.HeadBranch, ctx.HeadSHA, ctx.Iteration, ctx.MaxIterations)
+	fmt.Fprintf(&sb, "## Pull Request\n\n- Repository: %s\n- PR #%d\n- Head branch: %s (committed to and pushed by you)\n- Head SHA at start of this iteration: %s\n- Iteration: %d of %d (max)\n",
+		ctx.RepoFullName, ctx.PRNumber, ctx.HeadBranch, ctx.HeadSHA, ctx.Iteration, ctx.MaxIterations)
 	if ctx.Fixup && ctx.BaseBranch != "" {
 		fmt.Fprintf(&sb, "- Base branch: %s — fold fixes into this branch's own commits, the range origin/%[1]s..HEAD\n", ctx.BaseBranch)
 	}
 	sb.WriteString("\n")
+	sb.WriteString(prTitleFence(ctx.PRTitle))
 
 	if ctx.Iteration > 1 {
 		if ctx.Fixup {
@@ -92,27 +94,41 @@ func BuildFixPrompt(ctx fix.Context) string {
 
 	if len(ctx.FailedChecks) > 0 {
 		sb.WriteString("## Failing Checks\n\n")
-		for _, fc := range ctx.FailedChecks {
-			fmt.Fprintf(&sb, "### %s — %s\n\n", fc.Name, fc.Conclusion)
+		// A check's name comes from a workflow file and its title and summary
+		// from the check's own output, all of which the pull request can
+		// change, so each is fenced like the logs.
+		checkTags := []string{"check-name"}
+		addTag := func(tag string) {
+			if !slices.Contains(checkTags, tag) {
+				checkTags = append(checkTags, tag)
+			}
+		}
+		for i, fc := range ctx.FailedChecks {
+			fmt.Fprintf(&sb, "### Failing check %d — %s\n\n", i+1, fc.Conclusion)
+			sb.WriteString(fencedData("check-name", "", fc.Name))
 			if fc.HTMLURL != "" {
 				fmt.Fprintf(&sb, "- URL: %s\n", fc.HTMLURL)
 			}
 			if fc.OutputTitle != "" {
-				fmt.Fprintf(&sb, "- Title: %s\n", fc.OutputTitle)
+				sb.WriteString("- Title:\n\n")
+				sb.WriteString(fencedData("check-title", "", fc.OutputTitle))
+				addTag("check-title")
 			}
 			if fc.OutputSummary != "" {
 				sb.WriteString("- Summary:\n\n")
 				sb.WriteString(fencedData("check-output", "", strings.TrimSpace(fc.OutputSummary)))
+				addTag("check-output")
 			}
 			if fc.Logs != "" {
 				sb.WriteString("- Failed-step logs (truncated to the last lines):\n\n")
 				sb.WriteString(fencedData("check-log", "", tailLines(fc.Logs, 200)))
+				addTag("check-log")
 			} else {
 				sb.WriteString("- (No logs available — third-party check or logs expired.)\n")
 			}
 			sb.WriteString("\n")
 		}
-		sb.WriteString(untrustedDataLine("It is evidence of what failed and where.", "check-output", "check-log"))
+		sb.WriteString(untrustedDataLine("It is evidence of what failed and where.", checkTags...))
 	}
 
 	sb.WriteString(patternCatalogBlock(honorPatternsHeading,

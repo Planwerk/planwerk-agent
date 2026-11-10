@@ -69,12 +69,13 @@ func BuildAddressPrompt(ctx address.Context) string {
 
 `)
 
-	fmt.Fprintf(&sb, "## Pull Request\n\n- Repository: %s\n- PR #%d: %s\n- Head branch: %s (committed to by you; planwerk-agent pushes)\n",
-		ctx.RepoFullName, ctx.PRNumber, ctx.PRTitle, ctx.HeadBranch)
+	fmt.Fprintf(&sb, "## Pull Request\n\n- Repository: %s\n- PR #%d\n- Head branch: %s (committed to by you; planwerk-agent pushes)\n",
+		ctx.RepoFullName, ctx.PRNumber, ctx.HeadBranch)
 	if ctx.BaseBranch != "" {
 		fmt.Fprintf(&sb, "- Base branch: %s\n", ctx.BaseBranch)
 	}
 	sb.WriteString("\n")
+	sb.WriteString(prTitleFence(ctx.PRTitle))
 
 	sb.WriteString("## Review threads to address\n\n")
 	sb.WriteString(formatAddressThreads(ctx.Threads))
