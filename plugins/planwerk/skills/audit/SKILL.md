@@ -275,9 +275,11 @@ question, in rounds, under `interaction.md`, One decision, one question.
 
 For an exploitable vulnerability or an exposed secret, the recommended option
 is the repository's `SECURITY.md` route or a GitHub security advisory rather
-than a public issue.
+than a public issue. An item the author routes that way is neither filed nor
+dropped: Phase 8 names it under its own line with the route chosen and its
+evidence, secret redacted, for the author to file by hand.
 
-What the author settles moves to Finding or Clean accordingly. What they
+What the author settles otherwise moves to Finding or Clean accordingly. What they
 decline or leave open is named in the report as an unresolved decision, with
 the lead's evidence, and is never filed as if it were settled.
 
@@ -369,8 +371,10 @@ Open with one line: the verdict, the issues filed by number or that none
 were, and the audited commit. Then: the findings per severity and the
 packages each became; the packages already tracked, with their issue
 numbers, and any regression; the INFO suggestions in one line each; the
-unverified leads and what would verify them; the Cleanup's leads; every
-Author's call the author declined or left open, with its evidence; the
+unverified leads and what would verify them; the Cleanup's leads; every item
+the author routed through `SECURITY.md` or an advisory, with the route and
+its evidence, secret redacted; every Author's call the author declined or
+left open, with its evidence; the
 pattern sources and memory pages the audit used; the detectors that were
 absent; and anything the audit could not check.
 
