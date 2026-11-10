@@ -61,7 +61,7 @@ Do NOT rewrite the plan. Do NOT assume it is correct because it looks thorough: 
 
 	sb.WriteString(`## What to check
 
-1. Criterion coverage: every Acceptance Criterion in the issue body maps to a Change Set entry and a Test Plan entry. A criterion without both is a gap.
+1. Criterion coverage: every Acceptance Criterion in the issue body maps to a Change Set entry and a Test Plan entry, or, in a plan whose Change Set reads "none — already implemented at <file:line>", to that citation, which you check holds. A criterion without either is a gap.
 2. Work-package coverage: Work Breakdown Coverage names every work package the issue breaks the work into (` + workBreakdownDefinition() + `), each with the entries that deliver it. A package the plan drops is a gap; an issue with none is covered by "None — the issue is a single undivided change".
 3. Over-scope: a Change Set entry that the issue's Description, Affected Areas, and Acceptance Criteria do not ask for (a new top-level package, a file the issue never implies, a refactor, rename, or dependency bump) is a gap.
 4. Non-Goals: a Change Set entry that plans work the issue's Non-Goals exclude is a gap.

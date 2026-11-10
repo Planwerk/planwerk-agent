@@ -55,7 +55,7 @@ The plan's "### Domain Sweep" section claims to place each of these domains. Che
 
 ## What to check
 
-1. Criterion coverage: every Acceptance Criterion in the issue body maps to a Change Set entry and a Test Plan entry. A criterion without both is a gap.
+1. Criterion coverage: every Acceptance Criterion in the issue body maps to a Change Set entry and a Test Plan entry, or, in a plan whose Change Set reads "none — already implemented at <file:line>", to that citation, which you check holds. A criterion without either is a gap.
 2. Work-package coverage: Work Breakdown Coverage names every work package the issue breaks the work into (a "Work breakdown" / "Work packages" / "Work items" section, numbered items (1., 2., 3. or ### 1 / ### 2), lettered workstreams, tiered phases, or a checkbox task list — but not the Acceptance Criteria checklist or the numbered boundaries in the Description, which every elaborated issue carries), each with the entries that deliver it. A package the plan drops is a gap; an issue with none is covered by "None — the issue is a single undivided change".
 3. Over-scope: a Change Set entry that the issue's Description, Affected Areas, and Acceptance Criteria do not ask for (a new top-level package, a file the issue never implies, a refactor, rename, or dependency bump) is a gap.
 4. Non-Goals: a Change Set entry that plans work the issue's Non-Goals exclude is a gap.
