@@ -326,15 +326,17 @@ Show the author, before anything leaves the checkout:
 Then ask for the push:
 
 ```bash
-git push --force-with-lease origin HEAD:<head-branch>
+git push --force-with-lease=<head-branch>:<before> origin HEAD:<head-branch>
 ```
 
-`--force-with-lease`, never `--force`: the branch's own commits
-(`origin/<base>..HEAD`) are the only ones rewritten, and the push is to the
-PR's own head branch, never to the base. Write only on an explicit yes.
-Declined, the local branch stays rebased, `origin`
-is untouched, the author has `<before>` to return to, and the verdict is at
-most `DONE_WITH_CONCERNS`.
+The lease names `<before>`, the head Phase 1 verified, as `commits-fold.md`
+describes: the branch's own commits (`origin/<base>..HEAD`) are the only ones
+rewritten, and the push is to the PR's own head branch, never to the base.
+Write only on an explicit yes. Declined, the local branch stays rebased,
+`origin` is untouched, the author has `<before>` to return to, and the verdict
+is at most `DONE_WITH_CONCERNS`. A push `origin` rejects is not retried: the
+branch moved, so report `DONE_WITH_CONCERNS` with the error, and never fetch
+and push again.
 
 ## Phase 7 — Correct what the rewrite made false in the pull request body
 
@@ -411,8 +413,8 @@ Next: <on any verdict but DONE only: the single action a human takes next; omit 
 every thread the upstream range settled resolved with its evidence.
 `DONE_WITH_CONCERNS` means the rebase is complete with a reservation a human
 must see: a gate that could not run here, a dropped commit, a pre-existing
-failure handed to `/planwerk:fix`, a push the author declined, or a fork the
-author declined to answer; say which.
+failure handed to `/planwerk:fix`, a push the author declined, a push `origin`
+rejected, or a fork the author declined to answer; say which.
 `BLOCKED` means a conflict could not be reconciled, or a hook rejected a
 replayed commit for a reason the rebase did not introduce, and the branch is as
 it was.
@@ -441,7 +443,7 @@ the rebase did not introduce.
   nothing that was red on `<before>` was touched.
 - The fold, when there was one, was bounded by `git merge-base`, and no commit
   on the base branch was rewritten.
-- The push targets the PR's own head branch, with `--force-with-lease`.
+- The push targets the PR's own head branch, with the lease naming `<before>`.
 - No SHA left in the body points at a replaced commit, every edited sentence
   traces to a change the rebase made, and nothing else in the body moved.
 - Every thread you resolved carries a reply naming a commit or pull request in
