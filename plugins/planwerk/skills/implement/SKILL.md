@@ -27,7 +27,7 @@ Read these before you start, in full:
 - `${CLAUDE_SKILL_DIR}/../../shared/github.md` — the `gh` commands
 - `${CLAUDE_SKILL_DIR}/../../shared/github-relations.md` — the neighborhood query
 - `${CLAUDE_SKILL_DIR}/../../shared/house-style.md` — prose, citations, anti-hallucination
-- `${CLAUDE_SKILL_DIR}/../../shared/memory.md` — the project memory, when the repository opted in
+- `${CLAUDE_SKILL_DIR}/../../shared/memory.md` — how to read the project memory, and what to do when there is none
 
 ## What implement does not do
 

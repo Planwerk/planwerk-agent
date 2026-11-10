@@ -35,7 +35,7 @@ Read these before you start, in full:
 - `${CLAUDE_SKILL_DIR}/../../shared/issue-format-audit.md` — the audit issue and its evidence
 - `${CLAUDE_SKILL_DIR}/../../shared/house-style.md` — prose, citations, anti-hallucination
 - `${CLAUDE_SKILL_DIR}/../../shared/github.md` — the `gh` commands
-- `${CLAUDE_SKILL_DIR}/../../shared/memory.md` — the project memory, when the repository opted in
+- `${CLAUDE_SKILL_DIR}/../../shared/memory.md` — how to read the project memory, and what to do when there is none
 
 You must be inside a checkout of the repository you are auditing, and the
 checkout must be current — a line quoted from a stale tree is not evidence.
@@ -46,24 +46,20 @@ verify list compare the tree against.
 
 ## What audit does not do
 
-- It never edits, reformats, or fixes code. The working tree is exactly as it
-  found it; the issues are the only artifact.
+- It never edits, reformats, or fixes code. The only change to the working
+  tree is the fast-forward the checkout step offers, on the author's yes,
+  before the survey starts; the issues are the only artifact.
 - It never installs a tool and never adds configuration. Detectors already on
   `PATH` may run in their report-only form; a missing one is a coverage note
   in the report, not a stop.
-- It never files what it could not pin to a line. A lead you cannot quote
-  stays in the report, marked unverified, and never becomes an issue. The one
-  finding without a quote is a missing file, which cites where the file
-  belongs and the search that found nothing.
-- It never assigns a severity by impression. The ladder in Phase 3 decides,
-  and a finding that fits no rung is INFO.
+- It never files a lead it could not quote (Phase 3).
+- A finding that fits no rung of the ladder in Phase 3 is INFO.
 - It never files INFO findings as issues. They are suggestions; they go in the
   report, and the author may promote one by asking.
 - It never re-files what the tracker already holds. A package whose fix an
   existing issue already describes is reported as tracked there.
 - It never publishes a secret or discloses an exploitable vulnerability in a
-  public issue on its own. Both are the author's call in Phase 4, and a
-  secret's value is never quoted anywhere, not even in the report.
+  public issue on its own. Both are the author's call in Phase 4.
 - It never hunts dead code or duplication. Those are `/planwerk:cleanup`'s, and
   a lead of that kind is one line in the report pointing there. The command
   reports them like any other finding; the skill hands them over so the two
@@ -94,8 +90,8 @@ Then load the knowledge the audit applies:
 
 - **Committed review patterns** under `.planwerk/review_patterns/`, every
   `*.md` at any depth whose first heading reads `# Review Pattern:`. Skip
-  symlinks, `SOURCES.md`, and any file without that heading — they are not
-  patterns. Each pattern carries a `Review-Area`, a `Detection-Hint`, a
+  symlinks (`git ls-files -s` lists one with mode `120000`), `SOURCES.md`, and
+  any file without that heading — they are not patterns. Each pattern carries a `Review-Area`, a `Detection-Hint`, a
   `Severity`, and a "What to check" list; one with an `Applies-When` line
   applies only when the checkout uses a technology it names, and one without
   applies always. A pattern that applies to nothing here is skipped, and the
@@ -278,8 +274,7 @@ question, in rounds, under `interaction.md`, One decision, one question.
 
 For an exploitable vulnerability or an exposed secret, the recommended option
 is the repository's `SECURITY.md` route or a GitHub security advisory rather
-than a public issue, and the finding's quote carries `<redacted>` in place
-of any secret whichever route the author picks.
+than a public issue.
 
 What the author settles moves to Finding or Clean accordingly. What they
 decline or leave open is named in the report as an unresolved decision, with
