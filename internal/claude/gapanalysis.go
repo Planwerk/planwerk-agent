@@ -146,23 +146,20 @@ func reconcileFeatures(result *gapanalysis.Result, features []*planwerk.Feature)
 		fg := &result.Features[fi]
 		key := strings.ToUpper(fg.FeatureID)
 		seen[key] = true
-		spec := byID[key]
-		if spec != nil {
-			if fg.FeatureFile == "" {
-				fg.FeatureFile = filepath.Base(spec.FilePath)
-			}
-			if fg.Title == "" {
-				fg.Title = spec.Title
-			}
+		// The file and the title come from the input spec, never from the
+		// structuring call: it sees the report alone, so a name it writes is
+		// a guess. A feature the input does not carry keeps no file at all.
+		fg.FeatureFile = ""
+		if spec := byID[key]; spec != nil {
+			fg.FeatureFile = filepath.Base(spec.FilePath)
+			fg.Title = spec.Title
 		}
 		for gi := range fg.Gaps {
 			g := &fg.Gaps[gi]
 			if g.FeatureID == "" {
 				g.FeatureID = fg.FeatureID
 			}
-			if g.FeatureFile == "" {
-				g.FeatureFile = fg.FeatureFile
-			}
+			g.FeatureFile = fg.FeatureFile
 		}
 	}
 
@@ -193,14 +190,14 @@ func buildGapStructurePrompt(rawAnalysis string) string {
   "features": [
     {
       "feature_id": "CC-0042",
-      "feature_file": "CC-0042-...json",
-      "title": "Feature title from the spec",
+      "feature_file": "",
+      "title": "",
       "summary": "The feature's verdict, copied from the report.",
       "gaps": [
         {
           "id": "",
           "feature_id": "CC-0042",
-          "feature_file": "CC-0042-...json",
+          "feature_file": "",
           "type": "missing_criterion|missing_scenario|missing_test|missing_task",
           "severity": "CRITICAL|WARNING|INFO",
           "title": "Short, specific gap title (no severity prefix, no brackets)",
@@ -223,7 +220,8 @@ Field rules:
 - ` + emptyIDLine() + `
 - "type": one of the four values above, copied from the gap type the analysis states.
 - "severity": uppercase, never BLOCKING (gap analysis runs on already-merged work).
-- "feature_id" / "feature_file": copy from the surrounding feature block.
+- "feature_id": copy from the heading of the report's section for that feature.
+- "feature_file" and the feature's "title": leave as empty strings — they are filled in automatically from the spec.
 - "source": include the verbatim text from the spec — criterion, scenario, task, or test name.
 - "evidence": cite paths or grep results. "checked X, did not find Y" is acceptable.
 - "suggested_issue.title": never start with "[CRITICAL]", "Severity:", or any other level marker.

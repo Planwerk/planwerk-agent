@@ -265,6 +265,13 @@ func (r *Runner) openPR(repo *github.Repo, result *Result, opts Options) (string
 			slog.Warn("skipping an improved spec that is not a valid rewrite of its feature", "feature", fr.FeatureID, "got_feature_id", check.FeatureID, "err", err)
 			continue
 		}
+		// The file name is the input spec's, set by the caller's reconcile
+		// step. A feature without one matched no input spec, so there is no
+		// file of the author's to write.
+		if fr.FeatureFile == "" || fr.FeatureFile != filepath.Base(fr.FeatureFile) {
+			slog.Warn("skipping an improved spec whose feature matches no input spec", "feature", fr.FeatureID)
+			continue
+		}
 		rel := filepath.Join(".planwerk", preparedSubdir, fr.FeatureFile)
 		formatted, err := indentJSON(fr.ImprovedJSON)
 		if err != nil {
