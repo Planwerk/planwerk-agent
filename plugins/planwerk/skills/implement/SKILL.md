@@ -335,8 +335,9 @@ The push and the pull request are the two commands under `github.md`, Writing
 (`git push -u origin <branch>`, then `gh pr create`): the body goes through a
 file, and every reference that leaves this repository is qualified per
 `github.md`. Push only the feature branch, never the default branch. Write
-only on an explicit yes. If there is nothing to commit, create no empty
-commit — report and stop.
+only on an explicit yes. If there is nothing to commit because the issue is
+already implemented, create no empty commit: report `DONE`, citing the
+existing code as each criterion's evidence, and stop.
 
 ## Phase 5 — Report
 

@@ -209,10 +209,11 @@ Push and edit the body only on an explicit yes: the leased push of
 `commits-fold.md` to the PR's own head branch after a fold, with the head SHA
 Phase 1 verified as its lease, a plain push after a follow-up commit, then
 the body repair exactly as shown. A push `origin` rejects is not retried:
-report `DONE_WITH_CONCERNS` with the error. A no leaves the local branch as it is, with
-nothing on `origin` changed; report `DONE_WITH_CONCERNS` naming the landing the
-author declined. If there is nothing to commit, create no empty commit — report
-and stop.
+report `DONE_WITH_CONCERNS` with the error. A no leaves the local branch as it
+is, with nothing on `origin` changed; report `DONE_WITH_CONCERNS` naming the
+landing the author declined. If there is nothing to commit, create no empty
+commit: report `BLOCKED`, or `NEEDS_CONTEXT` when only the author holds the
+missing fact, and stop.
 
 ## Phase 7 — Report
 
