@@ -99,3 +99,22 @@ func TestSharedCommitsDocMatchesFoldDiscipline(t *testing.T) {
 func prose(s string) string {
 	return strings.ToLower(strings.ReplaceAll(s, "`", ""))
 }
+
+// TestSharedCommitsDocMatchesTheSuppressionException fails when the skills and
+// the unattended sessions stop agreeing on the one suppression a repair may
+// add: the kind the file already uses. A flat ban on one side pushes a session
+// into a contortion in a file whose convention is that very comment, and an
+// exception on one side only lets a skill and a command repair the same
+// finding in two ways.
+func TestSharedCommitsDocMatchesTheSuppressionException(t *testing.T) {
+	const marker = "already idiomatic in"
+	for name, text := range map[string]string{
+		sharedCommitsDoc:        readSharedDoc(t, sharedCommitsDoc),
+		"noWeakeningRules()":    noWeakeningRules(noWeakeningImplement),
+		"fixThinkingPatterns()": fixThinkingPatterns(),
+	} {
+		if !strings.Contains(prose(text), marker) {
+			t.Errorf("%s forbids a lint suppression without the exception for one the file already uses (%q)", name, marker)
+		}
+	}
+}
