@@ -15,8 +15,11 @@ that outgrows one auditor is split in two here, and the ledger says so.
 
 Run on the finder tier and emit JSON under `--json-schema` (decision 109).
 
-Builders: `prompt.go` buildReviewPrompt; `adversarial.go` buildAdversarialPrompt;
-`specialist.go` buildSpecialistPrompt and the specialist definitions;
+Builders: `prompt.go` buildReviewPrompt with changedFilesBlock,
+partitionScopeBlock and reviewPatternsBlock; `review_passes.go`
+BuildReviewPrompt; `adversarial.go` buildAdversarialPrompt;
+`specialist.go` buildSpecialistPrompt and the specialist definitions, with
+`design.go` designGuidanceBlock for the `ui` specialist;
 `compliance.go` buildCompliancePrompt; `simplify.go` buildSimplifyFindPrompt
 (find only); `verifyclaims.go` buildClaimVerificationPrompt; `audit.go`
 buildAuditPrompt; `coverage.go` buildCoveragePrompt; `implement.go`
@@ -46,17 +49,19 @@ The plan session (plan tier, read-only) and the implement session
 (`--permission-mode` auto, status contract in the system prompt, decision 108;
 completion nudge, decision 78).
 
-Builders: `plan.go` BuildPlanPrompt; `implement.go` BuildImplementPrompt,
-BuildBareImplementPrompt, buildImplementerAgentPrompt; `finalize.go`
-BuildFinalizePrompt; `completion.go` the nudge text.
+Builders: `plan.go` BuildPlanPrompt and its revision path; `plan_review.go`
+buildPlanReviewPrompt; `implement.go` BuildImplementPrompt,
+ImplementSystemPrompt, BuildBareImplementPrompt, buildImplementerAgentPrompt;
+`finalize.go` BuildFinalizePrompt; `completion.go` the nudge text.
 
-Shared blocks: implementRationalizationsBlock, the status contract and verdict
-definitions, projectSkillsBlock, patternCatalogBlock and patternCatalogDirLine,
-the memory index block, styleGuideBlock, commitTrailerBlock, foregroundRunLine,
-proseStyleBlock, communicationStyleBlock, docProseBlock, codebaseDesignBlock,
+Shared blocks: implementRationalizationsBlock, noWeakeningRules, the status
+contract and verdict definitions, domainSweepBlock, projectSkillsBlock,
+patternCatalogBlock and patternCatalogDirLine, the memory index block,
+styleGuideBlock, commitTrailerBlock, foregroundRunLine, proseStyleBlock,
+communicationStyleBlock, docProseBlock, codebaseDesignBlock,
 domainGlossaryBlock, untrustedDataLine; `baseline.go` in full.
 
-Goldens: `plan*`, `implement*`, `finalize*`, `completion*`.
+Goldens: `plan*`, `implement*`, `implementer_agent*`, `finalize*`.
 
 Lens: find the Go that reads the plan verdict and the implement report
 (`PLAN_READY`, `NEEDS_CONTEXT`, `STATUS:`, `TerminalStatus`, the report guard)
@@ -77,15 +82,17 @@ Builders: `fix.go` BuildFixPrompt, BuildBareFixPrompt; `address.go`
 BuildAddressPrompt, BuildBareAddressPrompt; `rebase.go` BuildRebaseConflictPrompt,
 BuildRebaseAnalysisPrompt, BuildRebaseApplyPrompt, BuildBareRebasePrompt;
 `review_apply.go` BuildReviewApplyPrompt; `simplify.go` BuildSimplifyApplyPrompt
-(apply only); `repair.go` buildRepairPrompt, buildValidationRepairPrompt.
+(apply only); `repair.go` buildRepairPrompt, buildValidationRepairPrompt;
+`plugins.go` pluginSessionPrompt.
 
-Shared blocks: foldDisciplineRule, foldConflictSteps, noSkipHooksLine,
+Shared blocks: noWeakeningRules, verifyLocallyLine, verificationReportLines,
+foldDisciplineRule, foldConflictSteps, noSkipHooksLine,
 commitTrailerBlock, foregroundRunLine, patternCatalogBlock, projectSkillsBlock,
 the memory index block, styleGuideBlock, untrustedDataLine and fencedData,
 jsonSchemaOnlyLine, the address thread bounds.
 
 Goldens: `fix*`, `address*`, `rebase*`, `review_apply*`, `simplify_apply`,
-`repair*`, `validation_repair*`.
+`repair*`, `validation_repair*`, `plugin_session*`.
 
 Lens: find the Go that reads each session's output (`internal/fix`,
 `internal/address`, `internal/rebase`, `internal/review`, the repair decoder)
@@ -149,12 +156,13 @@ Return also a table: block → callers → verdict.
 
 ## 6. Planning-family skills (`skill-auditor`)
 
-Skills: `draft`, `elaborate`, `meta`, `decide`, `revisit`, `clarify`, `cleanup`.
+Skills: `draft`, `elaborate`, `meta`, `decide`, `revisit`, `clarify`, `cleanup`,
+`audit`.
 
 Shared docs, audited for contradictions with these skills: `issue-format.md`,
-`issue-format-plan.md`, `issue-format-survey.md`, `github.md`,
-`github-relations.md`, `cross-repo.md`, `domains.md`, `memory.md`,
-`house-style.md`.
+`issue-format-plan.md`, `issue-format-survey.md`, `issue-format-audit.md`,
+`github.md`, `github-relations.md`, `cross-repo.md`, `domains.md`,
+`memory.md`, `house-style.md`.
 
 Also read: `internal/skills/plugin_test.go`, `internal/skills/loader.go`,
 `docs/how-to/use-the-skills.md`, and `TestBuildIssueBody_MatchesSharedFormat`
