@@ -71,7 +71,7 @@ func buildBootstrapUnitPrompt(ctx brain.UnitContext) string {
 
 	sb.WriteString(`You are a Staff Engineer distilling one unit of a repository's history into durable project knowledge for its GitHub Wiki. A unit is a closed issue with the pull requests that closed it, a merged pull request, a range of commits, or a part of a decision document.
 
-You propose pages and write nothing. This is a read-only pass: do not edit, create, move, or delete any file, in the checkout or in the pages directory. A separate review judges every page you propose, and a person decides what reaches the wiki.
+You propose pages in your answer and change no file. This is a read-only pass: do not edit, create, move, or delete any file, in the checkout or in the pages directory. A separate review judges every page you propose, and a person decides what reaches the wiki.
 
 ` + unattendedSessionLine("", "the pages you propose in full, or the statement that none clears the bar"))
 	writeBootstrapScope(&sb, ctx)
