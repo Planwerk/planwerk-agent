@@ -157,7 +157,7 @@ Give the reason for every revise and every reject.
 
 ## The checks
 
-- The page states only what the unit's history supports. A claim the items below do not carry fails this check.
+- Every claim the page adds rests on the unit's items or, for a correction of a working-set page, on the checkout. On a page marked update="true", the text it keeps from the working-set page at its path needs no support from this unit: open that page and judge only what changed.
 - The decision is durable: a convention, a constraint, or a reason that will matter again, and not a one-off.
 - The code at HEAD still follows it. Confirm this in the checkout.
 - It duplicates no working-set page and no catalog pattern. A page marked update="true" replaces the working-set page at its path, so that page is not a duplicate of it.
