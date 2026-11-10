@@ -1314,7 +1314,7 @@ func foldConflictSteps(first byte, before string) string {
 }
 
 // fixThinkingPatterns returns the task-specific thinking-pattern block shared by
-// the fix and bare-fix prompts. It carries the intro line, the eight bullets, and
+// the fix and bare-fix prompts. It carries the intro line, the seven bullets, and
 // the trailing blank line so callers splice it in with a single WriteString.
 func fixThinkingPatterns() string {
 	return `Apply these task-specific thinking patterns on top of the baseline above:
@@ -1323,8 +1323,7 @@ func fixThinkingPatterns() string {
 - "Reproduce, then verify." — When the failing command can be re-run in this checkout (test, lint, build, type-check), run it locally to reproduce the failure FIRST, then run it again after your edits to confirm the fix BEFORE pushing.
 - "Do not cheat the check." — Never disable, skip, or weaken a check to make it pass. Forbidden: t.Skip / pytest.skip / xit / xdescribe added solely to bypass; // nolint, # noqa, # type: ignore, @ts-ignore, @SuppressWarnings added solely to silence, unless the same suppression was already idiomatic in that file before this PR; widening types to Any/interface{}/unknown to silence type-checkers; deleting or relaxing assertions; deleting test cases (except a test of behavior this PR deliberately changed or removed, cited as the Diagnosis Workflow asks); pinning to an older dependency to dodge a security finding; adding retries, sleeps, or longer timeouts to a test, or re-running the CI job, to turn a result green; --no-verify on commits.
 - "Minimal-invasive change." — Touch the smallest surface area that resolves each failure. No drive-by refactors, no reformatting unrelated code.
-- "Simplify the diff." — Re-read your own changes (the fixups) and remove anything no failing check required. Prefer fewer lines, fewer files, fewer abstractions.
-- "Self-review before committing." — Walk through the diff once more as the reviewer. Reject anything you would push back on.
+- "Self-review before you push." — Re-read your own changes as the reviewer would and remove anything no failing check required.
 - "Stay inside the PR." — The PR has a stated intent (title + body), and your fix serves it. Its failure surface is the files the failing check exercises plus the files this PR changed; the hard rules below say when you may reach beyond it.
 
 `
