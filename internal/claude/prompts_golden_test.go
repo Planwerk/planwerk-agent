@@ -1210,6 +1210,18 @@ func TestBuildPlanReviewPrompt_RendersRelations(t *testing.T) {
 	}
 }
 
+// TestBuildPlanReviewPrompt_SaysItRunsUnattended locks the sentence that keeps
+// the reviewer from ending on a question or on prose: the session runs without
+// --json-schema, and a reply that carries no JSON makes the run implement the
+// plan unreviewed.
+func TestBuildPlanReviewPrompt_SaysItRunsUnattended(t *testing.T) {
+	got := buildPlanReviewPrompt(goldenImplementContext(), goldenReviewedPlan)
+	want := unattendedSessionLine("A question only a human can settle is a gap: name the decision the plan leaves open.", "the JSON object below")
+	if !strings.Contains(got, want) {
+		t.Errorf("the plan review prompt does not say that it runs unattended:\n%s", got)
+	}
+}
+
 // TestBuildPlanPrompt_Revision_Golden locks the "## Revising a Prior Plan"
 // block of the one re-plan a plan review below the bar triggers.
 func TestBuildPlanPrompt_Revision_Golden(t *testing.T) {
