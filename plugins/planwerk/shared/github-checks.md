@@ -23,6 +23,10 @@ gh run view <run-id> --repo <owner/repo> --log-failed
 
 # What the pull request changed
 gh pr diff <number> --repo <owner/repo> --name-only
+
+# Re-run the failed jobs of a run, on the author's yes. A re-run tells a flake
+# from a failure; it is a diagnosis step and repairs nothing.
+gh run rerun <run-id> --repo <owner/repo> --failed
 ```
 
 - An Actions check's `link` ends in `/runs/<run-id>/job/<job-id>`. The run id is

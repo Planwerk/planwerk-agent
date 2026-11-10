@@ -144,8 +144,11 @@ option shape `interaction.md` gives under "One decision, one question":
    Approved, the reach stays minimal and is called out in the report. Declined,
    the verdict is `BLOCKED`.
 3. **The failure is a flake, an infra fault, or an undiagnosable third-party
-   check.** There is no code change here. Offer to re-run the job, or to stop
-   and report. Never offer a code change as a third option.
+   check.** There is no code change here. Offer to re-run the failed jobs
+   (`github-checks.md`), or to stop and report. A re-run tells a flake from a
+   failure; it is a diagnosis step, never a repair. Approved, the run ends at
+   `DONE_WITH_CONCERNS`, naming the re-run and its run URL; stopping ends it
+   at `BLOCKED`. Never offer a code change as a third option.
 4. **A dependency the log directly implicates.** Bump, pin, or work around it —
    with the transitive cost of each. A dependency the log does **not** implicate
    is not touched at all, and is not a question.
@@ -242,9 +245,9 @@ Next: <on any verdict but DONE only: the single action a human takes next; omit 
 `DONE_WITH_CONCERNS` means the repair is complete with a reservation a human
 must see — an out-of-scope reach, a fix you could not exercise locally, a
 repair left in the working tree, which nothing has pushed and no check has run
-against, a push the author declined, a push `origin` rejected, or a fork the
-author declined to answer; say which. `BLOCKED` means
-you could not make progress.
+against, a push the author declined, a push `origin` rejected, a flake
+re-run in place of a repair, or a fork the author declined to answer; say
+which. `BLOCKED` means you could not make progress.
 `NEEDS_CONTEXT` means only a human holds the missing fact.
 
 Stopping at `BLOCKED` is a successful run. Bad work is worse than no work, and a
