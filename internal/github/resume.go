@@ -3,6 +3,7 @@ package github
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -195,4 +196,55 @@ func checkoutTrackingBranch(dir, local, remoteRef string) error {
 		return fmt.Errorf("git checkout -b %s %s: %w", local, remoteRef, err)
 	}
 	return nil
+}
+
+// BranchCommit is one commit a checkout carries over its base branch, with its
+// whole message. The implement command's commit progress prints each one as it
+// appears. AuthorTime is the author date in Unix seconds: with the subject it
+// identifies a commit across the rewrites that give it a new SHA (an amend, or
+// the autosquash rebase of the simplify and review passes), since those keep
+// both.
+type BranchCommit struct {
+	SHA        string
+	AuthorTime int64
+	Subject    string
+	Body       string
+}
+
+// CommitsAhead lists the commits HEAD carries over the repository's default
+// branch, oldest first: "origin/<base>..HEAD", or "<base>..HEAD" in a checkout
+// without the remote-tracking ref. A checkout still on its base yields none.
+// Unlike CurrentFeatureProgress it follows HEAD wherever it points and returns
+// each commit's body, and a base that does not resolve is an error, so a caller
+// that polls can say why it sees nothing.
+func (Client) CommitsAhead(dir string) ([]BranchCommit, error) {
+	branch, err := defaultBranch(dir)
+	if err != nil {
+		return nil, err
+	}
+	base := baseRef(dir, branch)
+	if base == "" {
+		return nil, fmt.Errorf("base branch %q resolves to no commit", branch)
+	}
+	// US (0x1f) separates the fields and RS (0x1e) ends a commit, so a body with
+	// blank lines survives intact.
+	out, err := gitBytes(dir, "log", "--reverse", "--format=%H%x1f%at%x1f%s%x1f%b%x1e", base+"..HEAD")
+	if err != nil {
+		return nil, err
+	}
+	var commits []BranchCommit
+	for _, rec := range strings.Split(string(out), "\x1e") {
+		fields := strings.SplitN(strings.TrimLeft(rec, "\n"), "\x1f", 4)
+		if len(fields) != 4 {
+			continue // the remainder after the last record separator
+		}
+		at, _ := strconv.ParseInt(fields[1], 10, 64)
+		commits = append(commits, BranchCommit{
+			SHA:        fields[0],
+			AuthorTime: at,
+			Subject:    fields[2],
+			Body:       strings.TrimSpace(fields[3]),
+		})
+	}
+	return commits, nil
 }

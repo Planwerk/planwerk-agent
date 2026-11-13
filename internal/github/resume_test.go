@@ -170,3 +170,88 @@ func TestCurrentFeatureProgressAhead(t *testing.T) {
 		t.Errorf("progress carried %d commits, want 2", len(state.Commits))
 	}
 }
+
+// TestCommitsAheadOnBase lists nothing for a checkout that is still on its base
+// branch, the state the commit watcher starts in on a fresh run.
+func TestCommitsAheadOnBase(t *testing.T) {
+	dir, _ := initResumeRepo(t)
+
+	commits, err := client.CommitsAhead(dir)
+	if err != nil {
+		t.Fatalf("CommitsAhead: %v", err)
+	}
+	if len(commits) != 0 {
+		t.Errorf("CommitsAhead = %+v, want none on the base branch", commits)
+	}
+}
+
+// TestCommitsAheadCarriesTheWholeMessage returns the branch's commits oldest
+// first, each with its subject and a body whose blank lines survive.
+func TestCommitsAheadCarriesTheWholeMessage(t *testing.T) {
+	dir, _ := initResumeRepo(t)
+	commitFeature(t, dir, testFeatureBranch, 1)
+	writeRepoFile(t, dir, "second.txt", "x\n")
+	git(t, dir, "add", ".")
+	git(t, dir, "commit", "-q", "-m", "Add the second file", "-m", "First paragraph.", "-m", "Signed-off-by: A <a@example.com>")
+
+	commits, err := client.CommitsAhead(dir)
+	if err != nil {
+		t.Fatalf("CommitsAhead: %v", err)
+	}
+	if len(commits) != 2 {
+		t.Fatalf("CommitsAhead returned %d commits, want 2: %+v", len(commits), commits)
+	}
+	if commits[0].Subject != "feature commit 1" || commits[0].Body != "" {
+		t.Errorf("first commit = %+v, want the bodiless feature commit", commits[0])
+	}
+	second := commits[1]
+	if second.Subject != "Add the second file" {
+		t.Errorf("Subject = %q, want %q", second.Subject, "Add the second file")
+	}
+	if want := "First paragraph.\n\nSigned-off-by: A <a@example.com>"; second.Body != want {
+		t.Errorf("Body = %q, want %q", second.Body, want)
+	}
+	if second.SHA != gitOut(t, dir, "rev-parse", "HEAD") {
+		t.Errorf("SHA = %q, want HEAD", second.SHA)
+	}
+	if second.AuthorTime == 0 {
+		t.Error("AuthorTime = 0, want the commit's author date")
+	}
+}
+
+// TestCommitsAheadKeepsTheAuthorTimeAcrossAnAmend pins what the commit watcher
+// identifies a commit by: an amend gives the commit a new SHA and leaves its
+// author date alone.
+func TestCommitsAheadKeepsTheAuthorTimeAcrossAnAmend(t *testing.T) {
+	dir, _ := initResumeRepo(t)
+	commitFeature(t, dir, testFeatureBranch, 1)
+	before, err := client.CommitsAhead(dir)
+	if err != nil || len(before) != 1 {
+		t.Fatalf("CommitsAhead = %+v, %v, want one commit", before, err)
+	}
+
+	writeRepoFile(t, dir, "amended.txt", "x\n")
+	git(t, dir, "add", ".")
+	git(t, dir, "commit", "-q", "--amend", "--no-edit")
+	after, err := client.CommitsAhead(dir)
+	if err != nil || len(after) != 1 {
+		t.Fatalf("CommitsAhead after the amend = %+v, %v, want one commit", after, err)
+	}
+	if after[0].SHA == before[0].SHA {
+		t.Fatal("the amend left the SHA unchanged; the test proves nothing")
+	}
+	if after[0].AuthorTime != before[0].AuthorTime || after[0].Subject != before[0].Subject {
+		t.Errorf("amended commit = %+v, want the author time and subject of %+v", after[0], before[0])
+	}
+}
+
+// TestCommitsAheadFailsWithoutABase reports a checkout whose default branch
+// cannot be resolved instead of returning an empty list, so a polling caller
+// can say why it sees no commits.
+func TestCommitsAheadFailsWithoutABase(t *testing.T) {
+	dir, _, _ := initRebaseRepo(t) // no refs/remotes/origin/HEAD
+
+	if _, err := client.CommitsAhead(dir); err == nil {
+		t.Error("CommitsAhead = nil error, want one naming the unresolved default branch")
+	}
+}
