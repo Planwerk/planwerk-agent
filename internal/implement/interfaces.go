@@ -589,6 +589,10 @@ type GitHubClient interface {
 	PrepareResume(dir string, number int) (*github.ResumeState, error)
 	CurrentFeatureProgress(dir string) (*github.ResumeState, error)
 	PushHead(dir, branch string) error
+	// CommitsAhead lists the commits HEAD carries over the base branch, oldest
+	// first and with their bodies. The commit watcher polls it to report each
+	// new commit while the run is in progress.
+	CommitsAhead(dir string) ([]github.BranchCommit, error)
 	// ChangedFiles lists the repo-relative paths the feature branch changed over
 	// the base branch, so the review pass can adaptively gate its specialist
 	// fan-out and scope the snippet gate to the changed files. It maps to the same

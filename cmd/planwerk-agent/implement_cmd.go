@@ -79,6 +79,15 @@ your checkout, and in clone mode the aborted run pushes its partial progress to
 origin so the next clone can fetch and resume it. Use --no-resume to start a
 fresh branch and disable pushing partial progress.
 
+From the implement session to the end of the run, a background watcher
+prints every new commit on the checked-out branch: its subject and message,
+its position among the commits the plan's Commit Sequence lists ("Commit
+5/20"), and the commit the plan lists next. It reads git every few seconds,
+not the session, so it reports a commit whoever made it. The position is a
+count, since the session may split or combine the planned commits; without a
+plan, or with one that lists no commits, the commits are numbered without a
+total. Disable it with --no-commit-progress.
+
 The implement session runs in Claude Code's auto mode (--permission-mode
 auto) so it can edit files, run the test suite, and commit without an
 interactive confirmation. A background classifier still vets each action and
@@ -268,6 +277,7 @@ or short form (owner/repo#123).`,
 	implementFlags.BoolVar(&implementCfg.Force, "force", false, "With --local, skip the confirmation prompt when the working tree is dirty")
 	implementFlags.BoolVar(&implementCfg.AllowUnelaborated, "allow-unelaborated", false, "Implement an issue that has not been elaborated (no Acceptance Criteria) without asking first; without it such a run asks, and a non-TTY run refuses")
 	implementFlags.BoolVar(&implementCfg.NoResume, "no-resume", false, "Start a fresh feature branch instead of resuming the commits an earlier aborted run for this issue left on its branch; also disables pushing partial progress after an abort")
+	implementFlags.BoolVar(&implementCfg.NoCommitProgress, "no-commit-progress", false, "Do not print each new commit on the feature branch (message, position among the plan's commits, next planned commit) while the run is in progress")
 	addWikiFlags(implementFlags, &wikiEnable, &wikiDisable, &wikiRef)
 	brain.register(implementFlags)
 
