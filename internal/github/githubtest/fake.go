@@ -102,6 +102,12 @@ type Fake struct {
 	ProgressState *github.ResumeState
 	ProgressErr   error
 
+	// AheadCommits is the sequence CommitsAhead answers with, one entry per
+	// call, repeating the last entry once exhausted; empty yields no commits.
+	// AheadCommitsErr fails it.
+	AheadCommits    [][]github.BranchCommit
+	AheadCommitsErr error
+
 	// PushErr fails PushHead and ForceWithLeasePush.
 	PushErr error
 
@@ -236,6 +242,7 @@ type Fake struct {
 	DefaultBranchHEADFn      func(owner, repo string) (string, error)
 	PrepareResumeFn          func(dir string, issueNumber int) (*github.ResumeState, error)
 	CurrentFeatureProgressFn func(dir string) (*github.ResumeState, error)
+	CommitsAheadFn           func(dir string) ([]github.BranchCommit, error)
 	FetchReviewThreadsFn     func(owner, repo string, number int) ([]github.ReviewThread, error)
 	SubmitPRReviewFn         func(owner, repo string, number int, commitSHA, body string, comments []github.ReviewComment) (string, error)
 	AddSubIssueFn            func(owner, name string, parentNumber, childNumber int) error
@@ -1081,6 +1088,21 @@ func (f *Fake) CurrentFeatureProgress(dir string) (*github.ResumeState, error) {
 	}
 	f.setErr(i, f.ProgressErr)
 	return f.ProgressState, f.ProgressErr
+}
+
+func (f *Fake) CommitsAhead(dir string) ([]github.BranchCommit, error) {
+	i := f.record("CommitsAhead", dir)
+	if f.CommitsAheadFn != nil {
+		commits, err := f.CommitsAheadFn(dir)
+		f.setErr(i, err)
+		return commits, err
+	}
+	f.setErr(i, f.AheadCommitsErr)
+	if f.AheadCommitsErr != nil {
+		return nil, f.AheadCommitsErr
+	}
+	commits, _ := pick(f.AheadCommits, f.Count("CommitsAhead"))
+	return commits, nil
 }
 
 // --- history ---------------------------------------------------------------
