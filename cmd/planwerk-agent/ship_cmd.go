@@ -150,6 +150,7 @@ or short form (owner/repo#123).`,
 	shipFlags.BoolVar(&implOpts.NoPlanReuse, "no-plan-reuse", false, "Always run a fresh planning session; do not reuse a plan already posted on the Sub Issue")
 	shipFlags.BoolVar(&implOpts.NoPlanComment, "no-plan-comment", false, "Do not post the generated implementation plan, or its plan review, as a comment on each Sub Issue")
 	shipFlags.BoolVar(&implOpts.NoPlanReview, "no-plan-review", false, "Skip the review of each freshly generated plan in each per–Sub Issue implement run")
+	shipFlags.BoolVar(&implOpts.NoCommitProgress, "no-commit-progress", false, "Do not print each new commit on the feature branch (message, position among the plan's commits, next planned commit) while a per–Sub Issue implement run is in progress")
 	shipFlags.StringVar(&planModel, "plan-model", claude.DefaultPlanModel, "Model for the planning session passed to Claude Code via --model (env: "+envPlanModel+")")
 	shipFlags.StringVar(&planEffort, "plan-effort", claude.DefaultPlanEffort, "Reasoning effort for the planning session passed via --effort (low, medium, high, xhigh, max; env: "+envPlanEffort+")")
 	shipFlags.StringVar(&implementModel, "implement-model", "", "Model for the implement session in each per–Sub Issue run; the other sessions stay on --claude-model (empty inherits --claude-model; env: "+envImplementModel+")")

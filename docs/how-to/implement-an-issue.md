@@ -38,6 +38,9 @@ planwerk-agent implement --no-review owner/repo#123
 # Keep the review-and-fix pass but skip its first-round specialist fan-out
 planwerk-agent implement --no-specialists owner/repo#123
 
+# Do not print each new commit while the run is in progress (on by default)
+planwerk-agent implement --no-commit-progress owner/repo#123
+
 # Propose new wiki patterns and memory pages from the run (needs --wiki)
 planwerk-agent implement --wiki owner/repo#123
 
@@ -94,6 +97,32 @@ under [How it works](#how-it-works)). Pass an exact model id (e.g.
 it precisely. Without `--implement-worker-model` the implement session writes
 the code itself, exactly as before. `ship` accepts the same two flags for its
 per–Sub Issue implement runs.
+
+## Follow the run commit by commit
+
+An implement session can run for an hour and more without printing anything
+but its heartbeat. To show how far it is, the run prints every new commit on
+the feature branch as soon as it exists, with its message, its position among
+the commits the plan lists, and the commit the plan lists next:
+
+```text
+Commit 5/20: 1a2b3c4 Add the retry budget to the poller
+
+    The poller retried forever on a 502.
+
+    Signed-off-by: Jane Doe <jane@example.com>
+
+Next per plan (6/20): Document the retry budget
+```
+
+The total is the number of items in the plan's Commit Sequence, and the
+position is the number of commits on the branch. The session may split,
+reword, or combine the planned commits, so read `5/20` as "five commits of
+about twenty", not as "plan item five is done". The watcher runs in the
+background, reads git every five seconds, and keeps running through the
+simplify, verification, and review passes, where it prints their `fixup!`
+commits. The [CLI reference](/reference/cli#implement) has the details. Pass
+`--no-commit-progress` to turn it off; `ship` takes the same flag.
 
 ## How it works
 

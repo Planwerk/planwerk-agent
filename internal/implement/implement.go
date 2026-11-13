@@ -17,6 +17,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"golang.org/x/sync/errgroup"
 
@@ -121,7 +122,14 @@ type Options struct {
 	// next commit, the implement session starts a fresh branch. It also disables
 	// pushing partial progress after an abort. Resume is on by default.
 	NoResume bool
-	Version  string
+	// NoCommitProgress disables the commit watcher that, from the implement
+	// session to the end of the run, prints every new commit on the checked-out
+	// branch with its message, its position among the commits the plan's Commit
+	// Sequence lists (5/20), and the commit the plan lists next. The watcher is
+	// on by default and reads git in the background, so it reports a commit
+	// whoever made it.
+	NoCommitProgress bool
+	Version          string
 
 	// Pattern loading mirrors review/audit/elaborate so the implementation
 	// is grounded in the same review catalog and any project-specific
@@ -229,6 +237,10 @@ type Runner struct {
 	// capture.DefaultWikiWriter; a Runner seam so the write-back can be exercised
 	// without cloning or pushing a real wiki.
 	CaptureWriter capture.WikiWriter
+	// CommitPollInterval is how often the commit watcher lists the branch's
+	// commits. Defaults to defaultCommitPollInterval; a Runner seam so a test
+	// does not wait for a tick.
+	CommitPollInterval time.Duration
 	// In is the stream the unelaborated-issue and capture write-back
 	// confirmations read from. Defaults to os.Stdin.
 	In io.Reader
@@ -399,6 +411,9 @@ func (r *Runner) PrintBarePrompt(w io.Writer, opts Options, build BarePromptBuil
 //  6. Run a Claude session inside the clone to implement the issue
 //     end-to-end (code + tests + docs), committing on a fresh feature branch —
 //     but NOT opening a pull request yet.
+//     Unless --no-commit-progress, a background watcher prints every new
+//     commit on the branch from this step to the end of the run, counted
+//     against the plan's Commit Sequence.
 //  7. Post the implementation report back onto the source issue as a comment
 //     (unless --no-report-comment), so every run — including no-op or failed
 //     ones — leaves its course of events recorded on the issue.
@@ -566,6 +581,24 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 		resumed = r.prepareResume(w, owner, name, repo.Dir, number, &ctx)
 	}
 
+	// Commit progress: from here to the end of the run a background watcher
+	// prints every new commit on the checked-out branch, counted against the
+	// commits the plan lists. It shares w with the run, so w is serialized from
+	// here on. A branch an earlier run finished implementing has no planned
+	// commit left to count against. Off with --no-commit-progress.
+	var progress *commitWatcher
+	if !opts.NoCommitProgress {
+		var planned []string
+		if resumed == nil || resumed.implReport == "" {
+			planned = PlannedCommits(ctx.Plan)
+		}
+		w = &lockedWriter{w: w}
+		progress = startCommitWatcher(w, func() ([]github.BranchCommit, error) {
+			return r.GitHub.CommitsAhead(repo.Dir)
+		}, planned, r.CommitPollInterval)
+		defer progress.stop()
+	}
+
 	// A resumed branch whose implementation report on the issue already says
 	// DONE was fully implemented by the earlier run; it stopped in one of the
 	// passes after the implement session (typically at a usage limit). Running
@@ -580,6 +613,9 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	} else {
 		var err error
 		implReport, model, err = r.Claude.Implement(repo.Dir, ctx)
+		// The session's last commits are reported before its report is printed,
+		// and what a later pass commits is no step of the plan.
+		progress.sessionDone()
 		if err != nil {
 			return fmt.Errorf("claude implement: %w", err)
 		}

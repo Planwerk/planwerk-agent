@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/planwerk/planwerk-agent/internal/doccheck"
+	"github.com/planwerk/planwerk-agent/internal/implement"
 	"github.com/planwerk/planwerk-agent/internal/report"
 )
 
@@ -745,6 +746,19 @@ func TestBuildPlanPrompt_ContainsOverScopeGate(t *testing.T) {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("plan prompt should record over-scope and escalate for context; missing %q", want)
 		}
+	}
+}
+
+// TestPlanFormatCommitSequenceParses keeps the plan format and the implement
+// command's commit progress in step: implement.PlannedCommits reads the total
+// of "Commit 5/20" out of the Commit Sequence this prompt mandates, so the
+// format's own placeholder item must parse as one commit with its subject.
+func TestPlanFormatCommitSequenceParses(t *testing.T) {
+	prompt := BuildPlanPrompt(goldenImplementContext())
+	got := implement.PlannedCommits(prompt)
+	want := []string{"<imperative subject, 72 chars or fewer>"}
+	if !slices.Equal(got, want) {
+		t.Errorf("PlannedCommits(plan prompt) = %q, want %q: the Commit Sequence format and implement.PlannedCommits have drifted apart", got, want)
 	}
 }
 

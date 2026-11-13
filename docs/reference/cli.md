@@ -685,6 +685,7 @@ planwerk-agent implement --no-plan-review owner/repo#123
 planwerk-agent implement --no-verify owner/repo#123
 planwerk-agent implement --no-simplify owner/repo#123
 planwerk-agent implement --no-review owner/repo#123
+planwerk-agent implement --no-commit-progress owner/repo#123
 planwerk-agent implement --wiki owner/repo#123
 planwerk-agent implement --wiki --no-capture owner/repo#123
 planwerk-agent implement --wiki --capture-wiki owner/repo#123
@@ -728,6 +729,7 @@ planwerk-agent implement --wiki --capture-wiki --yes owner/repo#123
 | `--force` | With `--local`, skip the confirmation prompt when the working tree is dirty | `false` |
 | `--allow-unelaborated` | Implement an issue that has not been elaborated (no Acceptance Criteria) without asking first; without it such a run asks, and a non-TTY run refuses | `false` |
 | `--no-resume` | Start a fresh feature branch instead of resuming the commits an earlier aborted run for this issue left on its branch; also disables pushing partial progress and posting the progress note after an abort | `false` |
+| `--no-commit-progress` | Do not print each new commit on the feature branch (message, position among the plan's commits, next planned commit) while the run is in progress | `false` |
 
 `--dry-run`, `--print-prompt`, `--print-bare-prompt`, and `--print-plan-prompt`
 are mutually exclusive. The implement session runs in Claude Code's auto mode
@@ -749,6 +751,43 @@ enough to compact its context can lose them from the summary. Claude Code
 rebuilds the system prompt after a compaction, so the contract is present when
 the session writes its report. `--print-prompt` output is unchanged, since the
 printed prompt already holds the same definitions.
+
+From the implement session to the end of the run, a background watcher prints
+every new commit on the checked-out branch to stdout: its abbreviated SHA and
+subject, its message, its position among the commits the plan lists under
+Commit Sequence, and the commit the plan lists next.
+
+```text
+Commit progress: 4/20 planned commits on the branch.
+Next per plan (5/20): Add the retry budget to the poller
+
+Commit 5/20: 1a2b3c4 Add the retry budget to the poller
+
+    The poller retried forever on a 502.
+
+    Signed-off-by: Jane Doe <jane@example.com>
+
+Next per plan (6/20): Document the retry budget
+```
+
+The watcher lists the commits ahead of the default branch with `git log` every
+five seconds. It does not read the session's output, so it reports a commit
+whoever made it: the implement session, one of its subagents, a later pass, or
+you in a `--local` checkout. The first line appears when the watcher starts and
+counts the commits a resumed branch already carries. The position is a count,
+not a match: the fifth commit on the branch prints as `5/20` and the plan's
+sixth item as next, whatever the session named its commits, because it may
+split, reword, or combine the planned ones. A branch with more commits than
+the plan lists prints `Commit 21 (plan: 20)`. Without a plan (`--no-plan`), or
+with a plan whose Commit Sequence lists no commits, the commits are numbered
+without a total and no next commit is named.
+
+After the implement session the plan position is dropped: a commit a later pass
+adds prints as `Commit 21:`, and a `fixup!` commit of the simplify or review
+pass prints as `Fixup commit:` without a position. Those passes rewrite the
+branch when they fold their fixups in; a rewritten commit keeps its author date
+and subject, which is what the watcher identifies a commit by, so it is not
+printed again. Pass `--no-commit-progress` to turn the watcher off.
 
 If an earlier run for this issue aborted mid-implementation (for example the
 Claude session hit its usage limit), it left commits on a feature branch. By
@@ -962,6 +1001,7 @@ planwerk-agent ship --wiki --capture-wiki --yes owner/repo#123
 | `--no-plan-reuse` | Always run a fresh planning session; do not reuse a plan already posted on the Sub Issue | `false` |
 | `--no-plan-comment` | Do not post the generated implementation plan, or its plan review, as a comment on each Sub Issue | `false` |
 | `--no-plan-review` | Skip the review of each freshly generated plan in each per–Sub Issue implement run | `false` |
+| `--no-commit-progress` | Do not print each new commit on the feature branch (message, position among the plan's commits, next planned commit) while a per–Sub Issue implement run is in progress; see [`implement`](#implement) | `false` |
 | `--plan-model` | Model for the planning session passed to Claude Code via `--model` (env: `PLANWERK_PLAN_MODEL`) | `opus` |
 | `--plan-effort` | Reasoning effort for the planning session passed via `--effort` (env: `PLANWERK_PLAN_EFFORT`) | `xhigh` |
 | `--implement-model` | Model for the implement session in each per–Sub Issue run; the other sessions stay on `--claude-model` (env: `PLANWERK_IMPLEMENT_MODEL`) | inherits `--claude-model` |
