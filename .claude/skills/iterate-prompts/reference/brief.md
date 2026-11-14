@@ -38,10 +38,19 @@ Group 1 for every prompt.
 
 ## Findings deliberately left open (label a match `known-open`, do not re-argue it)
 
-<The newest ledger's Deferred and Known-open lists, verbatim.>
+<The newest ledger's Deferred and Known-open lists, verbatim: each entry with
+its key, its `file:line`, and its quoted sentence.>
 
 ## What a finding must carry
 
+This list is the format of your report. Where your agent definition's own
+output format names other fields or fewer labels, this list holds.
+
+0. A key: lowercase kebab-case, at most six words, named after the surface and
+   the defect (`plan-next-line-on-plan-ready`), never after its position in
+   your report. The ledger and the next brief cite the finding by it, and a
+   number such as `F17` names a different finding in every run. A finding that
+   matches a `known-open` entry keeps that entry's key.
 1. `file:line` and the exact sentence quoted.
 2. The failure mode (doctrine: no-op / duplication / sediment / sprawl /
    premature completion / scattering / leading-word / prohibition /
@@ -59,7 +68,10 @@ Group 1 for every prompt.
    "unknown").
 
 Order by impact, then confidence. Lead with a one-line verdict per builder or
-file (`clean` / `N findings`). End with the smallest ordered set of edits that
+file: `clean`, `N findings`, or `not audited: <reason>` for one you did not
+read to its end (a file you could not open, a builder your context ran out
+on). Every builder and file your slice lists gets exactly one such line; a
+surface without a line counts as not audited, never as clean. End with the smallest ordered set of edits that
 clears the audit-edits, then the behavioral-changes as a separate list with
 the evidence each needs. Do not invent findings on a clean surface: say it is
 clean.

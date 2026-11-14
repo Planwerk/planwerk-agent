@@ -128,12 +128,20 @@ context is for the consolidation.
 
 Merge the extractor reports into one practice list:
 
+- Read each report's Coverage section against the group's file list in its
+  brief. A file the extractor did not read in full, or does not list, is
+  unread: send the extractor back for that file alone, continuing the same
+  agent where the session can so that it keeps its context, and when that
+  fails too, name the file in the ledger's Scope as unread. A practice list from a half-read group is not the group's practices.
 - Confirm each provenance quote is at its line in the clone; searching the
   file for the quoted text settles it without reading the file. A practice
   none of whose quotes is found goes under Dropped.
 - Fold duplicates across groups: the same practice in a tip, a report, and a
   skill is one key with every provenance line, and its authority is the
-  strongest of them.
+  strongest of them. Two extractors name one practice differently: keep the
+  key of the entry with the stronger authority, the first reported when they
+  tie, and note the other key in the ledger row so a later run matches either.
+  The folded entry keeps every condition its sources state.
 - Match the list against what is already settled: the keys of the newest
   ledger for this source, and of every other ledger under
   `.claude/practice-analyses/` and `.claude/guidance-analyses/`. A practice

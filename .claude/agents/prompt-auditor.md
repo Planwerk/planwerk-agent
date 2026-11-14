@@ -143,10 +143,18 @@ And the doctrine's "The evidence before the verdict" section:
 
 ## Output format
 
-Lead with a one-line verdict (`clean` / `N findings`). Then, for each finding:
+When a brief hands you a "What a finding must carry" list, that list is the
+format, and it replaces the fields below. Without a brief:
+
+Lead with a one-line verdict (`clean` / `N findings`, or
+`not audited: <reason>` for a builder you did not read to its end). Then, for
+each finding:
 
 - **Failure mode** — one of the six, or `information-hierarchy` /
-  `single-source-of-truth` / `leading-word` / `prohibition` / `field-order`.
+  `single-source-of-truth` / `leading-word` / `prohibition` / `field-order`,
+  or the lens that found it: `contradiction` / `prompt↔parser drift` /
+  `untrusted-input` / `target-model fit` / `verdict table` /
+  `structure↔analysis`.
 - **Location** — `file:line` and the **exact** offending sentence quoted
   verbatim.
 - **Why** — the operational test it fails, in one sentence.
@@ -155,6 +163,7 @@ Lead with a one-line verdict (`clean` / `N findings`). Then, for each finding:
   to do exactly the same thing afterward) or `behavioral-change` (alters what the
   model is asked to do — flag it as needing separate justification, never bundle
   it into an audit edit).
+- **Confidence** — high, medium, or low.
 
 End with the smallest set of edits that would clear the findings, ordered by
 confidence. If the builder is already clean, say so plainly and stop — do not

@@ -119,7 +119,11 @@ builders:
 
 ## Output format
 
-Lead with a one-line verdict per file (`clean` / `N findings`). Then, for
+When a brief hands you a "What a finding must carry" list, that list is the
+format, and it replaces the fields below. Without a brief:
+
+Lead with a one-line verdict per file (`clean` / `N findings`, or
+`not audited: <reason>` for a file you did not read to its end). Then, for
 each finding:
 
 - **Lens** and, where it applies, the doctrine failure mode.

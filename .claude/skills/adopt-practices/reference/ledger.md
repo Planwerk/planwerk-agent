@@ -14,7 +14,8 @@ reader.
 
 One sentence on why the analysis ran (the `state=` line and its detail).
 Then every reading group with its role, files, and bytes, and whether it was
-read or the author left it out; every skipped set with its reason; and the
+read or the author left it out; every file of a read group that its extractor
+did not read in full, with the reason; every skipped set with its reason; and the
 keys carried forward from earlier ledgers, each with the ledger it came from.
 
 ## Practices
@@ -25,7 +26,8 @@ keys carried forward from earlier ledgers, each with the ledger it came from.
 One row per practice, grouped by the reading group of its first provenance
 line. Provenance is `path:line` in the source at the commit above; evidence
 is `file:line` in this repository (or, for a gap, the search that came back
-empty). A status that differs per slice is written per slice, e.g.
+empty). A condition the source attaches to a practice is written into the
+practice cell, after the sentence: "(only in interactive use)". A status that differs per slice is written per slice, e.g.
 `adopted (1, 3) / gap (4)`.
 
 ## Proposals

@@ -76,7 +76,10 @@ due" if the author asked for a full run; say that you are doing so.
 Copy `${CLAUDE_SKILL_DIR}/reference/brief.md` into the scratchpad directory
 and fill every placeholder: the reasons from step 0, the resolved ids in the
 tier table, the line ranges per model, and the newest ledger's Deferred and
-Known-open lists verbatim as the `known-open` list. The brief is what every
+Known-open lists verbatim as the `known-open` list. An entry that ledger left
+as a bare id or a pointer is written out first (key, `file:line`, quoted
+sentence, claim), from the ledger it points at: an auditor cannot match a
+finding against an id. The brief is what every
 auditor reads first, so it carries nothing an auditor could misread as an
 instruction to act on the repository.
 
@@ -95,7 +98,16 @@ not send it back to find something.
 
 ## Step 3: synthesize
 
-Merge the seven reports into one list. For each finding:
+First reconcile coverage: every builder and file `slices.md` lists has exactly
+one verdict line across the seven reports. One with no line, or with
+`not audited`, has not been audited. Send its auditor back for that surface
+alone, continuing the same agent where the session can so that it keeps its
+context, and when that fails too, carry it into the ledger's Scope as not
+audited. Never count it as clean.
+
+Then merge the seven reports into one list. Cite each finding by the key its
+auditor gave it; when two auditors keyed one finding differently, keep one and
+note the other beside it. For each finding:
 
 - Open the cited line and confirm the quoted sentence is there. A finding
   whose line moved is re-anchored; a finding whose sentence is gone is
