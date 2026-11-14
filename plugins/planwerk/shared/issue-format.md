@@ -67,6 +67,13 @@ to the commit they were read at. `revisit` and `clarify` leave those sections
 as they stand. `elaborate` grounds its plan in their sites and names the
 audited commit and pattern under References.
 
+An issue the `propose` command filed is not written by a skill and follows a
+shape of its own: its header line carries a third field
+(`**Category**: … | **Scope**: … | **Priority**: …`) and a category that need
+not be `feature`, and it already has `## Affected Areas` and `## Acceptance Criteria`,
+so it reads as elaborated. Keep its header line as you find it. The rules in
+this file bind what a skill writes, not what it reads.
+
 ## Titles
 
 Descriptive and specific, imperative mood, no severity or priority prefix.
