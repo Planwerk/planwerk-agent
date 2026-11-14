@@ -390,6 +390,12 @@ marked comments, which every skill and command merges back into one document
 before reading it; `issue-format-plan.md` says why a plan's body stops there,
 and that a plan over it is split at write-back, never shortened to fit.
 
+A skill recognizes a continuation comment, and the plan `implement` posted, by
+text anyone can type. So it counts one only when you or a maintainer of the
+repository (`OWNER`, `MEMBER`, `COLLABORATOR`) wrote it, the check the commands
+apply to every issue comment they act on. A comment from anyone else that
+carries a marker stays a comment.
+
 ## Project memory
 
 A repository can keep a project memory on its GitHub Wiki: one page per
