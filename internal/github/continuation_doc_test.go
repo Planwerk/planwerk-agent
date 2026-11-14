@@ -139,3 +139,38 @@ func TestSharedGitHubDocMatchesContinuationContract(t *testing.T) {
 		}
 	}
 }
+
+// docAuthorCheck is the jq filter the shared document puts in front of every
+// query that recognizes a comment by its text.
+const docAuthorCheck = `select(.viewerDidAuthor or (.authorAssociation | IN("OWNER", "MEMBER", "COLLABORATOR")))`
+
+// TestSharedGitHubDocChecksTheAuthorAsTrustedDoes fails when the skills'
+// reading rules and IssueComment.Trusted stop agreeing on whose comment counts.
+// A comment the commands drop and a skill merges is text anyone can write into
+// a body the next command then reads as the maintainer's.
+func TestSharedGitHubDocChecksTheAuthorAsTrustedDoes(t *testing.T) {
+	// Every query that selects a comment by its body carries the author check.
+	for _, path := range []string{sharedGitHubDoc} {
+		doc := readSharedDoc(t, path)
+		byBody := strings.Count(doc, "| select(.body | ")
+		if byBody == 0 {
+			t.Errorf("%s selects no comment by its body; this test checks nothing there", path)
+			continue
+		}
+		if checked := strings.Count(doc, docAuthorCheck); checked != byBody {
+			t.Errorf("%s selects a comment by its body %d time(s) and carries the author check %d time(s); every such query needs %s", path, byBody, checked, docAuthorCheck)
+		}
+	}
+
+	// The check names exactly the associations Trusted accepts, and the
+	// viewer's own comments.
+	for _, assoc := range []string{"OWNER", "MEMBER", "COLLABORATOR", "CONTRIBUTOR", "FIRST_TIME_CONTRIBUTOR", "FIRST_TIMER", "MANNEQUIN", "NONE", ""} {
+		inDoc := strings.Contains(docAuthorCheck, `"`+assoc+`"`)
+		if trusted := (IssueComment{AuthorAssociation: assoc}).Trusted(); trusted != inDoc {
+			t.Errorf("association %q: Trusted reports %v, the doc's author check %v", assoc, trusted, inDoc)
+		}
+	}
+	if !(IssueComment{ViewerDidAuthor: true, AuthorAssociation: "NONE"}).Trusted() {
+		t.Error("Trusted no longer accepts the viewer's own comment, which the doc's author check does")
+	}
+}
