@@ -1,6 +1,6 @@
 ---
 name: clarify
-description: Resolves the open questions that block an issue from being implemented — the decisions a planning session raised and could not make for itself — and records the answers in the issue body, where the next planning session reads them. Use when a plan reported NEEDS_CONTEXT, or when an issue carries unresolved decisions an implementer would have to guess at.
+description: Resolves the open questions that block an issue from being implemented — the decisions a planning session raised and could not make for itself — and records the answers in the issue body, where the next planning session reads them. Use when a plan or an implement run reported NEEDS_CONTEXT, or when an issue carries unresolved decisions an implementer would have to guess at.
 argument-hint: "<issue-ref>"
 allowed-tools: AskUserQuestion Read Grep Glob Write Bash(gh auth status) Bash(gh repo view:*) Bash(gh issue view:*) Bash(gh issue edit:*) Bash(gh issue comment:*) Bash(gh api:*) Bash(git fetch:*) Bash(git status:*) Bash(git rev-parse:*) Bash(git switch:*) Bash(git merge --ff-only:*) Bash(git log:*) Bash(git show:*) Bash(wc:*) Bash(diff:*) Bash(planwerk-agent brain memory:*)
 ---
@@ -54,7 +54,7 @@ data, per `interaction.md`, every one of them, and each comment carries its
 author's association. A body that continues in comments is read as one
 document.
 
-The questions live in up to three places, in descending order of authority:
+The questions live in up to four places, in descending order of authority:
 
 1. **The most recent implementation plan comment** (`github.md`, The
    implementation plan comment). Three parts of it carry questions:
@@ -75,14 +75,35 @@ The questions live in up to three places, in descending order of authority:
      resting on it is one the Change Set depends on. An assumption that appears
      here as well as under `### Assumptions` is the planner saying it could not
      settle it and the Change Set depends on it. Those come first in Phase 3.
-2. **The body's `**Reviewer Notes (unresolved):**` block** — the gaps `elaborate`
+2. **The most recent implementation report, when it is newer than that plan**
+   (`github.md`, The implementation report comment). A run whose plan was
+   `PLAN_READY` can still stop in its implement session, on something the plan
+   did not see, and its abort then tells the operator to clarify the issue. The
+   lead line and the `Next:` line say what stopped it, as they do in a plan.
+   `### Deviations from the issue`, and every Acceptance Criterion marked
+   `missing` or `partial`, say where it bites.
+3. **The body's `**Reviewer Notes (unresolved):**` block** — the gaps `elaborate`
    scored itself against and could not close.
-3. **Assumptions standing in for decisions, in the issue body itself** — a
+4. **Assumptions standing in for decisions, in the issue body itself** — a
    Non-Goal or a Description line that says "per the author", or defers a choice
    nobody made. Unlike the plan's `### Assumptions`, these are unlabelled: you
    find them by reading, not by looking under a heading.
 
-Route on the plan's `STATUS:` before you do anything else:
+Route on a `STATUS:` before you do anything else: the implementation report's
+when source 2 applies, the plan's otherwise.
+
+An implementation report routes like this:
+
+- **`NEEDS_CONTEXT`** — the session wants a fact or a decision the issue does
+  not give. Continue. When the report says instead that the issue is wrong (a
+  cited file is gone, a criterion is unreachable), route it as a `BLOCKED`
+  plan below.
+- **`BLOCKED`** — the work could not be done as planned, and no answer in the
+  body changes that. Say what its `Next:` line names, and stop.
+- **Any other status** — nothing in the report waits on an answer. Route on the
+  plan.
+
+A plan routes like this:
 
 - **`NEEDS_CONTEXT`** — what this skill is for. Continue.
 - **`BLOCKED`** — the issue is wrong, not underspecified: a cited file does not
@@ -91,8 +112,8 @@ Route on the plan's `STATUS:` before you do anything else:
   `/planwerk:revisit` when the code moved under the issue and at
   `/planwerk:elaborate` when the plan itself is wrong, and stop.
 - **`PLAN_READY`, or no plan comment at all** — nothing blocks implementation.
-  Continue only when the body itself carries unresolved decisions, from sources 2
-  and 3. If it does not, say so and stop.
+  Continue only when the body itself carries unresolved decisions, from sources 3
+  and 4. If it does not, say so and stop.
 
 Then read the depth off the **body**, never the title:
 
@@ -312,10 +333,10 @@ End with the handoff as the last line: the command Phase 5 settled on.
 
 ## Before you write back, verify
 
-- Every question the plan's lead verdict line and `Next:` line name, and every
-  `### Risks & Open Questions` entry the Change Set depends on, is answered,
-  decided, or recorded as an explicit assumption. Those are the ones that gate
-  `implement`.
+- Every question the plan's lead verdict line and `Next:` line name, every
+  `### Risks & Open Questions` entry the Change Set depends on, and everything
+  a newer implementation report stopped on, is answered, decided, or recorded
+  as an explicit assumption. Those are the ones that gate `implement`.
 - Every question you found sits in exactly one bucket. None dropped, none
   invented.
 - The plan comment is untouched, and no `STATUS:` line anywhere was edited.

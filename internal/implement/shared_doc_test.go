@@ -22,19 +22,29 @@ func readSharedGitHubDoc(t *testing.T) string {
 	return string(raw)
 }
 
-// TestSharedGitHubDocFindsThePlanAsTheCommandDoes fails when the query the
-// skills run stops selecting on the heading and the footer marker
-// mostRecentPlanComment requires.
-func TestSharedGitHubDocFindsThePlanAsTheCommandDoes(t *testing.T) {
+// TestSharedGitHubDocFindsThePlanAndReportAsTheCommandDoes fails when the
+// queries the skills run stop selecting on the heading and the footer marker
+// mostRecentPlanComment and latestSessionAccount require, or stop printing the
+// creation time the skills order a plan and a report by.
+func TestSharedGitHubDocFindsThePlanAndReportAsTheCommandDoes(t *testing.T) {
 	doc := readSharedGitHubDoc(t)
-	// The doc's footer text stops before the link's URL.
-	footer, _, found := strings.Cut(planCommentMarker, "(")
-	if !found {
-		t.Fatalf("planCommentMarker %q no longer ends in a Markdown link", planCommentMarker)
-	}
-	query := `select(.body | contains("` + planHeading + `") and contains("` + footer + `"))] | last | select(. != null) | "\(.createdAt)\n\(.body)"'`
-	if !strings.Contains(doc, query) {
-		t.Errorf("%s does not read the most recent plan comment with\n%s", sharedGitHubDoc, query)
+	for _, tc := range []struct {
+		kind    string
+		heading string
+		marker  string
+	}{
+		{"plan", planHeading, planCommentMarker},
+		{"report", reportHeading, reportCommentMarker},
+	} {
+		// The doc's footer text stops before the link's URL.
+		footer, _, found := strings.Cut(tc.marker, "(")
+		if !found {
+			t.Fatalf("the %s comment marker %q no longer ends in a Markdown link", tc.kind, tc.marker)
+		}
+		query := `select(.body | contains("` + tc.heading + `") and contains("` + footer + `"))] | last | select(. != null) | "\(.createdAt)\n\(.body)"'`
+		if !strings.Contains(doc, query) {
+			t.Errorf("%s does not read the most recent %s comment with\n%s", sharedGitHubDoc, tc.kind, query)
+		}
 	}
 }
 

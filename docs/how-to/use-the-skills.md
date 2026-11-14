@@ -226,7 +226,9 @@ changes the issue's depth, and never closes anything. See
 
 `implement` plans before it writes code, and a planning session that hits a
 question it has no authority to answer reports `STATUS: NEEDS_CONTEXT` and aborts
-the run. The skill reads that posted plan, and answers from the repository every
+the run; an implement session that stops the same way on a `PLAN_READY` plan
+leaves its report instead. The skill reads that posted plan or report, and
+answers from the repository every
 question the repository answers — the planner reports what *it* could not settle,
 which is not the same as what a human must decide. Only the genuine forks reach
 you, largest blast radius first, each one saying which option the plan already
