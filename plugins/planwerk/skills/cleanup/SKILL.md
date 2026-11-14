@@ -244,8 +244,8 @@ elaborate, or delete anything.
   exactly one of `Small`, `Medium`, `Large`.
 - Every path in the body exists at the surveyed commit, and every refutation
   search the body cites was actually run.
-- Every phase has a key, an imperative title, a scope, and at least one
-  finding; every `blocked by` key exists.
+- Every phase has a key, an imperative title, the `Scope` / `Blocked by` line
+  under its heading, and at least one finding; every `blocked by` key exists.
 - The `## Open decisions` items, if any, are checkboxes pairing a proposed
   answer with what must verify it.
 - The body is English, whatever language the conversation used.

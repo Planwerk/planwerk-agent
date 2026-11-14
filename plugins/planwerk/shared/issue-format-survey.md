@@ -24,6 +24,8 @@ What this specific dead and duplicated code costs, quantified.
 
 ### 1 — <imperative phase title>
 
+**Scope**: Small | **Blocked by**: none
+
 One paragraph describing the package by what it removes or consolidates —
 this paragraph is what the Sub Issue split from it will say. Then the
 findings it carries:
@@ -32,6 +34,8 @@ findings it carries:
   belongs to.
 
 ### 2 — <next phase>
+
+**Scope**: Medium | **Blocked by**: 1
 
 ## Open decisions
 
@@ -46,6 +50,12 @@ _Surveyed by [planwerk-agent](https://github.com/planwerk/planwerk-agent) with C
 - `## Cleanup phases` is the work-package enumeration `meta` reads for its
   coverage check: one `###` section per package, in the order the phases must
   land.
+- The number in a phase's heading is its key. The line under the heading
+  carries what the survey decided for the package: its `Scope` (`Small`,
+  `Medium`, or `Large`) and the keys of the phases it is blocked by, `none`
+  when it can start at once. `meta` takes both over as they stand: the author
+  approved them with the survey, and a split that derived them a second time
+  could file an order nobody saw.
 - The findings under a phase name files and symbols, pinned to the surveyed
   commit the Description records. This is a deliberate exception to the
   draft-depth no-paths rule: a draft describes work by its behavior, and dead

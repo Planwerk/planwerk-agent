@@ -191,9 +191,11 @@ only where a footer already exists.
 Skip this phase entirely when Phase 1 found no Meta Issue to work from.
 
 Using the sibling list the neighborhood query returned, search every **open**
-sibling's body for a reference to a decision's code — `D1`, "per D3", the
-parenthetical `(D8)`, or prose that restates what the recommendation said
-before you confirmed it.
+sibling's body for a reference to a decision's code — `D1`, "assuming D3" as
+`meta` writes it, "per D3", the parenthetical `(D8)` — or prose that restates
+what the recommendation said before you confirmed it. A sibling filed by hand
+or by an earlier split may cite no code at all, so the prose is read either
+way.
 
 - **Confirmed as written** — the sibling's citation already matches. No edit.
 - **Corrected, or Contested and decided differently than the sibling assumed**

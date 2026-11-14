@@ -56,7 +56,16 @@ the skill runs six checks and reports the result of each:
 4. **Vertical slices.** Each Sub Issue delivers something on its own.
 5. **Draft depth.** No Sub Issue names a source file, a symbol, an acceptance
    criterion, or an implementation step.
-6. **Keys unique and ordered**, matching the order the Meta Issue implies.
+6. **Keys unique and ordered**, matching the order the Meta Issue implies. A
+   scope or a blocker the Meta Issue states for a package, as a survey Meta
+   Issue from `/planwerk:cleanup` does under each phase heading, is taken over
+   as it stands.
+
+When the Meta Issue carries a block of open decisions, a Sub Issue that builds
+on one of its recommendations cites the item's code and calls it assumed, so
+[`/planwerk:decide`](/how-to/settle-meta-issue-decisions) can find and correct
+it once the decision is settled. The skill then names `/planwerk:decide` as the
+next step, before any Sub Issue is elaborated or shipped.
 
 A split that fails a check is re-cut and re-checked. Only a passing split is
 presented, together with the Sub Issue table, an ASCII dependency graph, and one
