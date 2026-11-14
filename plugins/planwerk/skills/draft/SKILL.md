@@ -67,6 +67,11 @@ and the attribution footer with the `Drafted by` verb.
 Describe the work by its behavior and the interfaces it touches. Name no source
 files (`house-style.md`, How long a file path stays true).
 
+A question the author left unanswered goes into the Description, as one
+sentence that names the open choice and says it is undecided, per the author
+(`interaction.md`, Record what was never decided). `elaborate` and `clarify`
+read the body and find it there; neither reads this conversation.
+
 Give it a descriptive, specific title in imperative mood.
 
 ## Phase 4 — Check for duplicates
@@ -114,9 +119,9 @@ Print every new issue's URL.
 Name the next step: `/planwerk:elaborate <issue-ref>`, in a fresh session
 (`/clear` or a new `claude`), turns this description into an engineering plan
 grounded in the repository. A counterpart stays at draft depth until the issue
-blocking it has a plan, so name it as the later step, not the next one. A
-question the author left unanswered lands here, as an unresolved decision
-(`interaction.md`, Record what was never decided).
+blocking it has a plan, so name it as the later step, not the next one. Name
+every question the author left unanswered as an unresolved decision, with the
+sentence of the body that records it.
 
 ## Before you file, verify
 
@@ -126,6 +131,7 @@ question the author left unanswered lands here, as an unresolved decision
 - No file path, symbol, acceptance criterion, or implementation step appears
   anywhere in the body.
 - The body is English, whatever language the conversation used.
+- Every question the author left unanswered is a sentence of the Description.
 - The footer is the last line and names your model id when the runtime states
   one, else `with Claude`.
 - Every counterpart you are filing is named in the map and met its condition, and
