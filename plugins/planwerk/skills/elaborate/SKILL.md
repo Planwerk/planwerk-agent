@@ -244,6 +244,11 @@ time can carry a plan written against the body you just replaced. When the
 plan landed as a comment or nowhere, the last line says that `implement` still
 reads the body as it was.
 
+Before that line, say once that `/planwerk:implement <issue-ref>`,
+in a fresh session (`/clear` or a new `claude`), takes the same step with the
+author watching, for a change small enough that the unattended run costs more
+than it catches. That skill writes its own plan and reuses none.
+
 ## Before you write back, verify
 
 - The seven sections appear in the documented order, under the preserved
