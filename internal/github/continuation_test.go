@@ -3,6 +3,7 @@ package github
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -281,6 +282,68 @@ func TestCompleteIssueBody_MergesOnlyWhenContinued(t *testing.T) {
 	if err := CompleteIssueBody(lister, failing); err == nil || !strings.Contains(err.Error(), "continues in comments") {
 		t.Fatalf("a continued body whose comments cannot be read must fail loudly, got %v", err)
 	}
+}
+
+// relationLister serves continuation comments per issue number and records
+// which issues were asked for.
+type relationLister struct {
+	comments map[int][]IssueComment
+	failing  map[int]bool
+	asked    []int
+}
+
+func (l *relationLister) ListIssueComments(_, _ string, number int) ([]IssueComment, error) {
+	l.asked = append(l.asked, number)
+	if l.failing[number] {
+		return nil, errors.New("offline")
+	}
+	return l.comments[number], nil
+}
+
+// TestCompleteRelationBodies locks what a planning session reads of its
+// neighborhood: a continued Meta Issue, sibling, or child is merged whole, a
+// plain body costs no read, and a body whose parts cannot be read stays as it
+// was instead of failing the run.
+func TestCompleteRelationBodies(t *testing.T) {
+	parts := SplitIssueBody(longDocument(150))
+	if len(parts) != 3 {
+		t.Fatalf("expected the sample to split into 3 parts, got %d", len(parts))
+	}
+	conts := []IssueComment{{Body: parts[1]}, {Body: parts[2]}}
+	lister := &relationLister{
+		comments: map[int][]IssueComment{10: conts, 12: conts, 20: conts},
+		failing:  map[int]bool{13: true},
+	}
+	rel := &IssueRelations{
+		Parent: &Issue{Owner: "o", Name: "r", Number: 10, Body: parts[0]},
+		Siblings: []Issue{
+			{Owner: "o", Name: "r", Number: 11, Body: "plain sibling"},
+			{Owner: "o", Name: "r", Number: 12, Body: parts[0]},
+			{Owner: "o", Name: "r", Number: 13, Body: parts[0]},
+		},
+		Children: []Issue{{Owner: "o", Name: "r", Number: 20, Body: parts[0]}},
+	}
+
+	CompleteRelationBodies(lister, rel)
+
+	for _, merged := range []*Issue{rel.Parent, &rel.Siblings[1], &rel.Children[0]} {
+		if IsContinued(merged.Body) || !strings.Contains(merged.Body, "## Acceptance Criteria") {
+			t.Errorf("issue #%d: the body was not merged whole", merged.Number)
+		}
+	}
+	if rel.Siblings[0].Body != "plain sibling" {
+		t.Errorf("a plain body changed: %q", rel.Siblings[0].Body)
+	}
+	if rel.Siblings[2].Body != parts[0] {
+		t.Error("a body whose comments could not be read must stay as it was, marker included")
+	}
+	if want := []int{10, 12, 13, 20}; !slices.Equal(lister.asked, want) {
+		t.Errorf("comments read for issues %v, want %v: a plain body costs no read", lister.asked, want)
+	}
+
+	// No neighborhood is not an error.
+	CompleteRelationBodies(lister, nil)
+	CompleteRelationBodies(lister, &IssueRelations{})
 }
 
 func firstLine(s string) string {

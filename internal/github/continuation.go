@@ -2,6 +2,7 @@ package github
 
 import (
 	"fmt"
+	"log/slog"
 	"regexp"
 	"sort"
 	"strconv"
@@ -414,6 +415,37 @@ func CompleteIssueBody(gh IssueCommentLister, issue *Issue) error {
 	}
 	issue.Body = merged
 	return nil
+}
+
+// CompleteRelationBodies reads whole every related issue whose body continues
+// in comments: the Meta Issue, its other Sub Issues, and the issue's own
+// children. A survey Meta Issue is the long one in practice, and a planning
+// session that reads its first part alone sees some of the phases and none of
+// the open decisions.
+//
+// The neighborhood is context, fetched best-effort, so this is too: a related
+// body whose parts cannot be read keeps the part it has, with its marker and
+// pointer line, and the failure is logged. Nothing is read for a body that
+// does not say it continues.
+func CompleteRelationBodies(gh IssueCommentLister, rel *IssueRelations) {
+	if rel == nil {
+		return
+	}
+	complete := func(issue *Issue) {
+		if err := CompleteIssueBody(gh, issue); err != nil {
+			slog.Warn("could not read a related issue's continuation comments; its body stays truncated in the planning context",
+				"issue", fmt.Sprintf("%s/%s#%d", issue.Owner, issue.Name, issue.Number), "err", err)
+		}
+	}
+	if rel.Parent != nil {
+		complete(rel.Parent)
+	}
+	for i := range rel.Siblings {
+		complete(&rel.Siblings[i])
+	}
+	for i := range rel.Children {
+		complete(&rel.Children[i])
+	}
 }
 
 // IssueBodyWriter is the set of writes PublishIssueBody needs.

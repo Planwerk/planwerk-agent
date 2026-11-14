@@ -164,7 +164,11 @@ where one is available, and never inside a fenced code block. Every command
 that reads an issue body (`implement`, `elaborate`, `prompt`) finds the parts by
 those markers and merges them back into one document before it reads a
 section, and the skills do the same. A part the body announces and no comment
-carries aborts the run rather than planning against a truncated issue. A
+carries aborts the run rather than planning against a truncated issue.
+`implement` and `elaborate` merge the Meta Issue, the sibling Sub Issues, and
+the issue's own Sub Issues the same way before they go into the planning
+context; there a part that cannot be read is logged and the related body stays
+as it was, since the neighborhood is context the run can do without. A
 rewrite reuses the existing continuation comments in place and deletes the ones
 a shorter body no longer needs, so the thread never carries a stale part.
 `--post-comment` posts an oversized elaboration as a run of comments the same

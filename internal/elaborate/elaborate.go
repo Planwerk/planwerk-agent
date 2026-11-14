@@ -150,6 +150,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	if relations.Parent != nil {
 		slog.Info("issue is a sub-issue; including Meta and sibling context", "issue", number, "meta", relations.Parent.Number, "siblings", len(relations.Siblings))
 	}
+	github.CompleteRelationBodies(r.GitHub, relations)
 
 	headSHA, err := r.GitHub.DefaultBranchHEAD(owner, name)
 	if err != nil {
