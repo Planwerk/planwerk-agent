@@ -486,6 +486,7 @@ func (r *Runner) Run(w io.Writer, opts Options) error {
 	if relations.Parent != nil {
 		slog.Info("issue is a sub-issue; including Meta and sibling context in the plan", "issue", number, "meta", relations.Parent.Number, "siblings", len(relations.Siblings))
 	}
+	github.CompleteRelationBodies(r.GitHub, relations)
 	ctx.MetaIssue = relations.Parent
 	ctx.SiblingIssues = relations.Siblings
 	ctx.ChildIssues = relations.Children
