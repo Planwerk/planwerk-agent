@@ -506,7 +506,11 @@ interactively, in your own checkout. A reported bug whose cause nobody knows
 yet enters at `/planwerk:diagnose`, and its pull request's checks are
 `/planwerk:fix`'s from there. A pull request whose base moved under it goes
 through `/planwerk:rebase` before `/planwerk:fix`, so a check that is red only
-because of the drift is never repaired as if the code were wrong. Or `/planwerk:meta` → `planwerk-agent ship` to drive every Sub
+because of the drift is never repaired as if the code were wrong. `fix` holds
+that line itself: it leaves such a check alone and names `/planwerk:rebase`.
+`rebase` hands a failure it did not cause to `fix` through the report it posts
+on the pull request, which `fix` reads at its start beside its own earlier
+reports. Or `/planwerk:meta` → `planwerk-agent ship` to drive every Sub
 Issue to merged in dependency order. `ship` reads the native sub-issue and
 `blocked by` relationships `/planwerk:meta` writes, which is why the skill
 records the dependency graph as real GitHub relationships and not as prose.

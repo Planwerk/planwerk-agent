@@ -137,7 +137,24 @@ out-of-scope reach, or a fix it could not exercise locally. `BLOCKED` is a
 successful run — a placebo commit costs the next person a bisect.
 
 It then offers to post the report as a PR comment, exactly as the command does,
-so a pull request carries one report format whichever repaired it.
+so a pull request carries one report format whichever repaired it. The skill
+recommends posting: its next run starts in a fresh session, reads the reports
+on the pull request before it reads a log, and does not repeat a repair that
+left the same check red for the same cause. It reads a posted
+[rebase report](/how-to/rebase-a-pr-interactively) the same way, and starts with
+the failure that report handed over. A report counts only when you or a
+maintainer posted it.
+
+## When the base moved
+
+A workflow triggered by `pull_request` tests the merge of your head into the
+base, not the head alone. So a check can go red because the base moved, while
+the branch as you have it passes. The skill counts the base commits the branch
+lacks, and when a failure does not reproduce on the head and the upstream range
+touched what the log cites, it changes nothing for that check: it reports
+`BLOCKED`, or `DONE_WITH_CONCERNS` when it repaired other checks, and names
+`/planwerk:rebase` as the next step. A commit written against the old base
+would repair a tree nobody merges.
 
 ## Next steps
 

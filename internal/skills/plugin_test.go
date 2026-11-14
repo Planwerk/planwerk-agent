@@ -246,11 +246,12 @@ func TestPluginSkillsReadTheProjectMemory(t *testing.T) {
 }
 
 // freshSessionSkills are the skills whose closing handoff names a /planwerk:
-// skill: another or, for review, itself again. The other five hand off to a
-// command or to nobody: elaborate, revisit, and clarify to
-// `planwerk-agent implement`, which starts its own sessions, fix to the author
-// or `planwerk-agent fix`, and humanize ends without a next skill.
-var freshSessionSkills = []string{"audit", "cleanup", "decide", "diagnose", "draft", "implement", "meta", "rebase", "review"}
+// skill: another or, for review, itself again. For fix that is the stop at a
+// check the moved base turned red, which it hands to /planwerk:rebase. The
+// other four hand off to a command or to nobody: elaborate, revisit, and
+// clarify to `planwerk-agent implement`, which starts its own sessions, and
+// humanize ends without a next skill.
+var freshSessionSkills = []string{"audit", "cleanup", "decide", "diagnose", "draft", "fix", "implement", "meta", "rebase", "review"}
 
 // freshSessionHandoff is the phrase each of those handoffs carries. A chain of
 // skills run in one conversation reaches compaction sooner, and a compaction can
@@ -258,7 +259,7 @@ var freshSessionSkills = []string{"audit", "cleanup", "decide", "diagnose", "dra
 const freshSessionHandoff = "in a fresh session (`/clear` or a new `claude`)"
 
 // TestPluginSkillsHandOffInAFreshSession pins the phrase in every
-// skill-to-skill handoff, so the nine copies cannot drift apart. The body is
+// skill-to-skill handoff, so the ten copies cannot drift apart. The body is
 // matched with its whitespace collapsed, since the phrase may break across a
 // wrapped line.
 func TestPluginSkillsHandOffInAFreshSession(t *testing.T) {
