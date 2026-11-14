@@ -324,8 +324,14 @@ Then ask where the work lands, with one `AskUserQuestion`, and recommend the
 first:
 
 - **Draft pull request** — push the branch and open a draft PR whose
-  description walks the commits in order and links the issue with
-  `Closes #N`. This is what the command's finalize step produces.
+  description links the issue with `Closes #N`, walks the commits in order,
+  and then carries what a reviewer cannot read off the diff: every deviation
+  from the approved plan with its reason, or "none"; every Acceptance
+  Criterion no command here exercised, with what would exercise it; every
+  question the author declined; and what Phase 5 lists under Noticed but not
+  touching. This is what the command's finalize step produces, and it is all a
+  later session has: `/planwerk:fix` reads the description, never this
+  conversation.
 - **Ready pull request** — the same, not draft, when the author wants review
   to start immediately.
 - **Leave the branch local** — nothing is pushed. The verdict is then at most
@@ -392,6 +398,8 @@ single thing that unblocks the work.
   against the list in `commits.md`, hunk by hunk.
 - The work is complete: no follow-up issue invented, no second pull request, no
   remainder quietly dropped.
+- The pull request description carries every deviation, every criterion not
+  exercised here, and every declined question the report will name.
 - Every commit ends with the trailers `commits.md` asks for, and carries no
   `Co-authored-by`. The push targets the feature branch only.
 - The pull request closes the issue with `Closes #N`, qualified per

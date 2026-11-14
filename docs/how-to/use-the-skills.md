@@ -348,8 +348,10 @@ GitHub only when you ask it to post its report, and then one comment behind
 your yes. `/planwerk:humanize` never writes to GitHub at all: it edits files in
 your working tree, and confirms the file list first when it inferred one
 rather than being given it. If you skip a question, the skill records it as an unresolved decision
-in the issue — or, for `fix`, as a concern in its report — rather than quietly
-picking an answer.
+in the issue, in the pull request description for `implement`, or, for `fix`,
+as a concern in its report, rather than quietly picking an answer. It lands in
+what the run writes, not only in the closing message, because the next skill
+starts in a fresh session and reads the issue or the pull request.
 
 ## One format, every issue skill
 

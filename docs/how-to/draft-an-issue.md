@@ -73,7 +73,9 @@ A brief written that way survives the code moving underneath it.
 If an answer leaves the description ambiguous, the skill names what is missing
 and asks once more. It stops there. Tell it to skip the questions and it asks the
 two that matter most, explains why, then proceeds. Anything you leave unanswered
-is recorded as an unresolved decision rather than silently guessed.
+is recorded as an unresolved decision rather than silently guessed: one sentence
+in the issue's Description that names the open choice, where `elaborate` and
+`clarify` find it.
 
 ## Counterparts are filed in the repo that owns them
 

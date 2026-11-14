@@ -190,9 +190,12 @@ proceed with what you have.
 
 If the author skips a question, interrupts, or tells you to move on, do not
 silently default to your recommendation. Carry the open question into the
-artifact — into Non-Goals, into a "per the author" note, or into your closing
-message as **unresolved decisions**. A decision nobody made is not a decision you
-get to make quietly.
+artifact the run writes: into Non-Goals, into a "per the author" note in the
+issue body, into the pull request description. Your closing message names it
+too, as an **unresolved decision**, and is its only record just when the run
+wrote no artifact at all: the next skill starts in a fresh session and reads
+the artifact, never this conversation. A decision nobody made is not a decision
+you get to make quietly.
 
 ## The asking is done when nothing is left open
 
