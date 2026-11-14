@@ -247,9 +247,9 @@ func TestPluginSkillsReadTheProjectMemory(t *testing.T) {
 
 // freshSessionSkills are the skills whose closing handoff names a /planwerk:
 // skill: another or, for review, itself again. The other five hand off to a
-// command or to nobody: revisit and clarify to `planwerk-agent implement`,
-// which starts its own sessions, fix to the author or `planwerk-agent fix`, and
-// elaborate and humanize end without a next skill.
+// command or to nobody: elaborate, revisit, and clarify to
+// `planwerk-agent implement`, which starts its own sessions, fix to the author
+// or `planwerk-agent fix`, and humanize ends without a next skill.
 var freshSessionSkills = []string{"audit", "cleanup", "decide", "diagnose", "draft", "implement", "meta", "rebase", "review"}
 
 // freshSessionHandoff is the phrase each of those handoffs carries. A chain of
@@ -266,6 +266,40 @@ func TestPluginSkillsHandOffInAFreshSession(t *testing.T) {
 		body := strings.Join(strings.Fields(readSkill(t, name)), " ")
 		if !strings.Contains(body, freshSessionHandoff) {
 			t.Errorf("skill %q: its handoff to the next skill lacks %q", name, freshSessionHandoff)
+		}
+	}
+}
+
+// bodyRewritingSkills are the skills that replace the body of an issue that may
+// already carry an implementation plan.
+var bodyRewritingSkills = []string{"clarify", "decide", "elaborate", "revisit"}
+
+// TestBodyRewritingSkillsHandOffByThePlanComment pins the rule that keeps a
+// plan written against the old body from being implemented: each of these
+// skills takes its closing command from the one section of github.md that
+// tells a plan comment a run re-checks from one it reuses verbatim, and that
+// section names both commands.
+func TestBodyRewritingSkillsHandOffByThePlanComment(t *testing.T) {
+	const section = "`github.md`, The implementation plan comment"
+	for _, name := range bodyRewritingSkills {
+		body := strings.Join(strings.Fields(readSkill(t, name)), " ")
+		if !strings.Contains(body, section) {
+			t.Errorf("skill %q: its handoff does not take the command from %s", name, section)
+		}
+	}
+
+	raw, err := os.ReadFile(filepath.Join(pluginRoot, "shared", "github.md"))
+	if err != nil {
+		t.Fatalf("reading github.md: %v", err)
+	}
+	doc := string(raw)
+	for _, want := range []string{
+		"### The implementation plan comment",
+		"| none, or one with the `planned-for` line | `planwerk-agent implement <issue-ref>` |",
+		"| one without the line | `planwerk-agent implement <issue-ref> --no-plan-reuse` |",
+	} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("github.md lacks %q", want)
 		}
 	}
 }

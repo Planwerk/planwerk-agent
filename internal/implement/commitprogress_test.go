@@ -397,7 +397,7 @@ func TestRun_CommitProgressHasNoPlanOnAFullyImplementedResume(t *testing.T) {
 		Dir:         t.TempDir(),
 		ResumeState: &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "aaaaaaa1", Subject: "Add the foo parser"}}},
 		IssueComments: []github.IssueComment{
-			{Body: formatPlanComment(planWithCommits, "")},
+			{Body: formatPlanComment(planWithCommits, "", "")},
 			{Body: formatReportComment(validImplReport, "")},
 		},
 	}

@@ -68,8 +68,11 @@ If an implementation plan planwerk-agent posted on an earlier run is already
 on the issue (for example a run that planned but was aborted before
 implementing), it is reused verbatim by default: the planning session is
 skipped, no duplicate plan comment is posted, and the reused plan is still held
-to the same STATUS check. Use --no-plan-reuse to force a fresh planning session
-when the issue has changed and the posted plan has gone stale.
+to the same STATUS check. The plan comment records a fingerprint of the issue's
+title and body: once the issue reads differently, the posted plan is passed
+over and the run plans afresh, saying so. A plan comment posted before the
+fingerprint existed is reused whatever the issue says by now; use
+--no-plan-reuse to force a fresh planning session for it, or for any plan.
 
 If an earlier run for this issue aborted mid-implementation (for example the
 session hit its usage limit), it left commits on a feature branch. By default the

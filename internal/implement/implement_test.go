@@ -765,7 +765,7 @@ func TestRun_NoPlanReviewSkipsTheReviewer(t *testing.T) {
 // is reused without a planning session or a review.
 func TestRun_ReusedPlanIsNotReviewed(t *testing.T) {
 	gh, cl, fp, fr, r := newPlanReviewRunner(t, &PlanReview{Score: 2}, nil)
-	gh.IssueComments = []github.IssueComment{{Body: formatPlanComment(reviewedFirstPlan, "")}}
+	gh.IssueComments = []github.IssueComment{{Body: formatPlanComment(reviewedFirstPlan, "", "")}}
 
 	if err := r.Run(&bytes.Buffer{}, Options{IssueRef: "owner/repo#42"}); err != nil {
 		t.Fatalf("Run returned %v, want nil", err)
@@ -1100,7 +1100,7 @@ func TestRun_ResumeFeedsPriorSessionAccount(t *testing.T) {
 		Dir:         t.TempDir(),
 		ResumeState: &github.ResumeState{Branch: testResumeBranch, Commits: []github.Commit{{SHA: "abc1234", Subject: "wip"}}},
 		IssueComments: []github.IssueComment{
-			{Body: formatPlanComment("## Implementation Plan (issue #42)\n\nSTATUS: PLAN_READY", "")},
+			{Body: formatPlanComment("## Implementation Plan (issue #42)\n\nSTATUS: PLAN_READY", "", "")},
 			{Body: formatProgressNoteComment(account, 42, "claude-opus-5-5")},
 		},
 	}
@@ -1150,7 +1150,7 @@ func TestRun_ResumeAccountFetchFailureIsNonFatal(t *testing.T) {
 // stripped, and neither a plan comment nor a hand-written comment quoting a
 // heading is ever mistaken for an account.
 func TestMostRecentSessionAccount(t *testing.T) {
-	plan := formatPlanComment("## Implementation Plan (issue #42)\n\nSTATUS: PLAN_READY", "m")
+	plan := formatPlanComment("## Implementation Plan (issue #42)\n\nSTATUS: PLAN_READY", "m", "")
 	note := formatProgressNoteComment("note ONE body", 42, "m")
 	newerNote := formatProgressNoteComment("note TWO body", 42, "m")
 	partialReport := "## Implementation Report (issue #42)\n\nSTATUS: PARTIAL"
@@ -1459,7 +1459,8 @@ func TestStripPlanCommentFooter(t *testing.T) {
 		in   string
 		want string
 	}{
-		{"round-trips a formatted plan comment", formatPlanComment(plan, ""), plan},
+		{"round-trips a formatted plan comment", formatPlanComment(plan, "", ""), plan},
+		{"drops the fingerprint line with the footer", formatPlanComment(plan, "m", issueFingerprint("t", "b")), plan},
 		{"no footer returned trimmed", "  " + plan + "  ", plan},
 		{"trailing separator and whitespace stripped", plan + "\n\n---\n\n" + planCommentFooter("") + "\n\n", plan},
 	}
@@ -1487,8 +1488,8 @@ func TestMostRecentPlanComment(t *testing.T) {
 		{
 			name: "picks the last comment carrying both markers",
 			in: []github.IssueComment{
-				{Body: formatPlanComment(planA, "")},
-				{Body: formatPlanComment(planB, "")},
+				{Body: formatPlanComment(planA, "", "")},
+				{Body: formatPlanComment(planB, "", "")},
 			},
 			want: planB,
 		},
@@ -1510,7 +1511,7 @@ func TestMostRecentPlanComment(t *testing.T) {
 		{
 			name: "skips a later report to find the earlier plan",
 			in: []github.IssueComment{
-				{Body: formatPlanComment(planA, "")},
+				{Body: formatPlanComment(planA, "", "")},
 				{Body: reportComment},
 			},
 			want: planA,
@@ -1523,7 +1524,7 @@ func TestMostRecentPlanComment(t *testing.T) {
 		{
 			name: "skips a later plan review to find the earlier plan",
 			in: []github.IssueComment{
-				{Body: formatPlanComment(planA, "")},
+				{Body: formatPlanComment(planA, "", "")},
 				{Body: planReviewComment},
 			},
 			want: planA,
@@ -1536,7 +1537,7 @@ func TestMostRecentPlanComment(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := mostRecentPlanComment(tc.in); got != tc.want {
+			if got, _ := mostRecentPlanComment(tc.in); got != tc.want {
 				t.Errorf("mostRecentPlanComment() = %q, want %q", got, tc.want)
 			}
 		})
@@ -1555,7 +1556,7 @@ func TestMostRecentPlanComment_SurvivesModelChange(t *testing.T) {
 
 	// Detection keys on the model-independent marker, so a plan posted under one
 	// model id is still found and stripped regardless of the current run's model.
-	got := mostRecentPlanComment([]github.IssueComment{{Body: postedUnderFable}})
+	got, _ := mostRecentPlanComment([]github.IssueComment{{Body: postedUnderFable}})
 	if got != plan {
 		t.Errorf("mostRecentPlanComment() = %q, want the plan stripped of its footer %q", got, plan)
 	}
@@ -1569,7 +1570,7 @@ func TestRun_ReusesExistingPlan(t *testing.T) {
 	gh := &githubtest.Fake{
 		Issue:         sampleIssue(),
 		Dir:           t.TempDir(),
-		IssueComments: []github.IssueComment{{Body: formatPlanComment(plan, "")}},
+		IssueComments: []github.IssueComment{{Body: formatPlanComment(plan, "", "")}},
 	}
 	cl := &fakeClaude{report: validImplReport}
 	fp := &fakePlanner{plan: "FRESH PLAN should not be used"}
@@ -1608,7 +1609,7 @@ func TestRun_NoPlanReuseForcesFreshPlan(t *testing.T) {
 	gh := &githubtest.Fake{
 		Issue:         sampleIssue(),
 		Dir:           t.TempDir(),
-		IssueComments: []github.IssueComment{{Body: formatPlanComment(posted, "")}},
+		IssueComments: []github.IssueComment{{Body: formatPlanComment(posted, "", "")}},
 	}
 	cl := &fakeClaude{report: validImplReport}
 	fp := &fakePlanner{plan: "## Implementation Plan (issue #42)\n\nfresh\n\nSTATUS: PLAN_READY"}
@@ -1639,7 +1640,7 @@ func TestRun_ReusedPlanEscalationAborts(t *testing.T) {
 			gh := &githubtest.Fake{
 				Issue:         sampleIssue(),
 				Dir:           t.TempDir(),
-				IssueComments: []github.IssueComment{{Body: formatPlanComment(plan, "")}},
+				IssueComments: []github.IssueComment{{Body: formatPlanComment(plan, "", "")}},
 			}
 			cl := &fakeClaude{report: "unused"}
 			fp := &fakePlanner{plan: "unused"}
@@ -1672,7 +1673,7 @@ func TestRun_NoPlanBeatsReuse(t *testing.T) {
 	gh := &githubtest.Fake{
 		Issue:         sampleIssue(),
 		Dir:           t.TempDir(),
-		IssueComments: []github.IssueComment{{Body: formatPlanComment(posted, "")}},
+		IssueComments: []github.IssueComment{{Body: formatPlanComment(posted, "", "")}},
 	}
 	cl := &fakeClaude{report: validImplReport}
 	fp := &fakePlanner{plan: "unused"}
@@ -4242,7 +4243,7 @@ func TestRun_NoPlanningSessionWritesNoMemory(t *testing.T) {
 		comments []github.IssueComment
 	}{
 		{name: "planning is skipped with --no-plan", noPlan: true},
-		{name: "a plan posted on the issue is reused", comments: []github.IssueComment{{Body: formatPlanComment(plan, "")}}},
+		{name: "a plan posted on the issue is reused", comments: []github.IssueComment{{Body: formatPlanComment(plan, "", "")}}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -5574,7 +5575,7 @@ func TestRun_BrainSurfaceIsResolvedForThePlanningSessionOnly(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			gh := &githubtest.Fake{Issue: sampleIssue(), Dir: t.TempDir()}
 			if tc.posted {
-				gh.IssueComments = []github.IssueComment{{Body: formatPlanComment(plan, "")}}
+				gh.IssueComments = []github.IssueComment{{Body: formatPlanComment(plan, "", "")}}
 			}
 			cl := &fakeClaude{report: validImplReport}
 			fp := &fakePlanner{plan: plan}

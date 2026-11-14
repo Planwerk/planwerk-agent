@@ -110,10 +110,26 @@ gh issue view <number> --repo <owner/repo> --json comments \
 ```
 
 It prints the comment's creation time, then its body, and nothing when the
-issue carries no plan. A later run reuses the most recent such comment
-verbatim, whatever the body says by then. A skill that changes an issue's body
-therefore reports whether one exists, because the next run must then start
-with `--no-plan-reuse` to plan against the new body.
+issue carries no plan. A later run reuses the most recent such comment in
+place of planning again, and whether it still does so after the body changed
+depends on the comment's last line:
+
+- **It ends with `<!-- planwerk-agent:planned-for sha256:… -->`.** That line
+  records the title and body the plan was written against. A run that finds
+  the issue reading differently passes the plan over and plans afresh.
+- **It carries no such line.** An earlier build posted it, and a run reuses it
+  verbatim, whatever the body says by then.
+
+A skill that replaces an issue's body therefore reads the plan comment and
+ends on the command that fits:
+
+| Plan comment | The next run |
+|--------------|--------------|
+| none, or one with the `planned-for` line | `planwerk-agent implement <issue-ref>` |
+| one without the line | `planwerk-agent implement <issue-ref> --no-plan-reuse` |
+
+With the second, say why: the posted plan was written against the body as it
+stood before the rewrite, and a bare run would implement it.
 
 ## Referring to another repository
 
