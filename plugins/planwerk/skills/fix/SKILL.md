@@ -44,6 +44,10 @@ command has to guess at every fork in Phase 4 and you can ask.
   for them is worse than reporting them.
 - It never loops on CI: one push, then a verdict. `planwerk-agent fix` is the
   loop.
+- It never repairs what the moved base broke. A check that is red only because
+  the base branch moved under the pull request is `/planwerk:rebase`'s: the
+  rebase brings the base in, and a commit written against the old base repairs
+  a tree nobody will merge.
 - It never merges, closes, relabels, or rewrites the base branch's commits.
 
 ## Phase 1 — Establish the pull request, and that you are standing on it
@@ -76,6 +80,23 @@ introduces code its own patterns flag has traded one finding for another.
 Read the project memory per `memory.md`. A repair that contradicts a recorded
 decision trades one finding for another, the same as one a review pattern
 flags.
+
+Then read what earlier runs left on the pull request, and how far the base has
+moved:
+
+```bash
+git rev-list --count HEAD..origin/<base>     # base commits the branch lacks
+```
+
+and the reports per `github-checks.md`. Two of their entries bear on this run:
+
+- **A Fix Report that names the check you are about to repair.** That repair
+  was pushed and the check is red again. When the log shows the same root
+  cause, the approach was wrong: say so in Phase 4, and never apply it a
+  second time.
+- **A Rebase Report whose Adjustments line hands a failure to this skill.** It
+  reproduced on the tip before the rebase, so the moved base did not cause it.
+  Start the diagnosis there.
 
 ## Phase 2 — Enumerate what is red, and read every log to the bottom
 
@@ -111,7 +132,11 @@ because each has a different repair and only one of them is a code change:
 
 - **It reproduces.** Good. You now have the loop that tells you when you are done.
 - **It passes locally and fails in CI.** Environment, test ordering, a version
-  skew, a race, or a flake. Name which, from evidence.
+  skew, a race, a flake, or the base. Name which, from evidence. A workflow
+  triggered by `pull_request` tests the merge of the head into the base, so
+  when Phase 1 counted base commits the branch lacks, CI ran code you are not
+  looking at. The evidence for the base is the upstream range touching what the
+  log cites: `git log --oneline HEAD..origin/<base> -- <path>`.
 - **It cannot run here at all.** A missing secret, a service the sandbox has no
   network for. Say so, and never claim a fix you could not exercise.
 
@@ -156,6 +181,14 @@ option shape `interaction.md` gives under "One decision, one question":
 4. **A dependency the log directly implicates.** Bump, pin, or work around it —
    with the transitive cost of each. A dependency the log does **not** implicate
    is not touched at all, and is not a question.
+
+One finding is neither a repair nor a fork: **the base moved, and that is what
+turned the check red.** The head passes here, and the upstream range changed
+what the failing step cites. Change nothing for that check. When it is the only
+red one, stop at `BLOCKED` and name `/planwerk:rebase <pr-ref>`,
+in a fresh session (`/clear` or a new `claude`), on the `Next:` line; when
+other checks are red for reasons of their own, repair those and report this one
+as a concern with the same next step.
 
 ## Phase 5 — Apply, verify, and cut
 
@@ -251,6 +284,7 @@ Next: <on any verdict but DONE only: the single action a human takes next; omit 
 `DONE` means every check was fixed and verified, and the repair was pushed.
 `DONE_WITH_CONCERNS` means the repair is complete with a reservation a human
 must see — an out-of-scope reach, a fix you could not exercise locally, a
+check left red for `/planwerk:rebase` because the base moved, a
 repair left in the working tree, which nothing has pushed and no check has run
 against, a push the author declined, a push `origin` rejected, a flake
 re-run in place of a repair, or a fork the author declined to answer; say
@@ -260,10 +294,12 @@ which. `BLOCKED` means you could not make progress.
 Stopping at `BLOCKED` is a successful run. Bad work is worse than no work, and a
 placebo commit costs the next person a bisect.
 
-Then offer to post the report as a PR comment, and say what happens next: the
-checks re-run on the pushed SHA, and if the same check fails for the same root
-cause, the approach was wrong and repeating it will not help. Hand that back to
-the author, or to `planwerk-agent fix <pr-ref>` for the unattended loop.
+Then offer to post the report as a PR comment, and recommend it: the next run
+of this skill starts in a fresh session and learns what this one tried from
+that comment alone. Say what happens next: the checks re-run on the pushed
+SHA, and if the same check fails for the same root cause, the approach was
+wrong and repeating it will not help. Hand that back to the author, or to
+`planwerk-agent fix <pr-ref>` for the unattended loop.
 
 ## Before you push, verify
 

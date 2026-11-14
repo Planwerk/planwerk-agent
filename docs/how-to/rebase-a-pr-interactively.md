@@ -171,7 +171,9 @@ STATUS: <DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT>
 `DONE_WITH_CONCERNS` means the rebase is complete with a reservation you must
 see: a gate that could not run here, a dropped commit, a pre-existing failure
 handed to `fix`, or a push you declined. It then offers to post the report as a
-PR comment.
+PR comment, and recommends it when the report hands a failure to `fix`:
+`/planwerk:fix` starts in a fresh session and learns of the handover from that
+comment.
 
 ## Next steps
 

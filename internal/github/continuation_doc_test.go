@@ -17,6 +17,9 @@ import (
 const (
 	sharedIssueFormatDoc = "../../plugins/planwerk/shared/issue-format.md"
 	sharedGitHubDoc      = "../../plugins/planwerk/shared/github.md"
+	// sharedGitHubChecksDoc carries the pull request reads of the fix and
+	// rebase skills.
+	sharedGitHubChecksDoc = "../../plugins/planwerk/shared/github-checks.md"
 )
 
 func readSharedDoc(t *testing.T, path string) string {
@@ -149,8 +152,9 @@ const docAuthorCheck = `select(.viewerDidAuthor or (.authorAssociation | IN("OWN
 // A comment the commands drop and a skill merges is text anyone can write into
 // a body the next command then reads as the maintainer's.
 func TestSharedGitHubDocChecksTheAuthorAsTrustedDoes(t *testing.T) {
-	// Every query that selects a comment by its body carries the author check.
-	for _, path := range []string{sharedGitHubDoc} {
+	// Every query that selects a comment by its body carries the author check,
+	// on an issue (github.md) and on a pull request (github-checks.md).
+	for _, path := range []string{sharedGitHubDoc, sharedGitHubChecksDoc} {
 		doc := readSharedDoc(t, path)
 		byBody := strings.Count(doc, "| select(.body | ")
 		if byBody == 0 {
