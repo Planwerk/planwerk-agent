@@ -40,6 +40,12 @@ Write that enumeration down; Phase 3 checks your split against it.
 If the issue names no work packages at all, it may not be a Meta Issue. Say what
 you see and ask before proceeding.
 
+Note a decisions block when the body carries one: a checklist whose items each
+pair a proposed answer with something still unverified, under a heading that
+names decisions, a spike, or open questions, each item with a short code such
+as `D1`. It is a work package only when the Meta Issue lists it among them. A
+survey Meta Issue's `## Open decisions` is not one, and gets no Sub Issue.
+
 Then run the neighborhood query from `github-relations.md`. A Meta Issue split
 once already has children, and its top-level `subIssues` lists them. Match each
 existing child to the work package it covers, by its title and, where the title
@@ -90,7 +96,15 @@ Two rules govern how many Sub Issues you carve, and they do not conflict:
   ones. Never let the breakdown sprawl.
 
 Where the Meta Issue implies an order, preserve it rather than inventing your
-own.
+own. Where it states a package's scope or what blocks it, take that over as it
+stands: a survey Meta Issue does on the line under each phase heading
+(`issue-format-survey.md`), and the author approved it there.
+
+A Sub Issue whose Description rests on a recommendation from the decisions
+block says so. It states the recommendation as assumed, not as settled, and
+cites the item's code ("assuming D3"). `/planwerk:decide` finds the Sub Issues
+it must correct by that code; one that restates a recommendation as fact is one
+it cannot find.
 
 Carve each Sub Issue as a **vertical slice**: it cuts end-to-end through every
 layer it touches and is demoable on its own, rather than a horizontal layer (all
@@ -122,9 +136,11 @@ state.
    Sub Issue whose answer is "nothing until its sibling lands" is a horizontal
    layer — re-cut it.
 5. **Draft depth.** No Sub Issue body names a source file, a symbol, an
-   acceptance criterion, or an implementation step.
+   acceptance criterion, or an implementation step. A body that builds on an
+   item of the decisions block cites its code and calls it assumed.
 6. **Keys unique and ordered.** Keys are unique, and their form matches the order
-   the Meta Issue implies.
+   the Meta Issue implies. A scope or a blocker the Meta Issue states for a
+   package is the one its Sub Issue carries.
 7. **Foreign repositories are real and warranted.** Every `repo` you named exists
    (`gh repo view <owner/repo>`) and is either named in the map or named by the
    Meta Issue itself. A repository you inferred from a package's subject matter
@@ -230,7 +246,12 @@ whether the Meta body was synced. Name every failure explicitly.
 When any Sub Issue landed in another repository, say so, and that `ship`
 reports it rather than drives it (`cross-repo.md`, Wiring the two together).
 
-End with the next step as the last line: each Sub Issue is at draft depth, so
+End with the next step as the last line. When the Meta Issue carries a
+decisions block with an item still open, that step is
+`/planwerk:decide <meta-issue-ref>`, in a fresh session (`/clear` or a new
+`claude`), and it comes before anything else: a Sub Issue planned or shipped
+before its decision is settled is built on a guess. Otherwise each Sub Issue
+is at draft depth, so
 `/planwerk:elaborate <sub-issue-ref>`, in a fresh session (`/clear` or a new
 `claude`), plans one when the author is ready, and
 `planwerk-agent ship <meta-issue-ref>` drives them all in dependency order.

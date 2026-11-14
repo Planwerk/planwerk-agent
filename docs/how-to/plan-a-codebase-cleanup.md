@@ -61,7 +61,9 @@ The skill carves the fewest compact phases, orders mechanical deletions
 before the consolidations they dissolve (a deleted twin is duplication that
 no longer needs consolidating), and records a `blocked by` edge only where a
 phase touches code an earlier one deletes. Every phase leaves the tree green
-on its own.
+on its own. Each phase's heading is followed by a `**Scope**` / `**Blocked by**`
+line, so [`/planwerk:meta`](/how-to/split-a-meta-issue) files the sizes and the
+order you approved here instead of working them out a second time.
 
 The findings under each phase name files and symbols, pinned to the surveyed
 commit. That is a deliberate exception to the draft-depth no-paths rule: dead
