@@ -29,6 +29,15 @@ That message names a step that had no tool behind it. The plan is posted on the
 issue, often thousands of words long, with the two questions that actually block
 the work buried among risks that need no answer at all. `clarify` is that step.
 
+A run can also stall one step later. Its plan was `PLAN_READY`, the implement
+session found something the plan did not see, and the run ends with "the
+implement session reported NEEDS_CONTEXT … review the report above and clarify
+the issue". The skill reads that implementation report the same way: when it is
+newer than the most recent plan and stopped at `NEEDS_CONTEXT`, its lead line,
+its `Next:` line, its deviations, and its unmet criteria are where the
+questions come from. A report at `BLOCKED` says the work could not be done as
+planned; the skill names the report's next step and stops.
+
 ## Most open questions are not questions
 
 `NEEDS_CONTEXT` reports what a planning session could not settle inside its own
