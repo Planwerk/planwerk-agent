@@ -657,8 +657,15 @@ recorded on the issue.
 
 A plan planwerk-agent already posted on the issue (from an earlier run that
 planned but was aborted before implementing) is reused by default: the planning
-session is skipped and no duplicate plan comment is posted. Use `--no-plan-reuse`
-to force a fresh planning session when the posted plan has gone stale.
+session is skipped and no duplicate plan comment is posted. The plan is reused
+only for the issue it was planned against: its comment ends with
+`<!-- planwerk-agent:planned-for sha256:… -->`, a fingerprint of the issue's
+title and body, and a run that finds the issue reading differently passes the
+posted plan over, says so, and plans afresh. Line endings, trailing whitespace,
+and a ticked Acceptance Criterion do not change the fingerprint. A plan comment
+without that line was posted by an earlier build and is reused whatever the
+issue says by now; `--no-plan-reuse` forces a fresh planning session for it, or
+for any plan.
 
 A plan the run generates fresh is reviewed before any code is written: a second
 fresh, read-only session on the planning model and effort checks it against the

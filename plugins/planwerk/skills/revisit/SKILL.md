@@ -228,14 +228,13 @@ body, under Non-Goals or as a stated assumption (`interaction.md`, Record what
 was never decided).
 
 End with the next step as the last line. **Current** hands off to
-`planwerk-agent implement <issue-ref>`. **Stale** hands off to the same
-command, with `--no-plan-reuse` when Phase 1
-found a plan comment: a bare run reuses that plan verbatim, and it was written
-against the body as it stood before your correction. **Re-scoped** hands off to
-the author to re-read first, because the shape of the work changed, and names
-`planwerk-agent implement <issue-ref> --no-plan-reuse` as what follows when a
-plan comment exists. **Obsolete** hands off to the author to close: `revisit`
-does not close issues.
+`planwerk-agent implement <issue-ref>`. **Stale** hands off to the command
+`github.md`, The implementation plan comment, gives for the plan comment Phase
+1 found: a plan written against the body as it stood before your correction
+must not be implemented. **Re-scoped** hands off to the author to re-read
+first, because the shape of the work changed, and names that same command as
+what follows. **Obsolete** hands off to the author to close: `revisit` does not
+close issues.
 
 ## Before you write back, verify
 

@@ -20,9 +20,9 @@ question under `### Risks & Open Questions`, sets `STATUS: NEEDS_CONTEXT`, and
 the run aborts before a line is written:
 
 ```
-the implementation plan already posted on issue #42 reported NEEDS_CONTEXT;
-review the plan above and clarify the issue, then rerun with --no-plan-reuse to
-plan afresh
+the implementation plan already posted on issue #42 reported NEEDS_CONTEXT, and
+the issue reads as it did then; review the plan above and clarify the issue,
+then rerun: a run plans afresh once the issue body has changed
 ```
 
 That message names a step that had no tool behind it. The plan is posted on the
@@ -121,15 +121,21 @@ not ready. Hand-flipping its `STATUS:` line to `PLAN_READY` would ship a plan
 whose change set contradicts the decision you just made — precisely the failure
 the gate exists to prevent.
 
-A corrected body earns a fresh plan. The handoff is the command the abort message
-already names:
+A corrected body earns a fresh plan, and `implement` gives it one by itself:
 
 ```
-planwerk-agent implement owner/repo#42 --no-plan-reuse
+planwerk-agent implement owner/repo#42
 ```
 
-Without `--no-plan-reuse`, `implement` finds the stale plan comment, re-checks its
-status, and aborts exactly as before.
+The plan comment ends with a fingerprint of the title and body it was planned
+against (`<!-- planwerk-agent:planned-for sha256:… -->`). The run finds the body
+changed, passes the posted plan over, and plans afresh.
+
+A plan comment posted before that line existed carries no fingerprint, and
+`implement` reuses it whatever the body says: it re-checks the old status and
+aborts exactly as before. The skill reads the plan comment and names
+`planwerk-agent implement owner/repo#42 --no-plan-reuse` as the handoff in that
+case.
 
 ## What it will not do
 
@@ -151,7 +157,7 @@ recommendation.
 ## Where it sits in the pipeline
 
 `/planwerk:elaborate` → `planwerk-agent implement` → (`NEEDS_CONTEXT`) →
-`/planwerk:clarify` → `planwerk-agent implement --no-plan-reuse`.
+`/planwerk:clarify` → `planwerk-agent implement`.
 
 `clarify` is reactive: it answers a plan that already ran and stopped. That
 separates it from [`/planwerk:revisit`](/how-to/revisit-an-issue), which is

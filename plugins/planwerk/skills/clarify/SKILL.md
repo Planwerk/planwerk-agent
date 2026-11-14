@@ -253,12 +253,7 @@ body is not folded in.
 ## Phase 5 — Leave the stale plan alone, and say so
 
 The plan comment still reports `NEEDS_CONTEXT`, and it still will after you
-write. `implement` finds the most recent plan comment, reuses it, re-checks its
-`STATUS:`, and aborts with:
-
-> the implementation plan already posted on issue #N reported NEEDS_CONTEXT;
-> review the plan above and clarify the issue, then rerun with --no-plan-reuse to
-> plan afresh
+write.
 
 **Never edit that `STATUS:` line, and never edit the plan.** A decision that
 changed the change set makes the plan *wrong*, not ready. Flipping the verdict by
@@ -266,14 +261,16 @@ hand would ship a plan whose Change Set contradicts the decision the author just
 made — the exact failure the `NEEDS_CONTEXT` gate exists to prevent. The plan is
 the planner's output; a corrected body earns a fresh one.
 
-The handoff is therefore the command the abort message already names:
+Whether the next `implement` run plans afresh by itself depends on the plan
+comment: `github.md`, The implementation plan comment, says how to tell, and
+gives the command for each case. That command is the handoff. Say it out loud
+in Phase 7: against a plan comment without the `planned-for` line, a bare
+`implement` reuses the plan, re-checks its `STATUS:`, aborts as it did before,
+and the author concludes the skill did nothing.
 
-```
-planwerk-agent implement <issue-ref> --no-plan-reuse
-```
-
-Say it out loud in Phase 7. An author who runs a bare `implement` after a
-successful `clarify` hits the same abort and concludes the skill did nothing.
+When the answers landed as a comment, or nowhere, the body is as it was and so
+is the plan's verdict: say that no run gets past it until the body carries the
+answers.
 
 ## Phase 6 — Show it, then write back
 
@@ -311,8 +308,7 @@ repository settled versus the author. Then state, in this order:
 - Whether the answers invalidated the posted plan. That is not a failed run — it
   is the run working.
 
-End with the handoff as the last line:
-`planwerk-agent implement <issue-ref> --no-plan-reuse`.
+End with the handoff as the last line: the command Phase 5 settled on.
 
 ## Before you write back, verify
 

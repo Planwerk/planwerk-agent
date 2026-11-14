@@ -10,6 +10,8 @@
 package implement
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -975,9 +977,15 @@ func (r *Runner) confirmUnelaborated(w io.Writer, fullName string, number int) e
 // looks for an implementation plan planwerk-agent already posted on the source
 // issue — left by an earlier run that planned but was aborted before
 // implementing — and reuses it verbatim, skipping the expensive planning
-// session and posting no duplicate comment. --no-plan-reuse forces a fresh
-// planning session instead, for a plan that has gone stale because the issue
-// changed after it was posted.
+// session and posting no duplicate comment.
+//
+// A plan is reused only for the issue it was planned against. The comment
+// records a fingerprint of the issue's title and body (issueFingerprint); when
+// the issue reads differently by now — a clarify, revisit, decide, or elaborate
+// pass rewrote the body — the posted plan is passed over and the run plans
+// afresh, saying so. A plan comment an older build posted carries no
+// fingerprint and is reused whatever the body says; --no-plan-reuse forces a
+// fresh planning session for that one, and for any other reason.
 //
 // A reused plan is held to the same bar as a fresh one: it is printed for the
 // operator and run through planEscalation, so a previously posted STATUS:
@@ -993,16 +1001,25 @@ func (r *Runner) preparePlan(w io.Writer, opts Options, owner, name, dir string,
 		if err != nil {
 			return fmt.Errorf("reading issue comments to reuse a posted plan: %w (rerun with --no-plan-reuse to plan afresh, or --no-plan to skip planning)", err)
 		}
-		if plan := mostRecentPlanComment(comments); plan != "" {
+		plan, plannedFor := mostRecentPlanComment(comments)
+		switch {
+		case plan == "":
+			slog.Info("no reusable plan on issue; planning fresh", "issue", ctx.IssueNumber)
+		case plannedFor != "" && plannedFor != issueFingerprint(ctx.IssueTitle, ctx.IssueBody):
+			_, _ = fmt.Fprintf(w, "\nThe implementation plan posted on issue #%d was written against an earlier title or body of the issue; planning afresh.\n", ctx.IssueNumber)
+			slog.Info("posted plan is stale; planning fresh", "issue", ctx.IssueNumber)
+		default:
 			_, _ = fmt.Fprintf(w, "\nReusing the implementation plan already posted on issue #%d:\n%s\n", ctx.IssueNumber, plan)
 			if status := planEscalation(plan); status != "" {
+				if plannedFor != "" {
+					return fmt.Errorf("the implementation plan already posted on issue #%d reported %s, and the issue reads as it did then; review the plan above and clarify the issue, then rerun: a run plans afresh once the issue body has changed", ctx.IssueNumber, status)
+				}
 				return fmt.Errorf("the implementation plan already posted on issue #%d reported %s; review the plan above and clarify the issue, then rerun with --no-plan-reuse to plan afresh", ctx.IssueNumber, status)
 			}
 			ctx.Plan = plan
 			slog.Info("reused existing plan from issue", "issue", ctx.IssueNumber)
 			return nil
 		}
-		slog.Info("no reusable plan on issue; planning fresh", "issue", ctx.IssueNumber)
 	}
 	return r.runPlanning(w, opts, owner, name, dir, ctx, memory)
 }
@@ -1023,21 +1040,66 @@ func planComplete(plan string) bool {
 }
 
 // mostRecentPlanComment returns the body — footer stripped — of the most recent
-// comment that planwerk-agent posted as an implementation plan, or "" when no
-// comment is one. A plan comment is identified by carrying BOTH the
+// comment that planwerk-agent posted as an implementation plan, with the
+// fingerprint of the issue it was planned against, or "" when no comment is
+// one. The fingerprint is "" for a plan an older build posted without one. A
+// plan comment is identified by carrying BOTH the
 // "## Implementation Plan" heading and the plan attribution footer marker;
 // requiring both keeps a report comment (reportCommentFooter + "## Implementation
 // Report") from ever being mistaken for a plan. Matching on the model-independent
 // planCommentMarker keeps detection working across model changes. gh lists
 // comments oldest-first, so the walk runs newest-first and returns the first match.
-func mostRecentPlanComment(comments []github.IssueComment) string {
+func mostRecentPlanComment(comments []github.IssueComment) (plan, plannedFor string) {
 	for i := len(comments) - 1; i >= 0; i-- {
 		body := comments[i].Body
 		if strings.Contains(body, planHeading) && strings.Contains(body, planCommentMarker) {
-			return stripPlanCommentFooter(body)
+			return stripPlanCommentFooter(body), plannedBodyFingerprint(body)
 		}
 	}
+	return "", ""
+}
+
+// plannedBodyMarkerFmt is the line a plan comment ends with, under its footer:
+// the fingerprint of the issue the plan was written against. It is an HTML
+// comment so the rendered plan stays as it was, and it sits below the footer so
+// stripPlanCommentFooter drops it with the footer. The skills read it by its
+// prefix (plugins/planwerk/shared/github.md, The implementation plan comment):
+// a plan comment that carries it needs no --no-plan-reuse after a body change.
+const plannedBodyMarkerFmt = "<!-- planwerk-agent:planned-for sha256:%s -->"
+
+var plannedBodyMarkerRe = regexp.MustCompile(`<!-- planwerk-agent:planned-for sha256:([0-9a-f]{64}) -->`)
+
+// plannedBodyFingerprint reads the fingerprint a plan comment records below its
+// footer, "" when it records none. Only the text after the footer marker
+// counts, so a plan that quotes the marker line in its own text records
+// nothing by it.
+func plannedBodyFingerprint(comment string) string {
+	i := strings.LastIndex(comment, planCommentMarker)
+	if i < 0 {
+		return ""
+	}
+	if m := plannedBodyMarkerRe.FindStringSubmatch(comment[i:]); m != nil {
+		return m[1]
+	}
 	return ""
+}
+
+// checkedBoxRe matches a ticked task-list item at the start of a line.
+var checkedBoxRe = regexp.MustCompile(`(?m)^(\s*[-*+] )\[[xX]\]`)
+
+// issueFingerprint is the SHA-256 of the issue as the planning session reads
+// it: the title and the whole body, continuation comments merged. Three edits
+// leave it unchanged, because none of them changes what there is to plan: the
+// line endings GitHub returns, trailing whitespace, and a ticked Acceptance
+// Criterion checkbox.
+func issueFingerprint(title, body string) string {
+	lines := strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n")
+	for i, line := range lines {
+		lines[i] = strings.TrimRight(line, " \t")
+	}
+	body = checkedBoxRe.ReplaceAllString(strings.TrimSpace(strings.Join(lines, "\n")), "${1}[ ]")
+	sum := sha256.Sum256([]byte(strings.TrimSpace(title) + "\n\n" + body))
+	return hex.EncodeToString(sum[:])
 }
 
 // stripPlanCommentFooter reverses formatPlanComment: it drops the "---"
@@ -1113,7 +1175,7 @@ func (r *Runner) runPlanning(w io.Writer, opts Options, owner, name, dir string,
 	}
 	_, _ = fmt.Fprintf(w, "\nImplementation plan:\n%s\n", plan)
 	if status := planEscalation(plan); status != "" {
-		r.postPlanComment(w, opts, owner, name, ctx.IssueNumber, plan, model)
+		r.postPlanComment(w, opts, owner, name, planCtx, plan, model)
 		return fmt.Errorf("planning session reported %s; review the plan above and clarify the issue, or rerun with --no-plan", status)
 	}
 	if !opts.NoPlanReview && r.PlanReviewer != nil {
@@ -1122,7 +1184,7 @@ func (r *Runner) runPlanning(w io.Writer, opts Options, owner, name, dir string,
 			return err
 		}
 	}
-	r.postPlanComment(w, opts, owner, name, ctx.IssueNumber, plan, model)
+	r.postPlanComment(w, opts, owner, name, planCtx, plan, model)
 	ctx.Plan = plan
 	slog.Info("planning complete", "issue", ctx.IssueNumber)
 	return nil
@@ -1188,7 +1250,7 @@ func (r *Runner) reviewAndRevisePlan(w io.Writer, opts Options, owner, name, dir
 	}
 	_, _ = fmt.Fprintf(w, "\nRevised implementation plan:\n%s\n", revised)
 	if status := planEscalation(revised); status != "" {
-		r.postPlanComment(w, opts, owner, name, n, revised, revisedModel)
+		r.postPlanComment(w, opts, owner, name, planCtx, revised, revisedModel)
 		return "", "", fmt.Errorf("the revised planning session reported %s; review the plan above and clarify the issue, or rerun with --no-plan", status)
 	}
 	return revised, revisedModel, nil
@@ -1211,25 +1273,34 @@ func planCommentFooter(model string) string {
 
 // postPlanComment posts the finished implementation plan as a comment on the
 // source issue, so the plan that drives the implement session is recorded
-// where reviewers and later runs can read it. Disabled by --no-plan-comment.
+// where reviewers and later runs can read it. The comment records the
+// fingerprint of the issue the plan was written against (ctx's title and
+// body), which preparePlan compares before it reuses the plan. Disabled by
+// --no-plan-comment.
 //
 // Posting is best-effort: a failure to reach GitHub is logged and surfaced to
 // the operator but never aborts the run — the plan is already in hand and the
 // implement session can still proceed on it.
-func (r *Runner) postPlanComment(w io.Writer, opts Options, owner, name string, number int, plan, model string) {
+func (r *Runner) postPlanComment(w io.Writer, opts Options, owner, name string, ctx Context, plan, model string) {
 	if opts.NoPlanComment {
 		return
 	}
-	github.PostBestEffort(w, "implementation plan", fmt.Sprintf("issue #%d", number), func() (string, error) {
-		return r.GitHub.AddIssueComment(owner, name, number, formatPlanComment(plan, model))
+	body := formatPlanComment(plan, model, issueFingerprint(ctx.IssueTitle, ctx.IssueBody))
+	github.PostBestEffort(w, "implementation plan", fmt.Sprintf("issue #%d", ctx.IssueNumber), func() (string, error) {
+		return r.GitHub.AddIssueComment(owner, name, ctx.IssueNumber, body)
 	})
 }
 
 // formatPlanComment wraps the plan text in the issue-comment body: the plan
 // verbatim (it already carries its own "## Implementation Plan" heading)
-// followed by the attribution footer.
-func formatPlanComment(plan, model string) string {
-	return plan + "\n\n---\n\n" + planCommentFooter(model) + "\n"
+// followed by the attribution footer and, when plannedFor is not empty, the
+// fingerprint line of the issue the plan was written against.
+func formatPlanComment(plan, model, plannedFor string) string {
+	comment := plan + "\n\n---\n\n" + planCommentFooter(model) + "\n"
+	if plannedFor != "" {
+		comment += "\n" + fmt.Sprintf(plannedBodyMarkerFmt, plannedFor) + "\n"
+	}
+	return comment
 }
 
 // planReviewHeading is the heading every plan review opens with ("## Plan

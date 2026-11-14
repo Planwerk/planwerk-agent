@@ -223,9 +223,11 @@ the report (What decide does not do says why its body is never edited).
 For a sibling you actually change, replace its footer verb with `Decided by`,
 naming your model id, the same rule Phase 4 applies to the Meta Issue. Then read
 its comments (`github.md`, Reading) and note
-whether the thread carries an implementation plan comment (`github.md`, The
-implementation plan comment): it was written against the body as it stood
-before your correction, and Phase 7 names every such sibling.
+whether the thread carries an implementation plan comment, and whether that
+comment ends with the `planned-for` line (`github.md`, The implementation plan
+comment): the plan was written against the body as it stood before your
+correction, and Phase 7 names every sibling whose next run would still
+implement it.
 
 ## Phase 6 — Show it, then write back
 
@@ -268,10 +270,12 @@ order:
 - Every decision the author declined, and the assumption now carrying it.
 - Every gap Phase 5 found but did not fix — a sibling whose scope should grow,
   or one that needs `/planwerk:revisit` or `/planwerk:elaborate` first.
-- Every corrected sibling that carries an implementation plan comment. Its
-  implementation starts with
-  `planwerk-agent implement <issue-ref> --no-plan-reuse` (`github.md`, The
-  implementation plan comment).
+- Every corrected sibling whose implementation plan comment lacks the
+  `planned-for` line. Its implementation starts with
+  `planwerk-agent implement <issue-ref> --no-plan-reuse`, and a `ship` run over
+  the Meta Issue needs the same flag (`github.md`, The implementation plan
+  comment). A plan comment with the line needs no mention: the next run plans
+  afresh by itself.
 
 If a spike Sub Issue exists and every one of its decisions is now Confirmed,
 Corrected, or explicitly decided, say its verification job is done and that the

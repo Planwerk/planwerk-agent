@@ -230,6 +230,20 @@ where it should land, and recommend one:
 
 Write only on an explicit yes.
 
+## Phase 7 — Report
+
+Open with one line: where the plan landed (the body, a comment, or nowhere)
+and its score. Then name every Reviewer Note left unresolved, every decision
+the author declined and the line of the body that records it, and the
+counterpart issue when one was filed.
+
+End with the next step as the last line. When the plan replaced the body, read
+the issue's implementation plan comment and end on the command `github.md`,
+The implementation plan comment, gives for it: an issue elaborated a second
+time can carry a plan written against the body you just replaced. When the
+plan landed as a comment or nowhere, the last line says that `implement` still
+reads the body as it was.
+
 ## Before you write back, verify
 
 - The seven sections appear in the documented order, under the preserved
