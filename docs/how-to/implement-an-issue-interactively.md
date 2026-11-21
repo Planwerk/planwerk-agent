@@ -2,8 +2,8 @@
 
 Take a prepared GitHub issue and implement it directly in the checkout you are
 sitting in: a short plan built in plan mode, your approval, and one complete
-pull request — without the unattended pipeline's simplify, review, and
-verification passes.
+pull request — with the pipeline's simplify pass run in your session, and
+without its review and verification passes.
 
 ```
 /planwerk:implement owner/repo#123
@@ -16,13 +16,14 @@ it.
 ## Skill or command?
 
 `implement` exists both ways, and unlike `elaborate` and `fix` the difference is
-more than supervision: the command runs passes the skill deliberately omits.
+more than supervision: the command runs passes the skill deliberately omits,
+and runs each in a fresh session.
 
 | | `/planwerk:implement` | [`planwerk-agent implement`](/reference/cli#implement) |
 |---|---|---|
 | Runs in | Your session, in your checkout | A throw-away clone, or `--local` |
 | Plans | A short plan in plan mode, approved by you | A dedicated read-only planning session, reviewed by a second read-only session and posted to the issue |
-| After the code | You read the diff | Simplify, verification, and review-and-fix passes |
+| After the code | A simplify pass in the same session, then you read the diff | Simplify, verification, and review-and-fix passes, each in a fresh session |
 | Opens the PR | Only after you say yes | Automatically, as the run's deliverable |
 
 Reach for the command when nobody is watching, or when the change is large
@@ -54,6 +55,30 @@ When the plan builds or changes an interface and the
 [impeccable](/how-to/use-impeccable-for-ui-work) skill is installed, the skill
 uses it for that part of the work, within the plan you approved: a design change
 the plan does not name comes back to you as a question before it is made.
+
+## Simplified before you read it
+
+Once the plan is implemented and committed, and before any Acceptance Criterion
+is exercised, the skill reads its own diff the way the command's simplify pass
+does. The decision ladder is the same: prefer not building it (YAGNI), then the
+standard library, a platform- or framework-native feature, a dependency already
+present, a one-liner, and only then the minimum new code. So are the four kinds
+of over-engineering it lists (speculative abstractions, reinvented wheels, dead
+or unreachable complexity, over-built control flow) and the guardrail:
+validation, error handling, security controls, accessibility code, and tests
+are never simplified away.
+
+Each simplification is folded into the commit that introduced the code
+(`git commit --fixup`, then an autosquash), so the branch you read carries no
+cleanup commits. The plan's verification commands run again afterwards, and a
+simplification that turns one red is taken back out. The report lists what was
+collapsed and what was skipped, or says there was nothing to simplify.
+
+Two things differ from the command. The pass runs in the session that wrote
+the code, not in a fresh one, which is why the command remains the path for a
+change that deserves an independent reading. And a collapse that would remove
+something the plan names is a structural deviation: it comes back to you as a
+question before it is made.
 
 ## Complete, or not at all
 
