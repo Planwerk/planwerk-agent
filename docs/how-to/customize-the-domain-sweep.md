@@ -15,7 +15,10 @@ sweep does.
 Both planning-side prompts carry the list, and the elaborate skill reads the same
 one (`.planwerk/domains.md` when the repository has it, otherwise the default the
 plugin ships). The elaboration folds a touched domain into an Acceptance
-Criterion or an Affected Areas entry, and its reviewer scores whether it did. The planning session reports the result in a
+Criterion or an Affected Areas entry, and its reviewer scores whether it did.
+The `/planwerk:implement` skill reads that list too, when it reviews its own
+plan: a touched domain no plan entry carries is a gap it closes before you see
+the plan. The planning session reports the result in a
 `### Domain Sweep` section of the plan:
 
 ```text

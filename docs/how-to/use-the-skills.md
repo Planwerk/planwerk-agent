@@ -18,7 +18,7 @@ rewrites prose that reads machine-written:
 | `/planwerk:decide` | Verifies the decisions a Meta Issue's split deferred to a spike, and folds the outcomes into the Meta Issue and every Sub Issue that assumed one |
 | `/planwerk:revisit` | Re-checks a prepared issue against what has actually landed since, and corrects what went stale |
 | `/planwerk:clarify` | Answers the open questions that stopped a planning session, and records them in the issue body |
-| `/planwerk:implement` | Implements a prepared issue in your checkout — a plan you approve in plan mode, one complete pull request behind your yes, simplified in the same session, without the pipeline's review and verification passes |
+| `/planwerk:implement` | Implements a prepared issue in your checkout — a plan the skill reviews against the command's plan-review checks and you approve in plan mode, one complete pull request behind your yes, simplified in the same session, without the pipeline's code review and verification passes |
 | `/planwerk:review` | Reviews your branch against its base, or your uncommitted changes, before a pull request exists — every finding verified against the line it cites, every changed file reviewed or skipped with a reason |
 | `/planwerk:diagnose` | Reproduces a reported bug with a feedback loop that goes red before any theory, and fixes the root cause behind a regression test in one pull request |
 | `/planwerk:fix` | Repairs a pull request's failing CI checks, and asks you at the forks a diagnosis cannot settle |
@@ -40,10 +40,11 @@ which loads the embedded catalog and the wiki's patterns and prints every
 finding; the skill reads the patterns the checkout commits, verifies each
 finding against the line it cites, and files issues only behind your yes. For
 `implement` the difference is more than supervision: the
-[`implement` command](/reference/cli#implement) runs simplify, review, and
-verification passes over the result, each in a fresh session. The skill runs
-the simplify pass itself, in the session that wrote the code, and deliberately
-omits the other two — you approve the plan and read the diff instead. `review` is also the
+[`implement` command](/reference/cli#implement) has its plan reviewed, and
+runs simplify, review, and verification passes over the result, each in a
+fresh session. The skill reviews its own plan and runs the simplify pass
+itself, in the session that wrote the plan and the code, and deliberately omits the code review
+and the verification — you approve the plan and read the diff instead. `review` is also the
 [`review` command](/reference/cli#review-default-command), which needs a pull
 request; the skill reviews your branch, or your uncommitted changes, before one
 exists, and accounts for every file the change touches. `diagnose` exists only

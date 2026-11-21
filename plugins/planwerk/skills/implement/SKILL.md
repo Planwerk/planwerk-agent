@@ -14,9 +14,9 @@ author's two approvals, of the plan and of the diff, are the only gates this
 path has.
 
 One idea carries this skill. **Light on ceremony is not light on completeness.
-The review and verification passes are gone; the issue's Acceptance Criteria
-are not. The change ships whole, as one pull request, or it stops and says
-why — a partial delivery never ships.**
+The code review and verification passes are gone; the issue's Acceptance
+Criteria are not. The change ships whole, as one pull request, or it stops and
+says why — a partial delivery never ships.**
 
 Arguments: $ARGUMENTS
 
@@ -29,13 +29,15 @@ Read these before you start, in full:
 - `${CLAUDE_SKILL_DIR}/../../shared/github-relations.md` — the neighborhood query
 - `${CLAUDE_SKILL_DIR}/../../shared/house-style.md` — prose, citations, anti-hallucination
 - `${CLAUDE_SKILL_DIR}/../../shared/memory.md` — how to read the project memory, and what to do when there is none
+- `${CLAUDE_SKILL_DIR}/../../shared/domains.md` — the domain sweep, when the repository commits no `.planwerk/domains.md` of its own
 
 ## What implement does not do
 
-- It never replaces the pipeline: the simplify pass here is your own reading of
-  your own diff, and no review-and-fix loop and no verification session runs at
-  all, so a change large enough to deserve those passes in fresh sessions
-  deserves `planwerk-agent implement`.
+- It never replaces the pipeline: the plan review and the simplify pass here
+  are your own reading of your own plan and your own diff, and no
+  review-and-fix loop and no verification session runs at all, so a change
+  large enough to deserve those passes in fresh sessions deserves
+  `planwerk-agent implement`.
 - It never ships partial work. One issue, one complete pull request. Deferring
   a listed piece to a follow-up issue, a second pull request, or a "reviewable
   subset" is not an outcome this skill can produce; when the work cannot
@@ -153,11 +155,64 @@ The plan covers the whole issue as one pull request. A note in the issue body
 that splits delivery — "one commit ≈ one PR", "defer X to a follow-up" — is
 overridden, and the plan says so rather than obeying it.
 
+Then review the plan, before the author sees it. The command hands its plan to
+a fresh read-only session for this; here the review is yours, so do not assume
+the plan is correct because it looks thorough: check each entry against the
+issue and the repository, not against your memory of writing it. The plan
+holds up against nine checks, and whatever fails one is a gap:
+
+1. **Criterion coverage** — every Acceptance Criterion maps to a change-set
+   entry, and to the command that will prove it or the plan's line saying why
+   none can run here. A criterion the code already meets maps to the
+   `path:line` that meets it, which you open.
+2. **Work-package coverage** — a change-set entry delivers every work package
+   the issue breaks the work into: a work-breakdown section, numbered items,
+   lettered workstreams, tiered phases, or a checkbox task list, but not the
+   Acceptance Criteria checklist or the numbered boundaries in the
+   Description.
+3. **Over-scope** — every change-set entry is asked for by the issue's
+   Description, Affected Areas, or Acceptance Criteria. What they do not ask
+   for is a gap: a new top-level package, a file the issue never implies, a
+   refactor, rename, or dependency bump.
+4. **Non-Goals** — no change-set entry plans work the issue's Non-Goals
+   exclude.
+5. **Single delivery** — no line of the plan splits the work across pull
+   requests or defers a listed work package to a follow-up. A Non-Goal that
+   hands part of a shared task to a sibling Sub Issue, or work in another
+   repository to a counterpart issue, is scoping, not deferral.
+6. **Ground truth** — every path the plan modifies or deletes exists, every
+   path it creates does not exist yet, and every symbol it names exists.
+7. **Domain coverage** — every domain the change touches is carried by a
+   change-set, test, or documentation entry. The domains are the repository's
+   `.planwerk/domains.md` when it commits a non-empty one, otherwise the list
+   in `domains.md`; decide from the repository, per domain, whether this
+   change touches it. A domain the change does not touch is never a gap.
+8. **Tests** — every test the plan lists names its test file or function and
+   the error or edge path it exercises.
+9. **Verification commands** — every command exists in the repository's own
+   tooling: its Makefile targets, package scripts, CI workflow files.
+
+Settle checks 6 and 9 by looking, now: list each path, and find each symbol
+and each command in the repository, whatever you remember from grounding the
+issue. A single citation that does not hold is a gap. Minor wording and
+stylistic preferences are not gaps.
+
+Close each gap in the plan itself: add the entry a criterion or a work package
+lacks, drop the entry the issue does not ask for, correct the citation. An
+entry you add or change goes through the nine checks like the rest. A gap the
+issue and the repository cannot close (a criterion no change can satisfy, a
+decision the plan leaves open, a domain consequence the issue does not ask
+for) is the author's to settle.
+
+The plan ends with a `Plan review` section: each gap the review found, with
+the plan line that changed to close it or the question it became, or
+`no gaps`.
+
 A question the repository cannot answer and the plan turns on — a policy call,
-a behavior fork, missing context — goes to the author now, under
-`interaction.md`, before any code exists to bias the answer. An answer the
-author declines to give is recorded as an unresolved decision, not silently
-defaulted.
+a behavior fork, missing context, a gap the review could not close — goes to
+the author now, under `interaction.md`, before any code exists to bias the
+answer. An answer the author declines to give is recorded as an unresolved
+decision, not silently defaulted.
 
 Present the plan through `ExitPlanMode`. The author's approval of that plan is
 the gate for every edit that follows. When plan mode is unavailable in this
