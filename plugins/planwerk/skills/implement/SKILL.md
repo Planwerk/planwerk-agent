@@ -1,6 +1,6 @@
 ---
 name: implement
-description: Implements a prepared GitHub issue in the current checkout as one complete pull request, with the author approving the plan and the diff in place of the unattended pipeline's simplify, review, and verification passes. Use when the change is small enough that a full `planwerk-agent implement` run costs more than it catches — a bug fix, a contained feature — and you are present to approve the plan and read the diff.
+description: Implements a prepared GitHub issue in the current checkout as one complete pull request, with the author approving the plan and the diff in place of the unattended pipeline's review and verification passes. Use when the change is small enough that a full `planwerk-agent implement` run costs more than it catches — a bug fix, a contained feature — and you are present to approve the plan and read the diff.
 argument-hint: "<issue-ref>"
 allowed-tools: AskUserQuestion EnterPlanMode ExitPlanMode Read Grep Glob Edit Write Bash
 ---
@@ -14,9 +14,9 @@ author's two approvals, of the plan and of the diff, are the only gates this
 path has.
 
 One idea carries this skill. **Light on ceremony is not light on completeness.
-The simplify, review, and verification passes are gone; the issue's Acceptance
-Criteria are not. The change ships whole, as one pull request, or it stops and
-says why — a partial delivery never ships.**
+The review and verification passes are gone; the issue's Acceptance Criteria
+are not. The change ships whole, as one pull request, or it stops and says
+why — a partial delivery never ships.**
 
 Arguments: $ARGUMENTS
 
@@ -24,6 +24,7 @@ Read these before you start, in full:
 
 - `${CLAUDE_SKILL_DIR}/../../shared/interaction.md` — how to ask, and when to stop
 - `${CLAUDE_SKILL_DIR}/../../shared/commits.md` — trailers, and the shape of a commit
+- `${CLAUDE_SKILL_DIR}/../../shared/commits-fold.md` — how the simplify pass folds a change into the commit that introduced it
 - `${CLAUDE_SKILL_DIR}/../../shared/github.md` — the `gh` commands
 - `${CLAUDE_SKILL_DIR}/../../shared/github-relations.md` — the neighborhood query
 - `${CLAUDE_SKILL_DIR}/../../shared/house-style.md` — prose, citations, anti-hallucination
@@ -31,9 +32,10 @@ Read these before you start, in full:
 
 ## What implement does not do
 
-- It never replaces the pipeline: no simplify pass, no review-and-fix loop, no
-  verification session runs here, so a change large enough to deserve those
-  passes deserves `planwerk-agent implement`.
+- It never replaces the pipeline: the simplify pass here is your own reading of
+  your own diff, and no review-and-fix loop and no verification session runs at
+  all, so a change large enough to deserve those passes in fresh sessions
+  deserves `planwerk-agent implement`.
 - It never ships partial work. One issue, one complete pull request. Deferring
   a listed piece to a follow-up issue, a second pull request, or a "reviewable
   subset" is not an outcome this skill can produce; when the work cannot
@@ -197,6 +199,61 @@ ignore, a waiver, or an `impeccable-disable` comment. A hook that reports after
 the push changes nothing pushed without the author's yes; end again with the
 next step as the last line.
 
+Then simplify the diff you committed, before any criterion is exercised. The
+command runs this pass in a fresh session after its implement session; here it
+is yours, so read the branch's diff from git, not from your memory of writing
+it:
+
+```bash
+git --no-pager diff "$(git merge-base origin/<default> HEAD)" HEAD
+```
+
+List each piece of complexity this branch introduced that a simpler rung of
+this ladder replaces, top first:
+
+1. Do not build it at all (YAGNI): neither the issue nor the approved plan
+   needs it.
+2. The standard library.
+3. A platform- or framework-native feature.
+4. A dependency already present in the project.
+5. A one-liner.
+6. Only then: the minimum new code.
+
+The list holds four kinds of finding:
+
+- Speculative abstractions: an interface with a single implementation, a
+  factory where a constructor suffices, a generic or a config knob with one
+  concrete use.
+- Reinvented wheels: hand-rolled code that the standard library, the
+  framework, an already-present dependency, or an existing helper in the
+  project provides.
+- Dead or unreachable complexity: a parameter kept "for the future", a branch
+  that cannot be taken, commented-out code.
+- Over-built control flow: layers of indirection, wrappers that only forward.
+
+Unchanged code is context for whether a simpler form exists, never a target,
+and naming and formatting are not findings. Simplification removes accidental
+complexity, never essential behavior, so nothing on the list removes or weakens
+any of:
+
+- Validation of inputs or arguments.
+- Error handling, error wrapping, or error propagation.
+- Security controls (authn/authz, input sanitization, crypto, secret handling).
+- Accessibility code.
+- Tests, assertions, or required checks: a test file is never simplified.
+
+Apply each finding as a deletion or a collapse to the rung it names: edit the
+lines the finding names and the call sites and imports its collapse requires.
+This is not a refactor, and it changes no observable behavior. A collapse that
+removes something the approved plan names is a structural deviation. Run the
+plan's verification commands again: a simplification that turns one red changed
+behavior, so take it back out and report it as skipped. Fold each
+simplification into the commit that introduced its code, per `commits-fold.md`,
+Folding a change into the commit that caused it, with the default branch as
+`<base>`. Nothing is pushed yet, so the rest of that document does not apply.
+An empty list is a valid result: change nothing, and the report says
+`nothing to simplify`.
+
 A criterion the plan marked observable in the locally running program is
 exercised by running that program the way its user does, usually in one of
 three forms:
@@ -318,7 +375,8 @@ as a concern the author must clear.
 
 ## Phase 4 — Show the result, then publish behind a yes
 
-Show the author the criteria walk, the commit list, and the diff. Show the PR
+Show the author the criteria walk, the commit list, what the simplify pass
+collapsed, and the diff. Show the PR
 title and body with the diff, so the yes covers the text that reaches GitHub.
 Then ask where the work lands, with one `AskUserQuestion`, and recommend the
 first:
@@ -357,6 +415,8 @@ Open with one line: what shipped, or why nothing did. Then state:
   opened.
 - Every deviation from the approved plan, and every question the author
   declined, as unresolved decisions.
+- What the simplify pass collapsed, each with the rung that replaced it, and
+  each finding it skipped with its reason, or `nothing to simplify`.
 - Each design finding you left standing, with its reason, when an impeccable
   command ran.
 - Noticed but not touching: each thing outside the issue you saw and left
@@ -367,9 +427,9 @@ Open with one line: what shipped, or why nothing did. Then state:
   - `DONE` — every Acceptance Criterion was exercised by a command that passed.
   - `DONE_WITH_CONCERNS` — the work is complete, with a criterion only a live
     system can verify (it needs a remote host or a credential), a criterion
-    not exercised here, a process that would not stop, a deviation the
-    author should see, the branch left local, or a question the author
-    declined; name which.
+    not exercised here, a process that would not stop, a simplification left
+    as an unfolded fixup, a deviation the author should see, the branch left
+    local, or a question the author declined; name which.
   - `BLOCKED` — the work cannot complete; the branch stays local, and the report
     names what stops it.
   - `NEEDS_CONTEXT` — only the author holds a fact the work turns on.
@@ -394,6 +454,9 @@ single thing that unblocks the work.
   concern.
 - Every changed file is warranted by the issue or the approved plan. Nothing
   widened, nothing "while I was in here".
+- The simplify pass read the committed diff before the criteria walk, the
+  plan's verification commands passed after its last change, and no `fixup!`
+  commit is left on the branch, unless the report names it as a concern.
 - No test was skipped, weakened, or deleted to get green. Re-read the diff
   against the list in `commits.md`, hunk by hunk.
 - The work is complete: no follow-up issue invented, no second pull request, no

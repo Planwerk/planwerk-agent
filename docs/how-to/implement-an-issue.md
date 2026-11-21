@@ -11,7 +11,8 @@ simplified, verified, and self-reviewed.
 For a change small enough that this pipeline costs more than it catches, the
 [`/planwerk:implement` skill](/how-to/implement-an-issue-interactively) does
 the same delivery interactively in your own checkout — a plan you approve in
-plan mode, one complete pull request behind your yes, none of the passes.
+plan mode, one complete pull request behind your yes, the simplify pass run in
+the same session, and neither of the other passes.
 
 ```bash
 # Plan and implement an elaborated issue
