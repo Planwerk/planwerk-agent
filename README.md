@@ -36,7 +36,7 @@ than subcommands:
 - **`/planwerk:decide`** verifies the decisions a Meta Issue's split deferred to a spike, and folds the outcomes into the Meta Issue and every Sub Issue that assumed one
 - **`/planwerk:revisit`** re-checks a prepared issue against what has actually landed since, and corrects what went stale
 - **`/planwerk:clarify`** answers the open questions that stopped a planning session, and records them where the next one reads them
-- **`/planwerk:implement`** implements a prepared issue in your checkout — a plan you approve in plan mode, one complete pull request behind your yes, simplified in the same session, without the pipeline's review and verification passes
+- **`/planwerk:implement`** implements a prepared issue in your checkout — a plan the skill reviews against the command's plan-review checks and you approve in plan mode, one complete pull request behind your yes, simplified in the same session, without the pipeline's code review and verification passes
 - **`/planwerk:review`** reviews the branch you are on, or the changes you have not committed, in your checkout before a pull request exists — every finding verified against the line it cites, every changed file accounted for as reviewed or skipped
 - **`/planwerk:diagnose`** reproduces a reported bug with a feedback loop that goes red before any theory, and fixes the root cause behind a regression test
 - **`/planwerk:fix`** repairs a pull request's failing CI checks, asking you whether the code or the test is the wrong one

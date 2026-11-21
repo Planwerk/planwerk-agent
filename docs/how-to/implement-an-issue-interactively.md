@@ -2,8 +2,8 @@
 
 Take a prepared GitHub issue and implement it directly in the checkout you are
 sitting in: a short plan built in plan mode, your approval, and one complete
-pull request — with the pipeline's simplify pass run in your session, and
-without its review and verification passes.
+pull request — with the pipeline's plan review and simplify pass run in your
+session, and without its code review and verification passes.
 
 ```
 /planwerk:implement owner/repo#123
@@ -22,7 +22,7 @@ and runs each in a fresh session.
 | | `/planwerk:implement` | [`planwerk-agent implement`](/reference/cli#implement) |
 |---|---|---|
 | Runs in | Your session, in your checkout | A throw-away clone, or `--local` |
-| Plans | A short plan in plan mode, approved by you | A dedicated read-only planning session, reviewed by a second read-only session and posted to the issue |
+| Plans | A short plan in plan mode, reviewed in the same session against the command's nine checks, approved by you | A dedicated read-only planning session, reviewed and scored by a second read-only session and posted to the issue |
 | After the code | A simplify pass in the same session, then you read the diff | Simplify, verification, and review-and-fix passes, each in a fresh session |
 | Opens the PR | Only after you say yes | Automatically, as the run's deliverable |
 
@@ -55,6 +55,31 @@ When the plan builds or changes an interface and the
 [impeccable](/how-to/use-impeccable-for-ui-work) skill is installed, the skill
 uses it for that part of the work, within the plan you approved: a design change
 the plan does not name comes back to you as a question before it is made.
+
+## Reviewed before you approve it
+
+Before the plan reaches you, the skill reviews it against the nine checks the
+command's [plan review](/how-to/implement-an-issue) runs: every Acceptance
+Criterion and every work package of the issue is covered, nothing in the
+change set goes beyond the issue or into its Non-Goals, the work is not split
+across pull requests, every cited path and symbol exists, every
+[domain](/how-to/customize-the-domain-sweep) the change touches is carried by
+an entry, every test names its file or function and the error or edge path it
+exercises, and every verification command exists in the repository's own
+tooling. The paths, symbols, and commands are looked up again for the review,
+not recalled.
+
+The skill closes each gap in the plan itself, and the plan you approve ends
+with a `Plan review` section that lists every gap the review found with the
+line that changed to close it, or says `no gaps`. A gap the issue and the
+repository cannot close comes to you as a question before the plan does.
+
+Three things differ from the command. The review runs in the session that
+wrote the plan, not in a fresh one, and you are the independent reader at the
+plan gate. There is no score: the command's 0-10 number decides whether an
+unattended run plans once more, while here every gap is closed or asked. And
+the review stays in the conversation with the plan; nothing is posted on the
+issue.
 
 ## Simplified before you read it
 
