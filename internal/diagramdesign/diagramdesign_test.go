@@ -76,8 +76,8 @@ func TestFind(t *testing.T) {
 		{Name: "diagram-design", Version: "2.6.181", Skills: []claudeplugin.Skill{{Name: "diagram-design", Dir: kit.SkillDir}}},
 	}
 	got, ok := Find(plugins)
-	if !ok || got != kit {
-		t.Errorf("Find = %+v, %v; want %+v, true", got, ok, kit)
+	if want := (Kit{SkillDir: kit.SkillDir, Skill: "diagram-design:diagram-design"}); !ok || got != want {
+		t.Errorf("Find = %+v, %v; want %+v, true", got, ok, want)
 	}
 	if _, ok := Find(plugins[:2]); ok {
 		t.Error("Find reported a kit for plugins that ship no usable diagram-design skill")

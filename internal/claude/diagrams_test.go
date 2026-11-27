@@ -12,22 +12,30 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/diagramdesign"
 	"github.com/planwerk/planwerk-agent/internal/diffscope"
 	"github.com/planwerk/planwerk-agent/internal/gitref/gitreftest"
+	"github.com/planwerk/planwerk-agent/internal/implement"
 )
 
-// fakeDiagramPlugin writes a plugin that ships a diagram-design skill whose
-// checkers are the given shell script bodies, with the reference documents a
-// review reads and one type reference, and returns it loaded. It puts a
-// python3 on PATH that runs a checker with sh and appends the target it was
-// given to the file targets in the plugin root.
+// fakeDiagramPlugin is writeDiagramPlugin with a python3 on PATH that runs a
+// checker with sh and appends the target it was given to the file targets in
+// the plugin root.
 func fakeDiagramPlugin(t *testing.T, selfCheck, geometry string) claudeplugin.Plugin {
 	t.Helper()
-	dir := t.TempDir()
+	p := writeDiagramPlugin(t, selfCheck, geometry)
 	bin := t.TempDir()
-	gitreftest.Write(t, bin, "python3", "#!/bin/sh\n[ \"$1\" = \"-I\" ] && shift\nprintf '%s\\n' \"$2\" >> "+filepath.Join(dir, "targets")+"\nexec sh \"$@\"\n")
+	gitreftest.Write(t, bin, "python3", "#!/bin/sh\n[ \"$1\" = \"-I\" ] && shift\nprintf '%s\\n' \"$2\" >> "+filepath.Join(p.Dir, "targets")+"\nexec sh \"$@\"\n")
 	if err := os.Chmod(filepath.Join(bin, "python3"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return p
+}
+
+// writeDiagramPlugin writes a plugin that ships a diagram-design skill whose
+// checkers are the given shell script bodies, with the reference documents a
+// review reads and one type reference, and returns it loaded.
+func writeDiagramPlugin(t *testing.T, selfCheck, geometry string) claudeplugin.Plugin {
+	t.Helper()
+	dir := t.TempDir()
 	gitreftest.Write(t, dir, ".claude-plugin/plugin.json", `{"name": "diagram-design", "version": "2.6.181"}`)
 	gitreftest.Write(t, dir, "skills/diagram-design/SKILL.md", "---\nname: diagram-design\ndescription: Create diagrams.\n---\n")
 	gitreftest.Write(t, dir, "skills/diagram-design/references/primitives-core.md", "# Primitives")
@@ -218,5 +226,36 @@ func TestReviewPassPrompts_SizeTheDiagramSpecialistWithoutTheGuidance(t *testing
 	got := ReviewPassPrompts(ReviewPasses{BaseBranch: "main", Diff: diffscope.Diff{}, Specialists: []Specialist{specialistByKey(t, "diagram")}})
 	if len(got) != 1 || got[0].Label != "specialist-diagram" || strings.Contains(got[0].Prompt, "## Diagram guidance") {
 		t.Errorf("ReviewPassPrompts = %+v, want the diagram row without the guidance section", got)
+	}
+}
+
+// TestPluginSessionPrompt_DrawsDiagramsWithTheKit locks decision 180: a
+// session that edits and loads the diagram-design skill carries the Diagrams
+// subsection, with the skill's name and the absolute paths of its checkers,
+// as does the implementer subagent; without the skill it carries none.
+func TestPluginSessionPrompt_DrawsDiagramsWithTheKit(t *testing.T) {
+	t.Parallel()
+	plugin := writeDiagramPlugin(t, "exit 0\n", "exit 0\n")
+	scripts := filepath.Join(plugin.Dir, "skills", "diagram-design", "scripts")
+	got := pluginSessionPrompt([]claudeplugin.Plugin{plugin})
+	for _, want := range []string{
+		"never before or after it.\n\n### Diagrams\n\n",
+		"invoke `diagram-design:diagram-design`",
+		"`python3 -I " + filepath.Join(scripts, diagramdesign.SelfCheck) + " <page>`",
+		"`python3 -I " + filepath.Join(scripts, diagramdesign.VerifyGeometry) + " <page>`",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("plugin section lacks %q:\n%s", want, got)
+		}
+	}
+	raw, err := implementAgentsJSON(implement.Context{WorkerModel: "sonnet"}, []claudeplugin.Plugin{plugin})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(raw, "### Diagrams") {
+		t.Error("the implementer subagent's prompt lacks the Diagrams subsection")
+	}
+	if strings.Contains(pluginSessionPrompt(goldenPlugins()), "### Diagrams") {
+		t.Error("a session without the diagram-design skill carries the Diagrams subsection")
 	}
 }

@@ -150,6 +150,13 @@ stories, no commit-sequence essay, no risk register. It must state, concretely:
   templates) and the `impeccable` skill is available in this session, the
   impeccable command for each such surface: `harden` for the states an
   Acceptance Criterion names, `audit` to check the result.
+- When the change set adds a diagram to the repository and the
+  `diagram-design` skill is available in this session, the diagram it draws:
+  the document that shows it, the diagram type, and where its `.html` page
+  goes, so that its path names it a diagram (a `diagrams/` directory beside
+  the document, where the repository keeps no diagrams of its own). A
+  repository that documents a format for its diagrams keeps that format, and
+  an existing diagram keeps its own.
 
 The plan covers the whole issue as one pull request. A note in the issue body
 that splits delivery — "one commit ≈ one PR", "defer X to a follow-up" — is
@@ -253,6 +260,17 @@ from a command or a hook, goes into the report with its reason, never into an
 ignore, a waiver, or an `impeccable-disable` comment. A hook that reports after
 the push changes nothing pushed without the author's yes; end again with the
 next step as the last line.
+
+Draw each diagram the plan named with `diagram-design`. Its style-guide
+question and its confirmation before drawing go to the author, as the skill
+asks them. A diagram the plan does not name is a
+structural deviation. The skill writes a self-contained `.html` page; for a
+Markdown document, export the figure as an SVG next to the page, as the
+skill's export reference describes, and embed that. Before you commit a page,
+run the skill's `scripts/self_check.py` and `scripts/verify_geometry.py` on it
+from the skill's directory, and fix what they report or carry it into the
+report with its reason. The render-and-look preview stays outside the
+checkout.
 
 Then simplify the diff you committed, before any criterion is exercised. The
 command runs this pass in a fresh session after its implement session; here it
@@ -474,6 +492,9 @@ Open with one line: what shipped, or why nothing did. Then state:
   each finding it skipped with its reason, or `nothing to simplify`.
 - Each design finding you left standing, with its reason, when an impeccable
   command ran.
+- Each diagram `diagram-design` drew, with its page and, for a Markdown
+  document, its SVG, and each problem its checkers reported that you left
+  standing, with its reason.
 - Noticed but not touching: each thing outside the issue you saw and left
   alone — a bug next door, a stale doc — with its `path:line` and why it is out
   of scope, or "none". Never park an Acceptance Criterion here; what the issue
