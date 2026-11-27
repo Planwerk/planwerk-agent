@@ -32,6 +32,7 @@ solves one specific problem.
 - [Address review comments](/how-to/address-review-comments)
 - [Use local mode](/how-to/use-local-mode)
 - [Use impeccable for UI work](/how-to/use-impeccable-for-ui-work)
+- [Use diagram-design for diagrams](/how-to/use-diagram-design-for-diagrams)
 - [Wire it up as a GitHub Action](/how-to/use-the-github-action)
 - [Install shell completions & man pages](/how-to/install-completions-and-man-pages)
 - [Build from source](/how-to/build-from-source)

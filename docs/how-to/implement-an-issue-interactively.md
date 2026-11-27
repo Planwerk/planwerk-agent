@@ -56,6 +56,12 @@ When the plan builds or changes an interface and the
 uses it for that part of the work, within the plan you approved: a design change
 the plan does not name comes back to you as a question before it is made.
 
+When the plan adds a diagram and the
+[diagram-design](/how-to/use-diagram-design-for-diagrams) skill is installed, the
+plan names each diagram, the skill draws it, and its checkers run on the page
+before the commit; a diagram the plan does not name comes back to you the same
+way.
+
 ## Reviewed before you approve it
 
 Before the plan reaches you, the skill reviews it against the nine checks the
