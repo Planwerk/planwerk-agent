@@ -26,6 +26,8 @@ func (s Specialist) ShouldRun(changedFiles []string) bool {
 		relevant = isRouteFile
 	case RelevanceUI:
 		relevant = isUIFile
+	case RelevanceDiagram:
+		relevant = isDiagramFile
 	}
 	for _, f := range changedFiles {
 		if relevant(f) {
@@ -37,7 +39,8 @@ func (s Specialist) ShouldRun(changedFiles []string) bool {
 
 // String names the kind of changed file that makes a gateable specialist of
 // this Relevance run: "route or handler file" for RelevanceRoutes, "UI file"
-// for RelevanceUI, "source file" otherwise, the same split ShouldRun makes.
+// for RelevanceUI, "diagram file" for RelevanceDiagram, "source file"
+// otherwise, the same split ShouldRun makes.
 // review --dry-run prints it after "the diff changes no " for a specialist the
 // gate skips (decision 143).
 func (r Relevance) String() string {
@@ -46,6 +49,8 @@ func (r Relevance) String() string {
 		return "route or handler file"
 	case RelevanceUI:
 		return "UI file"
+	case RelevanceDiagram:
+		return "diagram file"
 	}
 	return "source file"
 }
@@ -134,4 +139,41 @@ var uiExtensions = map[string]bool{
 func isUIFile(path string) bool {
 	lower := strings.ToLower(path)
 	return uiExtensions[filepath.Ext(lower)] || strings.HasSuffix(lower, ".blade.php")
+}
+
+// diagramSourceExtensions are the file extensions of the text formats diagram
+// tools draw from: Mermaid, PlantUML, draw.io, Excalidraw, Graphviz, and D2.
+var diagramSourceExtensions = map[string]bool{
+	".mmd": true, ".mermaid": true,
+	".puml": true, ".plantuml": true, ".pu": true, ".iuml": true, ".wsd": true,
+	".drawio": true, ".dio": true, ".excalidraw": true,
+	".dot": true, ".gv": true, ".d2": true,
+}
+
+// renderedDiagramExtensions are the formats a rendered diagram is committed
+// in that a reviewer can read as text: an SVG, and the self-contained HTML
+// page the diagram-design skill draws.
+var renderedDiagramExtensions = map[string]bool{".svg": true, ".html": true, ".htm": true}
+
+// isDiagramFile reports whether a repo-relative path is a diagram: a file in
+// one of diagramSourceExtensions, an image draw.io or Excalidraw embeds its
+// source in (a.drawio.svg, a.excalidraw.png), or a rendered diagram
+// (renderedDiagramExtensions) whose path names one, in a directory or in its
+// own name, since an icon or a page in those formats is not a diagram. It
+// gates the diagram specialist. A diagram inside a Markdown fence is not
+// seen, because the gate reads paths alone.
+func isDiagramFile(path string) bool {
+	lower := strings.ToLower(filepath.ToSlash(path))
+	ext := filepath.Ext(lower)
+	if diagramSourceExtensions[ext] || strings.Contains(lower, ".drawio.") || strings.Contains(lower, ".excalidraw.") {
+		return true
+	}
+	return renderedDiagramExtensions[ext] && strings.Contains(lower, "diagram")
+}
+
+// isHTMLDiagram reports whether a diagram file (isDiagramFile) is an HTML
+// page, the format the diagram-design skill draws and its checkers read.
+func isHTMLDiagram(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return isDiagramFile(path) && (ext == ".html" || ext == ".htm")
 }

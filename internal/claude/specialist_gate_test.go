@@ -59,7 +59,7 @@ func TestSpecialistShouldRun_Gating(t *testing.T) {
 		{
 			name:    "unknown diff fails open and runs every specialist",
 			changed: nil,
-			want:    []string{"security", "data-migration", "testing", "performance", "api-contract", "maintainability", "ui"},
+			want:    []string{"security", "data-migration", "testing", "performance", "api-contract", "maintainability", "ui", "diagram"},
 		},
 		{
 			name:    "a component change runs ui with the source specialists",
@@ -75,6 +75,26 @@ func TestSpecialistShouldRun_Gating(t *testing.T) {
 			name:    "a plain TypeScript change does not run ui",
 			changed: []string{"server/db.ts"},
 			want:    []string{"security", "data-migration", "testing", "performance", "maintainability"},
+		},
+		{
+			name:    "an exported diagram runs diagram with the NeverGate specialists",
+			changed: []string{"docs/diagrams/flow.svg"},
+			want:    []string{"security", "data-migration", "diagram"},
+		},
+		{
+			name:    "a Mermaid source runs diagram with the source specialists",
+			changed: []string{"docs/flow.mmd"},
+			want:    []string{"security", "data-migration", "testing", "performance", "maintainability", "diagram"},
+		},
+		{
+			name:    "an HTML diagram runs diagram and ui with the source specialists",
+			changed: []string{"docs/diagrams/flow.html"},
+			want:    []string{"security", "data-migration", "testing", "performance", "maintainability", "ui", "diagram"},
+		},
+		{
+			name:    "an icon is no diagram",
+			changed: []string{"assets/icons/close.svg"},
+			want:    []string{"security", "data-migration"},
 		},
 		{
 			name:    "mixed docs and source runs the source specialists",
@@ -177,6 +197,7 @@ func TestRelevanceString(t *testing.T) {
 		RelevanceAnySource: "source file",
 		RelevanceRoutes:    "route or handler file",
 		RelevanceUI:        "UI file",
+		RelevanceDiagram:   "diagram file",
 	} {
 		if got := r.String(); got != want {
 			t.Errorf("Relevance(%d).String() = %q, want %q", r, got, want)
@@ -216,6 +237,49 @@ func TestIsUIFile(t *testing.T) {
 	} {
 		if got := isUIFile(path); got != want {
 			t.Errorf("isUIFile(%q) = %v, want %v", path, got, want)
+		}
+	}
+}
+
+func TestIsDiagramFile(t *testing.T) {
+	t.Parallel()
+	for path, want := range map[string]bool{
+		"docs/flow.mmd":                     true,
+		"docs/sequence.PUML":                true,
+		"architecture.drawio":               true,
+		"docs/overview.drawio.svg":          true,
+		"docs/sketch.excalidraw.png":        true,
+		"board.excalidraw":                  true,
+		"deps.dot":                          true,
+		"system.d2":                         true,
+		"docs/diagrams/flow.svg":            true,
+		"docs/Diagrams/flow.html":           true,
+		"docs/architecture-diagram.svg":     true,
+		"docs/diagrams/flow.png":            false,
+		"assets/logo.svg":                   false,
+		"web/index.html":                    false,
+		"docs/diagrams.md":                  false,
+		"internal/diagramdesign/kit.go":     false,
+		"docs/diagrams/README.md":           false,
+		"internal/claude/specialist_ui.txt": false,
+	} {
+		if got := isDiagramFile(path); got != want {
+			t.Errorf("isDiagramFile(%q) = %v, want %v", path, got, want)
+		}
+	}
+}
+
+func TestIsHTMLDiagram(t *testing.T) {
+	t.Parallel()
+	for path, want := range map[string]bool{
+		"docs/diagrams/flow.html": true,
+		"docs/diagrams/flow.HTM":  true,
+		"docs/diagrams/flow.svg":  false,
+		"docs/flow.mmd":           false,
+		"web/index.html":          false,
+	} {
+		if got := isHTMLDiagram(path); got != want {
+			t.Errorf("isHTMLDiagram(%q) = %v, want %v", path, got, want)
 		}
 	}
 }

@@ -42,7 +42,8 @@ func (c *Client) runDiffFinder(dir, baseBranch, sinceRef, label string, build fu
 
 // runDiffFinderReading is runDiffFinder for a pass that may also read the
 // directories in readDirs, beside the diff's: the ui specialist reads the
-// design skill's reference documents (decision 155).
+// design skill's reference documents (decision 155), the diagram specialist
+// the diagram skill's (decision 179).
 func (c *Client) runDiffFinderReading(dir, baseBranch, sinceRef, label string, readDirs []string, build func(diffscope.Diff) string) (text, model string, excluded []report.ExcludedFile, err error) {
 	d, cleanup := c.writeDiff(dir, baseBranch, sinceRef)
 	defer cleanup()

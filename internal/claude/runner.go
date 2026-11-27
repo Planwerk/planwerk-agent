@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/planwerk/planwerk-agent/internal/claudeplugin"
+	"github.com/planwerk/planwerk-agent/internal/diagramdesign"
 	"github.com/planwerk/planwerk-agent/internal/impeccable"
 	"github.com/planwerk/planwerk-agent/internal/patterns"
 	"github.com/planwerk/planwerk-agent/internal/report"
@@ -525,12 +526,15 @@ type Client struct {
 	diffExclusions bool
 
 	// plugins are the Claude Code plugins the mutating sessions load
-	// (sessionPlugins), and designKit the impeccable skill among them, which
-	// hasDesignKit says was found. Set via WithPlugins (decisions 153 and
-	// 155).
-	plugins      []claudeplugin.Plugin
-	designKit    impeccable.Kit
-	hasDesignKit bool
+	// (sessionPlugins), designKit the impeccable skill among them, which
+	// hasDesignKit says was found, and diagramKit the diagram-design skill,
+	// which hasDiagramKit says was found. Set via WithPlugins (decisions 153,
+	// 155, and 179).
+	plugins       []claudeplugin.Plugin
+	designKit     impeccable.Kit
+	hasDesignKit  bool
+	diagramKit    diagramdesign.Kit
+	hasDiagramKit bool
 
 	// sessionFn, when set, runs every session in place of the claude CLI. Only tests set it.
 	sessionFn func(spec runSpec, prompt string) (text, model string, err error)
@@ -928,7 +932,8 @@ func (c *Client) runClaudeFinder(dir, prompt, label string) (text, model string,
 // of the diff the session reads (diffscope.Diff.Dir), "" for none (decision
 // 137). readDirs are further directories the session may read, after the
 // diff's: the design skill's reference documents for the ui specialist
-// (decision 155).
+// (decision 155), the diagram skill's for the diagram specialist (decision
+// 179).
 func (c *Client) runClaudeFinderFindings(dir, prompt, label, diffDir string, readDirs ...string) (text, model string, err error) {
 	spec := c.finderSpec(dir, label)
 	spec.jsonSchema = string(schema.FinderOutput)
