@@ -645,8 +645,9 @@ func TestRun_PartitionFiles_SecondaryPassesStayWholePR(t *testing.T) {
 	restore := cache.SetDir(t.TempDir())
 	t.Cleanup(restore)
 
-	// The UI file lets the gate start every specialist, ui included.
-	files := []string{"api/handler.go", "api/routes.go", "internal/a.go", "internal/b.go", "web/app.tsx"}
+	// The HTML diagram, a UI file too, lets the gate start every specialist,
+	// ui and diagram included.
+	files := []string{"api/handler.go", "api/routes.go", "internal/a.go", "internal/b.go", "docs/diagrams/flow.html"}
 	review := func(_ string, ctx claude.ReviewContext) (*report.ReviewResult, error) {
 		return &report.ReviewResult{Summary: "ok", Findings: []report.Finding{
 			{Severity: report.SeverityWarning, Title: "Missing Requirement: retries", Problem: "p", Action: "a"},

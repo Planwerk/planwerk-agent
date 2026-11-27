@@ -47,6 +47,11 @@ type Specialist struct {
 	// matches on the changed UI files as leads (decision 155). It is set for
 	// ui alone.
 	Design bool
+	// Diagrams marks the specialist that reads the diagram-design skill when
+	// the operator loaded it: its reference documents, and its checkers'
+	// reports on the changed HTML diagrams as leads (decision 179). It is set
+	// for diagram alone.
+	Diagrams bool
 }
 
 // PassLabel returns the session label the specialist's pass runs under,
@@ -71,14 +76,19 @@ const (
 	// RelevanceUI runs the specialist only when a changed file is markup, a
 	// stylesheet, a UI component, or a view template (isUIFile).
 	RelevanceUI
+	// RelevanceDiagram runs the specialist only when a changed file is a
+	// diagram: a diagram tool's source, or a rendered diagram whose path names
+	// one (isDiagramFile).
+	RelevanceDiagram
 )
 
 // Specialists is the registry of domain reviewers run by the fan-out. Security
 // and data-migration are marked NeverGate because a missed vulnerability or a
 // destructive migration is far more costly than the extra pass; the remaining
 // specialists are adaptively gated by [Specialist.ShouldRun] so a PR that does
-// not touch their relevant paths skips them. ui comes last, so the six that
-// preceded it keep their indices (decision 155).
+// not touch their relevant paths skips them. ui and then diagram come last, in
+// the order they were added, so the specialists registered before each keep
+// their indices (decisions 155 and 179).
 //
 // Each specialist's Areas lists the areas its domain actually reads on, and is
 // read as an exclusion of the rest: it drops only areas plainly outside the
@@ -143,6 +153,15 @@ var Specialists = []Specialist{
 		Areas:  []string{"user-experience"},
 		Design: true,
 		Focus:  `What a person sees and operates. Markup that hides its meaning from assistive technology: a control without an accessible name, an image without alt text, a skipped heading level, a click handler on an element the keyboard cannot reach, focus lost or trapped after an action. Text or controls below WCAG 2.2 AA contrast, and touch targets under its minimum of 24 by 24 CSS pixels. States the change leaves unrendered: loading, empty, error, and long or translated text that overflows. Layouts that break at narrow widths or on zoom, and motion without a prefers-reduced-motion fallback. Colors, sizes, or spacing hard-coded where the project uses design tokens. UI copy that leaves the user unable to tell what happened or what to do next. Judge each from the source: the markup, the stylesheet values, the component's states. Judge visual taste only where the project's documented design decisions (a DESIGN.md, a PRODUCT.md, a brand guide) rule on it.`,
+	},
+	{
+		Key:       "diagram",
+		Relevance: RelevanceDiagram,
+		// A diagram is documentation: the catalog files what it asks of one
+		// under this area.
+		Areas:    []string{"documentation"},
+		Diagrams: true,
+		Focus:    `What a reader learns from a diagram the change adds or changes: a diagram tool's source (Mermaid, PlantUML, draw.io, Excalidraw, Graphviz, D2), or a rendered SVG or HTML figure. A diagram that contradicts what it shows: a component, connection, state, step, or field it draws that the code or the text it illustrates no longer has or has under another name, one they have that it leaves out, and an arrow that points against the flow it stands for. A rendered figure and its source that disagree, such as a source the change edits beside an exported image it leaves as it was. A figure without a text alternative: an SVG without role="img" and a <title>, or an image embedded without alt text. Labels a reader cannot read: clipped, overlapping, crossing a connector, or below a legible size. A connector that ends in empty space or runs behind a box it does not attach to, and a legend that misses a mark the figure uses. One view crowded past what a reader can follow, where an overview and a detail diagram would carry it. Judge each from the source: the nodes, edges, and labels the file declares, against the code and the documents they describe. Judge visual style only where the project's documented design decisions (a style guide, a brand guide) rule on it.`,
 	},
 }
 
@@ -221,18 +240,26 @@ func RunSpecialistFanOut(changedFiles []string, call func(Specialist) (*report.R
 // result lists in ExcludedFiles what that diff left out (decision 137). A
 // Design specialist, when the operator loaded the impeccable skill, may also
 // read the skill's reference documents, and its prompt carries them and the
-// detector's leads (designGuidance, decision 155).
+// detector's leads (designGuidance, decision 155). A Diagrams specialist does
+// the same with the diagram-design skill and its checkers' leads
+// (diagramGuidance, decision 179).
 func (c *Client) SpecialistReview(dir, baseBranch string, sp Specialist, pats []patterns.Pattern, maxPatterns int) (*report.ReviewResult, error) {
 	var readDirs []string
 	if sp.Design && c.hasDesignKit {
-		readDirs = []string{c.designKit.ReferenceDir()}
+		readDirs = append(readDirs, c.designKit.ReferenceDir())
+	}
+	if sp.Diagrams && c.hasDiagramKit {
+		readDirs = append(readDirs, c.diagramKit.ReferenceDir())
 	}
 	raw, model, excluded, err := c.runDiffFinderReading(dir, baseBranch, "", sp.PassLabel(), readDirs, func(d diffscope.Diff) string {
-		design := ""
-		if sp.Design {
-			design = c.designGuidance(dir, baseBranch, d)
+		var guidance string
+		switch {
+		case sp.Design:
+			guidance = c.designGuidance(dir, baseBranch, d)
+		case sp.Diagrams:
+			guidance = c.diagramGuidance(dir, baseBranch, d)
 		}
-		return specialistPrompt(baseBranch, d, sp, pats, maxPatterns, design)
+		return specialistPrompt(baseBranch, d, sp, pats, maxPatterns, guidance)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("running %s specialist review: %w", sp.Key, err)
@@ -246,15 +273,17 @@ func (c *Client) SpecialistReview(dir, baseBranch string, sp Specialist, pats []
 }
 
 // buildSpecialistPrompt renders the prompt of sp's pass over the diff d,
-// without the design section a Design specialist carries at run time.
+// without the guidance section a Design or Diagrams specialist carries at run
+// time.
 // ReviewPassPrompts sizes the dry run's specialist rows with it.
 func buildSpecialistPrompt(baseBranch string, d diffscope.Diff, sp Specialist, pats []patterns.Pattern, maxPatterns int) string {
 	return specialistPrompt(baseBranch, d, sp, pats, maxPatterns, "")
 }
 
-// specialistPrompt is buildSpecialistPrompt with design, the rendered
-// designGuidanceBlock, after the pattern catalog; "" leaves it out.
-func specialistPrompt(baseBranch string, d diffscope.Diff, sp Specialist, pats []patterns.Pattern, maxPatterns int, design string) string {
+// specialistPrompt is buildSpecialistPrompt with guidance, the rendered
+// designGuidanceBlock or diagramGuidanceBlock, after the pattern catalog; ""
+// leaves it out.
+func specialistPrompt(baseBranch string, d diffscope.Diff, sp Specialist, pats []patterns.Pattern, maxPatterns int, guidance string) string {
 	if baseBranch == "" {
 		baseBranch = DefaultBaseBranch
 	}
@@ -272,7 +301,7 @@ If your domain has no issues in this diff, return an empty findings array.
 `, planwerkIgnoreLine(), sp.Key, sp.Focus)
 
 	sb.WriteString(domainPatternCatalog("## Project review patterns\n\nApply the project review patterns below that fall inside your domain — they ground your pass in the same catalog a later review of this diff would apply. They do NOT widen your scope beyond the domain above.", pats, maxPatterns, sp.Areas))
-	sb.WriteString(design)
+	sb.WriteString(guidance)
 
 	sb.WriteString(communicationStyleBlock())
 	sb.WriteString(outputLanguageBlock())

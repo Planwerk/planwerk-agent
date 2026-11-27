@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/planwerk/planwerk-agent/internal/claudeplugin"
+	"github.com/planwerk/planwerk-agent/internal/pluginscan"
 )
 
 const (
@@ -162,8 +163,8 @@ func (k Kit) Detect(dir string, files []string) ([]Finding, error) {
 	cmd.Env = append(cmd.Environ(), "DO_NOT_TRACK=1")
 	cmd.WaitDelay = 2 * time.Second
 	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &limitedBuffer{buf: &stdout, max: maxDetectOutput}
-	cmd.Stderr = &limitedBuffer{buf: &stderr, max: 4 << 10}
+	cmd.Stdout = &pluginscan.LimitedBuffer{Buf: &stdout, Max: maxDetectOutput}
+	cmd.Stderr = &pluginscan.LimitedBuffer{Buf: &stderr, Max: 4 << 10}
 	err := cmd.Run()
 	if ctx.Err() != nil {
 		return nil, fmt.Errorf("impeccable detect: timed out after %s", detectTimeout)
@@ -178,7 +179,7 @@ func (k Kit) Detect(dir string, files []string) ([]Finding, error) {
 	}
 	var found []Finding
 	decodeErr := json.Unmarshal(stdout.Bytes(), &found)
-	msg := firstLine(strings.TrimSpace(stderr.String()))
+	msg := pluginscan.FirstLine(strings.TrimSpace(stderr.String()))
 	switch {
 	case code == 0 || code == exitFindings:
 		if decodeErr != nil {
@@ -196,7 +197,7 @@ func (k Kit) Detect(dir string, files []string) ([]Finding, error) {
 	// checkout, and a match it reported there would quote that file.
 	scanned := make(map[string]bool, len(targets))
 	for _, t := range targets {
-		scanned[filepath.ToSlash(strings.TrimPrefix(t, "."+string(filepath.Separator)))] = true
+		scanned[pluginscan.Path(t)] = true
 	}
 	kept := found[:0]
 	for _, f := range found {
@@ -218,47 +219,15 @@ func (k Kit) Detect(dir string, files []string) ([]Finding, error) {
 	return found, nil
 }
 
-// scanTargets returns the detector arguments for files: each one that is a
-// regular file inside dir once every symlink on its path is resolved,
-// prefixed with "./" so a name that starts with a dash cannot read as a flag,
-// sorted, and capped at maxTargets. A change can commit a directory as a
-// symlink to a path outside the checkout and list a file under it as
-// deleted; resolving the whole path keeps the detector from reading, and the
-// prompt from quoting, a file the machine holds outside the checkout.
+// scanTargets returns the detector arguments for files (pluginscan.Targets),
+// capped at maxTargets.
 func scanTargets(dir string, files []string) []string {
-	root, err := filepath.EvalSymlinks(dir)
-	if err != nil {
-		return nil
-	}
-	var out []string
-	for _, f := range files {
-		rel := filepath.Clean(filepath.FromSlash(f))
-		if rel == "." || filepath.IsAbs(rel) || !inside(root, filepath.Join(root, rel)) {
-			continue
-		}
-		path := filepath.Join(dir, rel)
-		fi, err := os.Lstat(path)
-		if err != nil || !fi.Mode().IsRegular() {
-			continue
-		}
-		if resolved, err := filepath.EvalSymlinks(path); err != nil || !inside(root, resolved) {
-			continue
-		}
-		out = append(out, "."+string(filepath.Separator)+rel)
-	}
-	slices.Sort(out)
-	out = slices.Compact(out)
+	out := pluginscan.Targets(dir, files)
 	if len(out) > maxTargets {
 		slog.Info("the change touches more UI files than the design detector scans", "files", len(out), "scanned", maxTargets)
 		out = out[:maxTargets]
 	}
 	return out
-}
-
-// inside reports whether the clean path lies within the clean root.
-func inside(root, path string) bool {
-	rel, err := filepath.Rel(root, path)
-	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // relativeTo returns path relative to dir when it lies inside it, comparing
@@ -279,26 +248,6 @@ func relativeTo(dir, path string) string {
 		}
 	}
 	return path
-}
-
-// limitedBuffer keeps the first max bytes written to it and drops the rest,
-// reporting every write as complete so the child is never blocked on a full
-// pipe.
-type limitedBuffer struct {
-	buf *bytes.Buffer
-	max int
-}
-
-func (l *limitedBuffer) Write(p []byte) (int, error) {
-	if room := l.max - l.buf.Len(); room > 0 {
-		l.buf.Write(p[:min(room, len(p))])
-	}
-	return len(p), nil
-}
-
-func firstLine(s string) string {
-	line, _, _ := strings.Cut(s, "\n")
-	return line
 }
 
 func isFile(path string) bool {

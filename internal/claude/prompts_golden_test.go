@@ -14,6 +14,7 @@ import (
 	"github.com/planwerk/planwerk-agent/internal/brain"
 	"github.com/planwerk/planwerk-agent/internal/capture"
 	"github.com/planwerk/planwerk-agent/internal/claudeplugin"
+	"github.com/planwerk/planwerk-agent/internal/diagramdesign"
 	"github.com/planwerk/planwerk-agent/internal/diffscope"
 	"github.com/planwerk/planwerk-agent/internal/doccheck"
 	"github.com/planwerk/planwerk-agent/internal/elaborate"
@@ -1096,6 +1097,20 @@ func TestBuildSpecialistPrompt_UIDesign_Golden(t *testing.T) {
 	}
 	design := designGuidanceBlock("/tmp/planwerk-agent-impeccable-golden/reference", impeccable.ReviewGuides(), leads)
 	assertGoldenPrompt(t, "specialist_ui_design", specialistPrompt("develop", goldenDiff(), specialistByKey(t, "ui"), nil, 0, design))
+}
+
+// TestBuildSpecialistPrompt_DiagramGuidance_Golden locks the diagram
+// specialist's prompt with the section a run adds when the diagram-design
+// skill is loaded: the reference documents a review reads, the type
+// references, and two checker leads, one with a report cut at
+// maxDiagramLeadMessage (decision 179).
+func TestBuildSpecialistPrompt_DiagramGuidance_Golden(t *testing.T) {
+	leads := []diagramdesign.Finding{
+		{Check: diagramdesign.SelfCheck, File: "docs/diagrams/flow.html", Message: "svg 1 needs role=img"},
+		{Check: diagramdesign.VerifyGeometry, File: "docs/diagrams/flow.html", Line: 84, Message: "connector <line 168,272 -> 220,999> has a diagonal segment " + strings.Repeat("168,272 -> 220,999 ", 14)},
+	}
+	guidance := diagramGuidanceBlock("/tmp/planwerk-agent-diagram-design-golden/references", diagramdesign.ReviewGuides(), true, leads)
+	assertGoldenPrompt(t, "specialist_diagram_guidance", specialistPrompt("develop", goldenDiff(), specialistByKey(t, "diagram"), nil, 0, guidance))
 }
 
 // TestBuildImplementPromptResume_Golden locks the shape used when an earlier

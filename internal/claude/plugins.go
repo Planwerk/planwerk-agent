@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/planwerk/planwerk-agent/internal/claudeplugin"
+	"github.com/planwerk/planwerk-agent/internal/diagramdesign"
 	"github.com/planwerk/planwerk-agent/internal/impeccable"
 )
 
@@ -18,9 +19,10 @@ const pluginTelemetryEnv = "DO_NOT_TRACK=1"
 // WithPlugins sets the Claude Code plugins the mutating sessions load, each
 // passed as --plugin-dir; the read-only sessions never load one (decision
 // 153). It also looks for the impeccable design skill among them, whose
-// reference documents and detector the ui specialist reads (decision 155).
-// An empty ps leaves the earlier value in place; a later option wins, and ps
-// is cloned.
+// reference documents and detector the ui specialist reads (decision 155),
+// and for the diagram-design skill, whose reference documents and checkers
+// the diagram specialist reads (decision 179). An empty ps leaves the earlier
+// value in place; a later option wins, and ps is cloned.
 func WithPlugins(ps []claudeplugin.Plugin) Option {
 	return func(c *Client) {
 		if len(ps) == 0 {
@@ -28,6 +30,7 @@ func WithPlugins(ps []claudeplugin.Plugin) Option {
 		}
 		c.plugins = slices.Clone(ps)
 		c.designKit, c.hasDesignKit = impeccable.Find(c.plugins)
+		c.diagramKit, c.hasDiagramKit = diagramdesign.Find(c.plugins)
 	}
 }
 

@@ -213,6 +213,7 @@ func TestRun_DryRunReportsTheSpecialistGate(t *testing.T) {
 		"performance":     "the diff changes no source file",
 		"maintainability": "the diff changes no source file",
 		"api-contract":    "the diff changes no route or handler file",
+		"diagram":         "the diff changes no diagram file",
 	} {
 		if row := previewRow(t, p, "specialist-"+key); row.Run || row.Reason != reason || row.PromptBytes != 0 {
 			t.Errorf("%s row = %+v, want it skipped with %q", key, row, reason)
