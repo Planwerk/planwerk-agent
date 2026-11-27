@@ -100,8 +100,10 @@ func joinPrompts(parts ...string) string {
 // limit to the repository's own skills, and the rules a plugin and its hooks
 // run under with no person present (decision 154). The implementer subagent
 // of an orchestrated implement session gets it in its own prompt, since a
-// subagent sees none of the parent's. No plugins yields "", which leaves every
-// session's arguments as they were.
+// subagent sees none of the parent's. When the diagram-design skill is among
+// the plugins, the section ends with how the session draws a diagram with it
+// (diagramDrawingBlock, decision 180). No plugins yields "", which leaves
+// every session's arguments as they were.
 func pluginSessionPrompt(ps []claudeplugin.Plugin) string {
 	if len(ps) == 0 {
 		return ""
@@ -142,7 +144,28 @@ func pluginSessionPrompt(ps []claudeplugin.Plugin) string {
 
 Everything these rules ask you to name goes inside the shape your instructions give your final message (a report's section for work left or skipped, or the summary of a JSON object), never before or after it.
 `)
+	if kit, ok := diagramdesign.Find(ps); ok {
+		sb.WriteString("\n" + diagramDrawingBlock(kit))
+	}
 	return sb.String()
+}
+
+// diagramDrawingBlock returns the "### Diagrams" subsection of the plugin
+// section for the diagram-design skill kit: a diagram the task adds is drawn
+// with the skill, where the repository has no format of its own for its
+// diagrams, and the steps the skill leaves to a person at the keyboard (its
+// style-guide gate, its confirmation before drawing) are settled without one.
+// The page goes where its path names it a diagram, which the diagram review
+// specialist's gate reads (isDiagramFile), and the skill's two checkers run
+// on it before it is committed, as they run on it in review (decision 180).
+func diagramDrawingBlock(kit diagramdesign.Kit) string {
+	return "### Diagrams\n\n" +
+		"The operator loaded diagram-design so that the diagrams this session adds are drawn with it. When your task adds a diagram to the repository, invoke `" + kit.Skill + "` and draw the diagram with that skill rather than in Mermaid, ASCII art, or hand-written SVG, unless the repository documents a format for its diagrams, which then wins. An existing diagram keeps its format: one the skill drew is changed with the skill, and one in another format is corrected in that format and redrawn with the skill only when your task asks for that. A pull request description, an issue, or a comment gets no diagram from the skill, since GitHub renders none of its files there. The skill's steps for a person at the keyboard go as follows here:\n\n" +
+		"- The style guide: resolve the repository's `.diagram-design` marker as the skill describes, and without one, draw with the installed style guide as it stands. Never run the skill's onboarding, edit its style guide, or write a profile or a `.diagram-design` marker. Name the profile or the skin you drew with in your final message.\n" +
+		"- The confirmation before drawing: put the plan it states (the diagram type, the size preset, and what the complexity budget cut) in your final message instead of waiting for a reply.\n" +
+		"- The file: keep the diagram's `.html` page where the repository keeps its diagrams, or, where it keeps none, in a `diagrams/` directory beside the document that shows it, so that its path names it a diagram. A Markdown document cannot hold the page: export the figure as an SVG next to the page, the way the skill's export reference describes, embed that, and export it again whenever the page changes. Make no other export.\n" +
+		"- The checks: before you commit a page the skill drew or changed, run `python3 -I " + kit.Script(diagramdesign.SelfCheck) + " <page>` and `python3 -I " + kit.Script(diagramdesign.VerifyGeometry) + " <page>`, with the page's path from the checkout, and handle what they report as the rules above say for a plugin's checks. The skill's render-and-look preview goes into a temporary directory outside the checkout; where it cannot run, put the skill's own words for that in your final message.\n\n" +
+		"Everything this subsection asks you to name goes inside the shape your instructions give your final message too.\n"
 }
 
 // warnUnloadedPlugins logs one warning on logger for each plugin in want whose

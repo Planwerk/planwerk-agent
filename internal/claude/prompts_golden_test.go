@@ -1070,6 +1070,14 @@ func TestPluginSessionPrompt_Golden(t *testing.T) {
 	assertGoldenPrompt(t, "plugin_session_hooks_only", pluginSessionPrompt(goldenPlugins()[1:]))
 }
 
+// TestDiagramDrawingBlock_Golden locks the subsection a session that edits
+// carries after the plugin rules when the diagram-design skill is loaded
+// (decision 180).
+func TestDiagramDrawingBlock_Golden(t *testing.T) {
+	kit := diagramdesign.Kit{SkillDir: "/plugins/diagram-design/skills/diagram-design", Skill: "diagram-design:diagram-design"}
+	assertGoldenPrompt(t, "plugin_session_diagrams", diagramDrawingBlock(kit))
+}
+
 // TestBuildImplementerAgentPrompt_Plugins_Golden locks the worker prompt of an
 // orchestrated implement session that loads plugins: the implementer prompt,
 // then the plugin section, since a subagent sees none of the parent's system

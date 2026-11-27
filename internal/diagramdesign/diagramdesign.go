@@ -4,7 +4,7 @@
 // Python's standard library. The diagram review specialist reads the skill's
 // reference documents and the checkers' reports on the changed HTML diagrams
 // as leads (decision 179), and the sessions that edit draw a diagram with the
-// skill (decision 180).
+// skill and run the same checkers on it before they commit it (decision 180).
 //
 // Nothing here copies diagram-design's guidance: the reference documents are
 // read where the installed plugin keeps them, and the checkers run from its
@@ -79,6 +79,9 @@ var reviewGuides = []Guide{
 type Kit struct {
 	// SkillDir is the skill's directory, absolute.
 	SkillDir string
+	// Skill is the name the Skill tool knows the skill by:
+	// "<plugin>:diagram-design".
+	Skill string
 }
 
 // warned holds the skill directories Find has warned about, so a command that
@@ -96,8 +99,8 @@ func Find(plugins []claudeplugin.Plugin) (Kit, bool) {
 			if s.Name != skillName {
 				continue
 			}
-			k := Kit{SkillDir: s.Dir}
-			if isFile(k.script(SelfCheck)) && isFile(k.script(VerifyGeometry)) && isDir(k.ReferenceDir()) {
+			k := Kit{SkillDir: s.Dir, Skill: p.SkillID(s.Name)}
+			if isFile(k.Script(SelfCheck)) && isFile(k.Script(VerifyGeometry)) && isDir(k.ReferenceDir()) {
 				return k, true
 			}
 			if _, seen := warned.LoadOrStore(s.Dir, true); !seen {
@@ -137,9 +140,9 @@ func (k Kit) HasTypeReferences() bool {
 	return err == nil && len(m) > 0
 }
 
-// script returns the path of the named checker in the skill's scripts
-// directory.
-func (k Kit) script(name string) string { return filepath.Join(k.SkillDir, "scripts", name) }
+// Script returns the absolute path of the named checker, SelfCheck or
+// VerifyGeometry, in the skill's scripts directory.
+func (k Kit) Script(name string) string { return filepath.Join(k.SkillDir, "scripts", name) }
 
 // Finding is one problem a checker reported.
 type Finding struct {
@@ -203,7 +206,7 @@ func (k Kit) Check(dir string, files []string) ([]Finding, error) {
 
 // run runs one checker on one target and returns what it printed to stdout.
 func (k Kit) run(ctx context.Context, dir, check, target string) (string, error) {
-	cmd := exec.CommandContext(ctx, python, "-I", k.script(check), target)
+	cmd := exec.CommandContext(ctx, python, "-I", k.Script(check), target)
 	cmd.Dir = dir
 	// cmd.Environ, read after Dir is set, carries the PWD of that directory.
 	cmd.Env = append(cmd.Environ(), "DO_NOT_TRACK=1")
