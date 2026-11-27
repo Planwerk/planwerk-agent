@@ -104,6 +104,10 @@ export default defineConfig({
               link: '/how-to/use-impeccable-for-ui-work',
             },
             {
+              text: 'Use diagram-design for diagrams',
+              link: '/how-to/use-diagram-design-for-diagrams',
+            },
+            {
               text: 'Use the GitHub Action',
               link: '/how-to/use-the-github-action',
             },

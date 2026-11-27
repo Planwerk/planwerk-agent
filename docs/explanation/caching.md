@@ -71,9 +71,10 @@ shapes the analysis itself:
 - **The diff exclusions** — `--diff-exclusions` decides which changed files the
   sessions read, so a run with it and one without are different entries.
 - **The plugins** — the `name@version` of every plugin `--claude-plugin` loads.
-  The sessions that edit draw on them, and the impeccable plugin feeds the `ui`
-  specialist, so a run with a plugin, or with another version of it, is a
-  different entry. Every command that starts a session carries them, one whose
+  The sessions that edit draw on them, the impeccable plugin feeds the `ui`
+  specialist, and the diagram-design plugin the `diagram` one, so a run with a
+  plugin, or with another version of it, is a different entry. Every command
+  that starts a session carries them, one whose
   sessions are all read-only included, which keeps the rule one rule at the
   cost of a miss for those commands when a plugin is first named. A run that
   loads none keeps the key it had before the flag existed.

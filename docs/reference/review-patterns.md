@@ -321,7 +321,8 @@ whose areas match no loaded pattern reads the whole catalog. The `ui`
 specialist reads `user-experience`, which no pattern the binary ships carries:
 file a project's own accessibility, interface-state, or design-system patterns
 under `user-experience`, written with the hyphen, and the `ui` pass reads them
-in place of the whole catalog.
+in place of the whole catalog. The `diagram` specialist reads `documentation`,
+the area the shipped documentation patterns carry.
 
 ### Applies-When and Applies-To-Paths
 
