@@ -3,7 +3,7 @@ module github.com/planwerk/planwerk-agent
 go 1.26.4
 
 require (
-	github.com/anthropics/anthropic-sdk-go v1.84.0
+	github.com/anthropics/anthropic-sdk-go/v2 v2.15.0
 	github.com/anthropics/anthropic-sdk-go/v2 v2.15.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/spf13/cobra v1.10.2
